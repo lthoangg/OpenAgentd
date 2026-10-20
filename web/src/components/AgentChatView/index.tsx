@@ -501,6 +501,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     isAgentWorking,
     revertedCount: leadRevertedCount,
     hasVisibleMessages: leadHasVisibleBlocks,
+    hasLiveMessages: leadHasLiveBlocks,
     onOpenSideQuestions: handleOpenSideQuestions,
   })
 

@@ -648,7 +648,7 @@
     "type": "function",
     "function": {
       "name": "send_to_workspace",
-      "description": "Send a message to an agent session in another registered workspace (another repo, a worktree, or Chat). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces, or one workspace's recent sessions.",
+      "description": "Send a message to an agent session in another workspace that shares a group with this one (a related repo, a worktree of this repo, or Chat, which every workspace can reach). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces you can message under their groups, with each group's brief describing its repos, or one workspace's recent sessions.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -664,7 +664,7 @@
           "workspace": {
             "type": "string",
             "default": null,
-            "description": "Target workspace name or absolute path (required for send). With action='list', lists that workspace's recent sessions."
+            "description": "Target workspace name or absolute path (required for send); it must share a group with this workspace, or be Chat. With action='list', lists that workspace's recent sessions."
           },
           "message": {
             "type": "string",

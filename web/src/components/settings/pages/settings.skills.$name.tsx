@@ -7,7 +7,7 @@ import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateSkillDraft } from '@/components/settings/schema'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { EDITOR_BODY } from '@/components/settings/tokens'
 
 interface SkillEditorPageProps {
   name: string
@@ -90,11 +91,11 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-3 sm:p-5">
+        <div className={EDITOR_BODY}>
           {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
           {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (
-            <SettingsSection title="Skill source" description="frontmatter + body loaded by agents on demand">
+            <PanelSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">
               <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
                 Frontmatter (<span className="font-mono">name</span>,{' '}
                 <span className="font-mono">description</span>) is required;
@@ -111,7 +112,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
                 aria-invalid={invalid || undefined}
                 className="min-h-96 font-mono text-[13px] leading-relaxed"
               />
-            </SettingsSection>
+            </PanelSection>
           )}
           <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
             <div className="flex items-center gap-2">

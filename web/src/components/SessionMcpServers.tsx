@@ -17,8 +17,12 @@ import { Plug } from 'lucide-react'
 
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
+import { PanelSection } from '@/components/ui/panel-section'
+import { COMPACT_ROW, TEXT } from '@/components/ui/panel-tokens'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import { McpStatusDot } from './McpStatusDot'
 import {
   useConnectMcpOAuthMutation,
@@ -77,11 +81,11 @@ function ServerRow({
     return (
       <li
         aria-label={name}
-        className="flex min-h-9 items-center gap-2.5 px-3 py-2 sm:px-5"
+        className={cn(COMPACT_ROW, 'min-h-12')}
       >
         <Plug size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden />
-        <span className="flex-1 truncate text-xs font-medium text-(--color-text-2)">{name}</span>
-        <span className="text-[11px] text-(--color-text-muted)">Not configured</span>
+        <span className={cn('min-w-0 flex-1 truncate', TEXT.label)}>{name}</span>
+        <span className={TEXT.hint}>Not configured</span>
       </li>
     )
   }
@@ -92,13 +96,13 @@ function ServerRow({
     <li
       aria-label={name}
       aria-busy={busy || undefined}
-      className="flex min-h-9 flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2 sm:px-5"
+      className={cn(COMPACT_ROW, 'min-h-12 flex-wrap')}
     >
       <McpStatusDot server={server} />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-(--color-text)">
+      <span className={cn('min-w-0 flex-1 truncate', TEXT.label)}>
         {name}
       </span>
-      <span className="text-[11px] text-(--color-text-muted)">
+      <span className={TEXT.hint}>
         {statusLabel(server)}
         {server.enabled && server.tool_names.length > 0 && (
           <> · {toolCountLabel(server.tool_names.length)}</>
@@ -108,7 +112,7 @@ function ServerRow({
         <Button
           type="button"
           variant="default"
-          size="xs"
+          size="sm"
           // Nothing to authorize while the server is off.
           disabled={!server.enabled || busy}
           onClick={() => onConnect(server)}
@@ -123,7 +127,7 @@ function ServerRow({
         aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${name}`}
       />
       {server.error && server.state !== 'auth_required' && (
-        <p className="w-full text-[11px] text-(--color-error)">{server.error}</p>
+        <p className="w-full text-[11px] leading-relaxed text-(--color-error)">{server.error}</p>
       )}
     </li>
   )
@@ -170,22 +174,17 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
   const hasServers = agentServers.length > 0
 
   return (
-    <section className="border-t border-(--color-border)">
-      <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-1.5 sm:px-5">
-        <h3 className="label-caps text-(--color-text-muted)">
-          MCP servers
-        </h3>
-        <button
-          type="button"
-          onClick={() => openSettings('mcp')}
-          className="rounded-xs text-[11px] text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
-        >
+    <PanelSection
+      title="MCP servers"
+      flush
+      actions={
+        <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('mcp')}>
           Manage
-        </button>
-      </div>
-
+        </Button>
+      }
+    >
       {!hasServers ? (
-        <p className="px-3 pb-3 text-xs text-(--color-text-muted) sm:px-5">
+        <p className={cn('px-4 py-4', TEXT.body)}>
           No MCP servers for this agent. Add one under Manage, then list it in the
           agent's config.
         </p>
@@ -195,26 +194,27 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
         <div
           role="status"
           aria-label="Loading MCP servers"
-          className="space-y-2 px-3 pb-3 sm:px-5"
+          className="space-y-2 px-4 py-3"
         >
           {agentServers.map((name) => (
-            <Skeleton key={name} className="h-7 w-full" />
+            <Skeleton key={name} className="h-9 w-full" />
           ))}
         </div>
       ) : isError ? (
-        <div className="flex flex-wrap items-center gap-2 px-3 pb-3 sm:px-5">
-          <p className="text-xs text-(--color-error)">Couldn't load MCP servers.</p>
-          <Button
-            type="button"
-            variant="default"
-            size="xs"
-            onClick={() => refetch()}
+        <div className="p-3">
+          <Callout
+            tone="error"
+            action={
+              <Button type="button" variant="default" size="sm" onClick={() => refetch()}>
+                Retry
+              </Button>
+            }
           >
-            Retry
-          </Button>
+            Couldn't load MCP servers.
+          </Callout>
         </div>
       ) : (
-        <ul className="divide-y divide-(--color-border)/60">
+        <ul className="divide-y divide-(--color-border-subtle)">
           {agentServers.map((name) => (
             <ServerRow
               key={name}
@@ -227,6 +227,6 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
           ))}
         </ul>
       )}
-    </section>
+    </PanelSection>
   )
 }

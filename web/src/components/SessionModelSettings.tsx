@@ -22,8 +22,11 @@ import { Eye } from 'lucide-react'
 import { useRegistryQuery } from '@/queries'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { PanelSection } from '@/components/ui/panel-section'
+import { TEXT } from '@/components/ui/panel-tokens'
 import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
 import { supportedThinkingLevels as levelsFor } from '@/lib/thinking-levels'
+import { cn } from '@/lib/utils'
 
 const DEFAULT_LEVEL_LABEL = 'Default'
 const KNOWN_LEVEL_LABELS: Record<string, string> = {
@@ -153,17 +156,18 @@ export function SessionModelSettings({
     thinkingOptions.find((level) => level.value === thinkingLevel)?.label ?? DEFAULT_LEVEL_LABEL
 
   return (
-    <div className="shrink-0 px-3 py-3 sm:px-5 sm:py-4">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+    <PanelSection title="Model">
+      {/* Thinking only holds a short level name; the model id gets the room. */}
+      <div className="grid gap-x-4 gap-y-5 sm:grid-cols-[minmax(0,1fr)_8rem]">
         {/* Not a <label>: the caption is decorative (the combobox and dropdown
             carry their own aria-labels) and wrapping a <button> in a <label>
             makes the label's contents the button's accessible name. */}
-        <div className="min-w-0 text-xs text-(--color-text-muted)">
+        <div className="min-w-0">
           {/* Fixed-height caption row: the Vision chip is taller than bare
               label text (border + padding), and letting it grow this row
               pushes the input below the Thinking control next to it. */}
-          <span className="mb-1 flex h-4 items-center gap-1.5 font-medium leading-none text-(--color-text-2)">
-            Model
+          <span className={cn('mb-2 flex h-4 items-center gap-1.5 leading-none', TEXT.label)}>
+            Session model
             {effectiveEntry?.vision && (
               <Tooltip>
                 <TooltipTrigger
@@ -191,16 +195,16 @@ export function SessionModelSettings({
             openOnFocus={false}
           />
           {!modelValid && (
-            <span className="mt-1 block text-[11px] text-(--color-error)">
+            <span className="mt-2 block text-[11px] leading-relaxed text-(--color-error)">
               Choose a model from the list.
             </span>
           )}
         </div>
 
-        <div className="text-xs text-(--color-text-muted)">
+        <div className="min-w-0">
           {/* Same fixed height as the Model caption so both controls share a
               top edge. */}
-          <span className="mb-1 flex h-4 items-center font-medium leading-none text-(--color-text-2)">
+          <span className={cn('mb-2 flex h-4 items-center leading-none', TEXT.label)}>
             Thinking
           </span>
           <Dropdown
@@ -222,6 +226,6 @@ export function SessionModelSettings({
           </Dropdown>
         </div>
       </div>
-    </div>
+    </PanelSection>
   )
 }

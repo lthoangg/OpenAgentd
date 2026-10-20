@@ -100,6 +100,9 @@ fn save_plan(dir: &Path, target: PlanTarget, parsed: &PlanArgs, plan_mode: bool)
         text.push_str(" This revision includes the user's edits.");
     }
     if plan_mode {
+        if let Some(dir) = doc.attachments_dir() {
+            text.push_str(&format!(" Put its mockups and diagrams in {dir}/ (write them with patch) and link them by that path."));
+        }
         text.push_str(" Call submit_plan when it is ready for review.");
     }
     tracing::info!("plan_saved dir={} revision={} path={}", dir.display(), doc.revision, doc.path.display());
@@ -243,7 +246,10 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let ws = || PlanTarget::Workspace { root: &root, session_id: SID, denied: None };
         let wrote = save_plan(&dir, ws(), &args(json!({"action": "write", "content": "# Ship it\n1. a"})), true).unwrap();
-        assert_eq!(wrote, "Plan saved as revision 1 (2 lines) at .agents/plans/ship-it-16df61f9.md. Call submit_plan when it is ready for review.");
+        assert_eq!(
+            wrote,
+            "Plan saved as revision 1 (2 lines) at .agents/plans/ship-it-16df61f9.md. Put its mockups and diagrams in .agents/plans/ship-it-16df61f9/ (write them with patch) and link them by that path. Call submit_plan when it is ready for review."
+        );
         let same = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. a"}]})), false).unwrap();
         assert_eq!(same, "Plan unchanged (revision 1).");
         let edited = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. b"}]})), false).unwrap();

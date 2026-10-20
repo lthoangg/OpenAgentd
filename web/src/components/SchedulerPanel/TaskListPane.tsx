@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { useDebouncedCallback } from '@tanstack/react-pacer'
 import { AlertCircle, Clock, Loader2 } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { SearchBar } from '@/components/ui/search-bar'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { TaskListItem } from './TaskListItem'
@@ -51,8 +52,8 @@ export function TaskListPane({
       <div
         className={
           chrome === 'dock'
-            ? 'border-b border-(--color-border-subtle) px-2 py-1.5'
-            : 'border-b border-(--color-border) bg-(--bg-sidebar) p-2.5'
+            ? 'border-b border-(--color-border-subtle) px-3 py-2'
+            : 'border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-3'
         }
       >
         <SearchBar
@@ -68,33 +69,22 @@ export function TaskListPane({
 
       <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
-            <Loader2 size={22} className="animate-spin text-(--color-accent)" />
+          <div role="status" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+            <Loader2 size={20} className="animate-spin text-(--color-text-muted)" aria-hidden="true" />
             <p className="text-xs text-(--color-text-muted)">Loading scheduled tasks…</p>
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center gap-2.5 p-8 text-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-(--color-error-subtle) text-(--color-error)">
-              <AlertCircle size={16} />
-            </div>
-            <p className="text-sm font-medium text-(--color-error)">Failed to load tasks</p>
-          </div>
+          <EmptyState fill={false} tone="error" className="px-6 py-12" icon={AlertCircle} title="Failed to load tasks" />
         ) : filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card) text-(--color-text-muted)">
-              <Clock size={16} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-(--color-text)">
-                {searchQuery ? 'No tasks match your search' : 'No scheduled tasks yet'}
-              </p>
-              {!searchQuery && emptyHint && (
-                <p className="mt-1 text-xs text-(--color-text-subtle)">{emptyHint}</p>
-              )}
-            </div>
-          </div>
+          <EmptyState
+            fill={false}
+            className="px-6 py-12"
+            icon={Clock}
+            title={searchQuery ? 'No tasks match your search' : 'No scheduled tasks yet'}
+            body={!searchQuery ? emptyHint : undefined}
+          />
         ) : (
-          <div className="space-y-1.5 p-2">
+          <div className="divide-y divide-(--color-border-subtle) border-b border-(--color-border-subtle)">
             {filteredTasks.map((task) => (
               <TaskListItem
                 key={task.id}

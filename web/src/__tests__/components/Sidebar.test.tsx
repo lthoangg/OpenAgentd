@@ -10,6 +10,8 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import {
   addExpandedPaths,
@@ -110,16 +112,22 @@ let chatWorkspaceEntry: { path: string; name: string } | null = null
 let hiddenWorkspacePaths = new Set<string>()
 /** Worktrees the backend lists under each repository. */
 let worktreesByRepo: Record<string, Array<{ path: string; name: string; managed: boolean }>> = {}
+/** Workspace groups the backend knows, and each repository's tags. */
+let workspaceGroupsData: Array<{ id: string; name: string; brief: string | null }> = []
+let groupIdsByRepo: Record<string, string[]> = {}
+let setGroupsRequests: Array<{ workspace: string; group_ids: string[] }> = []
 const workspaceTreeResponse = () => ({
   repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string)))
     .map((path) => ({
       path,
       name: path.split('/').pop() || path,
       worktrees: (worktreesByRepo[path] ?? []).filter((item) => !hiddenWorkspacePaths.has(item.path)),
+      group_ids: groupIdsByRepo[path] ?? [],
     }))
     // Like the backend, a hidden repository still contains its visible worktrees.
     .filter((repo) => !hiddenWorkspacePaths.has(repo.path) || repo.worktrees.length > 0),
   chat: chatWorkspaceEntry,
+  groups: workspaceGroupsData,
 })
 
 class IntersectionObserverStub {
@@ -212,6 +220,7 @@ mock.module('lucide-react', () => ({
   Search: Icon,
   SquarePen: Icon,
   Settings: Icon,
+  Settings2: Icon,
   Pencil: Icon,
   Trash2: Icon,
   X: Icon,
@@ -721,6 +730,10 @@ describe('Sidebar workspace trust flow', () => {
     chatWorkspaceEntry = null
     hiddenWorkspacePaths = new Set()
     worktreesByRepo = {}
+    workspaceGroupsData = []
+    groupIdsByRepo = {}
+    setGroupsRequests = []
+    useSidebarViewStore.setState({ groupFilter: null })
     workspaceHasNextPage = false
     workspaceIsFetchingNextPage = false
     workspaceQueryArgs = []
@@ -763,6 +776,18 @@ describe('Sidebar workspace trust flow', () => {
       }
       if (url.includes('/api/agent/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
+      }
+      if (url.endsWith('/api/agent/workspace/groups/members')) {
+        const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as { workspace: string; group_ids: string[] }
+        setGroupsRequests.push(body)
+        groupIdsByRepo[body.workspace] = body.group_ids
+        return new Response(JSON.stringify(body))
+      }
+      if (url.endsWith('/api/agent/workspace/groups')) {
+        const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as { name: string; brief: string | null }
+        const group = { id: `g-${body.name}`, name: body.name, brief: body.brief }
+        workspaceGroupsData = [...workspaceGroupsData, group]
+        return new Response(JSON.stringify({ ...group, members: [] }))
       }
       if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify(workspaceTreeResponse()))
@@ -2223,6 +2248,65 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(copyOption)
     expect(writeText).toHaveBeenCalledWith('/repo/project')
+  })
+
+  it('marks grouped repositories and narrows the tree to one group', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+      { id: 'session-2', title: 'Other', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/other' },
+    ]
+    workspaceSessionsData = sessionsData
+    workspaceGroupsData = [{ id: 'g-acme', name: 'acme', brief: 'project = app' }]
+    groupIdsByRepo = { '/repo/project': ['g-acme'] }
+
+    await renderSidebarForSessions('session-1')
+
+    expect(screen.getByRole('img', { name: 'Groups: acme' })).toBeTruthy()
+    expect(screen.getByLabelText(/repository other/)).toBeTruthy()
+
+    await act(async () => { useSidebarViewStore.getState().setGroupFilter('g-acme') })
+    expect(screen.queryByLabelText(/repository other/)).toBeNull()
+    expect(screen.getByLabelText(/repository project/)).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Show all workspaces' }))
+    expect(useSidebarViewStore.getState().groupFilter).toBeNull()
+    expect(screen.getByLabelText(/repository other/)).toBeTruthy()
+  })
+
+  it('toggles a repository\'s groups from its actions menu and links to group settings', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+    ]
+    workspaceSessionsData = sessionsData
+    workspaceGroupsData = [
+      { id: 'g-acme', name: 'acme', brief: null },
+      { id: 'g-shared', name: 'shared', brief: null },
+    ]
+    groupIdsByRepo = { '/repo/project': ['g-acme'] }
+    const realOpenSettings = useSettingsStore.getState().openSettings
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
+
+    await renderSidebarForSessions('session-1')
+
+    await user.click(screen.getByLabelText('Actions for project'))
+    const toggle = (name: string) => screen.getByRole('menuitemcheckbox', { name })
+    expect(toggle('acme').getAttribute('aria-checked')).toBe('true')
+    expect(toggle('shared').getAttribute('aria-checked')).toBe('false')
+
+    // A toggle saves at once and keeps the menu open for the next one.
+    await user.click(toggle('shared'))
+    await waitFor(() => expect(setGroupsRequests).toEqual([{ workspace: '/repo/project', group_ids: ['g-acme', 'g-shared'] }]))
+    await waitFor(() => expect(toggle('shared').getAttribute('aria-checked')).toBe('true'))
+    await user.click(toggle('acme'))
+    await waitFor(() => expect(setGroupsRequests.at(-1)).toEqual({ workspace: '/repo/project', group_ids: ['g-shared'] }))
+
+    await user.click(screen.getByRole('menuitem', { name: 'Manage groups…' }))
+    expect(openSettings).toHaveBeenCalledWith('workspaces')
+    expect(screen.queryByRole('menu')).toBeNull()
+    useSettingsStore.setState({ openSettings: realOpenSettings })
   })
 
   it('pins the chat workspace and keeps repository actions off it', async () => {

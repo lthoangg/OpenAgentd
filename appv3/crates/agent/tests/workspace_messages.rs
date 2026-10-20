@@ -115,8 +115,21 @@ async fn send_reply_retry_and_guards() {
         mode: mode.map(String::from),
     };
 
+    // ── 0. groups scope the sends ───────────────────────────────────────
+    let e = wm::send(&pool, send("infra", "x", None, false, None)).await.unwrap_err();
+    assert!(e.contains("does not share a group"), "ungrouped repositories cannot message each other: {e}");
+    let listing = wm::list(&pool, &app_ws, None).await.unwrap();
+    assert!(listing.contains("in no group") && !listing.contains("- infra — "), "{listing}");
+    let acme = appv3_db::create_workspace_group(&pool, "acme", Some("app = orders service, infra = queues"), None).await.unwrap();
+    for ws in [&app_ws, &infra_ws] {
+        appv3_db::set_workspace_groups(&pool, ws, std::slice::from_ref(&acme.id)).await.unwrap();
+    }
+
     // ── 1. new session + reply ──────────────────────────────────────────
     let sent = wm::send(&pool, send("INFRA", "Create the orders queue.", None, true, None)).await.unwrap();
+    // A reply answers a request that was allowed when sent: untagging the
+    // target mid-flight does not stop it.
+    appv3_db::set_workspace_groups(&pool, &infra_ws, &[]).await.unwrap();
     assert_eq!(sent.delivery, Delivery::Started);
     assert_eq!(sent.target.name, "infra");
     let infra_sid = sent.session_id.clone();
@@ -148,6 +161,7 @@ async fn send_reply_retry_and_guards() {
     assert_eq!(reply.2["reply_from"]["session_id"], infra_sid.as_str());
     assert!(!wm::has_outstanding_replies(&app_sid));
     assert_eq!(mock.calls.lock().unwrap().len(), 2);
+    appv3_db::set_workspace_groups(&pool, &infra_ws, std::slice::from_ref(&acme.id)).await.unwrap();
 
     // ── 2. error notice, then the retried answer ────────────────────────
     let sent = wm::send(&pool, send(&infra_ws, "Rotate the key.", None, true, None)).await.unwrap();
@@ -195,6 +209,18 @@ async fn send_reply_retry_and_guards() {
     assert!(e.contains("Refused"), "{e}");
     let listing = wm::list(&pool, &app_ws, None).await.unwrap();
     assert!(listing.contains("- Chat — ") && listing.contains(&format!("- app — {app_ws} (current)")) && listing.contains("- infra — "), "{listing}");
+    assert!(listing.contains("Group 'acme' — app = orders service, infra = queues"), "{listing}");
+    // A third, ungrouped repository stays out of reach, by name and by path.
+    let billing = root.join("billing");
+    std::fs::create_dir_all(&billing).unwrap();
+    let billing_ws = manager::validate_workspace(&billing.display().to_string(), true).unwrap();
+    appv3_db::upsert_coding_workspace(&pool, &billing_ws, "repo", None, None, false, false).await.unwrap();
+    for target in ["billing", billing_ws.as_str()] {
+        let e = wm::send(&pool, send(target, "x", None, false, None)).await.unwrap_err();
+        assert!(e.contains("does not share a group"), "{e}");
+    }
+    assert!(wm::list(&pool, &app_ws, Some("billing")).await.unwrap_err().contains("does not share a group"));
+    assert!(!wm::list(&pool, &app_ws, None).await.unwrap().contains("billing"));
     let sessions = wm::list(&pool, &app_ws, Some("infra")).await.unwrap();
     assert!(sessions.contains(&infra_sid) && sessions.contains("Create the orders queue."), "{sessions}");
 

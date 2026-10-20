@@ -587,6 +587,230 @@ describe("CommandPalette — nested pages", () => {
 
     expect(screen.getByRole("button", { name: "Back to all commands" }).textContent).toBe("Switch Session")
   })
+
+  // ── ←/→ ─────────────────────────────────────────────────────────────────────
+
+  it("opens the highlighted page on ArrowRight", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={pageCommands()} onClose={() => { closed = true }} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}")
+
+    expect(closed).toBe(false)
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+    expect(screen.getByText("Fix login bug")).toBeTruthy()
+  })
+
+  it("ignores ArrowRight on a command without a page", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    let ran = false
+    const commands = pageCommands()
+    commands[0] = { ...commands[0], action: () => { ran = true } }
+    render(<CommandPalette commands={commands} onClose={() => { closed = true }} />)
+
+    await user.keyboard("{ArrowRight}")
+
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(closed).toBe(false)
+    expect(ran).toBe(false)
+  })
+
+  it("moves the caret with ArrowRight until it reaches the end of the query", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+    const input = screen.getByPlaceholderText("Search commands…") as HTMLInputElement
+
+    await user.type(input, "switch")
+    await user.keyboard("{Home}{ArrowRight}")
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(input.selectionStart).toBe(1)
+
+    await user.keyboard("{End}{ArrowRight}")
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+  })
+
+  it("ignores ArrowRight with a modifier held", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{Shift>}{ArrowRight}{/Shift}")
+
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+  })
+
+  it("returns to the root list on ArrowLeft in an empty query", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.keyboard("{ArrowLeft}")
+
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(screen.getByText("New Chat")).toBeTruthy()
+  })
+
+  it("moves the caret with ArrowLeft while the page query has text", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    const input = screen.getByPlaceholderText("Search sessions…") as HTMLInputElement
+    await user.type(input, "fix")
+    await user.keyboard("{ArrowLeft}")
+
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+    expect(input.value).toBe("fix")
+    expect(input.selectionStart).toBe(2)
+  })
+
+  it("highlights the command that opened a page after leaving it", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}{ArrowLeft}")
+    expect(container.querySelector("[data-idx='1']")?.className).toContain("border-(--color-border-strong)")
+
+    // Enter runs the highlighted page command again, not New Chat.
+    await user.keyboard("{Enter}")
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+
+    await user.keyboard("{Escape}")
+    expect(container.querySelector("[data-idx='1']")?.className).toContain("border-(--color-border-strong)")
+  })
+
+  it("hints → while a page command is highlighted and ← inside a page", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    expect(screen.queryByText("open")).toBeNull()
+    await user.keyboard("{ArrowDown}")
+    expect(screen.getByText("open")).toBeTruthy()
+    expect(screen.getByText("→").closest("kbd")).toBeTruthy()
+
+    await user.keyboard("{ArrowRight}")
+    expect(screen.queryByText("open")).toBeNull()
+    expect(screen.getByText("←").closest("kbd")).toBeTruthy()
+    expect(screen.getByText("back")).toBeTruthy()
+  })
+})
+
+describe("CommandPalette — pages inside pages", () => {
+  function nested(opts: { sessions?: Command[]; onOpen?: () => void } = {}): Command[] {
+    return [
+      { id: "new-chat", label: "New Chat", action: () => {} },
+      {
+        id: "switch",
+        label: "Switch Workspace/Session…",
+        action: () => {},
+        page: {
+          placeholder: "Search workspaces…",
+          commands: [
+            { id: "ws:docs", label: "docs", action: () => {}, page: { placeholder: "Search sessions in docs…", commands: [] } },
+            {
+              id: "ws:app",
+              label: "app",
+              action: () => {},
+              onOpenPage: opts.onOpen,
+              page: {
+                placeholder: "Search sessions in app…",
+                commands: [
+                  { id: "new:app", label: "New Session", browseOnly: true, action: () => {} },
+                  ...(opts.sessions ?? [{ id: "s1", label: "Fix login bug", action: () => {} }]),
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]
+  }
+  const activeLabel = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("[data-idx]")).find((row) => row.className.includes("border-(--color-border-strong)"))?.textContent
+
+  it("walks down three levels with → and back up with ←, one level at a time", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<CommandPalette commands={nested()} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}{ArrowDown}{ArrowRight}")
+    expect(screen.getByPlaceholderText("Search sessions in app…")).toBeTruthy()
+    expect(screen.getByText("Fix login bug")).toBeTruthy()
+
+    await user.keyboard("{ArrowLeft}")
+    expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
+    expect(activeLabel(container)).toContain("app")
+
+    await user.keyboard("{ArrowLeft}")
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(activeLabel(container)).toContain("Switch Workspace/Session…")
+  })
+
+  it("steps back one level on Escape and Backspace", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={nested()} onClose={() => { closed = true }} />)
+
+    await user.keyboard("{ArrowDown}{Enter}{ArrowDown}{Enter}")
+    await user.keyboard("{Escape}")
+    expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
+    await user.keyboard("{Backspace}")
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(closed).toBe(false)
+  })
+
+  it("shows the trail in the back chip, which steps back one level", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={nested()} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}{ArrowDown}{ArrowRight}")
+    const chip = screen.getByRole("button", { name: "Back to Switch Workspace/Session" })
+    expect(chip.textContent).toBe("Switch Workspace/Session › app")
+
+    await user.click(chip)
+    expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Back to all commands" }).textContent).toBe("Switch Workspace/Session")
+  })
+
+  it("lists a browse-only row first with an empty query and hides it while searching", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<CommandPalette commands={nested()} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}{ArrowDown}{ArrowRight}")
+    expect(container.querySelector("[data-idx='0']")?.textContent).toContain("New Session")
+
+    await user.type(screen.getByPlaceholderText("Search sessions in app…"), "new")
+    expect(screen.queryByText("New Session")).toBeNull()
+  })
+
+  it("calls onOpenPage and shows rows that arrive after the page opened", async () => {
+    const user = userEvent.setup()
+    let opened = 0
+    const onOpen = () => { opened += 1 }
+    const { rerender } = render(<CommandPalette commands={nested({ sessions: [], onOpen })} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}{ArrowDown}{ArrowRight}")
+    expect(opened).toBe(1)
+    expect(screen.queryByText("Refactor store")).toBeNull()
+
+    rerender(<CommandPalette commands={nested({ sessions: [{ id: "s2", label: "Refactor store", action: () => {} }], onOpen })} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search sessions in app…")).toBeTruthy()
+    expect(screen.getByText("Refactor store")).toBeTruthy()
+  })
+
+  it("falls back to the deepest page that still exists when a command disappears", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<CommandPalette commands={nested()} onClose={() => {}} />)
+
+    await user.keyboard("{ArrowDown}{ArrowRight}{ArrowDown}{ArrowRight}")
+    const withoutApp = nested()
+    withoutApp[1].page!.commands = withoutApp[1].page!.commands.filter((c) => c.id !== "ws:app")
+    rerender(<CommandPalette commands={withoutApp} onClose={() => {}} />)
+
+    expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
+    await user.keyboard("{ArrowLeft}")
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+  })
 })
 
 describe("QuickOpen — > command mode", () => {
@@ -623,6 +847,24 @@ describe("QuickOpen — > command mode", () => {
   it("hints the > prefix while searching files", () => {
     render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
     expect(screen.getByText(">").closest("kbd")).toBeTruthy()
+  })
+
+  it("opens a command's page on ArrowRight", async () => {
+    const user = userEvent.setup()
+    const commands: Command[] = [
+      {
+        id: "switch-session",
+        label: "Switch Session…",
+        action: () => {},
+        page: { placeholder: "Search sessions…", commands: [{ id: "s1", label: "Fix login bug", action: () => {} }] },
+      },
+    ]
+    render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => {}} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Search files…"), ">switch")
+    await user.keyboard("{ArrowRight}")
+
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
   })
 })
 

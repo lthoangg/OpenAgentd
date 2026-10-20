@@ -57,7 +57,7 @@ function renderSchedulerPanel() {
 
 function getSessionTargetTrigger() {
   return screen.getAllByRole('button').find((button) =>
-    /New Session|Persistent Task Session|Current Chat Session|Specific Session ID/.test(button.textContent ?? ''),
+    /New session|Persistent task session|Current chat session|Specific session ID/i.test(button.textContent ?? ''),
   )!
 }
 
@@ -72,7 +72,7 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     const user = userEvent.setup()
 
     // Find task title input
-    const titleInput = screen.getByLabelText('Task Title')
+    const titleInput = screen.getByLabelText('Task title')
     expect(titleInput).toBeInTheDocument()
 
     // Type a friendly title
@@ -112,7 +112,7 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     expect(customInput).toBeInTheDocument()
 
     // 2. Fill in other required fields to trigger validation on session ID specifically
-    const titleInput = screen.getByLabelText('Task Title')
+    const titleInput = screen.getByLabelText('Task title')
     await user.type(titleInput, 'Test Task')
 
     const promptInput = screen.getByPlaceholderText('Message to deliver to the agent when the task fires.')
@@ -122,7 +122,7 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     await user.type(customInput, 'invalid-uuid-abc')
 
     // Click submit
-    const submitBtn = screen.getByRole('button', { name: 'Create Task' })
+    const submitBtn = screen.getByRole('button', { name: 'Create task' })
     await user.click(submitBtn)
 
     // Verify validation error

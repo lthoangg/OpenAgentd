@@ -291,11 +291,27 @@ components:
     textColor: "{colors.on-surface}"
     rounded: "{rounded.sm}"
     padding: 12px
-  card-header:
+  card-header:                # Dense variant only (data surfaces such as Telemetry)
     backgroundColor: "{colors.bg-key}"
     textColor: "{colors.on-surface-muted}"
     typography: "{typography.label-caps}"
     padding: 8px
+  panel-section-title:        # Heading above a panel card (PanelSection), set semibold
+    textColor: "{colors.on-surface}"
+    typography: "{typography.label-md}"
+  panel-card:
+    backgroundColor: "{colors.bg-card}"
+    textColor: "{colors.on-surface}"
+    rounded: "{rounded.sm}"
+    padding: 16px
+  panel-row:                  # Label left, control right (PanelRow)
+    textColor: "{colors.on-surface}"
+    typography: "{typography.body-sm}"
+    height: 56px
+    padding: 16px
+  field-label:
+    textColor: "{colors.on-surface}"
+    typography: "{typography.label-md}"
   sidebar-item:
     backgroundColor: "{colors.bg-sidebar}"
     textColor: "{colors.on-surface-2}"
@@ -318,6 +334,12 @@ components:
     textColor: "{colors.accent-orange-text}"
     typography: "{typography.label-sm}"
     rounded: "{rounded.full}"
+  callout-warning:            # Callout; other tones swap the semantic pair
+    backgroundColor: "{colors.warning-subtle}"
+    textColor: "{colors.accent-orange-text}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.sm}"
+    padding: 12px
   code-block:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.on-surface}"
@@ -356,7 +378,10 @@ Three deliberate tensions define the personality:
 
 - **Dense, not cramped.** Default UI text is 12px and rows are 28–36px tall. The
   system earns that density with a strict 11px legibility floor and generous
-  horizontal padding.
+  horizontal padding. Working surfaces (transcript, sidebar, review dock,
+  Telemetry) stay dense; management surfaces (Settings, Scheduled tasks,
+  Session settings, Keyboard shortcuts, Backend connection) keep the same type
+  scale but trade height for room to breathe.
 - **Flat, not sterile.** Hierarchy comes from tonal steps and hairline borders,
   never from drop shadows. Only true overlays cast a shadow.
 - **Technical, not sterile.** Inter handles interface text and headings, while
@@ -389,8 +414,8 @@ Surfaces step tonally, not by elevation. Cards sit *lighter* than the page:
 
 `bg-sidebar (#F5EFDD)` → `bg-page (#FAF6EC)` → `bg-card (#FFFBF1)` → `surface (#FFFDF7)`
 
-`bg-key (#F0E9D4)` is the "keycap" wash — hover and pressed states, section-card
-header strips, and keyboard-shortcut badges. `bg-send (#2D241B)` is the one
+`bg-key (#F0E9D4)` is the "keycap" wash — hover and pressed states, the header
+strips of dense section cards, and keyboard-shortcut badges. `bg-send (#2D241B)` is the one
 inverted surface, reserved for the composer's send action.
 
 ### Agent identity chips
@@ -462,8 +487,9 @@ passages; `body-lg` (16px) for long-form prose only.
 **11px is a hard floor.** Anything specified below it is clamped up, so the same
 screen never renders differently between desktop and mobile.
 
-`label-caps` (11px, 600, +0.05em, uppercase) marks section-card headers and
-group labels. It is the only uppercase style in the system, and ships as the
+`label-caps` (11px, 600, +0.05em, uppercase) marks dense section-card headers
+and group labels. Panel section titles are not caps: they use 12px semibold in
+sentence case (`TEXT.title` in `ui/panel-tokens.ts`). It is the only uppercase style in the system, and ships as the
 `label-caps` utility (type only — pair it with `text-(--color-text-muted)` on
 card headers, `text-(--color-text-subtle)` on nav and group labels). Use
 `font-mono` with it only when the label is an identifier (a code language, a
@@ -487,6 +513,9 @@ document and exposing pixels outside the layout.
 — the default gap between related controls) and 12px (`card-padding` — standard
 horizontal padding and card inset). Vertical padding runs tighter than
 horizontal: a 12px-tall row typically pairs `py-1.5` with `px-3`.
+
+Management surfaces use a roomier panel rhythm: 16px card insets, 8px from a
+label to its control, 20px between fields, and 32px between sections.
 
 **Mobile-first authoring is mandatory.** Base (unprefixed) styles target the
 phone; `md:` (768px) and up progressively add desktop affordances. Never author
@@ -690,9 +719,18 @@ width on hover — that causes a 1px layout jump.
 - **Counter / Sync Badge**: `rounded-full`, `bg-(--bg-key)`, `text-(--color-text-subtle)`, JetBrains Mono 11px, `px-1.5 py-0.5`.
 - **Kbd Shortcut Badge**: `rounded-xs`, 1px `border-(--color-border)`, `bg-(--bg-card)` (or `bg-key`), JetBrains Mono 10–11px, `px-1.5 py-0.5`.
 
-**Section cards** are the dominant grouping pattern: a bordered `bg-card`
-container, a `bg-key` header strip in `label-caps`, then `divide-y` rows that
-lift toward `bg-page` on hover.
+**Section cards** are the dominant grouping pattern and come in two variants:
+
+- **Titled sections** (`ui/panel-section`) are the default for panels,
+  overlays and forms. The title (12px semibold, sentence case), an optional
+  one-line description and right-aligned actions sit *above* a bordered
+  `bg-card` card, which holds padded content or flush `divide-y` rows.
+- **Dense section cards** (`ui/section-card`) put a `bg-key` header strip in
+  `label-caps` inside the card, then `divide-y` rows that lift toward
+  `bg-page` on hover. They are for data surfaces where every row counts, such
+  as Telemetry breakdowns.
+
+The sidebar keeps its own caps section headers (below).
 
 **Sidebar sections** stack Pinned, Needs you, the session list and Scheduled
 in one scroller. Each section header is a `label-caps` label with a count; a
@@ -739,12 +777,74 @@ the body (16px, or 12px when `compact`); `none` panels lay out their own. Dialog
 Cancel (`default`) before the confirm action (`primary`, or `danger` when
 destructive), all at the `default` size.
 
+Inside a modal panel the scrolling body uses `OVERLAY_BODY` (`px-4 py-5`,
+`md:px-6 md:py-6`) and stacks titled sections 32px apart. A form's commit
+actions sit in a footer bar under the scroller (`border-t`, `bg-sidebar`,
+right-aligned), in the same order as `DialogFooter`: Cancel before the
+primary action.
+
 **App-level overlays** (Settings, Telemetry) share the `settings-modal-shell`
 geometry, mount at the root so any route can open them, and are mutually
 exclusive with the palette and utility panels. Telemetry reads top-down: a
 filter bar (range, workspace, model, session chip), a headline stat strip,
-per-day activity, then section-card breakdowns whose rows double as filters,
-then recent turns. Escape steps out of a trace before it closes the overlay.
+per-day activity, then dense section-card breakdowns whose rows double as
+filters, then recent turns. Escape steps out of a trace before it closes the overlay.
+
+**Panels and management surfaces** (Settings, Scheduled tasks, Session
+settings, Keyboard shortcuts, the Backend connection dialog) are roomier than
+the working surfaces. Text stays at the same sizes. They compose the shared
+primitives in `components/ui/`:
+
+- **Sections.** `PanelSection`: a titled section whose title and description
+  sit above its card (see Section cards).
+- **Rows.** `PanelRow` is a 56px row with the label and description on the
+  left and the control on the right. It stacks below `sm`. Long reference
+  lists (shortcuts, tools, MCP servers, detail facts) use the 44px
+  `COMPACT_ROW` with the same layout.
+- **Fields.** `Field` puts the label 8px above the control and a hint or
+  error 8px below it; grids use 16px columns and 20px rows. Inputs are 36px
+  tall. Actions that commit a form go in a footer row, not beside an input.
+- **Notices.** States and warnings between sections (a failed server, a
+  scanned link, a security caveat, lint results, a failed run) use `Callout`
+  (neutral, info, success, warning or error tone). Field errors stay inline.
+- **Tokens.** `ui/panel-tokens.ts` holds the type steps (`TEXT`), icon sizes,
+  row padding and `OVERLAY_BODY`. Do not hand-roll caps strips, nested cards
+  or ad-hoc notice boxes on these surfaces.
+- **Copy.** Sentence case for titles, labels and buttons. One short
+  description per page and per section; long explanations belong in the
+  docs, not on the page. Command palette commands are the exception: they
+  stay Title Case ("Scheduled Tasks", "Toggle Sidebar"), like editor
+  commands.
+
+Settings adds its own shell on top:
+
+- **Layout.** From `md:` up a 240px sidebar of inset 32px rows sits beside
+  the page. Each page has an `h1` header (`text-base`, a description, and
+  right-aligned actions) and a `max-w-3xl` body column with `px-4 md:px-8`
+  insets (`SettingsPage`), with a save bar for drafts.
+- **No collapsibles.** A page that outgrows one screen of sections is split
+  into more pages rather than folded into collapsible groups. (Session
+  settings' Tools list is the one collapsible panel section: a long
+  reference list at the bottom of an overlay.)
+- **Phones.** Settings opens on a grouped list of sections. Each section
+  opens full-screen, with Back in the overlay header.
+- **Backend connection.** The same `AppBackendPanel` appears as Settings →
+  Connection and as the Backend connection dialog. The dialog is used before
+  the app is ready, from the footer health dot, and for scanned connect links.
+
+**Scheduled tasks** use the same primitives in the overlay and the review
+dock's Schedule tab. Spacing there keys off container queries (`@xl:`), not
+the viewport, so the narrow dock stays usable. The task list is full-bleed
+`divide-y` rows on the rail tone; a task's detail reads Status tiles, then
+Delivery, Schedule, Prompt and Runs sections.
+
+On phones (`useIsMobile`) the overlay header carries the title and Back, so
+the detail and create panes drop their own title and close button. Run now
+and Pause move to a bottom bar of labelled buttons, form footer buttons go
+full width, and long detail values (workspace path, session ID) stack under
+their label instead of truncating behind a hover tooltip. Task rows hide
+their inline actions on coarse pointers, because the detail and the
+long-press menu already offer them.
 
 ## Platform Shell
 
@@ -869,6 +969,9 @@ text, spacing, and touch targets. Px sizes do not.
 - Don't mix radius families in one view: a `rounded-full` pill inside a
   `rounded-lg` card is correct; `rounded-2xl` next to `rounded-sm` is not.
 - Don't let the document scroll. Internal regions own scrolling.
+- Do put a section's title above its card on management surfaces; keep caps
+  header strips for dense data surfaces.
+- Don't nest a bordered card inside another card. Use rows or a hairline.
 
 **Interaction**
 

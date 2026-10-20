@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000024";
+pub const ALEMBIC_HEAD: &str = "00000025";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -46,7 +46,15 @@ pub const ALEMBIC_HEAD: &str = "00000024";
 /// - 00000024: `chat_sessions.pinned_at` (sidebar pins; NULL = unpinned) and
 ///   the `(parent_session_id[, workspace], updated_at, id)` indexes that keep
 ///   the "recent activity" session list on an index.
-pub const MIGRATIONS: [(&str, &str); 24] = [
+/// - 00000025: `workspace_groups` (named tags with an optional brief and
+///   colour, unique by case-insensitive name) and `workspace_group_members` (group ↔
+///   repository path). Groups scope `send_to_workspace`: workspaces may
+///   message each other only when their repositories share a group.
+///   Plus `chat_sessions.last_message_at`, the time of the newest
+///   non-summary message (backfilled; a new session starts at its creation).
+///   "Recent activity" sorts on it instead of `updated_at`, which also moves
+///   on renames and model or mode changes, so its two indexes move with it.
+pub const MIGRATIONS: [(&str, &str); 25] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -71,6 +79,7 @@ pub const MIGRATIONS: [(&str, &str); 24] = [
     ("00000022", include_str!("../resources/migrations/00000022.sql")),
     ("00000023", include_str!("../resources/migrations/00000023.sql")),
     ("00000024", include_str!("../resources/migrations/00000024.sql")),
+    ("00000025", include_str!("../resources/migrations/00000025.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -343,7 +352,7 @@ CREATE TABLE "chat_sessions" (
 	model VARCHAR(255), 
 	thinking_level VARCHAR(50), 
 	history_revision INTEGER DEFAULT '0' NOT NULL, 
-	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, 
+	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(parent_session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
 );
@@ -422,8 +431,8 @@ CREATE INDEX ix_chat_sessions_parent_agent_created ON chat_sessions (parent_sess
 CREATE INDEX ix_chat_sessions_parent_created ON chat_sessions (parent_session_id, created_at, id);
 CREATE INDEX ix_chat_sessions_top_created ON chat_sessions (parent_session_id, created_at, id);
 CREATE INDEX ix_chat_sessions_top_workspace_created ON chat_sessions (parent_session_id, workspace, created_at, id);
-CREATE INDEX ix_chat_sessions_top_updated ON chat_sessions (parent_session_id, updated_at, id);
-CREATE INDEX ix_chat_sessions_top_workspace_updated ON chat_sessions (parent_session_id, workspace, updated_at, id);
+CREATE INDEX ix_chat_sessions_top_last_message ON chat_sessions (parent_session_id, last_message_at, id);
+CREATE INDEX ix_chat_sessions_top_workspace_last_message ON chat_sessions (parent_session_id, workspace, last_message_at, id);
 CREATE UNIQUE INDEX ix_scheduled_task_slug ON scheduled_task (slug);
 CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
 CREATE INDEX ix_session_messages_usage ON session_messages (session_id, kind, json_extract(extra, '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'));
@@ -441,6 +450,23 @@ CREATE TABLE side_questions (
 	updated_at DATETIME NOT NULL,
 	PRIMARY KEY (session_id, id)
 ) WITHOUT ROWID;
+CREATE TABLE workspace_groups (
+	id CHAR(32) NOT NULL,
+	name VARCHAR(80) NOT NULL,
+	brief TEXT,
+	color VARCHAR(16),
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX uq_workspace_groups_name ON workspace_groups (name COLLATE NOCASE);
+CREATE TABLE workspace_group_members (
+	group_id CHAR(32) NOT NULL REFERENCES workspace_groups (id) ON DELETE CASCADE,
+	path VARCHAR NOT NULL,
+	created_at DATETIME NOT NULL,
+	PRIMARY KEY (group_id, path)
+);
+CREATE INDEX ix_workspace_group_members_path ON workspace_group_members (path);
 "#;
 
     async fn master(conn: &mut SqliteConnection) -> Vec<(String, String, String, Option<String>)> {
@@ -501,5 +527,26 @@ CREATE TABLE side_questions (
             apply(&mut crlf, rev, &sql.replace("\r\n", "\n").replace('\n', "\r\n")).await.unwrap();
         }
         assert_eq!(master(&mut crlf).await, master(&mut lf).await);
+    }
+
+    /// 00000025 backfills `last_message_at` from each session's newest
+    /// non-summary message, and an empty session from its creation.
+    #[tokio::test]
+    async fn last_message_at_backfills_from_messages() {
+        let mut conn = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+        for (rev, sql) in MIGRATIONS.iter().take_while(|(r, _)| *r <= "00000024") {
+            apply(&mut conn, rev, sql).await.unwrap();
+        }
+        let session = |id: &str| {
+            format!("INSERT INTO chat_sessions (id, created_at, updated_at, workspace) VALUES ('{id}', '2026-01-01 00:00:00.000000', '2026-06-01 00:00:00.000000', '/w')")
+        };
+        exec(&mut conn, &session("used")).await.unwrap();
+        exec(&mut conn, &session("empty")).await.unwrap();
+        for (id, at, kind) in [("m1", "2026-02-01 00:00:00.000000", "chat"), ("m2", "2026-03-01 00:00:00.000000", "chat"), ("m3", "2026-04-01 00:00:00.000000", "summary")] {
+            exec(&mut conn, &format!("INSERT INTO session_messages (id, session_id, role, created_at, kind) VALUES ('{id}', 'used', 'user', '{at}', '{kind}')")).await.unwrap();
+        }
+        assert_eq!(upgrade(&mut conn).await.unwrap(), SchemaState::Upgraded("00000024".into()));
+        let rows: Vec<(String, String)> = sqlx::query_as("SELECT id, last_message_at FROM chat_sessions ORDER BY id").fetch_all(&mut conn).await.unwrap();
+        assert_eq!(rows, vec![("empty".into(), "2026-01-01 00:00:00.000000".into()), ("used".into(), "2026-03-01 00:00:00.000000".into())]);
     }
 }

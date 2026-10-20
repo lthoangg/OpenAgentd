@@ -26,6 +26,12 @@ This file adds source-level guidance to `web/AGENTS.md`.
 - Reuse `components/ui/` primitives. In `AppOverlay`, do not use CSS transform
   for centering because motion owns that property, and do not add backdrop blur
   to streaming/repainting surfaces on iOS WebKit.
+- Management surfaces (Settings, Scheduled tasks, Session settings, Keyboard
+  shortcuts, Backend connection) compose `ui/panel-section`, `ui/panel-row`,
+  `ui/field`, `ui/callout` and `ui/panel-tokens` (DESIGN.md → Panels and
+  management surfaces). Do not hand-roll caps strips, nested cards or ad-hoc
+  notice boxes there; dense data surfaces such as Telemetry keep
+  `ui/section-card`.
 - Call hooks such as `useDeferredUnmount` before conditional returns.
 - Tab follows DOM order; there is no roving focus across areas. Hover-revealed
   row actions must also show on `focus-within` and keep a keyboard path (F2,
@@ -43,8 +49,10 @@ duplicating them in this guide. Relevant tests live under
   stays in `utils/code-highlight.ts` so it is memoized outside the parse path.
 - Render model-authored code as React text/tokens. Keep the existing controlled
   KaTeX renderer path; do not pass untrusted arbitrary HTML to
-  `dangerouslySetInnerHTML`. Chat does not render diagrams (`mermaid` fences
-  are plain code); drawn diagrams belong in a Preview tab.
+  `dangerouslySetInnerHTML`. The one SVG exception is `utils/MermaidBlock.tsx`:
+  Pele draws closed `mermaid` fences with links and images off, and every SVG
+  goes through `utils/diagram-svg.ts` (`sanitizeDiagramSvg`) before insertion.
+  Keep Pele lazy (`pele/lazy`) so the startup bundle does not grow.
 - Keep table overflow on the `.oa-table-wrap` wrapper rather than applying
   block/overflow styles directly to `<table>`.
 - When adding a syntax grammar, update the shared highlighter tests and any

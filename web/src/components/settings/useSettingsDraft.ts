@@ -173,7 +173,7 @@ export function useSettingsDraft<T>({
     patch,
     dirty,
     // Callers that need validation gating narrow this further; see the
-    // Automation page, where the errors derive from the draft value itself.
+    // Media generation page, where the errors derive from the draft value itself.
     canSave: dirty && !isSaving,
     isSaving,
     save,
@@ -183,7 +183,7 @@ export function useSettingsDraft<T>({
 
 /**
  * Presents several independent drafts as one, so a page that groups multiple
- * settings resources (Automation: titles + summarization + multimodal) can
+ * settings resources can
  * share a single save bar.
  *
  * Only the groups the user actually edited are saved, which keeps a validation

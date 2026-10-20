@@ -4,7 +4,9 @@ import { ChevronRight, GitBranch, Loader2, Pencil, Pin, PinOff, SquarePen, Trash
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
-import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
+import { formatRelativeDate } from '@/utils/format'
+import { useCompactRelative } from '@/hooks/useCompactRelative'
+import { sessionActivityTime } from '../Sidebar.helpers'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -68,7 +70,7 @@ function SessionRowView({
   const status = sessionStatus(session, unread)
   const sessionTitle = session.title || 'Untitled'
   const sessionDate = formatRelativeDate(session.created_at)
-  const sessionAge = formatCompactRelative(session.updated_at ?? session.created_at)
+  const sessionAge = useCompactRelative(sessionActivityTime(session))
   const pinned = Boolean(session.pinned_at)
   // Only top-level sessions can be pinned.
   const canPin = Boolean(onSessionPinToggle) && !session.parent_session_id
@@ -141,7 +143,8 @@ function SessionRowView({
   }
 
   return (
-    <div className="space-y-px">
+    // data-flip-id: the list slides this row (and its subagents) when it moves.
+    <div className="space-y-px" data-flip-id={session.id}>
       <div
         data-session-row
         className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${listRowSurface(isCurrent)}`}

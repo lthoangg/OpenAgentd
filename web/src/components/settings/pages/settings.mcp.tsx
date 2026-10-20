@@ -23,7 +23,7 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
         badge: srv.enabled ? undefined : 'disabled',
         description: `${srv.transport === 'stdio' ? 'Local stdio process' : 'HTTP server'} · ${srv.tool_names.length} ${srv.tool_names.length === 1 ? 'tool' : 'tools'}`,
         onClick: () => onSelect(srv.name),
-        icon: <Plug size={13} />,
+        icon: <Plug size={14} />,
         trailing: <McpStatusDot server={srv} />,
       })),
     [data?.servers, selectedName, onSelect],
@@ -32,7 +32,7 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
   return (
     <SettingsListView
       title="MCP servers"
-      description="External tool providers via Model Context Protocol. Stdio servers run locally as a child process; HTTP servers are remote."
+      description="Tools from local processes or remote servers, over the Model Context Protocol."
       newLabel="New server"
       onNew={onNew}
       filterPlaceholder="Filter servers…"
@@ -41,6 +41,7 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
       isError={isError}
       emptyTitle="No MCP servers yet"
       emptyBody="MCP servers expose tools and resources to your agents over stdio or HTTP."
+      emptyIcon={Plug}
     />
   )
 }

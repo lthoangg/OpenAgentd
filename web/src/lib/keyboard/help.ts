@@ -103,6 +103,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       entries: [
         keys('Close the top dialog, menu or viewer', { key: 'Escape' }),
         keys('Previous and next file', { key: 'ArrowLeft' }, { key: 'ArrowRight' }),
+        keys('Open and leave a Command Palette list', { key: 'ArrowRight' }, { key: 'ArrowLeft' }),
         keys('Zoom in and out', { key: '+' }, { key: '-' }),
         keys('Reset zoom', { key: '0' }),
         keys('Save settings', { key: 'S', mod: true }),

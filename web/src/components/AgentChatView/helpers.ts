@@ -137,6 +137,8 @@ export interface FilterSlashCommandsContext {
   isAgentWorking?: boolean
   revertedCount?: number
   hasVisibleMessages?: boolean
+  /** The lead has blocks of a turn still running (a new session's first turn has only these). */
+  hasLiveMessages?: boolean
   hasWorkspace?: boolean
 }
 
@@ -145,6 +147,7 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
   const isWorking = ctx.isAgentWorking ?? false
   const revertedCount = ctx.revertedCount ?? 0
   const hasVisible = ctx.hasVisibleMessages ?? false
+  const hasLive = ctx.hasLiveMessages ?? false
   const inWorkspace = ctx.hasWorkspace ?? false
 
   return BASE_SLASH_COMMANDS.filter((cmd) => {
@@ -152,8 +155,9 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
       case 'stop':
         return isWorking
       case 'btw':
-        // Answers from the session's context, so it needs some; works mid-turn.
-        return hasVisible
+        // Answers from the session's context, so it needs some; works mid-turn,
+        // including a new session's first turn, whose blocks are all live.
+        return hasVisible || hasLive
       case 'undo':
       case 'compact':
         return hasVisible && !isWorking

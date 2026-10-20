@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, RotateCw, Trash2 } from 'lucide-react'
+import { RotateCw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFullDateTime } from '@/utils/format'
 
@@ -22,7 +22,9 @@ import {
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
 import { Button } from '@/components/ui/button'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
+import { PanelRow } from '@/components/ui/panel-row'
+import { Callout } from '@/components/ui/callout'
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { EDITOR_BODY } from '@/components/settings/tokens'
 
 interface McpServerDetailPageProps {
   name: string
@@ -133,7 +136,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4 p-3 sm:p-5">
+        <div className={`${EDITOR_BODY} flex flex-col gap-8`}>
           {serverQ.isLoading && <p className="text-sm text-(--color-text-muted)">Loading server…</p>}
           {serverQ.isError && <p className="text-sm text-(--color-error)">Failed to load: {String(serverQ.error)}</p>}
 
@@ -142,37 +145,34 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               <StatusCard server={server} />
 
               {server.state === 'error' && server.error && (
-                <SettingsSection title="Runtime error" className="border-(--color-error)/40 bg-(--color-error-subtle)">
-                  <div className="flex items-center gap-2 text-(--color-error) mb-2">
-                    <AlertCircle size={13} aria-hidden="true" />
-                    <span className="text-xs font-semibold">Server failed to start</span>
-                  </div>
-                  <p className="font-mono text-xs text-(--color-error)">{server.error}</p>
-                </SettingsSection>
+                <Callout tone="error" role="alert" title="Server failed to start">
+                  <p className="font-mono break-words">{server.error}</p>
+                </Callout>
               )}
 
               {server.state === 'auth_required' && (
-                <SettingsSection title="OAuth required" className="border-(--accent-orange)/40 bg-(--accent-orange)/10">
-                  <div className="flex items-center gap-2 text-(--accent-orange) mb-2">
-                    <AlertCircle size={13} aria-hidden="true" />
-                    <span className="text-xs font-semibold">OAuth needed to connect</span>
-                  </div>
-                  <p className="mb-3 text-xs text-(--color-text-muted)">Connect OAuth to authorize this MCP server.</p>
-                  <Button variant="default" size="sm" className="min-h-9 md:min-h-0"
-                    onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
-                    {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
-                  </Button>
-                </SettingsSection>
+                <Callout
+                  tone="warning"
+                  title="OAuth needed to connect"
+                  action={
+                    <Button variant="default" size="sm" className="min-h-9 md:min-h-0"
+                      onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
+                      {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
+                    </Button>
+                  }
+                >
+                  Authorize this server to let agents use its tools.
+                </Callout>
               )}
 
               {draft ? (
                 <McpServerForm value={draft} onChange={setDraft} isNew={false} disabled={updateMut.isPending} errors={fieldErrors} />
               ) : (
-                <SettingsSection title="Configuration">
+                <PanelSection title="Configuration">
                   <p className="text-xs text-(--color-text-muted)">
                     No saved configuration found. The server may have been removed from <span className="font-mono">mcp.json</span>.
                   </p>
-                </SettingsSection>
+                </PanelSection>
               )}
 
               {dirty && (
@@ -212,49 +212,44 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
   )
 }
 
-// ── Status card ──────────────────────────────────────────────────────────────
+// ── Status ───────────────────────────────────────────────────────────────────
+
+const STATE_TONE: Record<string, string> = {
+  ready: 'text-(--accent-green-text)',
+  starting: 'text-(--accent-orange-text)',
+  auth_required: 'text-(--accent-orange-text)',
+  error: 'text-(--color-error)',
+}
 
 function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpServerQuery>['data']> }) {
   return (
-    <SettingsSection title="Runtime status" description="live state of the running connection">
-      <div className="grid gap-3 text-xs sm:grid-cols-2">
-        <Stat label="State">
-          <span className={
-            server.state === 'ready' ? 'text-(--accent-green)'
-            : server.state === 'starting' ? 'text-(--accent-orange)'
-            : server.state === 'auth_required' ? 'text-(--accent-orange)'
-            : server.state === 'error' ? 'text-(--color-error)'
-            : 'text-(--color-text-muted)'
-          }>{server.state}</span>
-        </Stat>
-        <Stat label="Transport"><span className="font-mono">{server.transport}</span></Stat>
-        <Stat label="Enabled">{server.enabled ? 'yes' : 'no'}</Stat>
-        <Stat label="Started">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : '—'}</Stat>
-        {server.tool_names.length > 0 && (
-          <div className="sm:col-span-2">
-            <p className="mb-1.5 label-caps text-(--color-text-muted) select-none">Tools ({server.tool_names.length})</p>
-            <div className="flex flex-wrap gap-1">
-              {server.tool_names.map((tool) => (
-                <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">{tool}</span>
-              ))}
-            </div>
+    <PanelSection title="Status" description="Live state of the running connection." flush>
+      <PanelRow label="State">
+        <span className={cn('text-xs font-medium', STATE_TONE[server.state] ?? 'text-(--color-text-muted)')}>{server.state}</span>
+      </PanelRow>
+      <PanelRow label="Transport">
+        <span className="font-mono text-xs text-(--color-text)">{server.transport}</span>
+      </PanelRow>
+      <PanelRow label="Enabled">
+        <span className="text-xs text-(--color-text)">{server.enabled ? 'Yes' : 'No'}</span>
+      </PanelRow>
+      <PanelRow label="Started">
+        <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : '—'}</span>
+      </PanelRow>
+      {server.tool_names.length > 0 && (
+        <PanelRow label={`Tools (${server.tool_names.length})`} stack>
+          <div className="flex flex-wrap gap-1.5">
+            {server.tool_names.map((tool) => (
+              <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-muted)">{tool}</span>
+            ))}
           </div>
-        )}
-      </div>
-    </SettingsSection>
+        </PanelRow>
+      )}
+    </PanelSection>
   )
 }
 
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[11px] text-(--color-text-muted)">{label}</span>
-      <span className="font-medium text-(--color-text)">{children}</span>
-    </div>
-  )
-}
-
-// ── Restart card ─────────────────────────────────────────────────────────────
+// ── Manage ───────────────────────────────────────────────────────────────────
 
 function RestartCard({
   onRestart, pending, enabled, onDelete, deletePending,
@@ -266,31 +261,26 @@ function RestartCard({
   deletePending: boolean
 }) {
   return (
-    <SettingsSection title="Connection" description="restart or remove this server">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="default" size="xs" className="h-8 px-2 text-xs md:text-[11px]"
-            onClick={onRestart} disabled={pending || !enabled}
-            aria-label={pending ? 'Restarting' : 'Restart server'}
-          >
-            <RotateCw size={12} className={cn(pending && 'animate-spin')} aria-hidden="true" />
-            {pending ? 'Restarting…' : 'Restart'}
-          </Button>
-          {!enabled && (
-            <p className="text-[11px] text-(--color-text-muted)">
-              Enable and save first to restart.
-            </p>
-          )}
-        </div>
+    <PanelSection title="Manage" flush>
+      <PanelRow
+        label="Restart server"
+        description={enabled ? 'Reconnect to pick up changes or recover from an error.' : 'Enable and save first to restart.'}
+      >
         <Button
-          variant="danger-subtle" size="xs" className="h-8 px-2 text-xs md:text-[11px]"
-          onClick={onDelete} disabled={deletePending}
+          variant="default" size="sm"
+          onClick={onRestart} disabled={pending || !enabled}
+          aria-label={pending ? 'Restarting' : 'Restart server'}
         >
+          <RotateCw size={12} className={cn(pending && 'animate-spin')} aria-hidden="true" />
+          {pending ? 'Restarting…' : 'Restart'}
+        </Button>
+      </PanelRow>
+      <PanelRow label="Delete server" description="Removes it from mcp.json. This cannot be undone.">
+        <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
           <Trash2 size={12} aria-hidden="true" />
           {deletePending ? 'Deleting…' : 'Delete server'}
         </Button>
-      </div>
-    </SettingsSection>
+      </PanelRow>
+    </PanelSection>
   )
 }

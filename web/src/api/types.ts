@@ -67,6 +67,26 @@ export interface CodingWorkspaceTreeRepository {
   path: string
   name: string
   worktrees: CodingWorkspaceTreeWorktree[]
+  /** Ids of the workspace groups this repository is in (its worktrees share them). */
+  group_ids?: string[]
+}
+
+/**
+ * A workspace group: a named tag on repositories. Workspaces whose
+ * repositories share a group may message each other (`send_to_workspace`);
+ * the brief tells their agents what each repository is for.
+ */
+export interface WorkspaceGroup {
+  id: string
+  name: string
+  brief: string | null
+  /** Picked colour as `#rrggbb`; null (or absent on older servers) derives one from the id. */
+  color?: string | null
+}
+
+export interface WorkspaceGroupWithMembers extends WorkspaceGroup {
+  /** Visible repository paths tagged with the group. */
+  members: string[]
 }
 
 /**
@@ -82,6 +102,7 @@ export interface CodingWorkspaceTreeChat {
 export interface CodingWorkspaceTreeResponse {
   repositories: CodingWorkspaceTreeRepository[]
   chat?: CodingWorkspaceTreeChat | null
+  groups?: WorkspaceGroup[]
 }
 
 export interface WorkspaceBrowseResponse {
@@ -195,6 +216,12 @@ export interface SessionResponse {
   revert?: { message_id?: string } | null
   created_at: string | null
   updated_at: string | null
+  /**
+   * Newest message (v3; creation for an empty session). What activity sort
+   * and the sidebar's age follow: ``updated_at`` also moves on renames and
+   * model or mode switches. Read it through ``sessionActivityTime``.
+   */
+  last_message_at?: string | null
   scheduled_task_name?: string | null
   mode?: string
   workspace?: string | null

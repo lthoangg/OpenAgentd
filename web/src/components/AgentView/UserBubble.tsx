@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, memo } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
@@ -14,6 +14,7 @@ import { copyText, useChatMenu } from '../ChatContextMenu'
 import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
 
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
@@ -45,8 +46,51 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
   return out
 }
 
-const USER_COLLAPSE_LINES = 10
-const USER_COLLAPSE_CHARS = 700
+/**
+ * Long prompts fold to their first lines. Lines are the ones on screen, not
+ * newlines: the same prompt wraps to more lines when the chat is narrow (the
+ * sidebar or the dock open), so the bubble measures itself and re-checks on
+ * every width change. A prompt folds only when that hides a few lines; folding
+ * one stray line costs more than it saves.
+ */
+const USER_COLLAPSED_LINES = 6
+const USER_COLLAPSE_AFTER_LINES = 8
+/** Collapsed height. The bubble text is `leading-relaxed` (1.625). */
+const USER_COLLAPSED_MAX_HEIGHT = `${USER_COLLAPSED_LINES * 1.625}em`
+/** Before layout (first render, no-layout tests): a rough wrap estimate. */
+const ESTIMATE_CHARS_PER_LINE = 80
+/** Narrower than any real bubble: a hidden or collapsed chat column, not a layout. */
+const MIN_MEASURABLE_WIDTH = 120
+
+function estimateWrappedLines(text: string): number {
+  return text.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / ESTIMATE_CHARS_PER_LINE)), 0)
+}
+
+/**
+ * Rendered line count of `ref`'s text, kept current as its width changes.
+ * `null` until layout can be read. `scrollHeight` is the full text even while
+ * a max-height clips it.
+ */
+function useRenderedLines(ref: React.RefObject<HTMLElement | null>, text: string): number | null {
+  const [lines, setLines] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight)
+      // A zero-width column wraps one character per line; keep the last
+      // reading (or the estimate) until the bubble is laid out for real.
+      if (!lineHeight || !el.scrollHeight || el.clientWidth < MIN_MEASURABLE_WIDTH) return
+      setLines(Math.round(el.scrollHeight / lineHeight))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref, text])
+  return lines
+}
 
 /** Opens a session in any workspace (the sender or the replier of a workspace message). */
 export type OpenSessionHandler = (sessionId: string, workspace: string) => void
@@ -249,6 +293,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [reportExpanded, setReportExpanded] = useState(false)
+  const textRef = useRef<HTMLParagraphElement>(null)
+  // Height before an expand/collapse, so the layout effect can animate from it.
+  const toggleFromHeight = useRef<number | null>(null)
   const modelName = shortModelName(modelId)
   const chatMenu = useChatMenu(fromAgent ? `Actions for ${fromAgent} report` : 'Actions for message', () => [
     { label: 'Copy', run: () => copyText(content) },
@@ -269,14 +316,35 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   // collapse and mention rendering below only see the typed text.
   const { text, blocks: feedbackBlocks } = splitDesignFeedback(content)
   const lines = text.split('\n')
-  const needsCollapse = lines.length > USER_COLLAPSE_LINES || text.length > USER_COLLAPSE_CHARS
+  const renderedLines = useRenderedLines(textRef, text)
+  const needsCollapse = (renderedLines ?? estimateWrappedLines(text)) > USER_COLLAPSE_AFTER_LINES
+  const collapsed = needsCollapse && !expanded
   const isSubagentLongReport = content.length > 240 || lines.length > 5
-  const visibleContent = needsCollapse && !expanded
-    ? lines.length > USER_COLLAPSE_LINES
-      ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
-      : `${text.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
-    : text
   const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
+
+  const toggleExpanded = () => {
+    toggleFromHeight.current = textRef.current?.getBoundingClientRect().height ?? null
+    setExpanded((v) => !v)
+  }
+
+  // Glide between the folded and full height instead of jumping.
+  useLayoutEffect(() => {
+    const el = textRef.current
+    const from = toggleFromHeight.current
+    toggleFromHeight.current = null
+    if (!el || from === null || typeof el.animate !== 'function') return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const to = el.getBoundingClientRect().height
+    if (Math.abs(to - from) < 1) return
+    el.style.overflow = 'hidden'
+    const animation = el.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+      duration: DURATIONS_S.base * 1000,
+      easing: `cubic-bezier(${EASINGS.out.join(', ')})`,
+    })
+    const settle = () => { el.style.overflow = '' }
+    animation.onfinish = settle
+    animation.oncancel = settle
+  }, [expanded])
 
   if (fromAgent) {
     const reply = replyFrom ?? null
@@ -384,7 +452,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                <TooltipTrigger
                  render={
                    <button
-                     onClick={() => setExpanded((v) => !v)}
+                     onClick={toggleExpanded}
                      aria-expanded={expanded}
                      aria-label={expanded ? 'Collapse' : 'Expand'}
                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-(--motion-fast) hover:text-(--color-text) active:scale-90"
@@ -396,9 +464,16 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
              </Tooltip>
            )}
-           <p className={cn('min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]', needsCollapse && 'pr-6')}>{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
+           <p
+             ref={textRef}
+             data-collapsed={collapsed || undefined}
+             className={cn('min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]', needsCollapse && 'pr-6', collapsed && 'overflow-hidden')}
+             style={collapsed ? { maxHeight: USER_COLLAPSED_MAX_HEIGHT } : undefined}
+           >
+             {renderMentionSegments(text, onMentionFileOpen, mentions)}
+           </p>
            {/* Gradient fade at bottom when collapsed */}
-           {needsCollapse && !expanded && (
+           {collapsed && (
              <div
                 className="pointer-events-none absolute inset-x-0 bottom-0"
                style={{

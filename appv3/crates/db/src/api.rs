@@ -52,6 +52,8 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
     m.insert("subagents".into(), Value::Array(o.subagents.clone()));
     m.insert("created_at".into(), Value::String(api_dt(&s.created_at)));
     m.insert("updated_at".into(), Value::String(api_dt(&s.updated_at)));
+    // v3 addition: the activity time (see `ChatSession::last_message_at`).
+    put(&mut m, "last_message_at", s.last_message_at.as_deref().map(|t| Value::String(api_dt(t))));
     // v3 addition, omitted when unpinned so v2 response shapes are unchanged.
     put(&mut m, "pinned_at", s.pinned_at.as_deref().map(|p| Value::String(api_dt(p))));
     m

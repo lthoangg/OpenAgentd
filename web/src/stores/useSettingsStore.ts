@@ -15,6 +15,9 @@ import { immer } from 'zustand/middleware/immer'
 import { useUIStore, _registerCloseSettings } from './useUIStore'
 
 export type SettingsSection =
+  | 'general'
+  | 'connection'
+  | 'network'
   | 'about'
   | 'agents'
   | 'skills'
@@ -27,9 +30,11 @@ export type SettingsSection =
   | 'denied_paths'
   | 'memory'
   | 'plugins'
-  // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
-  // sections, which are now collapsible groups on one Automation page.
-  | 'automation'
+  // The former Automation page, split into one page per job.
+  | 'workspaces'
+  | 'titles'
+  | 'context'
+  | 'media'
 
 /**
  * Sections that are lists with `-new` / `-edit` drill-down views. Declared here
@@ -50,25 +55,36 @@ export function parentSection(section: SettingsSection): SettingsSection {
   if (persistedSection === 'notifications' || persistedSection === 'terminal' || persistedSection === 'sandbox') {
     return 'about'
   }
+  // Automation was split into Workspaces, Chat titles, Context and Media.
+  if (persistedSection === 'automation') return 'workspaces'
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
 
 interface SettingsStore {
   open: boolean
   dirtyDrafts: Record<string, boolean>
-  pendingNavigation: { section?: SettingsSection; name?: string | null; close?: boolean } | null
+  pendingNavigation: { section?: SettingsSection; name?: string | null; close?: boolean; index?: boolean } | null
   setDraftDirty: (id: string, dirty: boolean) => void
   resolvePendingNavigation: (discard: boolean) => void
   section: SettingsSection
   /** Name param for editor views (skills-edit, mcp-edit). */
   selectedName: string | null
   /**
+   * Phones show either the grouped section list (`index`) or one section
+   * full-screen. Desktop always shows sidebar + section and ignores this.
+   * Not persisted: reopening without a target always starts at the list.
+   */
+  mobileView: 'index' | 'section'
+  /**
    * Opens the modal. Omit `section` to resume the last visited one; pass it
    * explicitly to jump somewhere specific (e.g. `openSettings('providers')`
-   * from the missing-credentials prompt).
+   * from the missing-credentials prompt). On phones, omitting it opens the
+   * section list; passing it opens that section directly.
    */
   openSettings: (section?: SettingsSection, name?: string | null) => void
   setSection: (section: SettingsSection, name?: string | null) => void
+  /** Phones: back to the section list, guarded by the unsaved-changes prompt. */
+  showIndex: () => void
   closeSettings: () => void
 }
 
@@ -93,13 +109,16 @@ export const useSettingsStore = create<SettingsStore>()(
           if (!discard || !pending) return
           state.dirtyDrafts = {}
           if (pending.close) state.open = false
+          else if (pending.index) state.mobileView = 'index'
           else if (pending.section) {
             state.section = pending.section
             state.selectedName = pending.name ?? null
+            state.mobileView = 'section'
           }
         }),
-        section: 'about',
+        section: 'general',
         selectedName: null,
+        mobileView: 'index',
         openSettings: (section, name = null) => {
           if (get().open && section !== undefined && Object.keys(get().dirtyDrafts).length) {
             get().setSection(section, name)
@@ -112,18 +131,34 @@ export const useSettingsStore = create<SettingsStore>()(
             if (section !== undefined) {
               state.section = section
               state.selectedName = name ?? null
+              state.mobileView = 'section'
+            } else {
+              state.mobileView = 'index'
             }
           })
         },
         setSection: (section, name = null) =>
           set((state) => {
-            if (section === state.section && name === state.selectedName) return
+            if (section === state.section && name === state.selectedName) {
+              state.mobileView = 'section'
+              return
+            }
             if (Object.keys(state.dirtyDrafts).length) {
               state.pendingNavigation = { section, name }
               return
             }
             state.section = section
             state.selectedName = name ?? null
+            state.mobileView = 'section'
+          }),
+        showIndex: () =>
+          set((state) => {
+            if (state.mobileView === 'index') return
+            if (Object.keys(state.dirtyDrafts).length) {
+              state.pendingNavigation = { index: true }
+              return
+            }
+            state.mobileView = 'index'
           }),
         closeSettings: () =>
           set((state) => {

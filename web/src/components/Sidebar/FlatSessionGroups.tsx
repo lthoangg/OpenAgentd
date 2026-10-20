@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import type { SessionResponse, SessionSort } from '@/api/types'
+import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessionsQuery'
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { groupSessionsByDate, groupSessionsByStatus, type SessionGroup } from '../Sidebar.helpers'
@@ -47,6 +48,9 @@ export function FlatSessionGroups({
   const collapsedGroups = useSidebarViewStore((s) => s.collapsedGroups)
   const toggleGroup = useSidebarViewStore((s) => s.toggleGroupCollapsed)
   const stable = useStableSessionHandlers(handlers)
+  // One root for every group, so a row moving between groups slides too.
+  const listRef = useRef<HTMLDivElement>(null)
+  useFlipReorder(listRef)
 
   // A session that moved while paging (activity order) can show up twice.
   const sessions = useMemo(
@@ -80,7 +84,7 @@ export function FlatSessionGroups({
   )
 
   return (
-    <div className="space-y-1 px-1.5 pt-0.5">
+    <div ref={listRef} className="relative space-y-1 px-1.5 pt-0.5">
       {draftWorkspace && (
         <div className="space-y-px">
           <DraftSessionRow label={workspaceName(draftWorkspace)} />

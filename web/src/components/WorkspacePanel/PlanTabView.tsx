@@ -9,10 +9,22 @@
  * Request changes sends them all, with any overall feedback, as one answer.
  * The user can also edit the plan here (or in any editor): the server notices
  * the change by content and tells the agent once.
+ *
+ * While the lead's ``plan`` call streams, the tab shows the plan being written
+ * in place (see ``useLivePlan``) and holds Edit and Clear until it lands.
+ *
+ * Links and file-named code spans that point into the workspace open in the
+ * dock: an HTML attachment (a mockup) in the Preview tab, anything else as a
+ * file tab. Images (SVG diagrams) render inline through the media route.
+ *
+ * Everything from the plan's ``## Appendix`` heading on (implementation
+ * detail) sits collapsed under the body. It stays in the DOM, so selecting
+ * text in it, comment highlights, and jumping to a comment all work; jumping
+ * to a passage in a closed Appendix opens it first.
  */
-import { useEffect, useId, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, ExternalLink, FileText, Pencil, Unlink } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, FileText, Pencil, Unlink } from 'lucide-react'
 import type { SessionPlan } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -25,10 +37,15 @@ import { useUpdateSessionPlanMutation } from '@/queries/useUpdateSessionPlanMuta
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
+import { workspaceRelativePath } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { useQuestionResolver } from '../AskUser/useQuestionResolver'
+import { FileRefContext, type FileRefOpener } from '../FileRefLink'
+import { useLivePlan } from '../PlanReview/live-plan'
 import { CommentButton, CommentComposer, CommentList, showPassage, useCommentHighlights } from '../PlanReview/PlanComments'
+import { readAppendixOpen, splitPlanAppendix, writeAppendixOpen } from '../PlanReview/plan-appendix'
 import {
+  findTextRange,
   forgetPlanReviewDraft,
   formatPlanReview,
   readPlanReviewDraft,
@@ -61,6 +78,13 @@ const STATUS_CHIP: Record<PlanStatus, { label: string; className: string }> = {
   changed: { label: 'Changed since approval', className: 'bg-(--bg-key) text-(--color-text-muted)' },
   draft: { label: 'Draft', className: 'bg-(--bg-key) text-(--color-text-muted)' },
 }
+
+const WRITING_CHIP_CLASS = 'bg-(--bg-key) text-(--color-marker-orange) motion-safe:animate-pulse'
+
+const HTML_FILE = /\.html?$/i
+
+/** How close to the bottom still counts as following the plan being written. */
+const FOLLOW_SLACK_PX = 32
 
 function isConflict(cause: unknown): boolean {
   return typeof cause === 'object' && cause !== null && (cause as { status?: unknown }).status === 409
@@ -100,9 +124,32 @@ export interface PlanTabViewProps {
   onClearPlan?: () => void
   /** Open a workspace-relative path as a file tab. */
   onOpenFile?: (path: string) => void
+  /** Open a workspace-relative HTML file in a Preview tab. */
+  onOpenPreview?: (path: string) => void
+  /** The workspace root, for links written as absolute paths. */
+  workspace?: string | null
 }
 
-export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTabViewProps) {
+/** How plan links open workspace files: HTML in Preview, the rest as file tabs. */
+export function planFileOpener(
+  workspace: string | null,
+  onOpenFile?: (path: string) => void,
+  onOpenPreview?: (path: string) => void,
+): FileRefOpener | null {
+  if (!onOpenFile && !onOpenPreview) return null
+  const target = (path: string) => {
+    const rel = workspaceRelativePath(path, workspace)
+    if (!rel) return null
+    if (HTML_FILE.test(rel) && onOpenPreview) return () => onOpenPreview(rel)
+    return onOpenFile ? () => onOpenFile(rel) : null
+  }
+  return {
+    canOpen: (ref) => target(ref.path) !== null,
+    open: (ref) => target(ref.path)?.(),
+  }
+}
+
+export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPreview, workspace = null }: PlanTabViewProps) {
   const pendingQuestion = useAgentStore((s) => s.pendingQuestion)
   const review = pendingQuestion?.kind === 'plan_review' ? pendingQuestion : null
   const reviewId = review?.id ?? null
@@ -111,6 +158,9 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   const update = useUpdateSessionPlanMutation()
   const reducedMotion = useReducedMotion() ?? false
   const commentIdPrefix = useId()
+  const live = useLivePlan(plan, sessionId)
+  const writing = Boolean(live?.writing)
+  const fileOpener = useMemo(() => planFileOpener(workspace, onOpenFile, onOpenPreview), [workspace, onOpenFile, onOpenPreview])
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -145,6 +195,25 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   const { selection, clear: clearSelection } = usePlanSelection(bodyRef, Boolean(review) && !editing && !composer)
   useCommentHighlights(bodyRef, editing ? [] : [...reviewDraft.comments.map((c) => c.quote), ...(composer ? [composer.quote] : [])])
 
+  // A write grows at the bottom: keep it in view unless the user scrolled up.
+  const followRef = useRef(true)
+  const following = writing && live?.action === 'write'
+  useEffect(() => {
+    const scroller = scrollRef.current
+    const body = bodyRef.current
+    if (!following || !scroller || !body || typeof ResizeObserver === 'undefined') return
+    followRef.current = true
+    const observer = new ResizeObserver(() => {
+      if (followRef.current) scroller.scrollTop = scroller.scrollHeight
+    })
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [following])
+  const trackFollow = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget
+    followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX
+  }
+
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     if (!copied) return
@@ -152,21 +221,61 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
     return () => clearTimeout(timer)
   }, [copied])
 
-  if (!plan) {
+  const content = live?.content ?? plan?.content ?? null
+  // An edit rewrites the middle of the plan, so each chunk re-renders all
+  // that follows; deferring lets that work yield to scrolling and typing.
+  const renderedContent = useDeferredValue(content ?? '')
+  const parts = useMemo(() => splitPlanAppendix(renderedContent), [renderedContent])
+
+  const appendixId = useId()
+  const appendixRef = useRef<HTMLElement>(null)
+  const [appendixFor, setAppendixFor] = useState(sessionId)
+  const [appendixOpen, setAppendixOpen] = useState(() => readAppendixOpen(sessionId))
+  if (appendixFor !== sessionId) {
+    setAppendixFor(sessionId)
+    setAppendixOpen(readAppendixOpen(sessionId))
+  }
+  const toggleAppendix = (open: boolean) => {
+    setAppendixOpen(open)
+    writeAppendixOpen(sessionId, open)
+  }
+  // A comment on Appendix text: open the Appendix, then scroll once it shows.
+  const [pendingQuote, setPendingQuote] = useState<string | null>(null)
+  useEffect(() => {
+    if (!pendingQuote || !appendixOpen) return
+    const frame = requestAnimationFrame(() => {
+      showPassage(bodyRef.current, scrollRef.current, pendingQuote, reducedMotion)
+      setPendingQuote(null)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [pendingQuote, appendixOpen, reducedMotion])
+  const showComment = (quote: string) => {
+    if (!appendixOpen && appendixRef.current && findTextRange(appendixRef.current, quote)) {
+      toggleAppendix(true)
+      setPendingQuote(quote)
+      return
+    }
+    showPassage(bodyRef.current, scrollRef.current, quote, reducedMotion)
+  }
+
+  if (content === null) {
     return (
       <EmptyState
         icon={FileText}
-        title="No plan yet"
-        body="In Plan mode the agent writes its plan here for you to review."
+        title={writing ? 'Writing the plan…' : 'No plan yet'}
+        body={writing ? 'It appears here as the agent writes it.' : 'In Plan mode the agent writes its plan here for you to review.'}
       />
     )
   }
 
-  const status = planStatus(plan, Boolean(review))
-  const chip = STATUS_CHIP[status]
+  const chip = writing
+    ? { label: live?.action === 'edit' ? 'Editing…' : 'Writing…', className: WRITING_CHIP_CLASS }
+    : plan
+      ? STATUS_CHIP[planStatus(plan, Boolean(review))]
+      : STATUS_CHIP.draft
   // A server without plan revisions (v2) has no edit route.
-  const canEdit = plan.revision !== undefined && Boolean(sessionId)
-  const unsavedEdits = editing && draft !== plan.content
+  const canEdit = !live && plan?.revision !== undefined && Boolean(sessionId)
+  const unsavedEdits = editing && draft !== plan?.content
   const { comments, overall } = reviewDraft
   const pendingComment = composer?.text.trim() ? [{ quote: composer.quote, text: composer.text }] : []
   const answerText = formatPlanReview([...comments, ...pendingComment], overall)
@@ -181,6 +290,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   const footerHint = tooLong ? 'Too long to send — shorten your comments' : approveHint
 
   const startEditing = () => {
+    if (!plan) return
     setDraft(plan.content)
     setBaseRevision(plan.revision ?? 0)
     setSaveError(null)
@@ -230,7 +340,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   }
 
   const copy = () => {
-    void navigator.clipboard?.writeText(plan.content).then(() => setCopied(true), () => {})
+    void navigator.clipboard?.writeText(content).then(() => setCopied(true), () => {})
   }
 
   return (
@@ -240,22 +350,24 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
         <span className={cn('inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium', chip.className)}>
           {chip.label}
         </span>
-        {plan.revision !== undefined && (
+        {plan?.revision !== undefined && (
           <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
         )}
-        <span
-          className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
-          title={`Updated ${formatRelativeDate(plan.updated_at)}`}
-        >
-          {formatCompactRelative(plan.updated_at)}
-        </span>
+        {plan && (
+          <span
+            className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
+            title={`Updated ${formatRelativeDate(plan.updated_at)}`}
+          >
+            {formatCompactRelative(plan.updated_at)}
+          </span>
+        )}
         <span className="min-w-0 flex-1" aria-hidden="true" />
         {canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
             <Pencil size={12} aria-hidden="true" />
           </ToolbarAction>
         )}
-        {plan.workspace_path && onOpenFile && (
+        {plan?.workspace_path && onOpenFile && (
           <ToolbarAction label="Open file" tooltip={plan.workspace_path} onClick={() => onOpenFile(plan.workspace_path as string)}>
             <ExternalLink size={12} aria-hidden="true" />
           </ToolbarAction>
@@ -266,9 +378,15 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
         {onClearPlan && (
           <ToolbarAction
             label="Clear plan"
-            tooltip={review ? 'The plan is awaiting review.' : 'Stops using this plan in the session; the file stays.'}
+            tooltip={
+              review
+                ? 'The plan is awaiting review.'
+                : live
+                  ? 'The agent is writing the plan.'
+                  : 'Stops using this plan in the session; the file stays.'
+            }
             onClick={onClearPlan}
-            disabled={Boolean(review)}
+            disabled={Boolean(review) || Boolean(live) || !plan}
           >
             <Unlink size={12} aria-hidden="true" />
           </ToolbarAction>
@@ -298,9 +416,39 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={scrollRef} onScroll={trackFollow} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div ref={bodyRef} className="relative mx-auto max-w-3xl px-4 py-3">
-            <MarkdownBlock content={plan.content} sessionId={sessionId ?? undefined} />
+            <FileRefContext.Provider value={fileOpener}>
+              <MarkdownBlock content={parts.body} sessionId={sessionId ?? undefined} isStreaming={writing && parts.appendix === null} />
+              {parts.appendix !== null && (
+                <div className="mt-5 border-t border-(--color-border-subtle) pt-2">
+                  <button
+                    type="button"
+                    aria-expanded={appendixOpen}
+                    aria-controls={appendixId}
+                    onClick={() => toggleAppendix(!appendixOpen)}
+                    title={parts.sections.length ? parts.sections.join(' · ') : undefined}
+                    className="flex w-full min-w-0 items-center gap-1.5 rounded-sm py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                  >
+                    <ChevronRight
+                      size={12}
+                      aria-hidden="true"
+                      className={cn('shrink-0 text-(--color-text-muted) motion-safe:transition-transform', appendixOpen && 'rotate-90')}
+                    />
+                    <span className="shrink-0 font-medium text-(--color-text)">{parts.title}</span>
+                    {parts.sections.length > 0 && (
+                      <span className="min-w-0 truncate text-(--color-text-subtle)">
+                        · {parts.sections.length} {parts.sections.length === 1 ? 'section' : 'sections'}
+                        {!appendixOpen && <span className="hidden sm:inline">: {parts.sections.join(', ')}</span>}
+                      </span>
+                    )}
+                  </button>
+                  <section id={appendixId} ref={appendixRef} hidden={!appendixOpen} aria-label={parts.title} className="pt-1">
+                    <MarkdownBlock content={parts.appendix} sessionId={sessionId ?? undefined} isStreaming={writing} />
+                  </section>
+                </div>
+              )}
+            </FileRefContext.Provider>
             {selection && review && !composer && <CommentButton selection={selection} onComment={startComment} />}
             {composer && review && (
               <CommentComposer
@@ -322,7 +470,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
           {comments.length > 0 && (
             <CommentList
               comments={comments}
-              onShow={(comment) => showPassage(bodyRef.current, scrollRef.current, comment.quote, reducedMotion)}
+              onShow={(comment) => showComment(comment.quote)}
               onRemove={(comment) => changeDraft({ ...reviewDraft, comments: comments.filter((c) => c.id !== comment.id) })}
             />
           )}

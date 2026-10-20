@@ -59,6 +59,8 @@ interface EdgeSwipeOptions {
 interface EdgeSwipeState {
   edge: Edge
   drawerId: string
+  /** Element the touch started on — used to find nested horizontal scrollers. */
+  target: EventTarget | null
   startX: number
   startY: number
   /** 'open' = edge→inward to reveal; 'close' = inward→edge to dismiss. */
@@ -99,6 +101,13 @@ const FLING_VELOCITY = 0.8
 const FLING_MIN_DISTANCE = 32
 /** px move before we lock the axis. */
 const AXIS_LOCK_SLOP = 8
+/**
+ * Horizontal travel must exceed vertical by this factor at the slop point
+ * for the gesture to lock as a drawer drag (~34° from horizontal). A
+ * thumb scrolling a panel naturally arcs sideways; a laxer rule let those
+ * scrolls drag — and fling — the drawer shut. Android's ViewPager uses 2.
+ */
+const HORIZONTAL_DOMINANCE = 1.5
 /** default drawer width (matches CSS ``min(272px, 100vw-2rem)``). */
 const DEFAULT_DRAWER_WIDTH = 272
 
@@ -111,6 +120,37 @@ const DEFAULT_DRAWER_WIDTH = 272
 function isSwipeExcluded(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
   return target.closest('[data-swipe-ignore], input[type="range"]') !== null
+}
+
+/**
+ * True when an element between ``target`` and ``boundary`` (the swipe
+ * surface) can still scroll horizontally in the direction the finger is
+ * moving — e.g. a wide markdown table or code block inside the Plan panel.
+ * That scroller owns the gesture: React's touchmove listener is passive,
+ * so ``preventDefault`` can't stop the native scroll, and without this the
+ * table scrolls *and* the drawer drags closed at the same time. Once the
+ * scroller is pinned at its edge in that direction, the drawer may act.
+ */
+function canScrollHorizontally(target: EventTarget | null, boundary: EventTarget | null, deltaX: number): boolean {
+  let el = target instanceof Element ? target : null
+  while (el && el !== boundary) {
+    if (el.scrollWidth > el.clientWidth) {
+      const { overflowX } = window.getComputedStyle(el)
+      // Text fields scroll their own overflowing text without declaring
+      // overflow-x (e.g. a long URL in the Preview address bar).
+      const isTextField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+      if (isTextField || overflowX === 'auto' || overflowX === 'scroll') {
+        // Finger moving right reveals content to the left (scrollLeft ↓);
+        // finger moving left reveals content to the right (scrollLeft ↑).
+        // Math.abs tolerates RTL's negative scrollLeft convention.
+        const scrolled = Math.abs(el.scrollLeft)
+        const maxScroll = el.scrollWidth - el.clientWidth
+        if (deltaX > 0 ? scrolled > 0 : scrolled < maxScroll - 1) return true
+      }
+    }
+    el = el.parentElement
+  }
+  return false
 }
 
 export interface EdgeSwipeHandlers {
@@ -147,6 +187,8 @@ export function useEdgeSwipe({
   const onTouchStart = useCallback((event: React.TouchEvent) => {
     stateRef.current = null
     if (!enabled) return
+    // Multi-touch (pinch / two-finger pan) is never a drawer swipe.
+    if (event.touches.length > 1) return
     if (isSwipeExcluded(event.target)) return
     const touch = event.touches[0]
     if (!touch) return
@@ -156,6 +198,7 @@ export function useEdgeSwipe({
     const begin = (edge: Edge, drawerId: string, intent: 'open' | 'close') => {
       stateRef.current = {
         edge, drawerId, intent,
+        target: event.target,
         startX: touch.clientX,
         startY: touch.clientY,
         locked: false,
@@ -196,6 +239,12 @@ export function useEdgeSwipe({
   const onTouchMove = useCallback((event: React.TouchEvent) => {
     const state = stateRef.current
     if (!state) return
+    // A second finger landing mid-swipe turns it into a pinch — abandon.
+    if (event.touches.length > 1) {
+      stateRef.current = null
+      clearDrag()
+      return
+    }
     const touch = event.touches[0]
     if (!touch) return
 
@@ -203,15 +252,27 @@ export function useEdgeSwipe({
     const deltaY = touch.clientY - state.startY
     const now = event.timeStamp || performance.now()
 
-    // Lock to horizontal on first meaningful move; bail to scroll if the
-    // gesture has vertical dominance.
+    // Decide the axis once, on the first move past the slop: lock only a
+    // clearly horizontal gesture; anything else belongs to native scroll.
+    // React registers touchmove as passive, so the preventDefault below
+    // can't stop a scroll — a wrong horizontal lock means the content
+    // scrolls *and* the drawer drags.
     if (!state.locked) {
-      if (Math.abs(deltaY) > 15 && Math.abs(deltaY) > Math.abs(deltaX) * 0.5) {
+      const absX = Math.abs(deltaX)
+      const absY = Math.abs(deltaY)
+      if (Math.max(absX, absY) < AXIS_LOCK_SLOP) return
+      if (absX < absY * HORIZONTAL_DOMINANCE) {
         stateRef.current = null
         clearDrag()
         return
       }
-      if (Math.abs(deltaX) < AXIS_LOCK_SLOP) return
+      // Horizontal intent — but a nested scroller that can still move in
+      // this direction (wide table, code block) owns it, not the drawer.
+      if (canScrollHorizontally(state.target, event.currentTarget, deltaX)) {
+        stateRef.current = null
+        clearDrag()
+        return
+      }
       state.locked = true
     }
 

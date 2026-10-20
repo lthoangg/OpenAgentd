@@ -94,7 +94,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
+import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection } from './Sidebar/NeedsYouSection'
@@ -103,6 +103,9 @@ import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
 import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
+import { WorkspaceGroupDots, workspaceGroupsLabel } from './Sidebar/WorkspaceGroupDots'
+import { WorkspaceGroupToggles } from './Sidebar/WorkspaceGroupToggles'
+import { groupColor } from './Sidebar/groupColor'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -149,6 +152,7 @@ import { EASINGS } from '@/lib/motion'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
+const NO_GROUPS: WorkspaceGroup[] = []
 
 interface SidebarProps {
   currentSessionId?: string
@@ -235,6 +239,8 @@ export function Sidebar({
   const groupBy = useSidebarViewStore((s) => s.groupBy)
   const sortBy = useSidebarViewStore((s) => s.sortBy)
   const showDetails = useSidebarViewStore((s) => s.showDetails)
+  const groupFilter = useSidebarViewStore((s) => s.groupFilter)
+  const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
 
   const workspaceSessions = useMemo(
     () => (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace),
@@ -256,6 +262,14 @@ export function Sidebar({
     () => new Map(workspaceTree.map((repo) => [repo.path, repo])),
     [workspaceTree],
   )
+  // Workspace groups: tags on repositories that set who may message whom.
+  const workspaceGroups = workspaceTreeData?.groups ?? NO_GROUPS
+  const groupsOf = (path: string) => {
+    const ids = workspaceByPath.get(path)?.group_ids ?? []
+    return workspaceGroups.filter((g) => ids.includes(g.id))
+  }
+  // A filter for a group that no longer exists shows everything.
+  const activeGroupFilter = workspaceGroups.find((g) => g.id === groupFilter) ?? null
   // The chat workspace is a pinned, non-repository row: the backend never
   // stores it in ``coding_workspaces``, so it is prepended here.
   const chatWorkspace = useChatWorkspace()
@@ -621,7 +635,9 @@ export function Sidebar({
   const deletedWorktreeSet = removedWorktreePaths
   const sourceWorkspaces = [
     ...(chatWorkspace ? [chatWorkspace.path] : []),
-    ...sourceWorkspacePaths(workspaceTree, deletedWorktreeSet).filter((path) => !isChatPath(path)),
+    ...sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
+      .filter((path) => !isChatPath(path))
+      .filter((path) => !activeGroupFilter || (workspaceByPath.get(path)?.group_ids ?? []).includes(activeGroupFilter.id)),
   ]
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
@@ -871,6 +887,7 @@ export function Sidebar({
       {/* Section header — actions stay reachable however long the list is. */}
       <SidebarSectionHeader
         groupBy={groupBy}
+        workspaceGroups={workspaceGroups}
         // The tree has a "+" per folder and desktop has ⌘N; the flat views
         // and phones need a way in of their own.
         showNewSession={groupBy !== 'project' || isMobile}
@@ -922,11 +939,30 @@ export function Sidebar({
           </div>
         )}
 
+        {activeGroupFilter && (
+          // The group filter, named above the list, with a one-step way back.
+          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
+            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter) }} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">
+              Group: <span className="font-mono text-(--color-text-2)">{activeGroupFilter.name}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setGroupFilter(null)}
+              className="shrink-0 rounded-xs px-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5"
+              aria-label="Show all workspaces"
+            >
+              Show all
+            </button>
+          </div>
+        )}
+
         {sourceWorkspaces.map((path) => {
           // Chat is pinned and not a repository: no worktrees, no rename, no
           // removal — only the expand toggle and "New session" apply.
           const sourceIsChat = isChatPath(path)
           const sourceLabel = sourceIsChat ? (chatWorkspace?.name ?? path) : workspaceLabel(path)
+          const sourceGroups = sourceIsChat ? NO_GROUPS : groupsOf(path)
           const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), deletedWorktreeSet, checkoutFilter[path])
           const { worktrees, selectedWorktree } = checkouts
           const allCheckoutPaths = [path, ...worktrees.map((item) => item.path)]
@@ -989,6 +1025,7 @@ export function Sidebar({
                         <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                           {sourceLabel}
                         </span>
+                        <WorkspaceGroupDots groups={sourceGroups} />
                         {sourceIsPending && (
                           <span>
                             <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
@@ -997,7 +1034,10 @@ export function Sidebar({
                       </LongPressButton>
                     }
                   />
-                  <TooltipContent>{sourceIsChat ? 'Chat workspace' : path}</TooltipContent>
+                  <TooltipContent>
+                    {sourceIsChat ? 'Chat workspace' : path}
+                    {sourceGroups.length > 0 && <span className="block">{workspaceGroupsLabel(sourceGroups)}</span>}
+                  </TooltipContent>
                 </Tooltip>
                 {worktrees.length > 0 && (
                   // Always visible and always compact (icon + worktree count),
@@ -1357,6 +1397,14 @@ export function Sidebar({
                   <GitBranch size={14} aria-hidden="true" />
                   Create worktree
                 </Button>
+                <WorkspaceGroupToggles
+                  workspace={mobileWorkspaceActions.path}
+                  variant="sheet"
+                  onManage={() => {
+                    setMobileWorkspaceActions(null)
+                    openSettings('workspaces')
+                  }}
+                />
                 <Button
                   type="button"
                   variant="danger-subtle"
@@ -1556,6 +1604,14 @@ export function Sidebar({
               <GitBranch size={12} aria-hidden="true" />
               Create worktree
             </button>
+            <WorkspaceGroupToggles
+              workspace={desktopWorkspaceActions.path}
+              variant="menu"
+              onManage={() => {
+                setDesktopWorkspaceActions(null)
+                openSettings('workspaces')
+              }}
+            />
             <button
               type="button"
               role="menuitem"

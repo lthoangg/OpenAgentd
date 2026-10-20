@@ -3,6 +3,12 @@ import { formatInTimezone } from '@/utils/format'
 
 export const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
 
+// Field text for the task forms (DESIGN.md → Panels and management surfaces):
+// label 8px above the control, hint or error 8px below it.
+export const FIELD_LABEL = 'mb-2 block text-xs font-medium text-(--color-text)'
+export const FIELD_HINT = 'mt-2 text-[11px] leading-relaxed text-(--color-text-muted)'
+export const FIELD_ERROR = 'mt-2 text-[11px] leading-relaxed text-(--color-error)'
+
 // Inline className for SelectContent — the global default (`bg-popover`)
 // resolves to `--bg-card`, the same surface as this drawer, so the dropdown
 // looks like an outlined frame floating on the same paper. Use the page

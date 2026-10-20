@@ -261,6 +261,67 @@ export function patchSessionRunning(
   return found
 }
 
+/** Session lists the server orders by ``last_message_at`` (``sort=activity``). */
+function isActivitySortedList(queryKey: readonly unknown[]): boolean {
+  const kind = queryKey[2]
+  return (kind === 'workspace' || kind === 'checkouts' || kind === 'everywhere')
+    && queryKey[queryKey.length - 1] === 'activity'
+}
+
+/**
+ * A turn started or finished in ``sessionId``: the server has moved its
+ * ``last_message_at`` (every saved message does). Mirror that in the cached rows and
+ * move the row to the top of every activity-sorted list, so the sidebar's
+ * order and age follow use. Patching ``running`` alone left a just-used
+ * session in its old place, with its old age, until something refetched the
+ * whole list — and refetching is what ``patchSessionRunning`` exists to avoid.
+ *
+ * Top-level rows only: a subagent's messages do not touch its parent.
+ */
+export function bumpSessionActivity(
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
+  sessionId: string,
+  at: string = new Date().toISOString(),
+): void {
+  const newer = (current: string | null | undefined) =>
+    !current || Date.parse(current) < Date.parse(at)
+
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.session.sessions.all() },
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      let changed = false
+      const pages = old.pages.map((page) => {
+        if (!page.data.some((session) => session.id === sessionId && newer(session.last_message_at))) return page
+        changed = true
+        return { ...page, data: page.data.map((session) => (session.id === sessionId ? { ...session, last_message_at: at } : session)) }
+      })
+      return changed ? { ...old, pages } : old
+    },
+  )
+
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.session.sessions.all(), predicate: (query) => isActivitySortedList(query.queryKey) },
+    (old) => {
+      if (!isInfiniteSessionData(old) || old.pages.length === 0) return old
+      if (old.pages[0].data[0]?.id === sessionId) return old
+      const pageIndex = old.pages.findIndex((page) => page.data.some((session) => session.id === sessionId))
+      if (pageIndex < 0) return old
+      const row = old.pages[pageIndex].data.find((session) => session.id === sessionId)!
+      const pages = old.pages.map((page, index) => {
+        const data = index === pageIndex ? page.data.filter((session) => session.id !== sessionId) : page.data
+        return index === 0 ? { ...page, data: [row, ...data] } : index === pageIndex ? { ...page, data } : page
+      })
+      return { ...old, pages }
+    },
+  )
+
+  queryClient.setQueryData<SessionResponse>(
+    queryKeys.session.sessions.detail(sessionId),
+    (old) => (old && newer(old.last_message_at) ? { ...old, last_message_at: at } : old),
+  )
+}
+
 export function patchSessionTitle(
   queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
   sessionId: string,

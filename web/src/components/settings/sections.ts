@@ -1,27 +1,25 @@
 /**
  * Settings section registry.
  *
- * Section metadata used to live in four places that had to be kept in sync by
- * hand: the desktop sidebar array, the mobile tab bar array, the content
- * switch, and the label map. On top of that, the set of "leaf"
- * sections was spelled out verbatim in three separate boolean predicates
- * (`MobileTabBar`'s active fallback, `isDrillDown`, `mobileBackSection`).
- * Adding one section meant editing seven places, so they drifted.
- *
- * This module is the single source. The content switch stays in SettingsModal
- * because each section takes genuinely different props; everything else
- * (grouping, order, labels, icons, mobile nav) derives
- * from here.
+ * The single source for grouping, order, labels, icons and the one-line
+ * descriptions shown in the phone section list. The content switch stays in
+ * SettingsModal because each section takes genuinely different props.
  */
 import {
   Brain,
+  Heading,
+  Image,
   Info,
   KeyRound,
   Plug,
   Puzzle,
+  Server,
   Shield,
+  Shrink,
+  SlidersHorizontal,
   Sparkles,
-  Workflow,
+  Waypoints,
+  Wifi,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -34,6 +32,9 @@ import {
 /** Sections that own a sidebar entry. Drill-downs are not listed. */
 export type TopLevelSection = Extract<
   SettingsSection,
+  | 'general'
+  | 'connection'
+  | 'network'
   | 'agents'
   | 'skills'
   | 'mcp'
@@ -41,11 +42,14 @@ export type TopLevelSection = Extract<
   | 'plugins'
   | 'providers'
   | 'denied_paths'
-  | 'automation'
+  | 'workspaces'
+  | 'titles'
+  | 'context'
+  | 'media'
   | 'about'
 >
 
-type SettingsGroupId = 'build' | 'models' | 'about'
+type SettingsGroupId = 'app' | 'build' | 'models' | 'privacy' | 'about'
 
 interface SettingsGroupDef {
   id: SettingsGroupId
@@ -57,8 +61,10 @@ interface SettingsGroupDef {
  * agent/tool settings remain distinct.
  */
 export const SETTINGS_GROUPS: readonly SettingsGroupDef[] = [
+  { id: 'app', label: 'App' },
   { id: 'build', label: 'Agents & tools' },
   { id: 'models', label: 'Models' },
+  { id: 'privacy', label: 'Privacy & safety' },
   { id: 'about', label: 'About' },
 ]
 
@@ -66,78 +72,45 @@ export interface SettingsSectionDef {
   id: TopLevelSection
   /** Sidebar label. */
   label: string
+  /** One line shown under the label in the phone section list. */
+  description: string
   icon: LucideIcon
   group: SettingsGroupId
-  /** Included in the five-slot mobile tab bar. */
-  mobileTab?: boolean
   /** Shown only when the backend advertises this capability (see `useServerCapability`). */
   capability?: string
+  /** Shown only inside the desktop app (it controls the builtin backend). */
+  desktopOnly?: boolean
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
-  {
-    id: 'agents',
-    label: 'Agents',
-    icon: Wrench,
-    group: 'build',
-    mobileTab: true,
-  },
-  {
-    id: 'skills',
-    label: 'Skills',
-    icon: Sparkles,
-    group: 'build',
-    mobileTab: true,
-  },
-  {
-    id: 'mcp',
-    label: 'MCP servers',
-    icon: Plug,
-    group: 'build',
-    mobileTab: true,
-  },
-  {
-    id: 'memory',
-    label: 'Memory',
-    icon: Brain,
-    group: 'build',
-  },
-  {
-    id: 'plugins',
-    label: 'Plugins',
-    icon: Puzzle,
-    group: 'build',
-    capability: 'api.plugins',
-  },
-  {
-    id: 'providers',
-    label: 'Providers',
-    icon: KeyRound,
-    group: 'models',
-    mobileTab: true,
-  },
-  {
-    id: 'automation',
-    label: 'Automation',
-    icon: Workflow,
-    group: 'models',
-  },
-  {
-    id: 'denied_paths',
-    label: 'Denied Paths',
-    icon: Shield,
-    group: 'build',
-  },
-  {
-    id: 'about',
-    label: 'About OpenAgentd',
-    icon: Info,
-    group: 'about',
-    mobileTab: true,
-  },
+  // App
+  { id: 'general', label: 'General', description: 'Theme and transcript style', icon: SlidersHorizontal, group: 'app' },
+  { id: 'connection', label: 'Connection', description: 'Which backend this app uses', icon: Server, group: 'app' },
+  { id: 'network', label: 'Network access', description: 'Let phones and other computers connect', icon: Wifi, group: 'app', desktopOnly: true },
+  // Agents & tools
+  { id: 'agents', label: 'Agents', description: 'Lead and member agent profiles', icon: Wrench, group: 'build' },
+  { id: 'skills', label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'build' },
+  { id: 'mcp', label: 'MCP servers', description: 'External tools over Model Context Protocol', icon: Plug, group: 'build' },
+  { id: 'plugins', label: 'Plugins', description: 'Plugins the backend loaded', icon: Puzzle, group: 'build', capability: 'api.plugins' },
+  { id: 'workspaces', label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'build' },
+  // Models
+  { id: 'providers', label: 'Providers', description: 'API keys and model accounts', icon: KeyRound, group: 'models' },
+  { id: 'titles', label: 'Chat titles', description: 'Name sessions automatically', icon: Heading, group: 'models' },
+  { id: 'context', label: 'Context', description: 'When long sessions are summarized', icon: Shrink, group: 'models' },
+  { id: 'media', label: 'Media generation', description: 'Image and video models and defaults', icon: Image, group: 'models' },
+  // Privacy & safety
+  { id: 'memory', label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'privacy' },
+  { id: 'denied_paths', label: 'Denied Paths', description: 'Files and folders agents cannot touch', icon: Shield, group: 'privacy' },
+  // About
+  { id: 'about', label: 'About OpenAgentd', description: 'Version, updates and community', icon: Info, group: 'about' },
 ]
 
 const BY_ID = new Map(SETTINGS_SECTIONS.map((s) => [s.id, s]))
+
+/** Registry entry for a (possibly drilled-down) section. */
+export function sectionDef(section: SettingsSection): SettingsSectionDef | undefined {
+  return BY_ID.get(parentSection(section))
+}
 
 /** Which top-level section a (possibly drilled-down) section belongs to. */
 export function parentSection(section: SettingsSection): TopLevelSection {
@@ -145,21 +118,10 @@ export function parentSection(section: SettingsSection): TopLevelSection {
 }
 
 /**
- * True for sections without a mobile tab of their own, which therefore need a
- * back button and route back to About on mobile. Derived from `mobileTab`
- * rather than a hardcoded id list.
+ * Where the phone Back button goes: a drill-down (skill / MCP editor) returns
+ * to its list, a top-level section returns to the section list.
  */
-function isMobileLeaf(section: SettingsSection): boolean {
-  const def = BY_ID.get(parentSection(section))
-  return !!def && !def.mobileTab
-}
-
-/** The section a mobile back button should return to. */
-export function mobileBackSection(section: SettingsSection): TopLevelSection {
-  return isMobileLeaf(section) ? 'about' : parentSection(section)
-}
-
-/** True when the current view is nested below its top-level section. */
-export function isDrillDown(section: SettingsSection): boolean {
-  return section !== parentSection(section) || isMobileLeaf(section)
+export function mobileBackTarget(section: SettingsSection): TopLevelSection | 'index' {
+  const parent = parentSection(section)
+  return section !== parent ? parent : 'index'
 }

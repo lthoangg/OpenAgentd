@@ -98,6 +98,16 @@ describe('filterBaseSlashCommands', () => {
     expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'new'])
   })
 
+  it('shows /btw during a new session’s first turn, before any block is finalized', () => {
+    const commands = filterBaseSlashCommands({
+      isAgentWorking: true,
+      hasVisibleMessages: false,
+      hasLiveMessages: true,
+      hasWorkspace: false,
+    })
+    expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'new'])
+  })
+
   it('shows /init in coding mode with a workspace attached', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: false,

@@ -26,7 +26,8 @@ pub struct RunContext {
     pub session_id: Option<String>,
     pub run_id: String,
     pub agent_name: String,
-    /// Workspace root the turn runs in; recorded on the `agent_run` span so
+    /// Workspace root the turn runs in; recorded on the `agent_run`,
+    /// `chat`, `execute_tool` and summarization spans so
     /// `/api/observability/*` can filter and break down by workspace.
     pub workspace: Option<String>,
 }

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { KeyRound, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import type { ProviderInfo } from '@/api/client'
 import { useProvidersQuery } from '@/queries'
 import { eagerlyWarmProviderModels } from './settings.providers/eagerModels'
 import { SearchBar } from '@/components/ui/search-bar'
+import { Callout } from '@/components/ui/callout'
+import { SettingsPage } from '@/components/settings/SettingsPage'
 import { cn } from '@/lib/utils'
 import { providerKindLabel } from './settings.providers/providerUtils'
 import { ProviderCard } from './settings.providers/ProviderCard'
@@ -36,8 +38,8 @@ function FilterChip({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'inline-flex min-h-10 items-center gap-1 rounded-xs border px-2 sm:min-h-6',
-        'text-xs md:text-[11px] font-medium transition-colors select-none',
+        'inline-flex min-h-10 items-center gap-1.5 rounded-sm border px-2.5 sm:min-h-7',
+        'text-xs font-medium transition-colors select-none',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
         active
           ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
@@ -155,23 +157,22 @@ export function ProvidersSettingsPage() {
   const showFilterBar = !providersQ.isLoading && providers.length > 0
 
   return (
-    <>
-      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-3 select-none sm:px-4">
-        <KeyRound size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h1 className="truncate text-xs font-semibold text-(--color-text)">Providers</h1>
-        <div className="min-w-1 flex-1" />
-        <span className="hidden shrink-0 text-xs md:text-[11px] font-medium text-(--color-text-subtle) sm:inline">
-          {connectedCount} connected
-        </span>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-        <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
-          <p className="text-xs leading-relaxed text-(--color-text-muted)">
-            Add the model provider OpenAgentd should use. API keys are written to your local config; OAuth tokens are stored in your local cache. Click{' '}
-            <span className="font-medium">List models</span> to verify a key before saving.
-          </p>
-
+    <SettingsPage
+      title="Providers"
+      description={
+        <>
+          Connect the model providers OpenAgentd may use. Keys and tokens stay on this machine.
+        </>
+      }
+      actions={
+        providers.length > 0 ? (
+          <span className="rounded-full border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-[11px] font-medium text-(--color-text-muted)">
+            {connectedCount} connected
+          </span>
+        ) : null
+      }
+    >
+        <div className="space-y-4">
           {showFilterBar && (
             <SearchBar
               placeholder="Filter providers…"
@@ -183,9 +184,9 @@ export function ProvidersSettingsPage() {
 
           {/* ── Filter bar ──────────────────────────────────────────── */}
           {showFilterBar && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
               {/* Status group */}
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <FilterChip
                   active={statusFilter === 'all'}
                   onClick={() => setStatusFilter('all')}
@@ -219,7 +220,7 @@ export function ProvidersSettingsPage() {
               <span className="h-4 w-px bg-(--color-border)" aria-hidden="true" />
 
               {/* Kind group — only show kinds that actually exist */}
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <FilterChip
                   active={kindFilter === 'all'}
                   onClick={() => setKindFilter('all')}
@@ -250,11 +251,11 @@ export function ProvidersSettingsPage() {
               Loading providers…
             </div>
           ) : providersQ.error ? (
-            <div className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) p-3 text-xs text-(--color-error)">
+            <Callout tone="error" role="alert">
               {providersQ.error instanceof Error
                 ? providersQ.error.message
                 : String(providersQ.error)}
-            </div>
+            </Callout>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
               <p className="text-xs text-(--color-text-muted)">
@@ -271,14 +272,13 @@ export function ProvidersSettingsPage() {
               )}
             </div>
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-4 pt-2">
               {filtered.map((provider) => (
                 <ProviderCard key={provider.id} provider={provider} />
               ))}
             </div>
           )}
         </div>
-      </div>
-    </>
+    </SettingsPage>
   )
 }

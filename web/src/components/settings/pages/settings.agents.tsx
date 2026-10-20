@@ -41,7 +41,7 @@ export function AgentsListPage() {
           .join(' · '),
         invalidReason: !a.valid ? (a.error ?? 'Invalid configuration') : undefined,
         onClick: () => setSelectedAgent(a.name),
-        icon: isLead ? <Wrench size={13} /> : <Users size={13} />,
+        icon: isLead ? <Wrench size={14} /> : <Users size={14} />,
       }
     })
   }, [data?.agents, selectedAgent])
@@ -93,7 +93,7 @@ You are **${cleanName}**, a specialized member agent.
     <>
     <SettingsListView
       title="Agents"
-      description="Agent profiles define system prompts, models, and allowed tools for the coding lead and subagent team members. Live in ~/.config/openagentd/agents/."
+      description="Prompts, models and tools for the lead agent and the members it delegates to."
       newLabel="New member profile"
       onNew={handleOpenCreate}
       filterPlaceholder="Filter agents…"
@@ -102,6 +102,7 @@ You are **${cleanName}**, a specialized member agent.
       isError={isError}
       emptyTitle="No agents found"
       emptyBody="Agent profiles live in ~/.config/openagentd/agents/."
+      emptyIcon={Wrench}
     />
 
     <Dialog open={createOpen} onOpenChange={setCreateOpen}>

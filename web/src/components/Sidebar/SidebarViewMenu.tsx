@@ -6,6 +6,8 @@ import {
   SIDEBAR_SORT_BY,
   useSidebarViewStore,
 } from '@/stores/useSidebarViewStore'
+import type { WorkspaceGroup } from '@/api/types'
+import { groupColor } from './groupColor'
 
 function MenuGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -50,18 +52,31 @@ function CheckItem({
 
 /**
  * The sidebar's View options: how sessions group and sort, and whether rows
- * show their age and place. Choices apply at once and the menu stays open,
+ * show their age and place; in Project view, which workspace group's
+ * repositories to show. Choices apply at once and the menu stays open,
  * so several can be changed in one visit; Escape or a click outside closes
  * it and focus returns to the trigger.
  */
-export function SidebarViewMenu({ at, onDismiss }: { at: { x: number; y: number }; onDismiss: () => void }) {
+export function SidebarViewMenu({
+  at,
+  workspaceGroups: groups = [],
+  onDismiss,
+}: {
+  at: { x: number; y: number }
+  /** Groups the Project view can be narrowed to. */
+  workspaceGroups?: readonly WorkspaceGroup[]
+  onDismiss: () => void
+}) {
   const groupBy = useSidebarViewStore((s) => s.groupBy)
   const sortBy = useSidebarViewStore((s) => s.sortBy)
   const showDetails = useSidebarViewStore((s) => s.showDetails)
+  const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupBy = useSidebarViewStore((s) => s.setGroupBy)
   const setSortBy = useSidebarViewStore((s) => s.setSortBy)
   const setShowDetails = useSidebarViewStore((s) => s.setShowDetails)
+  const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
   const reset = useSidebarViewStore((s) => s.reset)
+  const activeFilter = groups.some((g) => g.id === groupFilter) ? groupFilter : null
 
   return (
     <ContextMenu at={at} label="View options" onDismiss={onDismiss} className="min-w-48">
@@ -81,6 +96,22 @@ export function SidebarViewMenu({ at, onDismiss }: { at: { x: number; y: number 
         ))}
       </MenuGroup>
       <ContextMenuSeparator />
+      {groupBy === 'project' && groups.length > 0 && (
+        <>
+          <MenuGroup label="Workspace group">
+            <CheckItem role="menuitemradio" checked={activeFilter === null} onSelect={() => setGroupFilter(null)}>
+              All workspaces
+            </CheckItem>
+            {groups.map((group) => (
+              <CheckItem key={group.id} role="menuitemradio" checked={activeFilter === group.id} onSelect={() => setGroupFilter(group.id)}>
+                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(group) }} aria-hidden="true" />
+                <span className="truncate">{group.name}</span>
+              </CheckItem>
+            ))}
+          </MenuGroup>
+          <ContextMenuSeparator />
+        </>
+      )}
       <CheckItem role="menuitemcheckbox" checked={showDetails} onSelect={() => setShowDetails(!showDetails)}>
         Show details
       </CheckItem>

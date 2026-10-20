@@ -13,8 +13,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, Plug, Wrench } from 'lucide-react'
 
 import type { AgentInfo } from '@/api/types'
+import { TEXT } from '@/components/ui/panel-tokens'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { cn } from '@/lib/utils'
 import { MarkdownBlock } from '@/utils/markdown'
 
 const TOOL_SEARCH_THRESHOLD = 8
@@ -53,7 +55,7 @@ function groupTools(tools: AgentInfo['tools'], mcpServers: string[]): ToolGroup[
 
 function CountBadge({ count }: { count: number }) {
   return (
-    <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-[11px] text-(--color-text-muted)">
+    <span className="rounded-full bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] font-normal text-(--color-text-subtle)">
       {count}
     </span>
   )
@@ -64,12 +66,12 @@ function ToolRow({ name, description }: { name: string; description: string }) {
   const reduceMotion = useReducedMotion()
   const hasDesc = description.trim().length > 0
   return (
-    <div className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) transition-colors hover:bg-(--bg-key)/20">
+    <div className="overflow-hidden transition-colors hover:bg-(--bg-key)/20">
       <button
         type="button"
         onClick={() => hasDesc && setOpen((v) => !v)}
         aria-expanded={hasDesc ? open : undefined}
-        className={`flex min-h-9 w-full items-center gap-2.5 px-3 py-1.5 text-left md:min-h-0 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left md:min-h-10 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
       >
         <Wrench size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden />
         <code className="flex-1 truncate font-mono text-xs font-medium text-(--color-text)">
@@ -92,7 +94,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
             transition={{ duration: reduceMotion ? 0 : 0.14 }}
             className="overflow-hidden"
           >
-            <div className="tool-desc border-t border-(--color-border) px-3 py-2">
+            <div className="tool-desc pr-4 pb-3 pl-10 text-(--color-text-muted)">
               <MarkdownBlock content={description.trim()} />
             </div>
           </motion.div>
@@ -106,24 +108,24 @@ function ToolGroupSection({ server, tools }: ToolGroup) {
   const label = server === null ? 'Built-in' : `MCP · ${server}`
   return (
     <div role="group" aria-label={label}>
-      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 sm:px-5">
+      <div className="flex items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-key)/20 px-4 py-2">
         {server !== null && (
-          <Plug size={11} className="text-(--color-text-muted)" aria-hidden />
+          <Plug size={11} className="text-(--color-text-subtle)" aria-hidden />
         )}
-        <h4 className="label-caps text-(--color-text-muted)">
+        <h3 className={cn('font-medium', TEXT.subtle)}>
           {label}
-        </h4>
+        </h3>
         <CountBadge count={tools.length} />
       </div>
-      <div className="space-y-1.5 px-3 sm:px-5">
-        {tools.length === 0 ? (
-          <p className="text-xs italic text-(--color-text-muted)">
-            Server not ready — no tools available.
-          </p>
-        ) : (
-          tools.map((t) => <ToolRow key={t.name} name={t.name} description={t.description} />)
-        )}
-      </div>
+      {tools.length === 0 ? (
+        <p className={cn('px-4 py-3', TEXT.hint)}>
+          Server not ready — no tools available.
+        </p>
+      ) : (
+        <div className="divide-y divide-(--color-border-subtle)">
+          {tools.map((t) => <ToolRow key={t.name} name={t.name} description={t.description} />)}
+        </div>
+      )}
     </div>
   )
 }
@@ -161,28 +163,28 @@ export function SessionTools({
   if (tools.length === 0 && mcpServers.length === 0) return null
 
   return (
-    <section className="border-t border-(--color-border)">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex min-h-9 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-(--bg-key)/20 sm:px-5"
-      >
-        <h3 className="label-caps text-(--color-text-muted)">
-          Tools
-        </h3>
-        <CountBadge count={tools.length} />
-        <ChevronDown
-          size={12}
-          aria-hidden
-          className={`ml-auto shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
+    <section className="space-y-3">
+      <h2>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="-mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] items-center gap-2 rounded-sm px-1.5 text-left transition-colors hover:bg-(--bg-key)/40 md:min-h-7"
+        >
+          <span className={TEXT.title}>Tools</span>
+          <CountBadge count={tools.length} />
+          <ChevronDown
+            size={12}
+            aria-hidden
+            className={`ml-auto shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+      </h2>
 
       {open && (
-        <>
+        <div className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
           {showSearch && (
-            <div className="px-3 pb-2 sm:px-5">
+            <div className="border-b border-(--color-border-subtle) px-4 py-3">
               <SearchBar
                 placeholder="Filter tools…"
                 value={query}
@@ -191,22 +193,22 @@ export function SessionTools({
             </div>
           )}
 
-          <div className="pb-3 sm:pb-5">
-            {filteredTools.length === 0 && query.trim() ? (
-              <p className="px-3 pt-2 text-xs italic text-(--color-text-muted) sm:px-5">
-                No tools match “{query}”.
-              </p>
-            ) : (
-              groups.map((group) => (
+          {filteredTools.length === 0 && query.trim() ? (
+            <p className={cn('px-4 py-4', TEXT.hint)}>
+              No tools match “{query}”.
+            </p>
+          ) : (
+            <div className="divide-y divide-(--color-border-subtle)">
+              {groups.map((group) => (
                 <ToolGroupSection
                   key={group.server ?? '__builtin__'}
                   server={group.server}
                   tools={group.tools}
                 />
-              ))
-            )}
-          </div>
-        </>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </section>
   )

@@ -11,6 +11,7 @@ import {
   validateDraft,
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
+import { EDITOR_BODY } from '@/components/settings/tokens'
 
 const TEMPLATE: McpServerDraft = {
   ...emptyDraft(),
@@ -82,7 +83,7 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-3 sm:p-5">
+        <div className={EDITOR_BODY}>
           <McpServerForm value={draft} onChange={setDraft} isNew disabled={createMut.isPending} errors={fieldErrors} />
         </div>
       </div>

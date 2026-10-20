@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.20.0 · October 19, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.20.0)
+**Latest release:** v3.21.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.21.0)
 
 ---
 
@@ -169,6 +169,41 @@ run from the terminal (the native Rust binary since v3.0.0).
   way: a sticky bar appears only when there are unsaved edits, with Reset, Save,
   and a `Cmd/Ctrl+S` binding. Notifications no longer writes on toggle, and
   reopening Settings returns to the section you left.
+- **Roomier Settings with General, Connection and About** `[v3.21.0]` — the old About
+  page held four unrelated things and is now three pages in a new **App**
+  group. **General** has theme and transcript style. **Connection** shows the
+  backend servers and the add / edit server form
+  directly on the page, using the same panel as the **Backend connection**
+  dialog. **About OpenAgentd** has the version, updates and community links.
+  Every page shares one layout: a page header with actions, titled sections
+  above their cards, label-left / control-right rows, and more space between
+  fields. Server forms test and save from a footer row instead of buttons
+  squeezed beside inputs. On phones Settings opens on a grouped list of
+  sections; each opens full-screen with Back.
+- **Settings split into focused pages** `[v3.21.0]` — the long **Automation** page with
+  collapsible groups is now four plain pages: **Workspaces** (workspace
+  messages and groups), **Chat titles**, **Context** (summarization and idle
+  sessions) and **Media generation**. Desktop gets its own **Network access**
+  page in the **App** group, and a **Privacy & safety** group holds **Memory**
+  and **Denied paths**. Notices on every page (failed MCP servers, plugin
+  warnings, lint results, security caveats) share one callout style, used
+  app-wide, and page copy is shorter. A saved link to the old Automation
+  section opens Workspaces.
+- **Roomier Scheduled tasks, Session settings and Keyboard shortcuts**
+  `[v3.21.0]` — these panels now use the same layout as Settings: titled
+  sections above their cards, label-left / control-right rows, more space
+  between fields, one notice style, and sentence-case labels. A scheduled
+  task's detail reads Status, then **Delivery**, **Schedule**, **Prompt** and
+  **Runs** (a failed last run shows as a notice under Runs). The create and
+  edit forms group their fields into Task, Schedule, Prompt and Delivery, and
+  save from a footer bar. The task list shows one row per task. Session
+  settings groups Model, MCP servers (with **Manage**) and the collapsible
+  Tools list. The same layout applies in the review dock's Schedule tab.
+  On phones the scheduler shows a single header, puts **Run now** and
+  **Pause** in a bottom bar, uses full-width save buttons and a number pad
+  for intervals and run limits, and shows long workspace paths and session
+  IDs in full. Task rows drop their inline buttons on touch screens; tap a
+  task for every action, or long-press it in the app.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -223,7 +258,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette, and chat actions drawer cover them. Press and hold the
   pinned Chat row in the mobile sidebar to start a new chat session, since the
   inline `+` is hidden on touch.
-- **Palette pages and switching** `[v3.0.0]` — the Command Palette gains
+- **Palette pages and switching** `[v3.0.0, updated v3.21.0]` — the Command Palette gains
   Switch Session… (recent sessions in every workspace, with running and
   waiting-for-you status) and Switch Workspace… (repositories, worktrees,
   and Chat, most recently active first). Each opens a nested list in place;
@@ -231,12 +266,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0]` — the expanded composer switches an
+  Switch Session… and Switch Workspace… are now one **Switch
+  Workspace/Session…**: it lists every workspace (the current one first),
+  and a workspace opens its sessions, with **New Session** on top while
+  nothing is typed `[v3.21.0]`. → opens the highlighted list and ← on an
+  empty query, Backspace, or Escape steps back one level, landing on the
+  row that opened it `[v3.21.0]`.
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.21.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
-  the repository and produces decision-complete implementation plans, while the runtime
-  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell.
+  the repository and writes a plan for you to review, while the runtime
+  blocks changes to project files and permits read-only inspection and testing via shell.
   The agent writes its plan with the `plan` tool and submits it with
   `submit_plan` (in either Plan or Code mode), which pauses the turn for review in the **Plan** tab of the
   review dock (full screen on mobile; it opens by itself on desktop). The tab
@@ -253,6 +294,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   the plan; **Open Plan** in the command palette (⌘K) does the same whenever
   the session has a plan. Replying in chat instead supersedes the review.
   Older `<proposed_plan>` answers still render as read-only cards.
+  The Plan tab shows the plan being written in place `[v3.21.0]`: a rewrite
+  streams in (following the bottom unless you scroll up) and an edit changes
+  the plan where it applies, under a **Writing…** or **Editing…** chip, with
+  **Edit** and **Clear** held until the plan is saved. In Plan mode the tab
+  opens by itself on desktop when the agent starts writing; the transcript's
+  `plan` row has **Watch plan** (**View plan** once saved) to open it.
   Switching mode while a turn is running no longer stops it: the switch is
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
@@ -269,6 +316,23 @@ run from the terminal (the native Rust binary since v3.0.0).
     file is kept). The Tasks tab and popover show a Plan row with its
     revision, **Open** and **Clear**, which stops using the plan in the
     session and leaves the file in place.
+  - **Plans written for the reviewer** `[v3.21.0]` — a plan opens with
+    what you get (**Outcome**) and the choices to confirm (**Decisions**,
+    each with a recommendation), shows the change (**Preview**), and lists
+    a few milestones with checkpoints, then **Scope**, **Risks** and
+    **Done when**. Implementation detail goes in an **Appendix** at the end,
+    which the Plan tab shows collapsed: click it to open (remembered per
+    session); you can select and comment on its text like the rest of the
+    plan, and clicking such a comment opens it. Sessions already in Plan
+    mode get the new instructions on their next turn.
+  - **Mockups and diagrams in plans** `[v3.21.0]` — while planning, the
+    agent can write attachments next to the plan, in
+    `.agents/plans/<plan-name>/` (the only place `patch` writes in Plan
+    mode), and check them with a look-only `preview` (open, logs, snapshot,
+    inspect, scroll, navigate, wait; no click, fill or press). In the Plan
+    tab, a link to an HTML mockup opens it in a Preview tab (a file tab when
+    previews are unavailable), other workspace links open as file tabs, SVG
+    images render inline, and `mermaid` fences render as diagrams.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.
@@ -282,10 +346,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   session-list refresh lost their dedicated shortcuts (palette-only, low
   frequency). `⌘S`/`Ctrl+S` no longer opens Scheduled Tasks, so it only saves
   in Settings `[v3.0.0]`.
-- **Theme in Settings and the palette** `[v3.0.0]` — Settings → About has an
+- **Theme in Settings and the palette** `[v3.0.0, updated v3.21.0]` — Settings → General has an
   **Appearance** section with a System / Light / Dark choice, and the Command
-  Palette has **Theme: System**, **Theme: Light** and **Theme: Dark**. The
-  mobile drawer keeps its theme button.
+  Palette has **Theme…**, a list of System, Light and Dark that marks the
+  current one `[v3.21.0]`. The mobile drawer keeps its theme button.
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -518,12 +582,22 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
-- **Mermaid diagrams in agent responses** *(deprecated)* `[v1.121.0, v1.123.0, v3.5.0]` —
-  completed `mermaid` code fences rendered as diagrams with Diagram and Code
-  views and a full-screen pan/zoom view. Since v3.5.0 the chat no longer
-  renders diagrams: a `mermaid` fence shows as an ordinary code block with copy,
-  and the Mermaid library is no longer shipped. For drawn diagrams, an agent
-  writes a self-contained HTML/SVG file and opens it in the Preview tab.
+- **Long prompts fold to six lines** `[v3.21.0]` — a sent prompt longer than
+  eight lines on screen folds to its first six, with an expand button. Lines
+  are counted as they wrap, so the fold follows the chat width: opening the
+  sidebar or the dock re-checks it. Expanding and folding animate, and the
+  whole prompt stays selectable and searchable.
+- **Mermaid diagrams in agent responses and plans** `[v1.121.0, v1.123.0, v3.5.0, v3.21.0]` —
+  a `mermaid` code fence renders as a diagram as soon as its closing fence
+  arrives, with **Diagram** and **Code** views and copy. Since v3.21.0 it is
+  drawn by [Pele](https://pele.run), a small, dependency-free Mermaid renderer
+  that loads on the first diagram (startup size is unchanged). Diagrams use the
+  app's colors in light and dark themes, adapt their layout to narrow screens,
+  and can be zoomed when they have to shrink. Diagram links and images are
+  off, and the drawn SVG is sanitized before it is shown. A diagram that
+  can't be drawn shows its code with a one-line reason. (v3.5.0–v3.20.0
+  showed `mermaid` fences as plain code.) For richer drawings, an agent can
+  still write an HTML/SVG file and open it in the Preview tab.
 - **LaTeX math rendering** `[v1.133.0]` — inline math (`$math$` and `\(math\)`),
   display math (`$$math$$` and `\[math\]`), and fenced code blocks (`math`, `katex`)
   render formatted LaTeX mathematics via KaTeX. Distinguishes mathematical
@@ -598,7 +672,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     with "Show N earlier steps", so huge patches and long agent runs stay
     responsive `[v3.14.0, v3.18.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
-  About → Appearance → Transcript, or Toggle Reader Mode in the command
+  General → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads
   as its answer:
   - The thinking, every tool call, and the narration between them fold into
@@ -752,7 +826,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
-- **Desktop network access** `[v3.15.0]` — a **Network access** switch in the desktop **Backend connection** dialog lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install. `[v3.16.0]` While network access is on, **show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
 
 ---
 
@@ -775,10 +849,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
-- **Cross-workspace messages** `[v3.9.0]` — the lead agent's `send_to_workspace`
+- **Cross-workspace messages** `[v3.9.0, updated v3.21.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
-  (another repository, a worktree, or Chat), for example from an app repository
-  to its infrastructure repository. The request starts a new session there, or
+  that shares a workspace group (see **Workspace groups** below) with its own (a related
+  repository, a worktree of its repository, or Chat), for example from an app
+  repository to its infrastructure repository. The request starts a new session there, or
   continues one of its top-level sessions (queued when that session is busy). It
   arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
   chip that opens the sending session. `mode: "plan"` makes a new session plan
@@ -794,11 +869,34 @@ executes tools, manages its task list, and inspects workspace repositories.
   - You get one completion notification, from the sender, instead of one from
     each side.
 
-  `action: "list"` shows the workspaces you can message, or one workspace's
-  recent sessions with their state. Limits: a request can pass through at most
+  `action: "list"` shows the workspaces you can message under their groups,
+  each with its brief, or one workspace's recent sessions with their state.
+  Sending to a workspace outside its groups is refused with a message asking
+  you to group them. Limits: a request can pass through at most
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
-  32,000 characters. **Settings → Automation → Workspace messages** turns the
+  32,000 characters. **Settings → Workspaces → Messages** turns the
   tool off for every agent; replies already on their way still arrive.
+- **Workspace groups** `[v3.21.0]` — named tags on
+  repositories that say which workspaces belong together. Set them up in
+  **Settings → Workspaces → Groups**: create a group, give it a
+  name, any colour (from the colour picker, or typed or pasted as a hex code
+  such as `#3b82f6`), and a **brief** (a short note such as "web = Next.js
+  frontend, api = Rust backend" that agents see in `send_to_workspace`
+  listings), and add or remove its repositories, all on one screen. A
+  repository can be in several groups. Its actions menu in the sidebar
+  (right-click, **…**, or long-press on phones) has a checkbox per group for
+  quick tagging and **Manage groups…** to open the settings. Each sidebar
+  row shows a dot in each of its groups' colours, and **View options →
+  Workspace group** narrows the Project view to one group, with **Show all
+  workspaces** to go back. Groups decide who can message whom:
+  - Two workspaces can message each other only when their repositories share
+    a group. Worktrees use their repository's groups, and a repository and
+    its worktrees can always message each other.
+  - Chat can message every workspace, and every workspace can message Chat.
+  - A repository in no group can message only Chat and its own worktrees,
+    so after upgrading, group related repositories to let them talk again.
+  - Replies are never blocked: a request that was allowed when it was sent
+    still gets its answer back.
 - **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
   features a dedicated System prompt card with a monospace textarea bound to the
   Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).
@@ -1085,6 +1183,13 @@ agent against it.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
+  Since `[v3.21.0]` repository rows show a coloured dot per workspace group,
+  and in Project mode **View options → Workspace group** shows one group's
+  repositories (Chat stays), named in a row above the list with **Show all**.
+  Since `[v3.21.0]` **Recent activity** means the last message, not creation,
+  a rename or a model switch: a session moves to the top when a turn starts or
+  finishes, sliding into place rather than jumping, and the row's age keeps
+  counting while the app is open.
 - **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on
   desktop `[v3.19.0]`, first in a session's context menu, or in the long-press
   sheet on mobile) moves a top-level session into a **Pinned** section at
@@ -1324,9 +1429,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
-  Changing the trigger in Settings → Automation applies from the next model
+  Changing the trigger in Settings → Context applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
-  Opt-in **idle compaction** in Settings → Automation → Summarization
+  Opt-in **idle compaction** in Settings → Context → Idle sessions
   compacts a session in the background when it has been idle for 4½ minutes
   after a turn and its context has reached a set share of the trigger
   (default 70%). This uses the provider's prompt cache while it is still
@@ -1509,7 +1614,7 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
-| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Automation can turn it off) `[v3.9.0]` |
+| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Workspaces can turn it off) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
@@ -1884,7 +1989,11 @@ Everything stays local. No third-party telemetry SaaS.
   view with an **Open session** action. Recent turns can be limited to failed ones,
   and a turn opens to its facts (workspace, model, duration, tokens, cost),
   **Copy trace ID**, **Open session**, and the span waterfall. Turns record their
-  workspace from v3.0.0; older turns show as **Not recorded**.
+  workspace from v3.0.0. Failed turns, stopped turns, and compaction-only turns
+  (`/compact`, idle compaction) count as turns, and spend and turns from older
+  telemetry are credited to their session's workspace. Only spend whose session
+  was deleted, or that ran outside a session, shows as **Not recorded**
+  `[v3.21.0]`.
 - **Model speed in telemetry** `[v3.0.0]` — every streamed model call records
   its time to first token and its output speed in tokens per second. The
   overview shows the median first token (with p95) and the median output speed
@@ -2014,7 +2123,7 @@ Desktop is primary. CLI / server is the developer path.
   e.g. `--key`). `--qr` on `server start`, `server restart`, and
   `server status` prints a QR code in the terminal with the LAN addresses and
   the access key: the same `openagentd://connect` link as the desktop
-  **show QR**, so scanning it with a phone opens the mobile app's **Backend
+  **Show QR**, so scanning it with a phone opens the mobile app's **Backend
   connection** dialog with the address and key filled in. With `--wait` the code
   appears once the server is ready. It is skipped with a warning when the
   server is loopback-only, no LAN address is found, or the access key is

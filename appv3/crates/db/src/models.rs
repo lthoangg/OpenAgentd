@@ -36,6 +36,10 @@ pub struct ChatSession {
     pub interaction_mode: String,
     /// When the user pinned the session in the sidebar; `None` = unpinned.
     pub pinned_at: Option<String>,
+    /// Newest non-summary message, or creation for an empty session: what
+    /// "Recent activity" sorts by and the sidebar's age shows. `None` only for
+    /// a row written outside [`crate::create_session`].
+    pub last_message_at: Option<String>,
 }
 
 impl ChatSession {

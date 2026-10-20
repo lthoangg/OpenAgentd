@@ -3,6 +3,7 @@
 
 use crate::checkpointer::Checkpointer;
 use crate::errors::AgentError;
+use crate::hooks::otel::RunEnd;
 use crate::hooks::{AgentState, HookRef, ModelRequest, RunContext, SharedMeta, ToolCallScope};
 use crate::interaction_mode::tool_allowed_in_mode;
 use crate::streaming::{stream_and_assemble, ModelError, StreamArgs};
@@ -100,6 +101,29 @@ struct ToolRunResult {
     parts: Option<Vec<ContentBlock>>,
     mcp_app: Option<Value>,
     duration_ms: Option<f64>,
+}
+
+/// Ends the run's `agent_run` span when the run's future is dropped (a
+/// hard stop) or panics. A run that returns ends it in [`Agent::run`]
+/// first, which makes this a no-op.
+pub(crate) struct RunSpanGuard(Vec<HookRef>);
+
+impl RunSpanGuard {
+    pub(crate) fn new(hooks: Vec<HookRef>) -> Self {
+        Self(hooks)
+    }
+
+    fn end(&self, outcome: RunEnd<'_>) {
+        if let Some(o) = self.0.iter().find_map(|h| h.as_otel()) {
+            o.end_run(outcome);
+        }
+    }
+}
+
+impl Drop for RunSpanGuard {
+    fn drop(&mut self) {
+        self.end(RunEnd::Cancelled);
+    }
 }
 
 enum Dispatch {
@@ -331,7 +355,22 @@ impl Agent {
     pub async fn run(&self, history: Vec<ChatMessage>, opts: RunOptions<'_>) -> Result<RunOutcome, AgentError> {
         // A fresh contextvar-like slot: the OTel hook attaches the agent_run
         // span to it for the rest of the run.
-        appv3_core::otel::inherit(self.run_inner(history, opts)).await
+        let guard = RunSpanGuard::new(opts.hooks.clone());
+        let stop = opts.interrupt.clone();
+        let result = appv3_core::otel::inherit(self.run_inner(history, opts)).await;
+        // Every run ends its span here, including compaction-only and failed
+        // runs. A soft Stop returns Ok with the partial answer, so the stop
+        // event (not the result) marks it cancelled.
+        match &result {
+            Ok(_) if stop.as_ref().is_some_and(Event::is_set) => guard.end(RunEnd::Cancelled),
+            Ok(_) => guard.end(RunEnd::Ok),
+            Err(AgentError::Cancelled) => guard.end(RunEnd::Cancelled),
+            Err(e) => {
+                let (name, qualified) = crate::errors::python_exception_names(e);
+                guard.end(RunEnd::Err(name, &qualified, &e.to_string()));
+            }
+        }
+        result
     }
 
     async fn run_inner(&self, history: Vec<ChatMessage>, opts: RunOptions<'_>) -> Result<RunOutcome, AgentError> {

@@ -5,12 +5,17 @@ use anyhow::{anyhow, Result};
 use appv3_db::{self as db, DbPool, NewMessage};
 use serde_json::{json, Map, Value};
 
-/// `mcp` checks each call itself: search, and calls to read-only tools.
-pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 12] = ["ask_user", "delegate", "glob", "grep", "mcp", "plan", "read", "shell", "skill", "submit_plan", "web_fetch", "web_search"];
+/// Some tools check each call themselves: `mcp` allows search and calls to
+/// read-only tools, `patch` writes only plan attachments under
+/// `.agents/plans/<folder>/`, and `preview` only looks (no click, fill or press).
+pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 14] =
+    ["ask_user", "delegate", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "submit_plan", "web_fetch", "web_search"];
 
 /// `extra.interaction_mode_prompt_version` of the notes written now. Notes
-/// without it are version 1 (the `<proposed_plan>` instructions).
-pub const MODE_PROMPT_VERSION: u64 = 2;
+/// without it are version 1 (the `<proposed_plan>` instructions); version 2
+/// wrote implementation-shaped plans; version 3 writes reviewer-shaped plans
+/// with visuals in the plan's attachments folder.
+pub const MODE_PROMPT_VERSION: u64 = 3;
 const MODE_PROMPT_VERSION_KEY: &str = "interaction_mode_prompt_version";
 
 /// Appended to the Plan-mode note that replaces a version-1 one.
@@ -65,14 +70,15 @@ async fn append_mode_prompt(pool: &DbPool, sid: &str, mode: &str, transition: bo
 }
 
 /// `ensure_session_interaction_mode_prompt`. A Plan-mode session whose note
-/// predates the plan tools gets a new note that replaces it.
+/// is older than [`MODE_PROMPT_VERSION`] gets a new note that replaces it.
+/// Only a version-1 note (before the plan tools) also gets the upgrade line.
 pub async fn ensure_prompt(pool: &DbPool, sid: &str, mode: &str) -> Result<bool> {
     if mode != "plan" {
         return Ok(false);
     }
     let upgrade = match mode_prompt_version(pool, sid, mode).await? {
         Some(v) if v >= MODE_PROMPT_VERSION => return Ok(false),
-        Some(_) => true,
+        Some(v) => v == 1,
         None => false,
     };
     append_mode_prompt(pool, sid, mode, false, upgrade).await?;
@@ -225,5 +231,29 @@ mod tests {
         let rows = db::llm_window_rows(&pool, &sid, false).await.unwrap();
         let text = rows.last().unwrap().content.clone().unwrap();
         assert!(text.contains("`submit_plan`") && !text.contains(PLAN_PROMPT_UPGRADE));
+        for section in ["**Outcome:**", "**Decisions:**", "**Preview:**", "## Appendix", "### Visuals", "`mermaid`", ".agents/plans/"] {
+            assert!(text.contains(section), "missing {section}");
+        }
+    }
+
+    /// A Plan-mode session with a version-2 note gets the current one once,
+    /// without the `<proposed_plan>` upgrade line.
+    #[tokio::test]
+    async fn an_outdated_v2_plan_note_is_refreshed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = pool(&dir).await;
+        let sid = session(&pool, None, "plan").await;
+        let mut extra = Map::new();
+        extra.insert("hidden_from_user".into(), json!(true));
+        extra.insert("interaction_mode".into(), json!("plan"));
+        extra.insert("interaction_mode_prompt".into(), json!(true));
+        extra.insert(MODE_PROMPT_VERSION_KEY.into(), json!(2));
+        db::save_message(&pool, &sid, NewMessage { kind: Some("note".into()), pinned: Some(true), extra: Some(extra), ..NewMessage::user("v2 rules") }).await.unwrap();
+
+        assert!(ensure_prompt(&pool, &sid, "plan").await.unwrap());
+        assert!(!ensure_prompt(&pool, &sid, "plan").await.unwrap());
+        let rows = db::llm_window_rows(&pool, &sid, false).await.unwrap();
+        let text = rows.last().unwrap().content.clone().unwrap();
+        assert_eq!(text, transition_instruction("plan"));
     }
 }

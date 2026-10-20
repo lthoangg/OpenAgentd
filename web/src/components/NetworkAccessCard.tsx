@@ -1,7 +1,8 @@
 /**
  * NetworkAccessCard — desktop-only switch that lets phones and other
  * computers on the LAN connect to the builtin backend with an access key,
- * without installing the CLI. Mounted by AppBackendDialog in the desktop shell.
+ * without installing the CLI. Mounted by AppBackendPanel in the desktop shell
+ * (Settings → Connection and the Backend connection dialog).
  */
 import { useEffect, useState } from 'react'
 
@@ -9,8 +10,12 @@ import { Button } from '@/components/ui/button'
 import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
+import { Callout } from '@/components/ui/callout'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
+import { TEXT } from '@/components/settings/tokens'
 import { getPlatform, type OS } from '@/hooks/use-platform'
+import { cn } from '@/lib/utils'
 import {
   DEFAULT_NETWORK_ACCESS_PORT,
   getNetworkAccessKey,
@@ -51,7 +56,10 @@ export function firewallHint(os: OS, port: number): string | null {
   return null
 }
 
-export function NetworkAccessCard() {
+export function NetworkAccessCard({ title = 'Network access' }: {
+  /** Heading of the first section; the Network access page passes its own. */
+  title?: string
+} = {}) {
   const [status, setStatus] = useState<NetworkAccessStatus | null>(null)
   const [port, setPort] = useState(String(DEFAULT_NETWORK_ACCESS_PORT))
   const [key, setKey] = useState<string | null>(null)
@@ -152,146 +160,158 @@ export function NetworkAccessCard() {
   const hint = listening && status?.port ? firewallHint(getPlatform().os, status.port) : null
 
   return (
-    <SectionCard>
-      <SectionCardHeader>Network access</SectionCardHeader>
-      <div className="space-y-3.5 p-3.5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p id="network-access-label" className="text-xs font-semibold text-(--color-text)">
-              Allow devices on your network to connect
-            </p>
-            <p className="mt-0.5 text-xs md:text-[11px] leading-relaxed text-(--color-text-subtle)">
-              {sidecarRunning
-                ? 'Phones and other computers connect to the builtin backend with the access key below.'
-                : 'Start the builtin backend first.'}
-            </p>
-          </div>
+    <div className="space-y-8">
+      <PanelSection
+        title={title}
+        description="Let phones and other computers on your network use the builtin backend."
+        flush
+      >
+        <PanelRow
+          label="Allow devices on your network to connect"
+          labelId="network-access-label"
+          description={sidecarRunning
+            ? 'Phones and other computers connect to the builtin backend with the access key below.'
+            : 'Start the builtin backend first.'}
+        >
           <Switch
             aria-labelledby="network-access-label"
             checked={switchOn}
             onCheckedChange={toggle}
             disabled={pending || !status || !sidecarRunning}
           />
-        </div>
+        </PanelRow>
 
-        <div className="grid gap-1.5">
-          <label className="text-xs md:text-[11px] font-semibold text-(--color-text-muted)" htmlFor="network-access-port">
-            Preferred port
-          </label>
+        <PanelRow
+          label="Preferred port"
+          htmlFor="network-access-port"
+          description={
+            status?.fallback && status.port ? (
+              <span role="status">Port {status.requested_port} was in use; listening on {status.port}.</span>
+            ) : (
+              'Used when network access turns on. Turn it off to change the port.'
+            )
+          }
+        >
           <Input
             id="network-access-port"
             value={port}
             onChange={(event) => setPort(event.target.value.replace(/\D/g, ''))}
             inputMode="numeric"
-            className="w-28 font-mono"
+            className="h-9 w-28 font-mono"
             disabled={pending || switchOn}
           />
-        </div>
+        </PanelRow>
 
-        {status?.fallback && status.port ? (
-          <p className="text-xs md:text-[11px] text-(--color-text-muted)" role="status">
-            Port {status.requested_port} was in use; listening on {status.port}.
-          </p>
+        {error ? (
+          <div className="px-4 py-3">
+            <p className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) px-3 py-2.5 text-xs text-(--color-error)" role="alert">
+              {error}
+            </p>
+          </div>
         ) : null}
+      </PanelSection>
 
-        {listening ? (
-          <>
-            <div className="grid gap-1.5">
-              <span className="text-xs md:text-[11px] font-semibold text-(--color-text-muted)">Address</span>
-              {status?.lan_urls.length ? (
-                status.lan_urls.map((url) => (
-                  <div key={url} className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-xs border border-(--color-border) bg-(--bg-card) px-2 py-1 font-mono text-xs md:text-[11px] text-(--color-text)">
-                      {url}
-                    </code>
-                    <Button type="button" variant="subtle" size="xs" onClick={() => void copy(url)}>
-                      copy
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs md:text-[11px] text-(--color-text-subtle)">
-                  Listening on port {status?.port}. No LAN address was found; use this computer&apos;s IP address.
-                </p>
-              )}
-              <div>
-                <Button
-                  type="button"
-                  variant="subtle"
-                  size="xs"
-                  onClick={() => void toggleQr()}
-                  disabled={pending || !status?.lan_urls.length}
-                >
-                  {qrLink ? 'hide QR' : 'show QR'}
-                </Button>
-              </div>
-              {qrLink ? (
-                <div className="flex flex-col items-center gap-2 rounded-xs border border-(--color-border) bg-(--bg-card) p-3">
-                  <ConnectQrCode value={qrLink} />
-                  <p className="text-center text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">
-                    Scan with your phone&apos;s camera to open OpenAgentd and connect. The code contains the access key.
+      {listening ? (
+        <PanelSection title="Connect a device" flush>
+            <PanelRow
+              label="Address"
+              description="Open it on the other device, or scan the QR code."
+              stack
+            >
+              <div className="space-y-2">
+                {status?.lan_urls.length ? (
+                  status.lan_urls.map((url) => (
+                    <div key={url} className="flex items-center gap-2">
+                      <code className={CODE_BOX}>{url}</code>
+                      <Button type="button" variant="subtle" size="sm" onClick={() => void copy(url)} aria-label={`Copy ${url}`}>
+                        Copy
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className={TEXT.hint}>
+                    Listening on port {status?.port}. No LAN address was found; use this computer&apos;s IP address.
                   </p>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid gap-1.5">
-              <span className="text-xs md:text-[11px] font-semibold text-(--color-text-muted)">Access key</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <code
-                  data-testid="network-access-key"
-                  className="min-w-0 flex-1 truncate rounded-xs border border-(--color-border) bg-(--bg-card) px-2 py-1 font-mono text-xs md:text-[11px] text-(--color-text)"
-                >
-                  {revealed && key ? key : '••••••••••••••••'}
-                </code>
-                <Button type="button" variant="subtle" size="xs" onClick={() => void toggleReveal()} disabled={pending}>
-                  {revealed ? 'hide' : 'show'}
-                </Button>
-                <Button type="button" variant="subtle" size="xs" onClick={() => void copyKey()} disabled={pending}>
-                  copy
-                </Button>
-                <Button type="button" variant="danger-subtle" size="xs" onClick={() => replaceKey(null)} disabled={pending}>
-                  regenerate
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  aria-label="Custom access key"
-                  value={customKey}
-                  onChange={(event) => setCustomKey(event.target.value)}
-                  placeholder="Or use your own key (16+ characters)"
-                  type="password"
-                  className="min-w-0 flex-1"
-                  disabled={pending}
-                />
+                )}
                 <Button
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={() => replaceKey(customKey)}
-                  disabled={pending || customKey.trim().length === 0}
+                  onClick={() => void toggleQr()}
+                  disabled={pending || !status?.lan_urls.length}
                 >
-                  Use key
+                  {qrLink ? 'Hide QR' : 'Show QR'}
                 </Button>
+                {qrLink ? (
+                  <div className="flex flex-col items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-page) p-5">
+                    <ConnectQrCode value={qrLink} />
+                    <p className={cn('max-w-xs text-center', TEXT.hint)}>
+                      Scan with your phone&apos;s camera to open OpenAgentd and connect. The code contains the access key.
+                    </p>
+                  </div>
+                ) : null}
               </div>
-            </div>
-          </>
-        ) : null}
+            </PanelRow>
 
-        {hint ? <p className="text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">{hint}</p> : null}
+            <PanelRow
+              label="Access key"
+              description="Every device needs it. Changing it disconnects devices that use the old one."
+              stack
+            >
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <code data-testid="network-access-key" className={CODE_BOX}>
+                    {revealed && key ? key : '••••••••••••••••'}
+                  </code>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button type="button" variant="subtle" size="sm" onClick={() => void toggleReveal()} disabled={pending}>
+                      {revealed ? 'Hide' : 'Show'}
+                    </Button>
+                    <Button type="button" variant="subtle" size="sm" onClick={() => void copyKey()} disabled={pending} aria-label="Copy key">
+                      Copy
+                    </Button>
+                    <Button type="button" variant="danger-subtle" size="sm" onClick={() => replaceKey(null)} disabled={pending}>
+                      Regenerate
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    aria-label="Custom access key"
+                    value={customKey}
+                    onChange={(event) => setCustomKey(event.target.value)}
+                    placeholder="Or use your own key (16+ characters)"
+                    type="password"
+                    className="h-9 min-w-0 flex-1"
+                    disabled={pending}
+                  />
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="h-9"
+                    onClick={() => replaceKey(customKey)}
+                    disabled={pending || customKey.trim().length === 0}
+                  >
+                    Use key
+                  </Button>
+                </div>
+              </div>
+            </PanelRow>
+        </PanelSection>
+      ) : null}
 
-        {error ? (
-          <div className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">
-            {error}
-          </div>
-        ) : null}
-
-        <p className="text-xs md:text-[11px] leading-relaxed text-(--color-text-subtle)">
-          Anyone with the key gets full control of this computer&apos;s agents. Traffic is plain HTTP, so use it only on
-          networks you trust. Network access works while this app is open; changing the key disconnects devices that
-          use the old one.
-        </p>
-      </div>
-    </SectionCard>
+      <Callout tone="warning">
+        <div className="space-y-2">
+          {hint ? <p>{hint}</p> : null}
+          <p>
+            Anyone with the key controls this computer&apos;s agents, and traffic is plain HTTP: use it only on
+            networks you trust. Access ends when the app quits.
+          </p>
+        </div>
+      </Callout>
+    </div>
   )
 }
+
+const CODE_BOX = 'min-w-0 flex-1 truncate rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 font-mono text-xs text-(--color-text) select-text'

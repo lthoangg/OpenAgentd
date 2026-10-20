@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
-import { AlertCircle } from 'lucide-react'
 
-import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
+import { Callout } from '@/components/ui/callout'
+import { PanelSection } from '@/components/ui/panel-section'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
-import { SettingsField } from '../SettingsField'
+import { Field } from '@/components/ui/field'
 import { type AgentFrontmatter } from '../frontmatter'
 import { validateDescription, validateModel } from '../schema'
 import { ModelCombobox, type ModelOption } from './ModelCombobox'
@@ -22,16 +22,17 @@ export function ParseErrorBanner({
   onSwitchToRaw: () => void
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-sm border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">
-      <AlertCircle size={14} className="mt-0.5 shrink-0" />
-      <div className="flex-1">
-        <p className="font-medium">Parse error</p>
-        <p className="mt-0.5 opacity-90">{message}</p>
-      </div>
-      <Button size="xs" variant="default" className="min-h-9 md:min-h-0" onClick={onSwitchToRaw}>
-        Open raw
-      </Button>
-    </div>
+    <Callout
+      tone="error"
+      title="Parse error"
+      action={
+        <Button size="xs" variant="default" className="min-h-9 md:min-h-0" onClick={onSwitchToRaw}>
+          Open raw
+        </Button>
+      }
+    >
+      {message}
+    </Callout>
   )
 }
 
@@ -108,22 +109,17 @@ export function FormFields({
     : toolOptions.filter((option) => !implicitToolNames.has(option.value))
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8">
       {hasBuiltInProfile && (
-        <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-xs text-(--color-text-muted)">
-          <p className="font-semibold text-(--color-text)">Built-in OpenAgentd profile</p>
-          <p className="mt-1 leading-relaxed">
-            OpenAgentd provides the default description, tools, skills, and system prompt in code. Custom instructions are configured via global or workspace AGENTS.md files.
-          </p>
-        </div>
+        <Callout title="Built-in OpenAgentd profile">
+          Defaults come from OpenAgentd. Add your own instructions in a global or workspace AGENTS.md.
+        </Callout>
       )}
 
       {/* Identity ─────────────────────────────────────────────── */}
-      <SectionCard>
-        <SectionCardHeader>Identity — who is this agent and what is its role?</SectionCardHeader>
-        <SectionCardRows>
-        <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
-          <SettingsField
+      <PanelSection title="Identity" description="Who this agent is and what it is for.">
+        <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
+          <Field
             label="Description"
             error={descriptionError}
             className="md:col-span-2"
@@ -140,17 +136,14 @@ export function FormFields({
               placeholder="Coordinates work and breaks tasks into focused steps."
               aria-invalid={!!descriptionError || undefined}
             />
-          </SettingsField>
+          </Field>
         </div>
-        </SectionCardRows>
-      </SectionCard>
+      </PanelSection>
 
       {/* Model & behaviour ─────────────────────────────────────── */}
-      <SectionCard>
-        <SectionCardHeader>Model &amp; behaviour — provider, reasoning depth</SectionCardHeader>
-        <SectionCardRows>
-        <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
-          <SettingsField label="Model" required error={modelError} className="md:col-span-2">
+      <PanelSection title="Model & behaviour" description="Which model runs this agent, and how deeply it reasons.">
+        <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
+          <Field label="Model" required error={modelError} className="md:col-span-2">
             <ModelCombobox
               value={fm.model ?? ''}
               options={currentModelOptions}
@@ -172,9 +165,9 @@ export function FormFields({
               invalid={!!modelError}
               placeholder="Type to search models…"
             />
-          </SettingsField>
+          </Field>
 
-          <SettingsField label="Thinking level" hint="How much hidden reasoning the model may use.">
+          <Field label="Thinking level" hint="How much hidden reasoning the model may use.">
             <Dropdown
               value={fm.thinking_level ?? '__none__'}
               onValueChange={(v) => {
@@ -190,21 +183,17 @@ export function FormFields({
                 <DropdownItem key={lvl} value={lvl}>{lvl}</DropdownItem>
               ))}
             </Dropdown>
-          </SettingsField>
+          </Field>
         </div>
-        </SectionCardRows>
-      </SectionCard>
+      </PanelSection>
 
       {/* Capabilities ──────────────────────────────────────────── */}
-      <SectionCard>
-        <SectionCardHeader>
-          {isLead
-            ? 'Capabilities \u2014 extra tools and skills on top of the built-in profile'
-            : 'Capabilities \u2014 tools'}
-        </SectionCardHeader>
-        <SectionCardRows>
-        <div className="px-3 py-3 flex flex-col gap-4">
-          <SettingsField
+      <PanelSection
+        title="Capabilities"
+        description={isLead ? 'Extra tools and skills on top of the built-in profile.' : 'The tools this agent may use.'}
+      >
+        <div className="flex flex-col gap-5">
+          <Field
             label="Tools"
             hint={
               builtInTools.length > 0
@@ -222,21 +211,17 @@ export function FormFields({
               placeholder="Pick extra tools this agent may invoke…"
               selectedLabel="Selected tools"
             />
-          </SettingsField>
+          </Field>
 
         </div>
-        </SectionCardRows>
-      </SectionCard>
+      </PanelSection>
 
       {/* System prompt ─────────────────────────────────────────── */}
-      <SectionCard>
-        <SectionCardHeader>
-          {isLead
-            ? 'System prompt \u2014 custom instructions'
-            : "System prompt \u2014 instructions defining this agent's behavior"}
-        </SectionCardHeader>
-        <SectionCardRows>
-        <div className="px-3 py-3 flex flex-col gap-2">
+      <PanelSection
+        title="System prompt"
+        description={isLead ? 'Custom instructions for the lead agent.' : "Instructions that define this agent's behavior."}
+      >
+        <div className="flex flex-col gap-3">
           {isLead && !body.trim() && (
             <div className="flex items-center justify-between text-xs text-(--color-text-muted)">
               <span>Using built-in system prompt. Edit below to override.</span>
@@ -264,8 +249,7 @@ export function FormFields({
             aria-label="System prompt"
           />
         </div>
-        </SectionCardRows>
-      </SectionCard>
+      </PanelSection>
     </div>
   )
 }
@@ -275,7 +259,7 @@ export function FormFields({
 
 function CapabilityChips({ label, values }: { label: string; values: string[] }) {
   return (
-    <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/30 px-2.5 py-2">
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-key)/30 px-3 py-2.5">
       <p className="mb-1.5 label-caps text-(--color-text-muted) select-none">
         {label}
       </p>
@@ -292,5 +276,3 @@ function CapabilityChips({ label, values }: { label: string; values: string[] })
     </div>
   )
 }
-
-// SettingsField is imported from '../SettingsField' — the local Field was removed.

@@ -113,7 +113,7 @@ describe('MemorySettingsPage', () => {
 
   it('runs lint and displays findings banner', async () => {
     render(<MemorySettingsPage />)
-    const lintBtn = screen.getByText('Run Lint')
+    const lintBtn = screen.getByText('Run lint')
     fireEvent.click(lintBtn)
 
     await waitFor(() => {

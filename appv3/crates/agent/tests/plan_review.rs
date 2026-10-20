@@ -161,7 +161,11 @@ async fn submit_pauses_and_approval_resumes_in_code_mode() {
     assert_eq!(std::fs::read_to_string(h.ws.join(".agents/plans/.gitignore")).unwrap(), "*\n");
     let status = std::process::Command::new("git").args(["status", "--porcelain"]).current_dir(&h.ws).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&status.stdout), "", "the plan stays out of git");
-    assert_eq!(h.last_tool_result(1), format!("Plan saved as revision 1 (2 lines) at {rel}. Call submit_plan when it is ready for review."));
+    let attachments = rel.trim_end_matches(".md");
+    assert_eq!(
+        h.last_tool_result(1),
+        format!("Plan saved as revision 1 (2 lines) at {rel}. Put its mockups and diagrams in {attachments}/ (write them with patch) and link them by that path. Call submit_plan when it is ready for review.")
+    );
     let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
     assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
     assert_eq!(row.questions()[0]["question"], "Review plan revision 1. Ready.");

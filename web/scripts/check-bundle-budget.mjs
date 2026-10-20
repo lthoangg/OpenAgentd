@@ -42,7 +42,8 @@ if (import.meta.main) {
   // and Session Settings modals, Markdown, MCP app results) load with the
   // shell, so opening one never waits on a chunk; that raised the eager graph
   // by ~231 kB gzip. Only the heavy renderers stay lazy: PDF.js, xterm and
-  // KaTeX (Mermaid was removed). Limits sit just above the measured 2.54 MB / 754 kB gzip, and the
+  // KaTeX (Mermaid.js was removed; Pele now draws Mermaid fences and loads on first use).
+  // Limits sit just above the measured 2.54 MB / 754 kB gzip, and the
   // 1.90 MB index chunk is now the largest one.
   // The plan review (Plan tab, transcript card) raised it to 2.57 MB / 765 kB.
   // The web preview (Preview tab, design comments) raised it to 2.61 MB /
@@ -64,7 +65,11 @@ if (import.meta.main) {
   // 12 kB gzip: 2.45 MB / 739 kB, with a 1.80 MB index chunk.
   // framer-motion 14.3 (hardware-accelerated independent transforms) added
   // 9 kB / 3 kB gzip: 2.46 MB / 742 kB, with a 1.80 MB index chunk.
-  const limits = { eagerBytes: 2_470_000, eagerGzipBytes: 745_000, largestChunkBytes: 1_810_000 }
+  // Later features had already reached 2.48 MB / 752 kB with a 1.82 MB index
+  // chunk. Reviewer-shaped plans (the Appendix, plan links) and the Mermaid
+  // block with its SVG sanitizer added 10 kB / 3 kB gzip: 2.49 MB / 755 kB,
+  // with a 1.83 MB index chunk. Pele itself stays out of the startup graph.
+  const limits = { eagerBytes: 2_500_000, eagerGzipBytes: 760_000, largestChunkBytes: 1_840_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

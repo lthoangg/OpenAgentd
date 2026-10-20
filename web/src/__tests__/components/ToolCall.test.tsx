@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ToolCall } from "@/components/ToolCall"
+import { APP_EVENTS } from "@/lib/app-events"
 
 afterEach(cleanup)
 
@@ -774,6 +775,26 @@ describe("ToolCall — plan display", () => {
     const args = JSON.stringify({ action: "edit", edits: [{ old: "a", new: "b" }] })
     render(<ToolCall name="plan" args={args} done={false} />)
     expect(getHeader("Plan: Editing plan…")).toBeTruthy()
+  })
+
+  it("opens the Plan tab to watch the plan being written", () => {
+    const opened: Event[] = []
+    const onOpen = (event: Event) => opened.push(event)
+    window.addEventListener(APP_EVENTS.openPlan, onOpen)
+    render(<ToolCall name="plan" args='{"action":"write","content":"# Ship' done={false} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Watch plan" }))
+    expect(opened).toHaveLength(1)
+    window.removeEventListener(APP_EVENTS.openPlan, onOpen)
+  })
+
+  it("offers View plan once saved, and nothing when the call failed", () => {
+    const args = JSON.stringify({ action: "write", content: "# Ship it" })
+    const { rerender } = render(<ToolCall name="plan" args={args} done result="Plan saved as revision 1 (1 lines) at plan.md." />)
+    expect(screen.getByRole("button", { name: "View plan" })).toBeTruthy()
+
+    rerender(<ToolCall name="plan" args={args} done result="Error: The plan is empty." />)
+    expect(screen.queryByRole("button", { name: "View plan" })).toBeNull()
   })
 })
 

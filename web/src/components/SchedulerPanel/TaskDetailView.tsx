@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertCircle, CalendarClock, Check, Copy, FolderOpen, Loader2, Pause, Pencil, Play, Terminal, Trash2, X, Zap } from 'lucide-react'
+import { CalendarClock, Check, Copy, FolderOpen, Loader2, Pause, Pencil, Play, Terminal, Trash2, X, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { formatRelativeDate, formatInTimezone } from '@/utils/format'
 import { formatScheduleLabel, slugify } from './utils'
@@ -9,12 +9,18 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
-import { SchedulerBackButton, useSchedulerPaneHeaderClass } from './chrome'
+import { SchedulerBackButton, useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
+import { Callout } from '@/components/ui/callout'
+import { PanelSection } from '@/components/ui/panel-section'
+import { COMPACT_ROW, ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/ui/panel-tokens'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
 
 export function TaskDetailView({
   task,
   onClose,
   closeMode = 'close',
+  hostTitled = false,
 }: {
   task: ScheduledTaskResponse
   onClose: () => void
@@ -23,12 +29,20 @@ export function TaskDetailView({
    * stacked hosts (the dock) where the detail replaces the list.
    */
   closeMode?: 'close' | 'back'
+  /**
+   * The host header already shows the task name and the way back (the phone
+   * overlay), so the pane drops its own title and close button.
+   */
+  hostTitled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const headerClass = useSchedulerPaneHeaderClass()
+  const footerSafeArea = useSchedulerFooterSafeArea()
+  // Phones move Run now / Pause into a bottom bar, within thumb reach.
+  const isMobile = useIsMobile()
 
   const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
@@ -65,6 +79,7 @@ export function TaskDetailView({
         task={task}
         onSuccess={() => setEditing(false)}
         onCancel={() => setEditing(false)}
+        hostTitled={hostTitled}
       />
     )
   }
@@ -85,6 +100,25 @@ export function TaskDetailView({
     failed: 'bg-(--color-error)',
   }[task.status] ?? 'bg-(--color-text-muted)'
 
+  const sessionLabel = !task.session_id
+    ? 'New session for each run'
+    : task.session_id === 'auto'
+      ? 'One persistent session, reused every run'
+      : task.session_id === currentSessionId
+        ? 'This chat session'
+        : null
+
+  const pausePending = pauseMutation.isPending || resumeMutation.isPending
+  const runIcon = triggerMutation.isPending ? <Loader2 size={ICON_SIZE} className="animate-spin" /> : <Zap size={ICON_SIZE} />
+  const pauseIcon = pausePending ? (
+    <Loader2 size={ICON_SIZE} className="animate-spin" />
+  ) : task.status === 'paused' ? (
+    <Play size={ICON_SIZE} />
+  ) : (
+    <Pause size={ICON_SIZE} />
+  )
+  const pauseLabel = task.status === 'paused' ? 'Resume' : 'Pause'
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
@@ -93,294 +127,160 @@ export function TaskDetailView({
           {closeMode === 'back' && <SchedulerBackButton onClick={onClose} />}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-sm font-bold text-(--color-text)">{task.name}</h2>
+              {!hostTitled && (
+                <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
+              )}
               <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle)">
                 slug: <span className="text-(--color-text-2)">{slugify(task.name)}</span>
               </span>
             </div>
-            <div className="mt-1 flex items-center gap-2 text-xs text-(--color-text-muted)">
-              <CalendarClock size={12} className="text-(--color-text-subtle)" />
+            <div className={cn('mt-1 flex items-center gap-1.5', TEXT.hint)}>
+              <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
               <span>{formatScheduleLabel(task)}</span>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={triggerTask}
-                    disabled={triggerMutation.isPending}
-                    aria-label="Trigger now"
-                    className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-accent)"
-                  >
-                    {triggerMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-                  </Button>
-                }
-              />
-              <TooltipContent>Trigger now</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={togglePaused}
-                    disabled={pauseMutation.isPending || resumeMutation.isPending}
-                    aria-label={task.status === 'paused' ? 'Resume' : 'Pause'}
-                    className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-                  >
-                    {pauseMutation.isPending || resumeMutation.isPending ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : task.status === 'paused' ? (
-                      <Play size={13} />
-                    ) : (
-                      <Pause size={13} />
-                    )}
-                  </Button>
-                }
-              />
-              <TooltipContent>{task.status === 'paused' ? 'Resume' : 'Pause'}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                    aria-label="Edit task"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                }
-              />
-              <TooltipContent>Edit task</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => setDeleteConfirmationOpen(true)}
-                    disabled={deleteMutation.isPending}
-                    aria-label="Delete task"
-                    className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                }
-              />
-              <TooltipContent>Delete task</TooltipContent>
-            </Tooltip>
-            {closeMode === 'close' && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button variant="ghost" size="icon-dense" onClick={onClose} aria-label="Close detail">
-                      <X size={14} />
-                    </Button>
-                  }
-                />
-                <TooltipContent>Close</TooltipContent>
-              </Tooltip>
+          <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+            {!isMobile && (
+              <>
+                <HeaderAction label="Trigger now" onClick={triggerTask} disabled={triggerMutation.isPending} icon={runIcon} />
+                <HeaderAction label={pauseLabel} onClick={togglePaused} disabled={pausePending} icon={pauseIcon} />
+              </>
+            )}
+            <HeaderAction label="Edit task" onClick={() => setEditing(true)} icon={<Pencil size={ICON_SIZE} />} />
+            <HeaderAction
+              label="Delete task"
+              danger
+              onClick={() => setDeleteConfirmationOpen(true)}
+              disabled={deleteMutation.isPending}
+              icon={<Trash2 size={ICON_SIZE} />}
+            />
+            {closeMode === 'close' && !hostTitled && (
+              <HeaderAction label="Close detail" tooltip="Close" onClick={onClose} icon={<X size={ICON_SIZE} />} />
             )}
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 @xl:p-5 space-y-3">
-        {/* Status Metrics Strip */}
-        <section className="grid grid-cols-3 gap-2">
-          <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2.5">
-            <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Status</span>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor}`} aria-hidden="true" />
-              <span className={`text-xs font-semibold capitalize ${statusColor}`}>{task.status}</span>
-            </div>
-          </div>
-          <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2.5">
-            <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Enabled</span>
-            <div className="mt-0.5 text-xs font-semibold text-(--color-text)">
-              {task.enabled ? 'Yes' : 'No'}
-            </div>
-          </div>
-          <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2.5">
-            <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Run Count</span>
-            <div className="mt-0.5 text-xs font-semibold text-(--color-text)">
-              {task.run_count}{task.max_runs ? ` / ${task.max_runs}` : ''}
-            </div>
-          </div>
+      <div className="flex-1 space-y-8 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
+        {/* Status strip */}
+        <section aria-label="Status" className="grid grid-cols-3 gap-3">
+          <StatTile label="Status">
+            <span className="flex items-center gap-1.5">
+              <span className={`size-2 shrink-0 rounded-full ${statusDotColor}`} aria-hidden="true" />
+              <span className={`capitalize ${statusColor}`}>{task.status}</span>
+            </span>
+          </StatTile>
+          <StatTile label="Enabled">{task.enabled ? 'Yes' : 'No'}</StatTile>
+          <StatTile label="Runs">
+            {task.run_count}{task.max_runs ? ` / ${task.max_runs}` : ''}
+          </StatTile>
         </section>
 
-        {/* Configuration Card */}
-        <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 label-caps text-(--color-text-muted)">
-            Routing & Target
-          </h3>
-          <div className="grid gap-2.5 @xl:grid-cols-2">
-            <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5">
-              <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Routing</span>
-              <p className="mt-0.5 text-xs font-medium text-(--color-text)">
-                {task.workspace ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <FolderOpen size={12} className="text-(--color-accent)" />
-                    <span>Coding agent</span>
-                    {task.workspace && (
-                      <Tooltip className="min-w-0 max-w-[200px]">
-                        <TooltipTrigger
-                          className="min-w-0 max-w-[200px]"
-                          render={<span className="font-mono text-xs text-(--color-text-muted) truncate">· {task.workspace}</span>}
-                        />
-                        <TooltipContent>{task.workspace}</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </span>
+        <PanelSection title="Delivery" flush>
+          <DetailRow label="Agent" long>
+            {task.workspace ? (
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+                <FolderOpen size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                <span className="shrink-0">Coding agent</span>
+                {isMobile ? (
+                  // No hover on touch: show the whole path instead of a tooltip.
+                  <span className="min-w-0 break-all font-mono text-(--color-text-muted)">· {task.workspace}</span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Terminal size={12} className="text-(--color-accent)" />
-                    <span>Default agent</span>
-                  </span>
+                  <Tooltip className="min-w-0 max-w-[220px]">
+                    <TooltipTrigger
+                      className="min-w-0 max-w-[220px]"
+                      render={<span className="truncate font-mono text-(--color-text-muted)">· {task.workspace}</span>}
+                    />
+                    <TooltipContent>{task.workspace}</TooltipContent>
+                  </Tooltip>
                 )}
-              </p>
-            </div>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <Terminal size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                Default agent
+              </span>
+            )}
+          </DetailRow>
+          <DetailRow label="Session" long>
+            {sessionLabel ?? (
+              <span className="break-all font-mono text-(--color-text-2)">{task.session_id}</span>
+            )}
+          </DetailRow>
+        </PanelSection>
 
-            <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5">
-              <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Session Target</span>
-              <p className="mt-0.5 text-xs text-(--color-text)">
-                {!task.session_id && 'New Session (fresh thread each run)'}
-                {task.session_id === 'auto' && 'Persistent Session (reused dedicated thread)'}
-                {task.session_id && task.session_id !== 'auto' && (
-                  <>
-                    {task.session_id === currentSessionId ? (
-                      <span className="font-semibold text-(--color-accent)">
-                        Current Chat Session (active thread)
-                      </span>
-                    ) : (
-                      <span className="font-mono text-xs text-(--color-text-2) break-all">
-                        Specific Session: {task.session_id}
-                      </span>
-                    )}
-                  </>
-                )}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Schedule Timing Card */}
-        <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 label-caps text-(--color-text-muted)">
-            Schedule Details
-          </h3>
-          <div className="divide-y divide-(--color-border-subtle) rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-2.5">
-            <DetailRow label="Type">
-              <span className="text-xs font-semibold text-(--color-text) capitalize">{task.schedule_type}</span>
+        <PanelSection title="Schedule" flush>
+          <DetailRow label="Type">
+            <span className="capitalize">{task.schedule_type}</span>
+          </DetailRow>
+          {task.schedule_type === 'at' && task.at_datetime && (
+            <DetailRow label="Date and time">{formatInTimezone(task.at_datetime, task.timezone)}</DetailRow>
+          )}
+          {task.schedule_type === 'every' && task.every_seconds && (
+            <DetailRow label="Interval">{task.every_seconds}s</DetailRow>
+          )}
+          {task.schedule_type === 'cron' && task.cron_expression && (
+            <DetailRow label="Expression">
+              <code className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs text-(--color-text)">
+                {task.cron_expression}
+              </code>
             </DetailRow>
-            {task.schedule_type === 'at' && task.at_datetime && (
-              <DetailRow label="Date/Time">
-                <span className="text-xs font-medium text-(--color-text)">
-                  {formatInTimezone(task.at_datetime, task.timezone)}
-                </span>
-              </DetailRow>
-            )}
-            {task.schedule_type === 'every' && task.every_seconds && (
-              <DetailRow label="Interval">
-                <span className="text-xs font-medium text-(--color-text)">{task.every_seconds}s</span>
-              </DetailRow>
-            )}
-            {task.schedule_type === 'cron' && task.cron_expression && (
-              <DetailRow label="Expression">
-                <code className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs font-medium text-(--color-text)">
-                  {task.cron_expression}
-                </code>
-              </DetailRow>
-            )}
-            <DetailRow label="Timezone">
-              <span className="text-xs text-(--color-text-muted)">{task.timezone}</span>
-            </DetailRow>
-          </div>
-        </section>
+          )}
+          <DetailRow label="Timezone">{task.timezone}</DetailRow>
+        </PanelSection>
 
-        {/* Prompt Card */}
-        <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <div className="mb-1.5 flex items-center justify-between">
-            <h3 className="label-caps text-(--color-text-muted)">
-              Prompt
-            </h3>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={handleCopyPrompt}
-                    className="h-6 gap-1 px-1.5 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-                  >
-                    {copiedPrompt ? <Check size={12} className="text-(--color-success)" /> : <Copy size={12} />}
-                    <span>{copiedPrompt ? 'Copied' : 'Copy'}</span>
-                  </Button>
-                }
-              />
-              <TooltipContent>Copy prompt</TooltipContent>
-            </Tooltip>
-          </div>
-          <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5 font-mono text-xs leading-relaxed text-(--color-text) whitespace-pre-wrap">
+        <PanelSection
+          title="Prompt"
+          actions={
+            <Button type="button" variant="ghost" size="sm" onClick={handleCopyPrompt} aria-label="Copy prompt">
+              {copiedPrompt ? (
+                <Check size={ICON_SIZE_INLINE} className="text-(--color-success)" aria-hidden="true" />
+              ) : (
+                <Copy size={ICON_SIZE_INLINE} aria-hidden="true" />
+              )}
+              {copiedPrompt ? 'Copied' : 'Copy'}
+            </Button>
+          }
+        >
+          <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)">
             {task.prompt}
-          </div>
-        </section>
+          </p>
+        </PanelSection>
 
-        {/* Run History Card */}
-        <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 label-caps text-(--color-text-muted)">
-            Run History
-          </h3>
-          <div className="divide-y divide-(--color-border-subtle) rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-2.5">
+        <section className="space-y-3">
+          <PanelSection title="Runs" flush>
             {task.last_run_at && (
-              <DetailRow label="Last Run">
-                <span className="text-xs text-(--color-text)">
-                  {formatRelativeDate(task.last_run_at)}
-                </span>
-              </DetailRow>
+              <DetailRow label="Last run">{formatRelativeDate(task.last_run_at)}</DetailRow>
             )}
             {task.next_fire_at && (
-              <DetailRow label="Next Fire">
-                <span className="text-xs font-medium text-(--color-accent)">
-                  {formatRelativeDate(task.next_fire_at)}
-                </span>
+              <DetailRow label="Next run">
+                <span className="font-medium text-(--color-accent)">{formatRelativeDate(task.next_fire_at)}</span>
               </DetailRow>
             )}
-            {!task.last_run_at && !task.next_fire_at && !task.last_error && (
-              <div className="py-2 text-center text-xs italic text-(--color-text-muted)">
-                No runs recorded yet.
-              </div>
-            )}
-          </div>
-
+            <DetailRow label="Created">{formatRelativeDate(task.created_at)}</DetailRow>
+            <DetailRow label="Updated">{formatRelativeDate(task.updated_at)}</DetailRow>
+          </PanelSection>
           {task.last_error && (
-            <div className="mt-2.5 rounded-xs border border-(--color-error)/30 bg-(--color-error-subtle) p-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-(--color-error)">
-                <AlertCircle size={12} />
-                <span>Last Execution Error</span>
-              </div>
-              <p className="mt-1 font-mono text-xs text-(--color-error) whitespace-pre-wrap">
-                {task.last_error}
-              </p>
-            </div>
+            <Callout tone="error" title="Last run failed">
+              <p className="whitespace-pre-wrap break-words font-mono">{task.last_error}</p>
+            </Callout>
           )}
         </section>
-
-        {/* Metadata Footer */}
-        <div className="px-1 py-1">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs md:text-[11px] text-(--color-text-subtle)">
-            <div>Created: {formatRelativeDate(task.created_at)}</div>
-            <div>Updated: {formatRelativeDate(task.updated_at)}</div>
-          </div>
-        </div>
       </div>
+
+      {isMobile && (
+        <div className={cn('flex shrink-0 gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3', footerSafeArea)}>
+          <Button type="button" className="flex-1" onClick={triggerTask} disabled={triggerMutation.isPending} aria-label="Trigger now">
+            {runIcon}
+            Run now
+          </Button>
+          <Button type="button" className="flex-1" onClick={togglePaused} disabled={pausePending} aria-label={pauseLabel}>
+            {pauseIcon}
+            {pauseLabel}
+          </Button>
+        </div>
+      )}
 
       <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
         <DialogContent showCloseButton={false}>
@@ -411,11 +311,68 @@ export function TaskDetailView({
   )
 }
 
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+/** `long` values (paths, ids) stack under the label on phones instead of truncating. */
+function DetailRow({ label, long = false, children }: { label: string; long?: boolean; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5">
-      <span className="text-xs text-(--color-text-muted)">{label}</span>
-      {children}
+    <div
+      className={
+        long
+          ? // COMPACT_ROW geometry, stacked below md (`cn` does not merge, so not layered on it).
+            'flex min-h-11 flex-col gap-1 px-4 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3'
+          : cn(COMPACT_ROW, 'justify-between')
+      }
+    >
+      <span className={cn('shrink-0', TEXT.hint)}>{label}</span>
+      <span className={cn('min-w-0', long ? 'max-w-full md:text-right' : 'text-right', TEXT.label)}>{children}</span>
     </div>
+  )
+}
+
+function StatTile({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3.5">
+      <p className={TEXT.hint}>{label}</p>
+      <div className="mt-1 text-sm font-semibold text-(--color-text)">{children}</div>
+    </div>
+  )
+}
+
+function HeaderAction({
+  label,
+  tooltip = label,
+  icon,
+  onClick,
+  disabled,
+  danger = false,
+}: {
+  label: string
+  tooltip?: string
+  icon: ReactNode
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label}
+            className={cn(
+              'text-(--color-text-muted) pointer-coarse:size-9',
+              danger ? 'hover:bg-(--color-error-subtle) hover:text-(--color-error)' : 'hover:text-(--color-text)',
+            )}
+          >
+            {icon}
+          </Button>
+        }
+      />
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   )
 }

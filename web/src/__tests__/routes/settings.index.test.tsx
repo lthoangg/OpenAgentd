@@ -1,5 +1,5 @@
 /**
- * Tests for the Settings hub landing page (the "About" section in the modal).
+ * Tests for Settings → About OpenAgentd.
  *
  * 1. Desktop updates UI — the hub exposes the desktop updater card.
  * 2. Header version comes from /api/health and degrades gracefully.
@@ -10,18 +10,14 @@ import '@testing-library/jest-dom'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 
 import { queryKeys } from '@/queries'
-import { THEME_STORAGE_KEY } from '@/lib/theme'
-import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
 }))
 
-import { SettingsHubPage } from '@/components/settings/pages/settings.index'
-import { SETTINGS_SECTIONS } from '@/components/settings/sections'
+import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
 
 function renderHub(health?: { status: string; version: string; capabilities?: string[] }) {
   const queryClient = new QueryClient({
@@ -37,7 +33,7 @@ function renderHub(health?: { status: string; version: string; capabilities?: st
 
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <SettingsHubPage />
+      <AboutSettingsPage />
     </QueryClientProvider>,
   )
 
@@ -62,7 +58,7 @@ afterEach(() => {
 
 // ── Desktop updates card ──────────────────────────────────────────────────
 
-describe('SettingsHubPage — desktop updates card', () => {
+describe('AboutSettingsPage — desktop updates card', () => {
   it('renders desktop update controls without the old Application update heading', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
@@ -75,7 +71,7 @@ describe('SettingsHubPage — desktop updates card', () => {
 
 // ── Header ────────────────────────────────────────────────────────────────
 
-describe('SettingsHubPage — header', () => {
+describe('AboutSettingsPage — header', () => {
   it('renders the project name and tagline', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
     expect(screen.getByRole('heading', { name: /about openagentd/i })).toBeInTheDocument()
@@ -94,94 +90,14 @@ describe('SettingsHubPage — header', () => {
   })
 })
 
-// ── Mobile Preferences ─────────────────────────────────────────────────────
-
-describe('SettingsHubPage — mobile preferences', () => {
-  // The list is derived from the section registry, covering exactly the
-  // sections that have no slot in the five-item mobile tab bar. Multimodal,
-  // summarization and title generation are now groups inside Automation.
-  it('renders a preferences link for every section without a mobile tab', () => {
-    renderHub({ status: 'ok', version: '1.2.3' })
-
-    for (const section of SETTINGS_SECTIONS.filter((s) => !s.mobileTab && !s.capability)) {
-      expect(screen.getByText(section.label)).toBeInTheDocument()
-    }
-  })
-
-  it('shows capability-gated sections only when the backend advertises them', () => {
-    const v2 = renderHub({ status: 'ok', version: '2.26.0' })
-    expect(screen.queryByText('Plugins')).toBeNull()
-    v2.unmount()
-
-    renderHub({ status: 'ok', version: '3.0.0', capabilities: ['api.plugins'] })
-    expect(screen.getByText('Plugins')).toBeInTheDocument()
-  })
-
-  it('does not link to sections that already have a mobile tab', () => {
-    renderHub({ status: 'ok', version: '1.2.3' })
-
-    expect(screen.queryByText('Providers')).toBeNull()
-  })
-
-  it('does not expose the removed Terminal or Notifications settings pages', () => {
-    renderHub({ status: 'ok', version: '1.2.3' })
-
-    expect(SETTINGS_SECTIONS).not.toContainEqual(expect.objectContaining({ id: 'terminal' }))
-    expect(SETTINGS_SECTIONS).not.toContainEqual(expect.objectContaining({ id: 'notifications' }))
-    expect(screen.queryByText('Terminal')).toBeNull()
-    expect(screen.queryByText('Notifications')).toBeNull()
-  })
-})
-
 // ── Community & Support ───────────────────────────────────────────────────
 
-describe('SettingsHubPage — community links', () => {
+describe('AboutSettingsPage — community links', () => {
   it('renders Discord Server and Facebook Group community buttons', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
     expect(screen.getByText(/community & support/i)).toBeInTheDocument()
     expect(screen.getByText(/discord server/i)).toBeInTheDocument()
     expect(screen.getByText(/facebook group/i)).toBeInTheDocument()
-  })
-})
-
-describe('SettingsHubPage — appearance', () => {
-  afterEach(() => localStorage.removeItem(THEME_STORAGE_KEY))
-
-  it('picks the theme from the Appearance section', async () => {
-    const user = userEvent.setup()
-    renderHub()
-
-    const theme = screen.getByRole('radiogroup', { name: 'Theme' })
-    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
-
-    await user.click(screen.getByRole('radio', { name: 'Dark' }))
-
-    expect(theme.contains(screen.getByRole('radio', { name: 'Dark' }))).toBe(true)
-    expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
-  })
-
-  it('switches the transcript to reader mode from the Appearance section', async () => {
-    const user = userEvent.setup()
-    renderHub()
-
-    const transcript = screen.getByRole('radiogroup', { name: 'Transcript' })
-    const reader = screen.getByRole('radio', { name: 'Reader' })
-    expect(transcript.contains(reader)).toBe(true)
-    expect(screen.getByRole('radio', { name: 'Detailed' })).toHaveAttribute('aria-checked', 'true')
-
-    await user.click(reader)
-
-    expect(reader).toHaveAttribute('aria-checked', 'true')
-    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
-    useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
-  })
-
-  it('has no new-session composer setting: the composer is always centered on desktop', () => {
-    renderHub()
-    expect(screen.getByRole('radiogroup', { name: 'Transcript' })).toBeTruthy()
-    expect(screen.queryByRole('radiogroup', { name: 'New session composer' })).toBeNull()
   })
 })

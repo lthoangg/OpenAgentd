@@ -499,6 +499,29 @@ fn is_memory_path(p: &Path) -> bool {
 
 pub const MAX_MEMORY_PAGE_BYTES: usize = 256 * 1024;
 
+/// Where Plan mode lets `patch` write, relative to the workspace root: the
+/// plans folder, one folder down (a plan's attachments).
+pub const PLAN_ATTACHMENTS_ROOT: &str = ".agents/plans";
+
+/// Why Plan mode refuses to write `resolved`, or `None` when it is a plan
+/// attachment: a file inside a folder under `<root>/.agents/plans/`. The
+/// plan files themselves (`.agents/plans/*.md`) belong to the `plan` tool,
+/// which tracks their revisions. `resolved` must already be resolved
+/// (symlinks followed), as [`DeniedPaths::validate_path`] returns it.
+pub fn plan_mode_refusal(root: &Path, resolved: &Path) -> Option<String> {
+    let root = crate::denied::resolve(root);
+    let plans = crate::denied::resolve(&root.join(PLAN_ATTACHMENTS_ROOT));
+    let inside = plans.starts_with(&root).then(|| resolved.strip_prefix(&plans).ok()).flatten();
+    let shown = resolved.strip_prefix(&root).map(|r| r.display().to_string()).unwrap_or_else(|_| resolved.display().to_string());
+    match inside.map(|rel| rel.components().count()) {
+        Some(n) if n >= 2 => None,
+        Some(_) => Some(format!("In Plan mode, write the plan itself with the plan tool; patch only writes its attachments (files in .agents/plans/<plan-name>/), not '{shown}'.")),
+        None => Some(format!(
+            "In Plan mode, patch only writes plan attachments: files in .agents/plans/<plan-name>/ (for example a mockup or diagram). '{shown}' is outside it; project files stay unchanged until the plan is approved."
+        )),
+    }
+}
+
 /// Synchronous apply (caller holds path locks). Returns (result text, changed paths).
 pub fn apply_patch(denied: &DeniedPaths, patch_text: &str) -> Result<(String, Vec<PathBuf>), ToolError> {
     let patches = parse_patch(patch_text)?;
@@ -691,11 +714,17 @@ impl Tool for PatchTool {
             }
         };
         a.finish()?;
+        let plan_mode = ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan");
         let mut paths: Vec<PathBuf> = vec![];
         for p in parse_patch(&text)? {
             paths.push(ctx.denied.validate_path(&p.path)?);
             if let Some(m) = &p.move_to {
                 paths.push(ctx.denied.validate_path(m)?);
+            }
+        }
+        if plan_mode {
+            if let Some(refusal) = paths.iter().find_map(|p| plan_mode_refusal(&ctx.denied.workspace_root, p)) {
+                return Err(ToolError::Execution(refusal));
             }
         }
         paths.sort();
@@ -713,6 +742,83 @@ mod tests {
 
     fn dp(ws: &Path) -> DeniedPaths {
         DeniedPaths::with(ws, None, Some(vec![]), Some(vec![]))
+    }
+
+    fn ctx(ws: &Path, mode: &str) -> ToolContext {
+        let mut meta = serde_json::Map::new();
+        meta.insert("interaction_mode".into(), json!(mode));
+        ToolContext {
+            session_id: None,
+            agent_name: "lead".into(),
+            tool_call_id: "c1".into(),
+            denied: std::sync::Arc::new(dp(ws)),
+            workspace: Some(ws.display().to_string()),
+            output: None,
+            metadata: std::sync::Arc::new(std::sync::Mutex::new(meta)),
+            messages: None,
+        }
+    }
+
+    async fn run_patch(ctx: &ToolContext, body: &str) -> Result<String, String> {
+        let text = format!("*** Begin Patch\n{body}\n*** End Patch");
+        match PatchTool.run(ctx, json!({"patch_text": text})).await {
+            Ok(ToolOutput::Text(t)) => Ok(t),
+            Ok(other) => Err(format!("{other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn plan_mode_writes_only_plan_attachments() {
+        let t = tempfile::tempdir().unwrap();
+        let ws = t.path().join("ws");
+        std::fs::create_dir_all(ws.join(".agents/plans")).unwrap();
+        std::fs::write(ws.join(".agents/plans/p-1.md"), "# P\n").unwrap();
+        std::fs::write(ws.join("src.txt"), "a\n").unwrap();
+        let plan = ctx(&ws, "plan");
+
+        run_patch(&plan, "*** Add File: .agents/plans/p-1/mockup.html\n+<p>hi</p>").await.unwrap();
+        run_patch(&plan, "*** Update File: .agents/plans/p-1/mockup.html\n@@\n-<p>hi</p>\n+<p>hello</p>").await.unwrap();
+        assert_eq!(std::fs::read_to_string(ws.join(".agents/plans/p-1/mockup.html")).unwrap(), "<p>hello</p>\n");
+
+        let outside = run_patch(&plan, "*** Update File: src.txt\n@@\n-a\n+b").await.unwrap_err();
+        assert!(outside.starts_with("In Plan mode, patch only writes plan attachments") && outside.contains("'src.txt'"), "{outside}");
+        let plan_file = run_patch(&plan, "*** Update File: .agents/plans/p-1.md\n@@\n-# P\n+# Q").await.unwrap_err();
+        assert!(plan_file.contains("write the plan itself with the plan tool"), "{plan_file}");
+        let ignore = run_patch(&plan, "*** Add File: .agents/plans/.gitignore\n+x").await.unwrap_err();
+        assert!(ignore.contains("plan tool"), "{ignore}");
+        let escape = run_patch(&plan, "*** Add File: .agents/plans/p-1/../../../x.txt\n+x").await.unwrap_err();
+        assert!(escape.contains("is outside it"), "{escape}");
+        let moved = run_patch(&plan, "*** Update File: .agents/plans/p-1/mockup.html\n*** Move to: docs/mockup.html\n@@\n-<p>hello</p>\n+<p>moved</p>").await.unwrap_err();
+        // The refusal shows the path in the platform's form (`docs\mockup.html` on Windows).
+        let shown = std::path::Path::new("docs").join("mockup.html").display().to_string();
+        assert!(moved.contains(&format!("'{shown}'")), "{moved}");
+        assert_eq!(std::fs::read_to_string(ws.join("src.txt")).unwrap(), "a\n", "nothing outside was written");
+        assert!(!ws.join("docs").exists());
+
+        // Code mode is unrestricted.
+        run_patch(&ctx(&ws, "code"), "*** Update File: src.txt\n@@\n-a\n+b").await.unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn plan_mode_refuses_a_symlink_out_of_the_plans_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let (ws, outside) = (t.path().join("ws"), t.path().join("outside"));
+        std::fs::create_dir_all(ws.join(".agents/plans")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, ws.join(".agents/plans/p-1")).unwrap();
+        let err = run_patch(&ctx(&ws, "plan"), "*** Add File: .agents/plans/p-1/x.html\n+x").await.unwrap_err();
+        assert!(err.contains("is outside it"), "{err}");
+        assert!(!outside.join("x.html").exists());
+
+        // A symlinked `.agents` that leaves the workspace is refused too.
+        let ws2 = t.path().join("ws2");
+        std::fs::create_dir_all(&ws2).unwrap();
+        std::fs::create_dir_all(outside.join("plans/p")).unwrap();
+        std::os::unix::fs::symlink(&outside, ws2.join(".agents")).unwrap();
+        let err = run_patch(&ctx(&ws2, "plan"), "*** Add File: .agents/plans/p/x.html\n+x").await.unwrap_err();
+        assert!(err.contains("is outside it"), "{err}");
     }
 
     #[test]

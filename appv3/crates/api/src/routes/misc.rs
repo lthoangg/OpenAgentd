@@ -313,9 +313,23 @@ async fn obs_summary(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
     let days = q.int("days", 7, Some(1), Some(90))?;
     let mut filters = obs_filters(&q);
     with_subagent_sessions(&st.pool, &mut filters).await;
-    let mut v = tokio::task::spawn_blocking(move || crate::observability::summarize(days, &filters)).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let known = known_workspaces(&st.pool).await;
+    let mut v = tokio::task::spawn_blocking(move || crate::observability::summarize(days, &filters, &known)).await.map_err(|e| ApiError::internal(e.to_string()))?;
     label_sessions(&st.pool, &mut v).await;
     Ok(json(v))
+}
+
+/// Every session's workspace, for spans that name a session but not its
+/// workspace. A failed lookup leaves those spans unattributed rather than
+/// failing the page.
+async fn known_workspaces(pool: &appv3_db::DbPool) -> crate::observability::KnownWorkspaces {
+    match appv3_db::session_workspaces(pool).await {
+        Ok(rows) => rows.into_iter().map(|(id, ws)| (appv3_db::codec::db_id(&id), ws)).collect(),
+        Err(e) => {
+            tracing::warn!("observability_session_workspaces_failed error={}", e);
+            Default::default()
+        }
+    }
 }
 
 /// Add `title` and `deleted` to each `by_session` row. Spans only carry the
@@ -369,7 +383,8 @@ async fn obs_traces(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
     };
     let mut filters = obs_filters(&q);
     with_subagent_sessions(&st.pool, &mut filters).await;
-    let (items, total) = tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset, &filters, errors_only))
+    let known = known_workspaces(&st.pool).await;
+    let (items, total) = tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset, &filters, errors_only, &known))
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     Ok(json(json!({"traces": items, "limit": limit, "offset": offset, "total": total, "has_next": offset + limit < total})))
@@ -415,6 +430,15 @@ mod tests {
         assert_eq!(rows[1]["title"], Value::Null);
         assert_eq!(rows[1]["parent_session_id"], api_uuid(&lead.id));
         assert_eq!(rows[2]["deleted"], true);
+    }
+
+    #[tokio::test]
+    async fn known_workspaces_key_sessions_by_their_stored_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
+        let s = create_session(&pool, NewSession { workspace: "/w/app".into(), ..Default::default() }).await.unwrap();
+        let known = known_workspaces(&pool).await;
+        assert_eq!(known.get(&appv3_db::codec::db_id(&api_uuid(&s.id))).map(String::as_str), Some("/w/app"));
     }
 
     #[tokio::test]

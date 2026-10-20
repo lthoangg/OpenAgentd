@@ -19,7 +19,7 @@ afterEach(cleanup)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("AgentView — UserBubble collapse feature", () => {
-  // ── Short message (≤10 lines) ────────────────────────────────────────────
+  // ── Short message (≤8 lines) ────────────────────────────────────────────
 
   it("allows user bubbles to span full width on mobile and caps width from md up", () => {
     const blocks: ContentBlock[] = [
@@ -53,7 +53,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(text).toBeTruthy()
   })
 
-  it("shows full content without collapse button for short message (≤10 lines)", () => {
+  it("shows full content without collapse button for short message (≤8 lines)", () => {
     const shortContent = "line1\nline2\nline3\nline4\nline5"
     const blocks: ContentBlock[] = [
       {
@@ -77,8 +77,8 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(collapseButtons.length).toBe(0)
   })
 
-  it("shows full content for exactly 10 lines without collapse button", () => {
-    const tenLines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join("\n")
+  it("shows full content for exactly 8 lines without collapse button", () => {
+    const tenLines = Array.from({ length: 8 }, (_, i) => `line${i + 1}`).join("\n")
     const blocks: ContentBlock[] = [
       {
         id: "1",
@@ -90,9 +90,9 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // All 10 lines visible
-    expect(screen.getByText(/line1/)).toBeTruthy()
-    expect(screen.getByText(/line10/)).toBeTruthy()
+    // All 8 lines visible, unclipped
+    expect(screen.getByText(/line8/)).toBeTruthy()
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
 
     // No collapse button
     const buttons = screen.queryAllByRole("button")
@@ -100,10 +100,10 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(collapseButtons.length).toBe(0)
   })
 
-  // ── Long message (>10 lines) ─────────────────────────────────────────────
+  // ── Long message (>8 lines) ─────────────────────────────────────────────
 
-  it("shows only first 10 lines with collapse button for long message (>10 lines)", () => {
-    const elevenLines = Array.from({ length: 11 }, (_, i) => `line${i + 1}`).join("\n")
+  it("folds a message longer than 8 lines to its first 6", () => {
+    const elevenLines = Array.from({ length: 9 }, (_, i) => `line${i + 1}`).join("\n")
     const blocks: ContentBlock[] = [
       {
         id: "1",
@@ -115,12 +115,11 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // First 10 lines visible
-    expect(screen.getByText(/line1/)).toBeTruthy()
-    expect(screen.getByText(/line10/)).toBeTruthy()
-
-    // Line 11 should NOT be visible (collapsed)
-    expect(screen.queryByText(/line11/)).toBeNull()
+    // The text stays in the DOM (copy, find) and is clipped to 6 lines.
+    const text = document.querySelector("p[data-collapsed]") as HTMLElement
+    expect(text).toBeTruthy()
+    expect(text.textContent).toContain("line9")
+    expect(text.style.maxHeight).toBe(`${6 * 1.625}em`)
 
     // Collapse button exists
     const buttons = screen.queryAllByRole("button")
@@ -142,14 +141,15 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    expect(screen.queryByText(/tail-marker/)).toBeNull()
+    // Wrapped lines count, not newlines.
+    expect(document.querySelector("p[data-collapsed]")).toBeTruthy()
 
     const buttons = screen.queryAllByRole("button")
     const collapseBtn = buttons.find((btn) => btn.getAttribute("aria-expanded") !== null)
     expect(collapseBtn).toBeTruthy()
 
     await user.click(collapseBtn!)
-    expect(screen.getByText(/tail-marker/)).toBeTruthy()
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
   })
 
   it("collapse button has aria-expanded=false initially", () => {
@@ -204,16 +204,16 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // Initially, line 15 is not visible
-    expect(screen.queryByText(/line15/)).toBeNull()
+    // Initially clipped
+    expect(document.querySelector("p[data-collapsed]")).toBeTruthy()
 
     // Click expand button
     const buttons = screen.queryAllByRole("button")
     const collapseBtn = buttons.find((btn) => btn.getAttribute("aria-expanded") !== null)
     await user.click(collapseBtn!)
 
-    // Now line 15 is visible
-    expect(screen.getByText(/line15/)).toBeTruthy()
+    // Now unclipped
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
   })
 
   it("changes aria-expanded to true when expanded", async () => {
@@ -281,11 +281,11 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     // Expand
     await user.click(collapseBtn!)
-    expect(screen.getByText(/line15/)).toBeTruthy()
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
 
     // Collapse
     await user.click(collapseBtn!)
-    expect(screen.queryByText(/line15/)).toBeNull()
+    expect(document.querySelector("p[data-collapsed]")).toBeTruthy()
   })
 
   it("returns to aria-expanded=false when collapsed again", async () => {
@@ -661,3 +661,87 @@ describe("AgentView — design feedback in user messages", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// The fold follows the lines on screen: a narrower chat (sidebar or dock
+// open) wraps the same prompt to more lines. happy-dom has no layout, so the
+// text reports a fake height and the ResizeObserver is driven by hand.
+describe("AgentView — UserBubble folds by rendered lines", () => {
+  const LINE = 20
+  let height = 0
+  let width = 400
+  let resize: (() => void) | null = null
+  const realObserver = globalThis.ResizeObserver
+  const realComputed = window.getComputedStyle
+  const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight")
+  const widthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth")
+
+  beforeEach(() => {
+    height = 0
+    width = 400
+    resize = null
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.tagName === "P" ? height : 0
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get(this: Element) {
+        return this.tagName === "P" ? width : 0
+      },
+    })
+    window.getComputedStyle = ((el: Element) =>
+      el.tagName === "P" ? ({ lineHeight: `${LINE}px` } as CSSStyleDeclaration) : realComputed(el)) as typeof window.getComputedStyle
+    const textObservers: (() => void)[] = []
+    resize = () => textObservers.forEach((callback) => callback())
+    globalThis.ResizeObserver = class {
+      callback: (entries: unknown[]) => void
+      constructor(callback: (entries: unknown[]) => void) {
+        this.callback = callback
+      }
+      // Only the bubble text's observer is driven; others (scroll follow) stay idle.
+      observe(target: Element) {
+        if (target.tagName === "P") textObservers.push(() => this.callback([]))
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+  })
+
+  afterEach(() => {
+    if (heightDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollHeight", heightDescriptor)
+    if (widthDescriptor) Object.defineProperty(HTMLElement.prototype, "clientWidth", widthDescriptor)
+    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
+    window.getComputedStyle = realComputed
+    globalThis.ResizeObserver = realObserver
+  })
+
+  it("folds when the bubble narrows past 8 lines and unfolds when it widens again", async () => {
+    const { act } = await import("@testing-library/react")
+    height = 5 * LINE
+    render(<AgentView blocks={[{ id: "1", type: "user", content: "a fairly long single paragraph prompt" }]} currentBlocks={[]} isWorking={false} />)
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
+
+    height = 11 * LINE
+    act(() => resize?.())
+    expect(document.querySelector("p[data-collapsed]")).toBeTruthy()
+
+    height = 7 * LINE
+    act(() => resize?.())
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
+  })
+
+  it("ignores a zero-width reading from a hidden chat column", async () => {
+    const { act } = await import("@testing-library/react")
+    height = 3 * LINE
+    render(<AgentView blocks={[{ id: "1", type: "user", content: "Reply with exactly: purple elephant" }]} currentBlocks={[]} isWorking={false} />)
+
+    // Hidden: every character on its own line.
+    width = 0
+    height = 35 * LINE
+    act(() => resize?.())
+
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
+  })
+})

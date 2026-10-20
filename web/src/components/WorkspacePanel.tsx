@@ -677,7 +677,14 @@ export function WorkspacePanel({
           ) : activeTab?.type === 'tasks' ? (
             <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} onOpenPlan={() => openTab(PLAN_TAB)} />
           ) : activeTab?.type === 'plan' ? (
-            <PlanTabView plan={plan} sessionId={sessionId} onClearPlan={onClearPlan} onOpenFile={openChangedFile} />
+            <PlanTabView
+              plan={plan}
+              sessionId={sessionId}
+              onClearPlan={onClearPlan}
+              onOpenFile={openChangedFile}
+              onOpenPreview={previewsAvailable ? openFilePreview : undefined}
+              workspace={workspace}
+            />
           ) : activeTab?.type === 'btw' ? (
             <SideQuestionsTabView sessionId={sessionId} active={open} />
           ) : activeTab?.type === 'schedule' ? (

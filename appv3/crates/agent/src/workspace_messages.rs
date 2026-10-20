@@ -5,6 +5,12 @@
 //! The request row in the target carries `extra.sent_from`; the reply link
 //! lives there too (`reply`, `replied_at`, `error_notified_at`), so a target
 //! paused on a question still replies after a restart.
+//!
+//! Workspace groups scope who may message whom ([`can_reach`]): Chat reaches
+//! and is reached by every workspace, a repository and its worktrees reach
+//! each other, and otherwise two workspaces must share a group. Worktrees
+//! use their repository's groups. Replies are never scoped: they answer a
+//! request that was allowed when it was sent.
 
 use crate::manager;
 use crate::service::{dispatch_user_message, Dispatch, DispatchError};
@@ -35,6 +41,19 @@ pub struct Target {
     /// `chat` | `repo` | `worktree`
     pub kind: String,
     pub source_path: Option<String>,
+    /// Ids (db form) of the groups its repository is in.
+    pub groups: Vec<String>,
+}
+
+impl Target {
+    /// The repository this workspace belongs to: a worktree's source, else
+    /// its own path.
+    pub fn repo(&self) -> &str {
+        match (self.kind.as_str(), self.source_path.as_deref()) {
+            ("worktree", Some(src)) if !src.is_empty() => src,
+            _ => &self.path,
+        }
+    }
 }
 
 fn basename(p: &str) -> String {
@@ -45,15 +64,32 @@ fn basename(p: &str) -> String {
 pub async fn registered_workspaces(pool: &DbPool) -> anyhow::Result<Vec<Target>> {
     let s = settings();
     let chat = s.chat_workspace_root().display().to_string();
-    let mut out = vec![Target { path: chat, name: "Chat".into(), kind: "chat".into(), source_path: None }];
+    let mut out = vec![Target { path: chat, name: "Chat".into(), kind: "chat".into(), source_path: None, groups: vec![] }];
+    let memberships = db::list_group_memberships(pool).await?;
     for row in db::list_visible_coding_workspaces(pool).await? {
         if s.is_chat_workspace(Some(Path::new(&row.path))) {
             continue;
         }
         let name = row.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| basename(&row.path));
-        out.push(Target { path: row.path, name, kind: row.kind, source_path: row.source_path });
+        let mut t = Target { path: row.path, name, kind: row.kind, source_path: row.source_path, groups: vec![] };
+        t.groups = memberships.iter().filter(|(_, p)| p == t.repo()).map(|(g, _)| g.clone()).collect();
+        out.push(t);
     }
     Ok(out)
+}
+
+/// Whether a lead in `from` may message `to` (see the module docs). An
+/// unregistered `from` is in no group.
+pub fn can_reach(targets: &[Target], from: &str, to: &Target) -> bool {
+    if to.kind == "chat" {
+        return true;
+    }
+    let Some(src) = targets.iter().find(|t| same_path(&t.path, from)) else { return false };
+    src.kind == "chat" || same_path(src.repo(), to.repo()) || src.groups.iter().any(|g| to.groups.contains(g))
+}
+
+fn out_of_scope(t: &Target) -> String {
+    format!("'{}' does not share a group with this workspace, so you cannot message it. Ask the user to add both workspaces to a group (Settings → Workspaces → Groups).", t.name)
 }
 
 fn looks_like_path(q: &str) -> bool {
@@ -61,29 +97,33 @@ fn looks_like_path(q: &str) -> bool {
 }
 
 /// Resolve `query` (a workspace name, case-insensitive, or a path) against
-/// the registered workspaces.
-pub fn resolve_in(targets: &[Target], query: &str) -> Result<Target, String> {
+/// the workspaces a lead in `from` may message. A name several workspaces
+/// share resolves when only one of them is reachable.
+pub fn resolve_in(targets: &[Target], from: &str, query: &str) -> Result<Target, String> {
     let q = query.trim();
     if q.is_empty() {
         return Err("workspace is required. Call action='list' to see the workspaces you can message.".into());
     }
     if looks_like_path(q) {
         let resolved = db::resolve_path(q);
-        return targets.iter().find(|t| t.path == resolved || db::resolve_path(&t.path) == resolved).cloned().ok_or_else(|| {
+        let t = targets.iter().find(|t| t.path == resolved || db::resolve_path(&t.path) == resolved).ok_or_else(|| {
             format!(
                 "Workspace '{resolved}' is not registered in OpenAgentd. Ask the user to open it in the app first, or call action='list' to see the workspaces you can message."
             )
-        });
+        })?;
+        return if can_reach(targets, from, t) { Ok(t.clone()) } else { Err(out_of_scope(t)) };
     }
     let matches: Vec<&Target> = targets.iter().filter(|t| t.name.eq_ignore_ascii_case(q)).collect();
-    match matches.len() {
-        1 => Ok(matches[0].clone()),
+    let reachable: Vec<&Target> = matches.iter().copied().filter(|t| can_reach(targets, from, t)).collect();
+    match reachable.len() {
+        1 => Ok(reachable[0].clone()),
+        0 if !matches.is_empty() => Err(out_of_scope(matches[0])),
         0 => {
-            let names: Vec<&str> = targets.iter().map(|t| t.name.as_str()).collect();
-            Err(format!("No registered workspace is named '{q}'. Available: {}. Call action='list' for paths.", names.join(", ")))
+            let names: Vec<&str> = targets.iter().filter(|t| can_reach(targets, from, t)).map(|t| t.name.as_str()).collect();
+            Err(format!("No workspace you can message is named '{q}'. Available: {}. Call action='list' for paths.", names.join(", ")))
         }
         _ => {
-            let paths: Vec<&str> = matches.iter().map(|t| t.path.as_str()).collect();
+            let paths: Vec<&str> = reachable.iter().map(|t| t.path.as_str()).collect();
             Err(format!("Several workspaces are named '{q}': {}. Pass the path instead.", paths.join(", ")))
         }
     }
@@ -175,7 +215,7 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
         return Err(format!("message is longer than {MAX_MESSAGE_CHARS} characters. Point the other agent at files by absolute path instead of pasting them."));
     }
     let targets = registered_workspaces(pool).await.map_err(err)?;
-    let target = resolve_in(&targets, &req.workspace)?;
+    let target = resolve_in(&targets, &req.source_workspace, &req.workspace)?;
     let ws = manager::validate_workspace(&target.path, true)?;
 
     let hops = next_hops(db::latest_sent_from(pool, &req.source_session_id).await.map_err(err)?.as_ref());
@@ -286,26 +326,10 @@ pub async fn list(pool: &DbPool, current_workspace: &str, workspace: Option<&str
     let err = |e: anyhow::Error| e.to_string();
     let targets = registered_workspaces(pool).await.map_err(err)?;
     let Some(q) = workspace.map(str::trim).filter(|q| !q.is_empty()) else {
-        let mut lines = vec!["Workspaces you can message (name — path):".to_string()];
-        for t in targets.iter().take(LIST_WORKSPACES_MAX) {
-            let mut line = format!("- {} — {}", t.name, t.path);
-            if t.kind == "worktree" {
-                if let Some(src) = t.source_path.as_deref() {
-                    let of = targets.iter().find(|x| same_path(&x.path, src)).map(|x| x.name.clone()).unwrap_or_else(|| basename(src));
-                    line.push_str(&format!(" (worktree of {of})"));
-                }
-            }
-            if same_path(&t.path, current_workspace) {
-                line.push_str(" (current)");
-            }
-            lines.push(line);
-        }
-        if targets.len() > LIST_WORKSPACES_MAX {
-            lines.push(format!("… and {} more; pass a path to reach them.", targets.len() - LIST_WORKSPACES_MAX));
-        }
-        return Ok(lines.join("\n"));
+        let groups = db::list_workspace_groups(pool).await.map_err(|e| e.to_string())?;
+        return Ok(render_workspace_list(&targets, &groups, current_workspace));
     };
-    let target = resolve_in(&targets, q)?;
+    let target = resolve_in(&targets, current_workspace, q)?;
     let ws = manager::validate_workspace(&target.path, false)?;
     let filter = db::SessionListFilter { workspaces: std::slice::from_ref(&ws), ..Default::default() };
     let (rows, _, more) = db::list_sessions_page(pool, None, LIST_SESSIONS_MAX, &filter).await.map_err(err)?;
@@ -327,6 +351,74 @@ pub async fn list(pool: &DbPool, current_workspace: &str, workspace: Option<&str
         lines.push("Older sessions are not listed.".into());
     }
     Ok(lines.join("\n"))
+}
+
+/// The workspace list a lead in `current` sees: its groups (with their
+/// briefs) and their members, then Chat. In Chat, every group plus the
+/// ungrouped workspaces. A workspace in several groups is listed under each.
+pub fn render_workspace_list(targets: &[Target], groups: &[db::WorkspaceGroup], current: &str) -> String {
+    let src = targets.iter().find(|t| same_path(&t.path, current));
+    let in_chat = src.is_some_and(|t| t.kind == "chat");
+    let line = |t: &Target| {
+        let mut line = format!("- {} — {}", t.name, t.path);
+        if t.kind == "worktree" {
+            if let Some(src) = t.source_path.as_deref() {
+                let of = targets.iter().find(|x| same_path(&x.path, src)).map(|x| x.name.clone()).unwrap_or_else(|| basename(src));
+                line.push_str(&format!(" (worktree of {of})"));
+            }
+        }
+        if same_path(&t.path, current) {
+            line.push_str(" (current)");
+        }
+        line
+    };
+    let mut sections: Vec<(String, Vec<String>)> = vec![];
+    let repos: Vec<&Target> = targets.iter().filter(|t| t.kind != "chat").collect();
+    for g in groups {
+        if !in_chat && !src.is_some_and(|s| s.groups.contains(&g.id)) {
+            continue;
+        }
+        let members: Vec<String> = repos.iter().filter(|t| t.groups.contains(&g.id)).map(|t| line(t)).collect();
+        if members.is_empty() {
+            continue;
+        }
+        let head = match g.brief.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+            Some(b) => format!("Group '{}' — {}", g.name, b.replace('\n', " ")),
+            None => format!("Group '{}'", g.name),
+        };
+        sections.push((head, members));
+    }
+    if in_chat {
+        let ungrouped: Vec<String> = repos.iter().filter(|t| t.groups.is_empty()).map(|t| line(t)).collect();
+        if !ungrouped.is_empty() {
+            sections.push(("Ungrouped:".into(), ungrouped));
+        }
+    } else if let Some(s) = src.filter(|s| s.groups.is_empty()) {
+        let own: Vec<String> = repos.iter().filter(|t| same_path(t.repo(), s.repo())).map(|t| line(t)).collect();
+        sections.push(("This repository:".into(), own));
+    }
+    sections.push(("Always reachable:".into(), targets.iter().filter(|t| t.kind == "chat").map(line).collect()));
+
+    let mut lines = vec!["Workspaces you can message (name — path):".to_string()];
+    let total: usize = sections.iter().map(|(_, m)| m.len()).sum();
+    let mut shown = 0;
+    for (head, members) in sections {
+        if shown >= LIST_WORKSPACES_MAX {
+            break;
+        }
+        lines.push(head);
+        for m in members.into_iter().take(LIST_WORKSPACES_MAX - shown) {
+            lines.push(m);
+            shown += 1;
+        }
+    }
+    if total > shown {
+        lines.push(format!("… and {} more; pass a path to reach them.", total - shown));
+    }
+    if !in_chat && src.is_none_or(|s| s.groups.is_empty()) {
+        lines.push("This workspace is in no group, so it can message only Chat and its own worktrees. Ask the user to add it to a group (Settings → Workspaces → Groups).".into());
+    }
+    lines.join("\n")
 }
 
 // ── replies ──────────────────────────────────────────────────────────────────
@@ -462,22 +554,108 @@ mod tests {
     use super::*;
 
     fn t(path: &str, name: &str, kind: &str) -> Target {
-        Target { path: path.into(), name: name.into(), kind: kind.into(), source_path: None }
+        Target { path: path.into(), name: name.into(), kind: kind.into(), source_path: None, groups: vec![] }
+    }
+
+    fn tagged(path: &str, name: &str, groups: &[&str]) -> Target {
+        Target { groups: groups.iter().map(|g| g.to_string()).collect(), ..t(path, name, "repo") }
+    }
+
+    fn worktree(path: &str, name: &str, of: &Target) -> Target {
+        Target { source_path: Some(of.path.clone()), groups: of.groups.clone(), ..t(path, name, "worktree") }
+    }
+
+    fn group(id: &str, name: &str, brief: Option<&str>) -> db::WorkspaceGroup {
+        db::WorkspaceGroup { id: id.into(), name: name.into(), brief: brief.map(String::from), color: None, created_at: String::new(), updated_at: String::new() }
     }
 
     #[test]
     fn resolves_by_name_and_path() {
+        // From Chat, which reaches every workspace.
         let ts =
             vec![t("/nonexistent/chat", "Chat", "chat"), t("/nonexistent/infra", "infra", "repo"), t("/nonexistent/a/api", "api", "repo"), t("/nonexistent/b/api", "api", "repo")];
-        assert_eq!(resolve_in(&ts, "INFRA").unwrap().path, "/nonexistent/infra");
-        assert_eq!(resolve_in(&ts, "chat").unwrap().kind, "chat");
-        assert_eq!(resolve_in(&ts, "/nonexistent/b/api").unwrap().path, "/nonexistent/b/api");
-        assert_eq!(resolve_in(&ts, "/nonexistent/b/../a/api").unwrap().path, "/nonexistent/a/api");
-        let amb = resolve_in(&ts, "api").unwrap_err();
+        let chat = "/nonexistent/chat";
+        assert_eq!(resolve_in(&ts, chat, "INFRA").unwrap().path, "/nonexistent/infra");
+        assert_eq!(resolve_in(&ts, chat, "chat").unwrap().kind, "chat");
+        assert_eq!(resolve_in(&ts, chat, "/nonexistent/b/api").unwrap().path, "/nonexistent/b/api");
+        assert_eq!(resolve_in(&ts, chat, "/nonexistent/b/../a/api").unwrap().path, "/nonexistent/a/api");
+        let amb = resolve_in(&ts, chat, "api").unwrap_err();
         assert!(amb.contains("/nonexistent/a/api") && amb.contains("/nonexistent/b/api"), "{amb}");
-        assert!(resolve_in(&ts, "web").unwrap_err().contains("Available: Chat, infra, api, api"));
-        assert!(resolve_in(&ts, "/nonexistent/web").unwrap_err().contains("not registered"));
-        assert!(resolve_in(&ts, "  ").is_err());
+        assert!(resolve_in(&ts, chat, "web").unwrap_err().contains("Available: Chat, infra, api, api"));
+        assert!(resolve_in(&ts, chat, "/nonexistent/web").unwrap_err().contains("not registered"));
+        assert!(resolve_in(&ts, chat, "  ").is_err());
+    }
+
+    #[test]
+    fn groups_scope_who_can_reach_whom() {
+        let chat = t("/nonexistent/chat", "Chat", "chat");
+        let web = tagged("/nonexistent/web", "web", &["acme"]);
+        let api = tagged("/nonexistent/api", "api", &["acme", "shared"]);
+        let lib = tagged("/nonexistent/lib", "lib", &["shared"]);
+        let solo = t("/nonexistent/solo", "solo", "repo");
+        let web_wt = worktree("/nonexistent/wt/web-1", "web-1", &web);
+        let solo_wt = worktree("/nonexistent/wt/solo-1", "solo-1", &solo);
+        let ts = vec![chat.clone(), web.clone(), api.clone(), lib.clone(), solo.clone(), web_wt.clone(), solo_wt.clone()];
+        let reach = |from: &Target, to: &Target| can_reach(&ts, &from.path, to);
+        // Chat is the hub, both ways.
+        for x in &ts {
+            assert!(reach(&chat, x) && reach(x, &chat), "{}", x.name);
+        }
+        // A shared group, and only a shared group, connects repositories.
+        assert!(reach(&web, &api) && reach(&api, &web));
+        assert!(reach(&api, &lib) && !reach(&web, &lib) && !reach(&lib, &web));
+        assert!(!reach(&web, &solo) && !reach(&solo, &web));
+        // Worktrees follow their repository; a repository reaches its own checkouts.
+        assert!(reach(&web_wt, &api) && reach(&api, &web_wt) && reach(&web, &web_wt));
+        assert!(reach(&solo, &solo_wt) && reach(&solo_wt, &solo) && !reach(&solo_wt, &web));
+        // An unregistered source reaches only Chat.
+        assert!(can_reach(&ts, "/nonexistent/elsewhere", &chat) && !can_reach(&ts, "/nonexistent/elsewhere", &web));
+
+        let e = resolve_in(&ts, &web.path, "lib").unwrap_err();
+        assert!(e.contains("does not share a group"), "{e}");
+        assert!(resolve_in(&ts, &web.path, "/nonexistent/solo").unwrap_err().contains("does not share a group"));
+        let e = resolve_in(&ts, &web.path, "nope").unwrap_err();
+        assert!(e.contains("Available: Chat, web, api, web-1"), "{e}");
+        // A shared name resolves to the one copy this workspace can reach.
+        let other_api = t("/nonexistent/other/api", "api", "repo");
+        let ts2 = [ts.clone(), vec![other_api]].concat();
+        assert_eq!(resolve_in(&ts2, &web.path, "api").unwrap().path, api.path);
+        assert!(resolve_in(&ts2, &chat.path, "api").unwrap_err().contains("Several workspaces"));
+    }
+
+    #[test]
+    fn list_shows_groups_with_briefs() {
+        let chat = t("/nonexistent/chat", "Chat", "chat");
+        let web = tagged("/nonexistent/web", "web", &["acme"]);
+        let api = tagged("/nonexistent/api", "api", &["acme", "shared"]);
+        let lib = tagged("/nonexistent/lib", "lib", &["shared"]);
+        let solo = t("/nonexistent/solo", "solo", "repo");
+        let solo_wt = worktree("/nonexistent/wt/solo-1", "solo-1", &solo);
+        let ts = vec![chat, web, api, lib, solo, solo_wt];
+        let gs = vec![group("acme", "acme", Some("web = frontend\napi = backend")), group("shared", "shared", None)];
+
+        let from_web = render_workspace_list(&ts, &gs, "/nonexistent/web");
+        assert_eq!(
+            from_web,
+            "Workspaces you can message (name — path):\n\
+             Group 'acme' — web = frontend api = backend\n\
+             - web — /nonexistent/web (current)\n\
+             - api — /nonexistent/api\n\
+             Always reachable:\n\
+             - Chat — /nonexistent/chat"
+        );
+        let from_api = render_workspace_list(&ts, &gs, "/nonexistent/api");
+        assert!(from_api.contains("Group 'shared'\n- api — /nonexistent/api (current)\n- lib — /nonexistent/lib"), "{from_api}");
+
+        let from_solo = render_workspace_list(&ts, &gs, "/nonexistent/solo");
+        assert!(!from_solo.contains("Group '"), "{from_solo}");
+        assert!(from_solo.contains("This repository:\n- solo — /nonexistent/solo (current)\n- solo-1 — /nonexistent/wt/solo-1 (worktree of solo)"), "{from_solo}");
+        assert!(from_solo.ends_with("Ask the user to add it to a group (Settings → Workspaces → Groups)."), "{from_solo}");
+
+        let from_chat = render_workspace_list(&ts, &gs, "/nonexistent/chat");
+        assert!(from_chat.contains("Group 'acme'") && from_chat.contains("Group 'shared'"), "{from_chat}");
+        assert!(from_chat.contains("Ungrouped:\n- solo — /nonexistent/solo\n- solo-1"), "{from_chat}");
+        assert!(from_chat.contains("- Chat — /nonexistent/chat (current)") && !from_chat.contains("in no group"), "{from_chat}");
     }
 
     #[test]

@@ -930,6 +930,36 @@ html[data-app-hidden="true"] *::after {
 /* ─────────────────────────────────────────────────────────────
  * Markdown prose — .oa-prose (theme-aware via tokens)
  * ───────────────────────────────────────────────────────────── */
+
+/* Mermaid diagrams (Pele): its CSS variables mapped to the app tokens, so a
+ * theme switch recolors a drawn diagram without redrawing it. */
+.oa-diagram {
+  --pele-bg: var(--bg-card);
+  --pele-fg: var(--color-text);
+  --pele-muted: var(--color-text-muted);
+  --pele-line: var(--color-text-muted);
+  --pele-surface: var(--bg-key);
+  --pele-surface-alt: var(--bg-page);
+  --pele-border: var(--color-border-strong);
+  --pele-accent: var(--accent-blue);
+  --pele-critical: var(--color-error);
+  --pele-error: var(--color-error);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: 6px;
+  --pele-series-1: var(--accent-blue);
+  --pele-series-2: var(--accent-orange);
+  --pele-series-3: var(--accent-green);
+  --pele-series-4: var(--accent-pink);
+  --pele-series-5: var(--accent-purple);
+  --pele-series-6: var(--color-marker-yellow);
+  --pele-series-7: var(--color-marker-mint);
+  --pele-series-8: var(--accent-red);
+  line-height: normal;
+  overflow-wrap: normal;
+}
+.oa-diagram svg { display: block; margin-inline: auto; max-width: 100%; height: auto; }
+
 .oa-prose {
   color: var(--color-text);
   line-height: 1.75;

@@ -15,7 +15,7 @@ export const APP_EVENTS = {
   openTerminal: 'oa:open-terminal',
   // Opens the sidebar's session search.
   searchSessions: 'oa:search-sessions',
-  // A transcript plan-review card asks for the session plan.
+  // A transcript plan-review card or ``plan`` row asks for the session plan.
   openPlan: 'oa:open-plan',
 } as const
 

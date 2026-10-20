@@ -11,7 +11,7 @@ import {
 } from '@/queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
@@ -59,26 +59,38 @@ export function DeniedPathsSettingsPage() {
   return (
     <SettingsPage
       title="Denied Paths"
-      icon={Shield}
       draft={draft}
       loading={isLoading}
       error={error}
-      intro={
+      description={
         <>
-          Glob patterns matched against the resolved absolute path. Use{' '}
-          <code className="rounded-sm bg-(--bg-key) px-1 py-0.5 font-mono">**</code>{' '}
-          for any depth and{' '}
-          <code className="rounded-sm bg-(--bg-key) px-1 py-0.5 font-mono">*</code>{' '}
-          for one path segment. The agent&rsquo;s workspace and shared memory
-          are always reachable, even when a pattern would otherwise match.{' '}
+          Files and folders agents cannot read or write. Their workspace and shared memory stay
+          reachable.{' '}
           <DeniedPathsHelpPopover />
         </>
       }
     >
-      <SettingsSection title="Denied patterns">
+      <PanelSection
+        title="Denied patterns"
+        description={
+          <>
+            Glob patterns: <code className="rounded-xs bg-(--bg-key) px-1 font-mono">**</code> matches any depth,{' '}
+            <code className="rounded-xs bg-(--bg-key) px-1 font-mono">*</code> one folder level. One match blocks access.
+          </>
+        }
+        actions={
+          patterns.length > 0 ? (
+            <Button size="sm" variant="default" className="min-h-9 md:min-h-0" onClick={addRow}>
+              <Plus size={12} aria-hidden="true" />
+              Add pattern
+            </Button>
+          ) : null
+        }
+      >
         {patterns.length === 0 ? (
           <EmptyState
             fill={false}
+            className="py-4"
             icon={Shield}
             title="No patterns"
             body="Agents have unrestricted filesystem access, apart from the built-in DB, state and cache denial."
@@ -91,44 +103,37 @@ export function DeniedPathsSettingsPage() {
             }
           />
         ) : (
-          <>
-            <ul className="space-y-1.5">
-              {patterns.map((pattern, idx) => (
-                <li key={idx} className="flex items-center gap-2">
-                  <Input
-                    value={pattern}
-                    onChange={(e) => updateAt(idx, e.target.value)}
-                    placeholder="**/.env"
-                    aria-label={`Pattern ${idx + 1}`}
-                    className="min-h-9 font-mono text-xs"
+          <ul className="space-y-2">
+            {patterns.map((pattern, idx) => (
+              <li key={idx} className="flex items-center gap-2">
+                <Input
+                  value={pattern}
+                  onChange={(e) => updateAt(idx, e.target.value)}
+                  placeholder="**/.env"
+                  aria-label={`Pattern ${idx + 1}`}
+                  className="h-9 font-mono text-xs"
+                />
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="h-9 w-9 text-(--color-text-muted) hover:text-(--color-error) md:h-7 md:w-7"
+                        onClick={() => removeAt(idx)}
+                        aria-label={`Remove pattern ${idx + 1}`}
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    }
                   />
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          className="h-9 w-9 md:h-7 md:w-7"
-                          onClick={() => removeAt(idx)}
-                          aria-label={`Remove pattern ${idx + 1}`}
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      }
-                    />
-                    <TooltipContent>Remove</TooltipContent>
-                  </Tooltip>
-                </li>
-              ))}
-            </ul>
-
-            <Button size="sm" variant="default" className="mt-2 min-h-9 md:min-h-0" onClick={addRow}>
-              <Plus size={12} aria-hidden="true" />
-              Add pattern
-            </Button>
-          </>
+                  <TooltipContent>Remove</TooltipContent>
+                </Tooltip>
+              </li>
+            ))}
+          </ul>
         )}
-      </SettingsSection>
+      </PanelSection>
     </SettingsPage>
   )
 }

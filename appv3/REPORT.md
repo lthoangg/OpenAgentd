@@ -500,6 +500,17 @@ explicitly.
     database), whole-window filter `facets`, and
     `daily_turns[].estimated_cost_usd`. Trace rows add `workspace`. v2 has
     none of these.
+  - Every agent run writes its `agent_run` span: failed runs end it with
+    status ERROR (plus `error.type`), stopped runs (including a Stop that
+    keeps the partial answer) with status OK plus
+    `openagentd.run.cancelled=true`, and compaction-only runs (`/compact`,
+    idle compaction) with status OK. Before v3.21 only runs that produced
+    an answer wrote one. `chat`, `execute_tool`, `summarization` and
+    `summarization_llm_call` spans also carry `openagentd.workspace`, and
+    `summarization_llm_call` carries `gen_ai.conversation.id`. The
+    observability endpoints resolve a span's workspace from its turn, its
+    own attribute, its trace, then its session (from spans, else the
+    `chat_sessions.workspace` column), so older spans are attributed too.
   - `chat` spans carry `gen_ai.response.time_to_first_chunk` (GenAI semconv,
     seconds to the first chunk with text, reasoning or a tool-call delta)
     and `openagentd.response.output_tokens_per_second` (output tokens over
@@ -682,9 +693,20 @@ explicitly.
     approval as the tool result; anything else resumes in the active mode
     with the feedback. Edits made during the review are included in that
     result.
-  - **Mode notes.** The Plan-mode note is versioned (`version 2`); a session
-    whose last Plan-mode note is older gets the new instructions once, with
-    a line saying they replace the `<proposed_plan>` ones.
+  - **Mode notes.** The Plan-mode note is versioned (`version 3` since
+    v3.21.0: reviewer-shaped plans with an Appendix and visuals); a session
+    whose last Plan-mode note is older gets the new instructions once, and a
+    version-1 note also gets a line saying they replace the `<proposed_plan>`
+    ones.
+  - **Plan attachments** (v3.21.0). `patch` and `preview` are allowed in
+    Plan mode, each checking every call (`interaction_mode.rs`
+    `PLAN_MODE_ALLOWED_TOOLS`): `patch` writes only files at least one folder
+    below `<workspace>/.agents/plans/`, with every Add, Update, Delete and
+    Move path resolved through symlinks first, so plan files themselves stay
+    with the `plan` tool (`tools/src/patch.rs` `plan_mode_refusal`);
+    `preview` refuses `click`, `fill` and `press`, in a `chain` too
+    (`tools/preview.rs`). A `plan` save in Plan mode names the plan's
+    attachments folder (its path without `.md`).
   - **Compaction.** Compaction inserts a pinned, hidden `note` row
     (`extra.session_plan`) restating the plan before the summary unless one
     is still in context.

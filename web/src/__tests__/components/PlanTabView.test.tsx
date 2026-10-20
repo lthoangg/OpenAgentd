@@ -19,7 +19,7 @@ import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import type { PendingQuestion, SessionPlan } from '@/api/types'
+import type { ContentBlock, PendingQuestion, SessionPlan } from '@/api/types'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',
@@ -86,8 +86,19 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, leadName: null, agentStreams: {} })
 })
+
+/** Put the lead's ``plan`` call in the current turn, as the stream builds it. */
+function setPlanCall(args: string, extra: Partial<ContentBlock> = {}) {
+  const block: ContentBlock = { id: 'call-plan', type: 'tool', content: '', toolName: 'plan', toolCallId: 'call-plan', toolArgs: args, toolDone: false, ...extra }
+  act(() => {
+    useAgentStore.setState({
+      leadName: 'lead',
+      agentStreams: { lead: { currentBlocks: [block] } } as never,
+    })
+  })
+}
 
 function renderTab(props: Partial<React.ComponentProps<typeof PlanTabView>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -340,5 +351,172 @@ describe('PlanTabView', () => {
     useAgentStore.setState({ pendingQuestion: REVIEW })
     renderTab({ onClearPlan })
     expect((screen.getByRole('button', { name: 'Clear plan' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+const VISUAL_PLAN: SessionPlan = {
+  ...PLAN,
+  content: [
+    '# Ship it',
+    '',
+    'See the [mockup](.agents/plans/ship-it-0000abcd/mockup.html), the [notes](docs/notes.md),',
+    'the [absolute mockup](/repo/project/.agents/plans/ship-it-0000abcd/b.html) and [the site](https://example.com).',
+    '',
+    '![Request flow](.agents/plans/ship-it-0000abcd/flow.svg)',
+    '',
+    '```md',
+    '## Appendix (inside a fence, not the real one)',
+    '```',
+    '',
+    '## Appendix',
+    '',
+    '### A. Files',
+    '',
+    '- Touch the migration file',
+    '',
+    '### B. Tests',
+    '',
+    '- Add a reversal test',
+  ].join('\n'),
+}
+
+describe('PlanTabView — links, images and the Appendix', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('opens HTML attachments in Preview and other workspace files as file tabs', () => {
+    const onOpenFile = mock((..._args: unknown[]) => {})
+    const onOpenPreview = mock((..._args: unknown[]) => {})
+    renderTab({ plan: VISUAL_PLAN, onOpenFile, onOpenPreview, workspace: '/repo/project' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'mockup' }))
+    fireEvent.click(screen.getByRole('link', { name: 'absolute mockup' }))
+    fireEvent.click(screen.getByRole('link', { name: 'notes' }))
+    expect(onOpenPreview.mock.calls.map(([path]) => path)).toEqual(['.agents/plans/ship-it-0000abcd/mockup.html', '.agents/plans/ship-it-0000abcd/b.html'])
+    expect(onOpenFile.mock.calls.map(([path]) => path)).toEqual(['docs/notes.md'])
+    expect(screen.getByRole('link', { name: 'the site' }).getAttribute('target')).toBe('_blank')
+  })
+
+  it('opens an HTML attachment as a file when previews are unavailable', () => {
+    const onOpenFile = mock((..._args: unknown[]) => {})
+    renderTab({ plan: VISUAL_PLAN, onOpenFile, workspace: '/repo/project' })
+    fireEvent.click(screen.getByRole('link', { name: 'mockup' }))
+    expect(onOpenFile.mock.calls.map(([path]) => path)).toEqual(['.agents/plans/ship-it-0000abcd/mockup.html'])
+  })
+
+  it('shows an SVG diagram inline through the media route', () => {
+    renderTab({ plan: VISUAL_PLAN })
+    const img = screen.getByRole('img', { name: 'Request flow' }) as HTMLImageElement
+    expect(img.getAttribute('src')).toContain('/agent/s-1/media/.agents/plans/ship-it-0000abcd/flow.svg')
+  })
+
+  it('collapses the Appendix under the body and remembers when it is opened', () => {
+    const { unmount } = renderTab({ plan: VISUAL_PLAN })
+    const toggle = screen.getByRole('button', { name: /^Appendix/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(toggle.textContent).toContain('2 sections')
+    const section = document.getElementById(toggle.getAttribute('aria-controls')!)!
+    expect(section.hidden).toBe(true)
+    expect(section.textContent).toContain('Touch the migration file')
+    // The fenced heading stays in the body as code.
+    expect(section.textContent).not.toContain('inside a fence')
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(section.hidden).toBe(false)
+
+    unmount()
+    renderTab({ plan: VISUAL_PLAN })
+    expect(screen.getByRole('button', { name: /^Appendix/ }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('takes comments on Appendix text and opens the Appendix to show one', async () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    const { container } = renderTab({ plan: VISUAL_PLAN })
+    const toggle = screen.getByRole('button', { name: /^Appendix/ })
+    fireEvent.click(toggle)
+    comment(container, 'Add a reversal test', 'Cover the down migration.')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(screen.getByTitle('Show in the plan'))
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes (1)' }))
+    await waitFor(() => expect(answerCalls()).toHaveLength(1))
+    expect(JSON.stringify(answerCalls()[0].body)).toContain('Add a reversal test')
+  })
+})
+
+describe('PlanTabView — the plan being written', () => {
+  it('replaces the plan in place as a write streams, with no way to edit or clear it meanwhile', () => {
+    setPlanCall('{"action":"write","content":"# Rewrite\\n\\n1. Start ov')
+    renderTab({ onClearPlan: () => {} })
+
+    expect(screen.getByText('Start ov')).toBeTruthy()
+    expect(screen.queryByText('Write the migration')).toBeNull()
+    expect(screen.getByText('Writing…')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Edit plan' })).toBeNull()
+    expect((screen.getByRole('button', { name: 'Clear plan' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('shows the first plan as it is written', () => {
+    setPlanCall('{"action":"write","content":"# First\\n\\n1. Look aro')
+    renderTab({ plan: null })
+
+    expect(screen.queryByText('No plan yet')).toBeNull()
+    expect(screen.getByText('Look aro')).toBeTruthy()
+  })
+
+  it('applies a streaming edit to the plan in place', () => {
+    setPlanCall('{"action":"edit","edits":[{"old":"1. Write the migration","new":"1. Write the reversible mig')
+    renderTab()
+
+    expect(screen.getByText('Write the reversible mig')).toBeTruthy()
+    expect(screen.getByText('Wire the endpoint')).toBeTruthy()
+    expect(screen.getByText('Editing…')).toBeTruthy()
+  })
+
+  it('keeps the written plan until the refetch replaces it', () => {
+    const args = JSON.stringify({ action: 'write', content: '# Rewrite\n\n1. Start over' })
+    setPlanCall(args)
+    const view = renderTab()
+
+    setPlanCall(args, { toolDone: true, toolResult: 'Plan saved as revision 3 (3 lines) at plan.md.' })
+    expect(screen.getByText('Start over')).toBeTruthy()
+    expect(screen.queryByText('Writing…')).toBeNull()
+
+    const saved = { ...PLAN, content: '# Rewrite\n\n1. Start over, saved', revision: 3, updated_at: '2026-01-01T00:01:00Z' }
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <PlanTabView plan={saved} sessionId="s-1" />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByText('Start over, saved')).toBeTruthy()
+    expect(screen.getByText('rev 3')).toBeTruthy()
+  })
+
+  it('falls back to the saved plan when the write fails', () => {
+    const args = JSON.stringify({ action: 'write', content: '# Rewrite\n\n1. Start over' })
+    setPlanCall(args)
+    renderTab()
+
+    setPlanCall(args, { toolDone: true, toolResult: 'Error: The plan exceeds 100000 characters.' })
+    expect(screen.getByText('Write the migration')).toBeTruthy()
+  })
+
+  it('hands Edit back at once after a write that changed nothing, which keeps the revision', () => {
+    const args = JSON.stringify({ action: 'write', content: PLAN.content })
+    setPlanCall(args)
+    renderTab()
+    expect(screen.queryByRole('button', { name: 'Edit plan' })).toBeNull()
+
+    setPlanCall(args, { toolDone: true, toolResult: 'Plan saved as revision 2 (4 lines) at plan.md.' })
+    expect(screen.getByRole('button', { name: 'Edit plan' })).toBeTruthy()
+  })
+
+  it("ignores a plan call that had already finished before the tab opened", () => {
+    setPlanCall(JSON.stringify({ action: 'write', content: '# Old call' }), { toolDone: true, toolResult: 'Plan saved as revision 2.' })
+    renderTab()
+    expect(screen.getByText('Write the migration')).toBeTruthy()
   })
 })

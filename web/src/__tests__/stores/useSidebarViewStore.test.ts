@@ -22,9 +22,16 @@ describe('useSidebarViewStore', () => {
     state.setShowDetails(false)
     state.toggleGroupCollapsed('today')
 
-    expect(stored()).toEqual({ groupBy: 'date', sortBy: 'created', showDetails: false, pinnedCollapsed: false, collapsedGroups: ['today'] })
+    expect(stored()).toEqual({ groupBy: 'date', sortBy: 'created', showDetails: false, pinnedCollapsed: false, collapsedGroups: ['today'], groupFilter: null })
     useSidebarViewStore.getState().toggleGroupCollapsed('today')
     expect(useSidebarViewStore.getState().collapsedGroups).toEqual([])
+  })
+
+  it('remembers the workspace group filter, and reset clears it', () => {
+    useSidebarViewStore.getState().setGroupFilter('g-1')
+    expect(stored().groupFilter).toBe('g-1')
+    useSidebarViewStore.getState().reset()
+    expect(useSidebarViewStore.getState().groupFilter).toBeNull()
   })
 
   it('resets the view to the defaults but keeps folded sections', () => {
@@ -41,7 +48,7 @@ describe('useSidebarViewStore', () => {
 
   it('reads unknown stored values as the defaults', async () => {
     localStorage.setItem(SIDEBAR_VIEW_STORAGE_KEY, JSON.stringify({
-      state: { groupBy: 'environment', sortBy: 'name', showDetails: 'yes', collapsedGroups: [1, 'older'] },
+      state: { groupBy: 'environment', sortBy: 'name', showDetails: 'yes', collapsedGroups: [1, 'older'], groupFilter: 7 },
       version: 0,
     }))
 
@@ -50,6 +57,7 @@ describe('useSidebarViewStore', () => {
     const state = useSidebarViewStore.getState()
     expect([state.groupBy, state.sortBy, state.showDetails]).toEqual(['project', 'activity', true])
     expect(state.collapsedGroups).toEqual(['older'])
+    expect(state.groupFilter).toBeNull()
   })
 
   it('survives a stored value that is not JSON', async () => {

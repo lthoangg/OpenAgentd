@@ -25,8 +25,9 @@ pub async fn create_session(pool: &DbPool, new: NewSession) -> Result<ChatSessio
         r#"INSERT INTO chat_sessions
            (id, parent_session_id, agent_name, title, scheduled_task_name,
             created_at, updated_at, workspace, revert, model, thinking_level,
-            history_revision, history_structure_revision, interaction_mode)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, 0, 0, ?)"#,
+            history_revision, history_structure_revision, interaction_mode,
+            last_message_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, 0, 0, ?, ?)"#,
     )
     .bind(&id)
     .bind(new.parent_session_id.as_deref().map(db_id))
@@ -39,6 +40,7 @@ pub async fn create_session(pool: &DbPool, new: NewSession) -> Result<ChatSessio
     .bind(new.model)
     .bind(new.thinking_level)
     .bind(new.interaction_mode.unwrap_or_else(|| "code".into()))
+    .bind(&now)
     .execute(pool)
     .await?;
     get_session(pool, &id).await?.ok_or_else(|| anyhow!("session vanished after insert"))
@@ -54,7 +56,8 @@ pub enum SessionSort {
     /// Newest created first (v2's only order).
     #[default]
     Created,
-    /// Most recently touched first (`updated_at`).
+    /// Most recent message first (`last_message_at`). Not `updated_at`: that
+    /// also moves on a rename or a model or mode change, which is not use.
     Activity,
 }
 
@@ -62,7 +65,7 @@ impl SessionSort {
     fn column(self) -> &'static str {
         match self {
             SessionSort::Created => "created_at",
-            SessionSort::Activity => "updated_at",
+            SessionSort::Activity => "last_message_at",
         }
     }
 }
@@ -101,7 +104,7 @@ fn push_session_filters(sql: &mut String, binds: &mut Vec<String>, workspaces: &
 /// Cursor page of top-level sessions, newest first (v2 `list_sessions_page`).
 ///
 /// `before` is the `"<iso sort key>|<uuid>"` cursor this returns; the key is
-/// `created_at` or `updated_at` per `filter.sort`.
+/// `created_at` or `last_message_at` per `filter.sort`.
 /// Returns `(rows, next_cursor, has_more)`; errors on a malformed cursor.
 pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64, filter: &SessionListFilter<'_>) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
     let col = filter.sort.column();
@@ -127,8 +130,8 @@ pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64,
     let next_cursor = if has_more {
         rows.last().and_then(|last| {
             let key = match filter.sort {
-                SessionSort::Created => &last.created_at,
-                SessionSort::Activity => &last.updated_at,
+                SessionSort::Created => last.created_at.as_str(),
+                SessionSort::Activity => last.last_message_at.as_deref().unwrap_or(&last.created_at),
             };
             parse_dt(key).map(|dt| format!("{}|{}", api_dt_from(&dt), crate::codec::api_uuid(&last.id)))
         })
@@ -153,7 +156,7 @@ pub async fn list_pinned_sessions(pool: &DbPool, workspaces: &[String]) -> Resul
 }
 
 /// Pin (`pinned_at = now`) or unpin (`NULL`) a session. Leaves `updated_at`
-/// alone so pinning does not reorder the activity sort; pinning an already
+/// alone (a pin is not an edit to the session); pinning an already
 /// pinned session keeps its original time. `None` when the session is gone.
 pub async fn set_session_pinned(pool: &DbPool, id: &str, pinned: bool) -> Result<Option<ChatSession>> {
     let sid = db_id(id);
@@ -192,6 +195,13 @@ pub async fn get_sessions_by_ids(pool: &DbPool, ids: &[String]) -> Result<Vec<Ch
         q = q.bind(db_id(id));
     }
     Ok(q.fetch_all(pool).await?)
+}
+
+/// `(id, workspace)` of every session, ids in their stored (hex) form.
+/// The telemetry page uses it to attribute spans that name a session but
+/// not its workspace.
+pub async fn session_workspaces(pool: &DbPool) -> Result<Vec<(String, String)>> {
+    Ok(sqlx::query_as::<_, (String, String)>("SELECT id, workspace FROM chat_sessions").fetch_all(pool).await?)
 }
 
 /// Newest top-level session for a workspace (v2 `get_latest_top_level_session`).

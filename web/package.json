@@ -1,7 +1,7 @@
 {
   "name": "openagentd-web",
   "private": true,
-  "version": "3.20.0",
+  "version": "3.21.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -47,6 +47,7 @@
     "lucide-react": "^1.58.0",
     "material-icon-theme": "^5.39.0",
     "pdfjs-dist": "6.4.299",
+    "pele": "^1.7.0",
     "react": "^19.3.1",
     "react-day-picker": "^10.0.2",
     "react-dom": "^19.3.1",

@@ -85,7 +85,7 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
 
   return createPortal(
     <div
-      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-xs"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-(--color-overlay) backdrop-blur-xs"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -96,13 +96,13 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
         className="flex w-full shrink-0 items-center justify-between gap-2 px-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))] pb-2 [[data-mobile-shell='ios']_&]:pt-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="font-mono label-caps text-white/80">mermaid</span>
+        <span className="rounded-xs bg-(--bg-card) px-2 py-1 font-mono label-caps text-(--color-text-muted)">mermaid</span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close full screen"
           title="Close (Esc)"
-          className="flex h-9 w-9 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+          className="flex h-9 w-9 items-center justify-center rounded-md bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         >
           <X size={16} />
         </button>

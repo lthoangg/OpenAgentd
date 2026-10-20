@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { Callout } from '@/components/ui/callout'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { settingsRoot } from '@/components/settings/settings-root'
 import { useShortcut } from '@/lib/keyboard/hooks'
@@ -192,7 +192,7 @@ export function MemorySettingsPage() {
     >
       {/* Lint findings banner */}
       {lintFindings !== null && (
-        <SettingsCallout
+        <Callout
           tone={lintFindings.length === 0 ? 'success' : 'warning'}
           role="status"
           className="mx-4 mb-4 md:mx-8"
@@ -226,7 +226,7 @@ export function MemorySettingsPage() {
               ))}
             </ul>
           )}
-        </SettingsCallout>
+        </Callout>
       )}
 
       {/* Split pane: File list + Editor */}

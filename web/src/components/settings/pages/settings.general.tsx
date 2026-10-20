@@ -6,8 +6,8 @@ import { type ComponentType } from 'react'
 
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
@@ -42,17 +42,17 @@ export function GeneralSettingsPage() {
       title="General"
       description="How OpenAgentd looks on this device."
     >
-      <SettingsSection title="Appearance" flush>
-        <SettingsRow label="Theme" description="Follow the system, or always use light or dark.">
+      <PanelSection title="Appearance" flush>
+        <PanelRow label="Theme" description="Follow the system, or always use light or dark.">
           <SegmentedChoice label="Theme" options={THEME_OPTIONS} value={preference} onChange={setPreference} />
-        </SettingsRow>
-        <SettingsRow
+        </PanelRow>
+        <PanelRow
           label="Transcript"
           description="Reader folds each turn's thinking and tool calls into one row."
         >
           <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
-        </SettingsRow>
-      </SettingsSection>
+        </PanelRow>
+      </PanelSection>
     </SettingsPage>
   )
 }

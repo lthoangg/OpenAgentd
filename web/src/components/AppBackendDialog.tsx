@@ -7,6 +7,7 @@
 import { Server } from 'lucide-react'
 import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
+import { OVERLAY_BODY } from '@/components/ui/panel-tokens'
 import { AppBackendPanel, type AppBackendPrefill } from '@/components/AppBackendPanel'
 
 export type { AppBackendPrefill }
@@ -32,7 +33,7 @@ export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBack
         closeLabel="Close backend connection"
       />
 
-      <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 md:px-6 md:py-6">
+      <div className={OVERLAY_BODY}>
         <AppBackendPanel active={open} prefill={prefill} showNetworkAccess />
       </div>
 

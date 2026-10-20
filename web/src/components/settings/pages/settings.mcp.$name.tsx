@@ -22,9 +22,9 @@ import {
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
 import { Button } from '@/components/ui/button'
-import { SettingsSection } from '@/components/settings/SettingsSection'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { PanelSection } from '@/components/ui/panel-section'
+import { PanelRow } from '@/components/ui/panel-row'
+import { Callout } from '@/components/ui/callout'
 import {
   Dialog,
   DialogContent,
@@ -145,13 +145,13 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               <StatusCard server={server} />
 
               {server.state === 'error' && server.error && (
-                <SettingsCallout tone="error" role="alert" title="Server failed to start">
+                <Callout tone="error" role="alert" title="Server failed to start">
                   <p className="font-mono break-words">{server.error}</p>
-                </SettingsCallout>
+                </Callout>
               )}
 
               {server.state === 'auth_required' && (
-                <SettingsCallout
+                <Callout
                   tone="warning"
                   title="OAuth needed to connect"
                   action={
@@ -162,17 +162,17 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                   }
                 >
                   Authorize this server to let agents use its tools.
-                </SettingsCallout>
+                </Callout>
               )}
 
               {draft ? (
                 <McpServerForm value={draft} onChange={setDraft} isNew={false} disabled={updateMut.isPending} errors={fieldErrors} />
               ) : (
-                <SettingsSection title="Configuration">
+                <PanelSection title="Configuration">
                   <p className="text-xs text-(--color-text-muted)">
                     No saved configuration found. The server may have been removed from <span className="font-mono">mcp.json</span>.
                   </p>
-                </SettingsSection>
+                </PanelSection>
               )}
 
               {dirty && (
@@ -223,29 +223,29 @@ const STATE_TONE: Record<string, string> = {
 
 function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpServerQuery>['data']> }) {
   return (
-    <SettingsSection title="Status" description="Live state of the running connection." flush>
-      <SettingsRow label="State">
+    <PanelSection title="Status" description="Live state of the running connection." flush>
+      <PanelRow label="State">
         <span className={cn('text-xs font-medium', STATE_TONE[server.state] ?? 'text-(--color-text-muted)')}>{server.state}</span>
-      </SettingsRow>
-      <SettingsRow label="Transport">
+      </PanelRow>
+      <PanelRow label="Transport">
         <span className="font-mono text-xs text-(--color-text)">{server.transport}</span>
-      </SettingsRow>
-      <SettingsRow label="Enabled">
+      </PanelRow>
+      <PanelRow label="Enabled">
         <span className="text-xs text-(--color-text)">{server.enabled ? 'Yes' : 'No'}</span>
-      </SettingsRow>
-      <SettingsRow label="Started">
+      </PanelRow>
+      <PanelRow label="Started">
         <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : '—'}</span>
-      </SettingsRow>
+      </PanelRow>
       {server.tool_names.length > 0 && (
-        <SettingsRow label={`Tools (${server.tool_names.length})`} stack>
+        <PanelRow label={`Tools (${server.tool_names.length})`} stack>
           <div className="flex flex-wrap gap-1.5">
             {server.tool_names.map((tool) => (
               <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-muted)">{tool}</span>
             ))}
           </div>
-        </SettingsRow>
+        </PanelRow>
       )}
-    </SettingsSection>
+    </PanelSection>
   )
 }
 
@@ -261,8 +261,8 @@ function RestartCard({
   deletePending: boolean
 }) {
   return (
-    <SettingsSection title="Manage" flush>
-      <SettingsRow
+    <PanelSection title="Manage" flush>
+      <PanelRow
         label="Restart server"
         description={enabled ? 'Reconnect to pick up changes or recover from an error.' : 'Enable and save first to restart.'}
       >
@@ -274,13 +274,13 @@ function RestartCard({
           <RotateCw size={12} className={cn(pending && 'animate-spin')} aria-hidden="true" />
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
-      </SettingsRow>
-      <SettingsRow label="Delete server" description="Removes it from mcp.json. This cannot be undone.">
+      </PanelRow>
+      <PanelRow label="Delete server" description="Removes it from mcp.json. This cannot be undone.">
         <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
           <Trash2 size={12} aria-hidden="true" />
           {deletePending ? 'Deleting…' : 'Delete server'}
         </Button>
-      </SettingsRow>
-    </SettingsSection>
+      </PanelRow>
+    </PanelSection>
   )
 }

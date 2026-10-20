@@ -1,5 +1,5 @@
 /**
- * SettingsCallout — the one notice style on settings pages: a tinted box with
+ * Callout — the one notice style on panels and overlays: a tinted box with
  * an optional bold first line, for states and warnings that sit between
  * sections (a server that failed to start, a scanned connect link, a
  * security caveat). Not for field errors; rows and fields show those inline.
@@ -7,7 +7,7 @@
 import { type ReactNode } from 'react'
 import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 
-import { ICON_SIZE } from '@/components/settings/tokens'
+import { ICON_SIZE } from '@/components/ui/panel-tokens'
 import { cn } from '@/lib/utils'
 
 type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error'
@@ -28,7 +28,7 @@ const ICON: Record<Tone, typeof Info> = {
   error: AlertCircle,
 }
 
-interface SettingsCalloutProps {
+interface CalloutProps {
   tone?: Tone
   /** Bold first line. */
   title?: ReactNode
@@ -40,7 +40,7 @@ interface SettingsCalloutProps {
   className?: string
 }
 
-export function SettingsCallout({ tone = 'neutral', title, children, action, role, className }: SettingsCalloutProps) {
+export function Callout({ tone = 'neutral', title, children, action, role, className }: CalloutProps) {
   const Icon = ICON[tone]
   return (
     <div role={role} className={cn('flex gap-3 rounded-sm border px-4 py-3 text-xs leading-relaxed', TONE[tone], className)}>

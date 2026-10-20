@@ -8,8 +8,8 @@ import { ExternalLink, MessageSquare, Users, type LucideIcon } from 'lucide-reac
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
@@ -96,8 +96,8 @@ function UpdatesSection() {
   const showNotes = status?.version && (status.status === 'available' || status.status === 'downloaded')
 
   return (
-    <SettingsSection title="Updates" flush>
-      <SettingsRow
+    <PanelSection title="Updates" flush>
+      <PanelRow
         label={
           <span className="flex items-center gap-2">
             Desktop app
@@ -128,8 +128,8 @@ function UpdatesSection() {
             Install and restart
           </Button>
         ) : null}
-      </SettingsRow>
-    </SettingsSection>
+      </PanelRow>
+    </PanelSection>
   )
 }
 

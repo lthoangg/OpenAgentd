@@ -19,7 +19,7 @@
  */
 import { useMemo, useState } from 'react'
 
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useCodeAgentQuery, useMcpServersQuery, useRegistryQuery } from '@/queries'
@@ -188,7 +188,7 @@ export function AgentForm({
           updateFromForm={updateFromForm}
         />
       ) : (
-        <SettingsSection
+        <PanelSection
           title="Raw .md"
           description={<>Edit the frontmatter and body directly. Useful for fields the form doesn&rsquo;t expose (e.g. custom hook configuration).</>}
         >
@@ -201,7 +201,7 @@ export function AgentForm({
             aria-label="Raw agent file"
             className="min-h-72 font-mono text-[13px] leading-relaxed"
           />
-        </SettingsSection>
+        </PanelSection>
       )}
     </div>
   )

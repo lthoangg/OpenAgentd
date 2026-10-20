@@ -1,19 +1,17 @@
 /**
- * SettingsField — label + control + hint/error row.
- *
- * Extracted from the identical `Field` function that was copy-pasted into
- * AgentForm/FormFields.tsx and McpServerForm.tsx.
+ * Field — label + control + hint/error, the form field used on every panel.
+ * Pair fields in grids with `gap-x-4 gap-y-5`.
  *
  * Usage:
- *   <SettingsField label="Name" required error={nameError} hint="…">
+ *   <Field label="Name" required error={nameError} hint="…">
  *     <Input … />
- *   </SettingsField>
+ *   </Field>
  */
 import { type ReactNode } from 'react'
-import { TEXT } from '@/components/settings/tokens'
+import { TEXT } from '@/components/ui/panel-tokens'
 import { cn } from '@/lib/utils'
 
-interface SettingsFieldProps {
+interface FieldProps {
   /** Visible label text. */
   label: string
   /** Appends a red asterisk after the label. */
@@ -35,7 +33,7 @@ interface SettingsFieldProps {
   htmlFor?: string
 }
 
-function SettingsField({
+function Field({
   label,
   required,
   className,
@@ -44,7 +42,7 @@ function SettingsField({
   hint,
   errorId,
   htmlFor,
-}: SettingsFieldProps) {
+}: FieldProps) {
   // Intentionally a <div>, not a <label>. A <label> wrapper causes any
   // click inside it to activate the first focusable control in DOM order —
   // in MultiSelect that means clicking empty space deletes a chip. With
@@ -72,4 +70,4 @@ function SettingsField({
   )
 }
 
-export { SettingsField }
+export { Field }

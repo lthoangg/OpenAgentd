@@ -1,20 +1,20 @@
 /**
- * SettingsRow — one setting: label and description on the left, its control
+ * PanelRow — one setting: label and description on the left, its control
  * on the right. Stacks on phones, or always with `stack` for controls too wide
  * to sit beside the text (a full-width input, a list).
  *
- *   <SettingsRow label="Theme" description="…">
+ *   <PanelRow label="Theme" description="…">
  *     <SegmentedControl … />
- *   </SettingsRow>
+ *   </PanelRow>
  *
- * Meant for the flush body of a `SettingsSection`, which draws the hairlines
+ * Meant for the flush body of a `PanelSection`, which draws the hairlines
  * between rows.
  */
 import { type ReactNode } from 'react'
-import { ROW_PAD, TEXT } from '@/components/settings/tokens'
+import { ROW_PAD, TEXT } from '@/components/ui/panel-tokens'
 import { cn } from '@/lib/utils'
 
-interface SettingsRowProps {
+interface PanelRowProps {
   /** Setting name. */
   label: ReactNode
   /** What the setting does, one or two sentences. */
@@ -32,7 +32,7 @@ interface SettingsRowProps {
   className?: string
 }
 
-export function SettingsRow({
+export function PanelRow({
   label,
   description,
   htmlFor,
@@ -41,7 +41,7 @@ export function SettingsRow({
   error,
   children,
   className,
-}: SettingsRowProps) {
+}: PanelRowProps) {
   const labelClass = cn('block', TEXT.label)
   return (
     <div

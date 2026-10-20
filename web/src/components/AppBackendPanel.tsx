@@ -18,9 +18,9 @@ import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
-import { SettingsField } from '@/components/settings/SettingsField'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { Callout } from '@/components/ui/callout'
+import { Field } from '@/components/ui/field'
+import { PanelSection } from '@/components/ui/panel-section'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
@@ -287,13 +287,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       </SectionCard>
 
       {scanned ? (
-        <SettingsCallout tone="info" role="status">
+        <Callout tone="info" role="status">
           Scanned from another device. Check the server, then Save &amp; Connect.
-        </SettingsCallout>
+        </Callout>
       ) : null}
 
       {/* Saved servers */}
-      <SettingsSection
+      <PanelSection
         title="Servers"
         description="Select a server to edit it below."
         flush
@@ -379,10 +379,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             </ServerRow>
           )
         })}
-      </SettingsSection>
+      </PanelSection>
 
       {/* Add / edit */}
-      <SettingsSection
+      <PanelSection
         title={editing ? `Edit ${editing}` : 'Add a server'}
         description="Test it first; Save & Connect stores the server and switches to it."
         actions={
@@ -396,7 +396,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         flush
       >
         <div className="grid gap-y-5 px-4 py-4">
-          <SettingsField label="Server URL" htmlFor="app-backend-url">
+          <Field label="Server URL" htmlFor="app-backend-url">
             <Input
               id="app-backend-url"
               value={baseUrl}
@@ -406,8 +406,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               spellCheck={false}
               className="h-9 font-mono"
             />
-          </SettingsField>
-          <SettingsField label="Access key" htmlFor="app-backend-key" hint="Needed when the server was started with --key.">
+          </Field>
+          <Field label="Access key" htmlFor="app-backend-key" hint="Needed when the server was started with --key.">
             <Input
               id="app-backend-key"
               value={accessKey}
@@ -417,8 +417,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               autoComplete="off"
               className="h-9"
             />
-          </SettingsField>
-          <SettingsField label="Server name" htmlFor="app-backend-name" hint="Optional. Shown in the server list.">
+          </Field>
+          <Field label="Server name" htmlFor="app-backend-name" hint="Optional. Shown in the server list.">
             <Input
               id="app-backend-name"
               value={serverName}
@@ -427,7 +427,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               autoComplete="off"
               className="h-9"
             />
-          </SettingsField>
+          </Field>
         </div>
         <div className="flex flex-col gap-3 bg-(--bg-key)/20 px-4 py-3 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1 text-xs leading-relaxed">
@@ -454,7 +454,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             </Button>
           </div>
         </div>
-      </SettingsSection>
+      </PanelSection>
 
       {showNetworkAccess && isDesktopShell() && status?.supports_bundled !== false ? <NetworkAccessCard /> : null}
     </div>

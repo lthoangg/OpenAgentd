@@ -20,7 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { groupColor, groupColorHex, parseHexColor, suggestedGroupColor } from '@/components/Sidebar/groupColor'
-import { SettingsField } from '@/components/settings/SettingsField'
+import { Field } from '@/components/ui/field'
 import { ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 import {
@@ -152,7 +152,7 @@ function GroupForm({
   return (
     <form onSubmit={submit} className="space-y-5">
       <div className="grid gap-x-4 gap-y-5 sm:grid-cols-[1fr_auto]">
-        <SettingsField label="Name">
+        <Field label="Name">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -164,14 +164,14 @@ function GroupForm({
             autoFocus
             className="h-9"
           />
-        </SettingsField>
-        <SettingsField label="Colour">
+        </Field>
+        <Field label="Colour">
           <ColorField value={color} onChange={setColor} onValidChange={setColorValid} />
-        </SettingsField>
+        </Field>
       </div>
-      <SettingsField label="Brief for agents" hint="Agents in this group read this to know what each repository is for.">
+      <Field label="Brief for agents" hint="Agents in this group read this to know what each repository is for.">
         <Textarea value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={BRIEF_MAX} placeholder={BRIEF_PLACEHOLDER} aria-label="Group brief" className="min-h-20" />
-      </SettingsField>
+      </Field>
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" size="sm" onClick={onCancel}>Cancel</Button>
         <Button type="submit" size="sm" variant="primary" disabled={!canSubmit}>{submitLabel}</Button>

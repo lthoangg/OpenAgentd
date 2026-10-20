@@ -12,8 +12,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { ModelCombobox } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
@@ -60,8 +60,8 @@ export function TitlesSettingsPage() {
       loading={titlesQ.isLoading}
       error={titlesQ.error}
     >
-      <SettingsSection title="Titles" flush>
-        <SettingsRow
+      <PanelSection title="Titles" flush>
+        <PanelRow
           label="Generate titles automatically"
           htmlFor="titles-enabled"
           description="When off, sessions keep their default names."
@@ -71,10 +71,10 @@ export function TitlesSettingsPage() {
             checked={draft.value.enabled}
             onCheckedChange={(checked) => draft.patch({ enabled: checked })}
           />
-        </SettingsRow>
+        </PanelRow>
         {draft.value.enabled && (
           <>
-            <SettingsRow label="Model" description="A small, fast model keeps titles quick and cheap." error={modelError}>
+            <PanelRow label="Model" description="A small, fast model keeps titles quick and cheap." error={modelError}>
               <div className="w-full sm:w-72">
                 <ModelCombobox
                   value={draft.value.model}
@@ -83,8 +83,8 @@ export function TitlesSettingsPage() {
                   invalid={!!modelError}
                 />
               </div>
-            </SettingsRow>
-            <SettingsRow
+            </PanelRow>
+            <PanelRow
               label="Wait timeout"
               htmlFor="titles-wait"
               description="Seconds the first reply waits for its title. 0 doesn't wait."
@@ -98,10 +98,10 @@ export function TitlesSettingsPage() {
                 onChange={(e) => draft.patch({ wait_timeout_seconds: parseInt(e.target.value, 10) || 0 })}
                 className="h-9 w-24 font-mono"
               />
-            </SettingsRow>
+            </PanelRow>
           </>
         )}
-      </SettingsSection>
+      </PanelSection>
     </SettingsPage>
   )
 }

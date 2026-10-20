@@ -6,7 +6,7 @@ import type { ProviderInfo } from '@/api/client'
 import { useProvidersQuery } from '@/queries'
 import { eagerlyWarmProviderModels } from './settings.providers/eagerModels'
 import { SearchBar } from '@/components/ui/search-bar'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { Callout } from '@/components/ui/callout'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { cn } from '@/lib/utils'
 import { providerKindLabel } from './settings.providers/providerUtils'
@@ -251,11 +251,11 @@ export function ProvidersSettingsPage() {
               Loading providers…
             </div>
           ) : providersQ.error ? (
-            <SettingsCallout tone="error" role="alert">
+            <Callout tone="error" role="alert">
               {providersQ.error instanceof Error
                 ? providersQ.error.message
                 : String(providersQ.error)}
-            </SettingsCallout>
+            </Callout>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
               <p className="text-xs text-(--color-text-muted)">

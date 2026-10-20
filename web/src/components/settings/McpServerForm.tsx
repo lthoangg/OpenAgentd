@@ -18,8 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import { SettingsField } from './SettingsField'
-import { SettingsSection } from './SettingsSection'
+import { Field } from '@/components/ui/field'
+import { PanelSection } from '@/components/ui/panel-section'
 import { MAX_MCP_TIMEOUT_S, type KeyValuePair, type McpServerDraft } from './McpServerDraft'
 
 interface McpServerFormProps {
@@ -57,9 +57,9 @@ export function McpServerForm({
   return (
     <div className="flex flex-col gap-8">
       {/* Identity ─────────────────────────────────────────────────── */}
-      <SettingsSection title="Identity" description="How agents and the runtime address this server.">
+      <PanelSection title="Identity" description="How agents and the runtime address this server.">
         <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-          <SettingsField
+          <Field
             label="Name"
             required
             error={errors?.name}
@@ -79,9 +79,9 @@ export function McpServerForm({
               aria-describedby={errors?.name ? 'mcp-name-error' : undefined}
               className="min-h-9 font-mono"
             />
-          </SettingsField>
+          </Field>
 
-          <SettingsField
+          <Field
             label="Status"
             hint={value.enabled ? 'Server is started at runtime.' : 'Server is left stopped.'}
           >
@@ -90,9 +90,9 @@ export function McpServerForm({
               onChange={(enabled) => set({ enabled })}
               disabled={disabled}
             />
-          </SettingsField>
+          </Field>
 
-          <SettingsField
+          <Field
             label="Tool timeout"
             error={errors?.timeout}
             errorId="mcp-timeout-error"
@@ -109,12 +109,12 @@ export function McpServerForm({
               aria-describedby={errors?.timeout ? 'mcp-timeout-error' : undefined}
               className="min-h-9 font-mono"
             />
-          </SettingsField>
+          </Field>
         </div>
-      </SettingsSection>
+      </PanelSection>
 
       {/* Transport + connection fields — merged into one section ── */}
-      <SettingsSection
+      <PanelSection
         title={value.transport === 'stdio' ? 'Transport — Stdio' : 'Transport — HTTP'}
         description={value.transport === 'stdio' ? 'A subprocess speaking MCP over stdin/stdout.' : 'A Streamable HTTP session.'}
       >
@@ -132,7 +132,7 @@ export function McpServerForm({
           {/* ── Stdio fields ── */}
           {value.transport === 'stdio' && (
             <>
-              <SettingsField
+              <Field
                 label="Command"
                 required
                 error={errors?.command}
@@ -148,9 +148,9 @@ export function McpServerForm({
                   aria-describedby={errors?.command ? 'mcp-command-error' : undefined}
                   className="min-h-9 font-mono"
                 />
-              </SettingsField>
+              </Field>
 
-              <SettingsField label="Arguments" hint="One per line, in order.">
+              <Field label="Arguments" hint="One per line, in order.">
                 <Textarea
                   value={value.argsText}
                   onChange={(e) => set({ argsText: e.target.value })}
@@ -160,7 +160,7 @@ export function McpServerForm({
                   placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"
                   className="min-h-32 font-mono text-[13px] leading-relaxed"
                 />
-              </SettingsField>
+              </Field>
 
               <PairListField
                 label="Environment variables"
@@ -178,7 +178,7 @@ export function McpServerForm({
           {/* ── HTTP fields ── */}
           {value.transport === 'http' && (
             <>
-              <SettingsField
+              <Field
                 label="URL"
                 required
                 error={errors?.url}
@@ -194,7 +194,7 @@ export function McpServerForm({
                   aria-describedby={errors?.url ? 'mcp-url-error' : undefined}
                   className="min-h-9 font-mono"
                 />
-              </SettingsField>
+              </Field>
 
               <PairListField
                 label="Headers"
@@ -207,7 +207,7 @@ export function McpServerForm({
                 disabled={disabled}
               />
 
-              <SettingsField
+              <Field
                 label="OAuth"
                 error={errors?.oauth}
                 hint={
@@ -223,7 +223,7 @@ export function McpServerForm({
                   enabledLabel="OAuth"
                   disabledLabel="None"
                 />
-              </SettingsField>
+              </Field>
 
               {value.oauthEnabled && (
                 <div className="rounded-xs border border-dashed border-(--color-border) px-3 py-2.5 text-xs text-(--color-text-muted)">
@@ -233,7 +233,7 @@ export function McpServerForm({
 
               {value.oauthEnabled && (
                 <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-                  <SettingsField label="Client ID" hint="Paste the OAuth app client ID.">
+                  <Field label="Client ID" hint="Paste the OAuth app client ID.">
                     <Input
                       value={value.oauthClientIdEnv}
                       onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
@@ -241,8 +241,8 @@ export function McpServerForm({
                       placeholder="client id"
                       className="min-h-9 font-mono"
                     />
-                  </SettingsField>
-                  <SettingsField label="Client secret" hint="Paste the OAuth app client secret.">
+                  </Field>
+                  <Field label="Client secret" hint="Paste the OAuth app client secret.">
                     <Input
                       value={value.oauthClientSecretEnv}
                       onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
@@ -250,18 +250,16 @@ export function McpServerForm({
                       placeholder="client secret"
                       className="min-h-9 font-mono"
                     />
-                  </SettingsField>
+                  </Field>
                 </div>
               )}
             </>
           )}
         </div>
-      </SettingsSection>
+      </PanelSection>
     </div>
   )
 }
-
-// SettingsField imported from './SettingsField'; local Field removed.
 
 // ── Enabled toggle ──────────────────────────────────────────────────────────
 

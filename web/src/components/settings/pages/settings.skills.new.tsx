@@ -5,7 +5,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { validateSkillDraft } from '@/components/settings/schema'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
 import { Textarea } from '@/components/ui/textarea'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 
@@ -72,7 +72,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
-          <SettingsSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">
+          <PanelSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">
             <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
               Frontmatter (<span className="font-mono">name</span>,{' '}
               <span className="font-mono">description</span>) is required;
@@ -88,7 +88,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
               aria-invalid={invalid || undefined}
               className="min-h-96 font-mono text-[13px] leading-relaxed"
             />
-          </SettingsSection>
+          </PanelSection>
         </div>
       </div>
     </div>

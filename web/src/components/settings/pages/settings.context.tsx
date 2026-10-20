@@ -9,8 +9,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
 import type { SummarizationSettings } from '@/api/client'
 
@@ -83,8 +83,8 @@ export function ContextSettingsPage() {
       loading={summarizationQ.isLoading}
       error={summarizationQ.error}
     >
-      <SettingsSection title="Summarization" flush>
-        <SettingsRow
+      <PanelSection title="Summarization" flush>
+        <PanelRow
           label="Token threshold"
           htmlFor="context-threshold"
           description="Summarize once a prompt reaches this many tokens. Empty uses 90% of the model's context window."
@@ -101,22 +101,22 @@ export function ContextSettingsPage() {
             onChange={(e) => draft.patch({ prompt_token_threshold: parseOptionalInt(e.target.value) })}
             className="h-9 w-36 font-mono"
           />
-        </SettingsRow>
-      </SettingsSection>
+        </PanelRow>
+      </PanelSection>
 
-      <SettingsSection
+      <PanelSection
         title="Idle sessions"
         description="Summarize a session that has sat idle for 4½ minutes, while the provider's prompt cache is still warm. Costs one summarization call."
         flush
       >
-        <SettingsRow label="Compact idle sessions" htmlFor="context-idle">
+        <PanelRow label="Compact idle sessions" htmlFor="context-idle">
           <Switch
             id="context-idle"
             checked={idleCompaction}
             onCheckedChange={(checked) => draft.patch({ idle_compaction: checked })}
           />
-        </SettingsRow>
-        <SettingsRow
+        </PanelRow>
+        <PanelRow
           label="Idle trigger"
           htmlFor="context-idle-percent"
           description={
@@ -142,8 +142,8 @@ export function ContextSettingsPage() {
             />
             <span className="text-xs text-(--color-text-muted)" aria-hidden="true">%</span>
           </div>
-        </SettingsRow>
-      </SettingsSection>
+        </PanelRow>
+      </PanelSection>
     </SettingsPage>
   )
 }

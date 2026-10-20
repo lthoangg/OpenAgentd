@@ -11,7 +11,7 @@ import {
 } from '@/queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
@@ -70,7 +70,7 @@ export function DeniedPathsSettingsPage() {
         </>
       }
     >
-      <SettingsSection
+      <PanelSection
         title="Denied patterns"
         description={
           <>
@@ -133,7 +133,7 @@ export function DeniedPathsSettingsPage() {
             ))}
           </ul>
         )}
-      </SettingsSection>
+      </PanelSection>
     </SettingsPage>
   )
 }

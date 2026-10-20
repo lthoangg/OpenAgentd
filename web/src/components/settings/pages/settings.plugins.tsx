@@ -15,7 +15,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { Callout } from '@/components/ui/callout'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
@@ -80,7 +80,7 @@ export function PluginsSettingsPage() {
       }
     >
       {unported.length > 0 && (
-        <SettingsCallout
+        <Callout
           tone="warning"
           role="alert"
           title={`${unported.length === 1 ? '1 Python plugin is' : `${unported.length} Python plugins are`} not running`}
@@ -92,7 +92,7 @@ export function PluginsSettingsPage() {
         >
           Only <code className={CODE}>.ts</code>/<code className={CODE}>.js</code> plugins run here. Add a
           TypeScript port with the same name next to each file.
-        </SettingsCallout>
+        </Callout>
       )}
 
       {isError ? (

@@ -6,7 +6,7 @@
  */
 import { ChevronRight } from 'lucide-react'
 
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelSection } from '@/components/ui/panel-section'
 import { SETTINGS_GROUPS, type TopLevelSection } from '@/components/settings/sections'
 import { ICON_SIZE, PAGE_BODY, TEXT } from '@/components/settings/tokens'
 import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
@@ -23,7 +23,7 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
           const items = sections.filter((s) => s.group === group.id)
           if (items.length === 0) return null
           return (
-            <SettingsSection key={group.id} title={group.label} flush>
+            <PanelSection key={group.id} title={group.label} flush>
               {items.map((item) => {
                 const Icon = item.icon
                 const count = counts[item.id]
@@ -57,7 +57,7 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
                   </button>
                 )
               })}
-            </SettingsSection>
+            </PanelSection>
           )
         })}
       </div>

@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { PAGE_BODY, TEXT } from '@/components/settings/tokens'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { Callout } from '@/components/ui/callout'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
@@ -222,8 +222,8 @@ function SettingsSkeleton() {
 
 function SettingsError({ error }: { error: unknown }) {
   return (
-    <SettingsCallout tone="error" role="alert">
+    <Callout tone="error" role="alert">
       {error instanceof Error ? error.message : String(error)}
-    </SettingsCallout>
+    </Callout>
   )
 }

@@ -1,25 +1,27 @@
 /**
- * SettingsSection — a titled group on a settings page.
+ * PanelSection — a titled group on a panel (Settings, Scheduled tasks,
+ * Session settings, …).
  *
  * The heading (and optional description and actions) sits above the card
  * rather than in a caps strip inside it, which gives each group room to
- * breathe. Settings is the one surface that uses this variant of the section
- * card; see DESIGN.md → Settings pages.
+ * breathe. This is the default section style for panels and overlays; dense
+ * data surfaces keep the caps-strip `SectionCard`. See DESIGN.md → Panels and
+ * management surfaces.
  *
- *   <SettingsSection title="Appearance" description="…" flush>
- *     <SettingsRow label="Theme">…</SettingsRow>
- *     <SettingsRow label="Transcript">…</SettingsRow>
- *   </SettingsSection>
+ *   <PanelSection title="Appearance" description="…" flush>
+ *     <PanelRow label="Theme">…</PanelRow>
+ *     <PanelRow label="Transcript">…</PanelRow>
+ *   </PanelSection>
  *
  * `flush` drops the card's inner padding and divides children with hairlines,
- * for lists of `SettingsRow`s or row-like content.
+ * for lists of `PanelRow`s or row-like content.
  */
 import { type ComponentPropsWithRef, type ReactNode } from 'react'
 import { SectionCard } from '@/components/ui/section-card'
-import { TEXT } from '@/components/settings/tokens'
+import { TEXT } from '@/components/ui/panel-tokens'
 import { cn } from '@/lib/utils'
 
-interface SettingsSectionProps extends Omit<ComponentPropsWithRef<'section'>, 'ref' | 'title'> {
+interface PanelSectionProps extends Omit<ComponentPropsWithRef<'section'>, 'ref' | 'title'> {
   /** Section heading shown above the card. */
   title: string
   /** One or two sentences under the heading. */
@@ -36,7 +38,7 @@ interface SettingsSectionProps extends Omit<ComponentPropsWithRef<'section'>, 'r
   contentClassName?: string
 }
 
-function SettingsSection({
+function PanelSection({
   title,
   description,
   actions,
@@ -45,7 +47,7 @@ function SettingsSection({
   className,
   contentClassName,
   ...props
-}: SettingsSectionProps) {
+}: PanelSectionProps) {
   // No aria-labelledby: a named region per group would add a landmark for
   // every card and make each title a second label for the field it contains.
   return (
@@ -71,4 +73,4 @@ function SettingsSection({
   )
 }
 
-export { SettingsSection }
+export { PanelSection }

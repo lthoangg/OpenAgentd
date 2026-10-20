@@ -9,8 +9,8 @@ import {
 } from '@/queries'
 import { Switch } from '@/components/ui/switch'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { WorkspaceGroupsSettings } from '@/components/settings/WorkspaceGroupsSettings'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
 import type { WorkspaceMessagesSettings } from '@/api/client'
@@ -36,8 +36,8 @@ export function WorkspacesSettingsPage() {
       loading={messagesQ.isLoading}
       error={messagesQ.error}
     >
-      <SettingsSection title="Messages" flush>
-        <SettingsRow
+      <PanelSection title="Messages" flush>
+        <PanelRow
           label="Let agents message other workspaces"
           htmlFor="workspaces-messages"
           description="Turning this off removes the tool from new turns; replies already on their way still arrive."
@@ -47,16 +47,16 @@ export function WorkspacesSettingsPage() {
             checked={draft.value.enabled}
             onCheckedChange={(checked) => draft.patch({ enabled: checked })}
           />
-        </SettingsRow>
-      </SettingsSection>
+        </PanelRow>
+      </PanelSection>
 
-      <SettingsSection
+      <PanelSection
         title="Groups"
         description="Repositories in the same group can message each other; Chat reaches every one. Changes save right away."
         flush
       >
         <WorkspaceGroupsSettings />
-      </SettingsSection>
+      </PanelSection>
     </SettingsPage>
   )
 }

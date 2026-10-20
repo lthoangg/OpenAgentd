@@ -10,9 +10,9 @@ import { Button } from '@/components/ui/button'
 import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { Callout } from '@/components/ui/callout'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
 import { getPlatform, type OS } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
@@ -161,12 +161,12 @@ export function NetworkAccessCard({ title = 'Network access' }: {
 
   return (
     <div className="space-y-8">
-      <SettingsSection
+      <PanelSection
         title={title}
         description="Let phones and other computers on your network use the builtin backend."
         flush
       >
-        <SettingsRow
+        <PanelRow
           label="Allow devices on your network to connect"
           labelId="network-access-label"
           description={sidecarRunning
@@ -179,9 +179,9 @@ export function NetworkAccessCard({ title = 'Network access' }: {
             onCheckedChange={toggle}
             disabled={pending || !status || !sidecarRunning}
           />
-        </SettingsRow>
+        </PanelRow>
 
-        <SettingsRow
+        <PanelRow
           label="Preferred port"
           htmlFor="network-access-port"
           description={
@@ -200,7 +200,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
             className="h-9 w-28 font-mono"
             disabled={pending || switchOn}
           />
-        </SettingsRow>
+        </PanelRow>
 
         {error ? (
           <div className="px-4 py-3">
@@ -209,11 +209,11 @@ export function NetworkAccessCard({ title = 'Network access' }: {
             </p>
           </div>
         ) : null}
-      </SettingsSection>
+      </PanelSection>
 
       {listening ? (
-        <SettingsSection title="Connect a device" flush>
-            <SettingsRow
+        <PanelSection title="Connect a device" flush>
+            <PanelRow
               label="Address"
               description="Open it on the other device, or scan the QR code."
               stack
@@ -251,9 +251,9 @@ export function NetworkAccessCard({ title = 'Network access' }: {
                   </div>
                 ) : null}
               </div>
-            </SettingsRow>
+            </PanelRow>
 
-            <SettingsRow
+            <PanelRow
               label="Access key"
               description="Every device needs it. Changing it disconnects devices that use the old one."
               stack
@@ -297,11 +297,11 @@ export function NetworkAccessCard({ title = 'Network access' }: {
                   </Button>
                 </div>
               </div>
-            </SettingsRow>
-        </SettingsSection>
+            </PanelRow>
+        </PanelSection>
       ) : null}
 
-      <SettingsCallout tone="warning">
+      <Callout tone="warning">
         <div className="space-y-2">
           {hint ? <p>{hint}</p> : null}
           <p>
@@ -309,7 +309,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
             networks you trust. Access ends when the app quits.
           </p>
         </div>
-      </SettingsCallout>
+      </Callout>
     </div>
   )
 }

@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
 
-import { SettingsCallout } from '@/components/settings/SettingsCallout'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { Callout } from '@/components/ui/callout'
+import { PanelSection } from '@/components/ui/panel-section'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
-import { SettingsField } from '../SettingsField'
+import { Field } from '@/components/ui/field'
 import { type AgentFrontmatter } from '../frontmatter'
 import { validateDescription, validateModel } from '../schema'
 import { ModelCombobox, type ModelOption } from './ModelCombobox'
@@ -22,7 +22,7 @@ export function ParseErrorBanner({
   onSwitchToRaw: () => void
 }) {
   return (
-    <SettingsCallout
+    <Callout
       tone="error"
       title="Parse error"
       action={
@@ -32,7 +32,7 @@ export function ParseErrorBanner({
       }
     >
       {message}
-    </SettingsCallout>
+    </Callout>
   )
 }
 
@@ -111,15 +111,15 @@ export function FormFields({
   return (
     <div className="flex flex-col gap-8">
       {hasBuiltInProfile && (
-        <SettingsCallout title="Built-in OpenAgentd profile">
+        <Callout title="Built-in OpenAgentd profile">
           Defaults come from OpenAgentd. Add your own instructions in a global or workspace AGENTS.md.
-        </SettingsCallout>
+        </Callout>
       )}
 
       {/* Identity ─────────────────────────────────────────────── */}
-      <SettingsSection title="Identity" description="Who this agent is and what it is for.">
+      <PanelSection title="Identity" description="Who this agent is and what it is for.">
         <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-          <SettingsField
+          <Field
             label="Description"
             error={descriptionError}
             className="md:col-span-2"
@@ -136,14 +136,14 @@ export function FormFields({
               placeholder="Coordinates work and breaks tasks into focused steps."
               aria-invalid={!!descriptionError || undefined}
             />
-          </SettingsField>
+          </Field>
         </div>
-      </SettingsSection>
+      </PanelSection>
 
       {/* Model & behaviour ─────────────────────────────────────── */}
-      <SettingsSection title="Model & behaviour" description="Which model runs this agent, and how deeply it reasons.">
+      <PanelSection title="Model & behaviour" description="Which model runs this agent, and how deeply it reasons.">
         <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-          <SettingsField label="Model" required error={modelError} className="md:col-span-2">
+          <Field label="Model" required error={modelError} className="md:col-span-2">
             <ModelCombobox
               value={fm.model ?? ''}
               options={currentModelOptions}
@@ -165,9 +165,9 @@ export function FormFields({
               invalid={!!modelError}
               placeholder="Type to search models…"
             />
-          </SettingsField>
+          </Field>
 
-          <SettingsField label="Thinking level" hint="How much hidden reasoning the model may use.">
+          <Field label="Thinking level" hint="How much hidden reasoning the model may use.">
             <Dropdown
               value={fm.thinking_level ?? '__none__'}
               onValueChange={(v) => {
@@ -183,17 +183,17 @@ export function FormFields({
                 <DropdownItem key={lvl} value={lvl}>{lvl}</DropdownItem>
               ))}
             </Dropdown>
-          </SettingsField>
+          </Field>
         </div>
-      </SettingsSection>
+      </PanelSection>
 
       {/* Capabilities ──────────────────────────────────────────── */}
-      <SettingsSection
+      <PanelSection
         title="Capabilities"
         description={isLead ? 'Extra tools and skills on top of the built-in profile.' : 'The tools this agent may use.'}
       >
         <div className="flex flex-col gap-5">
-          <SettingsField
+          <Field
             label="Tools"
             hint={
               builtInTools.length > 0
@@ -211,13 +211,13 @@ export function FormFields({
               placeholder="Pick extra tools this agent may invoke…"
               selectedLabel="Selected tools"
             />
-          </SettingsField>
+          </Field>
 
         </div>
-      </SettingsSection>
+      </PanelSection>
 
       {/* System prompt ─────────────────────────────────────────── */}
-      <SettingsSection
+      <PanelSection
         title="System prompt"
         description={isLead ? 'Custom instructions for the lead agent.' : "Instructions that define this agent's behavior."}
       >
@@ -249,7 +249,7 @@ export function FormFields({
             aria-label="System prompt"
           />
         </div>
-      </SettingsSection>
+      </PanelSection>
     </div>
   )
 }
@@ -276,5 +276,3 @@ function CapabilityChips({ label, values }: { label: string; values: string[] })
     </div>
   )
 }
-
-// SettingsField is imported from '../SettingsField' — the local Field was removed.

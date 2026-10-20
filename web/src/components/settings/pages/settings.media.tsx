@@ -11,8 +11,8 @@ import {
 } from '@/queries'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSection } from '@/components/settings/SettingsSection'
+import { PanelRow } from '@/components/ui/panel-row'
+import { PanelSection } from '@/components/ui/panel-section'
 import { ModelCombobox, type ModelOption } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
@@ -122,8 +122,8 @@ export function MediaSettingsPage() {
       loading={multimodalQ.isLoading}
       error={multimodalQ.error}
     >
-      <SettingsSection title="Image generation" flush>
-        <SettingsRow label="Model" error={imageModelError}>
+      <PanelSection title="Image generation" flush>
+        <PanelRow label="Model" error={imageModelError}>
           <div className="w-full sm:w-72">
             <ModelCombobox
               value={String(mm.image.model ?? '')}
@@ -134,7 +134,7 @@ export function MediaSettingsPage() {
               ariaLabel="Image model"
             />
           </div>
-        </SettingsRow>
+        </PanelRow>
         <ListRow label="Aspect ratio" value={String(mm.image.aspect_ratio ?? '')} onChange={(v) => setImage('aspect_ratio', v)} options={IMAGE_ASPECT_RATIOS} />
         <ListRow label="Image size" value={String(mm.image.image_size ?? '')} onChange={(v) => setImage('image_size', v)} options={IMAGE_SIZES} />
         <ListRow
@@ -159,10 +159,10 @@ export function MediaSettingsPage() {
           options={IMAGE_QUALITIES}
           optional
         />
-      </SettingsSection>
+      </PanelSection>
 
-      <SettingsSection title="Video generation" flush>
-        <SettingsRow label="Model" error={videoModelError}>
+      <PanelSection title="Video generation" flush>
+        <PanelRow label="Model" error={videoModelError}>
           <div className="w-full sm:w-72">
             <ModelCombobox
               value={String(mm.video.model ?? '')}
@@ -173,7 +173,7 @@ export function MediaSettingsPage() {
               ariaLabel="Video model"
             />
           </div>
-        </SettingsRow>
+        </PanelRow>
         <ListRow label="Aspect ratio" value={String(mm.video.aspect_ratio ?? '')} onChange={(v) => setVideo('aspect_ratio', v)} options={VIDEO_ASPECT_RATIOS} />
         <ListRow label="Resolution" value={String(mm.video.resolution ?? '')} onChange={(v) => setVideo('resolution', v)} options={VIDEO_RESOLUTIONS} />
         <ListRow
@@ -183,7 +183,7 @@ export function MediaSettingsPage() {
           onChange={(v) => setVideo('duration_seconds', v)}
           options={VIDEO_DURATIONS}
         />
-      </SettingsSection>
+      </PanelSection>
     </SettingsPage>
   )
 }
@@ -205,7 +205,7 @@ function ListRow({
   optional?: boolean
 }) {
   return (
-    <SettingsRow label={label} description={description}>
+    <PanelRow label={label} description={description}>
       <Dropdown
         value={value}
         onValueChange={(next) => next && onChange(next)}
@@ -219,7 +219,7 @@ function ListRow({
           </DropdownItem>
         ))}
       </Dropdown>
-    </SettingsRow>
+    </PanelRow>
   )
 }
 

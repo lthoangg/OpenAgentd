@@ -693,9 +693,20 @@ explicitly.
     approval as the tool result; anything else resumes in the active mode
     with the feedback. Edits made during the review are included in that
     result.
-  - **Mode notes.** The Plan-mode note is versioned (`version 2`); a session
-    whose last Plan-mode note is older gets the new instructions once, with
-    a line saying they replace the `<proposed_plan>` ones.
+  - **Mode notes.** The Plan-mode note is versioned (`version 3` since
+    v3.21.0: reviewer-shaped plans with an Appendix and visuals); a session
+    whose last Plan-mode note is older gets the new instructions once, and a
+    version-1 note also gets a line saying they replace the `<proposed_plan>`
+    ones.
+  - **Plan attachments** (v3.21.0). `patch` and `preview` are allowed in
+    Plan mode, each checking every call (`interaction_mode.rs`
+    `PLAN_MODE_ALLOWED_TOOLS`): `patch` writes only files at least one folder
+    below `<workspace>/.agents/plans/`, with every Add, Update, Delete and
+    Move path resolved through symlinks first, so plan files themselves stay
+    with the `plan` tool (`tools/src/patch.rs` `plan_mode_refusal`);
+    `preview` refuses `click`, `fill` and `press`, in a `chain` too
+    (`tools/preview.rs`). A `plan` save in Plan mode names the plan's
+    attachments folder (its path without `.md`).
   - **Compaction.** Compaction inserts a pinned, hidden `note` row
     (`extra.session_plan`) restating the plan before the summary unless one
     is still in context.

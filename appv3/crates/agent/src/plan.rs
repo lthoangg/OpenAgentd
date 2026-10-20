@@ -113,6 +113,12 @@ impl PlanDoc {
     pub fn display_path(&self) -> String {
         self.workspace_path().unwrap_or_else(|| self.path.display().to_string())
     }
+    /// The workspace-relative folder for the plan's attachments (mockups,
+    /// diagrams): the plan's path without `.md`. Only workspace plans have one.
+    pub fn attachments_dir(&self) -> Option<String> {
+        let rel = self.workspace_path()?;
+        Some(rel.strip_suffix(".md").unwrap_or(&rel).to_string())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

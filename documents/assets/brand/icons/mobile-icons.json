@@ -1,0 +1,5 @@
+{
+  "default": "../openagentd-app-icon.png",
+  "bg_color": "#FAF6EC",
+  "android_fg": "openagentd-icon-android-foreground.png"
+}

@@ -1,0 +1,228 @@
+/* The OpenAgentd logo (logo-svg.ts) and its intro. Source of truth:
+   lthoangg/openagentd web/src/lib/brand/; openagentd.dev copies it to
+   src/styles/logo.css. The app does not load it (only the boot and loading
+   Seal's dot pulses there, see web/src/index.css). scripts/brand/brand.ts
+   copies this file into the standalone intro SVGs, so keep it plain CSS that
+   also works inside an SVG image.
+
+   The intro (3.3s) turns the Seal into the wordmark. Purpose: brand
+   storytelling, shown once where the logo is the subject (the home page's
+   nav on load, the closing band and the 404 page).
+     0.00-0.50s  the Seal stamps down over the A, with a small overshoot
+     0.42-0.80s  the agent (the dot) lands as the crossbar
+     0.95-1.45s  the Seal opens like an iris; its cut-out A is left in ink
+     1.40-2.00s  the A shrinks into its place in the word
+     2.00-2.90s  the name unfolds outward from the A, nearest letters first
+     2.90-3.30s  the dot blinks once, like a status light
+   Percentages below are of 3.3s. Only transform and opacity animate. With
+   reduced motion, or before a "view" intro is seen, the logo shows its final
+   state: the wordmark alone. */
+
+.oad-logo {
+  display: block;
+  overflow: visible;
+  fill: currentColor;
+}
+
+.oad-logo .oad-signal {
+  fill: var(--signal);
+}
+
+.oad-logo .oad-seal {
+  opacity: 0;
+}
+
+.oad-logo :is(.oad-l, .oad-dot, .oad-disc, .oad-iris, .oad-seal-dot) {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-seal {
+    animation: oad-seal 3.3s both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-disc {
+    animation: oad-disc 3.3s both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-iris {
+    animation: oad-iris 3.3s both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-seal-dot {
+    animation: oad-seal-dot 3.3s both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-a {
+    animation: oad-a 3.3s both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-dot {
+    animation: oad-dot 3.3s both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-l {
+    animation-duration: 0.7s;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-delay: 2s;
+    animation-fill-mode: both;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-left {
+    animation-name: oad-unfold-left;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-right {
+    animation-name: oad-unfold-right;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-d2 {
+    animation-delay: 2.08s;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-d3 {
+    animation-delay: 2.16s;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-d4 {
+    animation-delay: 2.24s;
+  }
+
+  .oad-logo:is([data-intro='load'], [data-intro='view'][data-seen]) .oad-d5 {
+    animation-delay: 2.32s;
+  }
+}
+
+/* The Seal: stamps down at 1.8x (SEAL_START in logo-svg.ts) from 55% of
+   that, holds, then shrinks onto the A and hands over to it. */
+@keyframes oad-seal {
+  0% {
+    opacity: 0;
+    transform: scale(0.99);
+    animation-timing-function: cubic-bezier(0.34, 1.5, 0.64, 1);
+  }
+  5% {
+    opacity: 1;
+  }
+  15.2% {
+    transform: scale(1.8);
+  }
+  42.4% {
+    transform: scale(1.8);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  59.4% {
+    opacity: 1;
+  }
+  60.6% {
+    transform: scale(1);
+  }
+  62.4%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+/* The disc grows a little as it opens, then is removed outright, so no
+   anti-aliased rim is left behind. */
+@keyframes oad-disc {
+  0%,
+  28.8% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  43.9% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  44%,
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+
+/* The iris: a hole in the disc and, in step, the window the inked A shows
+   through. */
+@keyframes oad-iris {
+  0%,
+  28.8% {
+    transform: scale(0);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  43.9%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes oad-seal-dot {
+  0%,
+  12.7% {
+    transform: scale(0);
+    animation-timing-function: cubic-bezier(0.34, 1.9, 0.64, 1);
+  }
+  24.2%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* The wordmark's A is fully in before the Seal fades off it, so the A never
+   looks pale during the handover. */
+@keyframes oad-a {
+  0%,
+  57.6% {
+    opacity: 0;
+  }
+  59.4%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* The wordmark's dot takes over from the Seal's, then blinks once. */
+@keyframes oad-dot {
+  0%,
+  57.6% {
+    opacity: 0;
+  }
+  59.4%,
+  87.9% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  93.9% {
+    transform: scale(1.3);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Letters start 0.45em toward the A and move out to their places. */
+@keyframes oad-unfold-left {
+  from {
+    opacity: 0;
+    transform: translateX(450px);
+  }
+  60% {
+    opacity: 1;
+  }
+}
+
+@keyframes oad-unfold-right {
+  from {
+    opacity: 0;
+    transform: translateX(-450px);
+  }
+  60% {
+    opacity: 1;
+  }
+}

@@ -10,7 +10,17 @@ generation, updater helpers, and code-health analysis.
 - `codehealth/`: stdlib analyzer for Python/TypeScript size, complexity,
   coupling, and import cycles. `make health` and `make health-json` analyze
   the web frontend only; `--lang python` still reaches the frozen v2 `app/`.
-- `generate_icons.py`: shared source-icon conversion for native targets.
+- `brand/`: the logo's source of truth. `brand.ts` (its own Bun package, with
+  Schibsted Grotesk and its OFL license in `fonts/`) builds the Seal and the
+  wordmark from the font and writes `web/src/lib/brand/logo-data.ts`, the
+  logo files and favicons under `documents/assets/brand/`, the platform icon
+  masters, `web/public/` favicons, and the boot loader's inline Seal in
+  `web/index.html`. Run `bun install --cwd scripts/brand && bun
+  scripts/brand/brand.ts`, then `python3 scripts/generate_icons.py --force`.
+  openagentd.dev copies the logo from here; never redraw it by hand.
+- `generate_icons.py`: turns the brand masters into every native icon
+  (desktop `.icns`/`.ico`/PNGs and tray template, iOS and Android launcher
+  icons) through `cargo tauri icon`.
 - `make_updater_manifest.py` and `generate_updater_keys.sh`: desktop updater
   metadata and local key setup.
 - `make_sidestore_source.py`: SideStore/AltStore source feed for the iOS

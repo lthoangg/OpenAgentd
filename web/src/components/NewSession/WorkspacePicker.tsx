@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/api/types'
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { sameWorkspacePath } from '@/utils/workspace'
+import { hasFinePointer } from '@/lib/pointer'
 
 interface PickerOption {
   path: string
@@ -120,7 +121,7 @@ export function WorkspacePicker({
         <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 pb-1.5 pt-1">
           <Search size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
           <input
-            autoFocus
+            autoFocus={hasFinePointer()}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)

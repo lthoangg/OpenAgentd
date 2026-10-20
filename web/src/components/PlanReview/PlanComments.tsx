@@ -46,7 +46,13 @@ export function CommentButton({ selection, onComment }: { selection: PlanSelecti
   )
 }
 
-/** The comment being written, anchored under the passage it is about. */
+/**
+ * The comment being written. On desktop it floats under the passage it is
+ * about; ``docked`` (mobile) renders it in the review footer instead, sitting
+ * on the soft keyboard, so the box and its buttons always fit the visible
+ * area. The docked composer is focused by the caller inside the tap that
+ * opened it (iOS only raises the keyboard for focus within a user gesture).
+ */
 export function CommentComposer({
   anchor,
   quote,
@@ -55,8 +61,11 @@ export function CommentComposer({
   onAdd,
   onCancel,
   scrollRef,
+  docked = false,
+  textareaRef,
 }: {
-  anchor: PlanSelection
+  /** Where the passage ends; required unless ``docked``. */
+  anchor: PlanSelection | null
   quote: string
   text: string
   onChange: (text: string) => void
@@ -64,19 +73,22 @@ export function CommentComposer({
   onCancel: () => void
   /** The plan's scroll container, scrolled so the composer is in view. */
   scrollRef: RefObject<HTMLElement | null>
+  docked?: boolean
+  textareaRef?: RefObject<HTMLTextAreaElement | null>
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const width = Math.min(COMPOSER_MAX_WIDTH, Math.max(0, anchor.width - 16))
+  const width = anchor ? Math.min(COMPOSER_MAX_WIDTH, Math.max(0, anchor.width - 16)) : COMPOSER_MAX_WIDTH
 
   // Scroll the plan, not its ancestors, so the whole composer is visible.
   useLayoutEffect(() => {
+    if (docked) return
     const box = ref.current?.getBoundingClientRect()
     const scroller = scrollRef.current
     if (!box || !scroller) return
     const view = scroller.getBoundingClientRect()
     const overflow = box.bottom + 8 - view.bottom
     if (overflow > 0) scroller.scrollTop += overflow
-  }, [scrollRef])
+  }, [scrollRef, docked])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape') {
@@ -94,21 +106,26 @@ export function CommentComposer({
       ref={ref}
       role="group"
       aria-label="New comment"
-      className="shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
-      style={{ top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
+      className={
+        docked
+          ? 'w-full'
+          : 'shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2'
+      }
+      style={docked || !anchor ? undefined : { top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
     >
       <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-[11px] leading-relaxed text-(--color-text-subtle)">
         {quote}
       </p>
       <Textarea
-        autoFocus
+        ref={textareaRef}
+        autoFocus={!docked}
         aria-label="Comment"
         placeholder="What should change here?"
         value={text}
         maxLength={PLAN_COMMENT_MAX_CHARS}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
-        className="max-h-40 min-h-16 text-xs"
+        className={docked ? 'max-h-[calc(var(--app-vh,100svh)*0.25)] min-h-12 text-xs' : 'max-h-40 min-h-16 text-xs'}
       />
       <div className="mt-1.5 flex items-center justify-end gap-1.5">
         <Button type="button" variant="ghost" size="xs" onClick={onCancel}>

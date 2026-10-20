@@ -189,9 +189,30 @@ export function overlayLeft(selection: PlanSelection, overlayWidth: number, marg
   return Math.min(Math.max(margin, selection.left - overlayWidth / 2), max)
 }
 
+/**
+ * Where a passage ends inside `body`, in the shape of a selection, so a
+ * comment restored from a draft can anchor its composer again. `null` when
+ * the plan no longer contains the passage.
+ */
+export function passageAnchor(body: HTMLElement, quote: string): PlanSelection | null {
+  const range = findTextRange(body, quote)
+  if (!range) return null
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0)
+  const end = rects[rects.length - 1] ?? range.getBoundingClientRect()
+  const box = body.getBoundingClientRect()
+  return { text: quote, top: Math.max(0, end.bottom - box.top), left: Math.max(0, end.right - box.left), width: box.width }
+}
+
+/** The comment being written, kept with the review so leaving mid-comment loses nothing. */
+export interface PlanCommentDraft {
+  quote: string
+  text: string
+}
+
 export interface PlanReviewDraft {
   comments: PlanComment[]
   overall: string
+  composer?: PlanCommentDraft | null
 }
 
 /**
@@ -206,7 +227,7 @@ export function readPlanReviewDraft(questionId: string | null): PlanReviewDraft 
 }
 
 export function writePlanReviewDraft(questionId: string, draft: PlanReviewDraft): void {
-  if (draft.comments.length === 0 && !draft.overall) {
+  if (draft.comments.length === 0 && !draft.overall && !draft.composer) {
     drafts.delete(questionId)
     return
   }

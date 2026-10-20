@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 const SCROLL_THRESHOLD = 40
 const USER_SCROLL_INTENT_MS = 250
+/** Quiet time after the last visual-viewport resize before the keyboard counts as settled. */
+export const KEYBOARD_SETTLE_MS = 120
 const SCROLL_UP_KEYS = new Set(['PageUp', 'Home', 'ArrowUp'])
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 /** How long a return to a session waits for its anchor block to render. */
@@ -406,6 +408,42 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     if (anchorRef.current) ro.observe(anchorRef.current)
     return () => ro.disconnect()
   }, [hasContent])
+
+  // The soft keyboard shrinks the scrollport from the bottom while scrollTop
+  // stays put, so the end of the latest reply slides under the composer. The
+  // observer above deliberately ignores those per-frame shrinks (chasing the
+  // keyboard animation is janky); instead re-pin once, after the keyboard has
+  // settled, if the reader was following the bottom.
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return
+    const root = document.documentElement
+    const vv = window.visualViewport
+    let open = root.hasAttribute('data-keyboard-open')
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const repin = () => {
+      timer = null
+      vv?.removeEventListener('resize', settle)
+      if (attachedRef.current) scrollToBottom()
+    }
+    function settle() {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(repin, KEYBOARD_SETTLE_MS)
+    }
+    const observer = new MutationObserver(() => {
+      const next = root.hasAttribute('data-keyboard-open')
+      if (next === open) return
+      open = next
+      if (!next) return
+      vv?.addEventListener('resize', settle)
+      settle()
+    })
+    observer.observe(root, { attributes: true, attributeFilter: ['data-keyboard-open'] })
+    return () => {
+      observer.disconnect()
+      if (timer) clearTimeout(timer)
+      vv?.removeEventListener('resize', settle)
+    }
+  }, [scrollToBottom])
 
   return {
     scrollRef,

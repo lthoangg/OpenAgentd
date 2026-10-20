@@ -17,6 +17,7 @@ import { Check, ChevronDown, Search, X } from 'lucide-react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { hasFinePointer } from '@/lib/pointer'
 
 export interface MultiSelectOption {
   value: string
@@ -176,11 +177,14 @@ export function MultiSelect({
           <input
             id={searchId}
             ref={searchRef}
-            autoFocus
+            autoFocus={hasFinePointer()}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Search…"
+            autoCapitalize="off"
+            autoCorrect="off"
+            enterKeyHint="search"
             className="flex-1 border-none bg-transparent text-xs text-(--color-text) outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 placeholder:text-(--color-text-muted)"
             aria-label="Search options"
           />

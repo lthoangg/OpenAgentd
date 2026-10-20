@@ -642,6 +642,21 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
   (Settings or Control Center) while it runs: larger settings scale the text
   and spacing together, up to 125%. Smaller settings keep the design size.
+- **Typing on a phone** `[v3.22.0]` — every text field works with the
+  keyboard up:
+  - Plan review on a phone: selecting plan text offers **Comment on selection**
+    in the footer, the comment box docks on the keyboard, saved comments fold
+    into a chip while you type, and a half-written comment survives closing
+    the sheet. Request changes and Approve stay in reach.
+  - The chat re-pins to the newest message when the keyboard opens, Send and
+    Steer keep the keyboard up, and dragging or tapping the transcript puts
+    it away.
+  - Menus, the model list, the palette and dialogs open in the space above
+    the keyboard; sheets no longer raise it on open.
+  - Fields for ids, paths, URLs and keys skip autocorrect and
+    auto-capitalise, keyboards show Search / Next / Done, scheduler Return
+    moves to the next field, and the scheduler time uses the iOS picker.
+  - Denser touch layout: 36px list rows and tighter line height.
 - **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers:
   - Every prompt you wrote has Edit (rewind to it and put it back in the
     composer; `/redo` brings the undone turns back), reachable from the

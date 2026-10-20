@@ -143,7 +143,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
           <X />
         </Button>
       </header>
-      <div className="max-h-[40vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2">
+      <div className="max-h-[calc(var(--app-vh,100vh)*0.4)] min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2">
         {current ? (
           <ExchangeView exchange={current} sessionId={sessionId} />
         ) : btw.isLoading ? (

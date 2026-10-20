@@ -44,6 +44,7 @@ import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { copyText, useChatMenu } from './ChatContextMenu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
+import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -601,6 +602,8 @@ export function AgentView({
     isEmpty,
     onLoadOlderTop: handleLoadOlderTopTrigger,
   })
+  // Phone: drag or tap the transcript to put the keyboard away.
+  useDismissKeyboardOnTouch(scrollRef)
 
   // ── Follow state for the composer's jump chip ─────────────────────────────
   // Counted from the newest block when the reader scrolled away, so earlier

@@ -357,4 +357,41 @@ describe('QuestionCard', () => {
     expect(container.querySelector('a')).toBeNull()
     expect(screen.getByText(/\[our portal\]\(https:\/\/evil\.example\)/)).toBeInTheDocument()
   })
+
+  describe('on a touch screen', () => {
+    const realMatchMedia = window.matchMedia
+    afterEach(() => {
+      window.matchMedia = realMatchMedia
+    })
+    function useTouch() {
+      window.matchMedia = ((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia
+    }
+
+    it('focuses the free-text box when the user picks it', () => {
+      useTouch()
+      renderCard()
+      fireEvent.click(screen.getByRole('radio', { name: /Type your own answer/ }))
+      expect(document.activeElement).toBe(screen.getByLabelText('Your answer'))
+    })
+
+    it('does not raise the keyboard by itself when a restored card remounts', () => {
+      useTouch()
+      const { unmount } = renderCard()
+      fireEvent.click(screen.getByRole('radio', { name: /Type your own answer/ }))
+      unmount()
+
+      renderCard()
+      expect(screen.getByLabelText('Your answer')).toBeInTheDocument()
+      expect(document.activeElement).not.toBe(screen.getByLabelText('Your answer'))
+    })
+  })
 })

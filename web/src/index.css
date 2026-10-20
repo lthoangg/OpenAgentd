@@ -634,6 +634,31 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
   transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* ── Keyboard open (iOS/Android Tauri) ──────────────────────────────────────
+ * Overlays inside the chat shell are positioned against it (its transform
+ * makes it the containing block), so their bottom already sits on the
+ * keyboard. What is left is geometry that still assumes the full screen:
+ *   - the home-indicator inset, hidden behind the keyboard, would leave a
+ *     dead strip above it;
+ *   - the palette has no bottom bound, so its list ran under the keyboard;
+ *   - dialogs portal to <body> and centre on the *layout* viewport, which the
+ *     iOS keyboard does not shrink, so their lower half sat under it.
+ * ──────────────────────────────────────────────────────────────────────────── */
+html[data-mobile-shell][data-keyboard-open] .app-overlay-modal {
+  bottom: 0.5rem;
+}
+
+html[data-mobile-shell] .app-overlay-palette {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(var(--app-vh, 100svh) - var(--spacing-app-header) - env(safe-area-inset-top, 0px) - 1rem);
+}
+
+html[data-mobile-shell][data-keyboard-open] [data-dialog-content] {
+  top: calc(var(--app-vh, 100svh) / 2);
+  max-height: calc(var(--app-vh, 100svh) - 2rem);
+}
+
 .settings-modal-shell {
   position: fixed;
   top: max(0.5rem, env(safe-area-inset-top, 0px));
@@ -652,6 +677,13 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
 html[data-mobile-shell] .settings-modal-shell {
   height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
   transform: translateY(var(--app-vt, 0px));
+}
+
+/* The home indicator is behind the keyboard: drop its inset so the Save bar
+ * sits on the keyboard instead of above a dead strip. */
+html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+  bottom: 0.5rem;
+  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
 }
 
 @media (min-width: 768px) {
@@ -1166,12 +1198,19 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
-/* Touch parity (DESIGN.md): list rows are a 44px target on touch. Rows sized
-   from the token (sidebar sessions and workspaces, dock lists) follow; their
-   inline actions grow with ``pointer-coarse:`` sizes of their own. */
+/* Touch density (DESIGN.md): list rows are 36px on touch. Full-width rows are
+   easy to hit at that height, and 44px left 12px text floating in air. Rows
+   sized from the token (sidebar sessions, sub-sessions, group headers,
+   workspaces, dock lists) follow; their inline actions keep their own
+   ``pointer-coarse:`` sizes (36px fits the row). Line height tightens too:
+   UI text (``leading-relaxed``) and chat/plan prose read denser on a phone. */
 @media (pointer: coarse) {
   :root {
-    --spacing-list-row: 2.75rem;
+    --spacing-list-row: 2.25rem;
+    --leading-relaxed: 1.5;
+  }
+  .oa-prose {
+    line-height: 1.6;
   }
 }
 

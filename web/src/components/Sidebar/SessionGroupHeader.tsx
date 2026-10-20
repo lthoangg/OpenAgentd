@@ -30,7 +30,7 @@ export function SessionGroupHeader({
       onClick={onToggle}
       aria-expanded={!collapsed}
       aria-controls={controls}
-      className={`group/header flex w-full items-center gap-1.5 rounded-sm pl-3 pr-2 text-left text-[11px] leading-none transition-colors hover:bg-(--bg-key)/35 pointer-coarse:h-11 ${tall ? 'h-8' : 'h-6'}`}
+      className={`group/header flex w-full items-center gap-1.5 rounded-sm pl-3 pr-2 text-left text-[11px] leading-none transition-colors hover:bg-(--bg-key)/35 pointer-coarse:h-(--spacing-list-row) ${tall ? 'h-8' : 'h-6'}`}
     >
       <span className="label-caps text-(--color-text-subtle)">{label}</span>
       <span className={`tabular-nums ${tone === 'warning' ? 'text-(--color-warning)' : 'text-(--color-text-subtle)'}`}>{count}</span>

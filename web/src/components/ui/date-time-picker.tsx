@@ -5,7 +5,8 @@
  * - Selecting a day does NOT auto-close — user sets time in the same open panel.
  * - A "Done" button closes the popover intentionally.
  * - Time inputs use text + arrow-key / +/- buttons; native spinners are hidden
- *   to avoid the overlap bug on small widths.
+ *   to avoid the overlap bug on small widths. On mobile the time is a native
+ *   `<input type="time">` instead (the OS wheel beats two tiny text fields).
  *
  * Value contract: ISO-8601 local datetime string ("yyyy-MM-dd'T'HH:mm").
  */
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 interface DateTimePickerProps {
   /** ISO-8601 local string: "2026-04-23T14:30" or empty string / undefined */
@@ -91,6 +93,7 @@ export function DateTimePicker({
   'aria-describedby': ariaDescribedBy,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false)
+  const isMobile = useIsMobile()
 
   const handleOpenChange = (next: boolean) => setOpen(next)
 
@@ -117,6 +120,11 @@ export function DateTimePicker({
 
   function handleHours(h: number) { emitChange(parsed, h, minutes) }
   function handleMinutes(m: number) { emitChange(parsed, hours, m) }
+  function handleNativeTime(e: React.ChangeEvent<HTMLInputElement>) {
+    const match = /^(\d{2}):(\d{2})/.exec(e.target.value)
+    // Cleared (or mid-edit) native field: keep the last valid time.
+    if (match) emitChange(parsed, Number(match[1]), Number(match[2]))
+  }
 
   const displayLabel = parsed ? format(parsed, 'dd/MM/yyyy HH:mm') : placeholder
 
@@ -153,9 +161,21 @@ export function DateTimePicker({
           <div className="flex items-center justify-between gap-3 border-t border-(--color-border) bg-(--bg-sidebar)/60 px-3 py-2">
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] font-medium text-(--color-text-muted)">Time</span>
-              <TimeUnit value={hours} min={0} max={23} label="Hours" onChange={handleHours} />
-              <span className="self-center font-mono text-xs text-(--color-text-muted)">:</span>
-              <TimeUnit value={minutes} min={0} max={59} label="Minutes" onChange={handleMinutes} />
+              {isMobile ? (
+                <input
+                  type="time"
+                  aria-label="Time"
+                  value={`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`}
+                  onChange={handleNativeTime}
+                  className="h-7 rounded-xs border border-(--color-border) bg-(--bg-page) px-1.5 text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-1 focus:ring-(--focus-ring)/30 focus:outline-none focus-visible:outline-none"
+                />
+              ) : (
+                <>
+                  <TimeUnit value={hours} min={0} max={23} label="Hours" onChange={handleHours} />
+                  <span className="self-center font-mono text-xs text-(--color-text-muted)">:</span>
+                  <TimeUnit value={minutes} min={0} max={59} label="Minutes" onChange={handleMinutes} />
+                </>
+              )}
             </div>
 
             <Button

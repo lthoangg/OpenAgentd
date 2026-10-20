@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test'
-import { render, screen, cleanup, act } from '@testing-library/react'
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 
@@ -390,5 +390,36 @@ describe('DateTimePicker', () => {
 
     expect(hoursInput.value).toBe('09')
     expect(minutesInput.value).toBe('05')
+  })
+})
+
+describe('DateTimePicker on mobile', () => {
+  const original = window.matchMedia
+  afterEach(() => { window.matchMedia = original })
+
+  function stubMobile() {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia
+  }
+
+  it('uses a native time input and keeps the value contract', async () => {
+    stubMobile()
+    const user = userEvent.setup()
+    let lastValue = ''
+    render(<DateTimePicker value="2026-04-23T14:30" onChange={(v) => { lastValue = v }} />)
+    await user.click(screen.getByRole('button'))
+
+    expect(screen.queryByLabelText('Hours')).toBeNull()
+    expect(screen.queryByLabelText('Minutes')).toBeNull()
+    const time = screen.getByLabelText('Time') as HTMLInputElement
+    expect(time.type).toBe('time')
+    expect(time.value).toBe('14:30')
+
+    fireEvent.change(time, { target: { value: '09:15' } })
+    expect(lastValue).toBe('2026-04-23T09:15')
   })
 })

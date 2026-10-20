@@ -155,7 +155,7 @@ export function ModelsPanel({
             If none are selected, all models are visible.
           </p>
 
-          <ul className="-mx-0.5 max-h-[45svh] overflow-y-auto md:max-h-56">
+          <ul className="-mx-0.5 max-h-[calc(var(--app-vh,100svh)*0.45)] overflow-y-auto md:max-h-56">
             {visible.length === 0 ? (
               <li className="px-2 py-3 text-center text-xs md:text-[11px] text-(--color-text-muted)">
                 No matching models.

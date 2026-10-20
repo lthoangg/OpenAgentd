@@ -160,6 +160,8 @@ function GroupForm({
             placeholder="Group name"
             aria-label="Group name"
             autoComplete="off"
+            autoCapitalize="sentences"
+            autoCorrect="on"
             spellCheck={false}
             autoFocus
             className="h-9"

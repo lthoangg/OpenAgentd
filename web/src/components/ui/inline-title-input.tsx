@@ -43,6 +43,7 @@ export function InlineTitleInput({
       autoCorrect="off"
       autoCapitalize="off"
       spellCheck={false}
+      enterKeyHint="done"
       value={value}
       onChange={(event) => setValue(event.target.value)}
       onKeyDown={(event) => {

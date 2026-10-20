@@ -18,6 +18,7 @@ import { OVERLAY_BODY } from '@/components/ui/panel-tokens'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { hasFinePointer } from '@/lib/pointer'
 import { cn } from '@/lib/utils'
 import { SessionModelSettings } from './SessionModelSettings'
 import { SessionMcpServers } from './SessionMcpServers'
@@ -46,8 +47,10 @@ export function SessionSettingsPanel({
 }: SessionSettingsPanelProps) {
   const { os } = usePlatform()
   const { data, isLoading, refetch } = useAgentsQuery(workspace)
-  // Keyboard users land on the model field, not the close button.
+  // Keyboard users land on the model field, not the close button. Touch users
+  // don't: focusing it would pop the software keyboard over the settings.
   const modelInputRef = useRef<HTMLInputElement | null>(null)
+  const focusModelField = hasFinePointer()
 
   // Config can change on disk between openings.
   useEffect(() => {
@@ -63,10 +66,10 @@ export function SessionSettingsPanel({
   // model field to focus yet. Claim focus once the real content mounts.
   const hasContent = !isLoading && !!agent
   useEffect(() => {
-    if (!open || !hasContent) return
+    if (!open || !hasContent || !focusModelField) return
     const id = requestAnimationFrame(() => modelInputRef.current?.focus())
     return () => cancelAnimationFrame(id)
-  }, [open, hasContent])
+  }, [open, hasContent, focusModelField])
 
   return (
     <AppOverlay
@@ -74,7 +77,7 @@ export function SessionSettingsPanel({
       onClose={onClose}
       label="Session settings"
       maxWidth="560px"
-      initialFocus={modelInputRef}
+      initialFocus={focusModelField ? modelInputRef : undefined}
       toggleShortcut="sessionSettings"
     >
       <OverlayHeader

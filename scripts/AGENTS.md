@@ -9,7 +9,7 @@ generation, updater helpers, and code-health analysis.
   contracts.
 - `codehealth/`: stdlib analyzer for Python/TypeScript size, complexity,
   coupling, and import cycles. `make health` and `make health-json` analyze
-  the web frontend only; `--lang python` still reaches the frozen v2 `app/`.
+  the web frontend only; `--lang python` analyzes `scripts/`.
 - `brand/`: the logo's source of truth. `brand.ts` (its own Bun package, with
   Schibsted Grotesk and its OFL license in `fonts/`) builds the Seal and the
   wordmark from the font and writes `web/src/lib/brand/logo-data.ts`, the

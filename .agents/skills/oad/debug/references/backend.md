@@ -1,8 +1,7 @@
 # Debug reference: backend (`appv3/`)
 
 Use for API routes, persistence, queueing, SSE streaming, the agent loop, tools,
-and providers. `app/` is the frozen v2 Python source; only consult it for the
-data formats v3 must keep reading.
+and providers.
 
 ## Evidence commands
 

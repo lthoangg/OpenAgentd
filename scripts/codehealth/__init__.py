@@ -2,7 +2,7 @@
 
 Dependency-free (stdlib-only) analyzers for ranking "god files", mapping
 intra-project import dependencies, and detecting circular imports across the
-Python backend (``app/``) and the TypeScript/React frontend (``web/src``).
+maintainer scripts (``scripts/``) and the TypeScript/React frontend (``web/src``).
 
 Run via ``python3 -m scripts.codehealth --help``.
 """

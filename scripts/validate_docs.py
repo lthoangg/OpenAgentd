@@ -56,9 +56,7 @@ def _frontmatter_fields(text: str) -> set[str] | None:
 
 
 def _required_frontmatter(relative_path: str) -> frozenset[str]:
-    if relative_path.endswith("/SKILL.md") or relative_path.startswith(
-        "app/agent/builtin_skills/"
-    ):
+    if relative_path.endswith("/SKILL.md"):
         return frozenset({"name", "description"})
     if relative_path.startswith(".agents/commands/") or relative_path.startswith(
         ".agents/snippets/"

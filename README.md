@@ -58,7 +58,7 @@ irm https://openagentd.dev/install.ps1 | iex
 brew install --cask lthoangg/tap/openagentd
 ```
 
-Open **OpenAgentd**, add a provider in **Settings → Providers** (or point it at Ollama), open a folder and describe what you want built. The desktop app starts its own backend; there is nothing else to run. The [setup guide](https://openagentd.dev/download/desktop/) walks through providers and first launch, and builds for every platform are on the [releases page](https://github.com/lthoangg/openagentd/releases/latest).
+Open **OpenAgentd**, add a provider in **Settings → Providers** (or point it at Ollama), open a folder and describe what you want built. The desktop app starts its own backend; there is nothing else to run. The [setup guide](https://openagentd.dev/download/desktop/) walks through providers and first launch, and builds for every platform are on the [releases page](https://github.com/lthoangg/openagentd/releases/latest). Unsigned builds may ask you to confirm before the first launch.
 
 **iPhone and Android** apps connect to OpenAgentd on your computer: see the [iOS](https://openagentd.dev/download/ios/) and [Android](https://openagentd.dev/download/android/) guides.
 

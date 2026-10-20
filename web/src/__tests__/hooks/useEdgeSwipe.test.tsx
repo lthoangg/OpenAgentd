@@ -216,6 +216,136 @@ describe('useEdgeSwipe', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  describe('horizontal scrollers inside a drawer', () => {
+    // Regression: a wide markdown table in the Plan panel (right drawer)
+    // scrolled horizontally *and* dragged the panel closed at once.
+    function ScrollerHarness({ onClose, scrollLeft }: { onClose: () => void; scrollLeft: number }) {
+      const { handlers } = useEdgeSwipe({
+        activeDrawer: 'actions',
+        right: { id: 'actions', open: () => undefined },
+        close: onClose,
+      })
+      return (
+        <div {...handlers}>
+          <div
+            data-testid="scroller"
+            style={{ overflowX: 'auto' }}
+            ref={(el) => {
+              if (!el) return
+              Object.defineProperty(el, 'scrollWidth', { configurable: true, value: 800 })
+              Object.defineProperty(el, 'clientWidth', { configurable: true, value: 300 })
+              el.scrollLeft = scrollLeft
+            }}
+          >
+            <span data-testid="cell">cell</span>
+          </div>
+        </div>
+      )
+    }
+
+    it('yields to a scroller that can still scroll in the drag direction', () => {
+      const onClose = mock(() => undefined)
+      const { getByTestId } = render(<ScrollerHarness onClose={onClose} scrollLeft={200} />)
+      const cell = getByTestId('cell')
+      // Swipe right (the right drawer's close direction) — the table can
+      // still scroll back toward its start, so the table owns the gesture.
+      fireEvent.touchStart(cell, touchEvt(100, 200))
+      fireEvent.touchMove(cell, touchEvt(250, 205))
+      fireEvent.touchEnd(cell)
+
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('still closes once the scroller is already at its edge in the drag direction', () => {
+      const onClose = mock(() => undefined)
+      const { getByTestId } = render(<ScrollerHarness onClose={onClose} scrollLeft={0} />)
+      const cell = getByTestId('cell')
+      fireEvent.touchStart(cell, touchEvt(100, 200))
+      fireEvent.touchMove(cell, touchEvt(250, 205))
+      fireEvent.touchEnd(cell)
+
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('yields to a single-line text input whose text overflows', () => {
+      // <input> scrolls its text natively without overflow-x: auto (e.g.
+      // a long URL in the Preview tab's address bar).
+      const onClose = mock(() => undefined)
+      function InputHarness() {
+        const { handlers } = useEdgeSwipe({
+          activeDrawer: 'actions',
+          right: { id: 'actions', open: () => undefined },
+          close: onClose,
+        })
+        return (
+          <div {...handlers}>
+            <input
+              data-testid="url"
+              ref={(el) => {
+                if (!el) return
+                Object.defineProperty(el, 'scrollWidth', { configurable: true, value: 800 })
+                Object.defineProperty(el, 'clientWidth', { configurable: true, value: 300 })
+                el.scrollLeft = 200
+              }}
+            />
+          </div>
+        )
+      }
+      const { getByTestId } = render(<InputHarness />)
+      const input = getByTestId('url')
+      fireEvent.touchStart(input, touchEvt(100, 200))
+      fireEvent.touchMove(input, touchEvt(250, 205))
+      fireEvent.touchEnd(input)
+
+      expect(onClose).not.toHaveBeenCalled()
+    })
+  })
+
+  it('does not lock horizontal on a mostly-vertical scroll with sideways drift', () => {
+    // Regression: dx=10/dy=14 (~55° off horizontal) used to lock as a
+    // horizontal drawer drag, so a thumb arcing while scrolling the Plan
+    // panel dragged — and could fling — the drawer closed.
+    const onClose = mock(() => undefined)
+    const { getByTestId } = render(
+      <Harness activeDrawer="actions" onLeft={() => undefined} onRight={() => undefined} onClose={onClose} />,
+    )
+    const el = getByTestId('surface')
+    fireEvent.touchStart(el, touchEvt(200, 400))
+    fireEvent.touchMove(el, touchEvt(210, 386))
+    // The rest of the arc drifts far enough right to commit if locked.
+    fireEvent.touchMove(el, touchEvt(320, 200))
+    fireEvent.touchEnd(el)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ignores multi-touch gestures (pinch / two-finger pan)', () => {
+    const onClose = mock(() => undefined)
+    const { getByTestId } = render(
+      <Harness activeDrawer="actions" onLeft={() => undefined} onRight={() => undefined} onClose={onClose} />,
+    )
+    const el = getByTestId('surface')
+    fireEvent.touchStart(el, { touches: [{ clientX: 100, clientY: 200 }, { clientX: 200, clientY: 200 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 250, clientY: 200 }, { clientX: 350, clientY: 200 }] })
+    fireEvent.touchEnd(el)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('abandons the gesture when a second finger lands mid-swipe', () => {
+    const onClose = mock(() => undefined)
+    const { getByTestId } = render(
+      <Harness activeDrawer="actions" onLeft={() => undefined} onRight={() => undefined} onClose={onClose} />,
+    )
+    const el = getByTestId('surface')
+    fireEvent.touchStart(el, touchEvt(100, 200))
+    fireEvent.touchMove(el, touchEvt(130, 200))
+    fireEvent.touchMove(el, { touches: [{ clientX: 250, clientY: 200 }, { clientX: 300, clientY: 220 }] })
+    fireEvent.touchEnd(el)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('does nothing on non-mobile shells', () => {
     mobile = false
     const onLeft = mock(() => undefined)

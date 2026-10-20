@@ -288,10 +288,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   session-list refresh lost their dedicated shortcuts (palette-only, low
   frequency). `⌘S`/`Ctrl+S` no longer opens Scheduled Tasks, so it only saves
   in Settings `[v3.0.0]`.
-- **Theme in Settings and the palette** `[v3.0.0]` — Settings → About has an
+- **Theme in Settings and the palette** `[v3.0.0, updated v3.21.0]` — Settings → About has an
   **Appearance** section with a System / Light / Dark choice, and the Command
-  Palette has **Theme: System**, **Theme: Light** and **Theme: Dark**. The
-  mobile drawer keeps its theme button.
+  Palette has **Theme…**, a list of System, Light and Dark that marks the
+  current one `[v3.21.0]`. The mobile drawer keeps its theme button.
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their

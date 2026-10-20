@@ -68,7 +68,7 @@ export function useAgentCommands({
   handleOpenSideQuestions,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const { setPreference: setTheme } = useThemePreference()
+  const { preference: theme, setPreference: setTheme } = useThemePreference()
   const readerMode = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
   const toggleReaderMode = useDisplayPrefsStore((s) => s.toggleTranscriptStyle)
   const { os, isTauri } = usePlatform()
@@ -119,9 +119,23 @@ export function useAgentCommands({
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'Spend, turns, and traces by workspace and model', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
-    ...THEME_OPTIONS.map(({ value, label }) => ({
-      id: `theme-${value}`, group: 'View' as const, label: `Theme: ${label}`, description: value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`, action: () => setTheme(value),
-    })),
+    {
+      id: 'theme',
+      group: 'View',
+      label: 'Theme…',
+      description: `${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'} now · switch between System, Light, and Dark`,
+      keywords: 'appearance color mode system light dark',
+      page: {
+        placeholder: 'Search themes…',
+        commands: THEME_OPTIONS.map(({ value, label }) => ({
+          id: `theme-${value}`,
+          label,
+          description: `${value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`}${value === theme ? ' · Current' : ''}`,
+          action: () => setTheme(value),
+        })),
+      },
+      action: () => {},
+    },
     {
       id: 'toggle-reader-mode',
       group: 'View',
@@ -137,5 +151,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
 }

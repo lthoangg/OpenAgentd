@@ -212,14 +212,21 @@ describe("useAgentCommands — navigation", () => {
     useUIStore.getState().closeTelemetry()
   })
 
-  it("offers each theme and applies the one chosen", () => {
+  it("offers each theme in one Theme… list and applies the one chosen", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    expect(["theme-system", "theme-light", "theme-dark"].map((id) => byId(result.current, id).label))
-      .toEqual(["Theme: System", "Theme: Light", "Theme: Dark"])
+    expect(result.current.filter((c) => c.id.startsWith("theme-"))).toEqual([])
 
-    byId(result.current, "theme-dark").action()
+    const theme = () => byId(result.current, "theme")
+    expect(theme().label).toBe("Theme…")
+    expect(theme().keywords).toContain("dark")
+    expect(theme().page?.commands.map((c) => c.label)).toEqual(["System", "Light", "Dark"])
+    expect(byId(theme().page!.commands, "theme-system").description).toMatch(/· Current$/)
+
+    act(() => byId(theme().page!.commands, "theme-dark").action())
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
+    expect(theme().description).toMatch(/^Dark now/)
+    expect(byId(theme().page!.commands, "theme-dark").description).toMatch(/· Current$/)
     localStorage.removeItem(THEME_STORAGE_KEY)
   })
 

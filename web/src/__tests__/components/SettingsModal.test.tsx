@@ -49,7 +49,9 @@ mock.module('framer-motion', () => ({
   }),
 }))
 
-mock.module('@/components/settings/pages/settings.index', () => ({ SettingsHubPage: () => <div>hub</div> }))
+mock.module('@/components/settings/pages/settings.index', () => ({ AboutSettingsPage: () => <div>hub</div> }))
+mock.module('@/components/settings/pages/settings.general', () => ({ GeneralSettingsPage: () => <div>general</div> }))
+mock.module('@/components/settings/pages/settings.connection', () => ({ ConnectionSettingsPage: () => <div>connection</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
 mock.module('@/components/settings/pages/settings.agents.$name', () => ({ AgentEditorPage: () => <div>agent-edit</div> }))
 mock.module('@/components/settings/pages/settings.skills', () => ({ SkillsListPage: () => <div>skills</div> }))
@@ -69,7 +71,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 
 afterEach(() => {
   cleanup()
-  useSettingsStore.setState({ open: false, section: 'about', selectedName: null })
+  useSettingsStore.setState({ open: false, section: 'about', selectedName: null, mobileView: 'index', dirtyDrafts: {}, pendingNavigation: null })
   captured.length = 0
   reduceMotion = false
 })
@@ -132,6 +134,35 @@ describe('SettingsModal — sections', () => {
 
     act(() => useSettingsStore.setState({ section: 'mcp' }))
     expect(screen.getByText('mcp')).toBeTruthy()
+  })
+})
+
+describe('SettingsModal — phone navigation', () => {
+  it('starts at the section list and opens a section from it', async () => {
+    useSettingsStore.setState({ open: false, section: 'general', selectedName: null })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+
+    expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Back to settings' })).toBeNull()
+
+    act(() => useSettingsStore.getState().setSection('providers'))
+    expect(screen.queryByRole('navigation', { name: 'Settings sections' })).toBeNull()
+    expect(screen.getByText('providers')).toBeTruthy()
+  })
+
+  it('goes Back from a section to the list, and from an editor to its list', () => {
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings('skills-edit', 'review'))
+    renderModal()
+
+    act(() => screen.getByRole('button', { name: 'Back to list' }).click())
+    expect(useSettingsStore.getState().section).toBe('skills')
+    expect(useSettingsStore.getState().mobileView).toBe('section')
+
+    act(() => screen.getByRole('button', { name: 'Back to settings' }).click())
+    expect(useSettingsStore.getState().mobileView).toBe('index')
+    expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
   })
 })
 

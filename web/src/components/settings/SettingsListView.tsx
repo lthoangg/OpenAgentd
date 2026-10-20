@@ -1,14 +1,19 @@
 /**
- * SettingsListView — single-column list rendered inside the settings modal.
+ * SettingsListView — the list page shared by Agents, Skills and MCP servers:
+ * page header with a New action, a filter, then one card of rows.
  * Navigation is entirely callback-driven; no router Links are used so this
  * component works correctly inside the overlay without any URL changes.
  */
-import { AlertCircle, Plus } from 'lucide-react'
+import { AlertCircle, FolderOpen, Plus, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { SearchBar } from '@/components/ui/search-bar'
+import { SectionCard } from '@/components/ui/section-card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { SettingsPage } from '@/components/settings/SettingsPage'
+import { ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -56,6 +61,8 @@ export interface SettingsListViewProps {
   /** Empty-state body when there are no rows at all (before filtering). */
   emptyTitle: string
   emptyBody: string
+  /** Glyph for the empty state. */
+  emptyIcon?: LucideIcon
 }
 
 // ─── View ──────────────────────────────────────────────────────────────────
@@ -73,6 +80,7 @@ export function SettingsListView({
   isError,
   emptyTitle,
   emptyBody,
+  emptyIcon = FolderOpen,
 }: SettingsListViewProps) {
   const [query, setQuery] = useState('')
 
@@ -88,32 +96,18 @@ export function SettingsListView({
   }, [rows, query])
 
   const total = rows.length
+  const newButton = (
+    <Button size="sm" onClick={onNew}>
+      <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
+      {newLabel}
+    </Button>
+  )
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-      <div className="space-y-4 px-3 py-3 sm:px-6 sm:py-5">
-        {/* ── Title row ─────────────────────────────────────────────────── */}
-        <header className="flex items-start gap-4 select-none">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-sm font-semibold tracking-tight text-(--color-text)">
-              {title}
-            </h1>
-            <p className="mt-1 text-xs text-(--color-text-muted) leading-relaxed">
-              {description}
-            </p>
-          </div>
-          {newAction ?? (
-            <Button size="sm" onClick={onNew} className="min-h-9 text-xs md:min-h-0">
-              <Plus size={13} aria-hidden="true" />
-              {newLabel}
-            </Button>
-          )}
-        </header>
+    <SettingsPage title={title} description={description} actions={newAction ?? newButton}>
+      <div className="space-y-4">
+        {tabs}
 
-        {/* ── Optional tabs ─────────────────────────────────────────────── */}
-        {tabs && <div className="mt-2">{tabs}</div>}
-
-        {/* ── Filter ────────────────────────────────────────────────────── */}
         {(isLoading || rows.length > 0) && (
           <SearchBar
             placeholder={filterPlaceholder}
@@ -124,56 +118,44 @@ export function SettingsListView({
           />
         )}
 
-        {/* ── Body ──────────────────────────────────────────────────────── */}
-        <div className="space-y-1">
-          {isLoading && (
-            <p className="py-8 text-center text-xs text-(--color-text-muted) font-mono">
-              Loading…
-            </p>
-          )}
-          {isError && (
-            <p className="py-8 text-center text-xs text-(--color-error) font-mono">
-              Failed to load.
-            </p>
-          )}
-          {!isLoading && !isError && total === 0 && (
-            <div className="flex flex-col items-center gap-3 rounded-sm border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-8 text-center">
-              <p className="text-xs font-semibold text-(--color-text)">{emptyTitle}</p>
-              <p className="max-w-md text-[11px] leading-relaxed text-(--color-text-muted)">
-                {emptyBody}
-              </p>
-              <Button size="sm" onClick={onNew} className="min-h-9 text-xs md:min-h-0">
-                <Plus size={12} aria-hidden="true" />
-                {newLabel}
-              </Button>
-            </div>
-          )}
-          {!isLoading && !isError && total > 0 && filtered.length === 0 && (
-            <p className="py-8 text-center text-xs text-(--color-text-muted) font-mono">
-              No matches for &ldquo;{query}&rdquo;.
-            </p>
-          )}
-          {!isLoading && !isError && filtered.length > 0 && (
-            <ul className="space-y-1.5">
+        {isLoading && (
+          <p className="py-10 text-center font-mono text-xs text-(--color-text-muted)">Loading…</p>
+        )}
+        {isError && (
+          <p className="py-10 text-center font-mono text-xs text-(--color-error)">Failed to load.</p>
+        )}
+        {!isLoading && !isError && total === 0 && (
+          <SectionCard className="border-dashed">
+            <EmptyState fill={false} className="px-6 py-10" icon={emptyIcon} title={emptyTitle} body={emptyBody} action={newButton} />
+          </SectionCard>
+        )}
+        {!isLoading && !isError && total > 0 && filtered.length === 0 && (
+          <p className="py-10 text-center font-mono text-xs text-(--color-text-muted)">
+            No matches for &ldquo;{query}&rdquo;.
+          </p>
+        )}
+        {!isLoading && !isError && filtered.length > 0 && (
+          <SectionCard>
+            <ul className="divide-y divide-(--color-border-subtle)">
               {filtered.map((row) => (
                 <li key={row.key}>
-                  <ListCard row={row} />
+                  <ListRow row={row} />
                 </li>
               ))}
             </ul>
-          )}
-        </div>
+          </SectionCard>
+        )}
       </div>
-    </div>
+    </SettingsPage>
   )
 }
 
-// ─── Card ──────────────────────────────────────────────────────────────────
+// ─── Row ───────────────────────────────────────────────────────────────────
 
-function ListCard({ row }: { row: ListViewRow }) {
+function ListRow({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="px-1 pt-3 pb-1 label-caps text-(--color-text-subtle) select-none">
+      <div className="bg-(--bg-key)/25 px-4 pt-3 pb-1.5 label-caps text-(--color-text-subtle) select-none">
         {row.title}
       </div>
     )
@@ -185,89 +167,52 @@ function ListCard({ row }: { row: ListViewRow }) {
       onClick={row.onClick}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        // Base layout — rounded-sm = 8px, crisp enough for a dense list card
-        'group flex min-h-9 w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left md:min-h-0',
-        // Surface & transition
-        'bg-(--bg-card) transition-colors duration-(--motion-instant)',
-        // Hover — gentle warm lift, no border jump
-        'hover:bg-(--bg-key)/30',
-        // Focus ring
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
-        // Active vs rest border
-        row.active
-          ? 'border-(--color-border-strong) bg-(--bg-key)/40'
-          : 'border-(--color-border) hover:border-(--color-border)',
+        'group flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left',
+        'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+        row.active && 'bg-(--bg-key)/60',
       )}
     >
-      {/* ── Left icon well ──────────────────────────────────────────── */}
       {row.icon && (
-        <div
-          className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs',
-            'border border-(--color-border) bg-(--bg-key)',
-            'text-(--color-text-muted) transition-colors duration-(--motion-instant)',
-            // Warm lift when the card is active
-            row.active && 'border-(--color-border-strong) bg-(--bg-key)/70',
-          )}
+        <span
+          className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
           aria-hidden="true"
         >
           {row.icon}
-        </div>
+        </span>
       )}
 
-      {/* ── Body ────────────────────────────────────────────────────── */}
-      <div className="min-w-0 flex-1">
-        {/* Title row */}
-        <div className="flex items-center gap-1.5">
-          <span className={cn(
-            'truncate text-xs font-semibold leading-tight',
-            row.active ? 'text-(--color-text)' : 'text-(--color-text)',
-          )}>
-            {row.title}
-          </span>
-
-          {/* Role / type badge */}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={cn('truncate', TEXT.label)}>{row.title}</span>
           {row.badge && (
-            <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[11px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
+            <span className="shrink-0 rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-px text-[11px] font-medium text-(--color-text-muted) select-none">
               {row.badge}
             </span>
           )}
-
-          {/* Invalid config warning */}
           {row.invalidReason && (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <span className="shrink-0 text-(--color-error)">
-                    <AlertCircle size={11} aria-label="Invalid configuration" />
+                    <AlertCircle size={ICON_SIZE_INLINE} aria-label="Invalid configuration" />
                   </span>
                 }
               />
               <TooltipContent>{row.invalidReason}</TooltipContent>
             </Tooltip>
           )}
-        </div>
-
-        {/* Description */}
+        </span>
         {row.description && (
-          <p className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-(--color-text-muted)">
-            {row.description}
-          </p>
+          <span className={cn('mt-0.5 block line-clamp-1', TEXT.hint)}>{row.description}</span>
         )}
-
-        {/* Meta / path line */}
         {row.meta && (
-          <p className="mt-0.5 truncate font-mono text-[11px] text-(--color-text-subtle)">
-            {row.meta}
-          </p>
+          <span className="mt-0.5 block truncate font-mono text-[11px] text-(--color-text-subtle)">{row.meta}</span>
         )}
-      </div>
+      </span>
 
-      {/* ── Trailing right-side content (status dots, etc.) ─────────── */}
       {row.trailing && (
-        <div className="shrink-0 self-center text-(--color-text-muted)">
-          {row.trailing}
-        </div>
+        <span className="shrink-0 text-(--color-text-muted)">{row.trailing}</span>
       )}
     </button>
   )

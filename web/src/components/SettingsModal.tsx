@@ -8,6 +8,10 @@
  * Section metadata (labels, icons, grouping, mobile nav) lives in
  * `settings/sections.ts`. Only the content switch is here, because each
  * section takes different props.
+ *
+ * Desktop shows the sidebar beside the section. Phones show either the
+ * grouped section list or one section full-screen (`mobileView`), with Back
+ * in the header.
  */
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, type LucideIcon } from 'lucide-react'
@@ -20,21 +24,19 @@ import { useModalFocus } from '@/hooks/useModalFocus'
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
-  useDeniedPathsSettingsQuery,
-  useMcpServersQuery,
-  useSkillFilesQuery,
-} from '@/queries'
-import {
   SETTINGS_GROUPS,
-  isDrillDown,
-  mobileBackSection,
+  mobileBackTarget,
   parentSection,
+  sectionDef,
   type SettingsSectionDef,
   type TopLevelSection,
 } from '@/components/settings/sections'
-import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
-import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
-import { SettingsHubPage } from '@/components/settings/pages/settings.index'
+import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
+import { ICON_SIZE } from '@/components/settings/tokens'
+import { SettingsMobileIndex } from '@/components/settings/SettingsMobileIndex'
+import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
+import { GeneralSettingsPage } from '@/components/settings/pages/settings.general'
+import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
 import { AgentsListPage } from '@/components/settings/pages/settings.agents'
 import { SkillsListPage } from '@/components/settings/pages/settings.skills'
 import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
@@ -45,7 +47,11 @@ import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$n
 import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
 import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
 import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
-import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
+import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
+import { TitlesSettingsPage } from '@/components/settings/pages/settings.titles'
+import { ContextSettingsPage } from '@/components/settings/pages/settings.context'
+import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
+import { NetworkSettingsPage } from '@/components/settings/pages/settings.network'
 import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -71,34 +77,20 @@ function SidebarRow({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex h-8.5 w-full items-center gap-2.5 px-4 text-xs transition-colors text-left focus:outline-none',
-        'text-(--color-text-2) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+        'group flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-xs transition-colors duration-(--motion-instant) focus:outline-none',
+        'text-(--color-text-2) hover:bg-(--bg-key)/50 hover:text-(--color-text)',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
-        active && 'bg-(--bg-key)/70 font-semibold text-(--color-text)',
+        active && 'bg-(--bg-key) font-medium text-(--color-text) hover:bg-(--bg-key)',
       )}
     >
-      {/* VS Code active left vertical line indicator */}
-      {active && (
-        <span
-          className="absolute top-[4px] bottom-[4px] left-0 w-[3px] rounded-r bg-(--color-accent)"
-          aria-hidden="true"
-        />
-      )}
       <Icon
-        size={ICON_SIZE_INLINE}
+        size={ICON_SIZE}
         className={cn('shrink-0', active ? 'text-(--color-text)' : 'text-(--color-text-muted)')}
         aria-hidden="true"
       />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {count !== undefined && count !== null && (
-        <span
-          className={cn(
-            'shrink-0 font-mono text-xs md:text-[11px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
-            active
-              ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
-              : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
-          )}
-        >
+        <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">
           {count}
         </span>
       )}
@@ -108,7 +100,7 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-4 pt-3 pb-1 label-caps text-(--color-text-subtle)/85 select-none">
+    <p className="px-2.5 pt-4 pb-1.5 label-caps text-(--color-text-subtle) select-none">
       {children}
     </p>
   )
@@ -121,37 +113,22 @@ function ModalSidebar({
   section: SettingsSection
   onSelect: (s: TopLevelSection) => void
 }) {
-  const skillsQ = useSkillFilesQuery()
-  const mcpQ = useMcpServersQuery()
-  const deniedPathsQ = useDeniedPathsSettingsQuery()
   const sections = useVisibleSettingsSections()
+  const counts = useSettingsSectionCounts()
   const active = parentSection(section)
-
-  const counts: Partial<Record<TopLevelSection, number | null>> = {
-    skills: skillsQ.data?.skills.length ?? null,
-    mcp: mcpQ.data?.servers.length ?? null,
-    denied_paths: deniedPathsQ.data?.denied_patterns.length ?? null,
-  }
 
   return (
     <nav
       aria-label="Settings categories"
-      className="hidden h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none md:flex"
+      className="hidden h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) px-2 pt-1 pb-4 select-none md:flex"
     >
-      {SETTINGS_GROUPS.map((group, idx) => {
+      {SETTINGS_GROUPS.map((group) => {
         const items = sections.filter((s) => s.group === group.id)
         if (items.length === 0) return null
         return (
           <div key={group.id}>
-            {idx > 0 && (
-              <div
-                className="mx-4 my-2.5 h-px bg-(--color-border)"
-                role="separator"
-                aria-hidden="true"
-              />
-            )}
             <GroupLabel>{group.label}</GroupLabel>
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-0.5">
               {items.map((item) => (
                 <SidebarRow
                   key={item.id}
@@ -165,34 +142,6 @@ function ModalSidebar({
           </div>
         )
       })}
-    </nav>
-  )
-}
-
-function MobileTabBar({
-  section,
-  onSelect,
-}: {
-  section: SettingsSection
-  onSelect: (s: TopLevelSection) => void
-}) {
-  const sections = useVisibleSettingsSections()
-  return (
-    <nav
-      aria-label="Settings sections"
-      className="shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) p-2 md:hidden"
-    >
-      <select aria-label="Settings section" value={parentSection(section)}
-        className="min-h-9 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-3 text-base text-(--color-text)"
-        onChange={(event) => {
-          const item = sections.find((candidate) => candidate.id === event.target.value)
-          if (item) onSelect(item.id)
-        }}>
-        {SETTINGS_GROUPS.map((group) => <optgroup key={group.id} label={group.label}>
-          {sections.filter((item) => item.group === group.id).map((item) =>
-            <option key={item.id} value={item.id}>{item.label}</option>)}
-        </optgroup>)}
-      </select>
     </nav>
   )
 }
@@ -215,6 +164,10 @@ function SectionContent({
   setSection: (s: SettingsSection, name?: string) => void
 }) {
   switch (section) {
+    case 'general':
+      return <GeneralSettingsPage />
+    case 'connection':
+      return <ConnectionSettingsPage />
     case 'agents':
       return <AgentsListPage />
     case 'skills':
@@ -259,9 +212,13 @@ function SectionContent({
     case 'plugins':      return <PluginsSettingsPage />
     case 'providers':    return <ProvidersSettingsPage />
     case 'denied_paths': return <DeniedPathsSettingsPage />
-    case 'automation':   return <AutomationSettingsPage />
+    case 'workspaces':   return <WorkspacesSettingsPage />
+    case 'titles':       return <TitlesSettingsPage />
+    case 'context':      return <ContextSettingsPage />
+    case 'media':        return <MediaSettingsPage />
+    case 'network':      return <NetworkSettingsPage />
     case 'about':
-    default:             return <SettingsHubPage />
+    default:             return <AboutSettingsPage />
   }
 }
 
@@ -284,6 +241,8 @@ export function SettingsModal() {
   const section = useSettingsStore((s) => s.section)
   const selectedName = useSettingsStore((s) => s.selectedName)
   const setSection = useSettingsStore((s) => s.setSection)
+  const showIndex = useSettingsStore((s) => s.showIndex)
+  const mobileView = useSettingsStore((s) => s.mobileView)
   const closeSettings = useSettingsStore((s) => s.closeSettings)
   const pendingNavigation = useSettingsStore((s) => s.pendingNavigation)
   const resolveNavigation = useSettingsStore((s) => s.resolvePendingNavigation)
@@ -299,6 +258,14 @@ export function SettingsModal() {
   // ⌘, closes Settings even with unsaved changes (the prompt asks first);
   // opening something else over it is what `allowSwitch` blocks.
   useAppShortcut('settings', () => { closeSettings() }, { layer })
+
+  const atIndex = mobileView === 'index'
+  const sectionLabel = sectionDef(section)?.label ?? 'Settings'
+  const goBack = () => {
+    const target = mobileBackTarget(section)
+    if (target === 'index') showIndex()
+    else setSection(target)
+  }
 
   return (
     <AnimatePresence>
@@ -337,20 +304,27 @@ export function SettingsModal() {
           >
             {/* Header / Title Bar */}
             <OverlayHeader
-              title="Settings"
+              title={
+                atIndex ? 'Settings' : (
+                  <>
+                    <span className="md:hidden">{sectionLabel}</span>
+                    <span className="max-md:hidden">Settings</span>
+                  </>
+                )
+              }
               onClose={closeSettings}
               closeLabel="Close settings"
               leading={
-                isDrillDown(section) && (
+                !atIndex && (
                   <Button
                     type="button"
                     size="icon-sm"
                     variant="ghost"
                     className="md:hidden"
-                    onClick={() => setSection(mobileBackSection(section))}
-                    aria-label="Back to list"
+                    onClick={goBack}
+                    aria-label={mobileBackTarget(section) === 'index' ? 'Back to settings' : 'Back to list'}
                   >
-                    <ArrowLeft size={ICON_SIZE_INLINE} aria-hidden="true" />
+                    <ArrowLeft size={ICON_SIZE} aria-hidden="true" />
                   </Button>
                 )
               }
@@ -360,7 +334,18 @@ export function SettingsModal() {
             <div className="flex min-h-0 flex-1 overflow-hidden">
               <ModalSidebar section={section} onSelect={(s) => setSection(s)} />
 
-              <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)">
+              {atIndex && (
+                <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:hidden">
+                  <SettingsMobileIndex onSelect={(s) => setSection(s)} />
+                </div>
+              )}
+
+              <main
+                className={cn(
+                  'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)',
+                  atIndex && 'max-md:hidden',
+                )}
+              >
                 <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
                   <SectionContent
                     key={`${section}:${selectedName ?? ''}`}
@@ -371,7 +356,6 @@ export function SettingsModal() {
                 </div>
               </main>
             </div>
-            <MobileTabBar section={section} onSelect={(s) => setSection(s)} />
           </motion.div>
           <Dialog open={pendingNavigation !== null} onOpenChange={(next) => { if (!next) resolveNavigation(false) }}>
             <DialogContent>

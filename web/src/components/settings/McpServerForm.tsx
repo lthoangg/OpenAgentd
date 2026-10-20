@@ -55,10 +55,10 @@ export function McpServerForm({
     onChange(next)
   }
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8">
       {/* Identity ─────────────────────────────────────────────────── */}
-      <SettingsSection title="Identity" description="how agents and the runtime address this server">
-        <div className="grid gap-3 md:grid-cols-2">
+      <SettingsSection title="Identity" description="How agents and the runtime address this server.">
+        <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
           <SettingsField
             label="Name"
             required
@@ -116,9 +116,9 @@ export function McpServerForm({
       {/* Transport + connection fields — merged into one section ── */}
       <SettingsSection
         title={value.transport === 'stdio' ? 'Transport — Stdio' : 'Transport — HTTP'}
-        description={value.transport === 'stdio' ? 'subprocess speaking MCP over stdin/stdout' : 'Streamable HTTP session'}
+        description={value.transport === 'stdio' ? 'A subprocess speaking MCP over stdin/stdout.' : 'A Streamable HTTP session.'}
       >
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-5">
           {/* Transport picker always at the top */}
           <TransportToggle
             value={value.transport}
@@ -232,7 +232,7 @@ export function McpServerForm({
               )}
 
               {value.oauthEnabled && (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
                   <SettingsField label="Client ID" hint="Paste the OAuth app client ID.">
                     <Input
                       value={value.oauthClientIdEnv}

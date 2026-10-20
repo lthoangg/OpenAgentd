@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
 
 const originalFetch = globalThis.fetch
 const originalWindowFetch = window.fetch
@@ -129,7 +130,7 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await screen.findByText('Builtin sidecar')
-    const connectButtons = await screen.findAllByRole('button', { name: 'connect' })
+    const connectButtons = await screen.findAllByRole('button', { name: 'Connect' })
     await user.click(connectButtons[0])
 
     await screen.findByText('switch failed')
@@ -168,7 +169,7 @@ describe('AppBackendDialog', () => {
     expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })
 
-  it('shows stop instead of use builtin while already connected to bundled backend', async () => {
+  it('shows Stop instead of Use builtin while already connected to bundled backend', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -180,8 +181,8 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await screen.findByText('Builtin sidecar')
-    expect(screen.queryByRole('button', { name: 'use builtin' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'stop' }))
+    expect(screen.queryByRole('button', { name: 'Use builtin' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -191,7 +192,7 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('shows stop when builtin sidecar is already running even if an external server is active', async () => {
+  it('shows Stop when builtin sidecar is already running even if an external server is active', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -203,8 +204,8 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await screen.findByText('Builtin sidecar')
-    expect(screen.queryByRole('button', { name: 'use builtin' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'stop' }))
+    expect(screen.queryByRole('button', { name: 'Use builtin' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -214,7 +215,7 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('offers a connect option to switch back to a running builtin sidecar that is not the active backend', async () => {
+  it('offers a Connect option to switch back to a running builtin sidecar that is not the active backend', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -229,8 +230,8 @@ describe('AppBackendDialog', () => {
 
     await screen.findByText('Builtin sidecar')
     // The builtin sidecar row renders first in the connection options list,
-    // so its "connect" button is the first match.
-    const [connectButton] = await screen.findAllByRole('button', { name: 'connect' })
+    // so its "Connect" button is the first match.
+    const [connectButton] = await screen.findAllByRole('button', { name: 'Connect' })
     await user.click(connectButton)
 
     await waitFor(() => {
@@ -256,7 +257,7 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await screen.findByText('Builtin sidecar')
-    await user.click(screen.getByRole('button', { name: 'use builtin' }))
+    await user.click(screen.getByRole('button', { name: 'Use builtin' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -300,7 +301,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const editButtons = await screen.findAllByRole('button', { name: 'edit' })
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit' })
     await user.click(editButtons[0])
     expect((screen.getByLabelText(/server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
     expect((screen.getByLabelText(/server name/i) as HTMLInputElement).value).toBe('Local CLI')
@@ -320,7 +321,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const removeButtons = await screen.findAllByRole('button', { name: 'remove' })
+    const removeButtons = await screen.findAllByRole('button', { name: /^Remove / })
     await user.click(removeButtons[0])
 
     await waitFor(() => {
@@ -355,12 +356,12 @@ describe('AppBackendDialog', () => {
     expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
   })
 
-  it('connects a saved server only from the explicit connect action', async () => {
+  it('connects a saved server only from the explicit Connect action', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/server name/i), 'Stale typed name')
-    const connectButtons = await screen.findAllByRole('button', { name: 'connect' })
+    const connectButtons = await screen.findAllByRole('button', { name: 'Connect' })
     await user.click(connectButtons[0])
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
@@ -445,5 +446,15 @@ describe('AppBackendDialog', () => {
 
     expect(await screen.findByText(/Server did not respond/)).toBeTruthy()
     expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+  })
+
+  it('renders the same panel as the Settings → Connection page', async () => {
+    render(<ConnectionSettingsPage />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Connection' })).toBeTruthy()
+    expect(await screen.findByText('Builtin sidecar')).toBeTruthy()
+    expect(screen.getByText('Local CLI')).toBeTruthy()
+    expect(screen.getByLabelText(/server url/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy()
   })
 })

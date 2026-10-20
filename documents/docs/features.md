@@ -169,6 +169,26 @@ run from the terminal (the native Rust binary since v3.0.0).
   way: a sticky bar appears only when there are unsaved edits, with Reset, Save,
   and a `Cmd/Ctrl+S` binding. Notifications no longer writes on toggle, and
   reopening Settings returns to the section you left.
+- **Roomier Settings with General, Connection and About** `[v3.21.0]` — the old About
+  page held four unrelated things and is now three pages in a new **App**
+  group. **General** has theme and transcript style. **Connection** shows the
+  backend servers and the add / edit server form
+  directly on the page, using the same panel as the **Backend connection**
+  dialog. **About OpenAgentd** has the version, updates and community links.
+  Every page shares one layout: a page header with actions, titled sections
+  above their cards, label-left / control-right rows, and more space between
+  fields. Server forms test and save from a footer row instead of buttons
+  squeezed beside inputs. On phones Settings opens on a grouped list of
+  sections; each opens full-screen with Back.
+- **Settings split into focused pages** `[v3.21.0]` — the long **Automation** page with
+  collapsible groups is now four plain pages: **Workspaces** (workspace
+  messages and groups), **Chat titles**, **Context** (summarization and idle
+  sessions) and **Media generation**. Desktop gets its own **Network access**
+  page in the **App** group, and a **Privacy & safety** group holds **Memory**
+  and **Denied paths**. Notices on every page (failed MCP servers, plugin
+  warnings, lint results, security caveats) share one callout style, and page
+  copy is shorter. A saved link to the old Automation section opens
+  Workspaces.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -288,7 +308,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   session-list refresh lost their dedicated shortcuts (palette-only, low
   frequency). `⌘S`/`Ctrl+S` no longer opens Scheduled Tasks, so it only saves
   in Settings `[v3.0.0]`.
-- **Theme in Settings and the palette** `[v3.0.0, updated v3.21.0]` — Settings → About has an
+- **Theme in Settings and the palette** `[v3.0.0, updated v3.21.0]` — Settings → General has an
   **Appearance** section with a System / Light / Dark choice, and the Command
   Palette has **Theme…**, a list of System, Light and Dark that marks the
   current one `[v3.21.0]`. The mobile drawer keeps its theme button.
@@ -604,7 +624,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     with "Show N earlier steps", so huge patches and long agent runs stay
     responsive `[v3.14.0, v3.18.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
-  About → Appearance → Transcript, or Toggle Reader Mode in the command
+  General → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads
   as its answer:
   - The thinking, every tool call, and the narration between them fold into
@@ -758,7 +778,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
-- **Desktop network access** `[v3.15.0]` — a **Network access** switch in the desktop **Backend connection** dialog lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install. `[v3.16.0]` While network access is on, **show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
 
 ---
 
@@ -806,11 +826,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   Sending to a workspace outside its groups is refused with a message asking
   you to group them. Limits: a request can pass through at most
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
-  32,000 characters. **Settings → Automation → Workspace messages** turns the
+  32,000 characters. **Settings → Workspaces → Messages** turns the
   tool off for every agent; replies already on their way still arrive.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
-  **Settings → Automation → Workspace groups**: create a group, give it a
+  **Settings → Workspaces → Groups**: create a group, give it a
   name, any colour (from the colour picker, or typed or pasted as a hex code
   such as `#3b82f6`), and a **brief** (a short note such as "web = Next.js
   frontend, api = Rust backend" that agents see in `send_to_workspace`
@@ -1357,9 +1377,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
-  Changing the trigger in Settings → Automation applies from the next model
+  Changing the trigger in Settings → Context applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
-  Opt-in **idle compaction** in Settings → Automation → Summarization
+  Opt-in **idle compaction** in Settings → Context → Idle sessions
   compacts a session in the background when it has been idle for 4½ minutes
   after a turn and its context has reached a set share of the trigger
   (default 70%). This uses the provider's prompt cache while it is still
@@ -1542,7 +1562,7 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
-| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Automation can turn it off) `[v3.9.0]` |
+| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Workspaces can turn it off) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
@@ -2051,7 +2071,7 @@ Desktop is primary. CLI / server is the developer path.
   e.g. `--key`). `--qr` on `server start`, `server restart`, and
   `server status` prints a QR code in the terminal with the LAN addresses and
   the access key: the same `openagentd://connect` link as the desktop
-  **show QR**, so scanning it with a phone opens the mobile app's **Backend
+  **Show QR**, so scanning it with a phone opens the mobile app's **Backend
   connection** dialog with the address and key filled in. With `--wait` the code
   appears once the server is ready. It is skipped with a warning when the
   server is loopback-only, no LAN address is found, or the access key is

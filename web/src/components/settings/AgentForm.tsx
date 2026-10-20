@@ -19,7 +19,7 @@
  */
 import { useMemo, useState } from 'react'
 
-import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useCodeAgentQuery, useMcpServersQuery, useRegistryQuery } from '@/queries'
@@ -168,7 +168,7 @@ export function AgentForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8">
       {parseError && (
         <ParseErrorBanner
           message={parseError}
@@ -188,25 +188,20 @@ export function AgentForm({
           updateFromForm={updateFromForm}
         />
       ) : (
-        <SectionCard>
-          <SectionCardHeader>Raw .md — edit frontmatter and body directly</SectionCardHeader>
-          <SectionCardRows>
-            <div className="px-3 py-3">
-              <p className="mb-2.5 text-[11px] text-(--color-text-muted) leading-relaxed">
-                Edit the raw frontmatter and body. Useful for fields the form
-                doesn&rsquo;t expose (e.g. custom hook configuration).
-              </p>
-              <Textarea
-                value={raw}
-                onChange={(e) => updateFromRaw(e.target.value)}
-                disabled={disabled}
-                rows={28}
-                spellCheck={false}
-                className="min-h-72 font-mono text-[13px] leading-relaxed"
-              />
-            </div>
-          </SectionCardRows>
-        </SectionCard>
+        <SettingsSection
+          title="Raw .md"
+          description={<>Edit the frontmatter and body directly. Useful for fields the form doesn&rsquo;t expose (e.g. custom hook configuration).</>}
+        >
+          <Textarea
+            value={raw}
+            onChange={(e) => updateFromRaw(e.target.value)}
+            disabled={disabled}
+            rows={28}
+            spellCheck={false}
+            aria-label="Raw agent file"
+            className="min-h-72 font-mono text-[13px] leading-relaxed"
+          />
+        </SettingsSection>
       )}
     </div>
   )

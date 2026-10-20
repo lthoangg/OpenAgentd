@@ -10,7 +10,7 @@ const SHEET_ITEM_CLASS = buttonVariants({ variant: 'ghost', className: 'justify-
 
 /**
  * A repository's workspace groups as toggles in its actions menu, plus a way
- * to Settings → Automation → Workspace groups, where groups are created,
+ * to Settings → Workspaces, where groups are created,
  * briefed and deleted. A toggle saves at once and leaves the menu open, so
  * several groups can be set in one go.
  *

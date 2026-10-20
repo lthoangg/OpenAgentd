@@ -86,7 +86,7 @@ export function EditorSubHeader({
         : null
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-2 sm:gap-3 sm:px-4">
+    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-2 sm:gap-3 sm:px-4 md:px-6">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
         <TooltipTrigger
@@ -94,7 +94,7 @@ export function EditorSubHeader({
             <Button
               size="icon-sm"
               variant="ghost"
-              className="h-9 w-9 md:h-7 md:w-7"
+              className="md:size-7"
               onClick={onBack}
               aria-label="Back to list"
             >
@@ -106,10 +106,10 @@ export function EditorSubHeader({
       </Tooltip>
 
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
+        className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
         aria-hidden="true"
       >
-        <KindIcon size={13} />
+        <KindIcon size={14} />
       </span>
 
       <div className="min-w-0 flex-1">

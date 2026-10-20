@@ -2304,7 +2304,7 @@ describe('Sidebar workspace trust flow', () => {
     await waitFor(() => expect(setGroupsRequests.at(-1)).toEqual({ workspace: '/repo/project', group_ids: ['g-shared'] }))
 
     await user.click(screen.getByRole('menuitem', { name: 'Manage groups…' }))
-    expect(openSettings).toHaveBeenCalledWith('automation')
+    expect(openSettings).toHaveBeenCalledWith('workspaces')
     expect(screen.queryByRole('menu')).toBeNull()
     useSettingsStore.setState({ openSettings: realOpenSettings })
   })

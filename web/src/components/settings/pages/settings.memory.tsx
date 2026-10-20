@@ -3,9 +3,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import {
-  AlertCircle,
   Brain,
-  CheckCircle2,
   FileText,
   Plus,
   RefreshCw,
@@ -37,7 +35,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
+import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
+import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { SettingsPage } from '@/components/settings/SettingsPage'
 import { settingsRoot } from '@/components/settings/settings-root'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
@@ -175,73 +175,46 @@ export function MemorySettingsPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
-      {/* Sticky Header matching Settings standard */}
-      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-3 sm:px-4 select-none">
-        <Brain
-          size={ICON_SIZE}
-          className="shrink-0 text-(--color-text-muted)"
-          aria-hidden="true"
-        />
-        <h1 className={cn('truncate', TEXT.title)}>Memory</h1>
-        <div className="min-w-1 flex-1" />
-        <Button
-          variant="subtle"
-          size="sm"
-          onClick={handleRunLint}
-          disabled={isLinting}
-          className="flex items-center gap-1.5 text-xs"
-        >
+    <SettingsPage
+      title="Memory"
+      layout="fill"
+      description="Markdown notes and standing directives that agents share across workspaces."
+      actions={
+        <Button variant="default" size="sm" onClick={handleRunLint} disabled={isLinting}>
           <RefreshCw
             size={ICON_SIZE_INLINE}
             className={cn('shrink-0', isLinting && 'animate-spin')}
             aria-hidden="true"
           />
-          <span>{isLinting ? 'Linting…' : 'Run Lint'}</span>
+          {isLinting ? 'Linting…' : 'Run lint'}
         </Button>
-      </header>
-
-      {/* Description bar */}
-      <div className="border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
-        <p className={TEXT.body}>
-          Persistent human-editable Markdown knowledge base and standing directives across all workspaces.
-        </p>
-      </div>
-
+      }
+    >
       {/* Lint findings banner */}
       {lintFindings !== null && (
-        <div
-          className={cn(
-            'mx-3 my-2.5 sm:mx-4 rounded-sm border p-3 text-xs',
-            lintFindings.length === 0
-              ? 'border-(--color-success)/30 bg-(--color-success-subtle) text-(--color-accent-green-text)'
-              : 'border-(--color-warning)/30 bg-(--color-warning-subtle) text-(--color-accent-orange-text)',
-          )}
+        <SettingsCallout
+          tone={lintFindings.length === 0 ? 'success' : 'warning'}
+          role="status"
+          className="mx-4 mb-4 md:mx-8"
+          title={
+            <span className="flex items-center justify-between gap-2">
+              <span>
+                {lintFindings.length === 0
+                  ? 'All memory pages and wikilinks are valid.'
+                  : `${lintFindings.length} issue(s) found:`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setLintFindings(null)}
+                className="cursor-pointer text-xs font-normal underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+              >
+                Dismiss
+              </button>
+            </span>
+          }
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-medium">
-              {lintFindings.length === 0 ? (
-                <>
-                  <CheckCircle2 size={14} className="shrink-0" aria-hidden="true" />
-                  <span>All memory pages and wikilinks are valid.</span>
-                </>
-              ) : (
-                <>
-                  <AlertCircle size={14} className="shrink-0" aria-hidden="true" />
-                  <span>{lintFindings.length} issue(s) found:</span>
-                </>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setLintFindings(null)}
-              className="cursor-pointer text-xs underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
-            >
-              Dismiss
-            </button>
-          </div>
           {lintFindings.length > 0 && (
-            <ul className="mt-2 space-y-1.5 font-normal">
+            <ul className="space-y-1.5">
               {lintFindings.map((f, i) => (
                 <li key={i} className="flex flex-wrap items-center gap-1.5 leading-relaxed">
                   <span className="font-mono font-semibold">[{f.code}]</span>
@@ -253,14 +226,14 @@ export function MemorySettingsPage() {
               ))}
             </ul>
           )}
-        </div>
+        </SettingsCallout>
       )}
 
       {/* Split pane: File list + Editor */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row overflow-hidden border-t border-(--color-border) bg-(--bg-page)">
+      <div className="mx-4 mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-page) md:mx-8 lg:flex-row">
         {/* Left pane: File list */}
-        <div className="flex w-full md:w-60 lg:w-64 shrink-0 flex-col border-b md:border-b-0 md:border-r border-(--color-border) bg-(--bg-sidebar)">
-          <div className="flex h-8.5 shrink-0 items-center justify-between border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 select-none">
+        <div className="flex max-h-44 w-full shrink-0 flex-col border-b border-(--color-border) bg-(--bg-sidebar) lg:max-h-none lg:w-64 lg:border-r lg:border-b-0">
+          <div className="flex h-10 shrink-0 items-center justify-between border-b border-(--color-border-subtle) pr-2 pl-3 select-none">
             <span className="label-caps text-(--color-text-subtle)">
               Pages ({treeData?.pages.length ?? 0})
             </span>
@@ -281,7 +254,7 @@ export function MemorySettingsPage() {
               <TooltipContent>New Page</TooltipContent>
             </Tooltip>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-1.5 space-y-0.5">
+          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
             {treeLoading ? (
               <p className="p-3 text-center font-mono text-xs text-(--color-text-muted)">
                 Loading pages…
@@ -309,11 +282,11 @@ export function MemorySettingsPage() {
                     onClick={() => setSelectedPath(p.path)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'group flex w-full items-center gap-2 rounded-xs px-2.5 py-1.5 text-left text-xs transition-colors',
+                      'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
                       active
-                        ? 'border border-(--color-border-strong) bg-(--bg-key)/70 font-semibold text-(--color-text)'
-                        : 'border border-transparent text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+                        ? 'bg-(--bg-key) font-medium text-(--color-text)'
+                        : 'text-(--color-text-muted) hover:bg-(--bg-key)/50 hover:text-(--color-text)',
                     )}
                   >
                     <FileText
@@ -336,7 +309,7 @@ export function MemorySettingsPage() {
         <div className="flex min-h-0 flex-1 flex-col bg-(--bg-card)">
           {selectedPath ? (
             <>
-              <div className="flex h-8.5 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-key)/20 px-3 select-none">
+              <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-(--color-border-subtle) pr-2 pl-4 select-none">
                 <div className="flex min-w-0 items-center gap-2 truncate">
                   <FileText size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
                   <span className="truncate font-mono text-xs font-semibold text-(--color-text)">
@@ -363,7 +336,7 @@ export function MemorySettingsPage() {
                 <div className="flex items-center gap-1.5">
                   <Button
                     variant="ghost"
-                    size="xs"
+                    size="sm"
                     onClick={() => setDeleteOpen(true)}
                     className="text-(--color-error) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
                   >
@@ -372,7 +345,7 @@ export function MemorySettingsPage() {
                   </Button>
                   <Button
                     variant="primary"
-                    size="xs"
+                    size="sm"
                     onClick={handleSave}
                     disabled={!isDirty || saveMut.isPending}
                   >
@@ -392,7 +365,7 @@ export function MemorySettingsPage() {
                     onChange={(e) => setDraftContent(e.target.value)}
                     placeholder="Markdown content..."
                     spellCheck={false}
-                    className="h-full w-full min-h-0 flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-(--color-text) placeholder:text-(--color-text-muted) outline-none focus:outline-none focus-visible:outline-none"
+                    className="h-full w-full min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3.5 font-mono text-xs leading-relaxed text-(--color-text) placeholder:text-(--color-text-muted) outline-none focus:outline-none focus-visible:outline-none"
                   />
                 )}
               </div>
@@ -504,6 +477,6 @@ export function MemorySettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </SettingsPage>
   )
 }

@@ -10,6 +10,7 @@
  *   </SettingsField>
  */
 import { type ReactNode } from 'react'
+import { TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 
 interface SettingsFieldProps {
@@ -30,6 +31,8 @@ interface SettingsFieldProps {
   hint?: string | null
   /** Stable id used to associate the control with its error text. */
   errorId?: string
+  /** Id of the control; renders the label as a `<label>` for it. */
+  htmlFor?: string
 }
 
 function SettingsField({
@@ -40,21 +43,30 @@ function SettingsField({
   error,
   hint,
   errorId,
+  htmlFor,
 }: SettingsFieldProps) {
   // Intentionally a <div>, not a <label>. A <label> wrapper causes any
   // click inside it to activate the first focusable control in DOM order —
-  // in MultiSelect that means clicking empty space deletes a chip.
+  // in MultiSelect that means clicking empty space deletes a chip. With
+  // `htmlFor` the label is a sibling pointing at one control, which is safe.
+  const labelContent = (
+    <>
+      {label}
+      {required && <span className="ml-0.5 text-(--color-error)">*</span>}
+    </>
+  )
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-(--color-text)">
-        {label}
-        {required && <span className="ml-0.5 text-(--color-error)">*</span>}
-      </span>
+    <div className={cn('flex flex-col gap-2', className)}>
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className={TEXT.label}>{labelContent}</label>
+      ) : (
+        <span className={TEXT.label}>{labelContent}</span>
+      )}
       {children}
       {error ? (
-        <p id={errorId} className="text-[11px] text-(--color-error)">{error}</p>
+        <p id={errorId} className="text-[11px] leading-relaxed text-(--color-error)">{error}</p>
       ) : hint ? (
-        <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
+        <p className={TEXT.hint}>{hint}</p>
       ) : null}
     </div>
   )

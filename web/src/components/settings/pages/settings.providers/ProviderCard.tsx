@@ -5,7 +5,7 @@ import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck, WifiOff 
 import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
+import { SectionCard } from '@/components/ui/section-card'
 import { queryKeys, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
@@ -236,27 +236,27 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   return (
     <SectionCard className="group">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <SectionCardHeader className="flex flex-wrap items-center gap-2 py-2 normal-case tracking-normal">
+      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-(--color-border-subtle) px-4 py-2.5">
         <p className="min-w-0 flex-1 basis-32 truncate text-xs font-semibold text-(--color-text)">{provider.label}</p>
 
         <div className="hidden flex-1 sm:block" />
 
-        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[11px] font-semibold text-(--color-text-muted)">
+        <span className="rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
           {providerKindLabel(provider.kind)}
         </span>
 
         {isConfiguredButUnreachable ? (
-          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-1.5 py-0.5 text-[11px] font-semibold text-(--color-error) border border-(--color-error)/15">
+          <span className="inline-flex items-center gap-1 rounded-full bg-(--color-error-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-error) border border-(--color-error)/15">
             <AlertCircle size={11} aria-hidden="true" />
             Failed
           </span>
         ) : provider.is_disconnected ? (
-          <span className="inline-flex items-center gap-1 rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[11px] font-semibold text-(--color-text-muted) border border-(--color-border)">
+          <span className="inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted) border border-(--color-border)">
             <WifiOff size={11} aria-hidden="true" />
             Hidden
           </span>
         ) : isConnected ? (
-          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-success-subtle) px-1.5 py-0.5 text-[11px] font-semibold text-(--color-success) border border-(--color-success)/15">
+          <span className="inline-flex items-center gap-1 rounded-full bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success) border border-(--color-success)/15">
             <CheckCircle2 size={11} aria-hidden="true" />
             Connected
           </span>
@@ -287,9 +287,9 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             Docs <ExternalLink size={11} aria-hidden="true" className="ml-1" />
           </Button>
         )}
-      </SectionCardHeader>
+      </div>
 
-      <div className="space-y-3 px-3 py-3">
+      <div className="space-y-4 px-4 py-4">
 
       <p className="text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>
 
@@ -308,7 +308,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 }}
                 placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
                 autoComplete="off"
-                className="font-mono text-xs"
+                className="h-9 font-mono text-xs"
               />
             </label>
             <Button
@@ -335,30 +335,30 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           </div>
           {daemon && (
             <label className="block">
-              <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Base URL (optional)</span>
+              <span className="text-xs font-medium text-(--color-text)">Base URL (optional)</span>
               <Input
                 type="url"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="mt-1 font-mono text-xs"
+                className="mt-2 h-9 font-mono text-xs"
                 spellCheck={false}
               />
             </label>
           )}
           {hasCandidateKey && !hasVerifiedKey && (
-            <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
               Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before saving.
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
-            <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
               Free models are available without an API key. Add a key to use paid models.
             </p>
           )}
           {!hasCandidateKey && provider.is_configured && (
-            <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
               Key saved. Type a new one above only if you want to replace it.
             </p>
           )}
@@ -481,7 +481,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               Save
             </Button>
           </div>
-          <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+          <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
             Leave blank to use the default daemon at <span className="font-mono text-(--color-text)">{daemon.placeholder}</span>.
           </p>
         </div>
@@ -490,10 +490,10 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       {/* ── Cloud credential providers (Bedrock, Vertex AI) ─────────── */}
       {provider.kind === 'cloud_creds' && (
         <div className="space-y-2 pt-1">
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
             {provider.credentials.map((credential) => (
               <label key={credential.name} className="block">
-                <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">{credential.label}</span>
+                <span className="text-xs font-medium text-(--color-text)">{credential.label}</span>
                 <Input
                   type={credential.secret ? 'password' : 'text'}
                   value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
@@ -503,7 +503,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                   }}
                   placeholder={credential.placeholder}
                   autoComplete="off"
-                  className="mt-1 font-mono text-xs"
+                  className="mt-2 h-9 font-mono text-xs"
                   spellCheck={false}
                 />
               </label>
@@ -533,12 +533,12 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             </Button>
           </div>
           {hasCloudCandidate && !hasVerifiedCloud && (
-            <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
               Click <span className="font-medium text-(--color-text)">List models</span> to verify these credentials before saving.
             </p>
           )}
           {!hasCloudCandidate && provider.is_configured && (
-            <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
               Credentials saved. Type new values above only if you want to replace them.
             </p>
           )}
@@ -547,7 +547,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
       {/* ── Detected providers (local without base URL) ─────────────── */}
       {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
-        <p className="text-xs md:text-[11px] text-(--color-text-subtle) leading-normal">
+        <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
           Detected from local environment or system credentials.
         </p>
       )}

@@ -1402,7 +1402,7 @@ export function Sidebar({
                   variant="sheet"
                   onManage={() => {
                     setMobileWorkspaceActions(null)
-                    openSettings('automation')
+                    openSettings('workspaces')
                   }}
                 />
                 <Button
@@ -1609,7 +1609,7 @@ export function Sidebar({
               variant="menu"
               onManage={() => {
                 setDesktopWorkspaceActions(null)
-                openSettings('automation')
+                openSettings('workspaces')
               }}
             />
             <button

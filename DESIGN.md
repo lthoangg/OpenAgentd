@@ -746,6 +746,33 @@ filter bar (range, workspace, model, session chip), a headline stat strip,
 per-day activity, then section-card breakdowns whose rows double as filters,
 then recent turns. Escape steps out of a trace before it closes the overlay.
 
+**Settings pages** are roomier than the rest of the app. Text stays at the
+same sizes. Settings uses its own section variant:
+
+- **Layout.** From `md:` up a 240px sidebar of inset 32px rows sits beside
+  the page. Each page has an `h1` header (`text-base`, a description, and
+  right-aligned actions) and a `max-w-3xl` body column with `px-4 md:px-8`
+  insets and 32px between sections (`SettingsPage`).
+- **Sections.** A section's title and description sit *above* its card
+  instead of in a caps strip (`SettingsSection`). The card holds either
+  padded content or flush `divide-y` rows.
+- **Rows.** A `SettingsRow` is a 56px row with the label and description on
+  the left and the control on the right. It stacks below `sm`.
+- **Fields.** Labels sit 8px above controls, with 20px between fields.
+  Actions that commit a form go in a footer row, not beside an input.
+- **No collapsibles.** A page that outgrows one screen of sections is split
+  into more pages rather than folded into collapsible groups.
+- **Notices.** States and warnings between sections (a failed server, a
+  scanned link, a security caveat, lint results) use `SettingsCallout`
+  (neutral, info, success, warning or error tone). Field errors stay inline.
+- **Copy.** One short description per page and per section; long
+  explanations belong in the docs, not on the page.
+- **Phones.** Settings opens on a grouped list of sections. Each section
+  opens full-screen, with Back in the overlay header.
+- **Backend connection.** The same `AppBackendPanel` appears as Settings →
+  Connection and as the Backend connection dialog. The dialog is used before
+  the app is ready, from the footer health dot, and for scanned connect links.
+
 ## Platform Shell
 
 Three targets, one UI. The desktop app (macOS/Windows/Linux) and mobile app (iOS)

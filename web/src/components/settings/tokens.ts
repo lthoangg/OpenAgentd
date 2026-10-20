@@ -29,6 +29,8 @@ export const ICON_SIZE = 14
 export const ICON_SIZE_INLINE = 12
 
 export const TEXT = {
+  /** Settings page heading (one per page). */
+  pageTitle: 'text-base font-semibold tracking-tight text-(--color-text)',
   /** Section / page heading. */
   title: 'text-xs font-semibold text-(--color-text)',
   /** Form control label. */
@@ -42,3 +44,15 @@ export const TEXT = {
   /** Lowest-emphasis metadata. */
   subtle: 'text-[11px] leading-relaxed text-(--color-text-subtle)',
 } as const
+
+/**
+ * Page body column: one reading width and one horizontal inset for every
+ * settings page, so headers, sections and the save bar line up.
+ */
+export const PAGE_BODY = 'mx-auto w-full max-w-3xl px-4 md:px-8'
+
+/** Padding for a row inside a settings card. */
+export const ROW_PAD = 'px-4 py-3.5'
+
+/** Body column for editor pages, which sit under their own sub-header. */
+export const EDITOR_BODY = `${PAGE_BODY} py-6 md:py-8`

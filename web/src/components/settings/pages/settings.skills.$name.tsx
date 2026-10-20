@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { EDITOR_BODY } from '@/components/settings/tokens'
 
 interface SkillEditorPageProps {
   name: string
@@ -90,11 +91,11 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-3 sm:p-5">
+        <div className={EDITOR_BODY}>
           {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
           {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (
-            <SettingsSection title="Skill source" description="frontmatter + body loaded by agents on demand">
+            <SettingsSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">
               <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
                 Frontmatter (<span className="font-mono">name</span>,{' '}
                 <span className="font-mono">description</span>) is required;

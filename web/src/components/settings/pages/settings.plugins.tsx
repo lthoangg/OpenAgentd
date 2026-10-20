@@ -6,21 +6,25 @@
  * load errors, and v2 Python plugins that v3 does not run.
  */
 import { useEffect } from 'react'
-import { AlertCircle, AlertTriangle, CheckCircle2, Puzzle, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Puzzle, RefreshCw } from 'lucide-react'
 
 import type { PluginStatus, PluginsResponse } from '@/api/client'
 import { CAPABILITY, useServerCapability } from '@/queries'
 import { usePluginsQuery } from '@/queries/usePluginsQuery'
 import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
-import { ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
+import { EmptyState } from '@/components/ui/empty-state'
+import { SectionCard } from '@/components/ui/section-card'
+import { SettingsCallout } from '@/components/settings/SettingsCallout'
+import { SettingsPage } from '@/components/settings/SettingsPage'
+import { ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 
 const CODE = 'rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)'
 
 function Badge({ children }: { children: string }) {
   return (
-    <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key)/50 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+    <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key)/50 px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-muted)">
       {children}
     </span>
   )
@@ -29,7 +33,7 @@ function Badge({ children }: { children: string }) {
 function PluginRow({ plugin }: { plugin: PluginStatus }) {
   const failed = plugin.status === 'error'
   return (
-    <li className="flex flex-col gap-1.5 px-3 py-2.5 sm:px-4">
+    <li className="flex flex-col gap-2 px-4 py-3.5">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {failed ? (
           <AlertCircle size={ICON_SIZE_INLINE} className="shrink-0 text-(--color-error)" aria-label="Failed to load" />
@@ -41,7 +45,7 @@ function PluginRow({ plugin }: { plugin: PluginStatus }) {
         {plugin.hooks.map((h) => <Badge key={h}>{h}</Badge>)}
       </div>
       {plugin.errors.length > 0 && (
-        <ul className="space-y-1 pl-5">
+        <ul className="space-y-1 pl-6">
           {plugin.errors.map((e) => (
             <li key={e} className="break-words font-mono text-[11px] leading-relaxed text-(--color-error)">{e}</li>
           ))}
@@ -59,66 +63,61 @@ export function PluginsSettingsPage() {
   const dir = data?.dirs[0]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
-      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-3 sm:px-4 select-none">
-        <Puzzle size={ICON_SIZE} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h1 className={cn('truncate', TEXT.title)}>Plugins</h1>
-        <div className="min-w-1 flex-1" />
-        <Button variant="subtle" size="sm" onClick={() => void refetch()} disabled={isFetching} className="flex items-center gap-1.5 text-xs">
+    <SettingsPage
+      title="Plugins"
+      description={
+        <>
+          TypeScript and JavaScript plugins from{' '}
+          {dir ? <code className={CODE}>{dir}</code> : 'the plugin folder'}. Restart the backend after adding or
+          editing one.
+        </>
+      }
+      actions={
+        <Button variant="default" size="sm" onClick={() => void refetch()} disabled={isFetching}>
           <RefreshCw size={ICON_SIZE_INLINE} className={cn('shrink-0', isFetching && 'animate-spin')} aria-hidden="true" />
-          <span>Refresh</span>
+          Refresh
         </Button>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="border-b border-(--color-border) px-3 py-2.5 sm:px-4">
-          <p className={TEXT.body}>
-            TypeScript and JavaScript plugins from{' '}
-            {dir ? <code className={CODE}>{dir}</code> : 'the plugin folder'}. They load when the backend starts, so
-            restart it after adding or editing a plugin. <code className={CODE}>openagentd.d.ts</code> in that folder
-            types the plugin API.
-          </p>
-        </div>
-
-        {unported.length > 0 && (
-          <div role="alert" className="mx-3 my-2.5 rounded-sm border border-(--color-warning)/30 bg-(--color-warning-subtle) p-3 text-xs text-(--color-accent-orange-text) sm:mx-4">
-            <div className="flex items-center gap-2 font-medium">
-              <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
-              <span>
-                {unported.length === 1 ? '1 Python plugin is' : `${unported.length} Python plugins are`} not running
-              </span>
-            </div>
-            <p className="mt-1.5 leading-relaxed">
-              This backend runs only <code className={CODE}>.ts</code>/<code className={CODE}>.js</code> plugins.
-              Port each file to TypeScript under the same name next to it; the Python version keeps working with the
-              Python backend.
-            </p>
-            <ul className="mt-2 flex flex-wrap gap-1.5">
+      }
+    >
+      {unported.length > 0 && (
+        <SettingsCallout
+          tone="warning"
+          role="alert"
+          title={`${unported.length === 1 ? '1 Python plugin is' : `${unported.length} Python plugins are`} not running`}
+          action={
+            <ul className="flex flex-wrap gap-1.5">
               {unported.map((u) => <li key={u.path}><code className={CODE} title={u.path}>{u.file}</code></li>)}
             </ul>
-          </div>
-        )}
+          }
+        >
+          Only <code className={CODE}>.ts</code>/<code className={CODE}>.js</code> plugins run here. Add a
+          TypeScript port with the same name next to each file.
+        </SettingsCallout>
+      )}
 
-        {isError ? (
-          <p className="p-4 text-center text-xs text-(--color-error)">
-            Could not load plugin status: {error instanceof Error ? error.message : String(error)}
-          </p>
-        ) : isLoading ? (
-          <p className="p-4 text-center font-mono text-xs text-(--color-text-muted)">Loading plugins…</p>
-        ) : plugins.length === 0 ? (
-          <p className="p-6 text-center text-xs text-(--color-text-muted)">No plugins installed.</p>
-        ) : (
-          <section aria-label="Installed plugins">
-            <p className="px-3 pt-3 pb-1 label-caps text-(--color-text-subtle) sm:px-4">
-              {`Installed (${plugins.length})${failed ? ` · ${failed} failed` : ''}`}
-            </p>
-            <ul className="divide-y divide-(--color-border)">
+      {isError ? (
+        <p className="py-10 text-center text-xs text-(--color-error)">
+          Could not load plugin status: {error instanceof Error ? error.message : String(error)}
+        </p>
+      ) : isLoading ? (
+        <p className="py-10 text-center font-mono text-xs text-(--color-text-muted)">Loading plugins…</p>
+      ) : plugins.length === 0 ? (
+        <SectionCard className="border-dashed">
+          <EmptyState fill={false} className="px-6 py-10" icon={Puzzle} title="No plugins installed." />
+        </SectionCard>
+      ) : (
+        <section aria-label="Installed plugins" className="space-y-3">
+          <h2 className={cn('select-none', TEXT.title)}>
+            {`Installed (${plugins.length})${failed ? ` · ${failed} failed` : ''}`}
+          </h2>
+          <SectionCard>
+            <ul className="divide-y divide-(--color-border-subtle)">
               {plugins.map((p) => <PluginRow key={p.path} plugin={p} />)}
             </ul>
-          </section>
-        )}
-      </div>
-    </div>
+          </SectionCard>
+        </section>
+      )}
+    </SettingsPage>
   )
 }
 

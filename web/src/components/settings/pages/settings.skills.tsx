@@ -43,7 +43,7 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
         meta: slash === -1 ? undefined : s.name,
         invalidReason: !s.valid ? (s.error ?? 'Invalid configuration') : undefined,
         onClick: () => onSelect(s.name),
-        icon: <Sparkles size={13} />,
+        icon: <Sparkles size={14} />,
       }
     }
 
@@ -58,7 +58,7 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
   return (
     <SettingsListView
       title="Skills"
-      description="Reusable instruction packs available to any agent. Supports flat skills and one-level sub-skills (shown as parent:sub). Project skills live in .agents/skills/; global ones in the config dir's skills/."
+      description="Instruction packs any agent can load on demand, from .agents/skills/ or your config folder."
       newLabel="New skill"
       onNew={onNew}
       filterPlaceholder="Filter skills…"
@@ -67,6 +67,7 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
       isError={isError}
       emptyTitle="No skills yet"
       emptyBody="Skills are reusable instruction modules agents load on demand via the skill tool."
+      emptyIcon={Sparkles}
     />
   )
 }

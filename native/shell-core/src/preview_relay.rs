@@ -72,8 +72,32 @@ impl Relay {
 /// Open relays, keyed by a caller scope (a desktop window label; mobile
 /// uses one scope) and preview id.
 pub struct RelayRegistry {
-    relays: Mutex<HashMap<(String, String), Relay>>,
+    relays: Mutex<HashMap<Slot, Relay>>,
+    /// One `open` per slot at a time, so overlapping opens (React StrictMode,
+    /// a Retry during a load) reuse one relay instead of each binding a port
+    /// and stopping the other's.
+    opening: Mutex<HashMap<Slot, Arc<tokio::sync::Mutex<()>>>>,
     idle_close: Duration,
+}
+
+type Slot = (String, String);
+
+/// A caller's turn to open a slot; forgets the slot's gate when no other
+/// caller waits on it.
+struct OpenTurn<'a> {
+    opening: &'a Mutex<HashMap<Slot, Arc<tokio::sync::Mutex<()>>>>,
+    slot: Slot,
+    turn: tokio::sync::OwnedMutexGuard<()>,
+}
+
+impl Drop for OpenTurn<'_> {
+    fn drop(&mut self) {
+        let mut opening = self.opening.lock().unwrap_or_else(|e| e.into_inner());
+        // The map and this turn hold the only references: nobody waits.
+        if Arc::strong_count(tokio::sync::OwnedMutexGuard::mutex(&self.turn)) == 2 {
+            opening.remove(&self.slot);
+        }
+    }
 }
 
 impl Default for RelayRegistry {
@@ -173,36 +197,68 @@ async fn bind(preferred: u16) -> Result<TcpListener, String> {
 }
 
 /// Copy one browser connection to and from its tunnel.
+///
+/// Each direction is copied on its own: a browser that sends a whole
+/// request body before reading, to a server that streams its answer
+/// meanwhile, would stall a loop that waits on one write at a time.
 async fn pipe(tcp: TcpStream, tunnel: Tunnel, mut stop: watch::Receiver<bool>) {
     let _ = tcp.set_nodelay(true);
     let (mut rd, mut wr) = tcp.into_split();
     let (mut tx, mut rx) = tunnel.split();
-    let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + PING_EVERY, PING_EVERY);
-    let mut buf = vec![0u8; READ_CHUNK];
-    loop {
-        tokio::select! {
-            n = rd.read(&mut buf) => match n {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    if tx.send(Message::binary(buf[..n].to_vec())).await.is_err() { break }
-                }
-            },
-            m = rx.next() => match m {
-                Some(Ok(Message::Binary(b))) => {
-                    if wr.write_all(&b).await.is_err() { break }
-                }
-                Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_))) => {}
-                _ => break,
-            },
-            _ = ping.tick() => {
-                if tx.send(Message::Ping(Vec::new().into())).await.is_err() { break }
+    let up = async {
+        let mut ping =
+            tokio::time::interval_at(tokio::time::Instant::now() + PING_EVERY, PING_EVERY);
+        let mut buf = vec![0u8; READ_CHUNK];
+        loop {
+            let msg = tokio::select! {
+                n = rd.read(&mut buf) => match n {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => Message::binary(buf[..n].to_vec()),
+                },
+                _ = ping.tick() => Message::Ping(Vec::new().into()),
+            };
+            if tx.send(msg).await.is_err() {
+                return;
             }
-            _ = async { stop.wait_for(|v| *v).await.map(|_| ()) } => break,
         }
+    };
+    let down = async {
+        while let Some(Ok(m)) = rx.next().await {
+            match m {
+                Message::Binary(b) => {
+                    if wr.write_all(&b).await.is_err() {
+                        return;
+                    }
+                }
+                Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
+                _ => return,
+            }
+        }
+    };
+    tokio::select! {
+        _ = up => {}
+        _ = down => {}
+        _ = stop.wait_for(|v| *v) => {}
     }
     let _ = wr.shutdown().await;
     let _ = tx.close().await;
 }
+
+/// Errors that end one pending connection, not the listener.
+fn connection_error(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionRefused
+            | std::io::ErrorKind::ConnectionReset
+    )
+}
+
+/// Other `accept` errors in a row before the listener counts as dead (iOS
+/// reclaims it in the background). Short runs, such as running out of
+/// file descriptors, are waited out.
+const MAX_ACCEPT_FAILURES: u32 = 10;
+const ACCEPT_RETRY: Duration = Duration::from_millis(100);
 
 struct Activity {
     open: AtomicUsize,
@@ -251,10 +307,25 @@ async fn serve(
         last: Mutex::new(Instant::now()),
     });
     let mut check = tokio::time::interval((idle_close / 4).max(Duration::from_millis(10)));
+    let mut failures = 0;
     loop {
         tokio::select! {
             accepted = listener.accept() => {
-                let Ok((tcp, _)) = accepted else { break };
+                let tcp = match accepted {
+                    Ok((tcp, _)) => {
+                        failures = 0;
+                        tcp
+                    }
+                    Err(e) if connection_error(&e) => continue,
+                    Err(_) => {
+                        failures += 1;
+                        if failures >= MAX_ACCEPT_FAILURES {
+                            break;
+                        }
+                        tokio::time::sleep(ACCEPT_RETRY).await;
+                        continue;
+                    }
+                };
                 if activity.open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     activity.open.fetch_sub(1, Ordering::SeqCst);
                     continue;
@@ -286,12 +357,28 @@ impl RelayRegistry {
     pub fn with_idle_close(idle_close: Duration) -> Self {
         Self {
             relays: Mutex::new(HashMap::new()),
+            opening: Mutex::new(HashMap::new()),
             idle_close,
         }
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<(String, String), Relay>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<Slot, Relay>> {
         self.relays.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    async fn turn(&self, slot: &Slot) -> OpenTurn<'_> {
+        let gate = self
+            .opening
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(slot.clone())
+            .or_default()
+            .clone();
+        OpenTurn {
+            opening: &self.opening,
+            slot: slot.clone(),
+            turn: gate.lock_owned().await,
+        }
     }
 
     /// Start (or reuse) the relay for `preview_id` on `base_url`. It tries
@@ -316,6 +403,7 @@ impl RelayRegistry {
             return Err("Previews on this device need this server's access key.".to_string());
         }
         let slot = (scope.to_string(), preview_id.to_string());
+        let _turn = self.turn(&slot).await;
         {
             let mut relays = self.lock();
             if let Some(r) = relays.get(&slot) {
@@ -490,6 +578,21 @@ mod tests {
         assert!(!is_preview_id(&ID.replace('-', "x")));
     }
 
+    #[test]
+    fn only_connection_errors_skip_straight_to_the_next_accept() {
+        use std::io::{Error, ErrorKind};
+        for kind in [
+            ErrorKind::ConnectionAborted,
+            ErrorKind::ConnectionReset,
+            ErrorKind::ConnectionRefused,
+        ] {
+            assert!(connection_error(&Error::from(kind)), "{kind:?}");
+        }
+        // Out of descriptors, a reclaimed socket: retried, then fatal.
+        assert!(!connection_error(&Error::from_raw_os_error(24)));
+        assert!(!connection_error(&Error::from(ErrorKind::InvalidInput)));
+    }
+
     #[tokio::test]
     async fn relays_bytes_with_the_key_and_reuses_the_relay() {
         let (server, seen) = fake_server(None).await;
@@ -550,6 +653,86 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(preferred.port, busy_port);
+        reg.close_all();
+    }
+
+    /// StrictMode runs the tab's load effect twice, and Retry can overlap a
+    /// load: both opens must agree on one live relay on the preferred port.
+    #[tokio::test]
+    async fn concurrent_opens_share_one_relay() {
+        let (server, _) = fake_server(None).await;
+        let free = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let preferred = free.local_addr().unwrap().port();
+        drop(free);
+        let reg = RelayRegistry::default();
+        let base = format!("http://127.0.0.1:{server}");
+        let c = client();
+        let (a, b) = tokio::join!(
+            reg.open("w", &c, &base, "k", ID, preferred),
+            reg.open("w", &c, &base, "k", ID, preferred),
+        );
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert_eq!(a, b, "both callers frame the same relay");
+        assert_eq!(a.port, preferred);
+        assert_eq!(roundtrip(a.port, b"z").await.unwrap(), b"echo:z");
+        assert!(
+            reg.opening.lock().unwrap().is_empty(),
+            "gates are forgotten"
+        );
+        reg.close_all();
+    }
+
+    /// A browser that sends a whole request body before reading, to a
+    /// server that streams its answer while still reading: the relay must
+    /// move both directions at once, or each side waits on the other.
+    #[tokio::test]
+    async fn moves_both_directions_at_once() {
+        const SIZE: usize = 16 * 1024 * 1024;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((tcp, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let Ok(ws) = tokio_tungstenite::accept_async(tcp).await else {
+                        return;
+                    };
+                    let (mut tx, mut rx) = ws.split();
+                    let send = async move {
+                        let chunk = vec![7u8; READ_CHUNK];
+                        for _ in 0..SIZE / READ_CHUNK {
+                            if tx.send(Message::binary(chunk.clone())).await.is_err() {
+                                return;
+                            }
+                        }
+                    };
+                    let drain = async move { while let Some(Ok(_)) = rx.next().await {} };
+                    tokio::join!(send, drain);
+                });
+            }
+        });
+        let reg = RelayRegistry::default();
+        let info = reg
+            .open(
+                "w",
+                &client(),
+                &format!("http://127.0.0.1:{server}"),
+                "k",
+                ID,
+                0,
+            )
+            .await
+            .unwrap();
+        let mut tcp = TcpStream::connect(("127.0.0.1", info.port)).await.unwrap();
+        let exchange = async {
+            tcp.write_all(&vec![1u8; SIZE]).await?;
+            let mut got = vec![0u8; SIZE];
+            tcp.read_exact(&mut got).await?;
+            std::io::Result::Ok(())
+        };
+        tokio::time::timeout(Duration::from_secs(20), exchange)
+            .await
+            .expect("the relay stalled with both directions full")
+            .unwrap();
         reg.close_all();
     }
 

@@ -41,7 +41,7 @@ import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { settledWidthBesidePanels } from '@/components/ResizableAside'
 import { isFocusStranded, useReturnFocusFromDock, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
-import { isLocalBackend, lastPreviewUrl } from '@/api/preview'
+import { lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
@@ -473,7 +473,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     if (!workspace) return
     useReturnedFeedbackStore.getState().give({ workspace, feedback })
     const target = previewTargetForFeedback(feedback)
-    if (target && !isMobile && isLocalBackend()) handleOpenPreview(target, { focusOnly: true })
+    if (target && !isMobile && previewsAvailable()) handleOpenPreview(target, { focusOnly: true })
   }, [handleOpenPreview, isMobile, workspace])
 
   // The `preview` tool card's Open button, and the agent opening a page
@@ -486,7 +486,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     window.addEventListener(OPEN_PREVIEW_EVENT, onOpen)
     return () => window.removeEventListener(OPEN_PREVIEW_EVENT, onOpen)
   }, [handleOpenPreview])
-  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && isLocalBackend(), onOpen: handleOpenPreview })
+  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && previewsAvailable(), onOpen: handleOpenPreview })
 
   const {
     slashCommands,
@@ -565,7 +565,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleOpenTerminal,
     handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
     planAwaitingReview,
-    handleOpenPreview: workspace && isLocalBackend() ? handleOpenNewPreview : undefined,
+    handleOpenPreview: workspace && previewsAvailable() ? handleOpenNewPreview : undefined,
     handleOpenSideQuestions,
     setFileViewer,
     setFileOpenKey,

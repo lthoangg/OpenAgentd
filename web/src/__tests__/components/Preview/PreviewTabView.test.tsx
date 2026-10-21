@@ -12,6 +12,15 @@ import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 
 const WS = '/Users/me/project'
 const ORIGIN = 'http://127.0.0.1:52011'
+const RELAY_ORIGIN = 'http://127.0.0.1:61000'
+// The native relay (`preview_relay_open`) when the app talks to a remote server.
+let relayError: string | null = null
+const invokeMock = mock(async (..._args: unknown[]) => {
+  // Tauri rejects with the command's error string.
+  if (relayError) throw relayError
+  return { port: 61000, origin: RELAY_ORIGIN }
+})
+mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 const originalFetch = globalThis.fetch
 let previewBodies: Record<string, unknown>[] = []
 let workspaceFiles: { path: string; mtime: number }[] = []
@@ -22,7 +31,7 @@ type Interceptor = { beforeAsyncRequest?: (args: { request: Request }) => Promis
 const happyDOM = (window as unknown as { happyDOM?: { settings: { fetch: { interceptor: Interceptor | null } } } }).happyDOM
 if (happyDOM) {
   happyDOM.settings.fetch.interceptor = {
-    beforeAsyncRequest: async ({ request }) => (request.url.startsWith(ORIGIN) ? new Response('<!doctype html><html><head></head><body></body></html>', { headers: { 'content-type': 'text/html' } }) : undefined),
+    beforeAsyncRequest: async ({ request }) => (request.url.startsWith(ORIGIN) || request.url.startsWith(RELAY_ORIGIN) ? new Response('<!doctype html><html><head></head><body></body></html>', { headers: { 'content-type': 'text/html' } }) : undefined),
   }
 }
 
@@ -48,6 +57,9 @@ afterEach(() => {
   cleanup()
   globalThis.fetch = originalFetch
   delete (window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__
+  delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  invokeMock.mockClear()
+  relayError = null
 })
 
 async function renderView(target: PreviewTarget = { kind: 'url', url: 'http://localhost:5173/pricing' }, onSendComments = mock((_text: unknown) => {})) {
@@ -357,7 +369,7 @@ describe('PreviewTabView', () => {
     expect(iframe.getAttribute('src')).toBe(`${ORIGIN}/designs/landing.html`)
   })
 
-  it('explains that previews need a local backend', async () => {
+  it('explains that a browser on another device cannot preview', async () => {
     ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
     const queryClient = new QueryClient()
     render(
@@ -365,8 +377,42 @@ describe('PreviewTabView', () => {
         <PreviewTabView workspace={WS} tabId="preview:1" target={{ kind: 'url', url: 'http://localhost:5173' }} navKey={0} />
       </QueryClientProvider>,
     )
-    expect(screen.getByText('Preview needs the backend on this computer')).toBeTruthy()
+    expect(screen.getByText("Preview isn't available in this browser")).toBeTruthy()
     expect(document.querySelector('iframe')).toBeNull()
     expect(previewBodies).toHaveLength(0)
+  })
+
+  it('frames the native relay when the app is connected to a remote server', async () => {
+    ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
+    ;(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PreviewTabView workspace={WS} tabId="preview:1" target={{ kind: 'url', url: 'http://localhost:5173/pricing' }} navKey={0} />
+      </QueryClientProvider>,
+    )
+    const iframe = await waitFor(() => {
+      const el = document.querySelector('iframe')
+      if (!el) throw new Error('no iframe yet')
+      return el
+    })
+    expect(iframe.getAttribute('src')).toBe(`${RELAY_ORIGIN}/pricing`)
+    expect(invokeMock).toHaveBeenCalledWith('preview_relay_open', { previewId: 'p1', port: 52011 })
+    const openInBrowser = screen.getByRole('button', { name: /Open in browser/ }) as HTMLButtonElement
+    expect(openInBrowser.disabled).toBe(true)
+  })
+
+  it('shows why the relay could not open', async () => {
+    ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
+    ;(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+    relayError = "Previews on this device need this server's access key."
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PreviewTabView workspace={WS} tabId="preview:1" target={{ kind: 'url', url: 'http://localhost:5173' }} navKey={0} />
+      </QueryClientProvider>,
+    )
+    expect((await screen.findByRole('alert')).textContent).toContain("need this server's access key")
+    expect(document.querySelector('iframe')).toBeNull()
   })
 })

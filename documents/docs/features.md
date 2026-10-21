@@ -1166,9 +1166,13 @@ agent against it.
     restoring the message (undo, edit, history) brings the chip back. The card
     also shows after a reload, with or without text before it `[v3.6.0]`.
     While the agent uses the page, the toolbar shows **Agent**.
-    Tabs keep their page and comments while another tab is open. Previews
-    need the backend on the same computer; remote servers and the mobile app
-    show a notice instead.
+    Tabs keep their page and comments while another tab is open.
+    The iOS and Android apps, and a desktop window connected to a remote
+    server, show previews too `[v3.23.0]`: the app relays the page from its
+    own `127.0.0.1` port to the server, so the page still never sees the
+    access key. That needs a server with an access key, and a reverse proxy
+    in front of it must pass WebSocket upgrades. **Open in browser** is off
+    there, and a plain browser on another device shows a notice instead.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move

@@ -2,7 +2,8 @@
  * PreviewTabView — the review dock's built-in web preview.
  *
  * Frames a preview listener (`/api/preview`): a local dev server or a
- * workspace HTML file on its own loopback origin. The toolbar drives the
+ * workspace HTML file on its own loopback origin (or, when the backend is on
+ * another device, the native relay's loopback origin). The toolbar drives the
  * page through the inspector script (`preview-protocol.ts`); **Design**
  * turns on the element picker, and picked elements collect numbered
  * comments that **Send to agent** puts into the composer.
@@ -24,7 +25,7 @@ import {
   Smartphone,
   SquareTerminal,
 } from 'lucide-react'
-import { type PreviewInfo, type PreviewTarget, isLocalBackend, openPreview, previewTargetKey } from '@/api/preview'
+import { type PreviewInfo, type PreviewTarget, openPreview, previewMode, previewTargetKey } from '@/api/preview'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -151,7 +152,8 @@ function siblingsSignature(files: { path: string; mtime: number }[] | undefined,
 const DESIGN_CHORD = { key: 'C', code: 'KeyC', alt: true } as const
 
 export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, onSendComments, onOpenTarget, active = true, onRequestClose }: PreviewTabViewProps) {
-  const local = isLocalBackend()
+  const reach = previewMode()
+  const available = reach !== 'unavailable'
   const { os } = usePlatform()
   const designShortcut = os === 'macos' || os === 'ios' ? '⌥C' : 'Alt+C'
   const [info, setInfo] = useState<PreviewInfo | null>(null)
@@ -206,6 +208,9 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   onPreviewIdRef.current = onPreviewId
   const onRequestCloseRef = useRef(onRequestClose)
   onRequestCloseRef.current = onRequestClose
+  // The origin the frame was last loaded from: a relay that restarted on
+  // another port (the app was suspended) needs a fresh load, not a message.
+  const frameOriginRef = useRef<string | null>(null)
   const targetKey = `${previewTargetKey(target)}|${target.kind === 'url' ? target.url : target.path}`
 
   const post = useCallback((command: DockCommand) => {
@@ -221,9 +226,10 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       setInfo(next)
       onPreviewIdRef.current?.(tabId, next.id)
       const url = `${next.origin}${next.path}`
-      if (navigate && readyRef.current) {
+      if (navigate && readyRef.current && frameOriginRef.current === next.origin) {
         frameRef.current?.contentWindow?.postMessage(commandMessage({ type: 'navigate', path: next.path }), next.origin)
       } else {
+        frameOriginRef.current = next.origin
         setSrc(url)
         setPath(next.path)
         setFrameKey((k) => k + 1)
@@ -235,12 +241,12 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   const loadedNavKeyRef = useRef<number | null>(null)
   useEffect(() => {
-    if (!local) return
+    if (!available) return
     const navigate = loadedNavKeyRef.current !== null
     loadedNavKeyRef.current = navKey
     void load(navigate)
     // targetKey: a new target for this tab (read through targetRef) reloads it.
-  }, [local, load, navKey, targetKey])
+  }, [available, load, navKey, targetKey])
 
   // ── Page messages ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -325,7 +331,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   // Alt+C toggles picking while this tab shows (not while typing in a field);
   // the page forwards it when focused.
-  useShortcut(DESIGN_CHORD, () => { toggleDesignRef.current() }, { enabled: active && local })
+  useShortcut(DESIGN_CHORD, () => { toggleDesignRef.current() }, { enabled: active && available })
   // Keys the page forwards (per the keymap sent on `ready`) replay here.
   useFrameKeys(frameRef, { origin: info?.origin ?? null, enabled: Boolean(info) })
 
@@ -358,7 +364,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const files = useQuery({
     ...workspaceFileListQueryOptions(workspace),
     // File previews reload on changes; every preview resolves sources with it.
-    enabled: local,
+    enabled: available,
     staleTime: WORKSPACE_TREE_STALE_MS,
   })
   filePathsRef.current = useMemo(() => files.data?.files.map((f) => f.path) ?? [], [files.data?.files])
@@ -421,6 +427,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       setInfo(next)
       if (readyRef.current && next.origin === info?.origin) post({ type: 'reload' })
       else {
+        frameOriginRef.current = next.origin
         setSrc(`${next.origin}${path}`)
         setFrameKey((k) => k + 1)
       }
@@ -460,12 +467,12 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     setMode((m) => (m === 'inspect' ? 'browse' : 'inspect'))
   }
 
-  if (!local) {
+  if (!available) {
     return (
       <EmptyState
         icon={Globe}
-        title="Preview needs the backend on this computer"
-        body="The preview runs a local proxy next to the OpenAgentd server. Use the builtin server, or open OpenAgentd in a browser on the computer that runs it."
+        title="Preview isn't available in this browser"
+        body="The preview runs next to the OpenAgentd server. Open it in the OpenAgentd app, or in a browser on the computer that runs the server."
       />
     )
   }
@@ -559,7 +566,12 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         >
           <MousePointerClick size={13} aria-hidden="true" />
         </ToolbarButton>
-        <ToolbarButton label="Open in browser" onClick={() => pageUrl && void openExternalUrl(pageUrl)} disabled={!pageUrl}>
+        {/* A relayed page lives on this app's relay, which another browser cannot use. */}
+        <ToolbarButton
+          label={reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'}
+          onClick={() => pageUrl && void openExternalUrl(pageUrl)}
+          disabled={!pageUrl || reach === 'relay'}
+        >
           <ExternalLink size={13} aria-hidden="true" />
         </ToolbarButton>
       </div>

@@ -20,7 +20,7 @@ import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowUpRight, ChevronRight, Copy, Check, FileText, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { isLocalBackend } from '@/api/preview'
+import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
@@ -253,7 +253,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     [usesDiffView, name, args, result],
   )
   const previewTarget = useMemo(
-    () => (name === PREVIEW_TOOL && done && isPreviewOpenSuccess(result) && isLocalBackend() ? previewTargetFromArgs(args) : null),
+    () => (name === PREVIEW_TOOL && done && isPreviewOpenSuccess(result) && previewsAvailable() ? previewTargetFromArgs(args) : null),
     [name, done, result, args],
   )
   // The session a workspace message reached, so the user can switch to it.

@@ -171,6 +171,9 @@ pub struct AgentSession {
     pub user_message_lock: tokio::sync::Mutex<()>,
     command_lock: tokio::sync::Mutex<()>,
     has_active_turn: AtomicBool,
+    /// When a turn last started or ended; the manager counts idle time
+    /// from here as well as from the last lookup.
+    last_turn_activity: Mutex<std::time::Instant>,
     active_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     turn_generation: tokio::sync::watch::Sender<u64>,
     config_dirty: AtomicBool,
@@ -223,6 +226,7 @@ impl AgentSession {
             user_message_lock: tokio::sync::Mutex::new(()),
             command_lock: tokio::sync::Mutex::new(()),
             has_active_turn: AtomicBool::new(false),
+            last_turn_activity: Mutex::new(std::time::Instant::now()),
             active_task: Mutex::new(None),
             turn_generation: tokio::sync::watch::channel(0).0,
             config_dirty: AtomicBool::new(false),
@@ -399,7 +403,13 @@ impl AgentSession {
 
     fn set_active_turn(&self, v: bool) {
         self.has_active_turn.store(v, Ordering::SeqCst);
+        *self.last_turn_activity.lock().unwrap() = std::time::Instant::now();
         self.turn_generation.send_modify(|g| *g += 1);
+    }
+
+    /// When a turn last started or ended (session creation before any turn).
+    pub fn last_turn_activity(&self) -> std::time::Instant {
+        *self.last_turn_activity.lock().unwrap()
     }
 
     fn spawn_turn(&self, opts: TurnOptions) {

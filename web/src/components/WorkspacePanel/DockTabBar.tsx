@@ -2,8 +2,9 @@
  * DockTabBar — the review dock's editor-tab strip.
  *
  * One row: scrolling tabs on the left, a fixed action cluster on the right
- * (new preview, new terminal, refresh, and on desktop maximize; file search is Quick
- * Open, ⌘P). Hiding the
+ * ("+" to open any view or tool, new preview, new terminal, refresh, and on
+ * desktop maximize; file search is Quick Open, ⌘P). Phones keep only "+" and
+ * refresh, so the tabs keep their room; the "+" menu holds the rest. Hiding the
  * dock lives on the header's review-dock toggle (and ⌘D), which is always
  * visible because the dock never covers the header.
  *
@@ -15,10 +16,10 @@
  * Tabs move by drag (fine pointers, see ``useTabDrag``), ⌥⇧←/→ on a
  * focused tab, or Move Left / Move Right in the tab menu.
  */
-import { useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
+import { Fragment, useRef, useState, type ReactNode } from 'react'
+import { CalendarClock, Check, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
+import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { TerminalTabButton } from '../Terminal/TerminalTabButton'
 import type { OS } from '@/hooks/use-platform'
@@ -34,8 +35,11 @@ import {
   dockTabCloseClass,
 } from './dock-tab-styles'
 import { type DockTab, dockTabLabel, dockTabTooltip, isViewTab } from './dock-tabs'
+import type { DockOpenItem } from './DockLauncher'
 import { DOCK_TAB_ATTR, useTabDrag } from './useTabDrag'
 
+/** Width the "+" menu is laid out for, so it opens right-aligned under the button. */
+const OPEN_MENU_WIDTH = 192
 
 export interface DockTabBarProps {
   tabs: DockTab[]
@@ -56,6 +60,8 @@ export interface DockTabBarProps {
   /** Opens a web preview tab; omitted when previews are unavailable. */
   onNewPreview?: () => void
   onRefresh: () => void
+  /** The "+" menu's rows (see ``dockOpenItems``); empty hides the button. */
+  openItems?: DockOpenItem[]
   /** ``null`` hides the toggle (mobile, or a forced narrow-window overlay). */
   maximized: boolean | null
   onToggleMaximized: () => void
@@ -86,12 +92,25 @@ function TabIcon({ tab }: { tab: DockTab }) {
   }
 }
 
-function ActionButton({ label, onClick, children }: { label: string; onClick?: () => void; children: React.ReactNode }) {
+function ActionButton({ label, onClick, children, expanded }: {
+  label: string
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
+  children: React.ReactNode
+  /** Set on a button that opens a menu: whether it is showing. */
+  expanded?: boolean
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button type="button" onClick={onClick} className={DOCK_ACTION_BUTTON_CLASS} aria-label={label}>
+          <button
+            type="button"
+            onClick={onClick}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, expanded && 'bg-(--bg-key) text-(--color-text)')}
+            aria-label={label}
+            aria-haspopup={expanded === undefined ? undefined : 'menu'}
+            aria-expanded={expanded}
+          >
             {children}
           </button>
         }
@@ -172,6 +191,7 @@ export function DockTabBar({
   onNewTerminal,
   onNewPreview,
   onRefresh,
+  openItems = [],
   maximized,
   onToggleMaximized,
 }: DockTabBarProps) {
@@ -184,6 +204,7 @@ export function DockTabBar({
     requestAnimationFrame(() => focusTabButton(stripRef.current, id))
   })
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [openMenuAt, setOpenMenuAt] = useState<{ x: number; y: number } | null>(null)
   const menuTab = menu ? tabs.find((tab) => tab.id === menu.id) : undefined
   const sharedMenu = (tab: DockTab, dismiss: () => void) => (
     <DockTabMenuItems
@@ -290,14 +311,28 @@ export function DockTabBar({
         <div aria-hidden="true" className="min-w-2 flex-1 border-b border-(--color-border)" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5 border-b border-(--color-border) px-1">
-        {onNewPreview && (
+        {openItems.length > 0 && (
+          <ActionButton
+            label="Open in dock"
+            expanded={openMenuAt !== null}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
+            }}
+          >
+            <Plus size={14} aria-hidden="true" />
+          </ActionButton>
+        )}
+        {!mobile && onNewPreview && (
           <ActionButton label="New preview" onClick={onNewPreview}>
             <Globe size={14} aria-hidden="true" />
           </ActionButton>
         )}
-        <ActionButton label="New terminal" onClick={onNewTerminal}>
-          <TerminalSquare size={14} aria-hidden="true" />
-        </ActionButton>
+        {!mobile && (
+          <ActionButton label="New terminal" onClick={onNewTerminal}>
+            <TerminalSquare size={14} aria-hidden="true" />
+          </ActionButton>
+        )}
         <ActionButton label="Refresh" onClick={onRefresh}>
           <RefreshCw size={14} aria-hidden="true" />
         </ActionButton>
@@ -312,6 +347,29 @@ export function DockTabBar({
           </ActionButton>
         )}
       </div>
+      {openMenuAt && (
+        <ContextMenu at={openMenuAt} label="Open in dock" onDismiss={() => setOpenMenuAt(null)} className="w-48">
+          {openItems.map((item, index) => (
+            <Fragment key={item.id}>
+              {index > 0 && openItems[index - 1].group !== item.group && <ContextMenuSeparator />}
+              <button
+                type="button"
+                role="menuitem"
+                aria-label={item.open ? `${item.label} (open)` : item.label}
+                className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-11 pointer-coarse:text-sm')}
+                onClick={() => { setOpenMenuAt(null); item.run() }}
+              >
+                {item.icon}
+                <span className="flex-1">{item.label}</span>
+                {item.shortcut && (
+                  <kbd aria-hidden="true" className="hidden font-mono text-[11px] text-(--color-text-subtle) md:inline">{item.shortcut}</kbd>
+                )}
+                {item.open && <Check size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
+              </button>
+            </Fragment>
+          ))}
+        </ContextMenu>
+      )}
       {menu && menuTab && (
         <ContextMenu at={menu} label={`Actions for ${dockTabLabel(menuTab)}`} onDismiss={() => setMenu(null)} className="min-w-44">
           <DockTabMenuItems

@@ -74,7 +74,7 @@ import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
-import { DockLauncher } from './WorkspacePanel/DockLauncher'
+import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
@@ -91,8 +91,11 @@ import {
   type DockView,
   type DockViewRequest,
   type PreviewTabRequest,
+  BTW_TAB,
   PLAN_TAB,
   REVIEW_TAB_ID,
+  SCHEDULE_TAB,
+  TASKS_TAB,
   basename,
   resolveFileTabInfo,
 } from './WorkspacePanel/dock-tabs'
@@ -447,6 +450,20 @@ export function WorkspacePanel({
   }, [openPreviewTab])
   const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
   const previewTabs = visibleTabs.filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
+  const openQuickOpen = () => useUIStore.getState().openQuickOpen('')
+  // The tab strip's "+" menu: every view and tool this dock can open, so one
+  // is a tap away while other tabs are open. Tasks and side questions open
+  // above the chat on phones, so only desktop lists them here.
+  const openItems = dockOpenItems(os, {
+    onOpenGit: chatWorkspace ? undefined : openGitTab,
+    onOpenPlan: plan ? () => openTab(PLAN_TAB) : undefined,
+    onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB),
+    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB),
+    onOpenSchedule: () => openTab(SCHEDULE_TAB),
+    onOpenTerminal: openTerminal,
+    onOpenPreview: canPreview ? openNewPreview : undefined,
+    onOpenFile: openQuickOpen,
+  }, new Set(visibleTabs.map((tab) => tab.id)))
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -637,6 +654,7 @@ export function WorkspacePanel({
           onNewTerminal={openTerminal}
           onNewPreview={canPreview ? openNewPreview : undefined}
           onRefresh={handleRefresh}
+          openItems={openItems}
           maximized={maximizeState}
           onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
         />
@@ -697,7 +715,7 @@ export function WorkspacePanel({
               onOpenGit={chatWorkspace ? undefined : openGitTab}
               onOpenTerminal={openTerminal}
               onOpenPreview={canPreview ? openNewPreview : undefined}
-              onOpenFile={mobile ? undefined : () => useUIStore.getState().openQuickOpen('')}
+              onOpenFile={mobile ? undefined : openQuickOpen}
             />
           )}
         </div>

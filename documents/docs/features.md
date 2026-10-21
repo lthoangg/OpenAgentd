@@ -1130,6 +1130,10 @@ agent against it.
       its own tabs, they work in the desktop app only.
     - Right-click or Shift+F10 on a tab: **Close**, **Close Others**, **Close
       to the Right**, **Copy Path**; closing running terminals asks first.
+    - **+** in the dock's actions opens any tab while others are open: Git,
+      Plan, Schedule, Terminal, Preview and Open File, plus Tasks and Side
+      Questions on desktop. Open tabs are checked, and picking one shows it.
+      On phones the strip keeps just **+** and Refresh `[v3.23.0]`.
   - **Tasks and Scheduled tasks in the dock** `[v3.0.0]` — on desktop with a
     workspace open, the header's task-list button (`Ctrl/⌘+T`) and **Scheduled
     Tasks** in the palette or the sidebar's Scheduled section open the agent's task list and the

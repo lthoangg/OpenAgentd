@@ -2,34 +2,64 @@
  * DockLauncher — what an empty review dock shows.
  *
  * The dock starts with no tabs (Git opens on demand, like any other tab),
- * so this lists what it can open, each with its shortcut.
+ * so this lists what it can open, each with its shortcut. The tab strip's
+ * "+" menu lists the same rows (``dockOpenItems``), so a tab can be opened
+ * while others are open too: on a phone it is the only way to reach Git
+ * once the Plan is showing.
  */
 import type { ReactNode } from 'react'
-import { GitCompare, Globe, Search, TerminalSquare } from 'lucide-react'
+import { CalendarClock, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, TerminalSquare } from 'lucide-react'
 
 import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 
-interface LauncherRow {
+export interface DockOpenItem {
+  id: string
   label: string
   icon: ReactNode
   shortcut?: string
+  /** Views open as their own tabs; tools start something new. */
+  group: 'view' | 'tool'
+  /** A singleton tab that is already in the strip (picking it shows it). */
+  open?: boolean
   run: () => void
 }
 
-export function DockLauncher({ os, onOpenGit, onOpenTerminal, onOpenPreview, onOpenFile }: {
-  os: OS
+/** What the dock can open; omitted handlers drop their row. */
+export interface DockOpenActions {
   /** Project workspaces only: chat workspaces are not repositories. */
   onOpenGit?: () => void
+  onOpenPlan?: () => void
+  onOpenTasks?: () => void
+  onOpenSideQuestions?: () => void
+  onOpenSchedule?: () => void
   onOpenTerminal?: () => void
   onOpenPreview?: () => void
   onOpenFile?: () => void
-}) {
-  const rows: LauncherRow[] = []
-  if (onOpenGit) rows.push({ label: 'Git', icon: <GitCompare size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.openGit, os), run: onOpenGit })
-  if (onOpenTerminal) rows.push({ label: 'Terminal', icon: <TerminalSquare size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.terminal, os), run: onOpenTerminal })
-  if (onOpenPreview) rows.push({ label: 'Preview', icon: <Globe size={14} aria-hidden="true" />, run: onOpenPreview })
-  if (onOpenFile) rows.push({ label: 'Open File', icon: <Search size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.quickOpen, os), run: onOpenFile })
+}
+
+/** The rows of the launcher and the tab strip's "+" menu, in order. */
+export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: ReadonlySet<string> = new Set()): DockOpenItem[] {
+  const rows: DockOpenItem[] = []
+  const view = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
+    if (run) rows.push({ id, label, icon, shortcut, group: 'view', open: openIds.has(id), run })
+  }
+  const tool = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
+    if (run) rows.push({ id, label, icon, shortcut, group: 'tool', run })
+  }
+  view('review', 'Git', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
+  view('plan', 'Plan', <FileText size={14} aria-hidden="true" />, actions.onOpenPlan)
+  view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))
+  view('btw', 'Side Questions', <MessageCircleQuestion size={14} aria-hidden="true" />, actions.onOpenSideQuestions)
+  view('schedule', 'Schedule', <CalendarClock size={14} aria-hidden="true" />, actions.onOpenSchedule)
+  tool('terminal', 'Terminal', <TerminalSquare size={14} aria-hidden="true" />, actions.onOpenTerminal, shortcutLabel(APP_SHORTCUTS.terminal, os))
+  tool('preview', 'Preview', <Globe size={14} aria-hidden="true" />, actions.onOpenPreview)
+  tool('file', 'Open File', <Search size={14} aria-hidden="true" />, actions.onOpenFile, shortcutLabel(APP_SHORTCUTS.quickOpen, os))
+  return rows
+}
+
+export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActions, 'onOpenGit' | 'onOpenTerminal' | 'onOpenPreview' | 'onOpenFile'>) {
+  const rows = dockOpenItems(os, actions)
   return (
     <div data-dock-launcher className="flex h-full items-center justify-center px-4">
       <div role="group" aria-label="Open in the dock" className="flex w-full max-w-60 flex-col gap-0.5">

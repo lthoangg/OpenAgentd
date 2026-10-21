@@ -1492,6 +1492,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   notification and skips subagent and scheduled sessions `[v3.12.0]`.
   It also runs after a turn that took longer than 30 minutes, which used to
   unload the session and drop the countdown as soon as it ended `[v3.24.0]`.
+  After a server or app restart, a session whose turn ended less than 5
+  minutes earlier resumes its countdown while the cache is still warm
+  `[v3.24.0]`.
   The summary under the "Session compacted" divider starts collapsed; click
   the divider to read it, including while it is still being written
   `[v3.13.0]`.

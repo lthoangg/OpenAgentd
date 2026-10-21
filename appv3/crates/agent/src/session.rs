@@ -11,7 +11,7 @@ use crate::hooks::summarization::build_summarization_hook;
 use crate::hooks::summarization::resolve_prompt_token_threshold;
 use crate::hooks::title::build_title_generation_hook;
 use crate::hooks::HookRef;
-use crate::idle_compaction::{idle_prompt_tokens, should_compact, IDLE_COMPACTION_DELAY};
+use crate::idle_compaction::{idle_prompt_tokens, resumed_delay, should_compact, IDLE_COMPACTION_DELAY};
 use crate::interaction_mode;
 use crate::loader::{self, ProviderFactory};
 use crate::notification;
@@ -453,8 +453,23 @@ impl AgentSession {
     /// Start the idle-compaction timer for the turn that just completed. The
     /// setting is read when it fires, so enabling it mid-idle still applies.
     fn arm_idle_compaction(&self) {
-        let generation = *self.turn_generation.borrow();
         let delay = *self.idle_compaction_delay.lock().unwrap();
+        self.arm_idle_compaction_in(delay);
+    }
+
+    /// Resume the countdown of a turn that completed `idle_for` ago in an
+    /// earlier server process (see
+    /// [`crate::idle_compaction::resume_after_restart`]); `false` when the
+    /// prompt cache has expired since.
+    pub fn resume_idle_compaction(&self, idle_for: Duration) -> bool {
+        let delay = *self.idle_compaction_delay.lock().unwrap();
+        let Some(left) = resumed_delay(delay, idle_for) else { return false };
+        self.arm_idle_compaction_in(left);
+        true
+    }
+
+    fn arm_idle_compaction_in(&self, delay: Duration) {
+        let generation = *self.turn_generation.borrow();
         let me = self.me.clone();
         let h = tokio::spawn(async move {
             tokio::time::sleep(delay).await;

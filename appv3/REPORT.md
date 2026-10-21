@@ -867,7 +867,10 @@ explicitly.
   sessions with working subagents, outstanding workspace replies, an open
   question, or a summary newer than their last model call. The compaction
   turn sends no desktop notification and does not re-arm the timer.
-  The manager counts a session
+  The timer lives in memory. On startup the server resumes it for every
+  lead session whose last turn completed (a reply that calls no tools and
+  was not stopped) less than 300 s ago, since the provider's cache outlives
+  the restart; older sessions are left alone. The manager counts a session
   as idle from the later of its last lookup and its last turn's start or
   end, so a turn longer than the 30-minute eviction cutoff no longer gets
   the session evicted, and its timer dropped, as soon as it ends. Formats:
@@ -879,7 +882,7 @@ explicitly.
     returns 422 for a percent outside 1–100.
 
   Tests: `agent/tests/idle_compaction.rs`,
-  `agent/tests/session_eviction.rs`,
+  `agent/tests/idle_compaction_restart.rs`, `agent/tests/session_eviction.rs`,
   unit tests in `agent/src/idle_compaction.rs` and
   `core/src/runtime_settings.rs`, and `api/tests/http_api.rs`. v2 has no
   equivalent.

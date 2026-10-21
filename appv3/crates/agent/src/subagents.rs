@@ -94,6 +94,18 @@ pub fn prune_subagent_output(output: &str, child_session_id: &str, max_chars: us
     )
 }
 
+/// The runtime's rules for every member, appended to its own prompt. It
+/// holds the communication rules, so member prompts don't repeat them.
+pub fn team_context(handle: &str, role: &str) -> String {
+    format!(
+        "## Team Context\nYou are instance **{handle}** (role: {role}), working for the lead agent. You see only the task the lead sent, not its conversation.\n\
+         - Return your final deliverable in your response text. The lead receives at most {} characters of it, so keep it well under that: lead with the answer, and cite `path:line` instead of pasting large blocks.\n\
+         - If you are blocked by ambiguity or need a decision, use `ask_lead`.\n\
+         - You do not communicate with other members or the user.",
+        crate::hooks::basic::thousands(MAX_SUBAGENT_OUTPUT_CHARS)
+    )
+}
+
 pub fn parse_instance_handle(handle: &str) -> Option<(String, i64)> {
     let (p, n) = handle.trim().rsplit_once('#')?;
     if p.is_empty() || p.contains('#') || n.is_empty() || !n.chars().all(|c| c.is_ascii_digit()) {
@@ -237,11 +249,7 @@ pub async fn spawn_subagent(
     let effective_thinking = cfg.thinking_level.clone().filter(|s| !s.is_empty()).or(lead_thinking);
     let allowed = tools_override.unwrap_or_else(|| cfg.tools.clone());
     let member_tools = build_member_tools(&allowed);
-    let system_prompt = format!(
-        "{}\n\n## Team Context\nYou are instance **{handle}** (role: {}), working for the lead agent.\nReturn your final deliverable directly in your assistant response text.\nIf blocked by ambiguity or needing a decision from the lead, use `ask_lead`.\nYou do not communicate with any other members or the user.",
-        cfg.system_prompt.trim(),
-        cfg.role
-    );
+    let system_prompt = format!("{}\n\n{}", cfg.system_prompt.trim(), team_context(&handle, &cfg.role));
     let mut kw = Kwargs::new();
     if let Some(t) = &effective_thinking {
         kw.insert("thinking_level".into(), json!(t));
@@ -556,6 +564,19 @@ mod tests {
         let p = prune_subagent_output(&long, "sid", MAX_SUBAGENT_OUTPUT_CHARS);
         assert!(p.contains("Output truncated: 40000 chars total"));
         assert_eq!(resolve_instance("L", "nobody").unwrap_err().to_string(), "Member 'nobody' not found. Live instances: None.");
+    }
+
+    /// A member is told the limit the lead's copy is actually cut at, and
+    /// that it works from the task alone; nothing else told it either.
+    #[test]
+    fn team_context_states_the_limit_the_lead_enforces() {
+        let text = team_context("explorer#1", "member");
+
+        assert!(text.starts_with("## Team Context\nYou are instance **explorer#1** (role: member)"), "{text}");
+        assert!(text.contains("at most 32,000 characters"), "{text}");
+        assert_eq!(MAX_SUBAGENT_OUTPUT_CHARS, 32_000, "update the stated limit with the enforced one");
+        assert!(text.contains("You see only the task the lead sent"), "{text}");
+        assert!(text.contains("`ask_lead`"), "{text}");
     }
 
     #[tokio::test]

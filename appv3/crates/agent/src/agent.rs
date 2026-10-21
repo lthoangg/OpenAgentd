@@ -27,6 +27,10 @@ pub const SUBMIT_PLAN: &str = crate::tools::plan::SUBMIT_PLAN_TOOL;
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
 pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call submit_plan again after they answer.";
 pub const SUBMIT_MERGED: &str = "Merged into your other submit_plan call.";
+/// Hidden notes after a reply hit `max_tokens`, with and without a tool call.
+pub const TRUNCATED_TOOL_CALL_NOTICE: &str = "Error: Your tool call was truncated and could not be executed because you exceeded the maximum output token limit (max_tokens). Retry in smaller steps, for example several smaller `patch` calls instead of one large one.";
+pub const TRUNCATED_REPLY_NOTICE: &str =
+    "Error: Your response was cut off because you exceeded the maximum output token limit (max_tokens). Please continue your response from where you left off.";
 
 /// Tool names only the session injects; an agent config cannot claim them.
 const RESERVED_TOOLS: [&str; 4] = [ASK_USER, ASK_LEAD, crate::tools::plan::PLAN_TOOL, SUBMIT_PLAN];
@@ -620,11 +624,7 @@ impl Agent {
                 }
                 if matches!(finish.as_deref(), Some("max_tokens") | Some("length")) {
                     let dropped_tcs = assistant.meta.extra.as_ref().and_then(|e| e.get("dropped_tool_calls")).map(crate::util::truthy).unwrap_or(false);
-                    let content = if dropped_tcs {
-                        "Error: Your tool call was truncated and could not be executed because you exceeded the maximum output token limit (max_tokens). Please retry by breaking the task into smaller steps, or use a more precise tool (like edit/patch instead of writing/patching a huge block)."
-                    } else {
-                        "Error: Your response was cut off because you exceeded the maximum output token limit (max_tokens). Please continue your response from where you left off."
-                    };
+                    let content = if dropped_tcs { TRUNCATED_TOOL_CALL_NOTICE } else { TRUNCATED_REPLY_NOTICE };
                     let mut meta = MessageMeta::default();
                     let mut e = Map::new();
                     e.insert("hidden_from_user".into(), json!(true));

@@ -44,7 +44,7 @@ pub fn delegate_description() -> String {
         format!("\n\nAvailable subagent profiles:\n{}\n\n", bullets.join("\n"))
     };
     format!(
-        "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent will automatically send its deliverable back to you as a message when finished.{doc}To run tasks concurrently, call delegate multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1')."
+        "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent's deliverable arrives as a message when it finishes, so don't wait or poll for it.{doc}To run tasks concurrently, call delegate multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1')."
     )
 }
 
@@ -105,7 +105,8 @@ impl Tool for DelegateTool {
                     format!("Message delivered to subagent '{mid}'. It is running in the background and will deliver its response as a message to you once finished.")
                 } else {
                     let mid = r.get("member_id").and_then(|v| v.as_str()).unwrap_or(&profile);
-                    format!("Subagent '{mid}' dispatched with task: {task}\nIt is running asynchronously in the background. You will receive its deliverable as a user message once it completes.")
+                    // The task is already in this call's arguments; repeating it only costs tokens.
+                    format!("Subagent '{mid}' dispatched. Its deliverable will arrive as a message when it finishes.")
                 }
             }
         };

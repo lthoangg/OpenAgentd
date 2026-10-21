@@ -76,7 +76,7 @@ Full instructions the agent reads when it calls skill("skill-name").
    skill, `git clone --depth 1` the repo into a temporary directory outside the
    workspace and copy the skill directory.
 6. Write the files to the chosen root (`.agents/skills/` or `<SKILLS_DIR>`),
-   read `SKILL.md` back, and confirm the absolute path and skill name.
+   and confirm the absolute path and skill name.
 
 ## From scratch
 
@@ -84,8 +84,8 @@ Full instructions the agent reads when it calls skill("skill-name").
 2. Choose the root (above) and write `SKILL.md` with `patch` — parent
    directories are created for you.
 3. Add supporting files only if they're useful.
-4. Read it back and confirm the absolute path (`pwd` first if you wrote a
-   relative project-local path).
+4. Confirm the absolute path (`pwd` first if you wrote a relative
+   project-local path).
 
 ## When changes take effect
 

@@ -322,7 +322,7 @@ impl Tool for PreviewTool {
             "clear": {"type": "boolean", "default": false, "description": "[logs] Clear the console buffer after reading, so the next call shows only new entries."}
         });
         let mut step = page_action_props();
-        step.insert("action".into(), json!({"type": "string", "enum": PAGE_ACTIONS}));
+        step.insert("action".into(), json!({"type": "string", "enum": PAGE_ACTIONS, "description": "Page action for this step."}));
         if let Some(p) = properties.as_object_mut() {
             p.extend(page_action_props());
             p.insert(

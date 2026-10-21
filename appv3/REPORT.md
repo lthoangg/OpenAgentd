@@ -469,7 +469,8 @@ explicitly.
   is detected at compile time; malformed server payloads (non-object
   `params`, non-list `diagnostics`) are tolerated where v2's read loop would
   die; the `lsp` navigation tool is ported but, exactly like v2, is not in
-  any runtime registry. Python runs one type checker, not every installed
+  any runtime registry, and it has no model-facing definition (removed from
+  `tools/data/tool_definitions.json`). Python runs one type checker, not every installed
   one: the first of ty, pyright and pylsp that starts, with ruff (lint)
   beside it (`start_servers` in `tools/src/lsp/manager.rs`). v2 starts all
   of them, so ty and pyright both reported the same type errors.

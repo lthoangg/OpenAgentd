@@ -870,6 +870,25 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+- **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
+  prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
+  member prompts were reviewed together, so they no longer contradict each other or
+  name tools the agent does not have:
+  - The agent follows `AGENTS.md` files and loaded skills as working guidance; the
+    runtime rules no longer call them untrusted data.
+  - Delegated agents (`explorer`, `researcher`) get their own Plan and Code notes
+    instead of the lead's instructions for tools they lack. They are told they see
+    only the task the lead sent, and that the lead receives at most 32,000
+    characters of their deliverable.
+  - A member file that an earlier release wrote and you never edited now follows the
+    built-in prompt, so prompt updates reach existing installs. New installs write
+    member files with frontmatter only. A prompt you edited is kept.
+  - Chat sessions are told they run in your Chat folder, not in a project.
+  - The memory catalog lists each page by its path, so the agent can read it directly.
+  - Compaction summaries keep the corrections you gave the agent.
+  - Session titles in Vietnamese, Chinese, Japanese, Korean, and other scripts are no
+    longer cut mid-word.
+  - `/init` sends a quarter of the instructions it did (8 KB instead of 32 KB).
 - **Cross-workspace messages** `[v3.9.0, updated v3.21.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related

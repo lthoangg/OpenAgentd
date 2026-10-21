@@ -33,8 +33,15 @@ pub fn tool_allowed_in_mode(mode: &str, tool: &str) -> bool {
     mode != "plan" || PLAN_MODE_ALLOWED_TOOLS.contains(&tool)
 }
 
-pub fn transition_instruction(mode: &str) -> &'static str {
-    crate::prompts::s(if mode == "plan" { "mode_plan" } else { "mode_code" })
+/// The mode note for `mode`. A member (delegated agent) follows its lead's
+/// mode but has none of the plan or question tools, so it gets its own note.
+pub fn transition_instruction(mode: &str, member: bool) -> &'static str {
+    crate::prompts::s(match (mode == "plan", member) {
+        (true, false) => "mode_plan",
+        (false, false) => "mode_code",
+        (true, true) => "mode_plan_member",
+        (false, true) => "mode_code_member",
+    })
 }
 
 /// The newest instruction-note version for `mode`, or `None` without one.
@@ -60,7 +67,8 @@ async fn append_mode_prompt(pool: &DbPool, sid: &str, mode: &str, transition: bo
     if transition {
         extra.insert("interaction_mode_transition".into(), json!(true));
     }
-    let mut text = transition_instruction(mode).to_string();
+    let member = db::get_session(pool, sid).await?.is_some_and(|s| s.parent_session_id.is_some());
+    let mut text = transition_instruction(mode, member).to_string();
     if upgrade {
         text.push_str("\n\n");
         text.push_str(PLAN_PROMPT_UPGRADE);
@@ -155,6 +163,61 @@ mod tests {
     async fn follow(pool: &DbPool, sid: &str) -> &'static str {
         let row = db::get_session(pool, sid).await.unwrap().unwrap();
         follow_lead(pool, sid, &row).await.unwrap()
+    }
+
+    async fn last_note(pool: &DbPool, sid: &str) -> String {
+        let rows = db::llm_window_rows(pool, sid, false).await.unwrap();
+        rows.last().and_then(|r| r.content.clone()).unwrap_or_default()
+    }
+
+    /// A member has no `plan`, `submit_plan`, `ask_user` or `todo_manage`, so
+    /// it gets its own notes rather than the lead's instructions for them.
+    #[tokio::test]
+    async fn subagent_mode_notes_are_written_for_a_subagent() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = pool(&dir).await;
+        let lead = session(&pool, None, "code").await;
+        let child = session(&pool, Some(&lead), "code").await;
+
+        set_mode(&pool, &lead, "plan").await.unwrap();
+        follow(&pool, &child).await;
+        let plan = last_note(&pool, &child).await;
+        set_mode(&pool, &lead, "code").await.unwrap();
+        follow(&pool, &child).await;
+        let code = last_note(&pool, &child).await;
+
+        assert_eq!(plan, transition_instruction("plan", true));
+        assert_eq!(code, transition_instruction("code", true));
+        for note in [&plan, &code] {
+            for lead_only in ["submit_plan", "ask_user", "todo_manage", "`plan` tool"] {
+                assert!(!note.contains(lead_only), "a subagent note names {lead_only}: {note}");
+            }
+        }
+        assert!(plan.contains("Your lead is in Plan mode"), "{plan}");
+        assert_eq!(last_note(&pool, &lead).await, transition_instruction("code", false), "the lead keeps its own note");
+    }
+
+    #[tokio::test]
+    async fn a_subagent_resumed_in_plan_mode_gets_the_subagent_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = pool(&dir).await;
+        let lead = session(&pool, None, "plan").await;
+        let child = session(&pool, Some(&lead), "plan").await;
+
+        assert!(ensure_prompt(&pool, &child, "plan").await.unwrap());
+
+        assert_eq!(last_note(&pool, &child).await, transition_instruction("plan", true));
+    }
+
+    /// The Plan note says every other tool returns an error, so it must name
+    /// each tool Plan mode allows.
+    #[test]
+    fn the_plan_note_names_every_tool_plan_mode_allows() {
+        let note = transition_instruction("plan", false);
+        assert!(note.contains("Other tools return an error in Plan mode."), "{note}");
+        for tool in PLAN_MODE_ALLOWED_TOOLS {
+            assert!(note.contains(&format!("`{tool}`")), "the Plan note does not name `{tool}`");
+        }
     }
 
     /// A member spawned in Code mode must not keep write access after the
@@ -254,6 +317,6 @@ mod tests {
         assert!(!ensure_prompt(&pool, &sid, "plan").await.unwrap());
         let rows = db::llm_window_rows(&pool, &sid, false).await.unwrap();
         let text = rows.last().unwrap().content.clone().unwrap();
-        assert_eq!(text, transition_instruction("plan"));
+        assert_eq!(text, transition_instruction("plan", false));
     }
 }

@@ -96,7 +96,7 @@ fn cap_for_context(text: &str, rel: &str) -> String {
     }
     let preview: String = text.chars().take(MAX_CONTEXT_CHARS).collect();
     format!(
-        "{}\n\n[read output truncated for LLM context: {rel} is {} characters; shown first {}. Use offset and limit to read a smaller line range, or shell tools such as grep/sed/head/tail for targeted inspection.]",
+        "{}\n\n[read output truncated for LLM context: {rel} is {} characters; shown first {}. Use offset and limit to read a smaller line range, or grep to find the lines you need.]",
         preview.trim_end(),
         fmt_thousands(n),
         fmt_thousands(MAX_CONTEXT_CHARS)
@@ -433,7 +433,7 @@ mod tests {
         let big = "abcdefghi\n".repeat(MAX_CONTEXT_CHARS / 5);
         let out = cap_for_context(&big, "big.txt");
         assert!(out.starts_with("abcdefghi\n"), "{}", &out[..20]);
-        assert!(out.ends_with(&format!("[read output truncated for LLM context: big.txt is {} characters; shown first 50,000. Use offset and limit to read a smaller line range, or shell tools such as grep/sed/head/tail for targeted inspection.]", fmt_thousands(MAX_CONTEXT_CHARS * 2))));
+        assert!(out.ends_with(&format!("[read output truncated for LLM context: big.txt is {} characters; shown first 50,000. Use offset and limit to read a smaller line range, or grep to find the lines you need.]", fmt_thousands(MAX_CONTEXT_CHARS * 2))));
         assert_eq!(cap_for_context("small", "s"), "small");
     }
 

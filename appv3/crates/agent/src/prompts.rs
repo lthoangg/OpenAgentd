@@ -35,3 +35,14 @@ pub fn memory_protocol(lead: bool) -> &'static str {
 pub fn member_profiles() -> &'static serde_json::Map<String, Value> {
     contract()["members"].as_object().expect("members")
 }
+
+/// Whether `body` is a member prompt an earlier release wrote into the
+/// user's agent file. Such a file follows the built-in prompt, so prompt
+/// updates reach installs whose member files were never edited. (New
+/// installs get an empty body, which means the same thing.)
+pub fn is_shipped_member_prompt(name: &str, body: &str) -> bool {
+    use sha2::{Digest, Sha256};
+    let normalized = body.replace("\r\n", "\n");
+    let digest: String = Sha256::digest(normalized.trim().as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    contract()["member_prompt_history_sha256"][name].as_array().is_some_and(|known| known.iter().any(|h| h.as_str() == Some(digest.as_str())))
+}

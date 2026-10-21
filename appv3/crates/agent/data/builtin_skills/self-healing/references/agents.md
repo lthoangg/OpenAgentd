@@ -28,8 +28,9 @@ tell the user to switch it in the model picker.
 
 - **`code.md`** always has `glob`, `grep`, `patch`, `read`, `shell`,
   `web_fetch`, `web_search`, plus the auto-injected `skill`, `todo_manage`,
-  `schedule_task`, `send_to_workspace` and mode tools (`ask_user`, `plan`,
-  `submit_plan`, `lsp`). Never list these. `send_to_workspace` (messaging
+  `schedule_task`, `ask_user`, `delegate`, `plan`, `submit_plan`,
+  `send_to_workspace`, `preview` (project workspaces) and `mcp` (when MCP
+  servers are configured). Never list these. `send_to_workspace` (messaging
   sessions in other workspaces) is turned off globally with
   `workspace_messages: {enabled: false}` in `settings.yaml` (Settings →
   Automation), not through `tools:`. `tools:` adds extras — today `generate_image` and

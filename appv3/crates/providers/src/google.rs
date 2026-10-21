@@ -12,7 +12,8 @@ use std::time::Duration;
 
 pub const API_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
-const UNSUPPORTED_SCHEMA_KEYS: &[&str] =
+/// Schema keys the Gemini API rejects, so `sanitize_schema` drops them.
+pub const UNSUPPORTED_SCHEMA_KEYS: &[&str] =
     &["discriminator", "const", "exclusiveMinimum", "exclusiveMaximum", "additionalProperties", "$schema", "$id", "$ref", "contentEncoding", "contentMediaType"];
 
 pub fn sanitize_schema(v: &Value) -> Value {

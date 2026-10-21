@@ -32,6 +32,8 @@ fn main() {
                 "app_set_network_access",
                 "app_network_access_key",
                 "app_set_network_access_key",
+                "preview_relay_open",
+                "preview_relay_close",
             ]),
         ),
     )

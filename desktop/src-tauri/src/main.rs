@@ -11,6 +11,7 @@ mod usage;
 mod tray_popup;
 mod watchdog;
 mod network_access;
+mod preview_relay;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -628,6 +629,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .manage(state)
+        .manage(preview_relay::PreviewRelays::default())
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             commands::show_desktop_notification,
@@ -649,6 +651,8 @@ fn main() {
             commands::app_set_network_access,
             commands::app_network_access_key,
             commands::app_set_network_access_key,
+            preview_relay::preview_relay_open,
+            preview_relay::preview_relay_close,
             menu::set_tray_session,
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,
@@ -741,6 +745,7 @@ fn main() {
                             .lock()
                             .unwrap()
                             .remove(label.as_str());
+                        preview_relay::close_window(app, label.as_str());
                         state
                             .window_zoom_factors
                             .lock()

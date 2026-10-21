@@ -104,6 +104,9 @@ pub async fn evict_idle_sessions(now: Option<Instant>) {
     // turn can run far longer than the cutoff without any lookup, and
     // evicting right after it ends would drop its idle-compaction timer.
     let idle = |k: &Key, s: &AgentSession, last: &HashMap<Key, Instant>| last.get(k).is_some_and(|t| now.saturating_duration_since((*t).max(s.last_turn_activity())) >= cutoff);
+    // A lead whose subagents are still working is not idle: stopping it
+    // would cancel them, and a cancelled member never reports back.
+    let idle = |k: &Key, s: &AgentSession, last: &HashMap<Key, Instant>| idle(k, s, last) && !crate::subagents::has_working_subagents(&s.session_id());
     let to_stop: Vec<Arc<AgentSession>> = {
         let _g = m.lock.lock().await;
         let mut sessions = m.sessions.lock().unwrap();

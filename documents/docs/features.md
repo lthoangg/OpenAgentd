@@ -870,6 +870,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+  A lead stays loaded while its subagents work, so a job longer than 30 minutes
+  still reports back instead of being cancelled when the idle lead was unloaded `[v3.24.0]`.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or

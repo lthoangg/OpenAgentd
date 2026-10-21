@@ -289,19 +289,28 @@ impl AgentSession {
     }
 
     /// Tools a turn of this session gets beside the agent's own.
+    ///
+    /// A scheduled session (one a task created with `session_id: "auto"`)
+    /// runs with nobody watching, so it gets no tool that waits on a person:
+    /// `ask_user`, `plan` and `submit_plan`. It keeps `delegate` and `preview`.
     pub(crate) fn injected_tools(&self, sid: &str, name: &str, workspace: &str, agent_mode: &str) -> Vec<ToolRef> {
         let is_lead = self.parent_session_id.is_none();
+        let scheduled = self.is_scheduler_session.load(Ordering::SeqCst);
         let mut injected: Vec<ToolRef> = vec![];
-        if !self.is_scheduler_session.load(Ordering::SeqCst) && is_lead {
-            injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
+        if is_lead {
+            if !scheduled {
+                injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
+            }
             injected.push(Arc::new(crate::tools::team::DelegateTool {
                 lead_session_id: sid.to_string(),
                 pool: self.pool.clone(),
                 provider_factory: self.provider_factory.clone(),
             }));
-            // Sessions without a user workspace keep the plan in the data dir.
-            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
-            injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
+            if !scheduled {
+                // Sessions without a user workspace keep the plan in the data dir.
+                injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
+                injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
+            }
             if agent_mode == "coding" && !workspace.is_empty() {
                 injected.push(Arc::new(crate::tools::preview::PreviewTool));
             }

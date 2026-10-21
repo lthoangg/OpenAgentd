@@ -1716,6 +1716,11 @@ MCP.
   questions across suspensions `[v2.10.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
+  Only a session a task owns (`session_id: "auto"`) counts as scheduled, from
+  its first run, and it keeps `delegate` and `preview`. A task that runs in
+  your own session (`"current"` or a session ID) no longer takes `ask_user`,
+  `plan`, `submit_plan`, `delegate`, `preview` or idle compaction away from
+  it, and sessions that lost them get them back on upgrade `[v3.24.0]`.
 - **Resilient web search Exa fallback** `[v2.21.0]` — `web_search` uses `web_search_exa`
   with Server-Sent Events (SSE) stream parsing and normalized result structures
   when DDGS search backends are unreachable or return no results.

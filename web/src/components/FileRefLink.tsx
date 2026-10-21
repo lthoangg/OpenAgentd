@@ -14,6 +14,8 @@ import { copyText, useChatMenu } from './ChatContextMenu'
 import type { ChangedFileStatus } from './WorkspacePanel/diff-helpers'
 
 export interface FileRefOpener {
+  /** The open workspace's root; rows use it to check a file is listed. */
+  workspace?: string
   /** False for references outside the open workspace; those stay text. */
   canOpen: (ref: FileRef) => boolean
   open: (ref: FileRef) => void

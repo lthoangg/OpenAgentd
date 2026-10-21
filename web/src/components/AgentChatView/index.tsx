@@ -610,6 +610,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   const fileRefOpener = useMemo<FileRefOpener | undefined>(() => (workspace
     ? {
+        workspace,
         canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
         open: (ref) => void handleFileRefOpen(ref),
         openDiff: (ref) => void handleDiffOpen(ref),

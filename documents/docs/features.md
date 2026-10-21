@@ -1755,6 +1755,9 @@ MCP.
   footers and inline data-URI images are left out. Articles convert as before.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
+- **View an image the agent read** `[v3.24.0]` — a `read` of an image in the
+  workspace gets a **View image** button on its transcript row, which opens the
+  image in the side panel. It is hidden once the image is gone from the workspace.
 - **Symbol outline mode for `read` tool** `[v2.4.0]` *(deprecated; removed in v3.14.0:
   agents read targeted slices or use the LSP tool's document symbols)* — `read` supported `outline=True`
   to return high-level symbol outlines (classes, methods, functions, interfaces, types,

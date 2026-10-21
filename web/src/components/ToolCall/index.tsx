@@ -33,6 +33,9 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
+import { ImageViewChip } from './ImageViewChip'
+import { parseImageRead } from './imageRead'
+import { TOOL_CHIP_CLASS } from './chipStyles'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
@@ -263,6 +266,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   )
   // A saved plan opens in the Plan tab.
   const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'View plan' : null
+  // An image the agent read opens in the dock.
+  const imageRead = useMemo(() => (name === 'read' && done ? parseImageRead(result) : null), [name, done, result])
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name
@@ -434,7 +439,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         <button
           type="button"
           onClick={() => requestOpenPreview(previewTarget)}
-          className="ml-2 inline-flex items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
+          className={TOOL_CHIP_CLASS}
         >
           <Globe size={11} aria-hidden="true" />
           Open preview
@@ -444,12 +449,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         <button
           type="button"
           onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}
-          className="ml-2 inline-flex items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
+          className={TOOL_CHIP_CLASS}
         >
           <FileText size={11} aria-hidden="true" />
           {planLink}
         </button>
       )}
+      {imageRead && <ImageViewChip path={imageRead.path} />}
       {sentSession && (
         <button
           type="button"

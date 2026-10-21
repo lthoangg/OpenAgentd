@@ -1489,7 +1489,8 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   after a turn and its context has reached a set share of the trigger
   (default 70%). This uses the provider's prompt cache while it is still
   warm, so the next message starts from a short context. It sends no
-  notification and skips subagent and scheduled sessions `[v3.12.0]`.
+  notification and skips subagent sessions `[v3.12.0]`. Sessions a scheduled
+  task owns compact too, after its runs and after yours `[v3.24.0]`.
   It also runs after a turn that took longer than 30 minutes, which used to
   unload the session and drop the countdown as soon as it ended `[v3.24.0]`.
   After a server or app restart, a session whose turn ended less than 5
@@ -1714,11 +1715,13 @@ MCP.
   else are the only ways to move it — there is no timeout. Members keep working
   throughout and are never interrupted by an answer. Turns support multiple
   questions across suspensions `[v2.10.0]`;
-  scheduled sessions never get the tool, because a cron job has nobody to ask.
+  in a turn a scheduled task started, the tool stays listed but refuses when
+  called, because nobody is there to answer; `submit_plan` does the same
+  `[v3.24.0]`.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
-  Only a session a task owns (`session_id: "auto"`) counts as scheduled, from
-  its first run, and it keeps `delegate` and `preview`. A task that runs in
-  your own session (`"current"` or a session ID) no longer takes `ask_user`,
+  Every session lists the same tools on every turn, whoever started it, so a
+  scheduled run never invalidates the prompt cache. A task that runs in your
+  own session (`"current"` or a session ID) no longer takes `ask_user`,
   `plan`, `submit_plan`, `delegate`, `preview` or idle compaction away from
   it, and sessions that lost them get them back on upgrade `[v3.24.0]`.
 - **Resilient web search Exa fallback** `[v2.21.0]` — `web_search` uses `web_search_exa`

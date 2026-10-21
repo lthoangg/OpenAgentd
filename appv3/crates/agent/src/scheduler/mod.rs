@@ -652,9 +652,10 @@ impl TaskScheduler {
                 tracing::info!("scheduler_skip_active_session task_slug={} name={} session_id={:?}", task.slug, task.name, resolved_sid);
                 return Err("__skip__".into());
             }
-            // Only a session the scheduler owns is a scheduled session, and it
-            // is one from its first turn: the mark decides the turn's tools.
-            // A task running in the user's own session leaves it unmarked.
+            // Only a session the scheduler owns is marked as the task's, from
+            // its first turn. A task running in the user's own session leaves
+            // it unmarked. (The mark records ownership; tools never depend on
+            // it, since `origin: "scheduler"` makes the turn unattended.)
             if let (Some("auto"), Some(sid)) = (task.session_id.as_deref(), resolved_sid.as_deref()) {
                 mark_scheduler_owned(&self.pool, sid, &task.name, &agent.workspace()).await.map_err(|e| e.to_string())?;
             }

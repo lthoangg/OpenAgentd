@@ -115,6 +115,9 @@ pub struct TurnOptions {
     /// [`crate::idle_compaction`]); it sends no desktop notification.
     pub idle_compaction: bool,
     pub question_resume: bool,
+    /// A scheduled task started this turn, so nobody is there to answer a
+    /// question or review a plan (see [`crate::agent::UNATTENDED_META`]).
+    pub unattended: bool,
     pub runtime_model: Option<String>,
     pub runtime_thinking_level: Option<String>,
     pub queued_activation_event: Option<Value>,
@@ -181,7 +184,6 @@ pub struct AgentSession {
     lead_suspended: Mutex<Option<Value>>,
     last_error: Mutex<Option<String>>,
     pending_interaction_mode: Mutex<Option<String>>,
-    is_scheduler_session: AtomicBool,
     /// `<openagentd_memory>` as of this session's first turn. Frozen so the
     /// system prompt stays byte-identical across turns (prefix caching);
     /// pages saved mid-session show up in the next session.
@@ -234,7 +236,6 @@ impl AgentSession {
             lead_suspended: Mutex::new(None),
             last_error: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),
-            is_scheduler_session: AtomicBool::new(false),
             memory_snapshot: Mutex::new(None),
             idle_timer: Mutex::new(None),
             idle_compaction_delay: Mutex::new(IDLE_COMPACTION_DELAY),
@@ -290,27 +291,24 @@ impl AgentSession {
 
     /// Tools a turn of this session gets beside the agent's own.
     ///
-    /// A scheduled session (one a task created with `session_id: "auto"`)
-    /// runs with nobody watching, so it gets no tool that waits on a person:
-    /// `ask_user`, `plan` and `submit_plan`. It keeps `delegate` and `preview`.
+    /// The same on every turn, whoever started it: tool definitions sit in
+    /// the cached prompt prefix, so changing them between a scheduled turn
+    /// and a user's turn would re-send the whole context at full price. A
+    /// scheduled turn instead refuses the tools that wait on a person when
+    /// they are called.
     pub(crate) fn injected_tools(&self, sid: &str, name: &str, workspace: &str, agent_mode: &str) -> Vec<ToolRef> {
         let is_lead = self.parent_session_id.is_none();
-        let scheduled = self.is_scheduler_session.load(Ordering::SeqCst);
         let mut injected: Vec<ToolRef> = vec![];
         if is_lead {
-            if !scheduled {
-                injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
-            }
+            injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
             injected.push(Arc::new(crate::tools::team::DelegateTool {
                 lead_session_id: sid.to_string(),
                 pool: self.pool.clone(),
                 provider_factory: self.provider_factory.clone(),
             }));
-            if !scheduled {
-                // Sessions without a user workspace keep the plan in the data dir.
-                injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
-                injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
-            }
+            // Sessions without a user workspace keep the plan in the data dir.
+            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
+            injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
             if agent_mode == "coding" && !workspace.is_empty() {
                 injected.push(Arc::new(crate::tools::preview::PreviewTool));
             }
@@ -757,7 +755,6 @@ impl AgentSession {
                 if m.thinking_level_provided {
                     upd.thinking_level = Some(m.thinking_level.clone());
                 }
-                self.is_scheduler_session.store(row.scheduled_task_name.is_some(), Ordering::SeqCst);
                 db::update_session(&self.pool, &sid, upd).await?;
             }
             db::cleanup_reverted_tail(&self.pool, &sid).await?;
@@ -815,7 +812,7 @@ impl AgentSession {
         *self.lead_suspended.lock().unwrap() = None;
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions::default());
+        self.spawn_turn(TurnOptions { unattended: m.origin == "scheduler", ..Default::default() });
         Ok((sid, db::codec::api_uuid(&persisted.id)))
     }
 
@@ -1174,7 +1171,7 @@ impl AgentSession {
         if !activated {
             self.set_active_turn(false);
         }
-        let lead = self.parent_session_id.is_none() && !self.is_scheduler_session.load(Ordering::SeqCst);
+        let lead = self.parent_session_id.is_none();
         if completed && lead && !opts.force_compaction && !sid.is_empty() && !self.cancel.is_set() {
             self.arm_idle_compaction();
         }
@@ -1263,6 +1260,9 @@ impl AgentSession {
         }
         if opts.question_resume {
             meta.insert("question_resume".into(), json!(true));
+        }
+        if opts.unattended {
+            meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));
         }
         if opts.force_compaction {
             meta.insert("force_summarization".into(), json!(true));

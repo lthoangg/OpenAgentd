@@ -27,6 +27,20 @@ pub const SUBMIT_PLAN: &str = crate::tools::plan::SUBMIT_PLAN_TOOL;
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
 pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call submit_plan again after they answer.";
 pub const SUBMIT_MERGED: &str = "Merged into your other submit_plan call.";
+/// Turn metadata key: a scheduled task started this turn, so nobody is there
+/// to answer `ask_user` or review `submit_plan`. Both stay listed (the tool
+/// definitions are part of the cached prompt prefix) and refuse when called.
+pub const UNATTENDED_META: &str = "unattended";
+
+fn waits_on_a_person(tool: &str) -> bool {
+    matches!(tool, ASK_USER | SUBMIT_PLAN)
+}
+
+fn unattended_refusal(tool: &str) -> String {
+    format!(
+        "Error: Tool '{tool}' is unavailable: a scheduled task started this turn, so nobody is there to answer. Decide on your own and explain your choices in your final reply."
+    )
+}
 /// Hidden notes after a reply hit `max_tokens`, with and without a tool call.
 pub const TRUNCATED_TOOL_CALL_NOTICE: &str = "Error: Your tool call was truncated and could not be executed because you exceeded the maximum output token limit (max_tokens). Retry in smaller steps, for example several smaller `patch` calls instead of one large one.";
 pub const TRUNCATED_REPLY_NOTICE: &str =
@@ -325,6 +339,7 @@ impl Agent {
             }));
         }
         let mode = meta.lock().unwrap().get("interaction_mode").and_then(|v| v.as_str()).map(String::from);
+        let unattended = meta.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
         let exec = |call: ToolCall| {
             let mut tctx = base.clone();
             tctx.tool_call_id = call.id.clone();
@@ -332,6 +347,7 @@ impl Agent {
             let mode = mode.clone();
             async move {
                 match mode {
+                    _ if unattended && waits_on_a_person(&call.function.name) => Ok((unattended_refusal(&call.function.name), (None, None))),
                     Some(m) if !tool_allowed_in_mode(&m, &call.function.name) => Ok((format!("Error: Tool '{}' is unavailable in Plan mode.", call.function.name), (None, None))),
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
@@ -647,9 +663,12 @@ impl Agent {
 
             // ── _dispatch_tools ──
             tracing::info!("tool_dispatch agent={} count={}", self.name, tc_list.len());
-            // Calls that pause the turn run last, one at a time.
+            // Calls that pause the turn run last, one at a time. In a turn
+            // nobody is watching, `ask_user` and `submit_plan` only refuse,
+            // so they run with the rest.
+            let unattended = state.metadata.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
             let (pausing_calls, other_calls): (Vec<ToolCall>, Vec<ToolCall>) =
-                tc_list.iter().cloned().partition(|tc| matches!(tc.function.name.as_str(), ASK_USER | ASK_LEAD | SUBMIT_PLAN));
+                tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && waits_on_a_person(&tc.function.name)));
             let meta = state.metadata.clone();
             let mut base_ctx = base_ctx.clone();
             if tc_list.iter().any(|tc| tc.function.name == "skill") {

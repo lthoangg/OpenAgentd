@@ -10,6 +10,7 @@
 pub mod access_key;
 pub mod backend_config;
 pub mod download;
+pub mod preview_relay;
 pub mod private_file;
 
 pub use access_key::{delete_access_key, get_access_key, set_access_key, use_file_store};
@@ -22,3 +23,4 @@ pub use download::{
     decode_base64, ensure_content_length_limit, ensure_max_download_size, resolve_download_bytes,
     safe_download_filename, unique_cache_path, DownloadSource, MAX_DOWNLOAD_BYTES,
 };
+pub use preview_relay::{RelayInfo, RelayRegistry};

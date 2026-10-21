@@ -381,6 +381,7 @@ mod tests {
             ],
         ));
         assert!(hub.definition()["function"]["description"].as_str().unwrap().ends_with("Servers:\n- docs (2 tools: lookup, delete_page)"));
+        assert_eq!(appv3_tools::schema_problems(&hub.definition()), Vec::<String>::new());
 
         let found = run(&hub, false, json!({"action": "search", "query": "look up"})).await.unwrap();
         let mut lines = found.lines();

@@ -1,25 +1,9 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the mobile shell.",
+  "description": "Default capability set for the mobile shell. IPC is granted to the app origin only (the bundled UI, or devUrl in debug builds): never to a server origin or a previewed page.",
   "windows": ["main"],
   "local": true,
-  "remote": {
-    "urls": [
-      "http://localhost",
-      "http://localhost:*",
-      "http://127.*",
-      "http://127.*:*",
-      "http://10.*",
-      "http://10.*:*",
-      "http://172.*",
-      "http://172.*:*",
-      "http://192.168.*",
-      "http://192.168.*:*",
-      "https://*",
-      "https://*:*"
-    ]
-  },
   "permissions": [
     "core:default",
     "core:webview:default",
@@ -38,6 +22,8 @@
     "allow-app-save-backend-server",
     "allow-app-use-external-backend",
     "allow-app-remove-backend-server",
-    "allow-save-workspace-file"
+    "allow-save-workspace-file",
+    "allow-preview-relay-open",
+    "allow-preview-relay-close"
   ]
 }

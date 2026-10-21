@@ -44,6 +44,34 @@ pub fn contract_definition(name: &str) -> Option<Value> {
     Some(def)
 }
 
+/// What keeps a tool definition from reaching every model as written: a
+/// field without a description, or a schema key a provider adapter drops
+/// (so its rule never reaches that provider's models). Empty when clean.
+pub fn schema_problems(def: &Value) -> Vec<String> {
+    fn walk(props: &serde_json::Map<String, Value>, path: &str, out: &mut Vec<String>) {
+        for (name, field) in props {
+            let at = format!("{path}.{name}");
+            if field.get("description").and_then(Value::as_str).is_none_or(|d| d.trim().is_empty()) {
+                out.push(format!("{at}: no description"));
+            }
+            for key in appv3_providers::google::UNSUPPORTED_SCHEMA_KEYS {
+                if field.get(*key).is_some() {
+                    out.push(format!("{at}: uses '{key}', which a provider adapter drops"));
+                }
+            }
+            if let Some(inner) = field.pointer("/items/properties").and_then(Value::as_object) {
+                walk(inner, &format!("{at}[]"), out);
+            }
+        }
+    }
+    let name = def.pointer("/function/name").and_then(Value::as_str).unwrap_or("?");
+    let mut out = vec![];
+    if let Some(props) = def.pointer("/function/parameters/properties").and_then(Value::as_object) {
+        walk(props, name, &mut out);
+    }
+    out
+}
+
 /// Callback for streaming partial tool output (v2 `_tool_output`).
 pub type OutputSink = Arc<dyn Fn(String) + Send + Sync>;
 
@@ -371,5 +399,27 @@ mod tests {
         let ContentBlock::ImageData { data, media_type } = &parts[1] else { panic!("image") };
         assert_eq!((dimensions_b64(data), media_type.as_str()), (Some((2000, 1333)), "image/png"));
         assert_eq!(parts[2], small);
+    }
+
+    #[test]
+    fn schema_problems_flags_undescribed_fields_and_keys_a_provider_drops() {
+        let def = serde_json::json!({"type": "function", "function": {"name": "t", "description": "d", "parameters": {"type": "object", "properties": {
+            "ok": {"type": "integer", "minimum": 1, "description": "Fine."},
+            "bare": {"type": "string"},
+            "bound": {"type": "integer", "exclusiveMinimum": 0, "description": "Gemini never sees the bound."},
+            "list": {"type": "array", "description": "Nested.", "items": {"type": "object", "properties": {"inner": {"type": "string", "description": ""}}}}
+        }}}});
+
+        let problems = schema_problems(&def);
+
+        assert_eq!(
+            problems,
+            vec![
+                "t.bare: no description".to_string(),
+                "t.bound: uses 'exclusiveMinimum', which a provider adapter drops".to_string(),
+                "t.list[].inner: no description".to_string(),
+            ]
+        );
+        assert!(schema_problems(&contract_definition("glob").unwrap()).is_empty());
     }
 }

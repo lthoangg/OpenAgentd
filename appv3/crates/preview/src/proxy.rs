@@ -45,11 +45,13 @@ pub(crate) fn plain(status: StatusCode, body: &str) -> Response {
     (status, [(header::CONTENT_TYPE, "text/plain; charset=utf-8"), (header::CACHE_CONTROL, "no-store")], body.to_string()).into_response()
 }
 
-/// DNS-rebinding guard: only the listener's own loopback names.
-pub(crate) fn host_allowed(host: Option<&str>, port: u16) -> bool {
+/// DNS-rebinding guard: only loopback names, on the listener's own port or
+/// a device relay's port (see [`Entry::add_alias_port`]).
+pub(crate) fn host_allowed(host: Option<&str>, accepts_port: impl Fn(u16) -> bool) -> bool {
     let Some(host) = host else { return false };
     let host = host.trim().to_ascii_lowercase();
-    host == format!("127.0.0.1:{port}") || host == format!("localhost:{port}")
+    let Some(port) = host.strip_prefix("127.0.0.1:").or_else(|| host.strip_prefix("localhost:")) else { return false };
+    !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) && port.parse::<u16>().is_ok_and(accepts_port)
 }
 
 pub(crate) fn is_ws_upgrade(headers: &HeaderMap) -> bool {
@@ -58,7 +60,7 @@ pub(crate) fn is_ws_upgrade(headers: &HeaderMap) -> bool {
 
 async fn handle(State(entry): State<Arc<Entry>>, req: Request) -> Response {
     let host = req.headers().get(header::HOST).and_then(|v| v.to_str().ok()).map(str::to_string);
-    if !host_allowed(host.as_deref(), entry.port) {
+    if !host_allowed(host.as_deref(), |p| entry.accepts_port(p)) {
         tracing::warn!("preview_foreign_host id={} host={:?}", entry.id, host);
         return plain(StatusCode::FORBIDDEN, "Host not allowed.");
     }
@@ -325,12 +327,16 @@ mod tests {
 
     #[test]
     fn host_guard() {
-        assert!(host_allowed(Some("127.0.0.1:4100"), 4100));
-        assert!(host_allowed(Some("LOCALHOST:4100"), 4100));
-        assert!(!host_allowed(Some("127.0.0.1:4101"), 4100));
-        assert!(!host_allowed(Some("evil.example:4100"), 4100));
-        assert!(!host_allowed(Some("127.0.0.1"), 4100));
-        assert!(!host_allowed(None, 4100));
+        let own = |p: u16| p == 4100 || p == 50123;
+        assert!(host_allowed(Some("127.0.0.1:4100"), own));
+        assert!(host_allowed(Some("LOCALHOST:4100"), own));
+        assert!(host_allowed(Some("127.0.0.1:50123"), own));
+        assert!(!host_allowed(Some("127.0.0.1:4101"), own));
+        assert!(!host_allowed(Some("evil.example:4100"), own));
+        assert!(!host_allowed(Some("evil.example:50123"), own));
+        assert!(!host_allowed(Some("127.0.0.1:+4100"), own));
+        assert!(!host_allowed(Some("127.0.0.1"), own));
+        assert!(!host_allowed(None, own));
     }
 
     #[test]

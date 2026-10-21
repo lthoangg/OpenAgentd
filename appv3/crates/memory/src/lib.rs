@@ -22,6 +22,10 @@ pub const MAX_CATALOG_ENTRY_CHARS: usize = 200;
 const PREFERENCES_PAGE: &str = "preferences.md";
 const USER_PROFILE_PAGE: &str = "user.md";
 
+/// Last catalog line when pages are left out. It names the agent's own
+/// tools: the `/memory` slash command is the user's, not the agent's.
+const MORE_PAGES: &str = "    ... more pages in global_root: find them with grep or glob";
+
 /// Body of a fresh `preferences.md`, written at startup.
 pub const PREFERENCES_TEMPLATE: &str = "# User Preferences\n\nStanding directives and preferences across all workspaces.\n";
 
@@ -308,14 +312,14 @@ pub fn compile_global_snapshot(root: &Path) -> GlobalSnapshot {
             continue;
         }
         let Some((title, summary)) = page_summary(p, meta) else { continue };
-        let topic = rel.strip_suffix(".md").unwrap_or(&rel);
-        let mut entry = format!("- [[global:{topic}]]: {title}");
+        // The page's path under the memory root, so the agent can `read` it as is.
+        let mut entry = format!("- {rel}: {title}");
         if !summary.is_empty() && summary != title {
             entry.push_str(&format!(" — {summary}"));
         }
         let esc = xml_escape(&entry);
         if total + chars_len(&esc) + 1 > MAX_COMPONENT_CATALOG_CHARS {
-            entries.push("... [additional global pages available via /memory search]".to_string());
+            entries.push(MORE_PAGES.trim_start().to_string());
             break;
         }
         total += chars_len(&esc) + 1;
@@ -337,7 +341,7 @@ pub fn compose_memory_context(snap: &GlobalSnapshot, global_root: &Path) -> Stri
     let avail = MAX_TOTAL_CATALOG_CHARS as i64 - overhead as i64 - chars_len(&pref_xml) as i64 - chars_len(&user_xml) as i64;
     let avail = avail.max(0);
     let g_budget = avail - chars_len("  <global_knowledge>\n\n  </global_knowledge>\n") as i64;
-    const MORE: &str = "    ... [more global pages via /memory search]";
+    const MORE: &str = MORE_PAGES;
     let more_len = chars_len(MORE) as i64;
     let mut packed: Vec<(String, i64)> = Vec::new();
     let mut curr = 0i64;
@@ -656,10 +660,10 @@ mod tests {
         std::fs::write(root.join("db.md"), "---\ntitle: Database\n---\nPostgres notes").unwrap();
         let snap = compile_global_snapshot(root);
         assert_eq!(snap.preferences_content, "Use tabs <always>");
-        assert_eq!(snap.knowledge_catalog, "- [[global:db]]: Database — Postgres notes");
+        assert_eq!(snap.knowledge_catalog, "- db.md: Database — Postgres notes");
         let s = compose_memory_context(&snap, root);
         assert!(s.contains("  <global_preferences>\nUse tabs &lt;always&gt;\n  </global_preferences>\n"));
-        assert!(s.contains("  <global_knowledge>\n    - [[global:db]]: Database — Postgres notes\n  </global_knowledge>\n"));
+        assert!(s.contains("  <global_knowledge>\n    - db.md: Database — Postgres notes\n  </global_knowledge>\n"));
     }
 
     #[test]
@@ -686,10 +690,10 @@ mod tests {
         std::fs::write(root.join("db.md"), "# Database\n\nPostgres notes").unwrap();
         let snap = compile_global_snapshot(root);
         assert_eq!(snap.user_profile, "# About the user\n\n- Name: Hoang\n- Role: maintains <OpenAgentd>\n- Time zone: Asia/Ho_Chi_Minh");
-        assert_eq!(snap.knowledge_catalog, "- [[global:db]]: Database — Postgres notes");
+        assert_eq!(snap.knowledge_catalog, "- db.md: Database — Postgres notes");
         let s = compose_memory_context(&snap, root);
         assert!(s.contains("  <user_profile>\n# About the user\n\n- Name: Hoang\n- Role: maintains &lt;OpenAgentd&gt;\n- Time zone: Asia/Ho_Chi_Minh\n  </user_profile>\n"), "{s}");
-        assert!(!s.contains("[[global:user]]"), "{s}");
+        assert!(!s.contains("user.md"), "{s}");
     }
 
     #[test]
@@ -718,8 +722,10 @@ mod tests {
         assert!(s.contains(&"r".repeat(1400)), "preferences were truncated");
         assert!(s.contains(&"s".repeat(1000)), "the user profile was truncated");
         // Pinned pages must still leave room for the catalog.
-        assert!(s.contains("[[global:topic00]]"));
-        assert!(s.contains("more global pages via /memory search"));
+        assert!(s.contains("- topic00.md: Topic 0"));
+        // The model cannot run the `/memory` slash command; it searches with its own tools.
+        assert!(s.contains("... more pages in global_root: find them with grep or glob"), "{s}");
+        assert!(!s.contains("/memory search"), "{s}");
     }
 
     /// Summaries are cached per page; an edit made outside the app (a new
@@ -730,9 +736,9 @@ mod tests {
         let root = d.path();
         std::fs::write(root.join("db.md"), "# Database\n\nPostgres notes").unwrap();
         std::fs::write(root.join("ops.md"), "# Ops\n\nDeploy notes").unwrap();
-        assert_eq!(compile_global_snapshot(root).knowledge_catalog, "- [[global:db]]: Database — Postgres notes\n- [[global:ops]]: Ops — Deploy notes");
+        assert_eq!(compile_global_snapshot(root).knowledge_catalog, "- db.md: Database — Postgres notes\n- ops.md: Ops — Deploy notes");
         std::fs::write(root.join("db.md"), "# Database\n\nSQLite notes, longer").unwrap();
         std::fs::remove_file(root.join("ops.md")).unwrap();
-        assert_eq!(compile_global_snapshot(root).knowledge_catalog, "- [[global:db]]: Database — SQLite notes, longer");
+        assert_eq!(compile_global_snapshot(root).knowledge_catalog, "- db.md: Database — SQLite notes, longer");
     }
 }

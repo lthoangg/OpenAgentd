@@ -54,7 +54,8 @@ References use these placeholders; substitute the real paths:
 2. **Compute the minimal diff** — change only what was asked; never reformat unrelated lines.
 3. **Show a `diff` block** with a one-line summary.
 4. **Wait for confirmation** unless the request was already explicit — then apply in the same turn after showing the diff.
-5. **Apply with `patch`** (it creates parent directories), then read the file back.
+5. **Apply with `patch`** (it creates parent directories). Patch reports any
+   failure, so there is no need to read the file back.
 6. **Report** what changed, which file, and when it takes effect.
 
 ## Failure modes

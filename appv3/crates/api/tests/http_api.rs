@@ -554,6 +554,7 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::UNAUTHORIZED);
 
     preview_routes(&c, root.path()).await;
+    preview_tunnel(&c, &pool, root.path()).await;
     first_chat_mode_flow(&c, root.path()).await;
 
     appv3_api::startup::shutdown().await;
@@ -623,6 +624,79 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
 
 fn urlencode(s: &str) -> String {
     form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+/// `/api/preview/{id}/tunnel` over a real socket: a device relay's raw HTTP
+/// reaches the preview listener only with an access key.
+async fn preview_tunnel(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
+    use futures::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::{Error as WsError, Message as M};
+
+    let ws = root.join("tunnel-ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(ws.join("index.html"), "<html><head></head><body>from the tunnel</body></html>").unwrap();
+    let (st, p) = c.json("POST", "/api/preview", Some(json!({"workspace": ws.to_string_lossy(), "path": "index.html"}))).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    let id = p["id"].as_str().unwrap().to_string();
+
+    let upgrade = |path: &str| {
+        Request::get(path)
+            .header("connection", "upgrade")
+            .header("upgrade", "websocket")
+            .header("sec-websocket-version", "13")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .body(Body::empty())
+            .unwrap()
+    };
+    // A keyless server trusts only loopback callers: no tunnels at all.
+    let (st, _, _) = c.send(upgrade(&format!("/api/preview/{id}/tunnel?port=50999"))).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+
+    let policy = Policy { token: Arc::new("tok".into()), ..Policy::from_env() };
+    policy.set_network_key(Some("net".into()));
+    let app = create_app(AppState { pool: pool.clone() }, policy);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app.into_make_service_with_connect_info::<ConnInfo>()).await.unwrap() });
+
+    let connect = |path: String, key: Option<&'static str>| async move {
+        let mut req = format!("ws://{addr}{path}").into_client_request().unwrap();
+        if let Some(k) = key {
+            req.headers_mut().insert("authorization", format!("Bearer {k}").parse().unwrap());
+        }
+        tokio_tungstenite::connect_async(req).await
+    };
+    let status = |r: Result<_, WsError>| match r {
+        Err(WsError::Http(resp)) => resp.status().as_u16(),
+        Err(e) => panic!("unexpected error {e}"),
+        Ok(_) => 101,
+    };
+    let tunnel = format!("/api/preview/{id}/tunnel?port=50999");
+    assert_eq!(status(connect(tunnel.clone(), None).await), 403, "no key");
+    assert_eq!(status(connect(tunnel.clone(), Some("wrong")).await), 403, "wrong key");
+    assert_eq!(status(connect("/api/preview/00000000-0000-0000-0000-000000000000/tunnel?port=50999".into(), Some("tok")).await), 404);
+    assert_eq!(status(connect(format!("/api/preview/{id}/tunnel"), Some("tok")).await), 422, "no port");
+    assert_eq!(status(connect(format!("/api/preview/{id}/tunnel?port=80"), Some("tok")).await), 422, "privileged port");
+    let plain = reqwest::Client::builder().no_proxy().build().unwrap().get(format!("http://{addr}{tunnel}")).bearer_auth("tok").send().await.unwrap();
+    assert_eq!(plain.status(), StatusCode::BAD_REQUEST, "not an upgrade");
+
+    for key in ["tok", "net"] {
+        let (mut sock, _) = connect(tunnel.clone(), Some(key)).await.unwrap();
+        sock.send(M::binary(b"GET /index.html HTTP/1.1\r\nHost: 127.0.0.1:50999\r\nConnection: close\r\n\r\n".to_vec())).await.unwrap();
+        let mut out = Vec::new();
+        while let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_secs(5), sock.next()).await {
+            match m {
+                M::Binary(b) => out.extend_from_slice(&b),
+                M::Close(_) => break,
+                _ => {}
+            }
+        }
+        let resp = String::from_utf8_lossy(&out);
+        assert!(resp.starts_with("HTTP/1.1 200"), "{key}: {resp}");
+        assert!(resp.contains("/__openagentd/inspector.js") && resp.contains("from the tunnel"), "{key}: {resp}");
+    }
+    appv3_preview::global().close(&id);
 }
 
 /// Open a plan review as `submit_plan` does: the call, then its pending row.

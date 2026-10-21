@@ -10,6 +10,8 @@ fn main() {
                 "secure_get_access_key",
                 "secure_set_access_key",
                 "secure_delete_access_key",
+                "preview_relay_open",
+                "preview_relay_close",
             ]),
         ),
     )

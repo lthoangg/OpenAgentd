@@ -5,6 +5,7 @@ use crate::console::{ConsoleBuffer, ConsoleEntry};
 use crate::target::Backend;
 use appv3_tools::denied::DeniedPaths;
 use serde::Serialize;
+use std::collections::VecDeque;
 use std::fmt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -15,6 +16,10 @@ use tokio::sync::watch;
 pub const MAX_PREVIEWS: usize = 8;
 /// A preview with no open connection closes after this long.
 pub const IDLE_SECS: u64 = 30 * 60;
+/// Most extra loopback ports (device relays) one preview answers on.
+pub const MAX_ALIAS_PORTS: usize = 4;
+/// Most tunnels (`/api/preview/{id}/tunnel`) open into one preview.
+pub const MAX_TUNNELS: usize = 32;
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct PreviewInfo {
@@ -61,6 +66,10 @@ pub struct Entry {
     console: Mutex<ConsoleBuffer>,
     /// Commands from the agent to the page open in the Preview tab.
     pub agent: AgentChannel,
+    /// Ports of device relays that reach this listener through a tunnel:
+    /// their pages send `Host: 127.0.0.1:<relay port>`.
+    alias_ports: Mutex<VecDeque<u16>>,
+    tunnels: AtomicUsize,
     stop: watch::Sender<bool>,
 }
 
@@ -72,6 +81,15 @@ impl Drop for ActiveGuard {
     fn drop(&mut self) {
         self.0.active.fetch_sub(1, Ordering::SeqCst);
         self.0.touch();
+    }
+}
+
+/// One open tunnel into a preview; frees its slot when dropped.
+pub struct TunnelSlot(Arc<Entry>);
+
+impl Drop for TunnelSlot {
+    fn drop(&mut self) {
+        self.0.tunnels.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -96,6 +114,37 @@ impl Entry {
 
     pub fn stop_rx(&self) -> watch::Receiver<bool> {
         self.stop.subscribe()
+    }
+
+    /// Answer `Host: 127.0.0.1:<port>` too (a device relay's origin). Ports
+    /// at or below 1024 are refused; the oldest alias drops past
+    /// [`MAX_ALIAS_PORTS`].
+    pub fn add_alias_port(&self, port: u16) -> bool {
+        if port <= 1024 {
+            return false;
+        }
+        let mut aliases = self.alias_ports.lock().unwrap_or_else(|e| e.into_inner());
+        aliases.retain(|p| *p != port);
+        if aliases.len() >= MAX_ALIAS_PORTS {
+            aliases.pop_front();
+        }
+        aliases.push_back(port);
+        true
+    }
+
+    /// Whether a loopback `Host` on `port` addresses this listener.
+    pub fn accepts_port(&self, port: u16) -> bool {
+        port == self.port || self.alias_ports.lock().unwrap_or_else(|e| e.into_inner()).contains(&port)
+    }
+
+    /// A tunnel slot, or `None` when [`MAX_TUNNELS`] are already open.
+    pub fn reserve_tunnel(self: &Arc<Self>) -> Option<TunnelSlot> {
+        let prev = self.tunnels.fetch_add(1, Ordering::SeqCst);
+        if prev >= MAX_TUNNELS {
+            self.tunnels.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(TunnelSlot(self.clone()))
     }
 
     fn close(&self) {
@@ -195,6 +244,8 @@ impl Manager {
             active: AtomicUsize::new(0),
             console: Mutex::new(ConsoleBuffer::default()),
             agent: AgentChannel::default(),
+            alias_ports: Mutex::new(VecDeque::new()),
+            tunnels: AtomicUsize::new(0),
             stop,
         });
         {
@@ -360,5 +411,28 @@ mod tests {
         assert!(m.get(&b.id).is_some());
         assert!(m.close(&b.id));
         assert!(!m.close(&b.id));
+    }
+
+    #[tokio::test]
+    async fn alias_ports_and_tunnel_slots() {
+        let m = leak();
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        let e = m.get(&a.id).unwrap();
+        assert!(e.accepts_port(a.port));
+        assert!(!e.accepts_port(40001));
+        assert!(!e.add_alias_port(80));
+        assert!(e.add_alias_port(40001));
+        assert!(e.accepts_port(40001));
+        for p in 40002..40002 + MAX_ALIAS_PORTS as u16 {
+            e.add_alias_port(p);
+        }
+        assert!(!e.accepts_port(40001), "the oldest alias drops past the cap");
+        assert!(e.accepts_port(40002 + MAX_ALIAS_PORTS as u16 - 1));
+
+        let slots: Vec<_> = (0..MAX_TUNNELS).map(|_| e.reserve_tunnel().unwrap()).collect();
+        assert!(e.reserve_tunnel().is_none());
+        drop(slots);
+        assert!(e.reserve_tunnel().is_some());
+        m.shutdown();
     }
 }

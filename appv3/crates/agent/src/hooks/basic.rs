@@ -48,6 +48,7 @@ type FileStamp = (u128, u64, u64);
 
 pub struct WorkspaceInstructionsHook {
     workspace: Option<PathBuf>,
+    /// False only in Chat sessions, which have no project instructions.
     include_workspace: bool,
     global: PathBuf,
     cache: Mutex<HashMap<PathBuf, (FileStamp, String)>>,
@@ -104,10 +105,15 @@ impl Hook for WorkspaceInstructionsHook {
             // Here rather than in a built-in prompt: those are written once
             // and then user-owned, so a change there never reaches existing
             // installs. The UI links code spans holding a path.
-            blocks.push(format!(
+            let mut block = format!(
                 "## Workspace\nRoot: `{}`\nCite a file by its path from this root, in backticks, adding `:line` or `:start-end` to point at code (e.g. `web/src/app.ts:42-58`).",
                 ws.display()
-            ));
+            );
+            if !self.include_workspace {
+                // Chat runs the coding prompt too.
+                block.push_str("\nThis is a Chat session, not a project: help with whatever the user asks. The root is the user's Chat folder (by default their home directory), not a repository to explore, test, or follow conventions for, unless the user points you at files in it.");
+            }
+            blocks.push(block);
         }
         let global = self.read_file(&self.global);
         if !global.is_empty() {
@@ -332,6 +338,26 @@ mod tests {
         assert!(prompt.contains("path from this root"), "{prompt}");
         assert!(prompt.contains("`:line` or `:start-end`"), "{prompt}");
         assert!(prompt.contains("`web/src/app.ts:42-58`"), "{prompt}");
+    }
+
+    /// Chat sessions run the same coding prompt, so the block says there is
+    /// no project to explore, test, or follow conventions for.
+    #[tokio::test]
+    async fn chat_workspace_block_says_no_project_is_attached() {
+        let hook = |include_workspace| WorkspaceInstructionsHook {
+            workspace: Some(PathBuf::from("/chat")),
+            include_workspace,
+            global: PathBuf::from("/nonexistent/AGENTS.md"),
+            cache: Mutex::new(HashMap::new()),
+        };
+        let ctx = RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None };
+        let state = AgentState::new(Vec::new(), String::new());
+
+        let chat = hook(false).wrap_system_prompt(&ctx, &state, "Base.".into()).await;
+        let project = hook(true).wrap_system_prompt(&ctx, &state, "Base.".into()).await;
+
+        assert!(chat.contains("This is a Chat session, not a project"), "{chat}");
+        assert!(!project.contains("Chat session"), "{project}");
     }
 
     /// With the workspace at `~`, `~/.agents/AGENTS.md` is the global file

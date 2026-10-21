@@ -374,7 +374,7 @@ pub fn format_available_skills(workspace: Option<&Path>, verbose: bool) -> Strin
 
 pub fn skill_tool_description(workspace: Option<&Path>) -> String {
     [
-        "Load specialized instructions for a matching available skill.",
+        "Load a skill's instructions. When a task matches a skill below, load it before starting the work.",
         "",
         "Call this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
         "",

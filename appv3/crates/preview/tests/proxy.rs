@@ -181,3 +181,84 @@ async fn relays_agent_commands_through_the_page_long_poll() {
     let status = tokio::time::timeout(std::time::Duration::from_secs(5), pending).await.expect("poll ended").unwrap();
     assert!(status.map(|s| s == StatusCode::NO_CONTENT).unwrap_or(true));
 }
+
+/// A WebSocket endpoint that hands every socket to `tunnel::pipe`, as the
+/// API route does after authenticating it.
+async fn tunnel_server(entry: std::sync::Arc<appv3_preview::Entry>) -> u16 {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/t",
+        get(move |ws: WebSocketUpgrade| {
+            let entry = entry.clone();
+            async move { ws.on_upgrade(move |socket| appv3_preview::tunnel::pipe(entry, socket)) }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    port
+}
+
+/// Everything the tunnel sends until it closes, as text.
+async fn drain<S>(ws: &mut S) -> (String, Option<u16>)
+where
+    S: futures::Stream<Item = Result<tokio_tungstenite::tungstenite::Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    use tokio_tungstenite::tungstenite::Message as M;
+    let mut out = Vec::new();
+    let mut code = None;
+    while let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_secs(5), ws.next()).await {
+        match m {
+            M::Binary(b) => out.extend_from_slice(&b),
+            M::Close(f) => {
+                code = f.map(|f| u16::from(f.code));
+                break;
+            }
+            _ => {}
+        }
+    }
+    (String::from_utf8_lossy(&out).into_owned(), code)
+}
+
+#[tokio::test]
+async fn tunnels_raw_http_for_a_relay_port() {
+    use tokio_tungstenite::tungstenite::Message as M;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("index.html"), "<html><head></head><body>tunnelled</body></html>").unwrap();
+    let m = manager();
+    let p = m.ensure("/w", static_backend(dir.path()), None).await.unwrap();
+    let entry = m.get(&p.id).unwrap();
+    let server = tunnel_server(entry.clone()).await;
+    let request = |host: &str| format!("GET /index.html HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+
+    // The relay's port is only accepted once registered.
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{server}/t")).await.unwrap();
+    ws.send(M::binary(request("127.0.0.1:50999").into_bytes())).await.unwrap();
+    let (resp, _) = drain(&mut ws).await;
+    assert!(resp.starts_with("HTTP/1.1 403"), "{resp}");
+
+    assert!(entry.add_alias_port(50999));
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{server}/t")).await.unwrap();
+    ws.send(M::binary(request("127.0.0.1:50999").into_bytes())).await.unwrap();
+    let (resp, _) = drain(&mut ws).await;
+    assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+    assert!(resp.contains(INSPECTOR_PATH) && resp.contains("tunnelled"), "{resp}");
+
+    // A foreign name on the relay's port is still refused (DNS rebinding).
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{server}/t")).await.unwrap();
+    ws.send(M::binary(request("evil.example:50999").into_bytes())).await.unwrap();
+    let (resp, _) = drain(&mut ws).await;
+    assert!(resp.starts_with("HTTP/1.1 403"), "{resp}");
+
+    // Text frames are refused.
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{server}/t")).await.unwrap();
+    ws.send(M::text("GET / HTTP/1.1")).await.unwrap();
+    assert_eq!(drain(&mut ws).await.1, Some(1003));
+
+    // Closing the preview ends open tunnels.
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{server}/t")).await.unwrap();
+    ws.send(M::binary(b"GET /index.html HTTP/1.1\r\n".to_vec())).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(m.close(&p.id));
+    let ended = tokio::time::timeout(std::time::Duration::from_secs(5), drain(&mut ws)).await;
+    assert!(ended.is_ok(), "the tunnel closes with the preview");
+}

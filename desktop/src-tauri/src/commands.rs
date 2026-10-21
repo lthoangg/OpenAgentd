@@ -366,11 +366,15 @@ pub async fn app_use_external_backend(
 ) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     let state: tauri::State<'_, AppState> = app.state();
-    state
+    let previous = state
         .window_backend_base_urls
         .lock()
         .unwrap()
         .insert(window.label().to_string(), normalized.clone());
+    // Previews of the previous server must not stay reachable.
+    if previous.as_deref() != Some(normalized.as_str()) {
+        crate::preview_relay::close_window(&app, window.label());
+    }
 
     if persist.unwrap_or(true) {
         // `active_base_url` is only read at startup and applied to the
@@ -436,13 +440,21 @@ pub async fn app_remove_backend_server(
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     remove_app_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
     let state: tauri::State<'_, AppState> = app.state();
+    let mut detached = Vec::new();
     state
         .window_backend_base_urls
         .lock()
         .unwrap()
-        .retain(|_, active| {
-            normalize_external_base_url(active).map_or(true, |active| active != normalized)
+        .retain(|label, active| {
+            let keep = normalize_external_base_url(active).map_or(true, |active| active != normalized);
+            if !keep {
+                detached.push(label.clone());
+            }
+            keep
         });
+    for label in detached {
+        crate::preview_relay::close_window(&app, &label);
+    }
     app_backend_status_for_window(app.clone(), app.state(), window.label())
         .await
         .map_err(|e| format!("{e:#}"))
@@ -487,6 +499,7 @@ pub async fn app_use_bundled_backend(
         .lock()
         .unwrap()
         .remove(window.label());
+    crate::preview_relay::close_window(&app, window.label());
     // Only clear the persisted `active_base_url` when the *main* window
     // switched back to bundled — that field is only ever read at startup and
     // applied to the main window, so clearing it from a secondary window

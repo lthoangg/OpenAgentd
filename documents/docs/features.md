@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.22.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.22.0)
+**Latest release:** v3.23.0 · October 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.23.0)
 
 ---
 
@@ -870,6 +870,25 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+- **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
+  prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
+  member prompts were reviewed together, so they no longer contradict each other or
+  name tools the agent does not have:
+  - The agent follows `AGENTS.md` files and loaded skills as working guidance; the
+    runtime rules no longer call them untrusted data.
+  - Delegated agents (`explorer`, `researcher`) get their own Plan and Code notes
+    instead of the lead's instructions for tools they lack. They are told they see
+    only the task the lead sent, and that the lead receives at most 32,000
+    characters of their deliverable.
+  - A member file that an earlier release wrote and you never edited now follows the
+    built-in prompt, so prompt updates reach existing installs. New installs write
+    member files with frontmatter only. A prompt you edited is kept.
+  - Chat sessions are told they run in your Chat folder, not in a project.
+  - The memory catalog lists each page by its path, so the agent can read it directly.
+  - Compaction summaries keep the corrections you gave the agent.
+  - Session titles in Vietnamese, Chinese, Japanese, Korean, and other scripts are no
+    longer cut mid-word.
+  - `/init` sends a quarter of the instructions it did (8 KB instead of 32 KB).
 - **Cross-workspace messages** `[v3.9.0, updated v3.21.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related
@@ -1111,6 +1130,10 @@ agent against it.
       its own tabs, they work in the desktop app only.
     - Right-click or Shift+F10 on a tab: **Close**, **Close Others**, **Close
       to the Right**, **Copy Path**; closing running terminals asks first.
+    - **+** in the dock's actions opens any tab while others are open: Git,
+      Plan, Schedule, Terminal, Preview and Open File, plus Tasks and Side
+      Questions on desktop. Open tabs are checked, and picking one shows it.
+      On phones the strip keeps just **+** and Refresh `[v3.23.0]`.
   - **Tasks and Scheduled tasks in the dock** `[v3.0.0]` — on desktop with a
     workspace open, the header's task-list button (`Ctrl/⌘+T`) and **Scheduled
     Tasks** in the palette or the sidebar's Scheduled section open the agent's task list and the
@@ -1147,9 +1170,13 @@ agent against it.
     restoring the message (undo, edit, history) brings the chip back. The card
     also shows after a reload, with or without text before it `[v3.6.0]`.
     While the agent uses the page, the toolbar shows **Agent**.
-    Tabs keep their page and comments while another tab is open. Previews
-    need the backend on the same computer; remote servers and the mobile app
-    show a notice instead.
+    Tabs keep their page and comments while another tab is open.
+    The iOS and Android apps, and a desktop window connected to a remote
+    server, show previews too `[v3.23.0]`: the app relays the page from its
+    own `127.0.0.1` port to the server, so the page still never sees the
+    access key. That needs a server with an access key, and a reverse proxy
+    in front of it must pass WebSocket upgrades. **Open in browser** is off
+    there, and a plain browser on another device shows a notice instead.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move

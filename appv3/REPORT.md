@@ -469,7 +469,8 @@ explicitly.
   is detected at compile time; malformed server payloads (non-object
   `params`, non-list `diagnostics`) are tolerated where v2's read loop would
   die; the `lsp` navigation tool is ported but, exactly like v2, is not in
-  any runtime registry. Python runs one type checker, not every installed
+  any runtime registry, and it has no model-facing definition (removed from
+  `tools/data/tool_definitions.json`). Python runs one type checker, not every installed
   one: the first of ty, pyright and pylsp that starts, with ruff (lint)
   beside it (`start_servers` in `tools/src/lsp/manager.rs`). v2 starts all
   of them, so ty and pyright both reported the same type errors.
@@ -1178,4 +1179,17 @@ action. Its definition lives in `crates/agent/src/tools/preview.rs`, not in
 the v2 tool contract; `GET /agents` lists it for coding workspaces. Design
 feedback travels inside the user message as a `<design-feedback>` block
 that the web UI renders as a card; the wire format is unchanged.
-Not done: `wss://` relays, LAN or mobile access, and headless capture.
+
+`GET /api/preview/{id}/tunnel?port=<n>` (v3.23.0) lets the mobile app and a
+desktop app on another computer show previews. Their native relay listens
+on the device's own `127.0.0.1:<n>` and opens one WebSocket per browser
+connection; each carries raw TCP to that preview's listener only, in binary
+frames (a text frame closes with 1003, messages are capped at 1 MiB, 32
+tunnels per preview, then 1013). The route needs an access key (desktop
+token or Network-access key; a keyless server answers 403), returns 404
+for an unknown preview, 400 without an upgrade, and 422 for a `port` at or
+below 1024. `port` becomes a `Host` alias on the listener (4 at most), so
+pages on the relay origin pass the loopback `Host` guard; foreign names
+are still refused. The listener itself still binds loopback only.
+Not done: `wss://` dev-server upstreams, previews from a plain browser on
+another device, and headless capture.

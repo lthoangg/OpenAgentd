@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import { closePreview, isLocalBackend, isLoopbackHost, lastPreviewUrl, openPreview, previewTargetKey } from '@/api/preview'
+import { closePreview, isLocalBackend, isLoopbackHost, lastPreviewUrl, openPreview, previewMode, previewTargetKey } from '@/api/preview'
+
+const invokeMock = mock(async (..._args: unknown[]) => ({ port: 61000, origin: 'http://127.0.0.1:61000' }))
+mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
 const originalFetch = globalThis.fetch
 
@@ -47,6 +50,41 @@ describe('openPreview', () => {
     await expect(openPreview('/ws', { kind: 'url', url: 'http://example.com' })).rejects.toThrow('Only local servers can be previewed.')
   })
 
+  describe('through the native relay', () => {
+    const win = window as { __OAD_API_BASE_URL__?: string; __TAURI_INTERNALS__?: unknown }
+    beforeEach(() => {
+      win.__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
+      win.__TAURI_INTERNALS__ = {}
+      invokeMock.mockClear()
+    })
+    afterEach(() => {
+      delete win.__OAD_API_BASE_URL__
+      delete win.__TAURI_INTERNALS__
+    })
+
+    it('frames the relay origin and keeps the server port for next time', async () => {
+      const bodies: Record<string, unknown>[] = []
+      globalThis.fetch = mock(async (_url: unknown, raw: unknown) => {
+        bodies.push(JSON.parse(String((raw as RequestInit).body)))
+        return new Response(JSON.stringify({ ...info(52011), path: '/pricing' }), { status: 200 })
+      }) as typeof fetch
+      const opened = await openPreview('/ws', { kind: 'url', url: 'http://localhost:5173/pricing' })
+      expect(invokeMock).toHaveBeenCalledWith('preview_relay_open', { previewId: 'p1', port: 52011 })
+      expect(opened.origin).toBe('http://127.0.0.1:61000')
+      expect(opened.url).toBe('http://127.0.0.1:61000/pricing')
+      expect(opened.port).toBe(52011)
+      await openPreview('/ws', { kind: 'url', url: 'http://localhost:5173/pricing' })
+      expect(bodies[1].preferred_port).toBe(52011)
+    })
+
+    it('closes the relay with the preview', async () => {
+      globalThis.fetch = mock(async () => new Response(null, { status: 204 })) as typeof fetch
+      await closePreview('p1')
+      await new Promise((r) => setTimeout(r, 0))
+      expect(invokeMock).toHaveBeenCalledWith('preview_relay_close', { previewId: 'p1' })
+    })
+  })
+
   it('treats a missing preview as already closed', async () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({ detail: 'Preview not found.' }), { status: 404 })) as typeof fetch
     await expect(closePreview('gone')).resolves.toBeUndefined()
@@ -68,6 +106,17 @@ describe('preview helpers', () => {
     expect(isLocalBackend()).toBe(true)
     ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
     expect(isLocalBackend()).toBe(false)
+  })
+
+  it('previews directly, through the app relay, or not at all', () => {
+    const win = window as { __OAD_API_BASE_URL__?: string; __TAURI_INTERNALS__?: unknown }
+    win.__OAD_API_BASE_URL__ = 'http://127.0.0.1:4082'
+    expect(previewMode()).toBe('direct')
+    win.__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
+    expect(previewMode()).toBe('unavailable')
+    win.__TAURI_INTERNALS__ = {}
+    expect(previewMode()).toBe('relay')
+    delete win.__TAURI_INTERNALS__
   })
 
   it('keys url targets by origin', () => {

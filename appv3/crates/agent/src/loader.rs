@@ -327,7 +327,7 @@ pub fn load_member_profiles(agents_dir: &Path) -> Vec<(String, AgentConfig)> {
                     if cfg.tools.is_empty() {
                         cfg.tools = profile_tools(bp);
                     }
-                    if cfg.system_prompt.trim().is_empty() {
+                    if cfg.system_prompt.trim().is_empty() || prompts::is_shipped_member_prompt(&cfg.name, &cfg.system_prompt) {
                         cfg.system_prompt = profile_str(bp, "prompt");
                     }
                 }
@@ -643,6 +643,53 @@ mod tests {
         assert_eq!(c.model.as_deref(), Some("__PROVIDER_MODEL__"));
         let members = load_member_profiles(d.path());
         assert_eq!(members.iter().map(|m| m.0.as_str()).collect::<Vec<_>>(), vec!["explorer", "researcher"]);
+    }
+
+    /// `explorer.md` as an earlier release wrote it, with the user's model.
+    const OLD_EXPLORER_MD: &str = "---\nname: explorer\nrole: member\ndescription: Explores the codebase.\nmodel: claude:claude-haiku-5-5\ntools:\n  - glob\n  - grep\n  - read\n---\n\nYou are **explorer**.\n\nYour job is to inspect the codebase and return verified facts to the lead agent.\n\n## Workflow\n\n- Use `glob` and `grep` to locate relevant files, symbols, definitions, and call sites.\n- Use `read` to inspect actual file contents before making claims.\n- Verify paths, signatures, and logic rather than guessing.\n- Focus strictly on the assigned task: do not drift into unrelated components.\n- When your inspection is complete, summarize your findings concisely with exact file paths and line numbers.\n\n## Communication\n\n- Return your findings and deliverables directly in your response text.\n- If you encounter blocking ambiguity or require a decision from the lead, use `ask_lead`.\n- You communicate strictly with the lead agent. You never prompt the human user directly.\n- You do not modify any files.\n";
+
+    fn explorer(dir: &Path) -> AgentConfig {
+        load_member_profiles(dir).into_iter().find(|(n, _)| n == "explorer").unwrap().1
+    }
+
+    /// A member file still holding a prompt OpenAgentd wrote follows the
+    /// built-in prompt, so prompt updates reach existing installs.
+    #[test]
+    fn an_unedited_shipped_member_prompt_follows_the_built_in_one() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("explorer.md"), OLD_EXPLORER_MD.replace('\n', "\r\n")).unwrap();
+
+        let cfg = explorer(d.path());
+
+        assert_eq!(cfg.system_prompt, profile_str(&prompts::member_profiles()["explorer"], "prompt"));
+        assert_eq!(cfg.model.as_deref(), Some("claude:claude-haiku-5-5"), "the user's frontmatter still applies");
+    }
+
+    #[test]
+    fn an_edited_member_prompt_is_kept() {
+        let d = tempfile::tempdir().unwrap();
+        let edited = OLD_EXPLORER_MD.replace("- You do not modify any files.\n", "- You do not modify any files.\n- Answer in French.\n");
+        std::fs::write(d.path().join("explorer.md"), edited).unwrap();
+
+        let cfg = explorer(d.path());
+
+        assert!(cfg.system_prompt.ends_with("- Answer in French."), "{}", cfg.system_prompt);
+    }
+
+    /// New installs get no prompt body at all, and a description on one line
+    /// (a wrapped YAML scalar lost its second line in an older editor).
+    #[test]
+    fn new_member_files_have_an_empty_body_and_a_one_line_description() {
+        let d = tempfile::tempdir().unwrap();
+        ensure_builtin_member_agents(d.path()).unwrap();
+        for name in ["explorer", "researcher"] {
+            let text = std::fs::read_to_string(d.path().join(format!("{name}.md"))).unwrap();
+            let (fm, body, _) = split_frontmatter(&text).unwrap();
+            assert!(body.trim().is_empty(), "{name}.md has a body: {body:?}");
+            let desc = fm.lines().find(|l| l.starts_with("description: ")).unwrap_or_else(|| panic!("{name}.md: {fm}"));
+            assert!(desc.ends_with('.'), "{name}.md wraps its description: {fm}");
+        }
+        assert_eq!(explorer(d.path()).system_prompt, profile_str(&prompts::member_profiles()["explorer"], "prompt"));
     }
 
     #[tokio::test]

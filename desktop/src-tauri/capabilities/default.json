@@ -45,6 +45,8 @@
     "allow-app-set-network-access",
     "allow-app-network-access-key",
     "allow-app-set-network-access-key",
+    "allow-preview-relay-open",
+    "allow-preview-relay-close",
     "allow-set-tray-session",
     "allow-get-tray-usage-summary",
     "allow-tray-action",

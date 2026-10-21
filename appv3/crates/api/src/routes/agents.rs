@@ -285,7 +285,7 @@ fn effective_config(cfg: &AgentConfig) -> AgentConfig {
         if let Some(bp) = prompts::member_profiles().get(&d.name) {
             let bs = |k: &str| bp.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
             d.description = or_empty(&d.description, &bs("description"));
-            if d.system_prompt.is_empty() {
+            if d.system_prompt.is_empty() || prompts::is_shipped_member_prompt(&d.name, &d.system_prompt) {
                 d.system_prompt = bs("prompt");
             }
             if d.tools.is_empty() {

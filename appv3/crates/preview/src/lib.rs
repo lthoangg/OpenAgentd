@@ -8,6 +8,10 @@
 //! reports navigation, picks elements for design comments, and forwards
 //! console output to [`CONSOLE_PATH`]. It also runs the agent's commands
 //! (snapshot, click, fill, …) that it long-polls from [`AGENT_PATH`].
+//!
+//! Clients on another device reach a listener through [`tunnel`]: their
+//! native relay listens on the device's own loopback and carries raw TCP
+//! over an authenticated WebSocket.
 
 pub mod agent;
 pub mod console;
@@ -16,9 +20,10 @@ mod manager;
 mod proxy;
 mod static_files;
 pub mod target;
+pub mod tunnel;
 mod ws;
 
-pub use manager::{global, static_backend, Entry, Manager, PreviewError, PreviewInfo, IDLE_SECS, MAX_PREVIEWS};
+pub use manager::{global, static_backend, Entry, Manager, PreviewError, PreviewInfo, TunnelSlot, IDLE_SECS, MAX_ALIAS_PORTS, MAX_PREVIEWS, MAX_TUNNELS};
 pub use static_files::{resolve_workspace_file, url_path};
 pub use target::{parse_url_target, Backend, TargetError, UrlTarget};
 

@@ -51,7 +51,7 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
-import { type PreviewTarget, closePreview, isLocalBackend, lastPreviewUrl } from '@/api/preview'
+import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { EASINGS } from '@/lib/motion'
 import {
   type ChangedFileStatus,
@@ -74,7 +74,7 @@ import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
-import { DockLauncher } from './WorkspacePanel/DockLauncher'
+import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
@@ -91,8 +91,11 @@ import {
   type DockView,
   type DockViewRequest,
   type PreviewTabRequest,
+  BTW_TAB,
   PLAN_TAB,
   REVIEW_TAB_ID,
+  SCHEDULE_TAB,
+  TASKS_TAB,
   basename,
   resolveFileTabInfo,
 } from './WorkspacePanel/dock-tabs'
@@ -438,7 +441,7 @@ export function WorkspacePanel({
     if (commit) openCommitTab(commit)
   }
 
-  const previewsAvailable = isLocalBackend()
+  const canPreview = previewsAvailable()
   const openNewPreview = useCallback(() => {
     openPreviewTab({ kind: 'url', url: lastPreviewUrl(workspace) ?? DEFAULT_PREVIEW_URL })
   }, [openPreviewTab, workspace])
@@ -447,6 +450,20 @@ export function WorkspacePanel({
   }, [openPreviewTab])
   const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
   const previewTabs = visibleTabs.filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
+  const openQuickOpen = () => useUIStore.getState().openQuickOpen('')
+  // The tab strip's "+" menu: every view and tool this dock can open, so one
+  // is a tap away while other tabs are open. Tasks and side questions open
+  // above the chat on phones, so only desktop lists them here.
+  const openItems = dockOpenItems(os, {
+    onOpenGit: chatWorkspace ? undefined : openGitTab,
+    onOpenPlan: plan ? () => openTab(PLAN_TAB) : undefined,
+    onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB),
+    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB),
+    onOpenSchedule: () => openTab(SCHEDULE_TAB),
+    onOpenTerminal: openTerminal,
+    onOpenPreview: canPreview ? openNewPreview : undefined,
+    onOpenFile: openQuickOpen,
+  }, new Set(visibleTabs.map((tab) => tab.id)))
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -635,8 +652,9 @@ export function WorkspacePanel({
           onCloseToRight={closeTabsToRight}
           onMove={moveTab}
           onNewTerminal={openTerminal}
-          onNewPreview={previewsAvailable ? openNewPreview : undefined}
+          onNewPreview={canPreview ? openNewPreview : undefined}
           onRefresh={handleRefresh}
+          openItems={openItems}
           maximized={maximizeState}
           onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
         />
@@ -664,7 +682,7 @@ export function WorkspacePanel({
               workspace={workspace}
               file={resolveFileTabInfo(activeTab.file, filesByPath.get(activeTab.file.path), changedPaths.get(activeTab.file.path))}
               onAddComment={onAddComment}
-              onOpenPreview={previewsAvailable && !chatWorkspace ? openFilePreview : undefined}
+              onOpenPreview={canPreview && !chatWorkspace ? openFilePreview : undefined}
             />
           ) : activeTab?.type === 'diff' ? (
             <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />
@@ -682,7 +700,7 @@ export function WorkspacePanel({
               sessionId={sessionId}
               onClearPlan={onClearPlan}
               onOpenFile={openChangedFile}
-              onOpenPreview={previewsAvailable ? openFilePreview : undefined}
+              onOpenPreview={canPreview ? openFilePreview : undefined}
               workspace={workspace}
             />
           ) : activeTab?.type === 'btw' ? (
@@ -696,8 +714,8 @@ export function WorkspacePanel({
               os={os}
               onOpenGit={chatWorkspace ? undefined : openGitTab}
               onOpenTerminal={openTerminal}
-              onOpenPreview={previewsAvailable ? openNewPreview : undefined}
-              onOpenFile={mobile ? undefined : () => useUIStore.getState().openQuickOpen('')}
+              onOpenPreview={canPreview ? openNewPreview : undefined}
+              onOpenFile={mobile ? undefined : openQuickOpen}
             />
           )}
         </div>

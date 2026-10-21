@@ -18,6 +18,11 @@ failed on mobile).
 - `src/private_file.rs`: atomic 0600 writes for secret files.
 - `src/download.rs`: the 100 MB ceiling, base64/`data:`/remote resolution, and
   collision-safe cache filenames.
+- `src/preview_relay.rs`: the loopback relay that lets the Preview tab show
+  a remote server's preview. It listens on the device's `127.0.0.1` and
+  carries each connection over `/api/preview/{id}/tunnel` (a WebSocket with
+  the access key in its handshake). Any local process can reach an open
+  relay, so relays close with their tab, on a server change, and when idle.
 
 ## Boundaries
 
@@ -26,6 +31,8 @@ failed on mobile).
   and their differently tuned shared HTTP clients.
 - TLS backend and certificate roots are chosen by each shell's own `reqwest`
   dependency (Cargo unifies features); this crate asks only for `json`.
+  The preview relay's client must be built with `http1_only()` (a WebSocket
+  upgrade cannot happen on HTTP/2) and without a total timeout.
 - Behaviour changes here reach both apps. Add or update the unit test first,
   then re-run both shell checks.
 - The crate is internal (`publish = false`, version `0.0.0`) and is not part

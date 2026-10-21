@@ -419,6 +419,20 @@ mod tests {
         );
     }
 
+    /// The webview loads the bundled UI (or devUrl, which Tauri counts as
+    /// local). A remote pattern would grant IPC, `secure_get_access_key`
+    /// included, to server pages or a relayed preview on 127.0.0.1.
+    #[test]
+    fn capability_grants_ipc_to_the_app_origin_only() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert!(
+            capability.get("remote").is_none(),
+            "remote origins granted IPC: {}",
+            capability["remote"]
+        );
+    }
+
     // ── ensure_backend_reachable ────────────────────────────────────────
     //
     // Guards the ordering in `app_use_external_backend`: a server that does

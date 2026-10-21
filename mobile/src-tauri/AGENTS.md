@@ -29,6 +29,10 @@ integration for the mobile shell.
   behavior when changing native file flows.
 - Update Tauri capabilities with any plugin/command surface change. Review CSP
   changes together with the remote origins and WebView APIs that require them.
+- The capability grants IPC to the app origin only (`local`: the bundled UI,
+  or `devUrl` in debug builds). Don't add `remote` URLs: they would also cover
+  server pages and the preview relay's `http://127.0.0.1:<port>` frames, and
+  hand them `secure_get_access_key`. A test in `src/lib.rs` enforces this.
 - Keep platform-specific code behind `cfg` gates and retain portable behavior
   for the host-side Cargo check.
 

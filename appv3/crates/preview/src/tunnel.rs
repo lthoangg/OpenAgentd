@@ -29,6 +29,10 @@ async fn close(socket: &mut futures::stream::SplitSink<WebSocket, Message>, code
 
 /// Pipe `socket` to a new TCP connection to `entry`'s listener until either
 /// side closes or the preview stops.
+///
+/// Each direction is copied on its own: a client that sends a whole request
+/// body before reading, to a page that streams its answer meanwhile, would
+/// stall a loop that waits on one write at a time.
 pub async fn pipe(entry: Arc<Entry>, socket: WebSocket) {
     let (mut ws_tx, mut ws_rx) = socket.split();
     let Some(_slot) = entry.reserve_tunnel() else {
@@ -46,28 +50,42 @@ pub async fn pipe(entry: Arc<Entry>, socket: WebSocket) {
     let _ = tcp.set_nodelay(true);
     let (mut rd, mut wr) = tcp.into_split();
     let mut stop = entry.stop_rx();
-    let mut buf = vec![0u8; READ_CHUNK];
-    loop {
-        tokio::select! {
-            m = ws_rx.next() => match m {
-                Some(Ok(Message::Binary(b))) => {
-                    if wr.write_all(&b).await.is_err() { break }
-                }
-                Some(Ok(Message::Text(_))) => {
-                    close(&mut ws_tx, CLOSE_UNSUPPORTED, "Binary frames only").await;
-                    break;
-                }
-                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                _ => break,
-            },
-            n = rd.read(&mut buf) => match n {
-                Ok(0) | Err(_) => break,
+    let up = async {
+        let mut buf = vec![0u8; READ_CHUNK];
+        loop {
+            match rd.read(&mut buf).await {
+                Ok(0) | Err(_) => return,
                 Ok(n) => {
-                    if ws_tx.send(Message::Binary(bytes::Bytes::copy_from_slice(&buf[..n]))).await.is_err() { break }
+                    if ws_tx.send(Message::Binary(bytes::Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
+                        return;
+                    }
                 }
-            },
-            _ = async { stop.wait_for(|v| *v).await.map(|_| ()) } => break,
+            }
         }
+    };
+    // `true` when the client sent a text frame.
+    let down = async {
+        while let Some(Ok(m)) = ws_rx.next().await {
+            match m {
+                Message::Binary(b) => {
+                    if wr.write_all(&b).await.is_err() {
+                        return false;
+                    }
+                }
+                Message::Text(_) => return true,
+                Message::Ping(_) | Message::Pong(_) => {}
+                Message::Close(_) => return false,
+            }
+        }
+        false
+    };
+    let text_frame = tokio::select! {
+        _ = up => false,
+        text = down => text,
+        _ = stop.wait_for(|v| *v) => false,
+    };
+    if text_frame {
+        close(&mut ws_tx, CLOSE_UNSUPPORTED, "Binary frames only").await;
     }
     let _ = wr.shutdown().await;
     let _ = ws_tx.close().await;

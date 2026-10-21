@@ -119,6 +119,8 @@ If iOS blocks the first launch, trust the developer profile on the phone in **Se
 
 Use **Backend connection** in the app to save/check a remote server. Simulator builds can usually reach the Mac with `http://localhost:8000`; physical devices normally need a LAN IP or HTTPS endpoint. The server has no built-in TLS: for access beyond a trusted LAN, put an HTTPS reverse proxy in front of it and connect to the proxy's URL.
 
+The Preview tab works from the app too. The app runs a small relay on the phone's own `127.0.0.1` port and tunnels each page connection to `/api/preview/<id>/tunnel` on the server, adding the access key only to that tunnel's handshake, so the previewed page never sees it. This needs a server with an access key, and a reverse proxy must pass WebSocket upgrades for that path. While a Preview tab is open, other apps on the phone could connect to the relay and load that one preview (never `/api`); the relay closes with the tab, on a server change, and after 10 idle minutes.
+
 For local developer builds, set a unique iOS bundle identifier in `src-tauri/tauri.conf.json` if `com.openagentd.mobile` is already registered to another Apple developer team.
 
 ## Android

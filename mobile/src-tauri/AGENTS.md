@@ -33,6 +33,9 @@ integration for the mobile shell.
   or `devUrl` in debug builds). Don't add `remote` URLs: they would also cover
   server pages and the preview relay's `http://127.0.0.1:<port>` frames, and
   hand them `secure_get_access_key`. A test in `src/lib.rs` enforces this.
+- The preview relay commands (`preview_relay_open`/`_close`) take only a
+  preview id and port; the server URL and key come from native state. Keep
+  it that way, and close relays when the active server changes.
 - Keep platform-specific code behind `cfg` gates and retain portable behavior
   for the host-side Cargo check.
 

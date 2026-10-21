@@ -22,6 +22,8 @@
     "allow-app-save-backend-server",
     "allow-app-use-external-backend",
     "allow-app-remove-backend-server",
-    "allow-save-workspace-file"
+    "allow-save-workspace-file",
+    "allow-preview-relay-open",
+    "allow-preview-relay-close"
   ]
 }

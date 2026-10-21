@@ -7,7 +7,7 @@ use openagentd_shell_core::{
     load_backend_config_from, normalize_base_url, normalize_server_name,
     remove_backend_server_at, resolve_download_bytes, safe_download_filename,
     save_backend_config_to, unique_cache_path, AppBackendConfig, DownloadSource,
-    SavedAppServer,
+    RelayInfo, RelayRegistry, SavedAppServer,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -59,6 +59,85 @@ async fn secure_set_access_key(origin: String, key: String) -> Result<(), String
 #[tauri::command]
 async fn secure_delete_access_key(origin: String) -> Result<(), String> {
     off_main_thread(move || openagentd_shell_core::delete_access_key(&origin)).await
+}
+
+// ── Web preview relay ───────────────────────────────────────────────────
+//
+// A server's preview listeners bind *its* loopback, which the phone cannot
+// reach. The relay (`openagentd_shell_core::preview_relay`) listens on the
+// phone's own 127.0.0.1 and tunnels each connection to the server with the
+// access key, which never reaches the previewed page. The server URL and key
+// come from native state, never from the webview.
+
+/// Open preview relays. The phone has one window, so one scope.
+#[derive(Default)]
+struct PreviewRelays(RelayRegistry);
+
+const RELAY_SCOPE: &str = "main";
+
+static RELAY_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+/// HTTP/1.1 only (a WebSocket upgrade cannot happen on HTTP/2) and no total
+/// timeout: tunnels stay open for as long as the page uses them.
+fn relay_client() -> &'static reqwest::Client {
+    RELAY_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .http1_only()
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+/// The connected server a relay tunnels to.
+fn relay_base_url(
+    runtime_base_url: Option<String>,
+    persisted_base_url: Option<String>,
+) -> Result<String, String> {
+    let base = resolve_active_base_url(runtime_base_url, persisted_base_url);
+    if base.is_empty() {
+        return Err("No server is connected.".to_string());
+    }
+    normalize_base_url(&base).map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn preview_relay_open(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    relays: tauri::State<'_, PreviewRelays>,
+    preview_id: String,
+    port: u16,
+) -> Result<RelayInfo, String> {
+    let runtime_base_url = state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())?
+        .clone();
+    let persisted = load_backend_config(&app)
+        .map_err(|e| format!("{e:#}"))?
+        .active_base_url;
+    let base_url = relay_base_url(runtime_base_url, persisted)?;
+    let origin = base_url.clone();
+    let key = off_main_thread(move || openagentd_shell_core::get_access_key(&origin))
+        .await?
+        .ok_or_else(|| "Previews on this device need this server's access key.".to_string())?;
+    relays
+        .0
+        .open(
+            RELAY_SCOPE,
+            relay_client(),
+            &base_url,
+            &key,
+            &preview_id,
+            port,
+        )
+        .await
+}
+
+#[tauri::command]
+fn preview_relay_close(relays: tauri::State<'_, PreviewRelays>, preview_id: String) -> bool {
+    relays.0.close(RELAY_SCOPE, &preview_id)
 }
 
 #[derive(Clone, Serialize)]
@@ -124,6 +203,7 @@ fn app_save_backend_server(
 async fn app_use_external_backend(
     app: AppHandle,
     state: tauri::State<'_, MobileBackendState>,
+    relays: tauri::State<'_, PreviewRelays>,
     base_url: String,
     name: Option<String>,
     persist: Option<bool>,
@@ -143,10 +223,15 @@ async fn app_use_external_backend(
         )
         .map_err(|e| format!("{e:#}"))?;
     }
-    *state
+    let previous = state
         .active_base_url
         .lock()
-        .map_err(|_| "backend state unavailable".to_string())? = Some(normalized);
+        .map_err(|_| "backend state unavailable".to_string())?
+        .replace(normalized.clone());
+    // Previews of the previous server must not stay reachable.
+    if previous.as_deref() != Some(normalized.as_str()) {
+        relays.0.close_all();
+    }
     app_backend_status(app, state)
 }
 
@@ -154,6 +239,7 @@ async fn app_use_external_backend(
 fn app_remove_backend_server(
     app: AppHandle,
     state: tauri::State<'_, MobileBackendState>,
+    relays: tauri::State<'_, PreviewRelays>,
     base_url: String,
 ) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
@@ -165,6 +251,7 @@ fn app_remove_backend_server(
         .map_err(|_| "backend state unavailable".to_string())?;
     if active.as_deref() == Some(normalized.as_str()) {
         *active = None;
+        relays.0.close_all();
     }
     drop(active);
     app_backend_status(app, state)
@@ -177,7 +264,10 @@ fn app_remove_backend_server(
 /// only ever talks to an already-running remote server.
 async fn ensure_backend_reachable(base_url: &str) -> Result<(), String> {
     shared_client()
-        .get(format!("{}/api/health/live", base_url.trim_end_matches('/')))
+        .get(format!(
+            "{}/api/health/live",
+            base_url.trim_end_matches('/')
+        ))
         .timeout(Duration::from_secs(10))
         .send()
         .await
@@ -374,6 +464,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_openagentd_android::init());
     builder
         .manage(MobileBackendState::default())
+        .manage(PreviewRelays::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
@@ -387,6 +478,8 @@ pub fn run() {
             app_use_external_backend,
             app_remove_backend_server,
             save_workspace_file,
+            preview_relay_open,
+            preview_relay_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");
@@ -394,7 +487,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_backend_reachable, resolve_active_base_url};
+    use super::{ensure_backend_reachable, relay_base_url, resolve_active_base_url};
 
     // Everything about config files, URL normalisation, access keys, and
     // download limits is tested once in `openagentd-shell-core`; only the
@@ -417,6 +510,19 @@ mod tests {
             resolve_active_base_url(None, Some("https://persisted.example".to_string())),
             "https://persisted.example",
         );
+    }
+
+    #[test]
+    fn relays_tunnel_to_the_connected_server_only() {
+        assert_eq!(
+            relay_base_url(Some("http://192.168.1.5:4082/".to_string()), None).unwrap(),
+            "http://192.168.1.5:4082",
+        );
+        assert_eq!(
+            relay_base_url(None, Some("https://box.example/oad".to_string())).unwrap(),
+            "https://box.example/oad",
+        );
+        assert!(relay_base_url(None, None).is_err());
     }
 
     /// The webview loads the bundled UI (or devUrl, which Tauri counts as

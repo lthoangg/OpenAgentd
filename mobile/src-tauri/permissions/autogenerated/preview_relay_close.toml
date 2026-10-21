@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-relay-close"
+description = "Enables the preview_relay_close command without any pre-configured scope."
+commands.allow = ["preview_relay_close"]
+
+[[permission]]
+identifier = "deny-preview-relay-close"
+description = "Denies the preview_relay_close command without any pre-configured scope."
+commands.deny = ["preview_relay_close"]

@@ -504,11 +504,16 @@ pub const MAX_MEMORY_PAGE_BYTES: usize = 256 * 1024;
 pub const PLAN_ATTACHMENTS_ROOT: &str = ".agents/plans";
 
 /// Why Plan mode refuses to write `resolved`, or `None` when it is a plan
-/// attachment: a file inside a folder under `<root>/.agents/plans/`. The
-/// plan files themselves (`.agents/plans/*.md`) belong to the `plan` tool,
-/// which tracks their revisions. `resolved` must already be resolved
+/// attachment (a file inside a folder under `<root>/.agents/plans/`) or a
+/// page under the global `memory_root`. Memory lives outside the project,
+/// and the memory rules have the lead save in the same turn in every mode.
+/// The plan files themselves (`.agents/plans/*.md`) belong to the `plan`
+/// tool, which tracks their revisions. `resolved` must already be resolved
 /// (symlinks followed), as [`DeniedPaths::validate_path`] returns it.
-pub fn plan_mode_refusal(root: &Path, resolved: &Path) -> Option<String> {
+pub fn plan_mode_refusal(root: &Path, resolved: &Path, memory_root: &Path) -> Option<String> {
+    if resolved.starts_with(crate::denied::resolve(memory_root)) {
+        return None;
+    }
     let root = crate::denied::resolve(root);
     let plans = crate::denied::resolve(&root.join(PLAN_ATTACHMENTS_ROOT));
     let inside = plans.starts_with(&root).then(|| resolved.strip_prefix(&plans).ok()).flatten();
@@ -723,7 +728,8 @@ impl Tool for PatchTool {
             }
         }
         if plan_mode {
-            if let Some(refusal) = paths.iter().find_map(|p| plan_mode_refusal(&ctx.denied.workspace_root, p)) {
+            let memory_root = appv3_core::settings().config_dir.join("memory");
+            if let Some(refusal) = paths.iter().find_map(|p| plan_mode_refusal(&ctx.denied.workspace_root, p, &memory_root)) {
                 return Err(ToolError::Execution(refusal));
             }
         }
@@ -766,6 +772,26 @@ mod tests {
             Ok(other) => Err(format!("{other:?}")),
             Err(e) => Err(e.to_string()),
         }
+    }
+
+    /// The memory rules tell the lead to save in the same turn, in every
+    /// mode; memory pages live outside the project, so Plan mode's
+    /// "project files stay unchanged" does not cover them.
+    #[test]
+    fn plan_mode_allows_the_global_memory_root_only() {
+        let t = tempfile::tempdir().unwrap();
+        let ws = t.path().join("ws");
+        let memory = t.path().join("config").join("memory");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::create_dir_all(&memory).unwrap();
+        let (ws, memory) = (crate::denied::resolve(&ws), crate::denied::resolve(&memory));
+
+        assert_eq!(plan_mode_refusal(&ws, &memory.join("preferences.md"), &memory), None);
+        assert_eq!(plan_mode_refusal(&ws, &memory.join("projects").join("shop.md"), &memory), None);
+        // A memory-looking folder inside the project is still a project file.
+        let in_project = ws.join(".openagentd").join("memory").join("notes.md");
+        assert!(plan_mode_refusal(&ws, &in_project, &memory).is_some());
+        assert!(plan_mode_refusal(&ws, &ws.join("src.txt"), &memory).is_some());
     }
 
     #[tokio::test]

@@ -81,6 +81,8 @@ function TabIcon({ tab }: { tab: DockTab }) {
       return <MessageCircleQuestion size={12} className="shrink-0" aria-hidden="true" />
     case 'file':
       return <FileTypeIcon name={tab.file.name || tab.file.path} size={13} />
+    case 'attachment':
+      return <FileTypeIcon name={tab.item.name} size={13} />
     case 'diff':
       return <FileDiff size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
     case 'commit':

@@ -100,12 +100,18 @@ pub async fn evict_idle_sessions(now: Option<Instant>) {
     let m = mgr();
     let now = now.unwrap_or_else(Instant::now);
     let cutoff = Duration::from_secs(SESSION_IDLE_SECONDS);
+    // Idle since the later of the last lookup and the last turn's end: a
+    // turn can run far longer than the cutoff without any lookup, and
+    // evicting right after it ends would drop its idle-compaction timer.
+    let idle = |k: &Key, s: &AgentSession, last: &HashMap<Key, Instant>| last.get(k).is_some_and(|t| now.saturating_duration_since((*t).max(s.last_turn_activity())) >= cutoff);
+    // A lead whose subagents are still working is not idle: stopping it
+    // would cancel them, and a cancelled member never reports back.
+    let idle = |k: &Key, s: &AgentSession, last: &HashMap<Key, Instant>| idle(k, s, last) && !crate::subagents::has_working_subagents(&s.session_id());
     let to_stop: Vec<Arc<AgentSession>> = {
         let _g = m.lock.lock().await;
         let mut sessions = m.sessions.lock().unwrap();
         let mut last = m.last_used.lock().unwrap();
-        let mut keys: Vec<Key> =
-            sessions.iter().filter(|(k, s)| last.get(*k).map(|t| now.saturating_duration_since(*t) >= cutoff).unwrap_or(false) && evictable(s)).map(|(k, _)| k.clone()).collect();
+        let mut keys: Vec<Key> = sessions.iter().filter(|(k, s)| idle(k, s, &last) && evictable(s)).map(|(k, _)| k.clone()).collect();
         keys.sort();
         let mut out = vec![];
         for k in keys {

@@ -95,6 +95,12 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     } else {
         tracing::info!("scheduler_no_enabled_tasks");
     }
+    // Idle-compaction countdowns live in memory; resume the ones the
+    // restart dropped while the provider's prompt cache is still warm.
+    let p = pool.clone();
+    tokio::spawn(async move {
+        appv3_agent::idle_compaction::resume_after_restart(&p).await;
+    });
     Ok(())
 }
 

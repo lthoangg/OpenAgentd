@@ -11,7 +11,7 @@ use crate::hooks::summarization::build_summarization_hook;
 use crate::hooks::summarization::resolve_prompt_token_threshold;
 use crate::hooks::title::build_title_generation_hook;
 use crate::hooks::HookRef;
-use crate::idle_compaction::{idle_prompt_tokens, should_compact, IDLE_COMPACTION_DELAY};
+use crate::idle_compaction::{idle_prompt_tokens, resumed_delay, should_compact, IDLE_COMPACTION_DELAY};
 use crate::interaction_mode;
 use crate::loader::{self, ProviderFactory};
 use crate::notification;
@@ -115,6 +115,9 @@ pub struct TurnOptions {
     /// [`crate::idle_compaction`]); it sends no desktop notification.
     pub idle_compaction: bool,
     pub question_resume: bool,
+    /// A scheduled task started this turn, so nobody is there to answer a
+    /// question or review a plan (see [`crate::agent::UNATTENDED_META`]).
+    pub unattended: bool,
     pub runtime_model: Option<String>,
     pub runtime_thinking_level: Option<String>,
     pub queued_activation_event: Option<Value>,
@@ -171,6 +174,9 @@ pub struct AgentSession {
     pub user_message_lock: tokio::sync::Mutex<()>,
     command_lock: tokio::sync::Mutex<()>,
     has_active_turn: AtomicBool,
+    /// When a turn last started or ended; the manager counts idle time
+    /// from here as well as from the last lookup.
+    last_turn_activity: Mutex<std::time::Instant>,
     active_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     turn_generation: tokio::sync::watch::Sender<u64>,
     config_dirty: AtomicBool,
@@ -178,7 +184,6 @@ pub struct AgentSession {
     lead_suspended: Mutex<Option<Value>>,
     last_error: Mutex<Option<String>>,
     pending_interaction_mode: Mutex<Option<String>>,
-    is_scheduler_session: AtomicBool,
     /// `<openagentd_memory>` as of this session's first turn. Frozen so the
     /// system prompt stays byte-identical across turns (prefix caching);
     /// pages saved mid-session show up in the next session.
@@ -223,6 +228,7 @@ impl AgentSession {
             user_message_lock: tokio::sync::Mutex::new(()),
             command_lock: tokio::sync::Mutex::new(()),
             has_active_turn: AtomicBool::new(false),
+            last_turn_activity: Mutex::new(std::time::Instant::now()),
             active_task: Mutex::new(None),
             turn_generation: tokio::sync::watch::channel(0).0,
             config_dirty: AtomicBool::new(false),
@@ -230,7 +236,6 @@ impl AgentSession {
             lead_suspended: Mutex::new(None),
             last_error: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),
-            is_scheduler_session: AtomicBool::new(false),
             memory_snapshot: Mutex::new(None),
             idle_timer: Mutex::new(None),
             idle_compaction_delay: Mutex::new(IDLE_COMPACTION_DELAY),
@@ -285,10 +290,16 @@ impl AgentSession {
     }
 
     /// Tools a turn of this session gets beside the agent's own.
+    ///
+    /// The same on every turn, whoever started it: tool definitions sit in
+    /// the cached prompt prefix, so changing them between a scheduled turn
+    /// and a user's turn would re-send the whole context at full price. A
+    /// scheduled turn instead refuses the tools that wait on a person when
+    /// they are called.
     pub(crate) fn injected_tools(&self, sid: &str, name: &str, workspace: &str, agent_mode: &str) -> Vec<ToolRef> {
         let is_lead = self.parent_session_id.is_none();
         let mut injected: Vec<ToolRef> = vec![];
-        if !self.is_scheduler_session.load(Ordering::SeqCst) && is_lead {
+        if is_lead {
             injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
             injected.push(Arc::new(crate::tools::team::DelegateTool {
                 lead_session_id: sid.to_string(),
@@ -399,7 +410,13 @@ impl AgentSession {
 
     fn set_active_turn(&self, v: bool) {
         self.has_active_turn.store(v, Ordering::SeqCst);
+        *self.last_turn_activity.lock().unwrap() = std::time::Instant::now();
         self.turn_generation.send_modify(|g| *g += 1);
+    }
+
+    /// When a turn last started or ended (session creation before any turn).
+    pub fn last_turn_activity(&self) -> std::time::Instant {
+        *self.last_turn_activity.lock().unwrap()
     }
 
     fn spawn_turn(&self, opts: TurnOptions) {
@@ -443,8 +460,23 @@ impl AgentSession {
     /// Start the idle-compaction timer for the turn that just completed. The
     /// setting is read when it fires, so enabling it mid-idle still applies.
     fn arm_idle_compaction(&self) {
-        let generation = *self.turn_generation.borrow();
         let delay = *self.idle_compaction_delay.lock().unwrap();
+        self.arm_idle_compaction_in(delay);
+    }
+
+    /// Resume the countdown of a turn that completed `idle_for` ago in an
+    /// earlier server process (see
+    /// [`crate::idle_compaction::resume_after_restart`]); `false` when the
+    /// prompt cache has expired since.
+    pub fn resume_idle_compaction(&self, idle_for: Duration) -> bool {
+        let delay = *self.idle_compaction_delay.lock().unwrap();
+        let Some(left) = resumed_delay(delay, idle_for) else { return false };
+        self.arm_idle_compaction_in(left);
+        true
+    }
+
+    fn arm_idle_compaction_in(&self, delay: Duration) {
+        let generation = *self.turn_generation.borrow();
         let me = self.me.clone();
         let h = tokio::spawn(async move {
             tokio::time::sleep(delay).await;
@@ -723,7 +755,6 @@ impl AgentSession {
                 if m.thinking_level_provided {
                     upd.thinking_level = Some(m.thinking_level.clone());
                 }
-                self.is_scheduler_session.store(row.scheduled_task_name.is_some(), Ordering::SeqCst);
                 db::update_session(&self.pool, &sid, upd).await?;
             }
             db::cleanup_reverted_tail(&self.pool, &sid).await?;
@@ -781,7 +812,7 @@ impl AgentSession {
         *self.lead_suspended.lock().unwrap() = None;
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions::default());
+        self.spawn_turn(TurnOptions { unattended: m.origin == "scheduler", ..Default::default() });
         Ok((sid, db::codec::api_uuid(&persisted.id)))
     }
 
@@ -1140,7 +1171,7 @@ impl AgentSession {
         if !activated {
             self.set_active_turn(false);
         }
-        let lead = self.parent_session_id.is_none() && !self.is_scheduler_session.load(Ordering::SeqCst);
+        let lead = self.parent_session_id.is_none();
         if completed && lead && !opts.force_compaction && !sid.is_empty() && !self.cancel.is_set() {
             self.arm_idle_compaction();
         }
@@ -1229,6 +1260,9 @@ impl AgentSession {
         }
         if opts.question_resume {
             meta.insert("question_resume".into(), json!(true));
+        }
+        if opts.unattended {
+            meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));
         }
         if opts.force_compaction {
             meta.insert("force_summarization".into(), json!(true));

@@ -866,7 +866,14 @@ explicitly.
   cancels the timer. Subagent and scheduler sessions are skipped, as are
   sessions with working subagents, outstanding workspace replies, an open
   question, or a summary newer than their last model call. The compaction
-  turn sends no desktop notification and does not re-arm the timer. Formats:
+  turn sends no desktop notification and does not re-arm the timer.
+  The timer lives in memory. On startup the server resumes it for every
+  lead session whose last turn completed (a reply that calls no tools and
+  was not stopped) less than 300 s ago, since the provider's cache outlives
+  the restart; older sessions are left alone. The manager counts a session
+  as idle from the later of its last lookup and its last turn's start or
+  end, so a turn longer than the 30-minute eviction cutoff no longer gets
+  the session evicted, and its timer dropped, as soon as it ends. Formats:
   - `settings.yaml` gains `summarization.idle_compaction` (default `false`,
     written only when `true`) and `summarization.idle_compaction_percent`
     (1–100, written only when set; absent or out of range means 70).
@@ -874,9 +881,11 @@ explicitly.
     as optional, keeps a key's stored value when the body omits it, and
     returns 422 for a percent outside 1–100.
 
-  Tests: `agent/tests/idle_compaction.rs`, unit tests in
-  `agent/src/idle_compaction.rs` and `core/src/runtime_settings.rs`, and
-  `api/tests/http_api.rs`. v2 has no equivalent.
+  Tests: `agent/tests/idle_compaction.rs`,
+  `agent/tests/idle_compaction_restart.rs`, `agent/tests/session_eviction.rs`,
+  unit tests in `agent/src/idle_compaction.rs` and
+  `core/src/runtime_settings.rs`, and `api/tests/http_api.rs`. v2 has no
+  equivalent.
 - **MCP request deadlines (v3 only):** `mcp.json` server entries (stdio and
   http) accept an optional integer `timeout` in seconds, 1–270, written only
   when set; the MCP settings API returns 422 outside that range. `tools/call`

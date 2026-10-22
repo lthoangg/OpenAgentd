@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-21
+updated: 2026-10-22
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.23.0 · October 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.23.0)
+**Latest release:** v3.24.0 · October 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.24.0)
 
 ---
 
@@ -785,6 +785,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   rasterize later pages near the viewport with stable page geometry and bounded
   device-pixel ratio. Multi-file paste into the composer now attaches every
   pasted file instead of only the last one `[v1.92.0]`.
+  On desktop with a workspace, clicking a file or image attached to a sent
+  message opens it as a review-dock tab beside the chat instead (one tab per
+  upload, with Open in new tab and Download); phones, sessions without a
+  workspace, and still-sending uploads keep the lightbox `[v3.24.0]`.
 - **Unified download architecture** `[v1.92.0]` — FileLightbox, workspace
   downloads, and coding-workspace downloads share one download path instead of
   three duplicated blob-to-base64 implementations; iOS downloads now present a
@@ -870,6 +874,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+  A lead stays loaded while its subagents work, so a job longer than 30 minutes
+  still reports back instead of being cancelled when the idle lead was unloaded `[v3.24.0]`.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or
@@ -1469,6 +1475,11 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   preferences, corrections, and durable facts about the user (to `preferences.md`,
   `user.md`, or topic pages) in the same turn without asking, and says what it saved.
   Delegated agents read memory but do not write it.
+  The agent now knows it has memory: asked whether it can remember things, it says yes
+  and explains how. It also saves facts you mention in passing inside a request
+  (your name when you introduce yourself, your setup, your editor) before doing the
+  task, and it saves in Plan mode too. Rules for a single repository are not saved;
+  the agent suggests adding them to that repo's `AGENTS.md` instead `[v3.24.0]`.
 - **Frozen per-session memory** `[v3.10.0]` — the memory rules are always added for the
   lead agent, and the `<openagentd_memory>` block is read once on a session's first turn
   and reused unchanged, so the system prompt stays byte-identical and prefix caching holds.
@@ -1489,13 +1500,25 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   after a turn and its context has reached a set share of the trigger
   (default 70%). This uses the provider's prompt cache while it is still
   warm, so the next message starts from a short context. It sends no
-  notification and skips subagent and scheduled sessions `[v3.12.0]`.
+  notification and skips subagent sessions `[v3.12.0]`. Sessions a scheduled
+  task owns compact too, after its runs and after yours `[v3.24.0]`.
+  It also runs after a turn that took longer than 30 minutes, which used to
+  unload the session and drop the countdown as soon as it ended `[v3.24.0]`.
+  After a server or app restart, a session whose turn ended less than 5
+  minutes earlier resumes its countdown while the cache is still warm
+  `[v3.24.0]`.
   The summary under the "Session compacted" divider starts collapsed; click
   the divider to read it, including while it is still being written
   `[v3.13.0]`.
   Compaction no longer fails on a nearly full context: the summary's output
   budget (at most 16k tokens) shrinks to the room the context has left, and
   for models whose context size is unknown the provider picks it `[v3.19.0]`.
+  Summaries are written as a handoff the agent can resume from: they quote
+  your latest request word for word, keep the unfinished items of any task
+  list or roadmap you gave or approved, name the immediate next action, leave
+  out rules that stay in context anyway, and never copy secrets. The agent
+  reads the summary marked as a summary of earlier context, not as a new
+  message from you, so it carries on after compacting mid-turn `[v3.24.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
@@ -1709,8 +1732,15 @@ MCP.
   else are the only ways to move it — there is no timeout. Members keep working
   throughout and are never interrupted by an answer. Turns support multiple
   questions across suspensions `[v2.10.0]`;
-  scheduled sessions never get the tool, because a cron job has nobody to ask.
+  in a turn a scheduled task started, the tool stays listed but refuses when
+  called, because nobody is there to answer; `submit_plan` does the same
+  `[v3.24.0]`.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
+  Every session lists the same tools on every turn, whoever started it, so a
+  scheduled run never invalidates the prompt cache. A task that runs in your
+  own session (`"current"` or a session ID) no longer takes `ask_user`,
+  `plan`, `submit_plan`, `delegate`, `preview` or idle compaction away from
+  it, and sessions that lost them get them back on upgrade `[v3.24.0]`.
 - **Resilient web search Exa fallback** `[v2.21.0]` — `web_search` uses `web_search_exa`
   with Server-Sent Events (SSE) stream parsing and normalized result structures
   when DDGS search backends are unreachable or return no results.
@@ -1740,6 +1770,9 @@ MCP.
   footers and inline data-URI images are left out. Articles convert as before.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
+- **View an image the agent read** `[v3.24.0]` — a `read` of an image in the
+  workspace gets a **View image** button on its transcript row, which opens the
+  image in the side panel. It is hidden once the image is gone from the workspace.
 - **Symbol outline mode for `read` tool** `[v2.4.0]` *(deprecated; removed in v3.14.0:
   agents read targeted slices or use the LSP tool's document symbols)* — `read` supported `outline=True`
   to return high-level symbol outlines (classes, methods, functions, interfaces, types,

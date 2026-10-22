@@ -138,4 +138,19 @@ async fn idle_session_compacts_only_when_enabled_and_full_enough() {
     wait_for_summary(&pool, &sid).await;
     s.wait_turn_finished().await;
     assert_eq!(summaries(&pool, &sid).await, 1);
+
+    // A session a scheduled task owns compacts after the scheduler's turn too.
+    configure(true, 12, None);
+    let s = new_session(&pool, &ws, short);
+    let id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, b"scheduler:nightly");
+    let sid = id.to_string();
+    appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(id), workspace: ws.display().to_string(), scheduled_task_name: Some("nightly".into()), ..Default::default() })
+        .await
+        .unwrap();
+    s.handle_user_message(UserMessage { content: "[Scheduled Task: nightly]\ncheck".into(), session_id: sid.clone(), origin: "scheduler".into(), ..Default::default() })
+        .await
+        .unwrap();
+    s.wait_turn_finished().await;
+    wait_for_summary(&pool, &sid).await;
+    s.wait_turn_finished().await;
 }

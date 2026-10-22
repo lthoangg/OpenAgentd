@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000025";
+pub const ALEMBIC_HEAD: &str = "00000026";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -54,7 +54,13 @@ pub const ALEMBIC_HEAD: &str = "00000025";
 ///   non-summary message (backfilled; a new session starts at its creation).
 ///   "Recent activity" sorts on it instead of `updated_at`, which also moves
 ///   on renames and model or mode changes, so its two indexes move with it.
-pub const MIGRATIONS: [(&str, &str); 25] = [
+/// - 00000026: data only. Clears `chat_sessions.scheduled_task_name` from
+///   sessions the scheduler does not own. Earlier builds marked every session
+///   a task ran in, including the user's own (`session_id: "current"`), which
+///   took `ask_user`, `delegate`, `plan`, `submit_plan` and `preview` from it.
+///   A session a task owns (`session_id: "auto"`) has a UUIDv5 id, so the
+///   mark stays only where the id's version digit (character 13) is `5`.
+pub const MIGRATIONS: [(&str, &str); 26] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -80,6 +86,7 @@ pub const MIGRATIONS: [(&str, &str); 25] = [
     ("00000023", include_str!("../resources/migrations/00000023.sql")),
     ("00000024", include_str!("../resources/migrations/00000024.sql")),
     ("00000025", include_str!("../resources/migrations/00000025.sql")),
+    ("00000026", include_str!("../resources/migrations/00000026.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -548,5 +555,31 @@ CREATE INDEX ix_workspace_group_members_path ON workspace_group_members (path);
         assert_eq!(upgrade(&mut conn).await.unwrap(), SchemaState::Upgraded("00000024".into()));
         let rows: Vec<(String, String)> = sqlx::query_as("SELECT id, last_message_at FROM chat_sessions ORDER BY id").fetch_all(&mut conn).await.unwrap();
         assert_eq!(rows, vec![("empty".into(), "2026-01-01 00:00:00.000000".into()), ("used".into(), "2026-03-01 00:00:00.000000".into())]);
+    }
+
+    /// 00000026 keeps the scheduled-task mark only on sessions the scheduler
+    /// owns (`session_id: "auto"`, a UUIDv5 id) and clears it from the user's
+    /// own sessions (UUIDv7) that a task once ran in.
+    #[tokio::test]
+    async fn scheduled_task_mark_stays_only_on_scheduler_owned_sessions() {
+        let mut conn = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+        for (rev, sql) in MIGRATIONS.iter().take_while(|(r, _)| *r <= "00000025") {
+            apply(&mut conn, rev, sql).await.unwrap();
+        }
+        let owned = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, b"scheduler:nightly").simple().to_string();
+        let users = uuid::Uuid::now_v7().simple().to_string();
+        for (id, mark) in [(owned.as_str(), "'nightly'"), (users.as_str(), "'recheck'"), ("unmarked", "NULL")] {
+            exec(
+                &mut conn,
+                &format!("INSERT INTO chat_sessions (id, created_at, updated_at, workspace, scheduled_task_name) VALUES ('{id}', '2026-01-01 00:00:00.000000', '2026-01-01 00:00:00.000000', '/w', {mark})"),
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(upgrade(&mut conn).await.unwrap(), SchemaState::Upgraded("00000025".into()));
+        let mark = |id: String| sqlx::query_scalar::<_, Option<String>>("SELECT scheduled_task_name FROM chat_sessions WHERE id = ?").bind(id);
+        assert_eq!(mark(owned).fetch_one(&mut conn).await.unwrap().as_deref(), Some("nightly"));
+        assert_eq!(mark(users).fetch_one(&mut conn).await.unwrap(), None);
+        assert_eq!(mark("unmarked".into()).fetch_one(&mut conn).await.unwrap(), None);
     }
 }

@@ -45,6 +45,24 @@ pub const DEFAULT_MAX_TOKEN_LENGTH: i64 = 16_000;
 /// Smallest summary budget worth asking for when the context is nearly full.
 pub const MIN_SUMMARY_TOKENS: i64 = 1_024;
 pub const DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY: usize = 4;
+/// Follows the summary in what the model reads. Most compactions happen
+/// mid-turn, where the agent resumes from the summary alone; without this a
+/// bare `## Goal…` user message reads like a new request.
+const SUMMARY_HANDOFF_NOTE: &str =
+    "This summary replaces the earlier conversation; it is not a new message from the user. If the latest request is unfinished, continue from its next steps.";
+
+/// `m` as the model reads it: a summary is framed as a handoff note. Applied
+/// on every request (never stored), so the prompt-cache prefix stays stable
+/// and the UI keeps showing the plain summary.
+pub fn for_model(m: &ChatMessage) -> ChatMessage {
+    let mut out = m.clone();
+    if m.meta().is_summary() {
+        if let ChatMessage::User { content: Some(text), .. } = &m {
+            out.set_content(Some(format!("<conversation_summary>\n{text}\n</conversation_summary>\n{SUMMARY_HANDOFF_NOTE}")));
+        }
+    }
+    out
+}
 /// Chars per token assumed for text no reported usage covers. Low on
 /// purpose: over-counting the prompt only makes the summary budget smaller.
 const FALLBACK_CHARS_PER_TOKEN: usize = 3;
@@ -568,7 +586,9 @@ impl SummarizationHook {
         }
         // An earlier plan note is restated fresh from the file below; the
         // summariser would only copy it into the summary.
-        prefix.extend(to_summarise.iter().filter(|&&i| !extra_truthy(&state.messages[i], plan::SESSION_PLAN_KEY)).map(|&i| state.messages[i].clone()));
+        // `for_model` keeps a prior summary as the main turn sent it, so the
+        // request shares that turn's prompt-cache prefix.
+        prefix.extend(to_summarise.iter().filter(|&&i| !extra_truthy(&state.messages[i], plan::SESSION_PLAN_KEY)).map(|&i| for_model(&state.messages[i])));
         let mut msgs = merge_consecutive_user_messages(prefix);
         let mut request = format!("{request_line}\n\n{}", self.summary_prompt);
         if plan_note.is_some() {
@@ -999,6 +1019,74 @@ mod tests {
         let notes = plan_notes(&state);
         assert_eq!(notes.len(), 1, "the kept note is not restated again");
         assert!(!notes[0].1.meta().exclude_from_context);
+    }
+
+    /// A mid-turn compaction leaves the agent resuming from the summary
+    /// alone. A bare `## Goal…` user message reads like a new request, so
+    /// the model sees it framed as a handoff; the stored row (and the UI)
+    /// keep the plain summary.
+    #[tokio::test]
+    async fn the_model_sees_the_summary_framed_as_a_handoff() {
+        let state = compact(0, vec![ChatMessage::user("Fix the login bug."), ChatMessage::assistant("Reading auth.rs.")]).await;
+        let stored = &state.messages[summary_index(&state)];
+        assert_eq!(stored.content(), Some("Summary."), "the stored summary must stay unwrapped");
+
+        let sent = state.messages_for_llm();
+        let summary = sent.iter().find(|m| m.meta().is_summary()).expect("summary sent");
+        let text = summary.content().unwrap();
+        assert!(text.starts_with("<conversation_summary>\nSummary.\n</conversation_summary>\n"), "{text}");
+        assert!(text.contains("not a new message from the user"), "{text}");
+    }
+
+    /// The summariser shares the main turn's prompt-cache prefix, so a prior
+    /// summary must reach it exactly as the main model saw it.
+    #[tokio::test]
+    async fn the_summariser_sees_a_prior_summary_as_the_main_model_did() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary one."), MockProvider::text("Summary two.")]));
+        let hook = hook_with(provider.clone(), 0);
+        let mut state = compact_with(&hook, vec![ChatMessage::user("Fix the login bug."), ChatMessage::assistant("Reading auth.rs.")]).await;
+        let main_view = state.messages_for_llm().into_iter().find(|m| m.meta().is_summary()).unwrap();
+        state.messages.push(ChatMessage::user("Also fix logout."));
+        state.messages.push(ChatMessage::assistant("On it."));
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await);
+
+        let request = summariser_request(&provider, 1);
+        let prior = request.iter().find(|m| m.content().is_some_and(|c| c.contains("Summary one."))).expect("prior summary in request");
+        // Consecutive user turns are merged, so the next request follows it.
+        assert!(prior.content().unwrap().starts_with(main_view.content().unwrap()), "{:?}", prior.content());
+    }
+
+    /// The handoff needs the verbatim latest request (coding keeps no message
+    /// verbatim) and the user's open task list, which otherwise shrinks to a
+    /// one-line paraphrase and has to be pasted in again.
+    #[test]
+    fn coding_summary_template_keeps_sections_in_order() {
+        let prompt = prompts::s("summary_coding");
+        let headings = [
+            "## Goal",
+            "## Latest User Request",
+            "## Constraints & Preferences",
+            "## Progress",
+            "### Done",
+            "### In Progress",
+            "### Blocked",
+            "## Key Decisions",
+            "## Next Steps",
+            "## Open Work From the User",
+            "## Critical Context",
+            "## Relevant Files",
+        ];
+        let mut at = 0;
+        for h in headings {
+            let i = prompt[at..].find(&format!("\n{h}\n")).unwrap_or_else(|| panic!("{h} missing or out of order"));
+            at += i + 1;
+        }
+        assert!(prompt.contains("Start your response with exactly `## Goal`."));
+    }
+
+    #[test]
+    fn plan_rule_keeps_plan_steps_out_of_open_work() {
+        assert!(plan::PLAN_SUMMARY_RULE.contains("Open Work From the User"));
     }
 
     /// An assistant reply carrying the usage its model call reported.

@@ -229,6 +229,23 @@ async fn validate_session_compat(pool: &DbPool, session_id: Option<&str>, worksp
     Ok(())
 }
 
+/// Mark `sid` as the scheduled session of task `name` (`session_id: "auto"`),
+/// creating its row if the session has none yet.
+async fn mark_scheduler_owned(pool: &DbPool, sid: &str, name: &str, workspace: &str) -> anyhow::Result<()> {
+    let mark = Some(name.to_string());
+    match db::get_session(pool, sid).await? {
+        Some(row) if row.scheduled_task_name == mark => {}
+        Some(_) => {
+            db::update_session(pool, sid, db::SessionUpdate { scheduled_task_name: Some(mark), ..Default::default() }).await?;
+        }
+        None => {
+            let id = uuid::Uuid::parse_str(sid)?;
+            db::create_session(pool, db::NewSession { id: Some(id), scheduled_task_name: mark, workspace: workspace.into(), ..Default::default() }).await?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 struct State {
     timers: HashMap<String, tokio::task::JoinHandle<()>>,
@@ -635,6 +652,13 @@ impl TaskScheduler {
                 tracing::info!("scheduler_skip_active_session task_slug={} name={} session_id={:?}", task.slug, task.name, resolved_sid);
                 return Err("__skip__".into());
             }
+            // Only a session the scheduler owns is marked as the task's, from
+            // its first turn. A task running in the user's own session leaves
+            // it unmarked. (The mark records ownership; tools never depend on
+            // it, since `origin: "scheduler"` makes the turn unattended.)
+            if let (Some("auto"), Some(sid)) = (task.session_id.as_deref(), resolved_sid.as_deref()) {
+                mark_scheduler_owned(&self.pool, sid, &task.name, &agent.workspace()).await.map_err(|e| e.to_string())?;
+            }
             dispatch_attempted = true;
             match dispatch_user_message(
                 &agent,
@@ -673,11 +697,6 @@ impl TaskScheduler {
         }
         if !dispatch_attempted && self.version(&task.id) != v {
             return;
-        }
-        if let (Some(sid), None) = (&fired_sid, &error) {
-            if let Err(e) = db::update_session(&self.pool, sid, db::SessionUpdate { scheduled_task_name: Some(Some(task.name.clone())), ..Default::default() }).await {
-                tracing::warn!("scheduler_stamp_failed task_slug={} sid={} error={}", task.slug, sid, e);
-            }
         }
         let _g = self.state_lock.lock().await;
         let Ok(Some(mut t)) = db::get_task(&self.pool, &task.id).await else {

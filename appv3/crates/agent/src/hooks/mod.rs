@@ -53,9 +53,10 @@ impl AgentState {
     pub fn new(messages: Vec<ChatMessage>, system_prompt: String) -> Self {
         Self { messages, usage: UsageInfo::default(), metadata: Arc::new(Mutex::new(Map::new())), system_prompt, tool_names: vec![], tool_defs: vec![] }
     }
-    /// Messages visible to the LLM (no system, no excluded).
+    /// Messages visible to the LLM (no system, no excluded), as the model
+    /// reads them (see [`summarization::for_model`]).
     pub fn messages_for_llm(&self) -> Vec<ChatMessage> {
-        self.messages.iter().filter(|m| !m.meta().exclude_from_context && !matches!(m, ChatMessage::System { .. })).cloned().collect()
+        self.messages.iter().filter(|m| !m.meta().exclude_from_context && !matches!(m, ChatMessage::System { .. })).map(summarization::for_model).collect()
     }
     pub fn meta_get(&self, key: &str) -> Option<Value> {
         self.metadata.lock().unwrap().get(key).cloned()

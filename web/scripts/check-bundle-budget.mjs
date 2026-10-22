@@ -73,7 +73,9 @@ if (import.meta.main) {
   // footer and docked comment composer, transcript keyboard dismissal, field
   // defaults and the native time picker) reached 2.50 MB / 760 kB with a
   // 1.84 MB index chunk.
-  const limits = { eagerBytes: 2_515_000, eagerGzipBytes: 764_000, largestChunkBytes: 1_850_000 }
+  // Sent attachments in the review dock and the View image button for images
+  // the agent read reached 2.52 MB / 764 kB with a 1.85 MB index chunk.
+  const limits = { eagerBytes: 2_525_000, eagerGzipBytes: 767_000, largestChunkBytes: 1_858_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

@@ -170,6 +170,17 @@ fn protocol_texts_are_distinct_and_present() {
     assert!(!prompts::coding_prompt().contains("git reset --hard"));
 }
 
+/// The lead must know it has memory (otherwise it tells the user it starts
+/// blank), and Plan mode must not contradict "save in the same turn":
+/// `patch` accepts memory pages in Plan mode, so both texts say so.
+#[test]
+fn memory_rules_state_that_memory_exists_and_works_in_plan_mode() {
+    let rules = prompts::memory_protocol(true);
+    assert!(rules.starts_with("## Memory\n\nYou have persistent memory across sessions"), "{rules}");
+    assert!(rules.contains("including Plan mode"), "{rules}");
+    assert!(prompts::s("mode_plan").contains("saving memory pages are the only writes"));
+}
+
 /// `AGENTS.md` files and skills reach the agent through tools, yet the agent
 /// must follow them; the protocol cannot also call them untrusted data.
 #[test]

@@ -133,7 +133,11 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// memory, or `AGENTS.md`: the system prompt plus every tool definition, as
 /// they were before the prompt review. Every turn pays for this text, so a
 /// change that grows it should be a deliberate one; raise the number then.
-const LEAD_ALWAYS_ON_CHARS: usize = 35_849;
+/// Raised for the memory rules that tell the agent it has memory and to save
+/// facts given inside a request.
+/// Lowered by 16 once the canonical temp root (`/private` on macOS) was left
+/// out, so the count is the same on every OS.
+const LEAD_ALWAYS_ON_CHARS: usize = 36_476;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {
@@ -142,8 +146,14 @@ async fn a_coding_leads_always_on_text_stays_within_its_budget() {
     names.extend(["skill", "todo_manage", "schedule_task"].map(String::from));
     let (system, mut tools) = first_call_with("budget", false, names.iter().map(|n| registry[n].clone()).collect()).await;
     // Leave out what differs by machine: the temp root and the shell's OS line.
-    let root = root().display().to_string();
-    let system = system.replace(&root, "").replace(&root.replace('\\', "/"), "");
+    // The prompt shows the root canonicalized (`/private/var/...` on macOS, the
+    // long `C:\Users\runneradmin\...` form on Windows), so strip that form too,
+    // longest first.
+    let canonical = std::fs::canonicalize(root()).unwrap().display().to_string();
+    let mut roots = vec![canonical.trim_start_matches(r"\\?\").to_string(), canonical.clone(), root().display().to_string()];
+    roots.extend(roots.clone().iter().map(|r| r.replace('\\', "/")));
+    roots.sort_by_key(|r| std::cmp::Reverse(r.len()));
+    let system = roots.iter().fold(system, |s, r| s.replace(r.as_str(), ""));
     for t in tools.iter_mut().filter(|t| t["function"]["name"] == "shell") {
         let d = t["function"]["description"].as_str().unwrap().split(" Environment: ").next().unwrap().to_string();
         t["function"]["description"] = Value::String(d);

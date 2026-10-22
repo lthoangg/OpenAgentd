@@ -1504,6 +1504,12 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   Compaction no longer fails on a nearly full context: the summary's output
   budget (at most 16k tokens) shrinks to the room the context has left, and
   for models whose context size is unknown the provider picks it `[v3.19.0]`.
+  Summaries are written as a handoff the agent can resume from: they quote
+  your latest request word for word, keep the unfinished items of any task
+  list or roadmap you gave or approved, name the immediate next action, leave
+  out rules that stay in context anyway, and never copy secrets. The agent
+  reads the summary marked as a summary of earlier context, not as a new
+  message from you, so it carries on after compacting mid-turn `[v3.24.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at

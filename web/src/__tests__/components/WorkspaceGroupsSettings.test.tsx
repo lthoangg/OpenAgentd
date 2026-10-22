@@ -10,6 +10,8 @@ const originalFetch = globalThis.fetch
 let groups: Array<{ id: string; name: string; brief: string | null; color?: string | null }> = []
 let tags: Record<string, string[]> = {}
 let calls: Array<{ method: string; url: string; body: unknown }> = []
+/** When set, membership saves wait on it; resolve with `false` to refuse the save. */
+let holdPut: Promise<boolean> | null = null
 
 beforeEach(() => {
   setApiBaseUrl('')
@@ -19,6 +21,7 @@ beforeEach(() => {
   ]
   tags = { '/repo/web': ['g-acme'], '/repo/api': ['g-acme', 'g-shared'], '/repo/docs': [] }
   calls = []
+  holdPut = null
   globalThis.fetch = mock(async (input: unknown, rawInit: unknown) => {
     const init = rawInit as RequestInit | undefined
     const url = String(input)
@@ -33,6 +36,9 @@ beforeEach(() => {
       }))
     }
     if (url.endsWith('/agent/workspace/groups/members')) {
+      if (holdPut && !(await holdPut)) {
+        return new Response(JSON.stringify({ detail: 'Workspace is gone.' }), { status: 409 })
+      }
       tags[body.workspace] = body.group_ids
       return new Response(JSON.stringify(body))
     }
@@ -105,6 +111,40 @@ describe('WorkspaceGroupsSettings', () => {
     await user.click(screen.getByRole('button', { name: 'Remove api from acme' }))
     await waitFor(() => expect(puts()).toEqual([{ workspace: '/repo/api', group_ids: ['g-shared'] }]))
     await waitFor(() => expect(members('acme')).toEqual(['web']))
+  })
+
+  it('drops a removed workspace before the server answers', async () => {
+    let answer: (ok: boolean) => void = () => {}
+    holdPut = new Promise((resolve) => { answer = resolve })
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.click(screen.getByRole('button', { name: 'Remove api from acme' }))
+    await waitFor(() => expect(members('acme')).toEqual(['web']))
+    expect(tags['/repo/api']).toEqual(['g-acme', 'g-shared'])
+    await act(async () => { answer(true) })
+    await waitFor(() => expect(tags['/repo/api']).toEqual(['g-shared']))
+    expect(members('acme')).toEqual(['web'])
+  })
+
+  it('takes several membership changes in a row without waiting for each save', async () => {
+    let answer: (ok: boolean) => void = () => {}
+    holdPut = new Promise((resolve) => { answer = resolve })
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.click(screen.getByRole('button', { name: 'Remove api from acme' }))
+    await user.click(screen.getByRole('button', { name: 'Remove web from acme' }))
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Members of acme' })).toBeNull())
+    await act(async () => { answer(true) })
+    await waitFor(() => expect(tags).toEqual({ '/repo/web': [], '/repo/api': ['g-shared'], '/repo/docs': [] }))
+  })
+
+  it('puts a workspace back and says why when the server refuses the change', async () => {
+    holdPut = Promise.resolve(false)
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.click(screen.getByRole('button', { name: 'Remove api from acme' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('Workspace is gone.')
+    expect(members('acme')).toEqual(['web', 'api'])
   })
 
   it('creates a group in a suggested colour, without tagging any workspace', async () => {

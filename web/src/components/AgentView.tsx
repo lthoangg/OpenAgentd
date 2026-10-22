@@ -39,6 +39,7 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble, type OpenSessionHandler } from './AgentView/UserBubble'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
 import { ErrorCard } from './AgentView/ErrorCard'
+import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
 import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { copyText, useChatMenu } from './ChatContextMenu'
@@ -502,6 +503,8 @@ export function AgentView({
   // the manual jump's budget: every page it lands renders at once, as one
   // turn, before the reader asked for any of it.
   const hasMoreHistory = useAgentStore((s) => s.hasMore)
+  // A saved session that is still loading only looks empty.
+  const isLoadingHistory = useAgentStore((s) => s.isLoadingHistory)
   const hasLoadedPrompt = useMemo(
     () => turnItems.some((item) => item.kind === 'user' && isDirectUserBlock(item.block)),
     [turnItems],
@@ -856,7 +859,8 @@ export function AgentView({
         Code, tables and diagrams scroll inside their own boxes. */}
     <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
-        {isEmpty && (
+        {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
+        {isEmpty && !isLoadingHistory && (
            emptyState ?? (
              // Same weight as every other blank state (see `EmptyState`); the
              // Seal rides in the chip instead of as a 4xl hero.

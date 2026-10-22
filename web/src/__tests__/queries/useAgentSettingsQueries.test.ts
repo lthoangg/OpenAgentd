@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import React from 'react'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { queryKeys, useRegistryQuery } from '@/queries'
+import { queryKeys, useRegistryQuery, useUpdateAgentMutation } from '@/queries'
 import type { ProvidersListBody } from '@/api/client'
 
 function createWrapper(queryClient: QueryClient) {
@@ -14,6 +14,25 @@ const originalFetch = globalThis.fetch
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+})
+
+describe('useUpdateAgentMutation', () => {
+  it('shows the saved file at once instead of waiting for the refetch', async () => {
+    const saved = { name: 'helper', path: '/cfg/agents/helper.md', content: '---\nname: helper\n---\nnew' }
+    globalThis.fetch = mock(async (_input: unknown, init: unknown) =>
+      (init as RequestInit | undefined)?.method === 'PUT'
+        ? new Response(JSON.stringify(saved), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        // Refetches never answer, so only the save response can update the cache.
+        : new Promise<Response>(() => {}),
+    ) as typeof fetch
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    queryClient.setQueryData(queryKeys.agentFiles.detail('helper'), { ...saved, content: 'old' })
+
+    const { result } = renderHook(() => useUpdateAgentMutation('helper'), { wrapper: createWrapper(queryClient) })
+    await act(async () => { await result.current.mutateAsync({ content: saved.content }) })
+
+    expect(queryClient.getQueryData(queryKeys.agentFiles.detail('helper'))).toEqual(saved)
+  })
 })
 
 describe('useRegistryQuery', () => {

@@ -6,12 +6,14 @@ import { setApiBaseUrl } from '@/api/base-url'
 import {
   useActiveSessionsQuery,
   useAllSessionsQuery,
+  useDeleteSessionMutation,
   usePinnedSessionsQuery,
   useSessionSearchQuery,
   useSetSessionPinnedMutation,
   useUpdateSessionTitleMutation,
   useWorkspaceSessionsQuery,
 } from '@/queries/useSessionsQuery'
+import { renameSession } from '@/queries/session-rename'
 import { queryKeys } from '@/queries/keys'
 import { useAgentStore } from '@/stores/useAgentStore'
 
@@ -248,5 +250,118 @@ describe('useUpdateSessionTitleMutation', () => {
     await result.current.mutateAsync({ id: 'current', title: 'Renamed' })
 
     expect(useAgentStore.getState().sessionTitle).toBe('Renamed')
+  })
+
+  const page = (rows: Array<Record<string, unknown>>) => ({
+    pages: [{ data: rows, next_cursor: null, has_more: false }],
+    pageParams: [null],
+  })
+  const row = { id: 's1', title: 'Old', agent_name: 'lead', created_at: null, updated_at: null, workspace: '/repo' }
+  const titleIn = (client: QueryClient) =>
+    client.getQueryData<ReturnType<typeof page>>(queryKeys.session.sessions.workspace('/repo'))?.pages[0].data[0].title
+
+  it('shows the new title before the server answers', async () => {
+    setApiBaseUrl('')
+    let release: (value: Response) => void = () => {}
+    globalThis.fetch = mock(() => new Promise<Response>((resolve) => { release = resolve })) as unknown as typeof fetch
+    useAgentStore.setState({ sessionId: 's1', sessionTitle: 'Old' })
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page([row]))
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useUpdateSessionTitleMutation(), { wrapper })
+    act(() => { result.current.mutate({ id: 's1', title: 'New' }) })
+
+    await waitFor(() => expect(titleIn(client)).toBe('New'))
+    expect(useAgentStore.getState().sessionTitle).toBe('New')
+    release(new Response(JSON.stringify({ ...row, title: 'New' })))
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+
+  it('puts the old title back when the server refuses', async () => {
+    setApiBaseUrl('')
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ detail: 'nope' }), { status: 422 })) as unknown as typeof fetch
+    useAgentStore.setState({ sessionId: 's1', sessionTitle: 'Old' })
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page([row]))
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useUpdateSessionTitleMutation(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ id: 's1', title: 'New' }).catch(() => {})
+    })
+    expect(titleIn(client)).toBe('Old')
+    expect(useAgentStore.getState().sessionTitle).toBe('Old')
+  })
+
+  it('renames from the chat header at once, and rolls back on failure', async () => {
+    setApiBaseUrl('')
+    let fail: (value: Response) => void = () => {}
+    globalThis.fetch = mock(() => new Promise<Response>((resolve) => { fail = resolve })) as unknown as typeof fetch
+    useAgentStore.setState({ sessionId: 's1', sessionTitle: 'Old' })
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page([row]))
+
+    const pending = renameSession(client, 's1', 'New').catch(() => 'failed')
+    expect(titleIn(client)).toBe('New')
+    expect(useAgentStore.getState().sessionTitle).toBe('New')
+
+    fail(new Response(JSON.stringify({ detail: 'nope' }), { status: 422 }))
+    expect(await pending).toBe('failed')
+    expect(titleIn(client)).toBe('Old')
+    expect(useAgentStore.getState().sessionTitle).toBe('Old')
+  })
+})
+
+describe('useDeleteSessionMutation', () => {
+  const page = (rows: Array<Record<string, unknown>>) => ({
+    pages: [{ data: rows, next_cursor: null, has_more: false }],
+    pageParams: [null],
+  })
+  const rows = [
+    { id: 's1', title: 'Keep', agent_name: 'lead', created_at: null, updated_at: null, workspace: '/repo' },
+    { id: 's2', title: 'Drop', agent_name: 'lead', created_at: null, updated_at: null, workspace: '/repo' },
+  ]
+  const idsIn = (client: QueryClient) =>
+    client.getQueryData<ReturnType<typeof page>>(queryKeys.session.sessions.workspace('/repo'))?.pages[0].data.map((s) => s.id)
+
+  it('drops the row before the server answers, without refetching every list after', async () => {
+    setApiBaseUrl('')
+    let release: (value: Response) => void = () => {}
+    const fetchMock = mock(() => new Promise<Response>((resolve) => { release = resolve }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page(rows))
+    client.setQueryData(queryKeys.session.sessions.pinned(), page([{ ...rows[1], pinned_at: '2026-10-01T00:00:00Z' }]))
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useDeleteSessionMutation(), { wrapper })
+    act(() => { result.current.mutate('s2') })
+
+    await waitFor(() => expect(idsIn(client)).toEqual(['s1']))
+    expect(client.getQueryData<ReturnType<typeof page>>(queryKeys.session.sessions.pinned())?.pages[0].data).toEqual([])
+
+    release(new Response(null, { status: 204 }))
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // Only the DELETE: the lists are already right, so nothing re-reads them.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts the row back when the server refuses', async () => {
+    setApiBaseUrl('')
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ detail: 'nope' }), { status: 500 })) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page(rows))
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useDeleteSessionMutation(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync('s2').catch(() => {})
+    })
+    expect(idsIn(client)).toEqual(['s1', 's2'])
   })
 })

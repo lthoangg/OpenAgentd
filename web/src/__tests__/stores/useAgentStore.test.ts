@@ -17,6 +17,7 @@ const INITIAL = {
   _pendingMessages: [] as import('@/stores/useAgentStore').PendingMessage[],
   _sessionGeneration: 0,
   _runningPatchedFor: null,
+  isLoadingHistory: false,
   cacheInvalidations: [],
   _abortController: null,
   _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
@@ -243,6 +244,19 @@ describe("isEmptyIdleSession", () => {
       agentStreams: {
         lead: makeStream({ blocks: [{ id: "u1", type: "user" as const, content: "hello" }] }),
       },
+    });
+
+    expect(useAgentStore.getState().isEmptyIdleSession()).toBe(false);
+  });
+
+  it("returns false while the session's history is still loading", () => {
+    // Only looks empty: New session must still leave it.
+    useAgentStore.setState({
+      sessionId: "loading-sid",
+      isAgentWorking: false,
+      isLoadingHistory: true,
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
     });
 
     expect(useAgentStore.getState().isEmptyIdleSession()).toBe(false);

@@ -202,9 +202,9 @@ function SaveBar({ draft }: { draft: DraftControls }) {
  * Shape-matched skeleton rather than a spinner, so the layout does not shift
  * when the real sections land.
  */
-function SettingsSkeleton() {
+export function SettingsSkeleton({ label = 'Loading settings' }: { label?: string }) {
   return (
-    <div className="space-y-8" role="status" aria-label="Loading settings">
+    <div className="space-y-8" role="status" aria-label={label}>
       {[0, 1].map((i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="h-3 w-32" />

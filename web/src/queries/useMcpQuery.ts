@@ -70,11 +70,41 @@ export function useUpdateMcpServerMutation() {
   return useMutation({
     mutationFn: ({ name, server }: { name: string; server: ServerBody }) =>
       updateMcpServer(name, server),
-    onSuccess: (_data, { name }) => {
+    // The list shows the saved config at once (a switch flips in the same
+    // frame); a refused save puts the previous list back.
+    onMutate: async ({ name, server }) => {
+      await client.cancelQueries({ queryKey: queryKeys.mcp.list() })
+      const previous = client.getQueryData<{ servers: ServerStatus[] }>(queryKeys.mcp.list())
+      patchListedServer(client, name, (s) => ({
+        ...s,
+        config: server,
+        enabled: server.enabled,
+        // Enabling starts the server; show that rather than its old `stopped`.
+        ...(server.enabled && !s.enabled ? { state: 'starting' as const, error: null } : {}),
+      }))
+      return { previous }
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.mcp.list(), context.previous)
+    },
+    onSuccess: (data, { name }) => {
+      // The editor compares its draft against this; writing the answer now
+      // keeps a just-saved form from reading as dirty until the refetch.
+      client.setQueryData(queryKeys.mcp.detail(name), data)
+      patchListedServer(client, name, () => data)
       invalidateAll(client)
-      client.invalidateQueries({ queryKey: queryKeys.mcp.detail(name) })
     },
   })
+}
+
+function patchListedServer(
+  client: ReturnType<typeof useQueryClient>,
+  name: string,
+  patch: (server: ServerStatus) => ServerStatus,
+) {
+  client.setQueryData<{ servers: ServerStatus[] }>(queryKeys.mcp.list(), (old) =>
+    old && { ...old, servers: old.servers.map((s) => (s.name === name ? patch(s) : s)) },
+  )
 }
 
 export function useDeleteMcpServerMutation() {

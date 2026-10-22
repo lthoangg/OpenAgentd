@@ -660,6 +660,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     session switches change without motion.
   - With Reduce Motion on, everything stills; spinners keep turning, slowly,
     and progress bars keep filling.
+- **Actions answer at once** `[v3.25.0]` — no more waiting on the server to
+  see what you did:
+  - Renaming or deleting a session shows everywhere immediately; if the server
+    refuses, the old title or the row comes back with a message.
+  - The sidebar's session lists and the agent, skill and MCP server pages hold
+    placeholder rows while they load, so nothing jumps when they fill.
+  - MCP server switches and workspace group memberships flip on click, and
+    several group changes in a row each build on the last.
+  - Opening a saved session shows a loading transcript instead of the empty
+    new-session screen, and New session works while it loads.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was

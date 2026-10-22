@@ -658,6 +658,10 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
 - **The transcript holds still.** While you read history, the scroller anchors
   to the first visible block, and images reserve their box before they load.
   Following the stream, it writes at most one scroll per frame.
+- **Loading placeholders wait a beat.** Skeletons match the geometry of what
+  replaces them, and fade in after `fast` (`oa-fade-in-late`), so a fast load
+  never flashes one. A saved session shows a transcript skeleton, not the
+  empty state, until its history lands.
 - **Automated titles are revealed, manual ones are not.** A `title_update` from
   the agent lifts the old title out over `base` and wipes the new one in left
   to right over `glacial` (`ease-out`, after an `instant` beat). Its sidebar row

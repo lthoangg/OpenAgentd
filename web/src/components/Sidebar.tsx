@@ -822,7 +822,10 @@ export function Sidebar({
       deleteTarget,
       currentSessionId,
       workspaceSessions,
-      mutateDelete: deleteSession.mutate,
+      // The row leaves at once; a refusal brings it back with this toast.
+      mutateDelete: (target) => deleteSession.mutate(target, {
+        onError: () => pushToast({ tone: 'error', title: 'Could not delete session' }),
+      }),
       navigate,
     })
     setDeleteTarget(null)

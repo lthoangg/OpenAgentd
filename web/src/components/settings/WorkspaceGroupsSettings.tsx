@@ -313,7 +313,6 @@ export function WorkspaceGroupsSettings() {
                             <button
                               type="button"
                               aria-label={`Remove ${repo.name} from ${group.name}`}
-                              disabled={setGroups.isPending}
                               onClick={() => setMember(group, repo.path, false)}
                               className="inline-flex size-5 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-7"
                             >
@@ -328,7 +327,6 @@ export function WorkspaceGroupsSettings() {
                         trigger={<><Plus size={ICON_SIZE_INLINE} aria-hidden="true" />Add workspace</>}
                         aria-label={`Add a workspace to ${group.name}`}
                         className="h-7 border-dashed px-2.5 text-xs text-(--color-text-muted)"
-                        disabled={setGroups.isPending}
                       >
                         {others.map((repo) => (
                           <DropdownItem key={repo.path} title={repo.path} onSelect={() => setMember(group, repo.path, true)}>

@@ -133,6 +133,42 @@ describe('SessionMcpServers', () => {
     expect(body!.server!.enabled).toBe(false)
   })
 
+  it('flips the switch as soon as it is pressed, before the server answers', async () => {
+    mockServerList([makeServer({ name: 'github', enabled: true })])
+    server.use(
+      http.put('http://localhost/api/mcp/servers/github', async () => {
+        await delay('infinite')
+        return HttpResponse.json(makeServer({ name: 'github', enabled: false }))
+      }),
+    )
+
+    renderSection({ agentServers: ['github'] })
+
+    await waitFor(() => row('github'))
+    await userEvent.click(within(row('github')).getByRole('switch'))
+
+    await waitFor(() => expect(within(row('github')).getByRole('switch').getAttribute('aria-checked')).toBe('false'))
+    expect(within(row('github')).getByText(/disabled/i)).toBeTruthy()
+    expect(row('github').getAttribute('aria-busy')).toBe('true')
+  })
+
+  it('puts the switch back when the server refuses the change', async () => {
+    mockServerList([makeServer({ name: 'github', enabled: true })])
+    server.use(
+      http.put('http://localhost/api/mcp/servers/github', () =>
+        HttpResponse.json({ detail: 'mcp.json is read-only' }, { status: 500 }),
+      ),
+    )
+
+    renderSection({ agentServers: ['github'] })
+
+    await waitFor(() => row('github'))
+    await userEvent.click(within(row('github')).getByRole('switch'))
+
+    await waitFor(() => expect(row('github').getAttribute('aria-busy')).toBeNull())
+    expect(within(row('github')).getByRole('switch').getAttribute('aria-checked')).toBe('true')
+  })
+
   it('offers OAuth connect on every HTTP server configured for it', async () => {
     // Not only `auth_required`: re-authorizing a server that is already ready,
     // or retrying one that failed, are both things you do on demand.

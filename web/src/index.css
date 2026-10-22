@@ -1199,6 +1199,11 @@ html[data-app-hidden="true"] *::after {
 .oa-fade-in {
   animation: oa-fade-in var(--motion-base) var(--ease-out) backwards;
 }
+/* Loading placeholders: hidden for a beat first, so a fast load never
+ * flashes one. Reduced motion keeps the beat and drops the fade. */
+.oa-fade-in-late {
+  animation: oa-fade-in var(--motion-base) var(--ease-out) var(--motion-fast) backwards;
+}
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }
 

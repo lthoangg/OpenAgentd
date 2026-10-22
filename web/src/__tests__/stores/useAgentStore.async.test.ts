@@ -96,6 +96,7 @@ const INITIAL_STATE = {
   _sessionGeneration: 0,
   hasMore: false,
   nextCursor: null,
+  isLoadingHistory: false,
   _leadRevertTime: null,
   _workspace: null,
   _loadingOlder: false,
@@ -2934,6 +2935,73 @@ describe("loadSession", () => {
     const allBlocks = [...leadStream.blocks, ...leadStream.currentBlocks]
     expect(allBlocks.some((b) => b.type === "tool" && b.toolCallId === "call_1")).toBe(true)
     expect(allBlocks.some((b) => b.type === "text" && b.content === "Running tests...")).toBe(true)
+  })
+})
+
+// ── Opening another session: its history is on the way ──────────────────────
+
+describe("isLoadingHistory", () => {
+  const emptyHistory = {
+    lead: { id: "session-b", agent_name: "lead", title: "B", created_at: null, updated_at: null, sub_sessions: [], messages: [] },
+    members: [],
+    has_more: false,
+    next_cursor: null,
+  }
+
+  it("is set from opening another session until its history arrives", async () => {
+    let resolveHistory!: (v: unknown) => void
+    mockSessionHistory.mockImplementation(() => new Promise((res) => { resolveHistory = res }))
+    useAgentStore.setState({ sessionId: "session-a", leadName: "lead", agentStreams: { lead: makeStream() } })
+
+    useAgentStore.getState().beginResolvedSession("session-b", { workspace: "/repo" })
+    expect(useAgentStore.getState().isLoadingHistory).toBe(true)
+
+    const loading = useAgentStore.getState().loadSession("session-b", "/repo")
+    expect(useAgentStore.getState().isLoadingHistory).toBe(true)
+    resolveHistory(emptyHistory)
+    await loading
+
+    // An empty session is now known to be empty.
+    expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+  })
+
+  it("is cleared when the history fails to load", async () => {
+    mockSessionHistory.mockImplementation(() => Promise.reject(new Error("offline")))
+    useAgentStore.getState().beginResolvedSession("session-b", { workspace: "/repo" })
+
+    await useAgentStore.getState().loadSession("session-b", "/repo")
+
+    expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+    expect(useAgentStore.getState().error).toBe("offline")
+  })
+
+  it("is never set for a session created here, which has no history to wait for", () => {
+    useAgentStore.getState().beginResolvedSession("session-new", { workspace: "/repo", skipInitialRestore: true })
+    expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+  })
+
+  it("is never set for a draft", () => {
+    useAgentStore.getState().beginResolvedSession("session-b", { workspace: "/repo" })
+    useAgentStore.getState().newSession()
+    expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+  })
+
+  it("loads afresh after leaving a session and coming back while its first load was out", async () => {
+    const pending: Array<(v: unknown) => void> = []
+    mockSessionHistory.mockImplementation(() => new Promise((res) => { pending.push(res) }))
+
+    useAgentStore.getState().beginResolvedSession("session-b", { workspace: "/repo" })
+    const first = useAgentStore.getState().loadSession("session-b", "/repo")
+    useAgentStore.getState().beginResolvedSession("session-a", { workspace: "/repo" })
+    useAgentStore.getState().beginResolvedSession("session-b", { workspace: "/repo" })
+    const second = useAgentStore.getState().loadSession("session-b", "/repo")
+
+    // The first answer belongs to a visit that is over, so it cannot count.
+    expect(pending).toHaveLength(2)
+    pending.forEach((resolve) => resolve(emptyHistory))
+    await Promise.all([first, second])
+    expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+    expect(useAgentStore.getState().sessionTitle).toBe("B")
   })
 })
 

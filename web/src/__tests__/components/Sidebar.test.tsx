@@ -2186,7 +2186,7 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(screen.getByLabelText('Delete session Delete me'))
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
     expect(navigate).toHaveBeenCalledWith({
       to: '/$sessionId',
       params: { sessionId: 'session-2' },
@@ -2219,7 +2219,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 

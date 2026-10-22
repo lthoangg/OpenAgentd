@@ -75,10 +75,40 @@ export function useDeleteWorkspaceGroupMutation() {
   })
 }
 
+const SET_GROUPS_KEY = ['set-workspace-groups'] as const
+
+/**
+ * Membership changes show at once and save one after another, so several
+ * toggles in a row each build on the last. A refused save puts the tree back
+ * as it was before that change.
+ */
 export function useSetWorkspaceGroupsMutation() {
-  const onSuccess = useRefreshTree()
+  const queryClient = useQueryClient()
+  const key = queryKeys.coding.tree()
   return useMutation({
+    mutationKey: SET_GROUPS_KEY,
+    scope: { id: SET_GROUPS_KEY[0] },
     mutationFn: ({ workspace, groupIds }: { workspace: string; groupIds: string[] }) => setWorkspaceGroups(workspace, groupIds),
-    onSuccess,
+    onMutate: async ({ workspace, groupIds }) => {
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<CodingWorkspaceTreeResponse>(key)
+      queryClient.setQueryData<CodingWorkspaceTreeResponse>(key, (tree) =>
+        tree && {
+          ...tree,
+          repositories: tree.repositories.map((repo) => (repo.path === workspace ? { ...repo, group_ids: groupIds } : repo)),
+        },
+      )
+      return { previous }
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous)
+    },
+    // Refetch once the last queued change lands; an earlier refetch would
+    // briefly undo the changes still waiting to save.
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey: SET_GROUPS_KEY }) === 1) {
+        return queryClient.invalidateQueries({ queryKey: key })
+      }
+    },
   })
 }

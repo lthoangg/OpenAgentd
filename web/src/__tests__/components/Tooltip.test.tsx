@@ -43,6 +43,13 @@ describe('Tooltip', () => {
     await waitFor(() => {
       expect(screen.queryByText('Help text')).toBeInTheDocument()
     })
+
+    // `duration-*` also sets `transition-duration`; with the default
+    // `transition-property: all` the first placement (from 0,0) would slide
+    // in from the window's top edge. Only the animation may be timed.
+    const content = screen.getByRole('tooltip')
+    expect(content.className).toContain('animation-duration-(--motion-fast)')
+    expect(content.className).not.toMatch(/(?<![\w-])duration-\(/)
   })
 
   it('does NOT render tooltip on mobile', async () => {

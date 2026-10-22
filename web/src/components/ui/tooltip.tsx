@@ -337,8 +337,8 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
         // never flashes at (0, 0) before `reposition()` places it.
         !coords && 'invisible',
         closing
-          ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-fast)'
-          : `animate-in fade-in-0 zoom-in-95 duration-(--motion-fast) ${slideIn}`,
+          ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
+          : `animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast) ${slideIn}`,
         className,
       )}
       style={{ top: coords?.top ?? 0, left: coords?.left ?? 0 }}

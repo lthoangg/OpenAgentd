@@ -119,6 +119,13 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'animate-with-transition-duration',
+    // A line that names a transition (transition-colors, …) may also time it.
+    why: 'time tw-animate-css with animation-duration-(--motion-*); duration-* also sets transition-duration, which with no transition-* class animates every property (a tooltip slides in from 0,0)',
+    pattern: /^(?!.*(?<![\w:-])transition(?![\w]))(?=.*(?<![\w-])animate-(?:in|out)(?![\w-])).*(?<![\w-])duration-\(/g,
+    allow: {},
+  },
+  {
     name: 'raw-ease-class',
     why: 'Tailwind\'s ease-in/out curves are not ours; write ease-(--ease-out) or ease-(--ease-in-out)',
     pattern: /(?<![\w(-])ease-(?:in|out|in-out|linear)(?![\w)-])/g,

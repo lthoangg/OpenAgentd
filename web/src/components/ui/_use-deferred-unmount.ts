@@ -8,7 +8,7 @@
  * Usage:
  *   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
  *   if (!mounted) return null
- *   <div className={closing ? 'animate-out duration-(--motion-fast) ...' : 'animate-in ...'} />
+ *   <div className={closing ? 'animate-out animation-duration-(--motion-fast) ...' : 'animate-in ...'} />
  *
  * The duration (ms) must match the CSS animation duration, so pass a motion
  * token (design lint rejects a bare number).

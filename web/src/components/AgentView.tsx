@@ -380,6 +380,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             durationMs={block.durationMs}
             startedAt={block.startedAt}
             toolCallId={block.toolCallId}
+            isCurrentStep={isStreaming}
           />
           {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
@@ -592,6 +593,7 @@ export function AgentView({
     contentRef,
     anchorRef,
     attachedRef,
+    syncAnchor,
     showScrollBtn,
     scrollToBottom,
   } = useAutoFollowScroll({
@@ -641,13 +643,19 @@ export function AgentView({
         pending: 0,
       }
       viewHoldRef.current = hold
+      // The hold shifts the view itself; native anchoring (on while reading,
+      // index.css) would shift it a second time.
+      if (root) root.dataset.viewHold = ''
     }
     hold.pending += 1
     const held = hold
     // By the next frame every commit the reveal or load caused has run.
     return () => requestAnimationFrame(() => {
       held.pending -= 1
-      if (held.pending === 0 && viewHoldRef.current === held) viewHoldRef.current = null
+      if (held.pending === 0 && viewHoldRef.current === held) {
+        viewHoldRef.current = null
+        delete scrollRef.current?.dataset.viewHold
+      }
     })
   }, [scrollRef, sessionId])
 
@@ -687,11 +695,12 @@ export function AgentView({
     // Past a couple of screens a smooth scroll only paints the turns in between.
     const smooth = Math.abs(distance) <= 2 * view.height && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     attachedRef.current = false
+    syncAnchor()
     root.scrollTo({ top: root.scrollTop + distance, behavior: smooth ? 'smooth' : 'auto' })
     pendingJumpRef.current = prompt.dataset.promptId
       ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
       : null
-  }, [attachedRef, scrollRef])
+  }, [attachedRef, scrollRef, syncAnchor])
 
   /** Start a jump that lands once a reveal or load renders its turns; call the result when that has settled. */
   const beginPromptJump = useCallback((targetId: string | null) => {
@@ -740,6 +749,7 @@ export function AgentView({
     if (!hold || !root) return
     if (hold.sessionId !== sessionId) {
       viewHoldRef.current = null
+      delete root.dataset.viewHold
       promptJumpRef.current = null
       return
     }

@@ -184,6 +184,34 @@ describe("ToolCall — shell display", () => {
     expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
   })
 
+  // Output the reader was watching should not vanish the moment the tool
+  // finishes: the row stays open while it is still the turn's latest step,
+  // and folds once the next step starts.
+  it("stays open after the result while it is still the latest step, then folds", () => {
+    const args = JSON.stringify({ command: "printf live" })
+    const { rerender } = render(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"live-output\n"} isCurrentStep />,
+    )
+    const toggle = () => screen.getAllByRole("button")[0]
+    expect(toggle().getAttribute("aria-expanded")).toBe("true")
+
+    rerender(
+      <ToolCall name="shell" args={args} done liveOutput={"live-output\n"} result={"[Succeeded]\n\nfinal-output\n"} isCurrentStep />,
+    )
+    expect(toggle().getAttribute("aria-expanded")).toBe("true")
+
+    rerender(
+      <ToolCall name="shell" args={args} done liveOutput={"live-output\n"} result={"[Succeeded]\n\nfinal-output\n"} isCurrentStep={false} />,
+    )
+    expect(toggle().getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("does not open a finished tool that never showed live output", () => {
+    const args = JSON.stringify({ command: "true" })
+    render(<ToolCall name="shell" args={args} done result={"[Succeeded]\n"} isCurrentStep />)
+    expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
+  })
+
   it("renders the latest live shell tail and scrolls on each update", () => {
     const args = JSON.stringify({ command: "printf live" })
     const { rerender } = render(

@@ -293,6 +293,27 @@ describe("AgentView — earlier turns landing above the view", () => {
     expect(el.scrollTop).toBe(550)
   })
 
+  // The hold compensates for the page itself; native anchoring (on while
+  // reading) would shift the view a second time, so it pauses for the hold.
+  it("pauses native anchoring while a page loads above the reader", async () => {
+    storeState.hasMore = true
+    storeState.nextCursor = "cursor-1"
+    const blocks = makeTurns(3)
+    const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const el = getScrollEl(container)
+    let holdDuringLoad: string | undefined
+    mockLoadOlderMessages.mockImplementation(async () => {
+      holdDuringLoad = el.dataset.viewHold
+      rerender(<AgentView blocks={[...makeTurns(2, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
+    })
+
+    await readAt(el, 150)
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
+
+    expect(holdDuringLoad).toBe("")
+    expect(el.dataset.viewHold).toBeUndefined()
+  })
+
   it("keeps the view where the reader was when they show earlier turns", async () => {
     // 45 turns are 90 items; the 80 rendered leave 10 items (10 blocks) hidden.
     const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)

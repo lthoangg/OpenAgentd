@@ -70,4 +70,15 @@ describe('MarkdownBlock — chunked streaming', () => {
     act(() => rerender(<MarkdownBlock content={text} sessionId="s1" isStreaming={false} />))
     expect(container.querySelector('pre')).toBe(firstPre)
   })
+
+  // A settled chunk is final, so its code is highlighted as it settles rather
+  // than every block at once when the stream ends (a visible hitch on long
+  // answers). Only the live tail stays plain while it is still being written.
+  it('highlights code in settled chunks while the stream is still running', () => {
+    const text = longAnswer(30)
+    const { container } = streamInto(text.slice(0, Math.floor(text.length * 0.8)), 70)
+    const firstPre = container.querySelector('pre')
+    expect(firstPre).not.toBeNull()
+    expect(firstPre!.querySelector('.th-token')).not.toBeNull()
+  })
 })

@@ -635,6 +635,16 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Scroll position per session** `[v3.5.0]` — leave a session scrolled up and
   come back to it, and the transcript opens where you were reading; a session
   you left at the bottom keeps following new output. Kept while the app runs.
+- **A steady transcript while you read** `[v3.25.0]` — scroll up while the
+  agent works and the text you are reading holds still:
+  - Images, math, diagrams and highlighted code that finish loading above the
+    view no longer push it down; the browser anchors to the block you are on.
+  - Images in replies and attachments hold their space before they load, at
+    their exact size once seen.
+  - Code in a long answer is highlighted as each part finishes, not all at
+    once when the answer ends.
+  - A tool whose live output you were watching stays open when it finishes,
+    until the next step starts.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was

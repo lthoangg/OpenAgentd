@@ -15,6 +15,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
+import { cn } from '@/lib/utils'
+import { useImageBox } from '@/lib/image-size'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
 import { FileRefCode, MarkdownLink } from '@/components/FileRefLink'
@@ -390,6 +392,7 @@ function MarkdownImage({
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [errored, setErrored] = useState(false)
+  const box = useImageBox(src)
   const fileName = extractFileName(rawSrc, src)
 
   if (!src || errored) {
@@ -432,8 +435,19 @@ function MarkdownImage({
           title={title}
           loading="lazy"
           decoding="async"
+          width={box.width}
+          height={box.height}
+          // A remembered size reserves the exact box ``max-w-full`` /
+          // ``max-h-[80vh]`` would give the loaded image; a first load holds
+          // a placeholder instead of collapsing to 0px.
+          style={box.width && box.height ? { maxWidth: `min(100%, calc(80vh * ${box.width / box.height}))` } : undefined}
+          data-pending={box.pending ? '' : undefined}
+          onLoad={box.onLoad}
           onError={() => setErrored(true)}
-          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-sm border border-(--color-border) transition-opacity hover:opacity-90"
+          className={cn(
+            'h-auto max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-sm border border-(--color-border) transition-opacity hover:opacity-90',
+            box.pending && 'min-h-32 min-w-48 bg-(--bg-key)',
+          )}
         />
       </button>
       {fileName && (
@@ -645,7 +659,9 @@ export const MarkdownBlock = memo(function MarkdownBlock({
       <MarkdownSessionContext.Provider value={sessionId}>
         <div className="oa-prose text-sm">
           {chunks ? (
-            chunks.map((c, index) => <MarkdownChunkView key={index} doc={c.doc} />)
+            chunks.map((c, index) => (
+              <MarkdownChunkView key={index} doc={c.doc} live={isStreaming && index === chunks.length - 1} />
+            ))
           ) : (
             <Markdown
               extensions={_EXTENSIONS}
@@ -662,11 +678,20 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   )
 })
 
-/** One parsed chunk. Settled chunks keep their document, so they skip render. */
-const MarkdownChunkView = memo(function MarkdownChunkView({ doc }: { doc: ReturnType<typeof parseMarkdown> }) {
+/**
+ * One parsed chunk. Settled chunks keep their document, so they skip render.
+ * Only the live tail is still being written: a settled chunk renders as
+ * finished (highlighted code, drawn diagrams) the moment it settles, rather
+ * than every block waiting for the stream to end and landing in one commit.
+ */
+const MarkdownChunkView = memo(function MarkdownChunkView({ doc, live }: { doc: ReturnType<typeof parseMarkdown>; live: boolean }) {
   // Extensions only act while parsing; rendering a parsed document needs
   // just the component map.
-  return <Markdown components={MARKDOWN_COMPONENTS}>{doc}</Markdown>
+  return (
+    <MarkdownStreamingContext.Provider value={live}>
+      <Markdown components={MARKDOWN_COMPONENTS}>{doc}</Markdown>
+    </MarkdownStreamingContext.Provider>
+  )
 })
 
 // The renderer creates each ``components`` entry as a component type, so the

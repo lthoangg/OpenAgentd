@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { SessionResponse } from '@/api/types'
 import { FlatSessionGroups } from '@/components/Sidebar/FlatSessionGroups'
@@ -118,8 +119,16 @@ describe('FlatSessionGroups', () => {
   it('folds a group and remembers it per view', () => {
     setup({ groupBy: 'date', all: [session('s-today', 'Today work', '/repo/web', 0)] })
 
-    fireEvent.click(screen.getByRole('button', { name: /Today/, expanded: true }))
-    expect(screen.queryByText('Today work')).toBeNull()
+    const timers = useFakeTimers()
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /Today/, expanded: true }))
+      // Out of reach at once; gone once the fold has finished closing.
+      expect(screen.getByText('Today work').closest('[inert]')).not.toBeNull()
+      act(() => timers.tick(300))
+      expect(screen.queryByText('Today work')).toBeNull()
+    } finally {
+      timers.restore()
+    }
     expect(useSidebarViewStore.getState().collapsedGroups).toContain('date:today')
   })
 

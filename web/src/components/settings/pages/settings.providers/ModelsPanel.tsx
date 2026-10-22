@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, ChevronDown, Copy, EyeOff, Loader2 } from 'lucide-react'
+import { Collapsible } from '@/components/ui/collapsible'
 import type { ModelCostInfo } from '@/api/client'
 import { SearchBar } from '@/components/ui/search-bar'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
@@ -142,7 +143,7 @@ export function ModelsPanel({
       </button>
 
       {/* Expanded body */}
-      {expanded && (
+      <Collapsible open={expanded}>
         <div className="space-y-2 p-2 sm:p-2.5">
           <SearchBar
             value={search}
@@ -186,7 +187,7 @@ export function ModelsPanel({
             )}
           </ul>
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

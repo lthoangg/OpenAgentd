@@ -68,19 +68,20 @@ export function summarizeTodos(todos: TodoItem[]): TodoSummary {
 export function TaskProgressBar({ summary }: { summary: TodoSummary }) {
   return (
     <div
-      className="h-px w-full shrink-0 bg-(--color-border-subtle)"
+      className="h-px w-full shrink-0 overflow-hidden bg-(--color-border-subtle)"
       role="progressbar"
       aria-valuenow={summary.progressPct}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label="Task completion"
     >
+      {/* Slides in from the left rather than widening, so no layout runs per frame. */}
       <div
         className={cn(
-          'h-full transition-[width] duration-(--motion-base) ease-out',
+          'h-full w-full transition-transform duration-(--motion-base) ease-(--ease-out)',
           summary.allDone ? 'bg-(--color-success)' : 'bg-(--color-info)',
         )}
-        style={{ width: `${summary.progressPct}%` }}
+        style={{ translate: `${summary.progressPct - 100}% 0` }}
       />
     </div>
   )

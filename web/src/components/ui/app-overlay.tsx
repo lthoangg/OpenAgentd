@@ -248,7 +248,7 @@ export function AppOverlay({
             animate={panelVariants.visible}
             exit={panelVariants.exit}
             transition={{
-              duration: reduced ? 0.01 : 0.18,
+              duration: reduced ? 0.01 : DURATIONS_S.fast,
               ease: EASINGS.inOut,
             }}
             className={[

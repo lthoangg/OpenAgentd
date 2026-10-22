@@ -276,7 +276,14 @@ export function ModelCombobox({
               width: anchorRect.width,
               ...(placement && placement.maxHeight < LIST_MAX_HEIGHT ? { maxHeight: placement.maxHeight } : null),
             }}
-            className={cn('z-50 max-h-64 overflow-y-auto overscroll-contain', MENU_PANEL_CLASS)}
+            className={cn(
+              'z-50 max-h-64 overflow-y-auto overscroll-contain',
+              MENU_PANEL_CLASS,
+              // DESIGN.md → Motion: grows out of the field like Dropdown. It
+              // closes at once: a pick or a blur should feel immediate.
+              'animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)',
+              placement?.above ? 'origin-bottom' : 'origin-top',
+            )}
           >
             {filtered.length === 0 ? (
               <li className="px-3 py-3 text-center text-xs text-(--color-text-muted)">

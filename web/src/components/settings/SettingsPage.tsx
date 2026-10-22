@@ -27,7 +27,7 @@ import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
 import { settingsRoot } from '@/components/settings/settings-root'
 import { useShortcut } from '@/lib/keyboard/hooks'
-import { EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 interface SettingsPageProps {
   /** Page title (the page's only `h1`). */
@@ -160,7 +160,7 @@ function SaveBar({ draft }: { draft: DraftControls }) {
           initial={slide.initial}
           animate={slide.animate}
           exit={slide.exit}
-          transition={{ duration: prefersReducedMotion ? 0 : 0.16, ease: EASINGS.out }}
+          transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
           className={cn(
             'sticky bottom-0 z-20 flex shrink-0 items-center gap-3',
             'border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 md:px-8',

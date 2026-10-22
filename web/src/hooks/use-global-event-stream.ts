@@ -10,6 +10,7 @@ import { appendSubagent, bumpSessionActivity, patchSessionRunning, patchSessionT
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { markAutoTitle } from '@/lib/auto-title'
 
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
@@ -161,6 +162,9 @@ export async function handleGlobalEvent(
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
     const title = typeof event.title === 'string' ? event.title : null
     if (!sessionId || title === null) return false
+    // Before the title reaches any view, so the header and sidebar row can
+    // tell it landed from the server and animate it in.
+    markAutoTitle(sessionId, title)
     if (useAgentStore.getState().sessionId === sessionId) useAgentStore.setState({ sessionTitle: title })
     patchSessionTitle(queryClient, sessionId, title)
     return true

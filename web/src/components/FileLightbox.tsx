@@ -78,7 +78,7 @@ const SWIPE_NAV_THRESHOLD = 56
 const SWIPE_CLOSE_THRESHOLD = 80
 
 /** CSS easing for the gallery slide. */
-const SLIDE_EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+const SLIDE_EASE = 'var(--ease-out)'
 
 // ─── Download helper ──────────────────────────────────────────────────────────
 
@@ -516,7 +516,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
       return
     }
     if (slideRef.current) {
-      slideRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
+      slideRef.current.style.transition = `transform var(--motion-base) ${SLIDE_EASE}`
       slideRef.current.style.transform = 'translate3d(0,0,0)'
       slideRef.current.addEventListener('transitionend', () => {
         if (slideRef.current) slideRef.current.style.transition = ''
@@ -536,7 +536,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
       ref={overlayRef}
       className="mobile-safe-overlay fixed inset-0 z-50 flex select-none flex-col bg-black/80"
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
-      style={{ opacity: 0, transition: 'opacity 150ms ease-out' }}
+      style={{ opacity: 0, transition: 'opacity var(--motion-fast) var(--ease-out)' }}
       onClick={closeLightbox}
       role="dialog"
       aria-modal="true"
@@ -659,7 +659,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
                     key={i}
                     type="button"
                     onClick={(e) => { e.stopPropagation(); goTo(i) }}
-                    className={`h-1.5 rounded-full transition-all duration-(--motion-base) ${
+                    className={`h-1.5 rounded-full transition-[width,background-color] duration-(--motion-base) ease-(--ease-out) ${
                       i === current
                         ? 'w-4 bg-(--color-text)'
                         : 'w-1.5 bg-(--color-text-muted)/50 hover:bg-(--color-text-muted)'

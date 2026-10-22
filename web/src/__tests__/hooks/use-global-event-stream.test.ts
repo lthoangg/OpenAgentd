@@ -20,6 +20,7 @@ import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { isFreshAutoTitle } from '@/lib/auto-title'
 
 const INITIAL = {
   sessionId: null as string | null,
@@ -533,6 +534,8 @@ describe('handleGlobalEvent', () => {
     expect(useAgentStore.getState().sessionTitle).toBe('New')
     expect(client.getQueryData(queryKeys.session.sessions.detail('current'))).toEqual({ id: 'current', title: 'New' })
     expect(connectStream).not.toHaveBeenCalled()
+    // The header and sidebar animate it in because it came from the server.
+    expect(isFreshAutoTitle('current', 'New')).toBe(true)
   })
 
   it('patches subagent running state and invalidates subagents on subagent_status', async () => {

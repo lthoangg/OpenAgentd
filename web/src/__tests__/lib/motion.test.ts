@@ -56,6 +56,7 @@ describe('lib/motion — parity with the index.css token block', () => {
     expect(DURATIONS_S.base).toBeCloseTo(cssMs('motion-base') / 1000, 5)
     expect(DURATIONS_S.slow).toBeCloseTo(cssMs('motion-slow') / 1000, 5)
     expect(DURATIONS_S.glacial).toBeCloseTo(cssMs('motion-glacial') / 1000, 5)
+    expect(DURATIONS_S.linger).toBeCloseTo(cssMs('motion-linger') / 1000, 5)
   })
 
   it('exposes every cubic-bezier easing with the same control points', () => {
@@ -65,6 +66,7 @@ describe('lib/motion — parity with the index.css token block', () => {
     expect(EASINGS.springSnappy).toEqual(
       cssBezier('ease-spring-snappy') as typeof EASINGS.springSnappy,
     )
+    expect(EASINGS.sheet).toEqual(cssBezier('ease-sheet') as typeof EASINGS.sheet)
   })
 
   it('covers every --motion-* duration token defined in CSS', () => {

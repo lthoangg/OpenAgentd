@@ -28,6 +28,7 @@ import {
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DURATIONS_S } from '@/lib/motion'
 import { Button } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { useModalFocus } from '@/hooks/useModalFocus'
@@ -101,8 +102,8 @@ function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'
       className={cn(
         'fixed inset-0 z-50 bg-(--color-overlay)',
         closing
-          ? 'animate-out fade-out-0 duration-100'
-          : 'animate-in fade-in-0 duration-100',
+          ? 'animate-out fade-out-0 duration-(--motion-fast)'
+          : 'animate-in fade-in-0 duration-(--motion-fast)',
         className,
       )}
       onClick={() => setOpen(false)}
@@ -154,7 +155,8 @@ const DialogPaddingContext = createContext<keyof typeof DIALOG_PADDING>('default
 
 function DialogContent({ className, children, showCloseButton = true, size = 'sm', padding = 'default', ...props }: DialogContentProps) {
   const { open, setOpen, titleId } = useDialog()
-  const { mounted, closing } = useDeferredUnmount(open, 100)
+  // Unmount when the exit animation (`duration-(--motion-fast)`) ends.
+  const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useModalFocus(open && mounted, () => setOpen(false))
@@ -185,8 +187,8 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
           DIALOG_PADDING[padding],
           'text-sm text-(--color-text) shadow-(--shadow-depth) outline-none',
           closing
-            ? 'animate-out fade-out-0 zoom-out-95 duration-100'
-            : 'animate-in fade-in-0 zoom-in-95 duration-100',
+            ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-fast)'
+            : 'animate-in fade-in-0 zoom-in-95 duration-(--motion-fast)',
           className,
         )}
         onClick={(e) => e.stopPropagation()}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Redo2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Collapsible } from '@/components/ui/collapsible'
 import { designFeedbackPlainText } from '@/lib/design-feedback'
 
 interface RevertNoticeProps {
@@ -23,7 +24,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
   return (
     <div className="my-2 flex justify-center">
       <div className="flex w-full max-w-xl flex-col gap-1.5 text-xs text-(--color-text-muted)">
-        {expanded && messages.length > 0 && (
+        <Collapsible open={expanded && messages.length > 0}>
           <div className="max-h-44 overflow-y-auto overscroll-contain touch-pan-y rounded-sm border border-(--color-border) bg-(--bg-card) p-2">
             {messages.map((message, index) => (
               <div
@@ -34,7 +35,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
               </div>
             ))}
           </div>
-        )}
+        </Collapsible>
         <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-1.5">
         <div className="flex items-center justify-center gap-2">
           <button

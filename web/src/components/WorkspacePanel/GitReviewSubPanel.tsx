@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { ChevronRight, ExternalLink, FileDiff } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -143,7 +144,7 @@ function GitReviewSubPanelView({
                 )}
               </div>
 
-              {expanded && (
+              <Collapsible open={expanded}>
                 <div className="border-t border-(--color-border-subtle)">
                   {fileDiff ? (
                     // Capped peek; "Open diff in tab" gives the full height.
@@ -154,7 +155,7 @@ function GitReviewSubPanelView({
                     <p className="px-3 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>
                   )}
                 </div>
-              )}
+              </Collapsible>
             </li>
           )
         })}

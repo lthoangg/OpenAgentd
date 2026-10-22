@@ -8,6 +8,7 @@
 import { ListTodo } from 'lucide-react'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import type { SessionPlan, TodoItem } from '@/api/types'
 import { ActivePlanSection } from './ActivePlanSection'
@@ -26,7 +27,7 @@ interface TodosPopoverProps {
 
 export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPlan, onOpenPlan }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
-  const { mounted, closing } = useDeferredUnmount(open, 100)
+  const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.instant * 1000)
   useKeyLayer(open, { kind: 'transient', onClose: () => onOpenChange(false) })
   if (!mounted) return null
 
@@ -48,7 +49,7 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
       <button
         type="button"
         className={cn(
-          'absolute inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] cursor-default bg-transparent transition-opacity duration-(--motion-instant) ease-out pointer-events-auto',
+          'absolute inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] cursor-default bg-transparent transition-opacity duration-(--motion-instant) ease-(--ease-out) pointer-events-auto',
           closing ? 'opacity-0' : 'opacity-100',
         )}
         aria-label="Close tasks"
@@ -60,8 +61,8 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
         className={cn(
           'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-(--shadow-depth) pointer-events-auto',
           closing
-            ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-instant) ease-out'
-            : 'animate-in fade-in-0 duration-(--motion-instant) ease-out',
+            ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-instant) ease-(--ease-out)'
+            : 'animate-in fade-in-0 duration-(--motion-instant) ease-(--ease-out)',
         )}
       >
         <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">

@@ -1,7 +1,8 @@
 /**
  * Design-system guard (DESIGN.md). Scans app source for class patterns that
  * drift from the tokens: sub-floor type, un-tokenized radius, ad hoc shadows,
- * raw black/white, hard-coded scrims, legacy arbitrary-var syntax, and so on.
+ * raw black/white, hard-coded scrims, legacy arbitrary-var syntax, motion
+ * written outside the `--motion-*` / `--ease-*` tokens, and so on.
  *
  * ``allow`` is an exact per-file count. Legitimate exceptions (rendered
  * content such as a PDF page or a web preview, the floating composer) stay
@@ -103,6 +104,55 @@ const RULES: Rule[] = [
     why: 'write numeric z-index as z-60, not z-[60]',
     pattern: /(?<![\w-])z-\[\d+\]/g,
     allow: {},
+  },
+  // ── Motion (DESIGN.md → Motion) ──────────────────────────────────────────
+  {
+    name: 'transition-all',
+    why: 'name the properties that change (transition-colors, -opacity, -transform); `all` also animates layout and focus rings',
+    pattern: /(?<![\w-])transition-all(?![\w-])/g,
+    allow: {},
+  },
+  {
+    name: 'raw-duration-class',
+    why: 'durations come from the tokens: duration-(--motion-instant|fast|base|slow|glacial)',
+    pattern: /(?<![\w-])duration-(?:\d+|\[[^\]]*\])(?![\w-])/g,
+    allow: {},
+  },
+  {
+    name: 'raw-ease-class',
+    why: 'Tailwind\'s ease-in/out curves are not ours; write ease-(--ease-out) or ease-(--ease-in-out)',
+    pattern: /(?<![\w(-])ease-(?:in|out|in-out|linear)(?![\w)-])/g,
+    allow: {},
+  },
+  {
+    name: 'raw-seconds-duration',
+    why: 'framer-motion durations come from DURATIONS_S in lib/motion.ts',
+    pattern: /\bduration:\s*0?\.\d+/g,
+    allow: {},
+  },
+  {
+    name: 'raw-cubic-bezier',
+    why: 'curves come from EASINGS in lib/motion.ts or var(--ease-*)',
+    pattern: /cubic-bezier\(\s*[\d.]/g,
+    allow: {},
+  },
+  {
+    name: 'raw-unmount-delay',
+    why: 'an exit timer must equal its animation, so pass a token (DURATIONS_S.fast * 1000), not a number',
+    pattern: /useDeferredUnmount\([^)]*,\s*\d+\s*\)/g,
+    allow: {},
+  },
+  {
+    name: 'layout-transition',
+    why: 'animating width/height/inset/margin/padding re-lays-out every frame; move with translate or scale, reveal with grid rows (ui/collapsible)',
+    pattern: /transition-\[[^\]]*\b(?:width|height|left|right|top|bottom|inset|margin|padding)\b/g,
+    allow: {
+      // Pill ↔ card morph of a fixed notice: nothing lays out around it.
+      'components/UpdateCard.tsx': 1,
+      'components/LspInstallPrompt.tsx': 1,
+      // The current page dot widens into a pill among its few siblings.
+      'components/FileLightbox.tsx': 1,
+    },
   },
 ]
 

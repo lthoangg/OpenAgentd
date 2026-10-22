@@ -1,5 +1,6 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { GripHorizontal } from 'lucide-react'
 import {
   InputComposer,
@@ -132,7 +133,7 @@ interface HandoffGlide {
 const PANEL_GUTTER = 24 // the expanded panel's ``px-3`` on both sides
 const MAX_W_MD_REM = 28 // the wrapper's ``max-w-md``
 // DESIGN.md ``slow`` (route changes) with the entrance ease-out.
-const HANDOFF_GLIDE_TRANSITION = { duration: 0.4, ease: [0.16, 1, 0.3, 1] } as const
+const HANDOFF_GLIDE_TRANSITION = { duration: DURATIONS_S.slow, ease: EASINGS.out } as const
 
 /**
  * Start geometry for the glide, from layout known before the first paint

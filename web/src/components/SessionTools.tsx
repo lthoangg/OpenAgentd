@@ -10,6 +10,7 @@
  */
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { DURATIONS_S } from '@/lib/motion'
 import { ChevronDown, Plug, Wrench } from 'lucide-react'
 
 import type { AgentInfo } from '@/api/types'
@@ -91,7 +92,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
             initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.14 }}
+            transition={{ duration: reduceMotion ? 0 : DURATIONS_S.fast }}
             className="overflow-hidden"
           >
             <div className="tool-desc pr-4 pb-3 pl-10 text-(--color-text-muted)">

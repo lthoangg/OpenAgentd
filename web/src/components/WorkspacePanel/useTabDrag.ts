@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 const DRAG_THRESHOLD_PX = 4
 const EDGE_PX = 24
 const EDGE_SCROLL_PX = 8
-const SLIDE = 'transform 150ms cubic-bezier(0.2, 0, 0, 1)'
+const SLIDE = 'transform var(--motion-fast) var(--ease-out)'
 
 export const DOCK_TAB_ATTR = 'data-dock-tab'
 const DRAGGING_ATTR = 'data-dragging'

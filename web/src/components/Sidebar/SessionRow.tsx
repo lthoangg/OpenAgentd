@@ -9,6 +9,7 @@ import { useCompactRelative } from '@/hooks/useCompactRelative'
 import { sessionActivityTime } from '../Sidebar.helpers'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
+import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
@@ -69,6 +70,8 @@ function SessionRowView({
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
   const status = sessionStatus(session, unread)
   const sessionTitle = session.title || 'Untitled'
+  const rowRef = useRef<HTMLDivElement>(null)
+  useTitleWash(rowRef, session.id, sessionTitle)
   const sessionDate = formatRelativeDate(session.created_at)
   const sessionAge = useCompactRelative(sessionActivityTime(session))
   const pinned = Boolean(session.pinned_at)
@@ -146,6 +149,7 @@ function SessionRowView({
     // data-flip-id: the list slides this row (and its subagents) when it moves.
     <div className="space-y-px" data-flip-id={session.id}>
       <div
+        ref={rowRef}
         data-session-row
         className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${listRowSurface(isCurrent)}`}
       >
@@ -195,7 +199,11 @@ function SessionRowView({
                 className={`${LIST_ROW_GEOMETRY} transition-colors ${listRowText(isCurrent)}`}
               >
                 <SessionStatusMark status={status} />
-                <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}>{sessionTitle}</span>
+                <AnimatedTitle
+                  text={sessionTitle}
+                  sessionId={session.id}
+                  className={`flex-1 ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}
+                />
                 {checkoutName && <span className="sr-only">{`, in worktree ${checkoutName}`}</span>}
                 {contextLabel && <span className="sr-only">{`, in ${contextLabel}`}</span>}
                 {pinned && <span className="sr-only">, pinned</span>}

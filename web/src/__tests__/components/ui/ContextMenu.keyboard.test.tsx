@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 
 import { ContextMenu } from '@/components/ui/context-menu'
+import { useFakeTimers } from '../../fake-timers'
 
 afterEach(cleanup)
 
@@ -93,5 +94,40 @@ describe('ContextMenu', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Main' }))
     fireEvent.keyDown(menu, { key: 'End' })
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'New worktree' }))
+  })
+
+  // DESIGN.md → Motion: menus grow in at ``base`` and fade out at ``fast``.
+  it('grows in, and on an outside click fades out of reach before the caller unmounts it', () => {
+    const onDismiss = mock(() => {})
+    render(
+      <ContextMenu at={{ x: 10, y: 10 }} label="Fade" onDismiss={onDismiss}>
+        <button type="button" role="menuitem">One</button>
+      </ContextMenu>,
+    )
+    const menu = screen.getByRole('menu', { name: 'Fade' })
+    expect(menu.className).toContain('animate-in')
+
+    const timers = useFakeTimers()
+    try {
+      fireEvent.click(menu.parentElement!)
+      expect(menu.className).toContain('animate-out')
+      expect(menu.inert).toBe(true)
+      expect(onDismiss).not.toHaveBeenCalled()
+      act(() => timers.tick(200))
+      expect(onDismiss).toHaveBeenCalledTimes(1)
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('closes at once from the keyboard, so the next key lands where it should', () => {
+    const onDismiss = mock(() => {})
+    render(
+      <ContextMenu at={{ x: 10, y: 10 }} label="Keys" onDismiss={onDismiss}>
+        <button type="button" role="menuitem">One</button>
+      </ContextMenu>,
+    )
+    fireEvent.keyDown(screen.getByRole('menu', { name: 'Keys' }), { key: 'Escape' })
+    expect(onDismiss).toHaveBeenCalledTimes(1)
   })
 })

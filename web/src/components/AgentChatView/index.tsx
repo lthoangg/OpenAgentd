@@ -16,6 +16,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -849,9 +850,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           )}
           <motion.div
             className="flex flex-1 flex-col min-h-0"
-            initial={draftHandoff.active ? { opacity: 0, y: 8 } : false}
+            initial={draftHandoff.active && !reducedMotion ? { opacity: 0, y: 8 } : false}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.24, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: DURATIONS_S.base, delay: 0.06, ease: EASINGS.out }}
           >
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}

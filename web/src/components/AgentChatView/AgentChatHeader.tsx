@@ -1,4 +1,7 @@
 import { memo, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
+import { AnimatedTitle } from '@/components/ui/animated-title'
+import { isFreshAutoTitle } from '@/lib/auto-title'
+import { cn } from '@/lib/utils'
 import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
@@ -151,18 +154,18 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
                     {sessionTitle && (
                       <>
-                        <span className="shrink-0 text-(--color-text-muted)">·</span>
+                        <TitleSeparator sessionId={sessionId} title={sessionTitle} />
                         {onRenameSession && sessionId ? (
                           <button
                             type="button"
                             onClick={() => setRenamingSessionId(sessionId)}
                             aria-label={`Rename session ${sessionTitle}`}
-                            className="min-w-0 truncate rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text)"
+                            className="min-w-0 rounded-xs text-left text-(--color-text-muted) transition-colors hover:text-(--color-text)"
                           >
-                            {sessionTitle}
+                            <AnimatedTitle text={sessionTitle} sessionId={sessionId} />
                           </button>
                         ) : (
-                          <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                          <AnimatedTitle text={sessionTitle} sessionId={sessionId} className="text-(--color-text-muted)" />
                         )}
                       </>
                     )}
@@ -270,3 +273,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
     </header>
   )
 })
+
+/** The "·" before the title; fades in with a first title as it lands. */
+function TitleSeparator({ sessionId, title }: { sessionId: string | null | undefined; title: string }) {
+  const [landing] = useState(() => isFreshAutoTitle(sessionId, title))
+  return <span className={cn('shrink-0 text-(--color-text-muted)', landing && 'oa-fade-in')}>·</span>
+}

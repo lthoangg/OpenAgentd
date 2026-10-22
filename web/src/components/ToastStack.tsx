@@ -8,6 +8,7 @@
  * Swipe right or up to dismiss.
  */
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useToastStore, type Toast } from '@/stores/useToastStore'
@@ -83,7 +84,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       variants={{
         enter: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.96, transition: { type: 'spring', damping: 26, stiffness: 320 } },
         visible: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 26, stiffness: 320 } },
-        exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.96, transition: { type: 'tween', duration: 0.15, ease: 'easeIn' } },
+        exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.96, transition: { type: 'tween', duration: DURATIONS_S.fast, ease: EASINGS.inOut } },
       }}
       initial="enter"
       animate="visible"

@@ -248,7 +248,12 @@ export function InputComposerSuggestions({
         id={menu.id}
         role="listbox"
         aria-label={menuAriaLabel}
-        className={`overflow-y-auto overscroll-contain ${MENU_PANEL_CLASS}`}
+        // DESIGN.md → Motion: grows out of the composer edge it sits on, at
+        // ``fast`` so typing ``/`` or ``@`` never waits on it. Closing is
+        // instant: a pick or Escape should feel immediate.
+        className={`overflow-y-auto overscroll-contain ${MENU_PANEL_CLASS} animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast) ease-(--ease-out) ${
+          position.showBelow ? 'origin-top' : 'origin-bottom'
+        }`}
         style={menuStyle}
       >
         {menu.kind === 'slash' && menu.rows.map((cmd) => {

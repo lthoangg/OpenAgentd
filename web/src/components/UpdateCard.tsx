@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useDragControls, type PanInfo } from 'framer-motion'
+import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
 import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { Button } from '@/components/ui/button'
 import { getPlatform } from '@/hooks/use-platform'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { dragSettle, noticePresence } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
@@ -32,6 +34,7 @@ export function UpdateCard() {
   const [minimized, setMinimized] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const dragControls = useDragControls()
+  const reduced = useReducedMotion() ?? false
   const [initialAutomaticCheckAt] = useState(() => Date.now())
   const dismissedUntilNextCheckRef = useRef(false)
   const nextAutomaticCheckAtRef = useRef(initialAutomaticCheckAt)
@@ -190,13 +193,16 @@ export function UpdateCard() {
     return Math.min(100, Math.round((status.downloaded_bytes / status.total_bytes) * 100))
   }, [status])
 
-  if (!tauriReady || status.status === 'idle') return null
-  if (status.status === 'up_to_date' && !status.message) return null
+  const visible = tauriReady && status.status !== 'idle' && !(status.status === 'up_to_date' && !status.message)
 
   return (
-    <aside
+    <AnimatePresence>
+    {visible && (
+    <motion.aside
+      key="update-card"
       className="pointer-events-none flex w-full justify-end"
       aria-live="polite"
+      {...noticePresence(reduced)}
     >
       <motion.div
         drag
@@ -206,7 +212,7 @@ export function UpdateCard() {
         dragElastic={0}
         onDragEnd={handleDragEnd}
         animate={{ x: offset.x, y: offset.y }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+        transition={dragSettle(reduced)}
         style={{ touchAction: 'none' }}
         className={cn(
           'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-(--shadow-depth) backdrop-blur-xs transition-[width,padding,border-radius] duration-(--motion-base)',
@@ -327,7 +333,8 @@ export function UpdateCard() {
             {status.status === 'downloading' ? (
               <div className="mt-3 pl-6">
                 <div className="h-2 overflow-hidden rounded-full bg-(--bg-page)">
-                  <div className="h-full rounded-full bg-(--color-accent) transition-all" style={{ width: `${progress ?? 10}%` }} />
+                  {/* Slides in from the left rather than widening; the track clips it. */}
+                  <div className="h-full w-full rounded-full bg-(--color-accent) transition-transform duration-(--motion-base) ease-(--ease-out)" style={{ translate: `${(progress ?? 10) - 100}% 0` }} />
                 </div>
                 <div className="mt-1 text-xs text-(--color-text-muted)">
                   {formatBytes(status.downloaded_bytes)}
@@ -356,7 +363,9 @@ export function UpdateCard() {
           </div>
         )}
       </motion.div>
-    </aside>
+    </motion.aside>
+    )}
+    </AnimatePresence>
   )
 }
 

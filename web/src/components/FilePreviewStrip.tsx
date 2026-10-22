@@ -406,8 +406,12 @@ export function FilePreviewStrip({ files, blobUrls, onRemove, filesBelow }: File
             aria-hidden="true"
           >
             <div
-              className="h-full rounded-full bg-(--color-text-subtle)/60 transition-[left,width] duration-(--motion-instant)"
-              style={{ width: `${metrics.thumbWidthPct}%`, marginLeft: `${metrics.thumbLeftPct}%` }}
+              className="h-full rounded-full bg-(--color-text-subtle)/60 transition-transform duration-(--motion-instant)"
+              // Moved, not re-laid-out: a translate percentage is of the thumb's own width.
+              style={{
+                width: `${metrics.thumbWidthPct}%`,
+                translate: `${(metrics.thumbLeftPct / Math.max(metrics.thumbWidthPct, 1)) * 100}% 0`,
+              }}
             />
           </div>
         )}

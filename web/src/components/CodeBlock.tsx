@@ -33,7 +33,7 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
           <button
             type="button"
             onClick={handleCopy}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
             aria-label="Copy code"
           >
             {copied ? (

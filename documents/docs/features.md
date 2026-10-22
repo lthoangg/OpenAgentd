@@ -645,6 +645,21 @@ run from the terminal (the native Rust binary since v3.0.0).
     once when the answer ends.
   - A tool whose live output you were watching stays open when it finishes,
     until the next step starts.
+- **One way of moving** `[v3.25.0]` — everything that opens also closes, at
+  the same pace:
+  - Sidebar sections and date groups, changed files, Git groups and commits,
+    compaction and undo notices, file reads, and provider model lists fold
+    open and shut instead of snapping.
+  - Right-click menus, the model picker, `/` and `@` suggestions, Jump to
+    latest, the TypeScript tools prompt, the update card and side questions
+    animate in; a right-click menu dismissed with the pointer fades out, while
+    Escape and Tab close it at once.
+  - A session title the agent writes lifts the old one out and writes the new
+    one in, left to right, in the chat header and the sidebar, where its row
+    holds a blue tint for a moment. Titles you rename yourself, list loads and
+    session switches change without motion.
+  - With Reduce Motion on, everything stills; spinners keep turning, slowly,
+    and progress bars keep filling.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was

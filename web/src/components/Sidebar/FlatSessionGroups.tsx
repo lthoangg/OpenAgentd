@@ -5,6 +5,7 @@ import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessio
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { groupSessionsByDate, groupSessionsByStatus, type SessionGroup } from '../Sidebar.helpers'
 import { SessionGroupHeader } from './SessionGroupHeader'
+import { Collapsible } from '@/components/ui/collapsible'
 import { DraftSessionRow, SessionRow, ShowMoreRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
 
 function uniqueById(sessions: readonly SessionResponse[]): SessionResponse[] {
@@ -109,7 +110,9 @@ export function FlatSessionGroups({
                   tone={group.id === 'needs_input' ? 'warning' : 'subtle'}
                 />
               </div>
-              {!collapsed && <div id={listId} className="space-y-px">{group.sessions.map(renderRow)}</div>}
+              <Collapsible open={!collapsed}>
+                <div id={listId} className="space-y-px">{group.sessions.map(renderRow)}</div>
+              </Collapsible>
             </section>
           )
         })}

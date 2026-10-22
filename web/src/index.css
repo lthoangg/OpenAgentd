@@ -76,12 +76,16 @@
     --motion-base:    240ms;
     --motion-slow:    400ms;
     --motion-glacial: 800ms;
+    /* Attention washes that hold, then drain (an automated title landing). */
+    --motion-linger:  2000ms;
 
     /* Easings */
     --ease-out:           cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out:        cubic-bezier(0.4, 0, 0.2, 1);
     --ease-spring-soft:   cubic-bezier(0.34, 1.2, 0.64, 1);
     --ease-spring-snappy: cubic-bezier(0.22, 1.4, 0.36, 1);
+    /* iOS sheet curve: surfaces that move with the soft keyboard or a drag. */
+    --ease-sheet:         cubic-bezier(0.32, 0.72, 0, 1);
     --ease-linear:        linear;
 }
 
@@ -631,7 +635,7 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
 }
 
 html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
-  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 0.2s var(--ease-sheet);
 }
 
 /* ── Keyboard open (iOS/Android Tauri) ──────────────────────────────────────
@@ -738,8 +742,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
 html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   transition:
-    height 0.2s cubic-bezier(0.32, 0.72, 0, 1),
-    transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+    height 0.2s var(--ease-sheet),
+    transform 0.2s var(--ease-sheet);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -769,7 +773,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   ::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: var(--radius-xs);
-    transition: background-color 0.15s ease;
+    transition: background-color var(--motion-fast) var(--ease-in-out);
   }
   :hover::-webkit-scrollbar-thumb,
   :focus-within::-webkit-scrollbar-thumb {
@@ -946,7 +950,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 
 /* ─────────────────────────────────────────────────────────────
  * prefers-reduced-motion — honor system-wide.
- * Progress bars keep animating (time is literal); everything else snaps.
+ * Progress bars keep animating (time is literal); spinners keep turning,
+ * slowly, since a frozen one reads as a hang; everything else snaps.
  * ───────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -956,6 +961,10 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 
@@ -1141,7 +1150,7 @@ html[data-app-hidden="true"] *::after {
   to   { opacity: 1; }
 }
 .drag-overlay-enter {
-  animation: drag-overlay-enter 150ms var(--ease-out) forwards;
+  animation: drag-overlay-enter var(--motion-fast) var(--ease-out) forwards;
 }
 
 @keyframes drag-card-enter {
@@ -1149,7 +1158,46 @@ html[data-app-hidden="true"] *::after {
   to   { transform: scale(1); opacity: 1; }
 }
 .drag-card-enter {
-  animation: drag-card-enter 200ms var(--ease-spring-soft) forwards;
+  animation: drag-card-enter var(--motion-base) var(--ease-spring-soft) forwards;
+}
+
+/* Automated session title (ui/animated-title.tsx). The new title is written
+ * in left to right by a moving mask: opaque up to 50%, clear past 60% of a
+ * 250%-wide gradient, so it starts fully hidden and ends fully shown. The
+ * mask lives only in the keyframes, so nothing clips the title at rest. The
+ * old title lifts out meanwhile. Reduced motion never mounts these. */
+@keyframes oa-title-reveal {
+  from {
+    -webkit-mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    -webkit-mask-size: 250% 100%;
+    mask-size: 250% 100%;
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    -webkit-mask-size: 250% 100%;
+    mask-size: 250% 100%;
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+}
+.oa-title-reveal {
+  animation: oa-title-reveal var(--motion-glacial) var(--ease-out) var(--motion-instant) backwards;
+}
+@keyframes oa-title-out {
+  to { opacity: 0; translate: 0 -4px; }
+}
+.oa-title-out {
+  animation: oa-title-out var(--motion-base) var(--ease-in-out) forwards;
+}
+@keyframes oa-fade-in {
+  from { opacity: 0; }
+}
+.oa-fade-in {
+  animation: oa-fade-in var(--motion-base) var(--ease-out) backwards;
 }
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }

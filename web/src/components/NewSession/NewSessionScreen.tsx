@@ -14,6 +14,7 @@
  */
 import { useMemo, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useQuery } from '@tanstack/react-query'
 import { Folder, FolderPlus, GitBranch, MessageCircle } from 'lucide-react'
 import { getCodingWorkspaceStatus, getCodingWorkspaceTree } from '@/api/client'
@@ -145,7 +146,7 @@ export function NewSessionScreen({
       // at the ``animate`` target and skip the fade.
       initial={leaving ? { opacity: 1, y: 0 } : reducedMotion ? false : { opacity: 0, y: 6 }}
       animate={leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 }}
-      transition={leaving ? { duration: 0.15, ease: [0.4, 0, 0.2, 1] } : { duration: 0.15, ease: 'easeOut' }}
+      transition={reducedMotion ? { duration: 0 } : leaving ? { duration: DURATIONS_S.fast, ease: EASINGS.inOut } : { duration: DURATIONS_S.fast, ease: EASINGS.out }}
       inert={leaving || undefined}
       aria-hidden={leaving || undefined}
       className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${leaving ? 'pointer-events-none absolute inset-0' : ''}`}

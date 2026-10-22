@@ -48,6 +48,7 @@ import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { DURATIONS_S } from '@/lib/motion'
 
 export const OPEN_DELAY_MS = 500
 export const WARM_MS = 300
@@ -232,7 +233,7 @@ const VIEWPORT_MARGIN = 8
 function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...props }: TooltipContentProps) {
   const { id, open, anchorRef, isMobile } = useTooltip()
   // Deferred unmount so the close animation plays before removal
-  const { mounted, closing } = useDeferredUnmount(open, 150)
+  const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const contentRef = useRef<HTMLDivElement>(null)
   // `placement` is the side actually used after flip-to-fit; `coords` is
   // null until the first measurement lands (avoids painting at `top-left: 0`
@@ -336,8 +337,8 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
         // never flashes at (0, 0) before `reposition()` places it.
         !coords && 'invisible',
         closing
-          ? 'animate-out fade-out-0 zoom-out-95'
-          : `animate-in fade-in-0 zoom-in-95 ${slideIn}`,
+          ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-fast)'
+          : `animate-in fade-in-0 zoom-in-95 duration-(--motion-fast) ${slideIn}`,
         className,
       )}
       style={{ top: coords?.top ?? 0, left: coords?.left ?? 0 }}

@@ -882,6 +882,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new
   versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
+  The launch screen follows the system appearance: dark paper in dark mode,
+  where it used to be light paper in both `[v3.25.0]`.
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share

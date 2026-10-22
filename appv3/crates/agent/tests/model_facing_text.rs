@@ -133,7 +133,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// memory, or `AGENTS.md`: the system prompt plus every tool definition, as
 /// they were before the prompt review. Every turn pays for this text, so a
 /// change that grows it should be a deliberate one; raise the number then.
-const LEAD_ALWAYS_ON_CHARS: usize = 35_849;
+/// Raised for the memory rules that tell the agent it has memory and to save
+/// facts given inside a request.
+const LEAD_ALWAYS_ON_CHARS: usize = 36_492;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

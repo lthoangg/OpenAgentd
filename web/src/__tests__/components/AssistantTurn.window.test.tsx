@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { AssistantTurn, TURN_BLOCK_WINDOW } from '@/components/AssistantTurnFooter'
+import { cleanup, render, screen } from '@testing-library/react'
+import { AssistantTurn } from '@/components/AssistantTurnFooter'
 import type { ContentBlock } from '@/api/types'
 
 beforeEach(() => {
@@ -9,7 +9,6 @@ beforeEach(() => {
 afterEach(cleanup)
 
 const textBlocks = (n: number): ContentBlock[] => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, type: 'text', content: `step ${i}` }))
-const W = TURN_BLOCK_WINDOW
 
 function renderTurn(blocks: ContentBlock[], reader = false) {
   return render(
@@ -26,29 +25,19 @@ function renderTurn(blocks: ContentBlock[], reader = false) {
   )
 }
 
-describe('AssistantTurn — long-turn window', () => {
-  it('renders the newest steps and reveals earlier ones on request', () => {
-    renderTurn(textBlocks(2 * W + 50))
-    expect(screen.getAllByTestId('block')).toHaveLength(W)
-    expect(screen.getByText(`step ${2 * W + 49}`)).toBeTruthy()
-    expect(screen.queryByText(`step ${W + 49}`)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: `Show ${W + 50} earlier steps` }))
-    expect(screen.getAllByTestId('block')).toHaveLength(2 * W)
-    fireEvent.click(screen.getByRole('button', { name: 'Show 50 earlier steps' }))
-    expect(screen.getAllByTestId('block')).toHaveLength(2 * W + 50)
+describe('AssistantTurn — long turns', () => {
+  it('renders every step of a long turn with no expander', () => {
+    renderTurn(textBlocks(1000))
+    expect(screen.getAllByTestId('block')).toHaveLength(1000)
+    expect(screen.getByText('step 0')).toBeTruthy()
+    expect(screen.getByText('step 999')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /earlier step/ })).toBeNull()
   })
 
-  it('shows no expander for a short turn', () => {
-    renderTurn(textBlocks(W))
-    expect(screen.getAllByTestId('block')).toHaveLength(W)
+  it('renders every step in reader mode too', () => {
+    renderTurn(textBlocks(1000), true)
+    expect(screen.getByText('step 0')).toBeTruthy()
+    expect(screen.getByText('step 999')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /earlier step/ })).toBeNull()
-  })
-
-  it('windows reader-mode segments too', () => {
-    renderTurn(textBlocks(W + 50), true)
-    expect(screen.getByRole('button', { name: 'Show 50 earlier steps' })).toBeTruthy()
-    expect(screen.queryByText('step 49')).toBeNull()
-    expect(screen.getByText(`step ${W + 49}`)).toBeTruthy()
   })
 })

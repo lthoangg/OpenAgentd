@@ -31,6 +31,10 @@ struct TurnState {
     error: Option<String>,
     agent_not_configured: Option<Map<String, Value>>,
     queued_turns: Vec<Map<String, Value>>,
+    /// The turn's open `question_asked` (question id, frame), replayed last on
+    /// every attach: a client that missed the live frame (a reattach, a feed
+    /// that went quiet) otherwise saw the agent waiting with no card to answer.
+    open_question: Option<(String, Arc<WireEvent>)>,
     subscribers: Vec<Sub>,
     created_at: Option<Instant>,
     deadline: Option<Instant>,
@@ -71,6 +75,7 @@ impl TurnState {
         self.error = None;
         self.agent_not_configured = None;
         self.queued_turns.clear();
+        self.open_question = None;
     }
     fn clear_replay_payload(&mut self) {
         self.content.clear();
@@ -229,6 +234,17 @@ impl StreamStore {
             "done" => state.is_streaming = false,
             "agent_not_configured" => state.agent_not_configured = Some(data.clone()),
             "queued_turn_start" => state.queued_turns.push(data.clone()),
+            "question_asked" => {
+                if let Some(qid) = get_str("question_id") {
+                    state.open_question = Some((qid.to_string(), env.to_wire()));
+                }
+            }
+            "question_answered" | "question_dismissed" => {
+                let resolved = get_str("question_id");
+                if state.open_question.as_ref().is_some_and(|(qid, _)| resolved.is_none_or(|r| r == qid)) {
+                    state.open_question = None;
+                }
+            }
             "agent_status" => {
                 let status = get_str("status").unwrap_or("");
                 if !agent.is_empty() && !status.is_empty() {
@@ -289,6 +305,31 @@ impl StreamStore {
                 false
             }
         });
+    }
+
+    /// A session parked on the open question `row`: make sure it has a turn
+    /// to attach to (nothing is running) and that the attach replays the
+    /// question, so the card shows on any client that attaches.
+    ///
+    /// Only a turn created here is seeded. An existing turn is either the
+    /// suspended one, which already holds the live frame, or a new turn that
+    /// superseded `row` after it was read; seeding that one would replay a
+    /// closed question. Check and insert happen under one lock for the same
+    /// reason.
+    pub fn ensure_parked_turn(&self, session_id: &str, row: &appv3_db::PendingQuestion) {
+        let qid = appv3_db::codec::api_uuid(&row.id);
+        let questions = row.questions();
+        let env = match (row.kind().as_deref(), row.plan_revision()) {
+            (Some(crate::plan::PLAN_REVIEW_KIND), Some(revision)) => events::plan_review_asked(&qid, session_id, &row.tool_call_id, &questions, revision),
+            _ => events::question_asked(&qid, session_id, &row.tool_call_id, &questions),
+        };
+        let mut turns = self.turns.lock().unwrap();
+        if turns.contains_key(session_id) {
+            return;
+        }
+        let mut state = TurnState::fresh(Instant::now());
+        state.open_question = Some((qid, env.to_wire()));
+        turns.insert(session_id.to_string(), state);
     }
 
     /// `commit_agent_content`.
@@ -456,7 +497,11 @@ impl StreamStore {
                 replay.push(e);
             }
         }
-        Some(Subscription { store: self, session_id: session_id.to_string(), replay: replay.into_iter().map(|e| e.to_wire()).collect(), queue: q })
+        let mut replay: std::collections::VecDeque<Arc<WireEvent>> = replay.into_iter().map(|e| e.to_wire()).collect();
+        if let Some((_, frame)) = &state.open_question {
+            replay.push_back(frame.clone());
+        }
+        Some(Subscription { store: self, session_id: session_id.to_string(), replay, queue: q })
     }
 
     fn detach(&self, session_id: &str, q: &Sub) {
@@ -588,6 +633,101 @@ mod tests {
         assert_eq!(frames[1].data, events::message("a", &expected_a, None).to_wire().data);
         assert_eq!(frames[2].data, events::message("b", &"é".repeat(500), None).to_wire().data);
         assert_eq!(s.debug_state("z").unwrap()["content"]["a"], json!(expected_a));
+    }
+
+    fn replay_names(s: &'static StreamStore, sid: &str) -> Vec<String> {
+        let sub = s.attach(sid).unwrap();
+        sub.replay.iter().map(|e| e.event.clone()).collect()
+    }
+
+    #[tokio::test]
+    async fn an_attach_replays_the_open_question_last() {
+        let s = leak();
+        s.init_turn("q", false);
+        s.push_event("q", &events::agent_status("a", "working", None), false);
+        s.push_event("q", &events::tool_call("a", Some("c1"), "submit_plan"), false);
+        s.push_event("q", &events::plan_review_asked("q1", "q", "c1", &[json!({"question": "Review plan revision 2."})], 2), false);
+        s.push_event("q", &events::agent_status("a", "waiting_input", None), false);
+
+        let sub = s.attach("q").unwrap();
+        let last = sub.replay.back().unwrap();
+        assert_eq!(last.event, "question_asked");
+        let data: Value = serde_json::from_str(&last.data).unwrap();
+        assert_eq!((data["question_id"].as_str(), data["kind"].as_str(), data["plan_revision"].as_u64()), (Some("q1"), Some("plan_review"), Some(2)));
+    }
+
+    #[tokio::test]
+    async fn a_resolved_question_is_not_replayed() {
+        let s = leak();
+        for (sid, resolution) in [("r1", events::question_answered("q1", "r1", &json!([["Approve"]]))), ("r2", events::question_dismissed("q1", "r2", "dismissed"))] {
+            s.init_turn(sid, false);
+            s.push_event(sid, &events::question_asked("q1", sid, "c1", &[json!({"question": "Which?"})]), false);
+            s.push_event(sid, &resolution, false);
+            assert!(!replay_names(s, sid).contains(&"question_asked".to_string()), "{sid}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_new_turn_forgets_the_question() {
+        let s = leak();
+        s.init_turn("n", false);
+        s.push_event("n", &events::question_asked("q1", "n", "c1", &[json!({"question": "Which?"})]), false);
+        s.init_turn("n", true);
+        assert!(!replay_names(s, "n").contains(&"question_asked".to_string()));
+    }
+
+    fn pending_row(qid: &str, payload: Value) -> appv3_db::PendingQuestion {
+        appv3_db::PendingQuestion {
+            id: qid.into(),
+            session_id: "01a163cc269b7076a8b797a60845113c".into(),
+            tool_call_id: "c1".into(),
+            payload: payload.to_string(),
+            status: "pending".into(),
+            answers: None,
+            created_at: String::new(),
+            answered_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_parked_session_with_no_turn_gets_one_that_replays_its_question() {
+        let s = leak();
+        s.ensure_parked_turn("p", &pending_row("01a163e0795772a9a1756a6f30bd379e", json!({"questions": [{"question": "Which?"}]})));
+        assert_eq!(replay_names(s, "p"), vec!["question_asked"]);
+    }
+
+    /// The row was read just before a new message superseded it and started
+    /// a turn: that turn must not replay the closed question.
+    #[tokio::test]
+    async fn a_row_read_before_a_new_turn_is_not_seeded_into_it() {
+        let s = leak();
+        s.init_turn("t", false);
+        s.push_event("t", &events::agent_status("a", "working", None), false);
+        s.ensure_parked_turn("t", &pending_row("01a163e0795772a9a1756a6f30bd379e", json!({"questions": [{"question": "Which?"}]})));
+        assert_eq!(replay_names(s, "t"), vec!["agent_status"]);
+    }
+
+    #[tokio::test]
+    async fn a_live_turn_keeps_its_own_question() {
+        let s = leak();
+        s.init_turn("l", false);
+        s.push_event("l", &events::question_asked("q-live", "l", "c1", &[json!({"question": "Which?"})]), false);
+        s.ensure_parked_turn("l", &pending_row("01a163e0795772a9a1756a6f30bd379e", json!({"questions": [{"question": "Other?"}]})));
+        let sub = s.attach("l").unwrap();
+        assert_eq!(sub.replay.len(), 1);
+        assert!(sub.replay[0].data.contains("\"q-live\""));
+    }
+
+    #[tokio::test]
+    async fn a_parked_plan_review_row_replays_as_a_plan_review() {
+        let s = leak();
+        let row = pending_row("01a163e0795772a9a1756a6f30bd379e", json!({"kind": "plan_review", "plan_revision": 4, "questions": [{"question": "Review plan revision 4."}]}));
+        s.ensure_parked_turn("01a163cc-269b-7076-a8b7-97a60845113c", &row);
+        let sub = s.attach("01a163cc-269b-7076-a8b7-97a60845113c").unwrap();
+        let data: Value = serde_json::from_str(&sub.replay.back().unwrap().data).unwrap();
+        assert_eq!(data["question_id"], "01a163e0-7957-72a9-a175-6a6f30bd379e");
+        assert_eq!(data["session_id"], "01a163cc-269b-7076-a8b7-97a60845113c");
+        assert_eq!((data["kind"].as_str(), data["plan_revision"].as_u64(), data["tool_call_id"].as_str()), (Some("plan_review"), Some(4), Some("c1")));
     }
 
     #[tokio::test]

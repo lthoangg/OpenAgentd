@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-dismiss"
+description = "Enables the island_dismiss command without any pre-configured scope."
+commands.allow = ["island_dismiss"]
+
+[[permission]]
+identifier = "deny-island-dismiss"
+description = "Denies the island_dismiss command without any pre-configured scope."
+commands.deny = ["island_dismiss"]

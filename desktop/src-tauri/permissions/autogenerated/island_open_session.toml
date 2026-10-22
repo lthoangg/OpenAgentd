@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-open-session"
+description = "Enables the island_open_session command without any pre-configured scope."
+commands.allow = ["island_open_session"]
+
+[[permission]]
+identifier = "deny-island-open-session"
+description = "Denies the island_open_session command without any pre-configured scope."
+commands.deny = ["island_open_session"]

@@ -252,6 +252,20 @@ async fn pinning_filters_lists_and_keeps_updated_at() {
 }
 
 #[tokio::test]
+async fn a_user_title_locks_the_session_and_an_auto_title_does_not() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    assert!(!s.title_locked);
+    let auto = update_session(&pool, &s.id, SessionUpdate::title("Generated")).await.unwrap().unwrap();
+    assert_eq!((auto.title.as_deref(), auto.title_locked), (Some("Generated"), false));
+    let typed = update_session(&pool, &s.id, SessionUpdate::user_title("Mine")).await.unwrap().unwrap();
+    assert_eq!((typed.title.as_deref(), typed.title_locked), (Some("Mine"), true));
+    // Retyping the same title still locks an unlocked session.
+    let t = create_session(&pool, NewSession { workspace: "/w".into(), title: Some("Same".into()), ..Default::default() }).await.unwrap();
+    assert!(update_session(&pool, &t.id, SessionUpdate::user_title("Same")).await.unwrap().unwrap().title_locked);
+}
+
+#[tokio::test]
 async fn released_queued_messages_move_to_the_tail() {
     let (_d, pool) = fresh().await;
     let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();

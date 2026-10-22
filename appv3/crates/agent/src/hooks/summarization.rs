@@ -189,6 +189,10 @@ fn cached_custom_threshold(path: &Path) -> Option<i64> {
     value
 }
 
+/// Called with `(session_id, summary)` after each successful compaction of a
+/// session; see [`crate::hooks::title::build_summary_retitle`].
+pub type OnSummary = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 pub struct SummarizationHook {
     provider: Arc<dyn LlmProvider>,
     model_id: Option<String>,
@@ -206,6 +210,7 @@ pub struct SummarizationHook {
     pending: Mutex<bool>,
     /// Session artifacts directory holding `plan.md`; see [`crate::plan`].
     plan_dir: Option<PathBuf>,
+    on_summary: Option<OnSummary>,
 }
 
 /// `build_summarization_hook`.
@@ -234,6 +239,7 @@ pub fn build_summarization_hook(provider: Arc<dyn LlmProvider>, mode: &str, mode
         at_last_summary: Mutex::new(0),
         pending: Mutex::new(false),
         plan_dir: None,
+        on_summary: None,
     })
 }
 
@@ -389,6 +395,11 @@ impl SummarizationHook {
 
     pub fn with_plan_dir(mut self, dir: PathBuf) -> Self {
         self.plan_dir = Some(dir);
+        self
+    }
+
+    pub fn with_on_summary(mut self, f: OnSummary) -> Self {
+        self.on_summary = Some(f);
         self
     }
 
@@ -691,6 +702,9 @@ impl SummarizationHook {
                 );
             }
             self.emit_end(ctx, &text, false);
+            if let Some(f) = &self.on_summary {
+                f(sid, &text);
+            }
         }
         tracing::info!("summarization_complete session_id={:?} summarised={}", ctx.session_id, to_summarise.len());
         (true, false)
@@ -787,6 +801,7 @@ mod tests {
             at_last_summary: Mutex::new(0),
             pending: Mutex::new(false),
             plan_dir: None,
+            on_summary: None,
         }
     }
 
@@ -1137,5 +1152,29 @@ mod tests {
         hook.max_token_length = DEFAULT_MAX_TOKEN_LENGTH;
         compact_with(&hook, vec![ChatMessage::user("Hi."), reply_with_usage("Hello.", 246_735)]).await;
         assert_eq!(sent_max_tokens(&provider, 0), None);
+    }
+
+    /// The retitle callback gets the session and its summary only when a
+    /// summary was written.
+    #[tokio::test]
+    async fn on_summary_runs_only_after_a_successful_summary() {
+        let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
+        let record = |seen: &Arc<Mutex<Vec<(String, String)>>>| -> OnSummary {
+            let seen = seen.clone();
+            Arc::new(move |sid: &str, text: &str| seen.lock().unwrap().push((sid.into(), text.into())))
+        };
+        let ctx = RunContext { session_id: Some("s-retitle".into()), ..ctx() };
+        let history = || vec![ChatMessage::user("Fix the login page."), ChatMessage::assistant("Done.")];
+
+        let hook = hook_with(Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")])), 0).with_on_summary(record(&seen));
+        let mut state = AgentState::new(history(), String::new());
+        assert!(hook.summarise(&ctx, &mut state, "sys").await);
+        assert_eq!(*seen.lock().unwrap(), vec![("s-retitle".to_string(), "Summary.".to_string())]);
+
+        // An empty summary writes nothing and calls nothing.
+        let hook = hook_with(Arc::new(MockProvider::new(vec![MockProvider::text("")])), 0).with_on_summary(record(&seen));
+        let mut state = AgentState::new(history(), String::new());
+        assert!(!hook.summarise(&ctx, &mut state, "sys").await);
+        assert_eq!(seen.lock().unwrap().len(), 1);
     }
 }

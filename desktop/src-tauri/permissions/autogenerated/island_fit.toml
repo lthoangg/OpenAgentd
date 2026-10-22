@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-fit"
+description = "Enables the island_fit command without any pre-configured scope."
+commands.allow = ["island_fit"]
+
+[[permission]]
+identifier = "deny-island-fit"
+description = "Denies the island_fit command without any pre-configured scope."
+commands.deny = ["island_fit"]

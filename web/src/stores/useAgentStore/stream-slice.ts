@@ -17,6 +17,43 @@ export function clearReconnectTimer(state: Pick<AgentStore, '_reconnectTimer'>) 
   }
 }
 
+/** Controllers `connectStream` aborted to replace them; their stream lives on as the new one. */
+const replacedControllers = new WeakSet<AbortController>()
+
+/**
+ * How long a feed may stay silent when it should be talking: right after it
+ * attaches to a working turn (the server replays the agent status at once),
+ * or after a turn started. Longer silence means the feed is not delivering.
+ */
+export const STREAM_SILENCE_MS = 10_000
+/** How long after a global "needs input" the question card may take to arrive. */
+export const QUESTION_GRACE_MS = 3_000
+/** Past this many silent attempts in a row, stop reloading: the logs say why. */
+const MAX_SILENT_ATTEMPTS = 4
+
+const realSetTimeout = globalThis.setTimeout.bind(globalThis)
+const realClearTimeout = globalThis.clearTimeout.bind(globalThis)
+
+/**
+ * Timers for the silence checks. Captured at load so tests that stub the
+ * global timers for reconnect back-off do not see these; tests of the checks
+ * replace them here.
+ */
+export const streamWatchClock = {
+  set: (callback: () => void, ms: number): ReturnType<typeof setTimeout> => {
+    const handle = realSetTimeout(callback, ms)
+    // A watch never keeps a process (or a test worker) alive on its own.
+    ;(handle as { unref?: () => void }).unref?.()
+    return handle
+  },
+  clear: (handle: ReturnType<typeof setTimeout> | null) => {
+    if (handle !== null) realClearTimeout(handle)
+  },
+}
+
+/** The live connection's silence check, so a turn start can re-arm it. */
+let activeWatch: { abort: AbortController; arm: () => void } | null = null
+
 function mergeChangedPaths(
   changed: { added: string[]; modified: string[]; removed: string[] } | undefined,
 ): string[] | undefined {
@@ -66,6 +103,8 @@ export type StreamSlice = Pick<
   | '_abortController'
   | '_reconnectTimer'
   | '_reconnectAttempts'
+  | '_silentStreamAttempts'
+  | '_directStreamSession'
   | '_unloading'
   | 'cacheInvalidations'
   | 'compactAgent'
@@ -78,6 +117,9 @@ export type StreamSlice = Pick<
   | 'setPendingDraft'
   | 'stopAgent'
   | 'connectStream'
+  | 'expectStreamActivity'
+  | 'expectQuestion'
+  | 'resyncStream'
   | 'resolveQuestion'
   | 'markTurnResuming'
   | 'dismissSetupRequired'
@@ -102,6 +144,8 @@ export const createStreamSlice: StateCreator<
   _abortController: null,
   _reconnectTimer: null,
   _reconnectAttempts: 0,
+  _silentStreamAttempts: 0,
+  _directStreamSession: null,
   _unloading: false,
   cacheInvalidations: [],
 
@@ -386,7 +430,11 @@ export const createStreamSlice: StateCreator<
     if (!sessionId) return new AbortController()
     const generation = get()._sessionGeneration
 
-    get()._abortController?.abort()
+    const previous = get()._abortController
+    if (previous) {
+      replacedControllers.add(previous)
+      previous.abort()
+    }
     const abort = new AbortController()
     // One store update: each one re-runs every subscribed selector.
     set((draft) => {
@@ -434,6 +482,41 @@ export const createStreamSlice: StateCreator<
     // before the replacement stream opens; a session-generation mismatch
     // safely discards them during a session switch.
     abort.signal.addEventListener('abort', flushBufferedDeltas, { once: true })
+    // Aborted by anything but a reconnect (a component cleanup, a send that
+    // tears the stream down first): it no longer delivers, so stop calling it
+    // connected. Otherwise every recovery path that skips an "already
+    // connected and working" session left the chat frozen until a reload.
+    abort.signal.addEventListener('abort', () => {
+      if (replacedControllers.has(abort) || get()._abortController !== abort) return
+      set((draft) => {
+        draft.isConnected = false
+        draft._abortController = null
+      })
+    }, { once: true })
+
+    // Silence check: a feed attached to a working turn hears the agent status
+    // replayed at once, so a feed that stays silent is not delivering (the
+    // chat showed a spinning tool card, or nothing, until a reload). Any
+    // frame disarms it; a turn start re-arms it (`expectStreamActivity`).
+    let watchTimer: ReturnType<typeof setTimeout> | null = null
+    const disarmWatch = () => {
+      streamWatchClock.clear(watchTimer)
+      watchTimer = null
+    }
+    const armWatch = () => {
+      disarmWatch()
+      watchTimer = streamWatchClock.set(() => {
+        watchTimer = null
+        const s = get()
+        if (abort.signal.aborted || s._abortController !== abort) return
+        if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
+        if (!s.isAgentWorking || s._unloading) return
+        void s.resyncStream(`no live update for ${STREAM_SILENCE_MS / 1000}s`)
+      }, STREAM_SILENCE_MS)
+    }
+    abort.signal.addEventListener('abort', disarmWatch, { once: true })
+    activeWatch = { abort, arm: armWatch }
+    if (get().isAgentWorking && get().pendingQuestion === null) armWatch()
 
     // Reopening the moment the backend closes is right when the connection was
     // doing something — but a stream that closes having delivered nothing will
@@ -477,8 +560,12 @@ export const createStreamSlice: StateCreator<
           if (current._unloading && type === 'error') return
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
           receivedAnyEvent = true
-          if (current._reconnectAttempts > 0) {
-            set((draft) => { draft._reconnectAttempts = 0 })
+          disarmWatch()
+          if (current._reconnectAttempts > 0 || current._silentStreamAttempts > 0) {
+            set((draft) => {
+              draft._reconnectAttempts = 0
+              draft._silentStreamAttempts = 0
+            })
           }
           if (isBufferedSSEDelta(type)) {
             queueBufferedDelta({ type, data: data as Record<string, unknown> })
@@ -491,6 +578,7 @@ export const createStreamSlice: StateCreator<
           console.warn(err.message)
         },
         onError: (err) => {
+          disarmWatch()
           flushBufferedDeltas()
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
@@ -507,6 +595,7 @@ export const createStreamSlice: StateCreator<
           set((draft) => { draft.error = err.message; draft.isConnected = false })
         },
         onDone: () => {
+          disarmWatch()
           flushBufferedDeltas()
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
@@ -551,8 +640,43 @@ export const createStreamSlice: StateCreator<
         },
       },
       abort.signal,
+      { direct: get()._directStreamSession === sessionId },
     )
     return abort
+  },
+
+  expectStreamActivity: () => {
+    const watch = activeWatch
+    if (!watch || watch.abort.signal.aborted || get()._abortController !== watch.abort) return
+    watch.arm()
+  },
+
+  expectQuestion: (questionId) => {
+    const { sessionId, _sessionGeneration: generation } = get()
+    if (!sessionId) return
+    streamWatchClock.set(() => {
+      const s = get()
+      if (s.sessionId !== sessionId || s._sessionGeneration !== generation || s._unloading) return
+      if (s.pendingQuestion?.id === questionId) return
+      void s.resyncStream('a question opened but its card never arrived')
+    }, QUESTION_GRACE_MS)
+  },
+
+  resyncStream: async (reason) => {
+    const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
+    if (!sessionId) return
+    const attempts = get()._silentStreamAttempts + 1
+    if (attempts > MAX_SILENT_ATTEMPTS) return
+    console.warn(`[agent-stream] ${reason}; reloading session ${sessionId} and reattaching (attempt ${attempts})`)
+    set((draft) => {
+      draft._silentStreamAttempts = attempts
+      // The shared connection keeps failing this session: give it its own.
+      if (attempts >= 2) draft._directStreamSession = sessionId
+    })
+    await get().loadSession(sessionId, workspace)
+    const after = get()
+    if (after.sessionId !== sessionId || after._sessionGeneration !== generation) return
+    if (after.isAgentWorking) after.connectStream()
   },
 
   dismissSetupRequired: () => {

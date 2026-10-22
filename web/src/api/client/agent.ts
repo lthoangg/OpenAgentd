@@ -136,8 +136,13 @@ export async function cancelQueuedMessage(sessionId: string, messageId: string):
   return true
 }
 
-export function agentStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal): void {
-  if (sharedAgentStream(sessionId, callbacks, signal)) return
+/**
+ * A session's live feed. It rides the shared event connection where it can;
+ * `direct` opens the session's own connection instead, for a session whose
+ * shared feed kept going silent.
+ */
+export function agentStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal, options: { direct?: boolean } = {}): void {
+  if (!options.direct && sharedAgentStream(sessionId, callbacks, signal)) return
   const url = `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/stream`
   fetch(url, { signal, headers: apiAuthHeaders(url) })
     .then((res) => {

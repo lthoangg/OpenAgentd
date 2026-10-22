@@ -27,6 +27,8 @@ pub fn router() -> Router<AppState> {
 async fn stream(qs: Qs) -> ApiResult<Response> {
     let events: BoxStream<'static, Arc<WireEvent>> = match qs.get("client_id") {
         None => {
+            // The notch island's feed (and API clients): global events only.
+            tracing::info!("events_stream_open kind=plain");
             let mut sub = broadcaster().attach();
             async_stream::stream! {
                 while let Some(ev) = sub.next().await {
@@ -36,6 +38,8 @@ async fn stream(qs: Qs) -> ApiResult<Response> {
             .boxed()
         }
         Some(id) if mux::valid_id(id) => {
+            // An app window's shared feed, which also carries session streams.
+            tracing::info!("events_stream_open kind=app client_id={}", id);
             let (client, guard) = mux::register(id);
             let mut global = broadcaster().attach();
             async_stream::stream! {
@@ -85,11 +89,12 @@ async fn subscribe(State(st): State<AppState>, AxPath(client_id): AxPath<String>
         wanted.push((id.to_string(), sid.to_string()));
     }
     // As on the per-session stream: a session parked on a question has a turn
-    // to attach to even when nothing is running.
+    // to attach to even when nothing is running, and its attach replays the
+    // question.
     for sid in client.new_session_ids(&wanted) {
         let Some(sid) = py_uuid(&sid) else { continue };
         match db::get_pending_question(&st.pool, &sid).await {
-            Ok(Some(_)) => store().ensure_turn(&sid),
+            Ok(Some(row)) => store().ensure_parked_turn(&sid, &row),
             Ok(None) => {}
             Err(e) => tracing::warn!("stream_ensure_turn_failed session_id={} error={}", sid, e),
         }

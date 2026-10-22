@@ -9,6 +9,7 @@ mod commands;
 mod sidecar;
 mod usage;
 mod tray_popup;
+mod island;
 mod watchdog;
 mod network_access;
 mod preview_relay;
@@ -315,7 +316,12 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .context("wait_for_health")?;
 
     let init_script = frontend_init_script(Some(&token), &base);
-    let existing_windows: Vec<tauri::WebviewWindow> = app.webview_windows().into_values().collect();
+    // Overlays (tray popup, island) never hold the backend token.
+    let existing_windows: Vec<tauri::WebviewWindow> = app
+        .webview_windows()
+        .into_values()
+        .filter(|w| !crate::window::is_overlay_window(w.label()))
+        .collect();
     let external_windows = state.window_backend_base_urls.lock().unwrap().clone();
     for window in existing_windows {
         if !external_windows.contains_key(window.label()) {
@@ -326,9 +332,13 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         if cfg!(debug_assertions) {
             window
                 .navigate(
-                    crate::window::frontend_dev_url(&app.config().identifier, window.label())
-                        .parse()
-                        .context("parse dev frontend url")?,
+                    crate::window::frontend_dev_url(
+                        crate::window::configured_dev_url(app).as_deref(),
+                        &app.config().identifier,
+                        window.label(),
+                    )
+                    .parse()
+                    .context("parse dev frontend url")?,
                 )
                 .context("navigate app window")?;
         }
@@ -657,6 +667,13 @@ fn main() {
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,
             tray_popup::tray_fit,
+            island::island_state,
+            island::island_fit,
+            island::island_open_session,
+            island::island_dismiss,
+            island::island_viewing,
+            island::island_settings,
+            island::island_update_settings,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
@@ -717,6 +734,7 @@ fn main() {
             });
             let watchdog_handle = app.handle().clone();
             tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
+            island::start(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -729,6 +747,14 @@ fn main() {
             } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
                 let state: tauri::State<'_, AppState> = app.state();
                 *state.active_window_label.lock().unwrap() = label.to_string();
+                island::on_app_focus_changed(app);
+            }
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::Focused(false),
+                ..
+            } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
+                island::on_app_focus_changed(app);
             }
             RunEvent::WindowEvent {
                 label,
@@ -747,6 +773,7 @@ fn main() {
                             .unwrap()
                             .remove(label.as_str());
                         preview_relay::close_window(app, label.as_str());
+                        island::forget_window(label.as_str());
                         state
                             .window_zoom_factors
                             .lock()
@@ -755,7 +782,7 @@ fn main() {
                         let remaining = app
                             .webview_windows()
                             .into_iter()
-                            .find(|(k, _)| k != label.as_str() && k != crate::tray_popup::TRAY_POPUP_WINDOW)
+                            .find(|(k, _)| k != label.as_str() && !crate::window::is_overlay_window(k))
                             .map(|(k, _)| k)
                             .unwrap_or_else(|| MAIN_WINDOW.to_string());
                         *state.active_window_label.lock().unwrap() = remaining;
@@ -796,7 +823,10 @@ mod tests {
     use std::collections::HashMap as StdHashMap;
     use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
-    use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
+    use crate::window::{
+        frontend_init_script, inherited_external_base_url, new_window_init_script,
+        with_saved_external_backend,
+    };
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
@@ -878,6 +908,39 @@ mod tests {
 
         assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
         assert!(!script.contains("/coding"));
+    }
+
+    // Closing the last window drops its backend entry; with no bundled
+    // sidecar the next window (Dock, tray, island) must reuse the saved server.
+    #[test]
+    fn new_window_after_the_last_closes_uses_the_saved_external_backend() {
+        let external = with_saved_external_backend(
+            StdHashMap::new(),
+            None,
+            Some("http://localhost:8000".to_string()),
+        );
+        let script = new_window_init_script(None, None, &external, MAIN_WINDOW, Some("/s"))
+            .expect("saved external backend init script");
+        assert!(script.contains("http://localhost:8000"));
+        assert_eq!(
+            inherited_external_base_url(&external, MAIN_WINDOW).as_deref(),
+            Some("http://localhost:8000")
+        );
+    }
+
+    #[test]
+    fn saved_external_backend_does_not_override_a_live_one() {
+        let mut live = StdHashMap::new();
+        live.insert(MAIN_WINDOW.to_string(), "http://192.168.1.10:4082".to_string());
+        let kept = with_saved_external_backend(live, None, Some("http://localhost:8000".into()));
+        assert_eq!(kept.get(MAIN_WINDOW).map(String::as_str), Some("http://192.168.1.10:4082"));
+
+        let bundled = with_saved_external_backend(
+            StdHashMap::new(),
+            Some("http://127.0.0.1:4082"),
+            Some("http://localhost:8000".into()),
+        );
+        assert!(bundled.is_empty());
     }
 
     // ── inherited_external_base_url ──────────────────────────────────────────

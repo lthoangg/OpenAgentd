@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-desktop"
-version = "3.25.1"
+version = "3.26.0"
 description = "OpenAgentd — on-machine coding agent (desktop shell)"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -46,6 +46,14 @@ tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal"] }
+
+# The notch island (src/island.rs) sets window level, Spaces behaviour and
+# frame through AppKit. Tauri already builds these crates; the versions match
+# Cargo.lock and every feature listed is one Tauri already turns on.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "objc2-core-foundation"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [

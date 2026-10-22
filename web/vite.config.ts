@@ -78,11 +78,13 @@ export default defineConfig({
   },
   build: {
     rolldownOptions: {
-      // Multi-page build: the macOS tray popup (web/tray.html) is a tiny,
-      // self-contained entry that must NOT pull in the full SPA shell.
+      // Multi-page build: the macOS tray popup (web/tray.html) and notch
+      // island (web/island.html) are tiny, self-contained entries that must
+      // NOT pull in the full SPA shell.
       input: {
         index: path.resolve(import.meta.dirname, "index.html"),
         tray: path.resolve(import.meta.dirname, "tray.html"),
+        island: path.resolve(import.meta.dirname, "island.html"),
       },
       output: {
         // Rolldown-native chunk groups (the deprecated function-form

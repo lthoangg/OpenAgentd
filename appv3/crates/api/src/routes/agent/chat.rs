@@ -435,7 +435,7 @@ async fn clear_side_questions(State(st): State<AppState>, AxPath(raw): AxPath<St
 async fn agent_stream(State(st): State<AppState>, AxPath(session_id): AxPath<String>) -> Response {
     if let Some(sid) = py_uuid(&session_id) {
         match db::get_pending_question(&st.pool, &sid).await {
-            Ok(Some(_)) => store().ensure_turn(&session_id),
+            Ok(Some(row)) => store().ensure_parked_turn(&session_id, &row),
             Ok(None) => {}
             Err(e) => tracing::warn!("stream_ensure_turn_failed session_id={} error={}", session_id, e),
         }
@@ -894,14 +894,14 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
         live.queue_interaction_mode(&m);
         let mut row = row;
         if let Some(t) = clean_title(&title)? {
-            row = db::update_session(&st.pool, &sid, db::SessionUpdate::title(t)).await?.unwrap_or(row);
+            row = db::update_session(&st.pool, &sid, db::SessionUpdate::user_title(t)).await?.unwrap_or(row);
         }
         let resp = session_response(&row, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: Some(m), ..Default::default() });
         return Ok(json(Value::Object(resp)));
     }
     let mut row = row;
     if let Some(t) = clean_title(&title)? {
-        row = db::update_session(&st.pool, &sid, db::SessionUpdate::title(t)).await?.unwrap_or(row);
+        row = db::update_session(&st.pool, &sid, db::SessionUpdate::user_title(t)).await?.unwrap_or(row);
     }
     if let Some(m) = &mode {
         row = appv3_agent::interaction_mode::set_mode(&st.pool, &sid, m).await?.0;

@@ -2667,7 +2667,7 @@ dependencies = [
 
 [[package]]
 name = "openagentd-desktop"
-version = "3.25.1"
+version = "3.26.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2676,6 +2676,9 @@ dependencies = [
  "log",
  "nix",
  "notify-rust",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "once_cell",
  "openagentd-shell-core",
  "reqwest 0.12.28",

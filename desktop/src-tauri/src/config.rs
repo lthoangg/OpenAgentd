@@ -115,9 +115,42 @@ pub fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> 
     remove_backend_server_at(&app_backend_config_path(app)?, base_url)
 }
 
+/// The notch island's settings (`desktop-island.json`). A missing or
+/// unreadable file, or a missing key, takes the default.
+fn island_settings_from(bytes: Option<&[u8]>) -> crate::island::IslandSettings {
+    bytes
+        .and_then(|b| serde_json::from_slice(b).ok())
+        .unwrap_or_default()
+}
+
+pub fn load_island_settings(app: &AppHandle) -> crate::island::IslandSettings {
+    let bytes = app_config_file(app, "desktop-island.json")
+        .ok()
+        .and_then(|path| std::fs::read(path).ok());
+    island_settings_from(bytes.as_deref())
+}
+
+pub fn save_island_settings(app: &AppHandle, settings: &crate::island::IslandSettings) -> Result<()> {
+    let path = app_config_file(app, "desktop-island.json")?;
+    let bytes = serde_json::to_vec_pretty(settings).context("serialize island settings")?;
+    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn island_settings_default_per_key_and_read_older_files() {
+        let defaults = crate::island::IslandSettings::default();
+        assert_eq!(island_settings_from(None), defaults);
+        assert_eq!(island_settings_from(Some(b"not json")), defaults);
+        // The first version stored only the switch.
+        let old = island_settings_from(Some(br#"{"enabled": false}"#));
+        assert_eq!(old, crate::island::IslandSettings { enabled: false, ..defaults });
+        let opted_in = island_settings_from(Some(br#"{"showWhenFrontmost": true}"#));
+        assert!(opted_in.enabled && opted_in.show_when_frontmost);
+    }
 
     #[test]
     fn a_normal_window_size_is_remembered() {

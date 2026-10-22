@@ -1,6 +1,6 @@
 /**
  * Settings → Chat titles — name each session from its first message with a
- * small model.
+ * small model, and optionally rename it from its summary after compaction.
  */
 import { useMemo } from 'react'
 
@@ -23,6 +23,7 @@ const TITLES_DEFAULT: TitleGenerationSettings = {
   enabled: true,
   model: '',
   wait_timeout_seconds: 3,
+  update_after_compaction: false,
 }
 
 function normalizeTitles(form: TitleGenerationSettings): TitleGenerationSettings {
@@ -30,7 +31,13 @@ function normalizeTitles(form: TitleGenerationSettings): TitleGenerationSettings
     enabled: form.enabled,
     model: form.model.trim(),
     wait_timeout_seconds: Math.max(0, form.wait_timeout_seconds),
+    update_after_compaction: form.update_after_compaction,
   }
+}
+
+/** Older backends omit `update_after_compaction`. */
+function hydrateTitles(data: TitleGenerationSettings): TitleGenerationSettings {
+  return { ...data, update_after_compaction: data.update_after_compaction ?? false }
 }
 
 export function TitlesSettingsPage() {
@@ -47,6 +54,7 @@ export function TitlesSettingsPage() {
     data: titlesQ.data,
     initial: TITLES_DEFAULT,
     normalize: normalizeTitles,
+    hydrate: hydrateTitles,
     onSave: (value) => updateTitles.mutateAsync(value),
     successTitle: 'Title generation settings saved',
   })
@@ -97,6 +105,17 @@ export function TitlesSettingsPage() {
                 value={draft.value.wait_timeout_seconds}
                 onChange={(e) => draft.patch({ wait_timeout_seconds: parseInt(e.target.value, 10) || 0 })}
                 className="h-9 w-24 font-mono"
+              />
+            </PanelRow>
+            <PanelRow
+              label="Update title after compaction"
+              htmlFor="titles-after-compaction"
+              description="Renames the session from its summary each time the conversation is compacted. Titles you renamed yourself are kept."
+            >
+              <Switch
+                id="titles-after-compaction"
+                checked={draft.value.update_after_compaction}
+                onCheckedChange={(checked) => draft.patch({ update_after_compaction: checked })}
               />
             </PanelRow>
           </>

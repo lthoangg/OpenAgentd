@@ -214,6 +214,13 @@ export interface AgentStoreState {
   _unloading: boolean
   _reconnectTimer: ReturnType<typeof setTimeout> | null
   _reconnectAttempts: number
+  /**
+   * Consecutive times this session's live feed was found silent when it
+   * should have been talking (see ``resyncStream``). Reset by any frame.
+   */
+  _silentStreamAttempts: number
+  /** A session whose feed kept going silent on the shared connection; it uses its own. */
+  _directStreamSession: string | null
   cacheInvalidations: CacheInvalidation[]
 }
 
@@ -238,6 +245,18 @@ export interface AgentStoreActions {
   setPendingDraft: (draft: { content: string; attachments?: MessageAttachment[] } | null) => void
   stopAgent: () => Promise<void>
   connectStream: () => AbortController
+  /**
+   * A turn just started for this session: if the live feed then stays silent
+   * past ``STREAM_SILENCE_MS``, reload and reattach.
+   */
+  expectStreamActivity: () => void
+  /**
+   * The server opened question ``questionId`` here (global ``input_needed``):
+   * if its card has not arrived after ``QUESTION_GRACE_MS``, reload and reattach.
+   */
+  expectQuestion: (questionId: string) => void
+  /** Reload the session and reattach its live feed, which missed updates. */
+  resyncStream: (reason: string) => Promise<void>
   /**
    * Close the question card for ``questionId``, ignoring a stale id.
    *

@@ -108,7 +108,12 @@ export async function handleGlobalEvent(
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
-    if (before.isConnected && before.isAgentWorking) return true
+    if (before.isConnected && before.isAgentWorking) {
+      // Connected is what the store believes, not proof: a feed can go quiet
+      // with no error. Expect updates now, and recover if none arrive.
+      before.expectStreamActivity()
+      return true
+    }
     const sessionGeneration = before._sessionGeneration
     const targetWorkspace = (typeof event.workspace === 'string' && event.workspace)
       ? event.workspace
@@ -138,10 +143,11 @@ export async function handleGlobalEvent(
     queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(sessionId) })
 
     const before = useAgentStore.getState()
-    // Subagent output surfaces through its lead, and a stopped turn is the
-    // user's own doing; neither has anything new to read.
+    // Subagent output surfaces through its lead, a stopped turn is the
+    // user's own doing, and an idle compaction only summarises what was
+    // already read; none has anything new to read.
     const shown = before.sessionId === sessionId && document.visibilityState === 'visible'
-    if (!parentSessionId && event.status !== 'stopped' && !shown) {
+    if (!parentSessionId && event.status !== 'stopped' && event.idle_compaction !== true && !shown) {
       useUnreadStore.getState().markUnread(sessionId)
     }
     if (before.sessionId !== sessionId) return true
@@ -289,6 +295,12 @@ export async function handleGlobalEvent(
       markSessionRunning(queryClient, sessionId, true, true)
       // Phones: a light tap says an agent stopped for you (no-op elsewhere).
       haptic('tick')
+      // The card for the session on screen arrives on its own feed. If that
+      // feed missed it, this is the one signal left: fetch it.
+      const metadata = event.metadata as Record<string, unknown> | undefined
+      const questionId = typeof metadata?.question_id === 'string' ? metadata.question_id : null
+      const store = useAgentStore.getState()
+      if (questionId && store.sessionId === sessionId) store.expectQuestion(questionId)
     }
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId

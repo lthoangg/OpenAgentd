@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.25.1 · October 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.25.1)
+**Latest release:** v3.26.0 · October 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.26.0)
 
 ---
 
@@ -495,8 +495,26 @@ run from the terminal (the native Rust binary since v3.0.0).
       With no providers it offers Open Providers, and Reconnect goes to
       Settings → Providers.
     - **Keys.** Esc closes it, or the server menu first, which also takes
-      ↑ ↓ Enter. ⌘R refreshes, and ⌘N, ⌘, and ⌘Q run New session, Settings
-      and Quit.
+      ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit. Since
+      `[v3.26.0]` the popup no longer offers New session; that lives in the
+      app window (⌘N).
+  - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
+    another app, a black pill grows out of the MacBook notch (or hangs from
+    the middle of the menu bar on a display without one) whenever an agent
+    is busy. It reads "Working" with the session title or count, turns
+    orange with "Needs input" when an agent waits on a question or a plan
+    review, and keeps "Done" (or "Failed") up for a finished session until
+    you open it, in the app or from the pill, or dismiss it. A session that
+    finishes on screen in the focused window, a turn you stopped yourself,
+    and a background idle compaction show nothing. Hover it to list the
+    active sessions, waiting ones first with their question, then the
+    finished ones with a × to dismiss; click a row or the pill to open that
+    session. The pill grows out of the notch, springs open on hover and
+    shrinks back in, and clicks beside it still reach the menu bar. It never
+    takes focus and shows over full-screen apps. Settings → General →
+    Desktop turns it off, and can also keep it up while OpenAgentd is in
+    front (off by default), stop keeping finished sessions, or stop hover
+    from expanding it.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -537,6 +555,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
+  - **Update title after compaction** `[v3.26.0]` — an opt-in switch in
+    Settings → Chat titles renames a session from its summary each time the
+    conversation is compacted, so the title follows what the session is
+    working on now. Titles you renamed yourself and scheduled-task sessions
+    keep their names.
 - **Mode-scoped recent-session lists** `[v1.66.1]` — session sidebars now fetch
   their own coding session pages instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
@@ -739,9 +762,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
   - Inline diffs in tool cards show the first 400 lines with a "Show N more
-    lines" button, and a turn with more than 300 steps shows the latest 300
-    with "Show N earlier steps", so huge patches and long agent runs stay
-    responsive `[v3.14.0, v3.18.0]`.
+    lines" button, so huge patches stay responsive `[v3.14.0]`. A turn shows
+    every one of its steps, however long the agent ran; the "Show N earlier
+    steps" button is gone `[v3.26.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   General → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads
@@ -1354,7 +1377,8 @@ agent against it.
   it runs, and an accent dot when a turn ended while you were in another
   session or the window was hidden. Opening the session clears the dot in every
   window. Unread state stays on this device, and sessions that finish while the
-  app is closed are not marked.
+  app is closed are not marked. Since `[v3.26.0]` an idle compaction no longer
+  marks a session unread.
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and
@@ -2381,6 +2405,18 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
   `provider_status`, `permission_asked`, `error`, `done`.
 - **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
   stream replays buffered state then resumes live.
+- **Self-healing live feed** `[v3.26.0]` — a session's live feed that goes
+  quiet with no error no longer leaves a spinning tool card or an empty chat
+  until a reload. A feed attached to a working turn that hears nothing for 10
+  seconds, a turn start with no updates after it, or a global "needs input"
+  whose question card never arrives makes the app reload the session and
+  reattach; after two silent attempts that session uses its own connection.
+  A subscription request that never answers (queued behind the webview's
+  connection limit) restarts the shared stream after 10 seconds. The replay
+  now carries the open question or plan review, a history reload no longer
+  clears a newer live question, and a plan review refreshes the Plan panel.
+  The server logs `mux_subscriptions_synced`, `mux_subscription_ended` and
+  `events_stream_open kind=app|plain`.
 - **Multi-client streaming** `[since v1.0]` — multiple tabs can watch the same
   session simultaneously.
 - **Embeddable web UI** `[since v1.0]` — the wheel-bundled UI can be served

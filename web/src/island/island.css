@@ -1,0 +1,364 @@
+/* macOS notch island (web/island.html). The window is a fixed transparent
+ * canvas over the notch; .island-body is the black pill that extends the
+ * notch, and morphs between sizes with CSS. Clicks outside the pill pass
+ * through (the shell switches that from the pointer). Colours and motion
+ * come from styles/tokens.css (dark theme, set on <html>); only the block
+ * below holds values of its own. island-css.test.ts keeps it that way. */
+@import "../styles/tokens.css";
+
+/* ── Island-only values ───────────────────────────────────────────────── */
+:root {
+  /* The notch is hardware black; anything lighter shows its outline. */
+  --island-bg: #000000;
+  --island-row-hover: rgba(255, 255, 255, 0.08);
+  --island-row-press: rgba(255, 255, 255, 0.12);
+  --island-spinner-track: rgba(124, 194, 240, 0.3);
+  /* Concave corners where the pill meets the top of the screen
+   * (EAR_WIDTH in status.ts). */
+  --island-ear: 8px;
+}
+/* ── End island-only values ───────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--focus-ring) 60%, transparent);
+  outline-offset: -2px;
+}
+
+/* ── Canvas and shape ────────────────────────────────────────────────── */
+.island-canvas {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.island {
+  display: flex;
+  align-items: flex-start;
+}
+
+.island-body {
+  position: relative;
+  overflow: hidden;
+  width: var(--pill-width);
+  height: var(--pill-height);
+  background: var(--island-bg);
+  border-radius: 0 0 12px 12px;
+  /* Opening and resizing spring a little past the target, like the
+   * iPhone's island; closing (below) settles without the bounce. */
+  transition:
+    width var(--motion-slow) var(--ease-spring-soft),
+    height var(--motion-slow) var(--ease-spring-soft),
+    border-radius var(--motion-base) var(--ease-out),
+    opacity var(--motion-base) var(--ease-out);
+}
+
+.island[data-open="false"] .island-body {
+  transition:
+    width var(--motion-base) var(--ease-in-out),
+    height var(--motion-base) var(--ease-in-out),
+    border-radius var(--motion-base) var(--ease-in-out),
+    opacity var(--motion-base) var(--ease-in-out);
+}
+
+/* Without a notch there is nothing to shrink into: fade instead. */
+.island[data-notch="false"][data-open="false"] .island-body,
+.island[data-notch="false"][data-open="false"] .island-ear {
+  opacity: 0;
+}
+
+.island[data-mode="expanded"] .island-body {
+  border-radius: 0 0 22px 22px;
+}
+
+.island-ear {
+  flex: none;
+  width: var(--island-ear);
+  height: var(--island-ear);
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.island-ear--left {
+  background: radial-gradient(circle at 0 100%, transparent var(--island-ear), var(--island-bg) calc(var(--island-ear) + 0.5px));
+}
+
+.island-ear--right {
+  background: radial-gradient(circle at 100% 100%, transparent var(--island-ear), var(--island-bg) calc(var(--island-ear) + 0.5px));
+}
+
+/* ── Bar: two labels either side of the notch ────────────────────────── */
+.island-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--notch-width) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: var(--notch-height);
+  padding: 0 10px;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.island[data-notch="false"] .island-bar {
+  gap: 0;
+}
+
+/* The labels leave first when the pill shrinks, and arrive after it grows. */
+.island[data-open="false"] .island-bar {
+  opacity: 0;
+}
+
+.island[data-open="true"] .island-bar {
+  transition-delay: var(--motion-instant);
+}
+
+.island-lead {
+  display: inline-flex;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.island-lead-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.island-detail {
+  justify-self: end;
+  max-width: 100%;
+  color: var(--color-text-muted);
+}
+
+.island-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A changed label (Working → Needs input → Done) blurs in. */
+.island-swap {
+  animation: island-swap-in var(--motion-base) var(--ease-out);
+}
+
+@keyframes island-swap-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: scale(0.92);
+  }
+}
+
+.island[data-mode="needs_input"] .island-lead,
+.island[data-mode="expanded"] .island-lead:has(.island-dot) {
+  color: var(--accent-orange);
+}
+
+.island-mark {
+  flex: none;
+}
+
+.island-mark--done {
+  color: var(--color-success);
+}
+
+.island-mark--failed {
+  color: var(--color-error);
+}
+
+.island-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--accent-orange);
+}
+
+.island-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid var(--island-spinner-track);
+  border-top-color: var(--accent-blue);
+  animation: island-spin var(--motion-glacial) var(--ease-linear) infinite;
+}
+
+@keyframes island-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Expanded list ───────────────────────────────────────────────────── */
+.island-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px 6px 8px;
+  max-height: calc(var(--pill-height) - var(--notch-height));
+  overflow-y: auto;
+}
+
+/* Rows rise in one after another as the pill opens. */
+.island-list > li {
+  animation: island-row-in var(--motion-base) var(--ease-out) both;
+  animation-delay: var(--motion-instant);
+}
+
+.island-list > li:nth-child(2) {
+  animation-delay: calc(var(--motion-instant) * 1.6);
+}
+
+.island-list > li:nth-child(3) {
+  animation-delay: calc(var(--motion-instant) * 2.2);
+}
+
+.island-list > li:nth-child(n + 4) {
+  animation-delay: calc(var(--motion-instant) * 2.8);
+}
+
+@keyframes island-row-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(-6px);
+  }
+}
+
+.island-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 12px;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+/* data-hover comes from the shell's pointer polling; :hover never fires in a
+ * window that can't take focus, but costs nothing to keep. */
+.island-row[data-hover],
+.island-row:hover {
+  background: var(--island-row-hover);
+}
+
+.island-row:active {
+  background: var(--island-row-press);
+}
+
+.island-row .island-dot {
+  justify-self: center;
+}
+
+.island-row-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.island-row-meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.island-row-question {
+  grid-column: 2 / 4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--accent-orange-text);
+}
+
+/* Unread rows: the × takes the workspace's place while the row is hovered. */
+.island-row-item {
+  position: relative;
+}
+
+.island-row-meta,
+.island-dismiss {
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.island-dismiss {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: 9999px;
+  color: var(--color-text-muted);
+  opacity: 0;
+}
+
+.island-dismiss[data-hover],
+.island-dismiss:hover {
+  color: var(--color-text);
+  background: var(--island-row-press);
+}
+
+.island-row-item:has([data-hover]) .island-dismiss {
+  opacity: 1;
+}
+
+.island-row-item[data-unread]:has([data-hover]) .island-row-meta {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island-body,
+  .island[data-open="false"] .island-body,
+  .island-bar,
+  .island-ear,
+  .island-row,
+  .island-row-meta,
+  .island-dismiss {
+    transition-duration: 0.01ms;
+    transition-delay: unset;
+  }
+
+  .island-swap,
+  .island-list > li,
+  .island-spinner {
+    animation-duration: 0.01ms;
+    animation-delay: unset;
+    animation-iteration-count: 1;
+  }
+}

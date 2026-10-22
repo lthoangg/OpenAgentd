@@ -36,6 +36,7 @@ const TITLES = {
   enabled: true,
   model: 'codex:gpt-5.5-mini',
   wait_timeout_seconds: 3,
+  update_after_compaction: false,
 }
 
 const MULTIMODAL = {
@@ -191,6 +192,27 @@ describe('TitlesSettingsPage', () => {
     await waitFor(() => expect(enabled.getAttribute('aria-checked')).toBe('true'))
     fireEvent.click(enabled)
     await waitFor(() => expect(screen.queryByLabelText('Wait timeout seconds')).toBeNull())
+    expect(screen.queryByRole('switch', { name: /update title after compaction/i })).toBeNull()
+  })
+
+  it('turns on retitling after compaction', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      ...baseHandlers(null),
+      http.put('http://localhost/api/settings/title-generation', async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json(body as object)
+      }),
+    )
+    renderPage(<TitlesSettingsPage />)
+
+    const toggle = await screen.findByRole('switch', { name: /update title after compaction/i })
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+    fireEvent.click(toggle)
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(bodies).toEqual([{ ...TITLES, update_after_compaction: true }]))
   })
 })
 

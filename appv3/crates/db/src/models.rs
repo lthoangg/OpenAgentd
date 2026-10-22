@@ -40,6 +40,8 @@ pub struct ChatSession {
     /// "Recent activity" sorts by and the sidebar's age shows. `None` only for
     /// a row written outside [`crate::create_session`].
     pub last_message_at: Option<String>,
+    /// The user renamed the session, so automatic retitling leaves it alone.
+    pub title_locked: bool,
 }
 
 impl ChatSession {

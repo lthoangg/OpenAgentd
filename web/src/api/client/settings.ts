@@ -85,6 +85,8 @@ export type TitleGenerationSettings = {
   enabled: boolean
   model: string
   wait_timeout_seconds: number
+  /** Retitle the session from its summary after each compaction (v3 only). */
+  update_after_compaction: boolean
 }
 
 export async function getTitleGenerationSettings(): Promise<TitleGenerationSettings> {

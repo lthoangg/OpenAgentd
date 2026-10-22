@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000026";
+pub const ALEMBIC_HEAD: &str = "00000027";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -60,7 +60,9 @@ pub const ALEMBIC_HEAD: &str = "00000026";
 ///   took `ask_user`, `delegate`, `plan`, `submit_plan` and `preview` from it.
 ///   A session a task owns (`session_id: "auto"`) has a UUIDv5 id, so the
 ///   mark stays only where the id's version digit (character 13) is `5`.
-pub const MIGRATIONS: [(&str, &str); 26] = [
+/// - 00000027: `chat_sessions.title_locked`, set when the user renames a
+///   session, so retitling after compaction keeps the name they chose.
+pub const MIGRATIONS: [(&str, &str); 27] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -87,6 +89,7 @@ pub const MIGRATIONS: [(&str, &str); 26] = [
     ("00000024", include_str!("../resources/migrations/00000024.sql")),
     ("00000025", include_str!("../resources/migrations/00000025.sql")),
     ("00000026", include_str!("../resources/migrations/00000026.sql")),
+    ("00000027", include_str!("../resources/migrations/00000027.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -359,7 +362,7 @@ CREATE TABLE "chat_sessions" (
 	model VARCHAR(255), 
 	thinking_level VARCHAR(50), 
 	history_revision INTEGER DEFAULT '0' NOT NULL, 
-	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, 
+	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, title_locked BOOLEAN DEFAULT 0 NOT NULL, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(parent_session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
 );

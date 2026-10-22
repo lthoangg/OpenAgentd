@@ -52,11 +52,14 @@ export interface HubDeps {
   makeChannel: (name: string) => ChannelLike
   /** Open the feed; `clientId` is null when the server cannot carry sessions. */
   openStream: (clientId: string | null, callbacks: GlobalEventCallbacks, signal: AbortSignal) => void
-  putSubscriptions: (clientId: string, subs: StreamSubscription[]) => Promise<'ok' | 'gone' | 'error'>
+  /** Must answer `error` once `signal` aborts. */
+  putSubscriptions: (clientId: string, subs: StreamSubscription[], signal?: AbortSignal) => Promise<'ok' | 'gone' | 'error'>
   /** Identifies the backend; windows pointed at different backends never share. */
   key: string
   windowId: string
   newId: () => string
+  /** How long a subscription request may take; defaults to `PUT_TIMEOUT_MS`. */
+  putTimeoutMs?: number
 }
 
 interface Sub {
@@ -68,6 +71,14 @@ interface Sub {
 }
 
 const NAME_PREFIX = 'openagentd-stream:'
+
+/**
+ * Subscription requests go out one at a time, so one that never answers
+ * (queued behind the webview's per-host connection limit, which has no
+ * timeout of its own) would leave every later subscription unsent: the
+ * chat then shows nothing until a reload. Past this, the feed restarts.
+ */
+export const PUT_TIMEOUT_MS = 10_000
 
 /** Reads as a dropped connection, which the session store reconnects from. */
 const restarted = () => new Error('Connection closed: the shared event stream restarted')
@@ -375,8 +386,18 @@ export class StreamHub {
           const wanted = this.wanted()
           const signature = wanted.map((s) => s.id).sort().join(',')
           if (signature === this.sent) continue
-          const result = await this.deps.putSubscriptions(this.gen as string, wanted)
+          const timeout = new AbortController()
+          const timer = setTimeout(() => timeout.abort(), this.deps.putTimeoutMs ?? PUT_TIMEOUT_MS)
+          let result: 'ok' | 'gone' | 'error'
+          try {
+            result = await this.deps.putSubscriptions(this.gen as string, wanted, timeout.signal)
+          } finally {
+            clearTimeout(timer)
+          }
           if (this.mux !== controller) return
+          if (timeout.signal.aborted && result !== 'ok') {
+            console.warn(`[stream-hub] subscription request timed out; restarting the shared feed (${wanted.length} sessions)`)
+          }
           if (result === 'ok') {
             this.proven = true
             this.sent = signature

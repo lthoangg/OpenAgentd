@@ -89,14 +89,23 @@ async fn idle_session_compacts_only_when_enabled_and_full_enough() {
     tokio::time::sleep(short * 4).await;
     assert_eq!(summaries(&pool, &sid).await, 1, "compacted again");
     let mut notifications = 0;
-    let mut completed = 0;
+    let mut started = vec![];
+    let mut completed = vec![];
     while let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(200), global.next()).await {
         if e.data.contains(&sid) {
             notifications += usize::from(e.event == "desktop_notification");
-            completed += usize::from(e.event == "session_turn_completed");
+            let flagged = || serde_json::from_str::<serde_json::Value>(&e.data).unwrap()["idle_compaction"].as_bool().unwrap_or(false);
+            match e.event.as_str() {
+                "session_turn_started" => started.push(flagged()),
+                "session_turn_completed" => completed.push(flagged()),
+                _ => {}
+            }
         }
     }
-    assert_eq!(completed, 2, "user turn + idle compaction turn");
+    // Clients use the flag to not mark the session unread (nothing new to
+    // read) and to keep a background compaction out of "working" lists.
+    assert_eq!(started, [false, true], "user turn, then the flagged idle compaction turn");
+    assert_eq!(completed, [false, true], "user turn, then the flagged idle compaction turn");
     assert_eq!(notifications, 1, "idle compaction must not notify");
 
     // Disabled: nothing happens.

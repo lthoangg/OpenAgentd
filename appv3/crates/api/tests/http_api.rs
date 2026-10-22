@@ -183,6 +183,18 @@ async fn http_api_end_to_end() {
     let (st, _) = c.json("PUT", "/api/settings/title-generation", Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
     assert_eq!(st, StatusCode::OK);
 
+    // ── retitle after compaction (v3 only) ───────────────────────────────
+    let titles = "/api/settings/title-generation";
+    let (_, v) = c.json("GET", titles, None).await;
+    assert_eq!(v["update_after_compaction"], json!(false));
+    let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0, "update_after_compaction": true}))).await;
+    assert_eq!((st, v["update_after_compaction"].clone()), (StatusCode::OK, json!(true)));
+    // An older client omits the key and keeps the stored value.
+    let (_, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
+    assert_eq!(v["update_after_compaction"], json!(true));
+    let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0, "update_after_compaction": false}))).await;
+    assert_eq!((st, v["update_after_compaction"].clone()), (StatusCode::OK, json!(false)));
+
     // ── workspace messages switch (v3 only) ──────────────────────────────
     let (st, v) = c.json("GET", "/api/settings/workspace-messages", None).await;
     assert_eq!((st, v), (StatusCode::OK, json!({"enabled": true})));
@@ -834,6 +846,18 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     let qid = open_review(pool, &psid, "call-plan-1", 1, true).await;
     let (_, v) = c.json("GET", &format!("/api/agent/{psid}/question"), None).await;
     assert_eq!((v["question"]["kind"].clone(), v["question"]["plan_revision"].clone()), (json!("plan_review"), json!(1)), "{v}");
+    // A client that attaches to the parked session gets the review card from
+    // the replay, with nothing running and no live `question_asked` to see.
+    let (mux, _guard) = appv3_api::mux::register("plan-review-client");
+    let (st, _) = c.json("PUT", "/api/events/subscriptions/plan-review-client", Some(json!({"subs": [{"id": "r", "session_id": psid}]}))).await;
+    assert_eq!(st, StatusCode::OK);
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(5), mux.recv()).await.expect("replay").expect("open");
+    let frame: Value = serde_json::from_str(&frame.data).unwrap();
+    assert_eq!(
+        (frame["type"].as_str(), frame["data"]["question_id"].as_str(), frame["data"]["kind"].as_str()),
+        (Some("question_asked"), Some(qid.as_str()), Some("plan_review")),
+        "{frame}"
+    );
     let (st, v) = c.json("DELETE", &plan_uri, None).await;
     assert_eq!((st, v), (StatusCode::CONFLICT, json!({"detail": "The plan is awaiting review."})));
 

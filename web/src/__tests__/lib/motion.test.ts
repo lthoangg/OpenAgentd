@@ -1,7 +1,7 @@
 /**
  * `lib/motion.ts` calls itself "typed counterparts to the CSS `--motion-*` /
  * `--ease-*` tokens" and asks readers to keep the two in sync by hand. Nothing
- * enforced that, so this test does: it parses the real `index.css` token block
+ * enforced that, so this test does: it parses the real `styles/tokens.css` block
  * and checks every value against the TypeScript module.
  */
 import { describe, it, expect } from 'bun:test'
@@ -10,12 +10,12 @@ import { fileURLToPath } from 'node:url'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
-const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
+const css = readFileSync(fileURLToPath(new URL('../../styles/tokens.css', import.meta.url)), 'utf8')
 
 /** Read a `--name: value;` custom property out of the stylesheet. */
 function cssVar(name: string): string {
   const match = css.match(new RegExp(`--${name}:\\s*([^;]+);`))
-  if (!match) throw new Error(`--${name} not found in index.css`)
+  if (!match) throw new Error(`--${name} not found in styles/tokens.css`)
   return match[1]!.trim()
 }
 
@@ -41,7 +41,7 @@ function selectorDefining(name: string): string {
   return css.slice(start, open).replace(/\/\*[\s\S]*?\*\//g, '').trim()
 }
 
-describe('lib/motion — parity with the index.css token block', () => {
+describe('lib/motion — parity with the styles/tokens.css token block', () => {
   // They sat in the dark override, so the default light theme had none and
   // every ``var(--motion-*)`` animation or transition there fell back.
   it('defines the tokens for both themes, not in one theme override', () => {

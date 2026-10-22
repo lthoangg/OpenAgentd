@@ -1,13 +1,13 @@
 /**
  * Motion constants — typed counterparts to the CSS `--motion-*` / `--ease-*`
- * tokens defined in `web/src/index.css`.
+ * tokens defined in `web/src/styles/tokens.css`.
  *
  * Use these when you need values inside TypeScript (framer-motion props,
  * inline styles computed at render time, animation delays). For static CSS
  * or Tailwind arbitrary values, prefer `var(--motion-*)` directly.
  *
  * Parity with the CSS token block is enforced by
- * `src/__tests__/lib/motion.test.ts` — it parses `index.css` and fails if the
+ * `src/__tests__/lib/motion.test.ts` — it parses `tokens.css` and fails if the
  * two drift, so these values do not have to be kept in sync by hand.
  */
 

@@ -333,7 +333,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
             window
                 .navigate(
                     crate::window::frontend_dev_url(
-                        crate::window::configured_dev_url(&app).as_deref(),
+                        crate::window::configured_dev_url(app).as_deref(),
                         &app.config().identifier,
                         window.label(),
                     )

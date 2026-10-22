@@ -1032,6 +1032,29 @@ html[data-app-hidden="true"] *::after {
 }
 .oa-prose p { margin-bottom: 0.75em; }
 .oa-prose p:last-child { margin-bottom: 0; }
+
+/* Live caret: a Signal Blue bar after the last text a streaming answer has
+ * written (MarkdownBlock sets `data-streaming`). It blinks at `glacial` and
+ * stands still under reduced motion (the global rule ends the blink on its
+ * first, visible step). Code blocks, tables and nested lists get none: the
+ * caret only follows running text. */
+.oa-prose[data-streaming] > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.oa-prose[data-streaming] > :is(ul, ol):last-child > li:last-child:not(:has(> :is(p, ul, ol)))::after,
+.oa-prose[data-streaming] > :is(ul, ol):last-child > li:last-child > p:last-child::after,
+.oa-prose[data-streaming] > blockquote:last-child > p:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--accent-blue);
+  animation: oa-caret-blink var(--motion-glacial) steps(1) infinite;
+}
+@keyframes oa-caret-blink {
+  50% { opacity: 0; }
+}
 .oa-prose h1, .oa-prose h2, .oa-prose h3 {
   font-weight: 600;
   margin-top: 1.25em;

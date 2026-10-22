@@ -5,6 +5,7 @@ import { sharedGlobalEventStream } from '@/api/stream-hub'
 import { onApiBaseUrlChange } from '@/api/base-url'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
+import { haptic } from '@/lib/haptics'
 import { queryKeys } from '@/queries'
 import { appendSubagent, bumpSessionActivity, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -286,6 +287,8 @@ export async function handleGlobalEvent(
     // someone working elsewhere that a session is stopped and waiting on them.
     if (kind === 'input_needed' && sessionId) {
       markSessionRunning(queryClient, sessionId, true, true)
+      // Phones: a light tap says an agent stopped for you (no-op elsewhere).
+      haptic('tick')
     }
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId

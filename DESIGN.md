@@ -667,6 +667,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   to right over `glacial` (`ease-out`, after an `instant` beat). Its sidebar row
   holds a Signal Blue wash for 40% of `linger`, then drains. Renames you make,
   list loads and session switches swap the text with no motion.
+- **A live caret follows streaming text.** A 2px Signal Blue bar sits after the
+  last paragraph, heading or list item an answer is writing, and blinks at
+  `glacial` (`steps(1)`, on or off, never a fade). Code blocks and tables get
+  none, and it goes the moment the answer ends. Under reduced motion it stands
+  still.
 - **Reduced motion snaps.** Every animation and transition drops to ~0ms.
   Progress bars keep moving because time is literal, and spinners keep turning,
   slowly, because a frozen spinner reads as a hang.

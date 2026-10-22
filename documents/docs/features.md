@@ -670,6 +670,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     several group changes in a row each build on the last.
   - Opening a saved session shows a loading transcript instead of the empty
     new-session screen, and New session works while it loads.
+- **A live caret while an answer streams** `[v3.25.0]` — a thin blue bar
+  blinks after the last line an agent is writing, so a pause reads as
+  thinking rather than finished. It goes when the answer ends, skips code
+  blocks and tables, and stands still with Reduce Motion on.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was
@@ -864,6 +868,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   iOS-style press-and-hold scale animation `[v1.47.0]`.
   The chat actions menu also opens Search files (Quick Open) and the command
   palette `[v3.0.0]`.
+  Sending a message and an agent asking you a question each give a light tap
+  in the phone apps `[v3.25.0]`.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the

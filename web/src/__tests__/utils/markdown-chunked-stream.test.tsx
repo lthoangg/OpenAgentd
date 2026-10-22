@@ -81,4 +81,13 @@ describe('MarkdownBlock — chunked streaming', () => {
     expect(firstPre).not.toBeNull()
     expect(firstPre!.querySelector('.th-token')).not.toBeNull()
   })
+
+  // index.css draws the caret after the last text block of a streaming
+  // answer; the attribute is what it keys on.
+  it('marks a streaming answer for the live caret and drops the mark when it ends', () => {
+    const { container, rerender } = streamInto('Working on **it**', 5)
+    expect(container.querySelector('.oa-prose')!.hasAttribute('data-streaming')).toBe(true)
+    act(() => rerender(<MarkdownBlock content="Working on **it**" sessionId="s1" isStreaming={false} />))
+    expect(container.querySelector('.oa-prose')!.hasAttribute('data-streaming')).toBe(false)
+  })
 })

@@ -657,7 +657,8 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   return (
     <MarkdownStreamingContext.Provider value={isStreaming}>
       <MarkdownSessionContext.Provider value={sessionId}>
-        <div className="oa-prose text-sm">
+        {/* `data-streaming` draws the live caret after the last text block (index.css). */}
+        <div className="oa-prose text-sm" data-streaming={isStreaming ? '' : undefined}>
           {chunks ? (
             chunks.map((c, index) => (
               <MarkdownChunkView key={index} doc={c.doc} live={isStreaming && index === chunks.length - 1} />

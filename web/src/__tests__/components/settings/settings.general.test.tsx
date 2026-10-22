@@ -40,9 +40,9 @@ describe('GeneralSettingsPage notch status', () => {
     render(<GeneralSettingsPage />)
     expect(await toggle('Agent status in the notch')).toHaveAttribute('aria-checked', 'true')
     expect(await toggle('Show while OpenAgentd is in front')).toHaveAttribute('aria-checked', 'false')
-    expect(await toggle('Show when nothing is running')).toHaveAttribute('aria-checked', 'false')
-    expect(await toggle('Show when a turn finishes')).toHaveAttribute('aria-checked', 'true')
+    expect(await toggle('Keep finished sessions until opened')).toHaveAttribute('aria-checked', 'true')
     expect(await toggle('Expand on hover')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('switch', { name: /nothing is running/ })).toBeNull()
   })
 
   it('saves only the option that changed', async () => {

@@ -36,6 +36,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
+import { useReportShownSession } from '@/lib/island-setting'
 import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { settledWidthBesidePanels } from '@/components/ResizableAside'
 import { isFocusStranded, useReturnFocusFromDock, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
@@ -505,6 +506,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
+  useReportShownSession(sessionIdState)
 
   // ``/btw <question>``: a side question, never sent to the chat; a bare
   // ``/btw`` shows them again. Either shows the dock's BTW tab on desktop

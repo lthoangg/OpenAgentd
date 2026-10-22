@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-viewing"
+description = "Enables the island_viewing command without any pre-configured scope."
+commands.allow = ["island_viewing"]
+
+[[permission]]
+identifier = "deny-island-viewing"
+description = "Denies the island_viewing command without any pre-configured scope."
+commands.deny = ["island_viewing"]

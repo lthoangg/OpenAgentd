@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { DEFAULT_ISLAND_SETTINGS, type IslandSession, type IslandSettings, type IslandStatus, type IslandView } from '@/island/status'
 import { useFakeTimers } from '../fake-timers'
@@ -31,8 +31,11 @@ const running = (id: string, title: string): IslandSession =>
 const waiting = (id: string, title: string, question: string): IslandSession =>
   ({ id, title, workspace: 'api', state: 'needs_input', question })
 
-function status(seq: number, sessions: IslandSession[], finished: IslandStatus['finished'] = null): IslandStatus {
-  return { seq, sessions, finished }
+const done = (id: string, title: string): IslandSession =>
+  ({ id, title, workspace: 'web', state: 'done', question: null })
+
+function status(seq: number, sessions: IslandSession[], unread: IslandSession[] = []): IslandStatus {
+  return { seq, sessions, unread }
 }
 
 function emit(event: string, payload: unknown) {
@@ -44,6 +47,7 @@ const point = (inside: boolean) => emit('island-pointer', { inside, x: 10, y: 10
 const fits = () => calls.filter(([cmd]) => cmd === 'island_fit').map(([, args]) => args)
 const lastFit = () => fits().at(-1)
 const opened = () => calls.filter(([cmd]) => cmd === 'island_open_session').map(([, args]) => args?.sessionId)
+const dismissed = () => calls.filter(([cmd]) => cmd === 'island_dismiss').map(([, args]) => args?.sessionId)
 const pill = () => document.querySelector('.island') as HTMLElement
 
 async function mount(settings: Partial<IslandSettings> = {}) {
@@ -85,7 +89,7 @@ describe('Island', () => {
     expect(screen.queryByText('Keep the old token format?')).toBeNull()
 
     point(true)
-    expect(screen.getByRole('list', { name: 'Active sessions' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Sessions' })).toBeInTheDocument()
     expect(screen.getByText('Keep the old token format?')).toBeInTheDocument()
     point(false)
     expect(screen.queryByRole('list')).toBeNull()
@@ -107,16 +111,17 @@ describe('Island', () => {
     await waitFor(() => expect(opened()).toEqual(['b', 'a']))
   })
 
-  it('flashes Done when the last turn finishes, then shrinks away', async () => {
+  it('keeps a finished session up until it is read, then shrinks away', async () => {
     await mount()
     push(status(2, [running('a', 'Refactor auth')]))
     const timers = useFakeTimers()
     try {
-      push(status(3, [], { id: 'a', title: 'Refactor auth', failed: false }))
+      push(status(3, [], [done('a', 'Refactor auth')]))
       expect(screen.getByText('Done')).toBeInTheDocument()
+      act(() => timers.tick(60_000))
       expect(lastFit()).toMatchObject({ visible: true })
 
-      act(() => timers.tick(4_000))
+      push(status(4, [], []))
       // Shrinking back in: still up, and still showing what it showed.
       expect(pill().dataset.open).toBe('false')
       expect(lastFit()).toMatchObject({ visible: true })
@@ -129,33 +134,27 @@ describe('Island', () => {
     }
   })
 
-  it('skips Done when finishes are turned off', async () => {
-    await mount({ showFinished: false })
-    push(status(2, [running('a', 'Refactor auth')]))
-    push(status(3, [], { id: 'a', title: 'Refactor auth', failed: false }))
-    expect(pill().dataset.mode).toBe('hidden')
-  })
+  it('lists unread sessions after the active ones, to open or dismiss', async () => {
+    await mount()
+    push(status(2, [running('a', 'Docs')], [done('d', 'Fix tooltip slide')]))
+    point(true)
+    const rows = within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole('listitem').map((li) => li.textContent)
+    expect(rows).toEqual(['Docsweb', 'Fix tooltip slideweb'])
 
-  it('keeps a small pill up while idle when asked to, and it brings the app forward', async () => {
-    await mount({ showWhenIdle: true })
-    expect(pill().dataset.mode).toBe('idle')
-    expect(lastFit()).toMatchObject({ visible: true })
-    fireEvent.click(screen.getByRole('button', { name: /nothing running/ }))
-    await waitFor(() => expect(calls.some(([cmd]) => cmd === 'island_show_app')).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss Fix tooltip slide' }))
+    await waitFor(() => expect(dismissed()).toEqual(['d']))
+    expect(opened()).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: /^Fix tooltip slide/ }))
+    await waitFor(() => expect(opened()).toEqual(['d']))
   })
 
   it('applies changed settings at once', async () => {
     await mount()
-    expect(pill().dataset.mode).toBe('hidden')
-    emit('island-settings-changed', { ...DEFAULT_ISLAND_SETTINGS, showWhenIdle: true })
-    expect(pill().dataset.mode).toBe('idle')
-  })
-
-  it('does not replay a finish that was already there when it loaded', async () => {
-    view = { ...view, status: status(7, [], { id: 'a', title: 'Old', failed: false }) }
-    await mount()
-    expect(screen.queryByText('Done')).toBeNull()
-    expect(lastFit()).toMatchObject({ visible: false })
+    push(status(2, [running('a', 'Refactor auth')]))
+    emit('island-settings-changed', { ...DEFAULT_ISLAND_SETTINGS, expandOnHover: false })
+    point(true)
+    expect(screen.queryByRole('list')).toBeNull()
   })
 
   it('ignores a snapshot older than the one it has', async () => {

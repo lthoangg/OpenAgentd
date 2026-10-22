@@ -13,7 +13,6 @@
   --island-row-hover: rgba(255, 255, 255, 0.08);
   --island-row-press: rgba(255, 255, 255, 0.12);
   --island-spinner-track: rgba(124, 194, 240, 0.3);
-  --island-idle-dot: rgba(245, 235, 216, 0.45);
   /* Concave corners where the pill meets the top of the screen
    * (EAR_WIDTH in status.ts). */
   --island-ear: 8px;
@@ -186,16 +185,6 @@ button:focus-visible {
   color: var(--accent-orange);
 }
 
-/* The idle pill: one quiet dot beside the notch. */
-.island[data-mode="idle"] .island-bar {
-  grid-template-columns: auto var(--notch-width) auto;
-  justify-content: space-between;
-}
-
-.island[data-mode="idle"][data-notch="false"] .island-bar {
-  justify-content: center;
-}
-
 .island-mark {
   flex: none;
 }
@@ -214,12 +203,6 @@ button:focus-visible {
   height: 8px;
   border-radius: 9999px;
   background: var(--accent-orange);
-}
-
-.island-dot--idle {
-  width: 6px;
-  height: 6px;
-  background: var(--island-idle-dot);
 }
 
 .island-spinner {
@@ -321,12 +304,52 @@ button:focus-visible {
   color: var(--accent-orange-text);
 }
 
+/* Unread rows: the × takes the workspace's place while the row is hovered. */
+.island-row-item {
+  position: relative;
+}
+
+.island-row-meta,
+.island-dismiss {
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.island-dismiss {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: 9999px;
+  color: var(--color-text-muted);
+  opacity: 0;
+}
+
+.island-dismiss[data-hover],
+.island-dismiss:hover {
+  color: var(--color-text);
+  background: var(--island-row-press);
+}
+
+.island-row-item:has([data-hover]) .island-dismiss {
+  opacity: 1;
+}
+
+.island-row-item[data-unread]:has([data-hover]) .island-row-meta {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .island-body,
   .island[data-open="false"] .island-body,
   .island-bar,
   .island-ear,
-  .island-row {
+  .island-row,
+  .island-row-meta,
+  .island-dismiss {
     transition-duration: 0.01ms;
     transition-delay: unset;
   }

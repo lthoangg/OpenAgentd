@@ -670,7 +670,8 @@ fn main() {
             island::island_state,
             island::island_fit,
             island::island_open_session,
-            island::island_show_app,
+            island::island_dismiss,
+            island::island_viewing,
             island::island_settings,
             island::island_update_settings,
             updater::updater_check,
@@ -772,6 +773,7 @@ fn main() {
                             .unwrap()
                             .remove(label.as_str());
                         preview_relay::close_window(app, label.as_str());
+                        island::forget_window(label.as_str());
                         state
                             .window_zoom_factors
                             .lock()

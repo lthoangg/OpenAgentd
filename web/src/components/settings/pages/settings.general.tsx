@@ -42,19 +42,14 @@ const NOTCH_OPTIONS: ReadonlyArray<{ key: Exclude<keyof IslandSettings, 'enabled
     description: 'By default it steps aside while you use the app, whose sidebar shows the same status.',
   },
   {
-    key: 'showWhenIdle',
-    label: 'Show when nothing is running',
-    description: 'Keep a small pill beside the notch; click it to bring OpenAgentd forward.',
-  },
-  {
     key: 'showFinished',
-    label: 'Show when a turn finishes',
-    description: 'Show "Done" (or "Failed") for a few seconds after the last turn ends.',
+    label: 'Keep finished sessions until opened',
+    description: 'Show "Done" (or "Failed") until you open the session or dismiss it.',
   },
   {
     key: 'expandOnHover',
     label: 'Expand on hover',
-    description: 'Point at it to list the active sessions and their questions.',
+    description: 'Point at it to list the sessions, their questions and what finished.',
   },
 ]
 

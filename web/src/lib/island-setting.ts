@@ -3,6 +3,7 @@
  * the island and its event feed), so they are read and written over IPC
  * rather than stored in this window.
  */
+import { useEffect } from 'react'
 import { getPlatform } from '@/hooks/use-platform'
 import type { IslandSettings } from '@/island/status'
 
@@ -32,4 +33,18 @@ export async function readIslandSettings(): Promise<IslandSettings | null> {
 export async function updateIslandSettings(patch: Partial<IslandSettings>): Promise<IslandSettings> {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<IslandSettings>('island_update_settings', { patch })
+}
+
+/**
+ * Tell the shell which session this window shows. The island keeps a
+ * finished session as unread until it is on screen in the focused window;
+ * the shell knows which window has focus, so this only reports changes.
+ */
+export function useReportShownSession(sessionId: string | null | undefined): void {
+  useEffect(() => {
+    if (!supportsIsland()) return
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke('island_viewing', { sessionId: sessionId ?? null }))
+      .catch(() => {})
+  }, [sessionId])
 }

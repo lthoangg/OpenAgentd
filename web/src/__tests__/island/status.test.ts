@@ -3,9 +3,8 @@ import {
   CANVAS_HEIGHT,
   DEFAULT_ISLAND_SETTINGS,
   EXPANDED_WIDTH,
-  IDLE_PLAIN_WIDTH,
-  IDLE_WING_WIDTH,
   PLAIN_WIDTH,
+  PLAIN_HIDDEN_WIDTH,
   WING_WIDTH,
   compactLabels,
   islandHeight,
@@ -19,50 +18,57 @@ const running = (id: string, title = `Task ${id}`): IslandSession =>
   ({ id, title, workspace: 'web', state: 'running', question: null })
 const waiting = (id: string, title = `Ask ${id}`): IslandSession =>
   ({ id, title, workspace: 'web', state: 'needs_input', question: 'Which branch?' })
-const done = { id: 'x', title: 'Fix tooltip slide', failed: false }
+const done = (id: string, title = `Done ${id}`): IslandSession =>
+  ({ id, title, workspace: 'web', state: 'done', question: null })
+const failed = (id: string, title = `Failed ${id}`): IslandSession =>
+  ({ id, title, workspace: 'web', state: 'failed', question: null })
 const defaults = DEFAULT_ISLAND_SETTINGS
 
 describe('islandMode', () => {
-  it('is hidden with nothing active and nothing just finished', () => {
-    expect(islandMode([], null, false, defaults)).toBe('hidden')
-    expect(islandMode([], null, true, defaults)).toBe('hidden')
+  it('is hidden with nothing active and nothing unread', () => {
+    expect(islandMode([], [], false, defaults)).toBe('hidden')
+    expect(islandMode([], [], true, defaults)).toBe('hidden')
   })
 
   it('lets a waiting session take priority over running ones', () => {
-    expect(islandMode([running('a')], null, false, defaults)).toBe('running')
-    expect(islandMode([running('a'), waiting('b')], null, false, defaults)).toBe('needs_input')
+    expect(islandMode([running('a')], [], false, defaults)).toBe('running')
+    expect(islandMode([running('a'), waiting('b')], [], false, defaults)).toBe('needs_input')
   })
 
-  it('expands on hover only when there are sessions to list', () => {
-    expect(islandMode([running('a')], null, true, defaults)).toBe('expanded')
-    expect(islandMode([], done, true, defaults)).toBe('done')
+  it('stays up as done while a finished session is unread', () => {
+    expect(islandMode([], [done('x')], false, defaults)).toBe('done')
+    expect(islandMode([running('a')], [done('x')], false, defaults)).toBe('running')
   })
 
-  it('drops a pending finish as soon as something is active again', () => {
-    expect(islandMode([running('a')], done, false, defaults)).toBe('running')
+  it('expands on hover to list active and unread sessions', () => {
+    expect(islandMode([running('a')], [], true, defaults)).toBe('expanded')
+    expect(islandMode([], [done('x')], true, defaults)).toBe('expanded')
   })
 
-  it('follows the settings for hover, finishes and idle', () => {
-    expect(islandMode([running('a')], null, true, { ...defaults, expandOnHover: false })).toBe('running')
-    expect(islandMode([], done, false, { ...defaults, showFinished: false })).toBe('hidden')
-    expect(islandMode([], null, false, { ...defaults, showWhenIdle: true })).toBe('idle')
+  it('does not expand on hover when that is turned off', () => {
+    expect(islandMode([running('a')], [], true, { ...defaults, expandOnHover: false })).toBe('running')
   })
 })
 
 describe('compactLabels', () => {
   it('names a single session and counts several', () => {
-    expect(compactLabels([running('a', 'Refactor auth')], null)).toEqual({ lead: 'Working', detail: 'Refactor auth' })
-    expect(compactLabels([running('a'), running('b')], null)).toEqual({ lead: 'Working', detail: '2 sessions' })
+    expect(compactLabels([running('a', 'Refactor auth')], [])).toEqual({ lead: 'Working', detail: 'Refactor auth' })
+    expect(compactLabels([running('a'), running('b')], [])).toEqual({ lead: 'Working', detail: '2 sessions' })
   })
 
   it('counts only the waiting sessions while any wait', () => {
-    expect(compactLabels([waiting('a', 'Plan review'), running('b')], null)).toEqual({ lead: 'Needs input', detail: 'Plan review' })
-    expect(compactLabels([waiting('a'), waiting('b'), running('c')], null)).toEqual({ lead: 'Needs input', detail: '2 sessions' })
+    expect(compactLabels([waiting('a', 'Plan review'), running('b')], [])).toEqual({ lead: 'Needs input', detail: 'Plan review' })
+    expect(compactLabels([waiting('a'), waiting('b'), running('c')], [])).toEqual({ lead: 'Needs input', detail: '2 sessions' })
   })
 
-  it('reports a finish, or a failure', () => {
-    expect(compactLabels([], done)).toEqual({ lead: 'Done', detail: 'Fix tooltip slide' })
-    expect(compactLabels([], { ...done, failed: true }).lead).toBe('Failed')
+  it('reports unread finishes, or failures', () => {
+    expect(compactLabels([], [done('x', 'Fix tooltip slide')])).toEqual({ lead: 'Done', detail: 'Fix tooltip slide' })
+    expect(compactLabels([], [failed('x')]).lead).toBe('Failed')
+    expect(compactLabels([], [done('x'), failed('y')])).toEqual({ lead: 'Done', detail: '2 sessions' })
+  })
+
+  it('shows active work over unread finishes', () => {
+    expect(compactLabels([running('a', 'Docs')], [done('x')])).toEqual({ lead: 'Working', detail: 'Docs' })
   })
 })
 
@@ -72,12 +78,12 @@ describe('islandWidth and islandHeight', () => {
 
   it('shrinks into the notch when hidden and grows a wing either side', () => {
     expect(islandWidth('hidden', notch)).toBe(188)
-    expect(islandWidth('idle', notch)).toBe(188 + 2 * IDLE_WING_WIDTH)
     expect(islandWidth('running', notch)).toBe(188 + 2 * WING_WIDTH)
+    expect(islandWidth('done', notch)).toBe(188 + 2 * WING_WIDTH)
   })
 
   it('uses fixed pills without a notch, and widens when expanded', () => {
-    expect(islandWidth('idle', plain)).toBe(IDLE_PLAIN_WIDTH)
+    expect(islandWidth('hidden', plain)).toBe(PLAIN_HIDDEN_WIDTH)
     expect(islandWidth('running', plain)).toBe(PLAIN_WIDTH)
     expect(islandWidth('expanded', plain)).toBe(EXPANDED_WIDTH)
   })
@@ -90,9 +96,9 @@ describe('islandWidth and islandHeight', () => {
 })
 
 describe('primarySessionId', () => {
-  it('opens the first listed session, else the one that just finished', () => {
-    expect(primarySessionId([waiting('w'), running('r')], null)).toBe('w')
-    expect(primarySessionId([], done)).toBe('x')
-    expect(primarySessionId([], null)).toBeNull()
+  it('opens the first listed session, else the newest unread one', () => {
+    expect(primarySessionId([waiting('w'), running('r')], [done('x')])).toBe('w')
+    expect(primarySessionId([], [done('x'), done('y')])).toBe('x')
+    expect(primarySessionId([], [])).toBeNull()
   })
 })

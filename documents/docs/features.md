@@ -503,16 +503,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     the middle of the menu bar on a display without one) whenever an agent
     is busy. It reads "Working" with the session title or count, turns
     orange with "Needs input" when an agent waits on a question or a plan
-    review, and shows "Done" (or "Failed") for 4 seconds when the last turn
-    ends; a turn you stopped yourself shows nothing. Hover it to list the
-    active sessions, waiting ones first with their question; click a row or
-    the pill to open that session. The pill grows out of the notch, springs
-    open on hover and shrinks back in, and clicks beside it still reach the
-    menu bar. It never takes focus and shows over full-screen apps.
-    Settings → General → Desktop turns it off, and can also keep it up
-    while OpenAgentd is in front (off by default), keep a small pill when
-    nothing is running (off), skip the "Done" flash, or stop hover from
-    expanding it.
+    review, and keeps "Done" (or "Failed") up for a finished session until
+    you open it, in the app or from the pill, or dismiss it. A session that
+    finishes on screen in the focused window, a turn you stopped yourself,
+    and a background idle compaction show nothing. Hover it to list the
+    active sessions, waiting ones first with their question, then the
+    finished ones with a × to dismiss; click a row or the pill to open that
+    session. The pill grows out of the notch, springs open on hover and
+    shrinks back in, and clicks beside it still reach the menu bar. It never
+    takes focus and shows over full-screen apps. Settings → General →
+    Desktop turns it off, and can also keep it up while OpenAgentd is in
+    front (off by default), stop keeping finished sessions, or stop hover
+    from expanding it.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

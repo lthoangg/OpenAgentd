@@ -2,8 +2,8 @@
 //!
 //! A borderless black webview (`web/island.html`) sits over the notch, or
 //! hangs from the middle of the menu bar on a Mac without one. It shows
-//! whether any session is running or waiting on the user, and briefly that a
-//! turn finished.
+//! whether any session is running or waiting on the user, and the sessions
+//! that finished since you last looked at them (unread).
 //!
 //! The island never sees the backend credential. The Rust process follows
 //! the backend's global event stream and treats each turn event only as a
@@ -25,10 +25,16 @@
 //! the canvas takes clicks and the webview gets the position
 //! (`island-pointer`, for hover); outside it, clicks pass through to the
 //! menu bar.
+//!
+//! Unread is the shell's own: a session whose turn completed or failed is
+//! kept until you open it. App windows report the session they show
+//! (`island_viewing`), so one finishing on screen in the focused window is
+//! never unread, and focusing a window clears the one it shows. A turn the
+//! user stopped, or a background idle compaction, has nothing new to read.
 
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -84,6 +90,10 @@ const PREWARM_DELAY: Duration = Duration::from_secs(3);
 const POINTER_POLL_INSIDE: Duration = Duration::from_millis(40);
 const POINTER_POLL: Duration = Duration::from_millis(80);
 const POINTER_IDLE_POLL: Duration = Duration::from_millis(400);
+/// Unread sessions kept; older ones drop off.
+const MAX_UNREAD: usize = 6;
+/// How the memo records a turn that only compacted an idle session.
+const IDLE_COMPACTION_STATUS: &str = "idle_compaction";
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -94,9 +104,7 @@ pub struct IslandSettings {
     pub enabled: bool,
     /// Also show while an OpenAgentd window is in front.
     pub show_when_frontmost: bool,
-    /// Keep a small pill up while nothing is running.
-    pub show_when_idle: bool,
-    /// Show "Done" / "Failed" when the last turn ends.
+    /// Keep finished sessions ("Done" / "Failed") until they are opened.
     pub show_finished: bool,
     pub expand_on_hover: bool,
 }
@@ -106,7 +114,6 @@ impl Default for IslandSettings {
         Self {
             enabled: true,
             show_when_frontmost: false,
-            show_when_idle: false,
             show_finished: true,
             expand_on_hover: true,
         }
@@ -119,7 +126,6 @@ impl Default for IslandSettings {
 pub struct IslandSettingsPatch {
     pub enabled: Option<bool>,
     pub show_when_frontmost: Option<bool>,
-    pub show_when_idle: Option<bool>,
     pub show_finished: Option<bool>,
     pub expand_on_hover: Option<bool>,
 }
@@ -129,7 +135,6 @@ impl IslandSettings {
         Self {
             enabled: patch.enabled.unwrap_or(self.enabled),
             show_when_frontmost: patch.show_when_frontmost.unwrap_or(self.show_when_frontmost),
-            show_when_idle: patch.show_when_idle.unwrap_or(self.show_when_idle),
             show_finished: patch.show_finished.unwrap_or(self.show_finished),
             expand_on_hover: patch.expand_on_hover.unwrap_or(self.expand_on_hover),
         }
@@ -143,6 +148,10 @@ impl IslandSettings {
 pub enum SessionState {
     Running,
     NeedsInput,
+    /// Finished, not opened yet.
+    Done,
+    /// Failed, not opened yet.
+    Failed,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -157,23 +166,15 @@ pub struct IslandSession {
     pub question: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FinishedSession {
-    pub id: String,
-    pub title: String,
-    pub failed: bool,
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IslandStatus {
-    /// Bumped on every change, so the webview can tell a new finish from a re-send.
+    /// Bumped on every change, so the webview can drop a stale snapshot.
     pub seq: u64,
     /// Waiting-on-the-user sessions first.
     pub sessions: Vec<IslandSession>,
-    /// Set when this change emptied the list because a turn ended.
-    pub finished: Option<FinishedSession>,
+    /// Finished sessions not opened yet, newest first.
+    pub unread: Vec<IslandSession>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -247,10 +248,7 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
         .filter(|row| row.parent_session_id.is_none() && (row.running || row.needs_input))
         .map(|row| {
             let state = if row.needs_input { SessionState::NeedsInput } else { SessionState::Running };
-            let question = match state {
-                SessionState::NeedsInput => questions.get(&id_key(&row.id)).cloned(),
-                SessionState::Running => None,
-            };
+            let question = row.needs_input.then(|| questions.get(&id_key(&row.id)).cloned()).flatten();
             IslandSession {
                 title: session_title(row.title.as_deref()),
                 workspace: row.workspace.as_deref().and_then(|w| session_workspace_label(w, chat_root)),
@@ -265,24 +263,49 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
     sessions
 }
 
-/// The turn to report as finished when the list goes from something to
-/// nothing. A turn the user stopped is their own doing and is not reported.
-pub fn finished_session(
+/// Sessions that left the active list, as finished rows. A turn the user
+/// stopped is their own doing, and an idle compaction only summarised what
+/// was already read; neither is reported. Without an outcome (a missed
+/// event) the turn counts as done.
+pub fn newly_finished(
     previous: &[IslandSession],
     next: &[IslandSession],
     statuses: &HashMap<String, String>,
-) -> Option<FinishedSession> {
-    if !next.is_empty() {
-        return None;
-    }
-    previous.iter().find_map(|session| {
-        let status = statuses.get(&id_key(&session.id)).map(String::as_str);
-        (status != Some("stopped")).then(|| FinishedSession {
-            id: session.id.clone(),
-            title: session.title.clone(),
-            failed: matches!(status, Some("error" | "failed")),
+) -> Vec<IslandSession> {
+    previous
+        .iter()
+        .filter(|p| !next.iter().any(|n| n.id == p.id))
+        .filter_map(|session| {
+            let state = match statuses.get(&id_key(&session.id)).map(String::as_str) {
+                Some("stopped" | IDLE_COMPACTION_STATUS) => return None,
+                Some("error" | "failed") => SessionState::Failed,
+                _ => SessionState::Done,
+            };
+            Some(IslandSession { state, question: None, ..session.clone() })
         })
-    })
+        .collect()
+}
+
+/// Add `finished` to the unread list (newest first), except the session on
+/// screen (`viewed`, an [`id_key`]), and drop sessions that run again.
+/// True when the list changed.
+pub fn merge_unread(
+    unread: &mut Vec<IslandSession>,
+    finished: Vec<IslandSession>,
+    next: &[IslandSession],
+    viewed: Option<&str>,
+) -> bool {
+    let before = unread.clone();
+    unread.retain(|u| !next.iter().any(|n| n.id == u.id));
+    for session in finished.into_iter().rev() {
+        if viewed == Some(id_key(&session.id).as_str()) {
+            continue;
+        }
+        unread.retain(|u| u.id != session.id);
+        unread.insert(0, session);
+    }
+    unread.truncate(MAX_UNREAD);
+    *unread != before
 }
 
 /// What the stream told us between refetches: each waiting session's
@@ -291,6 +314,8 @@ pub fn finished_session(
 pub struct FeedMemo {
     questions: HashMap<String, String>,
     statuses: HashMap<String, String>,
+    /// Sessions running an idle compaction, kept out of the list.
+    compacting: HashSet<String>,
     /// Path of the backend's Chat workspace, fetched once per connection.
     chat_root: Option<String>,
 }
@@ -301,8 +326,15 @@ impl FeedMemo {
         let data = || serde_json::from_str::<serde_json::Value>(&event.data).unwrap_or_default();
         match event.event.as_str() {
             "session_turn_started" => {
-                if let Some(id) = data()["session_id"].as_str() {
-                    self.statuses.remove(&id_key(id));
+                let data = data();
+                if let Some(id) = data["session_id"].as_str() {
+                    let key = id_key(id);
+                    self.statuses.remove(&key);
+                    if data["idle_compaction"].as_bool() == Some(true) {
+                        self.compacting.insert(key);
+                    } else {
+                        self.compacting.remove(&key);
+                    }
                 }
                 true
             }
@@ -314,7 +346,10 @@ impl FeedMemo {
                     return false;
                 }
                 if let (Some(id), Some(status)) = (data["session_id"].as_str(), data["status"].as_str()) {
-                    self.statuses.insert(id_key(id), status.to_string());
+                    let key = id_key(id);
+                    self.compacting.remove(&key);
+                    let status = if data["idle_compaction"].as_bool() == Some(true) { IDLE_COMPACTION_STATUS } else { status };
+                    self.statuses.insert(key, status.to_string());
                 }
                 true
             }
@@ -341,6 +376,11 @@ impl FeedMemo {
             sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key)
         });
         self.statuses.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
+    }
+
+    /// Drop sessions that are only compacting: a background summary is not work to watch.
+    fn hide_compacting(&self, sessions: &mut Vec<IslandSession>) {
+        sessions.retain(|s| !self.compacting.contains(&id_key(&s.id)));
     }
 }
 
@@ -512,6 +552,10 @@ struct Shared {
     pill: Option<Rect>,
     /// The pointer as last told to the webview.
     pointer: Option<PointerPayload>,
+    /// The session each app window shows, by window label ([`id_key`]s).
+    viewing: HashMap<String, String>,
+    /// The backend the unread sessions belong to.
+    unread_base: Option<String>,
 }
 
 fn shared() -> &'static Mutex<Shared> {
@@ -527,6 +571,8 @@ fn shared() -> &'static Mutex<Shared> {
             canvas: None,
             pill: None,
             pointer: None,
+            viewing: HashMap::new(),
+            unread_base: None,
         })
     })
 }
@@ -732,12 +778,20 @@ pub fn on_app_focus_changed(app: &AppHandle) {
         }
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
-            let frontmost = crate::window::focused_webview_window(&handle)
-                .is_some_and(|w| !crate::window::is_overlay_window(w.label()));
+            let focused = crate::window::focused_webview_window(&handle)
+                .filter(|w| !crate::window::is_overlay_window(w.label()));
+            let frontmost = focused.is_some();
             let changed = {
                 let mut s = shared().lock().unwrap();
                 std::mem::replace(&mut s.frontmost, frontmost) != frontmost
             };
+            // Coming back to a window reads the session it shows.
+            if let Some(window) = focused {
+                let shown = shared().lock().unwrap().viewing.get(window.label()).cloned();
+                if let Some(key) = shown {
+                    mark_read(&handle, &key);
+                }
+            }
             if changed {
                 apply(&handle);
             }
@@ -769,7 +823,7 @@ async fn run_feed(app: AppHandle) {
     let mut failures: u32 = 0;
     loop {
         if !is_enabled() {
-            clear(&app);
+            clear(&app, true);
             feed_wake().notified().await;
             continue;
         }
@@ -782,7 +836,8 @@ async fn run_feed(app: AppHandle) {
             Err(e) => {
                 failures = failures.saturating_add(1);
                 // Stale "running" rows are worse than none while we can't see the backend.
-                clear(&app);
+                // What finished before is still unread.
+                clear(&app, false);
                 let delay = crate::usage::backoff_delay(RETRY_BASE, failures, RETRY_MAX);
                 log::info!("island: event stream unavailable, retrying in {}s: {e:#}", delay.as_secs());
                 pause(delay).await;
@@ -795,6 +850,7 @@ async fn run_feed(app: AppHandle) {
 /// backend, or the feature is turned off.
 async fn follow(app: &AppHandle, client: &reqwest::Client, base: &str, token: Option<&str>) -> Result<()> {
     let base = base.trim_end_matches('/');
+    follow_backend(app, base);
     let mut memo = FeedMemo::default();
     let url = format!("{base}/api/events/stream");
     let mut request = client.get(&url).header(reqwest::header::ACCEPT, "text/event-stream");
@@ -880,7 +936,8 @@ async fn refresh(app: &AppHandle, client: &reqwest::Client, base: &str, token: O
         .json()
         .await
         .context("parse active sessions")?;
-    let next = active_sessions(page.data, &memo.questions, memo.chat_root.as_deref());
+    let mut next = active_sessions(page.data, &memo.questions, memo.chat_root.as_deref());
+    memo.hide_compacting(&mut next);
     publish(app, next, memo);
     Ok(())
 }
@@ -911,38 +968,89 @@ async fn chat_root(client: &reqwest::Client, base: &str, token: Option<&str>) ->
 }
 
 fn publish(app: &AppHandle, next: Vec<IslandSession>, memo: &mut FeedMemo) {
+    let viewed = viewed_session(app);
     let status = {
         let mut s = shared().lock().unwrap();
-        let finished = finished_session(&s.status.sessions, &next, &memo.statuses);
-        if s.status.sessions == next && finished.is_none() {
+        let finished = if s.settings.show_finished {
+            newly_finished(&s.status.sessions, &next, &memo.statuses)
+        } else {
+            Vec::new()
+        };
+        let mut unread = s.status.unread.clone();
+        let unread_changed = merge_unread(&mut unread, finished, &next, viewed.as_deref());
+        if s.status.sessions == next && !unread_changed {
             memo.settle(&next);
             return;
         }
-        s.status = IslandStatus { seq: s.status.seq + 1, sessions: next, finished };
+        s.status = IslandStatus { seq: s.status.seq + 1, sessions: next, unread };
         s.status.clone()
     };
     memo.settle(&status.sessions);
     let waiting = status.sessions.iter().filter(|s| s.state == SessionState::NeedsInput).count();
     log::info!(
-        "island: active={} needs_input={} finished={}",
+        "island: active={} needs_input={} unread={}",
         status.sessions.len(),
         waiting,
-        status.finished.is_some()
+        status.unread.len()
     );
     let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
 }
 
-/// Empty the list without reporting a finish.
-fn clear(app: &AppHandle) {
+/// Empty the active list without reporting a finish, and the unread list too
+/// when `forget_unread`.
+fn clear(app: &AppHandle, forget_unread: bool) {
     let status = {
         let mut s = shared().lock().unwrap();
-        if s.status.sessions.is_empty() && s.status.finished.is_none() {
+        let unread = if forget_unread { Vec::new() } else { s.status.unread.clone() };
+        if s.status.sessions.is_empty() && s.status.unread == unread {
             return;
         }
-        s.status = IslandStatus { seq: s.status.seq + 1, sessions: Vec::new(), finished: None };
+        s.status = IslandStatus { seq: s.status.seq + 1, sessions: Vec::new(), unread };
         s.status.clone()
     };
     let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+}
+
+/// Change the unread list, and tell the island if that changed it.
+fn edit_unread(app: &AppHandle, edit: impl FnOnce(&mut Vec<IslandSession>)) {
+    let status = {
+        let mut s = shared().lock().unwrap();
+        let mut unread = s.status.unread.clone();
+        edit(&mut unread);
+        if unread == s.status.unread {
+            return;
+        }
+        s.status.unread = unread;
+        s.status.seq += 1;
+        s.status.clone()
+    };
+    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+}
+
+/// The session (an [`id_key`]) was opened: it is read.
+fn mark_read(app: &AppHandle, key: &str) {
+    edit_unread(app, |unread| unread.retain(|u| id_key(&u.id) != key));
+}
+
+/// Unread sessions belong to one backend; a switch forgets them.
+fn follow_backend(app: &AppHandle, base: &str) {
+    let switched = {
+        let mut s = shared().lock().unwrap();
+        s.unread_base.replace(base.to_string()).is_some_and(|old| old != base)
+    };
+    if switched {
+        edit_unread(app, Vec::clear);
+    }
+}
+
+/// The session on screen in the focused app window, while OpenAgentd is in front.
+fn viewed_session(app: &AppHandle) -> Option<String> {
+    let label = crate::window::target_window_label(app);
+    let s = shared().lock().unwrap();
+    if !s.frontmost {
+        return None;
+    }
+    s.viewing.get(&label).cloned()
 }
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -991,12 +1099,13 @@ pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: St
     }
     let known = {
         let s = shared().lock().unwrap();
-        s.status.sessions.iter().any(|x| x.id == session_id)
-            || s.status.finished.as_ref().is_some_and(|f| f.id == session_id)
+        s.status.sessions.iter().chain(&s.status.unread).any(|x| x.id == session_id)
     };
     if !known {
         return;
     }
+    // The window may already show it, and then reports nothing new.
+    mark_read(&app, &id_key(&session_id));
     match crate::window::target_webview_window(&app) {
         Some(target) => {
             crate::window::show_target_window(&app);
@@ -1017,12 +1126,38 @@ pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: St
     }
 }
 
-/// The idle pill was clicked: bring the app forward.
+/// The × on an unread row: forget it without opening it.
 #[tauri::command]
-pub fn island_show_app(app: AppHandle, window: WebviewWindow) {
+pub fn island_dismiss(app: AppHandle, window: WebviewWindow, session_id: String) {
     if window.label() == ISLAND_WINDOW {
-        crate::window::show_target_window(&app);
+        mark_read(&app, &id_key(&session_id));
     }
+}
+
+/// An app window reports the session it shows (None: none). Showing it in
+/// the focused window reads it.
+#[tauri::command]
+pub fn island_viewing(app: AppHandle, window: WebviewWindow, session_id: Option<String>) {
+    let label = window.label().to_string();
+    if crate::window::is_overlay_window(&label) {
+        return;
+    }
+    let key = session_id.as_deref().map(id_key);
+    {
+        let mut s = shared().lock().unwrap();
+        match &key {
+            Some(key) => s.viewing.insert(label, key.clone()),
+            None => s.viewing.remove(&label),
+        };
+    }
+    if let Some(key) = key.filter(|_| window.is_focused().unwrap_or(false)) {
+        mark_read(&app, &key);
+    }
+}
+
+/// A closed window shows nothing; its label may be reused by a new one.
+pub fn forget_window(label: &str) {
+    shared().lock().unwrap().viewing.remove(label);
 }
 
 /// The island settings, or None where there is no island (off macOS).
@@ -1043,6 +1178,9 @@ pub fn island_update_settings(app: AppHandle, patch: IslandSettingsPatch) -> Res
     shared().lock().unwrap().settings = next;
     if next.enabled != current.enabled {
         feed_wake().notify_one();
+    }
+    if !next.show_finished {
+        edit_unread(&app, Vec::clear);
     }
     log::info!("island: settings={next:?}");
     let handle = app.clone();
@@ -1215,23 +1353,65 @@ mod tests {
     }
 
     #[test]
-    fn emptying_the_list_reports_the_finished_turn() {
-        let previous = [session("a", SessionState::Running)];
-        let done = finished_session(&previous, &[], &HashMap::new()).unwrap();
-        assert_eq!((done.id.as_str(), done.failed), ("a", false));
-
-        let failed = HashMap::from([(id_key("a"), "error".to_string())]);
-        assert!(finished_session(&previous, &[], &failed).unwrap().failed);
+    fn a_session_that_leaves_the_list_is_finished_with_its_outcome() {
+        let mut asked = session("b", SessionState::NeedsInput);
+        asked.question = Some("Which branch?".into());
+        let previous = [session("a", SessionState::Running), asked, session("c", SessionState::Running)];
+        let statuses = HashMap::from([(id_key("b"), "error".to_string())]);
+        let finished = newly_finished(&previous, &previous[2..], &statuses);
+        let got: Vec<(&str, SessionState)> = finished.iter().map(|s| (s.id.as_str(), s.state)).collect();
+        assert_eq!(got, [("a", SessionState::Done), ("b", SessionState::Failed)]);
+        assert_eq!(finished[1].question, None);
     }
 
     #[test]
-    fn a_stopped_turn_or_a_list_that_still_has_sessions_reports_nothing() {
+    fn stopped_and_idle_compaction_turns_are_not_finished() {
         let previous = [session("a", SessionState::Running), session("b", SessionState::Running)];
-        assert_eq!(finished_session(&previous, &previous[1..], &HashMap::new()), None);
+        let statuses = HashMap::from([
+            (id_key("a"), "stopped".to_string()),
+            (id_key("b"), IDLE_COMPACTION_STATUS.to_string()),
+        ]);
+        assert!(newly_finished(&previous, &[], &statuses).is_empty());
+    }
 
-        let stopped = HashMap::from([(id_key("a"), "stopped".to_string())]);
-        assert_eq!(finished_session(&previous[..1], &[], &stopped), None);
-        assert_eq!(finished_session(&[], &[], &HashMap::new()), None);
+    #[test]
+    fn unread_is_newest_first_and_skips_the_session_on_screen() {
+        let mut unread = vec![session("old", SessionState::Done)];
+        let finished = vec![session("a", SessionState::Done), session("seen", SessionState::Failed)];
+        assert!(merge_unread(&mut unread, finished, &[], Some(&id_key("seen"))));
+        let ids: Vec<&str> = unread.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["a", "old"]);
+
+        assert!(!merge_unread(&mut unread, vec![], &[], None), "nothing changed");
+    }
+
+    #[test]
+    fn unread_drops_a_session_that_runs_again_and_keeps_the_newest_few() {
+        let mut unread = vec![session("a", SessionState::Done)];
+        assert!(merge_unread(&mut unread, vec![], &[session("a", SessionState::Running)], None));
+        assert!(unread.is_empty());
+
+        let finished: Vec<IslandSession> = (0..MAX_UNREAD + 2).map(|i| session(&format!("s{i}"), SessionState::Done)).collect();
+        merge_unread(&mut unread, finished, &[], None);
+        assert_eq!(unread.len(), MAX_UNREAD);
+        assert_eq!(unread[0].id, "s0");
+    }
+
+    #[test]
+    fn an_idle_compaction_stays_out_of_the_list_and_is_not_news() {
+        let mut memo = FeedMemo::default();
+        let start = serde_json::json!({"session_id": "a", "idle_compaction": true});
+        assert!(memo.note(&event("session_turn_started", start)));
+        let mut next = vec![session("a", SessionState::Running), session("b", SessionState::Running)];
+        memo.hide_compacting(&mut next);
+        assert_eq!(next.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["b"]);
+
+        let end = serde_json::json!({"session_id": "a", "status": "completed", "idle_compaction": true});
+        assert!(memo.note(&event("session_turn_completed", end)));
+        assert_eq!(memo.statuses.get("a").map(String::as_str), Some(IDLE_COMPACTION_STATUS));
+        let mut next = vec![session("a", SessionState::Running)];
+        memo.hide_compacting(&mut next);
+        assert_eq!(next.len(), 1, "the compaction is over");
     }
 
     #[test]
@@ -1355,11 +1535,18 @@ mod tests {
 
     #[test]
     fn a_settings_patch_changes_only_what_it_names() {
-        let patch: IslandSettingsPatch = serde_json::from_str(r#"{"showWhenIdle": true}"#).unwrap();
+        let patch: IslandSettingsPatch = serde_json::from_str(r#"{"showWhenFrontmost": true}"#).unwrap();
         let next = IslandSettings::default().with(patch);
-        assert_eq!(next, IslandSettings { show_when_idle: true, ..IslandSettings::default() });
+        assert_eq!(next, IslandSettings { show_when_frontmost: true, ..IslandSettings::default() });
         let json = serde_json::to_value(next).unwrap();
-        assert_eq!(json["showWhenIdle"], true, "the web reads camelCase: {json}");
+        assert_eq!(json["showWhenFrontmost"], true, "the web reads camelCase: {json}");
+    }
+
+    // The setting was removed; a file saved with it still loads.
+    #[test]
+    fn settings_saved_with_the_removed_idle_option_still_load() {
+        let saved: IslandSettings = serde_json::from_str(r#"{"enabled": false, "showWhenIdle": true}"#).unwrap();
+        assert_eq!(saved, IslandSettings { enabled: false, ..IslandSettings::default() });
     }
 
     #[test]

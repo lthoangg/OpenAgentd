@@ -53,6 +53,7 @@
     "allow-tray-fit",
     "allow-island-settings",
     "allow-island-update-settings",
+    "allow-island-viewing",
     "allow-updater-check",
     "allow-updater-download",
     "allow-updater-install",

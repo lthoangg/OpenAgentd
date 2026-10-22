@@ -1,25 +1,36 @@
 import { useCallback, useState } from 'react'
-import { motion, useDragControls, type PanInfo } from 'framer-motion'
+import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
 import { AlertCircle, Check, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
 
 import { apiBaseUrl } from '@/api/base-url'
 import { installTypeScriptLsp } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { dragSettle, noticePresence } from '@/lib/motion'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import type { LspInstallRequest } from '@/stores/useLspInstallStore'
 import { cn } from '@/lib/utils'
 
 export function LspInstallPrompt() {
   const request = useLspInstallStore((state) => state.request)
-
-  if (!request) return null
-
-  const requestKey = `${apiBaseUrl()}\0${request.workspace}\0${request.languageServerVersion}\0${request.typeScriptVersion}`
-  return <LspInstallDialog key={requestKey} request={request} />
+  const reduced = useReducedMotion() ?? false
+  const requestKey = request
+    ? `${apiBaseUrl()}\0${request.workspace}\0${request.languageServerVersion}\0${request.typeScriptVersion}`
+    : null
+  return (
+    <AnimatePresence>
+      {request && requestKey && (
+        <motion.div key={requestKey} className="pointer-events-none w-full" {...noticePresence(reduced)}>
+          <LspInstallDialog request={request} />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
 }
 
 function LspInstallDialog({ request }: { request: LspInstallRequest }) {
   const dismiss = useLspInstallStore((state) => state.dismiss)
+  const reduced = useReducedMotion() ?? false
   const [error, setError] = useState<string | null>(null)
   const [installed, setInstalled] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -76,7 +87,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
         dragElastic={0}
         onDragEnd={handleDragEnd}
         animate={{ x: offset.x, y: offset.y }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+        transition={dragSettle(reduced)}
         style={{ touchAction: 'none' }}
         role="dialog"
         aria-label="Install TypeScript language tools"

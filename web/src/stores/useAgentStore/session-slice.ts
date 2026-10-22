@@ -413,6 +413,8 @@ export function resetSessionState(
   state._runningPatchedFor = null
   state.hasMore = false
   state.nextCursor = null
+  // A saved session's history is not here yet; a draft has none to wait for.
+  state.isLoadingHistory = options.sessionId !== null
   state._leadRevertTime = null
   state._syncedThrough = null
   state._workspace = options.workspace ?? null
@@ -464,6 +466,7 @@ export type SessionSlice = Pick<
   | '_runningPatchedFor'
   | 'hasMore'
   | 'nextCursor'
+  | 'isLoadingHistory'
   | '_leadRevertTime'
   | '_syncedThrough'
   | '_workspace'
@@ -482,10 +485,14 @@ export type SessionSlice = Pick<
   | 'loadOlderUntilPrompt'
 >
 
-// Keyed by `${sessionId}\u0000${workspace}`. Coalesces concurrent
-// `loadSession` calls for the same session — see the comment on the
-// `loadSession` action below.
+// Keyed by session generation, id and workspace. Coalesces concurrent
+// `loadSession` calls for the same visit to a session — see the comment on
+// the `loadSession` action below.
 const inflightLoadSession = new Map<string, Promise<void>>()
+
+function loadSessionKey(generation: number, sessionId: string, workspace?: string | null) {
+  return `${generation}\u0000${sessionId}\u0000${workspace ?? ''}`
+}
 
 async function loadSessionImpl(
   get: () => AgentStore,
@@ -780,6 +787,7 @@ async function loadSessionImpl(
 
       draft.hasMore = history.has_more
       draft.nextCursor = history.next_cursor
+      draft.isLoadingHistory = false
       draft._leadRevertTime = revertBoundaryTime(history.lead)
       // Everything in this response is server-confirmed, so nothing is
       // pending reconciliation and the watermark advances to its newest row.
@@ -799,6 +807,7 @@ async function loadSessionImpl(
     if (get()._sessionGeneration !== gen) return
     set((draft) => {
       draft.error = err instanceof Error ? err.message : 'Failed to load session'
+      draft.isLoadingHistory = false
     })
   }
 }
@@ -826,6 +835,7 @@ export const createSessionSlice: StateCreator<
   _runningPatchedFor: null,
   hasMore: false,
   nextCursor: null,
+  isLoadingHistory: false,
   _leadRevertTime: null,
   _syncedThrough: null,
   _workspace: null,
@@ -883,14 +893,19 @@ export const createSessionSlice: StateCreator<
         fastMode: options?.fastMode,
         workspace: options?.workspace,
       })
-      if (options?.skipInitialRestore) state._resolvedSessionReadyId = sessionId
+      if (options?.skipInitialRestore) {
+        // Created here just now: there is no history to wait for.
+        state._resolvedSessionReadyId = sessionId
+        state.isLoadingHistory = false
+      }
       if (preserveLocalSettings) state._sessionSettingsDirty = true
     })
   },
 
   isEmptyIdleSession: () => {
     const state = get()
-    if (!state.sessionId || state.isAgentWorking) return false
+    // A session whose history is still loading only looks empty.
+    if (!state.sessionId || state.isAgentWorking || state.isLoadingHistory) return false
     return state.agentNames.every((name) => !hasVisibleBlocks(state.agentStreams[name]))
   },
 
@@ -1006,7 +1021,9 @@ export const createSessionSlice: StateCreator<
     // leaves stale live blocks in place for the next SSE replay to duplicate.
     // Sharing the in-flight promise removes the race outright — every extra
     // caller just awaits the one fetch already covering it.
-    const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+    // A fetch from an earlier visit (left and reopened while it was out)
+    // discards its own answer, so it must not stand in for this one.
+    const inflightKey = loadSessionKey(get()._sessionGeneration, sessionId, workspace)
     const existing = inflightLoadSession.get(inflightKey)
     if (existing) return existing
     const promise = loadSessionImpl(get, set, sessionId, workspace).finally(() => {
@@ -1021,8 +1038,7 @@ export const createSessionSlice: StateCreator<
     const since = state._syncedThrough
 
     const reload = async () => {
-      const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
-      inflightLoadSession.delete(inflightKey)
+      inflightLoadSession.delete(loadSessionKey(get()._sessionGeneration, sessionId, workspace))
       await get().loadSession(sessionId, workspace)
     }
 

@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteD
 import { listSessions, deleteSession, updateSessionTitle, listSubagents, setSessionPinned } from '@/api/client'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 import { queryKeys } from './keys'
-import { applySessionRename } from './session-rename'
+import { applyOptimisticTitle, applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
 import { broadcastMessage } from '@/lib/broadcast-channel'
 
@@ -205,10 +205,22 @@ export function useUpdateSessionTitleMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => updateSessionTitle(id, title),
+    // The new title shows at once; a refusal puts the old one back.
+    onMutate: async ({ id, title }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.session.sessions.all() })
+      return { undo: applyOptimisticTitle(queryClient, id, title) }
+    },
+    onError: (_error, _vars, context) => context?.undo(),
     onSuccess: (updated) => applySessionRename(queryClient, updated),
   })
 }
 
+/**
+ * Delete a session. The row leaves every cached list at once; a refusal
+ * restores the lists. Success leaves them as they are (already right) and
+ * only marks them stale, rather than re-reading every loaded page of every
+ * list in sequence.
+ */
 export function useDeleteSessionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -216,11 +228,25 @@ export function useDeleteSessionMutation() {
       const id = typeof target === 'string' ? target : target.id
       const parentId = typeof target === 'string' ? null : target.parent_session_id
       await deleteSession(id)
-      removeSubagent(queryClient, id, parentId)
       return { id, parentId }
     },
+    onMutate: async (target) => {
+      const id = typeof target === 'string' ? target : target.id
+      const parentId = typeof target === 'string' ? null : target.parent_session_id
+      await queryClient.cancelQueries({ queryKey: queryKeys.session.sessions.all() })
+      const lists = queryClient.getQueriesData<SessionPages>({ queryKey: queryKeys.session.sessions.all() })
+      queryClient.setQueriesData<SessionPages>({ queryKey: queryKeys.session.sessions.all() }, (old) =>
+        old && Array.isArray(old.pages) ? keepRows(old, (session) => session.id !== id) : old,
+      )
+      removeSubagent(queryClient, id, parentId)
+      return { lists }
+    },
+    onError: (_error, _target, context) => {
+      for (const [key, data] of context?.lists ?? []) queryClient.setQueryData(key, data)
+      queryClient.invalidateQueries({ queryKey: ['session', 'subagents'] })
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all(), refetchType: 'none' })
       queryClient.invalidateQueries({ queryKey: ['session', 'subagents'] })
     },
   })

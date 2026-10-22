@@ -3,7 +3,7 @@ import { CalendarClock, ChevronDown, ChevronUp, Command, FileSearch, MoreHorizon
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
-import { EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 export interface MobileChatActionsProps {
   open: boolean
@@ -71,7 +71,7 @@ export function MobileChatActions({
               initial={{ opacity: 0 }}
               animate={{ opacity: dragOffset !== null ? Math.max(0, Math.min(1, 1 - dragOffset / 280)) : 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: dragOffset !== null ? 0 : 0.18 }}
+              transition={{ duration: dragOffset !== null || prefersReducedMotion ? 0 : DURATIONS_S.fast }}
               className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay) md:hidden"
               aria-hidden="true"
               onClick={() => onOpenChange(false)}
@@ -84,7 +84,7 @@ export function MobileChatActions({
               transition={
                 dragOffset !== null || prefersReducedMotion
                   ? { duration: 0 }
-                  : { duration: 0.22, ease: EASINGS.inOut }
+                  : { duration: DURATIONS_S.base, ease: EASINGS.inOut }
               }
               className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) md:hidden"
               role="dialog"

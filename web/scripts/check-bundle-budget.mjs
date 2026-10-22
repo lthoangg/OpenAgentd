@@ -75,7 +75,12 @@ if (import.meta.main) {
   // 1.84 MB index chunk.
   // Sent attachments in the review dock and the View image button for images
   // the agent read reached 2.52 MB / 764 kB with a 1.85 MB index chunk.
-  const limits = { eagerBytes: 2_525_000, eagerGzipBytes: 767_000, largestChunkBytes: 1_858_000 }
+  // The smoothness pass (detached scroll anchoring, image boxes, the shared
+  // Collapsible, enter/exit on menus and notices, automated title reveals,
+  // optimistic session and settings actions, loading skeletons) added 16 kB /
+  // 6 kB gzip, all in the index chunk: 2.53 MB / 770 kB with a 1.87 MB index
+  // chunk.
+  const limits = { eagerBytes: 2_540_000, eagerGzipBytes: 773_000, largestChunkBytes: 1_874_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

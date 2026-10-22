@@ -2,6 +2,7 @@ import { useId } from 'react'
 import { usePinnedSessionsQuery } from '@/queries/useSessionsQuery'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { SessionGroupHeader } from './SessionGroupHeader'
+import { Collapsible } from '@/components/ui/collapsible'
 import { SessionRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
 
 /**
@@ -41,7 +42,7 @@ export function PinnedSection({
         controls={listId}
         tall
       />
-      {!collapsed && (
+      <Collapsible open={!collapsed}>
         <div id={listId} className="max-h-48 space-y-px overflow-y-auto px-1.5">
           {sessions.map((session) => (
             <SessionRow
@@ -59,7 +60,7 @@ export function PinnedSection({
             />
           ))}
         </div>
-      )}
+      </Collapsible>
     </section>
   )
 }

@@ -5,11 +5,13 @@ import { sharedGlobalEventStream } from '@/api/stream-hub'
 import { onApiBaseUrlChange } from '@/api/base-url'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
+import { haptic } from '@/lib/haptics'
 import { queryKeys } from '@/queries'
 import { appendSubagent, bumpSessionActivity, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { markAutoTitle } from '@/lib/auto-title'
 
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
@@ -161,6 +163,9 @@ export async function handleGlobalEvent(
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
     const title = typeof event.title === 'string' ? event.title : null
     if (!sessionId || title === null) return false
+    // Before the title reaches any view, so the header and sidebar row can
+    // tell it landed from the server and animate it in.
+    markAutoTitle(sessionId, title)
     if (useAgentStore.getState().sessionId === sessionId) useAgentStore.setState({ sessionTitle: title })
     patchSessionTitle(queryClient, sessionId, title)
     return true
@@ -282,6 +287,8 @@ export async function handleGlobalEvent(
     // someone working elsewhere that a session is stopped and waiting on them.
     if (kind === 'input_needed' && sessionId) {
       markSessionRunning(queryClient, sessionId, true, true)
+      // Phones: a light tap says an agent stopped for you (no-op elsewhere).
+      haptic('tick')
     }
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId

@@ -6,15 +6,17 @@
  *  - `closing`  — whether the exit animation is currently playing
  *
  * Usage:
- *   const { mounted, closing } = useDeferredUnmount(open, 150)
+ *   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
  *   if (!mounted) return null
- *   <div className={closing ? 'animate-out ...' : 'animate-in ...'} />
+ *   <div className={closing ? 'animate-out duration-(--motion-fast) ...' : 'animate-in ...'} />
  *
- * The duration (ms) must match the CSS animation duration.
+ * The duration (ms) must match the CSS animation duration, so pass a motion
+ * token (design lint rejects a bare number).
  */
 import { useEffect, useRef, useState } from 'react'
+import { DURATIONS_S } from '@/lib/motion'
 
-export function useDeferredUnmount(open: boolean, durationMs = 150) {
+export function useDeferredUnmount(open: boolean, durationMs = DURATIONS_S.fast * 1000) {
   const [mounted, setMounted] = useState(open)
   const [closing, setClosing] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

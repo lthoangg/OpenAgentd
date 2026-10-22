@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EDITOR_BODY } from '@/components/settings/tokens'
+import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 
 interface McpServerDetailPageProps {
   name: string
@@ -137,7 +138,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={`${EDITOR_BODY} flex flex-col gap-8`}>
-          {serverQ.isLoading && <p className="text-sm text-(--color-text-muted)">Loading server…</p>}
+          {serverQ.isLoading && <SettingsSkeleton label="Loading server" />}
           {serverQ.isError && <p className="text-sm text-(--color-error)">Failed to load: {String(serverQ.error)}</p>}
 
           {server && (

@@ -15,6 +15,7 @@ import { copyText, useChatMenu } from '../ChatContextMenu'
 import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { useImageBox } from '@/lib/image-size'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
 
@@ -242,6 +243,7 @@ function AttachmentStrip({ attachments }: { attachments: MessageAttachment[] }) 
 
 function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () => void }) {
   const [imgError, setImgError] = useState(false)
+  const box = useImageBox(item.type === 'image' ? item.src : undefined)
 
   if (item.type === 'image') {
     return (
@@ -253,7 +255,21 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
       >
         {imgError
           ? <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">Failed to load</div>
-          : <img src={item.src} alt={item.name} loading="lazy" onError={() => setImgError(true)} className="max-h-[200px] max-w-[200px] rounded-sm object-cover" />
+          : (
+            <img
+              src={item.src}
+              alt={item.name}
+              loading="lazy"
+              width={box.width}
+              height={box.height}
+              data-pending={box.pending ? '' : undefined}
+              onLoad={box.onLoad}
+              onError={() => setImgError(true)}
+              // Held at the failed tile's 120px until the first load, so the
+              // bubble does not grow from 0px under the reader.
+              className={cn('h-auto max-h-[200px] max-w-[200px] rounded-sm object-cover', box.pending && 'min-h-[120px] min-w-[120px] bg-(--bg-key)')}
+            />
+          )
         }
       </button>
     )
@@ -402,7 +418,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           </div>
           <div
             className={cn(
-              "relative min-w-0 max-w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text) transition-all",
+              "relative min-w-0 max-w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text)",
               isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
             )}
           >
@@ -465,7 +481,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                      onClick={toggleExpanded}
                      aria-expanded={expanded}
                      aria-label={expanded ? 'Collapse' : 'Expand'}
-                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-(--motion-fast) hover:text-(--color-text) active:scale-90"
+                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
                    >
                      {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                    </button>

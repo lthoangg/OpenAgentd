@@ -24,6 +24,7 @@ import { ChevronRight, ChevronUp } from 'lucide-react'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { Collapsible } from '@/components/ui/collapsible'
 import { FileRefContext } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { formatToolLabel, subscribeLiveClock } from '../ToolCall'
@@ -206,7 +207,7 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
           {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
         </span>
       </button>
-      {open && (
+      <Collapsible open={open}>
         <ul id={listId} className="divide-y divide-(--color-border-subtle) border-t border-(--color-border-subtle)">
           {files.map((file) => {
             const content = (
@@ -236,7 +237,7 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
             )
           })}
         </ul>
-      )}
+      </Collapsible>
     </section>
   )
 }

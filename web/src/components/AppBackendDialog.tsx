@@ -22,8 +22,8 @@ interface AppBackendDialogProps {
 }
 
 export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBackendDialogProps) {
-  if (!open) return null
-
+  // Always mounted: AppOverlay owns the enter and exit, so closing fades out
+  // like every other overlay instead of snapping shut.
   return (
     <AppOverlay open={open} onClose={() => onOpenChange(false)} label="Backend connection" maxWidth="640px">
       <OverlayHeader

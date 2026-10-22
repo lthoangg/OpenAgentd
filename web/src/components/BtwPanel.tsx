@@ -58,7 +58,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         title="Side questions (/btw)"
         // Floats over the transcript like the jump-to-latest chip, so the
         // composer never moves for it.
-        className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex h-7 items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100"
+        className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex h-7 origin-bottom-right items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
       >
         <MessageCircleQuestion size={13} aria-hidden="true" />
         <span className="font-medium">BTW</span>
@@ -105,7 +105,8 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
           step(1)
         }
       }}
-      className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-xs shadow-(--shadow-depth)"
+      // Rises out of the composer it sits on (DESIGN.md → Motion: ``base``).
+      className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)"
     >
       <header className="flex h-8 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) pl-2.5 pr-1">
         <MessageCircleQuestion size={13} aria-hidden="true" className="mr-1 shrink-0 text-(--color-text-subtle)" />

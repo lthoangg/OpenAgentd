@@ -13,7 +13,8 @@
  */
 
 import { describe, it, expect, afterEach, mock } from 'bun:test'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { act, render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 import { CompactionDivider } from '@/components/CompactionDivider'
 
 afterEach(cleanup)
@@ -97,9 +98,15 @@ describe('CompactionDivider — collapse', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('Toggled summary')).toBeTruthy()
     expect(toggle.getAttribute('aria-controls')).toBe(screen.getByTestId('markdown').parentElement?.id ?? null)
-    fireEvent.click(toggle)
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByTestId('markdown')).toBeNull()
+    const timers = useFakeTimers()
+    try {
+      fireEvent.click(toggle)
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      act(() => timers.tick(300))
+      expect(screen.queryByTestId('markdown')).toBeNull()
+    } finally {
+      timers.restore()
+    }
   })
 
   it('collapses while compacting too, and can be opened to watch the stream', () => {

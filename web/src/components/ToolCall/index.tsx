@@ -58,6 +58,12 @@ interface ToolCallProps {
   startedAt?: number
   /** Needed by ``ask_user`` to match the call against the open question. */
   toolCallId?: string
+  /**
+   * The turn's latest step (no later block has opened). A row that opened
+   * itself for live output stays open on its result until the next step
+   * starts, so output the reader was watching does not vanish on finish.
+   */
+  isCurrentStep?: boolean
 }
 
 function formatShellResult(result: string | undefined): { statusLine: string | null; body: string | null } {
@@ -206,7 +212,7 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
   return <code>{highlighted}</code>
 })
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   // Reduced motion: snap the disclosure open/closed instead of animating
@@ -336,7 +342,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         render={
           <button
             onClick={handleCopyResult}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
             aria-label="Copy result"
           >
             {copiedResult ? (
@@ -352,7 +358,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   )
 
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
-  const expanded = manualExpanded ?? Boolean(shownLiveOutput)
+  const autoOpen = Boolean(shownLiveOutput)
+  const [showedLiveOutput, setShowedLiveOutput] = useState(autoOpen)
+  if (autoOpen && !showedLiveOutput) setShowedLiveOutput(true)
+  const expanded = manualExpanded ?? (autoOpen || (showedLiveOutput && isCurrentStep))
   // Only an open row shows these, and reopening a long run mounts hundreds of
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
@@ -507,7 +516,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                             render={
                               <button
                                 onClick={handleCopyArgs}
-                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                                 aria-label="Copy arguments"
                               >
                                 {copiedArgs ? (

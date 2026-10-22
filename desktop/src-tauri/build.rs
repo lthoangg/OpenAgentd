@@ -21,6 +21,7 @@ fn main() {
                 "set_tray_session",
                 "get_tray_usage_summary",
                 "tray_action",
+                "tray_fit",
                 "updater_check",
                 "updater_download",
                 "updater_install",

@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.24.0 · October 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.24.0)
+**Latest release:** v3.25.0 · October 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.25.0)
 
 ---
 
@@ -485,6 +485,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     tray menu. The header features a server selector dropdown `[v2.8.0]` that
     allows inspecting usage across local and remote connected backends
     with live reachability filtering.
+    Since `[v3.25.0]` it looks and moves like the app:
+    - **Layout.** It shares the app's colours and type. A provider with
+      several limits gets one card, with rows named by window ("5-hour",
+      "Weekly"); a provider with one limit is one row. The window fits its
+      content up to 600px, and the list scrolls past that.
+    - **States.** Loading shows placeholder cards. An unreachable server
+      reads "Can't reach ‹server›" with Retry, and the status says Offline.
+      With no providers it offers Open Providers, and Reconnect goes to
+      Settings → Providers.
+    - **Keys.** Esc closes it, or the server menu first, which also takes
+      ↑ ↓ Enter. ⌘R refreshes, and ⌘N, ⌘, and ⌘Q run New session, Settings
+      and Quit.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -635,6 +647,45 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Scroll position per session** `[v3.5.0]` — leave a session scrolled up and
   come back to it, and the transcript opens where you were reading; a session
   you left at the bottom keeps following new output. Kept while the app runs.
+- **A steady transcript while you read** `[v3.25.0]` — scroll up while the
+  agent works and the text you are reading holds still:
+  - Images, math, diagrams and highlighted code that finish loading above the
+    view no longer push it down; the browser anchors to the block you are on.
+  - Images in replies and attachments hold their space before they load, at
+    their exact size once seen.
+  - Code in a long answer is highlighted as each part finishes, not all at
+    once when the answer ends.
+  - A tool whose live output you were watching stays open when it finishes,
+    until the next step starts.
+- **One way of moving** `[v3.25.0]` — everything that opens also closes, at
+  the same pace:
+  - Sidebar sections and date groups, changed files, Git groups and commits,
+    compaction and undo notices, file reads, and provider model lists fold
+    open and shut instead of snapping.
+  - Right-click menus, the model picker, `/` and `@` suggestions, Jump to
+    latest, the TypeScript tools prompt, the update card and side questions
+    animate in; a right-click menu dismissed with the pointer fades out, while
+    Escape and Tab close it at once.
+  - A session title the agent writes lifts the old one out and writes the new
+    one in, left to right, in the chat header and the sidebar, where its row
+    holds a blue tint for a moment. Titles you rename yourself, list loads and
+    session switches change without motion.
+  - With Reduce Motion on, everything stills; spinners keep turning, slowly,
+    and progress bars keep filling.
+- **Actions answer at once** `[v3.25.0]` — no more waiting on the server to
+  see what you did:
+  - Renaming or deleting a session shows everywhere immediately; if the server
+    refuses, the old title or the row comes back with a message.
+  - The sidebar's session lists and the agent, skill and MCP server pages hold
+    placeholder rows while they load, so nothing jumps when they fill.
+  - MCP server switches and workspace group memberships flip on click, and
+    several group changes in a row each build on the last.
+  - Opening a saved session shows a loading transcript instead of the empty
+    new-session screen, and New session works while it loads.
+- **A live caret while an answer streams** `[v3.25.0]` — a thin blue bar
+  blinks after the last line an agent is writing, so a pause reads as
+  thinking rather than finished. It goes when the answer ends, skips code
+  blocks and tables, and stands still with Reduce Motion on.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was
@@ -829,6 +880,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   iOS-style press-and-hold scale animation `[v1.47.0]`.
   The chat actions menu also opens Search files (Quick Open) and the command
   palette `[v3.0.0]`.
+  Sending a message and an agent asking you a question each give a light tap
+  in the phone apps `[v3.25.0]`.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
@@ -841,6 +894,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new
   versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
+  The launch screen follows the system appearance: dark paper in dark mode,
+  where it used to be light paper in both `[v3.25.0]`.
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share
@@ -1286,9 +1341,10 @@ agent against it.
   without subagents keep no chevron gutter, and child rows sit flat under the
   lead's title without another indent guide.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
-  sidebar row, **Edit title** in its menu, or a click on the session title in
-  the desktop header turns the title into a text field. Enter or clicking away
-  saves, Escape cancels, and the header and sidebar show the new title at once.
+  sidebar row, or **Edit title** in its menu turns the title into a text
+  field. Enter or clicking away saves, Escape cancels, and the header and
+  sidebar show the new title at once. Since `[v3.25.0]` the session title in
+  the desktop chat header is read-only; rename from the sidebar.
 - **Session search** `[v3.0.0]` — the search button in the Workspaces header
   swaps the tree for a search field that matches session titles across every
   workspace, however old. Enter opens the first match and Escape returns to

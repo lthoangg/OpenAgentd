@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { EDITOR_BODY } from '@/components/settings/tokens'
+import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 
 interface SkillEditorPageProps {
   name: string
@@ -92,7 +93,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
-          {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
+          {isLoading && <SettingsSkeleton label="Loading skill" />}
           {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (
             <PanelSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">

@@ -301,3 +301,36 @@ describe("MarkdownBlock broken image fallback", () => {
     expect(screen.getByText(/my chart/i)).toBeInTheDocument();
   });
 });
+
+// An image with no box collapses to 0px and grows when it loads, pushing
+// everything below it. A first load holds a placeholder box; once its size
+// is known, later renders (a session switch, a remount) reserve it exactly.
+describe("MarkdownBlock image box", () => {
+  function load(img: HTMLElement, width: number, height: number) {
+    Object.defineProperty(img, "naturalWidth", { value: width, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: height, configurable: true });
+    fireEvent.load(img);
+  }
+
+  it("holds a placeholder box until the first load", () => {
+    render(<MarkdownBlock content="![plot](https://example.com/box-first.png)" />);
+    const img = screen.getByRole("img", { name: /plot/i });
+    expect(img).toHaveAttribute("data-pending");
+    expect(img).not.toHaveAttribute("width");
+
+    load(img, 640, 360);
+    expect(img).not.toHaveAttribute("data-pending");
+  });
+
+  it("reserves the remembered size when the same image renders again", () => {
+    const first = render(<MarkdownBlock content="![plot](https://example.com/box-again.png)" />);
+    load(screen.getByRole("img", { name: /plot/i }), 800, 600);
+    first.unmount();
+
+    render(<MarkdownBlock content="![plot](https://example.com/box-again.png)" />);
+    const img = screen.getByRole("img", { name: /plot/i });
+    expect(img).toHaveAttribute("width", "800");
+    expect(img).toHaveAttribute("height", "600");
+    expect(img).not.toHaveAttribute("data-pending");
+  });
+});

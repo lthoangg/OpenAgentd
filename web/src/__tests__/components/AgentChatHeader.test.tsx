@@ -59,25 +59,23 @@ describe('AgentChatHeader', () => {
   })
 
   it('keeps every header control in Tab order', () => {
-    const { container } = renderHeader({ isMobile: false, onRenameSession: () => undefined })
+    const { container } = renderHeader({ isMobile: false })
     const buttons = Array.from(container.querySelectorAll<HTMLElement>('header button'))
     expect(buttons.length).toBeGreaterThan(1)
     expect(buttons.every((el) => el.tabIndex === 0)).toBe(true)
     expect(screen.getByRole('button', { name: 'Toggle sidebar' }).tabIndex).toBe(0)
-    expect(screen.getByRole('button', { name: 'Rename session Fix updater restart' }).tabIndex).toBe(0)
   })
 
-  it('renames the session from its title on desktop', async () => {
+  // Sessions are renamed from the sidebar; the header only shows the title.
+  it('shows the desktop session title as text, not a rename control', async () => {
     const user = userEvent.setup()
-    const onRenameSession = mock((..._args: unknown[]) => {})
-    renderHeader({ isMobile: false, onRenameSession })
+    renderHeader({ isMobile: false })
 
-    await user.click(screen.getByRole('button', { name: 'Rename session Fix updater restart' }))
-    const input = screen.getByLabelText('Session title')
-    await user.clear(input)
-    await user.type(input, 'Ship the updater{Enter}')
+    const title = screen.getByText('Fix updater restart')
+    expect(title.closest('button')).toBeNull()
+    expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
 
-    expect(onRenameSession.mock.calls).toEqual([['session-1', 'Ship the updater']])
+    await user.dblClick(title)
     expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
   })
 

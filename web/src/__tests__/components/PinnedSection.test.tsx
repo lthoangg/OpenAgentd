@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { SessionResponse } from '@/api/types'
 import { PinnedSection } from '@/components/Sidebar/PinnedSection'
@@ -94,9 +95,17 @@ describe('PinnedSection', () => {
     seed(queryClient, [pinned('pin-1', 'Review PR', '/repo/web')])
     renderSection(queryClient)
 
-    const toggle = screen.getByRole('button', { name: /Pinned/, expanded: true })
-    fireEvent.click(toggle)
-    expect(screen.queryByText('Review PR')).toBeNull()
+    const timers = useFakeTimers()
+    try {
+      const toggle = screen.getByRole('button', { name: /Pinned/, expanded: true })
+      fireEvent.click(toggle)
+      // Out of reach at once; gone once the fold has finished closing.
+      expect(screen.getByText('Review PR').closest('[inert]')).not.toBeNull()
+      act(() => timers.tick(300))
+      expect(screen.queryByText('Review PR')).toBeNull()
+    } finally {
+      timers.restore()
+    }
     expect(useSidebarViewStore.getState().pinnedCollapsed).toBe(true)
   })
 

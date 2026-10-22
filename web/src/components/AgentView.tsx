@@ -39,6 +39,7 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble, type OpenSessionHandler } from './AgentView/UserBubble'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
 import { ErrorCard } from './AgentView/ErrorCard'
+import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
 import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { copyText, useChatMenu } from './ChatContextMenu'
@@ -380,6 +381,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             durationMs={block.durationMs}
             startedAt={block.startedAt}
             toolCallId={block.toolCallId}
+            isCurrentStep={isStreaming}
           />
           {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
@@ -501,6 +503,8 @@ export function AgentView({
   // the manual jump's budget: every page it lands renders at once, as one
   // turn, before the reader asked for any of it.
   const hasMoreHistory = useAgentStore((s) => s.hasMore)
+  // A saved session that is still loading only looks empty.
+  const isLoadingHistory = useAgentStore((s) => s.isLoadingHistory)
   const hasLoadedPrompt = useMemo(
     () => turnItems.some((item) => item.kind === 'user' && isDirectUserBlock(item.block)),
     [turnItems],
@@ -592,6 +596,7 @@ export function AgentView({
     contentRef,
     anchorRef,
     attachedRef,
+    syncAnchor,
     showScrollBtn,
     scrollToBottom,
   } = useAutoFollowScroll({
@@ -641,13 +646,19 @@ export function AgentView({
         pending: 0,
       }
       viewHoldRef.current = hold
+      // The hold shifts the view itself; native anchoring (on while reading,
+      // index.css) would shift it a second time.
+      if (root) root.dataset.viewHold = ''
     }
     hold.pending += 1
     const held = hold
     // By the next frame every commit the reveal or load caused has run.
     return () => requestAnimationFrame(() => {
       held.pending -= 1
-      if (held.pending === 0 && viewHoldRef.current === held) viewHoldRef.current = null
+      if (held.pending === 0 && viewHoldRef.current === held) {
+        viewHoldRef.current = null
+        delete scrollRef.current?.dataset.viewHold
+      }
     })
   }, [scrollRef, sessionId])
 
@@ -687,11 +698,12 @@ export function AgentView({
     // Past a couple of screens a smooth scroll only paints the turns in between.
     const smooth = Math.abs(distance) <= 2 * view.height && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     attachedRef.current = false
+    syncAnchor()
     root.scrollTo({ top: root.scrollTop + distance, behavior: smooth ? 'smooth' : 'auto' })
     pendingJumpRef.current = prompt.dataset.promptId
       ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
       : null
-  }, [attachedRef, scrollRef])
+  }, [attachedRef, scrollRef, syncAnchor])
 
   /** Start a jump that lands once a reveal or load renders its turns; call the result when that has settled. */
   const beginPromptJump = useCallback((targetId: string | null) => {
@@ -740,6 +752,7 @@ export function AgentView({
     if (!hold || !root) return
     if (hold.sessionId !== sessionId) {
       viewHoldRef.current = null
+      delete root.dataset.viewHold
       promptJumpRef.current = null
       return
     }
@@ -846,7 +859,8 @@ export function AgentView({
         Code, tables and diagrams scroll inside their own boxes. */}
     <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
-        {isEmpty && (
+        {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
+        {isEmpty && !isLoadingHistory && (
            emptyState ?? (
              // Same weight as every other blank state (see `EmptyState`); the
              // Seal rides in the chip instead of as a 4xl hero.
@@ -967,7 +981,7 @@ export function AgentView({
           onClick={() => scrollToBottom('smooth')}
           // Centred by margin rather than a percentage translate (DESIGN.md:
           // no transform-based layout).
-          className="absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100"
+          className="absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={14} />

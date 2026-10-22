@@ -3,7 +3,7 @@ import { useRef } from 'react'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import type { SessionResponse } from '@/api/types'
-import { DraftSessionRow, SessionRow, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
+import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
 
 export type { MenuPoint } from './SessionRow'
 
@@ -75,6 +75,7 @@ export function WorkspaceSessionList({
   return (
     <div ref={listRef} className={className ? `relative ${className}` : 'relative'}>
       {draftActive && <DraftSessionRow />}
+      {!collapsed && sessions.isLoading && <SessionRowsSkeleton />}
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && !draftActive && (
         <p className="flex h-6 items-center pl-6 text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
       )}

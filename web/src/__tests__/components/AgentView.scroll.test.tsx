@@ -822,6 +822,23 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
     expect(anchor.style.overflowAnchor).toBe("auto")
   })
 
+  // Reading history, content that grows above the view (an image, KaTeX, a
+  // late-highlighted block) must not push the text being read. The scroller
+  // opts into native anchoring only then (index.css keys on data-follow);
+  // while following, JS owns the position.
+  it("marks the scroller as reading while detached so the browser anchors the view", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    expect(el.dataset.follow).toBe("live")
+
+    await fireScroll(el, 200)
+    expect(el.dataset.follow).toBe("reading")
+
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    await act(async () => { btn.click() })
+    expect(el.dataset.follow).toBe("live")
+  })
+
   it("assigns scrollTop from ResizeObserver when stream content grows while attached", async () => {
     const originalResizeObserver = globalThis.ResizeObserver
     const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = []

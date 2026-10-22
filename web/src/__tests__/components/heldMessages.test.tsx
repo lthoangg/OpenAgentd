@@ -5,6 +5,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
+
+const haptic = mock((..._args: unknown[]) => {})
+mock.module('@/lib/haptics', () => ({ haptic }))
+
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
@@ -41,6 +45,7 @@ const held = () => useHeldMessagesStore.getState().messages.map((m) => m.content
 
 beforeEach(() => {
   useHeldMessagesStore.setState({ messages: [] })
+  haptic.mockClear()
   useAgentStore.setState({
     sessionId: 's1',
     isAgentWorking: true,
@@ -334,5 +339,17 @@ describe('deliverFromComposer', () => {
 
     expect(order).toEqual(['stop', 'send', 'restore draft', 'return later'])
     expect(held()).toEqual([])
+  })
+
+  // On a phone a light tap confirms the message left the composer, whether it
+  // goes now or waits for the turn.
+  it('taps once as a message leaves the composer', async () => {
+    useAgentStore.setState({ sendMessage: sendThatStartsATurn(), isAgentWorking: false })
+    const composer = fakeComposer()
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'hello' }, 'steer')
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'later' }, 'after-turn')
+
+    expect(haptic.mock.calls).toEqual([['tick'], ['tick']])
   })
 })

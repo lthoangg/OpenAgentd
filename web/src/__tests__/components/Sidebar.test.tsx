@@ -57,6 +57,7 @@ import {
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
 } from '@/components/Sidebar.worktrees'
+import { DURATIONS_S } from '@/lib/motion'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -990,7 +991,7 @@ describe('Sidebar workspace trust flow', () => {
     const view = await renderSidebarWithProps({ desktopCollapsed: true })
     const sidebar = view.container.querySelector('aside')
 
-    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.22 })
+    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: DURATIONS_S.base })
   })
 
   it('keeps a collapsed sidebar out of Tab order', async () => {
@@ -2185,7 +2186,7 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(screen.getByLabelText('Delete session Delete me'))
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
     expect(navigate).toHaveBeenCalledWith({
       to: '/$sessionId',
       params: { sessionId: 'session-2' },
@@ -2218,7 +2219,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 

@@ -6,6 +6,8 @@ import { setApiBaseUrl } from '@/api/base-url'
 
 const sendDesktopNotification = mock(async () => ({ status: 'sent', message: 'sent' }))
 mock.module('@/lib/desktop-notifications', () => ({ sendDesktopNotification }))
+const haptic = mock((..._args: unknown[]) => {})
+mock.module('@/lib/haptics', () => ({ haptic }))
 type GlobalCallbacks = { onOpen?: () => void; onEvent?: (type: string, data: unknown) => void }
 let globalCallbacks: GlobalCallbacks | null = null
 let globalSignals: AbortSignal[] = []
@@ -20,6 +22,7 @@ import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { isFreshAutoTitle } from '@/lib/auto-title'
 
 const INITIAL = {
   sessionId: null as string | null,
@@ -38,6 +41,7 @@ beforeEach(() => {
   setApiBaseUrl('')
   useAgentStore.setState(INITIAL)
   sendDesktopNotification.mockClear()
+  haptic.mockClear()
   resetGlobalNotificationDedupe()
   globalEventStream.mockClear()
   globalCallbacks = null
@@ -533,6 +537,8 @@ describe('handleGlobalEvent', () => {
     expect(useAgentStore.getState().sessionTitle).toBe('New')
     expect(client.getQueryData(queryKeys.session.sessions.detail('current'))).toEqual({ id: 'current', title: 'New' })
     expect(connectStream).not.toHaveBeenCalled()
+    // The header and sidebar animate it in because it came from the server.
+    expect(isFreshAutoTitle('current', 'New')).toBe(true)
   })
 
   it('patches subagent running state and invalidates subagents on subagent_status', async () => {
@@ -859,6 +865,24 @@ describe('handleGlobalEvent', () => {
     await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
 
     expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
+  })
+
+  // On a phone the app is in your hand: a light tap says the agent stopped
+  // for you, once per question, and never for a finished turn.
+  it('taps once when an agent asks for input', async () => {
+    const client = new QueryClient()
+    const question = {
+      notification_id: 'notice-q5', session_id: 'asking-session', kind: 'input_needed',
+      title: 'Input needed', body: 'Which package manager?',
+    }
+
+    await handleGlobalEvent(client, 'desktop_notification', question, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', question, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-d3', session_id: 'asking-session', kind: 'assistant_done', title: 'Done', body: 'Done',
+    }, 1, () => 1)
+
+    expect(haptic.mock.calls).toEqual([['tick']])
   })
 
   it('ignores background task completion notifications', async () => {

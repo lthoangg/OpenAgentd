@@ -623,16 +623,58 @@ the way.
 | `fast` | 150ms | Tooltips, chips, small reveals |
 | `base` | 240ms | Panels, dropdowns, most transitions |
 | `slow` | 400ms | Full-screen overlays, route changes |
-| `glacial` | 800ms | Ambient/looping only |
+| `glacial` | 800ms | Ambient/looping, and the one-time reveal of text the agent wrote (an automated session title) |
+| `linger` | 2000ms | Attention washes: a tint that holds, then drains (the sidebar row of a freshly titled session) |
 
 Easings: `ease-out` `cubic-bezier(.16,1,.3,1)` for entrances, `ease-in-out`
 `cubic-bezier(.4,0,.2,1)` for state changes, `ease-spring-soft`
 `cubic-bezier(.34,1.2,.64,1)` and `ease-spring-snappy`
-`cubic-bezier(.22,1.4,.36,1)` for gestural affordances.
+`cubic-bezier(.22,1.4,.36,1)` for gestural affordances, `ease-sheet`
+`cubic-bezier(.32,.72,0,1)` for sheets and anything settling after a drag.
+TypeScript reads the same values from `lib/motion.ts` (`DURATIONS_S`,
+`EASINGS`); `motion.test.ts` keeps the two in step.
 
 The animation library owns the CSS `transform` property. Never use `transform`
 for layout (no `translateX(-50%)` centering) — center fixed elements with
 `margin: auto` against `left: 0; right: 0`.
+
+**Rules.** `design-lint.test.ts` enforces the first four.
+
+- **Tokens only.** Write `duration-(--motion-*)` and `ease-(--ease-*)`, never
+  `duration-200`, Tailwind's `ease-out`, a literal `cubic-bezier(`, or a bare
+  `duration: 0.2`.
+- **Name the properties.** Use `transition-colors`, `-opacity` or `-transform`,
+  never `transition-all`. Buttons change colour only, at `instant`.
+- **Exit timers match their animation.** `useDeferredUnmount(open, DURATIONS_S.fast * 1000)`
+  pairs with `duration-(--motion-fast)`. A bare number drifts.
+- **Don't animate layout.** Width, height, inset, margin and padding re-lay-out
+  every frame. Progress fills slide with `translate` inside a clipping track,
+  and folds use `ui/collapsible` (grid rows at `base`, `inert` when closed).
+  The one exception is the pill ↔ card morph of a fixed notice.
+- **Everything that opens also closes.** Popovers, menus and suggestion lists
+  grow in at `base` (`fast` for small lists) from their anchor. The context
+  menu fades out at `fast` when dismissed by pointer, but closes instantly on
+  Escape or Tab so the next key lands where focus went.
+- **The transcript holds still.** While you read history, the scroller anchors
+  to the first visible block, and images reserve their box before they load.
+  Following the stream, it writes at most one scroll per frame.
+- **Loading placeholders wait a beat.** Skeletons match the geometry of what
+  replaces them, and fade in after `fast` (`oa-fade-in-late`), so a fast load
+  never flashes one. A saved session shows a transcript skeleton, not the
+  empty state, until its history lands.
+- **Automated titles are revealed, manual ones are not.** A `title_update` from
+  the agent lifts the old title out over `base` and wipes the new one in left
+  to right over `glacial` (`ease-out`, after an `instant` beat). Its sidebar row
+  holds a Signal Blue wash for 40% of `linger`, then drains. Renames you make,
+  list loads and session switches swap the text with no motion.
+- **A live caret follows streaming text.** A 2px Signal Blue bar sits after the
+  last paragraph, heading or list item an answer is writing, and blinks at
+  `glacial` (`steps(1)`, on or off, never a fade). Code blocks and tables get
+  none, and it goes the moment the answer ends. Under reduced motion it stands
+  still.
+- **Reduced motion snaps.** Every animation and transition drops to ~0ms.
+  Progress bars keep moving because time is literal, and spinners keep turning,
+  slowly, because a frozen spinner reads as a hang.
 
 ## Shapes
 
@@ -862,19 +904,23 @@ color. Four layers sit in front of the app, and each one must be paper:
 
 | Layer | Owner | Light / Dark | Status |
 |---|---|---|---|
-| iOS launch screen | `gen/apple/LaunchScreen.storyboard` | `systemBackground` | ✗ pure white, no dark variant |
-| Window background | `tauri.conf.json` → `app.windows[]` | — | ✗ unset, inherits webview default |
+| iOS launch screen | `gen/apple/LaunchScreen.storyboard`, pointed at a `LaunchBackground` named colour by `mobile/scripts/patch-launch-screen.sh` | `#FAF6EC` / `#15110D` | ✓ correct |
+| Window background | `tauri.conf.json` → `app.windows[]` `backgroundColor` | `#FAF6EC` / — | ◐ set on desktop and mobile, light only |
 | Browser / OS chrome | `index.html` `theme-color` + `lib/theme.ts` | `#FAF6EC` / `#15110D` | ✓ correct |
 | Pre-paint CSS | `index.html` `<style>` | `#FAF6EC` / `#15110D` | ✓ correct |
 | Theme class | `public/theme-init.js` | sets `.light`/`.dark` on `<html>` | ✓ correct |
 | Boot loader | `index.html` inline Seal (generated) | ink + Signal Blue under `html.dark` | ✓ correct |
 
-The last three links are right; the first two are not. `backgroundColor` should
-be set on both window configs.
-The iOS launch screen is the hardest case — `mobile/src-tauri/gen/` is gitignored
-and regenerated by `tauri ios init`, so it needs a template override or a
-post-generate script rather than a direct edit. Dark mode is the worst offender:
-pure-white launch → `#15110D` app.
+Every layer but the window background has both tones. The window
+`backgroundColor` is a single static value, so in dark mode it is paper behind
+a `#15110D` app until the webview paints.
+
+The launch screen is patched after generation, because `mobile/src-tauri/gen/`
+is gitignored and regenerated by `tauri ios init`. A storyboard colour is
+static, so the script writes a `LaunchBackground.colorset` with a dark
+appearance into the asset catalog and points the storyboard at it; iOS picks
+the tone at launch. iOS caches launch screens, so an installed build may need
+a reinstall to show the change.
 
 Desktop partially hides this by shipping the window with `visible: false` and
 revealing it once the webview is ready. Mobile launches `visible: true`, so the
@@ -898,6 +944,13 @@ selected text, and in dev builds; transcript surfaces offer app menus instead.
 While another app has focus, `data-window-inactive` hides focus rings, turns
 text selection to `--bg-key` and mutes `aria-current` items, the way Finder
 greys its selection. The browser build keeps the browser's behaviour.
+
+The macOS tray popup (`web/tray.html`) is a separate, small entry with no
+Tailwind. Its stylesheet `tray/tray.css` imports `styles/tokens.css`, the same
+palette and motion tokens as the app; only its glass surface and shadows are
+its own (`tray-css.test.ts` holds the rest to tokens). It follows the OS
+appearance, not a window's theme, and the window is sized to the popup's
+content, 360px wide and up to 600px tall.
 
 ### Keyboard focus model
 

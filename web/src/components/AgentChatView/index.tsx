@@ -16,9 +16,9 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
@@ -29,7 +29,6 @@ import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useProvidersQuery } from '@/queries'
-import { renameSession } from '@/queries/session-rename'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
@@ -153,11 +152,7 @@ interface AgentChatViewProps {
 export function AgentChatView({ sessionId, workspace = null, sessionLoading = false }: AgentChatViewProps) {
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
-  const handleRenameSession = useCallback((id: string, title: string) => {
-    renameSession(queryClient, id, title).catch(() => pushToast({ tone: 'error', title: 'Could not rename session' }))
-  }, [queryClient, pushToast])
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
@@ -731,7 +726,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onCloseMobileActionsMenu={closeMobileActionsMenu}
         onOpenPalette={handleTogglePalette}
         onQuickOpen={workspace ? handleToggleQuickOpen : undefined}
-        onRenameSession={handleRenameSession}
       />
 
       {/* Body row — sidebar + main content column. On
@@ -849,9 +843,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           )}
           <motion.div
             className="flex flex-1 flex-col min-h-0"
-            initial={draftHandoff.active ? { opacity: 0, y: 8 } : false}
+            initial={draftHandoff.active && !reducedMotion ? { opacity: 0, y: 8 } : false}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.24, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: DURATIONS_S.base, delay: 0.06, ease: EASINGS.out }}
           >
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}

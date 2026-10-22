@@ -52,7 +52,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
-import { EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import {
   type ChangedFileStatus,
   type ChangedFileInfo,
@@ -324,7 +324,7 @@ export function WorkspacePanel({
           : mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 },
     transition: mobile && mobileDragOffset !== null
       ? { duration: 0 }
-      : { duration: isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut },
+      : { duration: isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
     pinWidth: !mobile && (!open || toggle.running) ? (overlay ? layout.width : width) : undefined,
   })
   // The toggle is meaningless while a narrow window already forces overlay.

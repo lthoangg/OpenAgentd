@@ -15,6 +15,9 @@
  *    whole parse when the chunker says the text must render whole.
  * 2. Queue: a steer waits in the queue while 300 stream flushes replace
  *    `agentStreams` on a 2,000-block session; counts the queue's commits.
+ * 3. Stream end: the same answer streams into a `MarkdownBlock`, then the
+ *    stream ends; times that last commit, where code highlighting that
+ *    waited for the end lands all at once.
  *
  * Times are Bun/happy-dom's: compare revisions, not frame budgets.
  */
@@ -23,7 +26,7 @@ import { Profiler } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 
 import { createMarkdownChunker } from '@/utils/markdown-chunks'
-import { parseMarkdownText } from '@/utils/markdown'
+import { MarkdownBlock, parseMarkdownText } from '@/utils/markdown'
 import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
 
@@ -54,6 +57,30 @@ describe('streaming work per update', () => {
       runs.push((performance.now() - t0) / steps)
     }
     results['markdown ms per update'] = runs.sort((a, b) => a - b)[1]
+  }, 300_000)
+
+  it('stream end: the commit when a long answer finishes', () => {
+    // Real answers carry real code: 20-line fences, not one-liners.
+    const parts: string[] = []
+    for (let i = 0; parts.join('\n').length < 30_000; i++) {
+      parts.push(`## Step ${i}`, '', `The \`round_${i}\` helper keeps **four** decimals.`, '', '```ts')
+      for (let l = 0; l < 20; l++) parts.push(`export function step${i}_${l}(value: number): string { return (value * ${l}).toFixed(4) + "${i}" }`)
+      parts.push('```', '')
+    }
+    const text = parts.join('\n')
+    const runs: number[] = []
+    for (let r = 0; r < 3; r++) {
+      const view = render(<MarkdownBlock content="" sessionId="s1" isStreaming />)
+      for (let end = 500; end <= text.length; end += 500) {
+        act(() => view.rerender(<MarkdownBlock content={text.slice(0, end)} sessionId="s1" isStreaming />))
+      }
+      act(() => view.rerender(<MarkdownBlock content={text} sessionId="s1" isStreaming />))
+      const t0 = performance.now()
+      act(() => view.rerender(<MarkdownBlock content={text} sessionId="s1" isStreaming={false} />))
+      runs.push(performance.now() - t0)
+      cleanup()
+    }
+    results['stream end commit ms'] = runs.sort((a, b) => a - b)[1]
   }, 300_000)
 
   it('queue: commits while a steer waits and the stream flushes', () => {

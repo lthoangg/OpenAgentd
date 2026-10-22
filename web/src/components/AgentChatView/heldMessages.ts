@@ -5,6 +5,7 @@
  * composer whenever sending it would no longer be what the user asked for.
  */
 import { useEffect, useRef, type RefObject } from 'react'
+import { haptic } from '@/lib/haptics'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
 import { useHeldMessagesStore, type HeldMessage } from '@/stores/useHeldMessagesStore'
 import type { InputComposerHandle, SendDelivery } from '../InputComposer'
@@ -81,6 +82,8 @@ export async function deliverFromComposer(
   message: { content: string; files?: File[]; mentions?: string[] },
   delivery: SendDelivery = 'steer',
 ): Promise<void> {
+  // Phones: a light tap confirms the message left the composer (no-op elsewhere).
+  haptic('tick')
   const { isAgentWorking, sessionId } = useAgentStore.getState()
   if (isAgentWorking && sessionId && delivery === 'after-turn') {
     useHeldMessagesStore.getState().hold({ sessionId, ...message })

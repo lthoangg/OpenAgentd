@@ -4,6 +4,8 @@
 @import "@fontsource-variable/jetbrains-mono";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";
+/* Motion and palette tokens, shared with the tray popup. */
+@import "./styles/tokens.css";
 
 /* ─────────────────────────────────────────────────────────────
  * OpenAgentd — syntax highlighting (@tanstack/highlight)
@@ -36,7 +38,7 @@
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.
- * Tokens themselves are defined in :root.dark / :root.light below.
+ * The palette and motion tokens are in styles/tokens.css.
  * ───────────────────────────────────────────────────────────── */
 @theme inline {
     --font-heading: var(--font-sans);
@@ -63,231 +65,6 @@
     --spacing-tab-bar: 2.25rem;    /* 36px dock editor-tab strip */
     --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
     --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
-}
-
-/* ─────────────────────────────────────────────────────────────
- * Motion tokens (DESIGN.md → Motion) — the same in both themes, so
- * they live outside the theme overrides. Mirrored in lib/motion.ts.
- * ───────────────────────────────────────────────────────────── */
-:root {
-    /* Durations */
-    --motion-instant: 80ms;
-    --motion-fast:    150ms;
-    --motion-base:    240ms;
-    --motion-slow:    400ms;
-    --motion-glacial: 800ms;
-
-    /* Easings */
-    --ease-out:           cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-in-out:        cubic-bezier(0.4, 0, 0.2, 1);
-    --ease-spring-soft:   cubic-bezier(0.34, 1.2, 0.64, 1);
-    --ease-spring-snappy: cubic-bezier(0.22, 1.4, 0.36, 1);
-    --ease-linear:        linear;
-}
-
-/* ─────────────────────────────────────────────────────────────
- * OpenAgentd paper tokens — DARK override
- * Light mode is canonical (defined on :root below).
- * Theme class is set on <html> before paint (see index.html).
- * ───────────────────────────────────────────────────────────── */
-:root.dark {
-    color-scheme: dark;
-
-    /* Surfaces
-     * Same ordering as light mode, not an inversion of the tones: the sidebar
-     * sits *below* the page (a recessed rail), cards sit above it, and the
-     * input matches the page. Collapsing --bg-sidebar onto --bg-card left the
-     * sidebar reading as a raised panel and made every card inside it
-     * invisible against its own container. */
-    --bg-page:           #15110D;
-    --bg-sidebar:        #110D0A;
-    --bg-card:           #1C1813;
-    --bg-input:          #15110D;
-    --bg-key:            #2A2219;
-    --bg-send:           #F5EBD8;
-    --color-surface:     #221C16;
-    --color-surface-2:   #2A2219;
-    --color-bg-elevated: #221C16;
-
-    /* Borders */
-    --color-border-subtle: #2C231A;
-    --color-border:        #3A2F23;
-    --color-border-strong: #5C4B36;
-
-    /* Text */
-    --color-text:           #F5EBD8;
-    --color-text-2:         #C5B59A;
-    --color-text-muted:     #9C8A72;
-    --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
-    --color-text-on-accent: #15110D;
-
-    /* Accent (UI) */
-    --color-accent:  #F5EBD8;
-    --color-overlay: #00000099;
-
-    /* Agent chips */
-    --accent-blue:        #7CC2F0;
-    --accent-blue-soft:   #1E3A52;
-    --accent-blue-text:   #9DD0F5;
-
-    --accent-green:       #5DC487;
-    --accent-green-soft:  #1F3A2A;
-    --accent-green-text:  #92E0B0;
-
-    --accent-orange:      #FDB75D;
-    --accent-orange-soft: #3D2D14;
-    --accent-orange-text: #FCC780;
-
-    --accent-pink:        #F472B6;
-    --accent-pink-soft:   #3D1F2D;
-
-    --accent-purple:      #A78BFA;
-    --accent-purple-soft: #2D2440;
-
-    --accent-red:         #F87171;
-
-    /* Markers (charts) */
-    --color-marker-blue:   #38BDF8;
-    --color-marker-mint:   #4ADE80;
-    --color-marker-orange: #FCC352;
-    --color-marker-pink:   #F472B6;
-    --color-marker-yellow: #FBBF24;
-    --color-violet:        #A78BFA;
-    --color-tint-mint:     rgba(74, 222, 128, 0.15);
-    --color-tint-orange:   rgba(252, 195, 82, 0.15);
-    --color-tint-violet:   rgba(167, 139, 250, 0.15);
-
-    /* Semantic state (re-use chip palette so the system stays small) */
-    --color-success:        var(--accent-green);
-    --color-success-subtle: var(--accent-green-soft);
-    --color-warning:        var(--accent-orange);
-    --color-warning-subtle: var(--accent-orange-soft);
-    --color-error:          #F87171;
-    --color-error-subtle:   rgba(248, 113, 113, 0.12);
-    --color-info:           var(--accent-blue);
-    --color-info-subtle:    var(--accent-blue-soft);
-    --color-diff-add-bg:    rgba(16, 185, 129, 0.10);
-    --color-diff-add-text:  #86EFAC;
-    --color-diff-del-bg:    rgba(239, 68, 68, 0.10);
-    --color-diff-del-text:  #FCA5A5;
-
-    /* Syntax highlighting */
-    --color-syn-comment:  #9C8A72;
-    --color-syn-keyword:  #A78BFA;
-    --color-syn-function: #38BDF8;
-    --color-syn-variable: #F87171;
-    --color-syn-string:   #4ADE80;
-    --color-syn-number:   #FBBF24;
-    --color-syn-type:     #FCC780;
-    --color-syn-operator: #C5B59A;
-
-    /* Depth & focus
-     * Focus ring uses --accent-blue rather than --color-accent because the
-     * paper accent is near-black (light) / near-white (dark), so a ring
-     * derived from it reads as a hard rectangle. Blue gives the standard
-     * focus affordance while staying inside the brand palette. */
-    --focus-ring:   var(--accent-blue);
-    --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
-    /* The logo's dot (the agent) is Signal Blue (components/brand/Logo.tsx). */
-    --logo-signal:  var(--accent-blue);
-}
-
-/* ─────────────────────────────────────────────────────────────
- * Light mode — warm paper, canonical default. Applies to bare :root
- * and to :root.light (explicit user pick).
- * ───────────────────────────────────────────────────────────── */
-:root,
-:root.light {
-    color-scheme: light;
-
-    /* Surfaces */
-    --bg-page:           #FAF6EC;
-    --bg-sidebar:        #F5EFDD;
-    --bg-card:           #FFFBF1;
-    --bg-input:          #FAF6EC;
-    --bg-key:            #F0E9D4;
-    --bg-send:           #2D241B;
-    --color-surface:     #FFFDF7;
-    --color-surface-2:   #F5EBD8;
-    --color-bg-elevated: #FFFDF7;
-
-    /* Borders */
-    --color-border-subtle: #E7DCBF;
-    --color-border:        #D9CFA9;
-    --color-border-strong: #B8A47E;
-
-    /* Text */
-    --color-text:           #1A1714;
-    --color-text-2:         #4B3E32;
-    --color-text-muted:     #6E604F;
-    --color-text-subtle:    #7A6A54; /* AA-compliant on --bg-page (≥4.5:1) */
-    --color-text-on-accent: #FFFDF7;
-
-    /* Accent (UI) */
-    --color-accent:  #3F3429;
-    --color-overlay: rgba(26, 23, 20, 0.40);
-
-    /* Agent chips */
-    --accent-blue:        #5AA8E2;
-    --accent-blue-soft:   #DCEEFB;
-    --accent-blue-text:   #174A73;
-
-    --accent-green:       #3DA66A;
-    --accent-green-soft:  #E2F2E5;
-    --accent-green-text:  #15573D;
-
-    --accent-orange:      #F59E3B;
-    --accent-orange-soft: #FFF1D8;
-    --accent-orange-text: #873E05;
-
-    --accent-pink:        #A21D52;
-    --accent-pink-soft:   #FBE0EB;
-
-    --accent-purple:      #5A34D1;
-    --accent-purple-soft: #E8DEF8;
-
-    --accent-red:         #A71C24;
-
-    /* Markers (charts) */
-    --color-marker-blue:   #0284C7;
-    --color-marker-mint:   #16A34A;
-    --color-marker-orange: #FA8030;
-    --color-marker-pink:   #DB2777;
-    --color-marker-yellow: #B77900;
-    --color-violet:        #7C3AED;
-    --color-tint-mint:     rgba(22, 163, 74, 0.10);
-    --color-tint-orange:   rgba(250, 128, 48, 0.10);
-    --color-tint-violet:   rgba(124, 58, 237, 0.10);
-
-    /* Semantic */
-    --color-success:        var(--accent-green);
-    --color-success-subtle: var(--accent-green-soft);
-    --color-warning:        var(--accent-orange);
-    --color-warning-subtle: var(--accent-orange-soft);
-    --color-error:          #B91C1C;
-    --color-error-subtle:   rgba(185, 28, 28, 0.08);
-    --color-info:           var(--accent-blue);
-    --color-info-subtle:    var(--accent-blue-soft);
-    --color-diff-add-bg:    rgba(22, 163, 74, 0.16);
-    --color-diff-add-text:  #166534;
-    --color-diff-del-bg:    rgba(185, 28, 28, 0.14);
-    --color-diff-del-text:  #991B1B;
-
-    /* Syntax */
-    --color-syn-comment:  #6E604F;
-    --color-syn-keyword:  #7C3AED;
-    --color-syn-function: #026F9E;
-    --color-syn-variable: #B91C1C;
-    --color-syn-string:   #15803D;
-    --color-syn-number:   #A16207;
-    --color-syn-type:     #B45309;
-    --color-syn-operator: #4B3E32;
-
-    /* Focus + depth (see dark-mode comment) */
-    --focus-ring:   var(--accent-blue);
-    --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
-    /* The logo's dot (the agent) is Signal Blue (components/brand/Logo.tsx). */
-    --logo-signal:  var(--accent-blue);
 }
 
 @layer base {
@@ -631,7 +408,7 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
 }
 
 html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
-  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 0.2s var(--ease-sheet);
 }
 
 /* ── Keyboard open (iOS/Android Tauri) ──────────────────────────────────────
@@ -738,8 +515,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
 html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   transition:
-    height 0.2s cubic-bezier(0.32, 0.72, 0, 1),
-    transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+    height 0.2s var(--ease-sheet),
+    transform 0.2s var(--ease-sheet);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -769,7 +546,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   ::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: var(--radius-xs);
-    transition: background-color 0.15s ease;
+    transition: background-color var(--motion-fast) var(--ease-in-out);
   }
   :hover::-webkit-scrollbar-thumb,
   :focus-within::-webkit-scrollbar-thumb {
@@ -819,14 +596,21 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 /* ─────────────────────────────────────────────────────────────
  * Chat transcript scroller
  * ─────────────────────────────────────────────────────────────
- * ``overflow-anchor: none`` opts the scroller itself out of scroll
- * anchoring; a single bottom sentinel ([data-chat-scroll-anchor], set
- * ``overflow-anchor: auto`` via JS) is the one element the browser may
- * use to keep the view pinned as streamed content grows. Pinning via the
- * browser avoids the per-frame ``scrollTop`` assignments that dropped
- * compositor tiles and left the transcript blank until the next scroll. */
+ * Following the stream (``data-follow="live"``), the scroller opts out
+ * of scroll anchoring: native anchoring holds the first *visible* block
+ * still, which would stop the view from following, so
+ * ``useAutoFollowScroll`` keeps the bottom in view instead.
+ *
+ * Reading history (``data-follow="reading"``), it opts in: the browser
+ * holds the block being read still when content above it changes size
+ * (an image, KaTeX, a late highlight, a tool row). A view hold
+ * (``data-view-hold``, earlier turns landing) compensates by hand, so
+ * anchoring pauses for it rather than shift the view twice. */
 .oa-chat-scroll {
   overflow-anchor: none;
+}
+.oa-chat-scroll[data-follow='reading']:not([data-view-hold]) {
+  overflow-anchor: auto;
 }
 
 /* Long line lists (file viewer, diffs) render in blocks of lines. Offscreen
@@ -939,7 +723,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 
 /* ─────────────────────────────────────────────────────────────
  * prefers-reduced-motion — honor system-wide.
- * Progress bars keep animating (time is literal); everything else snaps.
+ * Progress bars keep animating (time is literal); spinners keep turning,
+ * slowly, since a frozen one reads as a hang; everything else snaps.
  * ───────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -949,6 +734,10 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 
@@ -1016,6 +805,29 @@ html[data-app-hidden="true"] *::after {
 }
 .oa-prose p { margin-bottom: 0.75em; }
 .oa-prose p:last-child { margin-bottom: 0; }
+
+/* Live caret: a Signal Blue bar after the last text a streaming answer has
+ * written (MarkdownBlock sets `data-streaming`). It blinks at `glacial` and
+ * stands still under reduced motion (the global rule ends the blink on its
+ * first, visible step). Code blocks, tables and nested lists get none: the
+ * caret only follows running text. */
+.oa-prose[data-streaming] > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.oa-prose[data-streaming] > :is(ul, ol):last-child > li:last-child:not(:has(> :is(p, ul, ol)))::after,
+.oa-prose[data-streaming] > :is(ul, ol):last-child > li:last-child > p:last-child::after,
+.oa-prose[data-streaming] > blockquote:last-child > p:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--accent-blue);
+  animation: oa-caret-blink var(--motion-glacial) steps(1) infinite;
+}
+@keyframes oa-caret-blink {
+  50% { opacity: 0; }
+}
 .oa-prose h1, .oa-prose h2, .oa-prose h3 {
   font-weight: 600;
   margin-top: 1.25em;
@@ -1134,7 +946,7 @@ html[data-app-hidden="true"] *::after {
   to   { opacity: 1; }
 }
 .drag-overlay-enter {
-  animation: drag-overlay-enter 150ms var(--ease-out) forwards;
+  animation: drag-overlay-enter var(--motion-fast) var(--ease-out) forwards;
 }
 
 @keyframes drag-card-enter {
@@ -1142,7 +954,51 @@ html[data-app-hidden="true"] *::after {
   to   { transform: scale(1); opacity: 1; }
 }
 .drag-card-enter {
-  animation: drag-card-enter 200ms var(--ease-spring-soft) forwards;
+  animation: drag-card-enter var(--motion-base) var(--ease-spring-soft) forwards;
+}
+
+/* Automated session title (ui/animated-title.tsx). The new title is written
+ * in left to right by a moving mask: opaque up to 50%, clear past 60% of a
+ * 250%-wide gradient, so it starts fully hidden and ends fully shown. The
+ * mask lives only in the keyframes, so nothing clips the title at rest. The
+ * old title lifts out meanwhile. Reduced motion never mounts these. */
+@keyframes oa-title-reveal {
+  from {
+    -webkit-mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    -webkit-mask-size: 250% 100%;
+    mask-size: 250% 100%;
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    -webkit-mask-size: 250% 100%;
+    mask-size: 250% 100%;
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+}
+.oa-title-reveal {
+  animation: oa-title-reveal var(--motion-glacial) var(--ease-out) var(--motion-instant) backwards;
+}
+@keyframes oa-title-out {
+  to { opacity: 0; translate: 0 -4px; }
+}
+.oa-title-out {
+  animation: oa-title-out var(--motion-base) var(--ease-in-out) forwards;
+}
+@keyframes oa-fade-in {
+  from { opacity: 0; }
+}
+.oa-fade-in {
+  animation: oa-fade-in var(--motion-base) var(--ease-out) backwards;
+}
+/* Loading placeholders: hidden for a beat first, so a fast load never
+ * flashes one. Reduced motion keeps the beat and drops the fade. */
+.oa-fade-in-late {
+  animation: oa-fade-in var(--motion-base) var(--ease-out) var(--motion-fast) backwards;
 }
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }

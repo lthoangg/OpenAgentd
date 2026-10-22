@@ -5,7 +5,8 @@ import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessio
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { groupSessionsByDate, groupSessionsByStatus, type SessionGroup } from '../Sidebar.helpers'
 import { SessionGroupHeader } from './SessionGroupHeader'
-import { DraftSessionRow, SessionRow, ShowMoreRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
+import { Collapsible } from '@/components/ui/collapsible'
+import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
 
 function uniqueById(sessions: readonly SessionResponse[]): SessionResponse[] {
   const seen = new Set<string>()
@@ -88,6 +89,7 @@ export function FlatSessionGroups({
           <DraftSessionRow label={workspaceName(draftWorkspace)} />
         </div>
       )}
+      {all.isLoading && <SessionRowsSkeleton rows={5} />}
       {groups.length === 0 && !all.isLoading && !draftWorkspace && (
         <p className="flex h-6 items-center pl-6 text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
       )}
@@ -109,7 +111,9 @@ export function FlatSessionGroups({
                   tone={group.id === 'needs_input' ? 'warning' : 'subtle'}
                 />
               </div>
-              {!collapsed && <div id={listId} className="space-y-px">{group.sessions.map(renderRow)}</div>}
+              <Collapsible open={!collapsed}>
+                <div id={listId} className="space-y-px">{group.sessions.map(renderRow)}</div>
+              </Collapsible>
             </section>
           )
         })}

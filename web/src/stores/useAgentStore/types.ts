@@ -194,6 +194,13 @@ export interface AgentStoreState {
   _runningPatchedFor: string | null
   hasMore: boolean
   nextCursor: string | null
+  /**
+   * True from opening a saved session until its first history page lands (or
+   * fails), so the transcript can say "loading" rather than show the empty
+   * state of a session that only looks empty. Reconciles of the open session
+   * never set it.
+   */
+  isLoadingHistory: boolean
   _leadRevertTime: number | null
   /**
    * ISO ``created_at`` of the newest message the server has confirmed across the

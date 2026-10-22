@@ -9,6 +9,8 @@ import { useCompactRelative } from '@/hooks/useCompactRelative'
 import { sessionActivityTime } from '../Sidebar.helpers'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
+import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
@@ -69,6 +71,8 @@ function SessionRowView({
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
   const status = sessionStatus(session, unread)
   const sessionTitle = session.title || 'Untitled'
+  const rowRef = useRef<HTMLDivElement>(null)
+  useTitleWash(rowRef, session.id, sessionTitle)
   const sessionDate = formatRelativeDate(session.created_at)
   const sessionAge = useCompactRelative(sessionActivityTime(session))
   const pinned = Boolean(session.pinned_at)
@@ -146,6 +150,7 @@ function SessionRowView({
     // data-flip-id: the list slides this row (and its subagents) when it moves.
     <div className="space-y-px" data-flip-id={session.id}>
       <div
+        ref={rowRef}
         data-session-row
         className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${listRowSurface(isCurrent)}`}
       >
@@ -195,7 +200,11 @@ function SessionRowView({
                 className={`${LIST_ROW_GEOMETRY} transition-colors ${listRowText(isCurrent)}`}
               >
                 <SessionStatusMark status={status} />
-                <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}>{sessionTitle}</span>
+                <AnimatedTitle
+                  text={sessionTitle}
+                  sessionId={session.id}
+                  className={`flex-1 ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}
+                />
                 {checkoutName && <span className="sr-only">{`, in worktree ${checkoutName}`}</span>}
                 {contextLabel && <span className="sr-only">{`, in ${contextLabel}`}</span>}
                 {pinned && <span className="sr-only">, pinned</span>}
@@ -436,6 +445,27 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       </span>
       {loading ? 'Loading…' : 'Show more'}
     </button>
+  )
+}
+
+const SKELETON_TITLE_WIDTHS = ['w-3/4', 'w-1/2', 'w-2/3']
+
+/**
+ * Placeholder rows while a session list loads: row geometry, a status-mark
+ * dot and a title bar, so the real rows land without the list jumping.
+ */
+export function SessionRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div role="status" aria-label="Loading sessions" data-session-skeleton className="space-y-px">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} aria-hidden="true" className="flex h-(--spacing-list-row) items-center gap-1.5 px-1.5">
+          <span className="flex size-3 shrink-0 items-center justify-center">
+            <Skeleton className="size-1.5 rounded-full" />
+          </span>
+          <Skeleton className={`h-2.5 ${SKELETON_TITLE_WIDTHS[index % SKELETON_TITLE_WIDTHS.length]}`} />
+        </div>
+      ))}
+    </div>
   )
 }
 

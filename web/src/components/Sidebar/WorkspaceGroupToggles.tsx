@@ -35,7 +35,7 @@ export function WorkspaceGroupToggles({
 
   const toggle = (id: string) => {
     const next = tags.includes(id) ? tags.filter((t) => t !== id) : [...tags, id]
-    // A failed save leaves the toggle as it was; the tree is the truth.
+    // Shows at once; a failed save puts the toggle back.
     setGroups.mutate({ workspace, groupIds: next })
   }
 
@@ -52,7 +52,6 @@ export function WorkspaceGroupToggles({
             role={menu ? 'menuitemcheckbox' : undefined}
             aria-checked={menu ? checked : undefined}
             aria-pressed={menu ? undefined : checked}
-            disabled={setGroups.isPending}
             className={menu ? CONTEXT_MENU_ITEM_CLASS : SHEET_ITEM_CLASS}
             onClick={() => toggle(group.id)}
           >

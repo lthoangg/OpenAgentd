@@ -5,7 +5,35 @@ import { WorkspaceSessionList } from '@/components/Sidebar/WorkspaceSessionList'
 import type { SessionResponse } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
 
-afterEach(cleanup)
+const originalFetch = globalThis.fetch
+afterEach(() => {
+  cleanup()
+  globalThis.fetch = originalFetch
+})
+
+describe('WorkspaceSessionList — first load', () => {
+  // An empty list while loading, then every row at once, made the sidebar
+  // jump as it filled. Placeholder rows hold the space instead.
+  it('holds placeholder rows while the sessions load', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // Never resolves: the list stays loading.
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/loading/workspace"
+          onSessionSelect={() => {}}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByRole('status', { name: 'Loading sessions' })).toBeTruthy()
+    expect(screen.queryByText('No sessions yet.')).toBeNull()
+  })
+})
 
 describe('WorkspaceSessionList — subagent sessions', () => {
   it('renders subagent sessions directly indented under parent session and selects them on click', async () => {

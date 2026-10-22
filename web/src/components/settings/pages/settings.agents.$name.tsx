@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EDITOR_BODY } from '@/components/settings/tokens'
+import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 
 interface AgentEditorPageProps {
   name?: string
@@ -101,7 +102,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
-          {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
+          {isLoading && <SettingsSkeleton label="Loading agent" />}
           {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (
             <AgentForm

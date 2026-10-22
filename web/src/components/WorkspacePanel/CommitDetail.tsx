@@ -1,6 +1,7 @@
 import React from 'react'
 import { ChevronRight } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -109,7 +110,7 @@ export function CommitDetail({
                     className="flex h-7 w-full cursor-pointer items-center gap-1.5 px-2 text-left text-xs md:h-6 md:text-[11px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-expanded={expanded}
                   >
-                    <ChevronRight size={11} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
+                    <ChevronRight size={11} className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', expanded && 'rotate-90')} aria-hidden="true" />
                     <FileTypeIcon name={changedFile.path} size={12} />
                     <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
                     <ChangeCounts file={changedFile} />
@@ -118,7 +119,7 @@ export function CommitDetail({
               />
               <TooltipContent>{changedFile.path}</TooltipContent>
             </Tooltip>
-            {expanded && (
+            <Collapsible open={expanded}>
               <div className="border-t border-(--color-border-subtle)">
                 {fileDiff ? (
                   <div className="max-h-[40vh] min-h-0 overflow-y-auto touch-pan-y">
@@ -128,7 +129,7 @@ export function CommitDetail({
                   <p className="px-2 py-2 text-[11px] text-(--color-text-subtle)">No diff body for this file.</p>
                 )}
               </div>
-            )}
+            </Collapsible>
           </li>
         )
       })}

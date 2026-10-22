@@ -48,7 +48,8 @@ tokens to arbitrary remote URLs.
 
 ## UI constraints
 
-- Read root `DESIGN.md` and reuse tokens from `src/index.css` and existing
+- Read root `DESIGN.md` and reuse tokens from `src/styles/tokens.css` (palette,
+  motion) and `src/index.css` (Tailwind theme, radius, spacing) and existing
   primitives before adding colors, spacing, type, radius, elevation, or motion.
 - Build the shared UI mobile-first. Gate platform behavior through existing
   `useIsMobile()` / `usePlatform()` hooks, account for safe areas and desktop

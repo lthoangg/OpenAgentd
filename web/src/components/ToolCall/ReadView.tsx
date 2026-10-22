@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Check, Copy, FileText } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Collapsible } from '@/components/ui/collapsible'
 import { truncateForDisplay, parsePartialJSON } from './displayText'
 
 interface ReadViewProps {
@@ -86,7 +87,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
                   event.stopPropagation()
                   void copyBody()
                 }}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6"
                 aria-label="Copy read result"
               >
                 {copied ? (
@@ -101,7 +102,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         </Tooltip>
       </div>
 
-      {expanded && (
+      <Collapsible open={expanded}>
         <div className="overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
           <div className="min-w-0">
             {lines.map((line, idx) => (
@@ -114,7 +115,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
             ))}
           </div>
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

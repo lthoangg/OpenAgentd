@@ -150,7 +150,7 @@ import {
   shouldOpenSessionInNewWindow,
 } from './Sidebar.window'
 import { SessionSearch } from './Sidebar/SessionSearch'
-import { EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
@@ -672,7 +672,7 @@ export function Sidebar({
       : { width: desktopCollapsed ? 0 : width },
     transition: mobileDragOffset !== null
       ? { duration: 0 }
-      : { duration: isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut },
+      : { duration: isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
   })
 
   const collapseAllWorkspaces = () => {
@@ -822,7 +822,10 @@ export function Sidebar({
       deleteTarget,
       currentSessionId,
       workspaceSessions,
-      mutateDelete: deleteSession.mutate,
+      // The row leaves at once; a refusal brings it back with this toast.
+      mutateDelete: (target) => deleteSession.mutate(target, {
+        onError: () => pushToast({ tone: 'error', title: 'Could not delete session' }),
+      }),
       navigate,
     })
     setDeleteTarget(null)
@@ -838,7 +841,7 @@ export function Sidebar({
             initial={{ opacity: 0 }}
             animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : 0.2) }}
+            transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : DURATIONS_S.base), ease: EASINGS.sheet }}
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay) md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
@@ -1091,7 +1094,7 @@ export function Sidebar({
                         // On touch the actions are always shown, so the outline
                         // would box every row; the bare glyph matches the
                         // neighbouring row actions there.
-                        className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 pointer-coarse:border-transparent ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                        className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 pointer-coarse:border-transparent ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                         aria-label={selectedWorktree ? `New session in worktree ${selectedWorktree.name}` : `New session in ${sourceLabel}`}
                       >
                         <Plus size={11} aria-hidden="true" />
@@ -1111,7 +1114,7 @@ export function Sidebar({
                         <button
                           type="button"
                           onClick={(event) => setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: event.clientX, y: event.clientY })}
-                          className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                          className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                           aria-label={`Actions for ${sourceLabel}`}
                         >
                           <MoreHorizontal size={12} aria-hidden="true" />

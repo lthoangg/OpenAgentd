@@ -104,13 +104,16 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     onLoadOlderTopRef.current = onLoadOlderTop
   }, [onLoadOlderTop])
 
-  // Overflow-anchor pairs with the bottom sentinel the views render: while
-  // attached, the browser pins the viewport to the sentinel as the stream
-  // grows — no per-frame ``scrollTop`` writes that would drop compositor
-  // tiles and leave the transcript blank until the next user scroll. When the
-  // user detaches (scrolled up to read), the anchor is disabled so the
-  // browser does not silently yank them back to the bottom.
+  // Two anchoring modes, keyed on ``data-follow`` (index.css):
+  // - ``live``: the scroller opts out of native anchoring and this hook keeps
+  //   the bottom in view (the ResizeObserver below). The sentinel's own
+  //   ``overflow-anchor`` is kept in step for engines that honour it.
+  // - ``reading``: the reader scrolled up, so the scroller opts in and the
+  //   browser holds the first visible block still when content above it
+  //   grows or shrinks (an image, KaTeX, a late highlight, a tool row).
   const syncAnchor = useCallback(() => {
+    const el = scrollRef.current
+    if (el) el.dataset.follow = attachedRef.current ? 'live' : 'reading'
     const anchor = anchorRef.current
     if (!anchor) return
     anchor.style.overflowAnchor = attachedRef.current ? 'auto' : 'none'
@@ -450,6 +453,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     contentRef,
     anchorRef,
     attachedRef,
+    syncAnchor,
     showScrollBtn,
     setShowScrollBtn,
     scrollToBottom,

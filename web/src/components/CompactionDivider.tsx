@@ -21,6 +21,7 @@
 import { useId, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Collapsible } from '@/components/ui/collapsible'
 import { MarkdownBlock } from '@/utils/markdown'
 
 interface CompactionDividerProps {
@@ -97,14 +98,14 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
       </div>
 
-      {showBody && open && (
-        // Rendered as plain assistant-style prose (no card chrome): same look
-        // as a regular assistant text block, just dimmed via --color-text-2
-        // to signal it is a derived/system artefact rather than a fresh reply.
+      <Collapsible open={showBody && open}>
+        {/* Rendered as plain assistant-style prose (no card chrome): same look
+            as a regular assistant text block, just dimmed via --color-text-2
+            to signal it is a derived/system artefact rather than a fresh reply. */}
         <div id={bodyId} className="text-sm text-(--color-text-2)">
           <MarkdownBlock content={content} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

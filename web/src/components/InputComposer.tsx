@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
 import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { DesignFeedbackStrip } from './DesignFeedbackViews'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
@@ -1079,7 +1080,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     <motion.div
       initial={false}
       animate={{ padding: minimized ? 6 : 8 }}
-      transition={{ duration: prefersReducedMotion ? 0.01 : 0.24, ease: [0.32, 0.72, 0, 1] }}
+      transition={{ duration: prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.sheet }}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}

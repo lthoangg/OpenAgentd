@@ -117,9 +117,11 @@ export function useUpdateAgentMutation(name: string = 'code') {
   return useMutation({
     mutationFn: ({ content }: { content: string }) =>
       name === 'code' ? updateCodeAgent(content) : updateAgent(name, content),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // The editor compares its draft against this; writing the answer now
+      // keeps a just-saved form from reading as dirty until the refetch.
+      client.setQueryData(queryKeys.agentFiles.detail(name), saved)
       invalidateAgentFiles(client)
-      client.invalidateQueries({ queryKey: queryKeys.agentFiles.detail(name) })
     },
   })
 }

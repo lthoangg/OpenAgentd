@@ -229,11 +229,17 @@ pub struct SessionUpdate {
     pub scheduled_task_name: Option<Option<String>>,
     /// `Some(None)` clears the boundary (stores JSON `null`, like v2).
     pub revert: Option<Option<serde_json::Value>>,
+    /// Set with a title the user typed; automatic retitling skips the session.
+    pub title_locked: Option<bool>,
 }
 
 impl SessionUpdate {
     pub fn title(t: impl Into<String>) -> Self {
         Self { title: Some(Some(t.into())), ..Default::default() }
+    }
+    /// A title the user typed: also locks it against automatic retitling.
+    pub fn user_title(t: impl Into<String>) -> Self {
+        Self { title_locked: Some(true), ..Self::title(t) }
     }
 }
 
@@ -266,6 +272,9 @@ pub async fn update_session(pool: &DbPool, id: &str, upd: SessionUpdate) -> Resu
     }
     if let Some(n) = upd.scheduled_task_name {
         push("scheduled_task_name", n, cur.scheduled_task_name.clone());
+    }
+    if let Some(l) = upd.title_locked {
+        push("title_locked", Some(i64::from(l).to_string()), Some(i64::from(cur.title_locked).to_string()));
     }
     if let Some(r) = upd.revert {
         let new = crate::codec::json_db(r.as_ref());

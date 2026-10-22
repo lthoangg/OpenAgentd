@@ -223,7 +223,12 @@ async fn put_summarization(raw: Bytes) -> ApiResult<Response> {
 }
 
 fn title_json(t: &rs::TitleGenerationSettings) -> Value {
-    json!({"enabled": t.enabled, "model": t.model.clone().unwrap_or_default(), "wait_timeout_seconds": t.wait_timeout_seconds})
+    json!({
+        "enabled": t.enabled,
+        "model": t.model.clone().unwrap_or_default(),
+        "wait_timeout_seconds": t.wait_timeout_seconds,
+        "update_after_compaction": t.update_after_compaction,
+    })
 }
 
 async fn get_title() -> ApiResult<Response> {
@@ -231,18 +236,25 @@ async fn get_title() -> ApiResult<Response> {
     Ok(json(title_json(&cfg.title_generation)))
 }
 
+/// `update_after_compaction` (v3 only) keeps its stored value when the body
+/// omits it, so older clients leave it alone.
 async fn put_title(raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
     let enabled = b.bool("enabled", None);
     let model = b.str("model", Some(""));
     let wait = b.float("wait_timeout_seconds", 3.0);
-    b.finish(&["enabled", "model", "wait_timeout_seconds"])?;
+    let has_update = v.as_object().is_some_and(|o| o.contains_key("update_after_compaction"));
+    let update = if has_update { Some(b.bool("update_after_compaction", Some(false))) } else { None };
+    b.finish(&["enabled", "model", "wait_timeout_seconds", "update_after_compaction"])?;
     let mut cfg = rs::load_runtime_settings().map_err(internal)?;
     cfg.title_generation.enabled = enabled;
     let m = crate::routes::library::py_strip(&model);
     cfg.title_generation.model = (!m.is_empty()).then_some(m);
     cfg.title_generation.wait_timeout_seconds = wait.max(0.0);
+    if let Some(on) = update {
+        cfg.title_generation.update_after_compaction = on;
+    }
     rs::save_runtime_settings(&cfg).map_err(internal)?;
     Ok(json(title_json(&cfg.title_generation)))
 }

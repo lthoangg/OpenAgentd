@@ -183,6 +183,18 @@ async fn http_api_end_to_end() {
     let (st, _) = c.json("PUT", "/api/settings/title-generation", Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
     assert_eq!(st, StatusCode::OK);
 
+    // ── retitle after compaction (v3 only) ───────────────────────────────
+    let titles = "/api/settings/title-generation";
+    let (_, v) = c.json("GET", titles, None).await;
+    assert_eq!(v["update_after_compaction"], json!(false));
+    let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0, "update_after_compaction": true}))).await;
+    assert_eq!((st, v["update_after_compaction"].clone()), (StatusCode::OK, json!(true)));
+    // An older client omits the key and keeps the stored value.
+    let (_, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
+    assert_eq!(v["update_after_compaction"], json!(true));
+    let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0, "update_after_compaction": false}))).await;
+    assert_eq!((st, v["update_after_compaction"].clone()), (StatusCode::OK, json!(false)));
+
     // ── workspace messages switch (v3 only) ──────────────────────────────
     let (st, v) = c.json("GET", "/api/settings/workspace-messages", None).await;
     assert_eq!((st, v), (StatusCode::OK, json!({"enabled": true})));

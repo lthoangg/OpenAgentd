@@ -9,7 +9,7 @@ use crate::hooks::basic::{CurrentDateHook, MemoryContextHook, QueuedInjectionHoo
 use crate::hooks::publisher::StreamPublisherHook;
 use crate::hooks::summarization::build_summarization_hook;
 use crate::hooks::summarization::resolve_prompt_token_threshold;
-use crate::hooks::title::build_title_generation_hook;
+use crate::hooks::title::{build_summary_retitle, build_title_generation_hook};
 use crate::hooks::HookRef;
 use crate::idle_compaction::{idle_prompt_tokens, resumed_delay, should_compact, IDLE_COMPACTION_DELAY};
 use crate::interaction_mode;
@@ -1253,7 +1253,11 @@ impl AgentSession {
         if is_lead {
             let plan_dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
             if let Some(h) = build_summarization_hook(provider_for_hooks.clone(), agent_mode, effective_model.as_deref(), provider_for_hooks.support_interrupt()) {
-                hooks.push(Arc::new(h.with_plan_dir(plan_dir)));
+                let mut h = h.with_plan_dir(plan_dir);
+                if let Some(retitle) = build_summary_retitle(provider_for_hooks.clone(), self.pool.clone()) {
+                    h = h.with_on_summary(retitle);
+                }
+                hooks.push(Arc::new(h));
             }
             hooks.push(Arc::new(crate::side_question::RequestFrameHook::new(self.request_frame.clone())));
         }

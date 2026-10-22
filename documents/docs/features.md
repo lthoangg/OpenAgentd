@@ -555,6 +555,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
+  - **Update title after compaction** `[v3.26.0]` — an opt-in switch in
+    Settings → Chat titles renames a session from its summary each time the
+    conversation is compacted, so the title follows what the session is
+    working on now. Titles you renamed yourself and scheduled-task sessions
+    keep their names.
 - **Mode-scoped recent-session lists** `[v1.66.1]` — session sidebars now fetch
   their own coding session pages instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists

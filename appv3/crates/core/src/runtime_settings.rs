@@ -20,10 +20,14 @@ pub struct TitleGenerationSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub wait_timeout_seconds: f64,
+    /// Retitle a session from its summary after each compaction (v3 only,
+    /// opt-in). Written only when on, so existing files stay unchanged.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub update_after_compaction: bool,
 }
 impl Default for TitleGenerationSettings {
     fn default() -> Self {
-        Self { enabled: true, model: None, wait_timeout_seconds: 3.0 }
+        Self { enabled: true, model: None, wait_timeout_seconds: 3.0, update_after_compaction: false }
     }
 }
 
@@ -415,6 +419,19 @@ mod tests {
         let p = dir.path().join("settings.yaml");
         std::fs::write(&p, &text).unwrap();
         assert!(!load_runtime_settings_from(&p).unwrap().workspace_messages.enabled);
+    }
+
+    #[test]
+    fn update_after_compaction_written_only_when_on() {
+        let mut cfg = RuntimeSettings::default();
+        assert!(!to_pyyaml(&cfg).unwrap().contains("update_after_compaction"));
+        cfg.title_generation.update_after_compaction = true;
+        let text = to_pyyaml(&cfg).unwrap();
+        assert!(text.starts_with("title_generation:\n  enabled: true\n  wait_timeout_seconds: 3.0\n  update_after_compaction: true\n"), "{text}");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.yaml");
+        std::fs::write(&p, &text).unwrap();
+        assert!(load_runtime_settings_from(&p).unwrap().title_generation.update_after_compaction);
     }
 
     #[test]

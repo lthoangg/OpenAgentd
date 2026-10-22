@@ -951,11 +951,13 @@ impl AgentSession {
         }
         self.set_active_turn(false);
         // The user ended the turn by dismissing the question; nothing new to tell them.
-        self.close_turn(session_id, "completed", false).await;
+        self.close_turn(session_id, "completed", false, false).await;
         true
     }
 
-    async fn close_turn(&self, session_id: &str, status: &str, notify: bool) {
+    /// `idle_compaction` marks a background compaction turn on the event, so
+    /// clients do not flag the session as having something new to read.
+    async fn close_turn(&self, session_id: &str, status: &str, notify: bool, idle_compaction: bool) {
         store().push_event(session_id, &events::done(Some(json!({"session_id": session_id}))), true);
         store().mark_done(session_id);
         match &self.parent_session_id {
@@ -976,6 +978,9 @@ impl AgentSession {
         let mut payload = json!({"session_id": session_id, "status": status});
         if let Some(p) = &self.parent_session_id {
             payload["parent_session_id"] = json!(p);
+        }
+        if idle_compaction {
+            payload["idle_compaction"] = json!(true);
         }
         // A turn can fail before any client has attached to its stream (e.g.
         // a missing provider key fails in milliseconds) and the error is not
@@ -1057,6 +1062,9 @@ impl AgentSession {
             let mut p = json!({"session_id": sid, "started_at": db::codec::py_isoformat(&chrono::Utc::now())});
             if opts.queued_activation_event.is_some() {
                 p["source"] = json!("queued_activation");
+            }
+            if opts.idle_compaction {
+                p["idle_compaction"] = json!(true);
             }
             if let Some(ps) = &self.parent_session_id {
                 p["parent_session_id"] = json!(ps);
@@ -1162,11 +1170,11 @@ impl AgentSession {
             if !activated {
                 self.set_state("idle");
                 self.emit("agent_status", Some("idle"), None);
-                self.close_turn(&sid, "completed", notify).await;
+                self.close_turn(&sid, "completed", notify, opts.idle_compaction).await;
                 completed = true;
             }
         } else {
-            self.close_turn(&sid, "error", notify).await;
+            self.close_turn(&sid, "error", notify, opts.idle_compaction).await;
         }
         if !activated {
             self.set_active_turn(false);

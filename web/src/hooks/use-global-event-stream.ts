@@ -138,10 +138,11 @@ export async function handleGlobalEvent(
     queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(sessionId) })
 
     const before = useAgentStore.getState()
-    // Subagent output surfaces through its lead, and a stopped turn is the
-    // user's own doing; neither has anything new to read.
+    // Subagent output surfaces through its lead, a stopped turn is the
+    // user's own doing, and an idle compaction only summarises what was
+    // already read; none has anything new to read.
     const shown = before.sessionId === sessionId && document.visibilityState === 'visible'
-    if (!parentSessionId && event.status !== 'stopped' && !shown) {
+    if (!parentSessionId && event.status !== 'stopped' && event.idle_compaction !== true && !shown) {
       useUnreadStore.getState().markUnread(sessionId)
     }
     if (before.sessionId !== sessionId) return true

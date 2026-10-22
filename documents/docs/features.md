@@ -1370,7 +1370,8 @@ agent against it.
   it runs, and an accent dot when a turn ended while you were in another
   session or the window was hidden. Opening the session clears the dot in every
   window. Unread state stays on this device, and sessions that finish while the
-  app is closed are not marked.
+  app is closed are not marked. Since `[v3.26.0]` an idle compaction no longer
+  marks a session unread.
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and

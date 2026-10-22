@@ -674,6 +674,17 @@ describe('handleGlobalEvent', () => {
     expect(useUnreadStore.getState().ids).toEqual([])
   })
 
+  it('does not mark an idle compaction turn unread', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'compacted', status: 'completed', idle_compaction: true,
+    }, 1, () => 1)
+
+    expect(useUnreadStore.getState().ids).toEqual([])
+  })
+
   it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })

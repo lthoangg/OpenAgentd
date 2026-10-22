@@ -102,8 +102,8 @@ function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'
       className={cn(
         'fixed inset-0 z-50 bg-(--color-overlay)',
         closing
-          ? 'animate-out fade-out-0 duration-(--motion-fast)'
-          : 'animate-in fade-in-0 duration-(--motion-fast)',
+          ? 'animate-out fade-out-0 animation-duration-(--motion-fast)'
+          : 'animate-in fade-in-0 animation-duration-(--motion-fast)',
         className,
       )}
       onClick={() => setOpen(false)}
@@ -155,7 +155,7 @@ const DialogPaddingContext = createContext<keyof typeof DIALOG_PADDING>('default
 
 function DialogContent({ className, children, showCloseButton = true, size = 'sm', padding = 'default', ...props }: DialogContentProps) {
   const { open, setOpen, titleId } = useDialog()
-  // Unmount when the exit animation (`duration-(--motion-fast)`) ends.
+  // Unmount when the exit animation (`animation-duration-(--motion-fast)`) ends.
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -187,8 +187,8 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
           DIALOG_PADDING[padding],
           'text-sm text-(--color-text) shadow-(--shadow-depth) outline-none',
           closing
-            ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-fast)'
-            : 'animate-in fade-in-0 zoom-in-95 duration-(--motion-fast)',
+            ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
+            : 'animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast)',
           className,
         )}
         onClick={(e) => e.stopPropagation()}

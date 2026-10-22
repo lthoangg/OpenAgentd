@@ -61,8 +61,8 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
         className={cn(
           'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-(--shadow-depth) pointer-events-auto',
           closing
-            ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-instant) ease-(--ease-out)'
-            : 'animate-in fade-in-0 duration-(--motion-instant) ease-(--ease-out)',
+            ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-instant) ease-(--ease-out)'
+            : 'animate-in fade-in-0 animation-duration-(--motion-instant) ease-(--ease-out)',
         )}
       >
         <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">

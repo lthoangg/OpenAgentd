@@ -70,6 +70,7 @@ import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { PlanTabView } from './WorkspacePanel/PlanTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
+import { AttachmentTabView } from './WorkspacePanel/AttachmentTabView'
 import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
@@ -86,6 +87,7 @@ import {
   gitViewTabId,
 } from './WorkspacePanel/GitViewToolbar'
 import {
+  type AttachmentTabRequest,
   type DiffTabRequest,
   type DockTab,
   type DockView,
@@ -141,6 +143,8 @@ export function WorkspacePanel({
   handledDiffRequestKeyRef,
   previewRequest = null,
   handledPreviewRequestKeyRef,
+  attachmentRequest = null,
+  handledAttachmentRequestKeyRef,
   onActiveViewChange,
   todos = EMPTY_TODOS,
   sessionId = null,
@@ -177,6 +181,9 @@ export function WorkspacePanel({
   /** Shell request to open (or focus) a web preview tab. */
   previewRequest?: PreviewTabRequest | null
   handledPreviewRequestKeyRef?: React.RefObject<number>
+  /** Shell request to open (or focus) a message attachment's tab. */
+  attachmentRequest?: AttachmentTabRequest | null
+  handledAttachmentRequestKeyRef?: React.RefObject<number>
   /** Reports the focused view tab (``null`` for other tabs or on unmount). */
   onActiveViewChange?: (view: DockView | null) => void
   /** Agent task list for the Tasks tab. */
@@ -252,6 +259,8 @@ export function WorkspacePanel({
     handledDiffRequestKeyRef,
     previewRequest,
     handledPreviewRequestKeyRef,
+    attachmentRequest,
+    handledAttachmentRequestKeyRef,
     onTabClosed: handleTabClosed,
     focusTab: (id) => requestAnimationFrame(() => {
       const button = tabButtonRefs.current.get(id)
@@ -688,6 +697,8 @@ export function WorkspacePanel({
             <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />
           ) : activeTab?.type === 'commit' ? (
             <CommitTabView key={activeTab.id} workspace={workspace} commit={activeTab.commit} />
+          ) : activeTab?.type === 'attachment' ? (
+            <AttachmentTabView key={activeTab.id} item={activeTab.item} />
           ) : activeTab?.type === 'terminal' ? (
             // Unmounted while closed: the session lives in the terminal store,
             // and a hidden terminal detaches so the idle reaper can close it.

@@ -19,12 +19,14 @@ import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
 import {
+  type AttachmentTabRequest,
   type DiffTabRequest,
   type DockTab,
   type DockView,
   type DockViewRequest,
   type PreviewTabRequest,
   REVIEW_TAB,
+  attachmentTab,
   basename,
   commitTabId,
   diffTabId,
@@ -65,6 +67,9 @@ interface DockTabsOptions {
   handledDiffRequestKeyRef?: React.RefObject<number>
   previewRequest?: PreviewTabRequest | null
   handledPreviewRequestKeyRef?: React.RefObject<number>
+  /** Shell request to open (or focus) a message attachment's tab. */
+  attachmentRequest?: AttachmentTabRequest | null
+  handledAttachmentRequestKeyRef?: React.RefObject<number>
   /** Called after a tab leaves the strip (close button, middle-click, Mod+W). */
   onTabClosed?: (tab: DockTab) => void
   /** Move keyboard focus to a tab's button (after ⌘1–9 / ⌃Tab from the dock). */
@@ -103,6 +108,8 @@ export function useDockTabs({
   handledDiffRequestKeyRef: parentHandledDiffRequestKeyRef,
   previewRequest,
   handledPreviewRequestKeyRef: parentHandledPreviewRequestKeyRef,
+  attachmentRequest,
+  handledAttachmentRequestKeyRef: parentHandledAttachmentRequestKeyRef,
   onTabClosed,
   focusTab,
   onCloseDock,
@@ -283,6 +290,14 @@ export function useDockTabs({
     handledPreviewRequestKeyRef.current = previewRequest.key
     openPreviewTab(previewRequest.target, { focusOnly: previewRequest.focusOnly })
   }, [previewRequest, openPreviewTab, handledPreviewRequestKeyRef])
+
+  const fallbackHandledAttachmentRequestKeyRef = useRef(0)
+  const handledAttachmentRequestKeyRef = parentHandledAttachmentRequestKeyRef ?? fallbackHandledAttachmentRequestKeyRef
+  useEffect(() => {
+    if (!attachmentRequest || attachmentRequest.key <= handledAttachmentRequestKeyRef.current) return
+    handledAttachmentRequestKeyRef.current = attachmentRequest.key
+    openTab(attachmentTab(attachmentRequest.item))
+  }, [attachmentRequest, openTab, handledAttachmentRequestKeyRef])
 
   const activeView: DockView | null =
     activeTab && isViewTab(activeTab) ? activeTab.type : null

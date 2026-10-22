@@ -287,6 +287,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handledDockDiffRequestKeyRef,
     dockPreviewRequest,
     handledDockPreviewRequestKeyRef,
+    dockAttachmentRequest,
+    handledDockAttachmentRequestKeyRef,
+    handleOpenAttachment,
     handleOpenPreview,
     dockActiveView,
     setDockActiveView,
@@ -614,8 +617,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
         open: (ref) => void handleFileRefOpen(ref),
         openDiff: (ref) => void handleDiffOpen(ref),
+        // Phones keep the full-screen lightbox, with pinch-zoom and swipe.
+        ...(dockViewsEnabled ? { openAttachment: handleOpenAttachment } : {}),
       }
-    : undefined), [handleDiffOpen, handleFileRefOpen, workspace])
+    : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, workspace])
 
   // One composer element: inside the new-session screen while that is
   // centered, else docked/floating at the bottom of the chat column.
@@ -920,6 +925,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               handledDiffRequestKeyRef={handledDockDiffRequestKeyRef}
               previewRequest={dockPreviewRequest}
               handledPreviewRequestKeyRef={handledDockPreviewRequestKeyRef}
+              attachmentRequest={dockAttachmentRequest}
+              handledAttachmentRequestKeyRef={handledDockAttachmentRequestKeyRef}
               onSendPreviewComments={handleSendPreviewComments}
               onActiveViewChange={setDockActiveView}
               todos={todos}

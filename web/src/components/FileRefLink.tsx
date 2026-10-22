@@ -11,6 +11,7 @@ import { createContext, useContext, useMemo, type AnchorHTMLAttributes, type HTM
 import { findFileRefs, parseFileHref, parseFileRef, type FileRef } from '@/utils/file-refs'
 import { openExternalUrl } from '@/lib/open-external'
 import { copyText, useChatMenu } from './ChatContextMenu'
+import type { FileLightboxItem } from './FileLightbox'
 import type { ChangedFileStatus } from './WorkspacePanel/diff-helpers'
 
 export interface FileRefOpener {
@@ -20,6 +21,8 @@ export interface FileRefOpener {
   canOpen: (ref: FileRef) => boolean
   open: (ref: FileRef) => void
   openDiff?: (ref: FileRef & { status?: ChangedFileStatus }) => void
+  /** Shows a sent message's attachment in the dock; absent, it opens in the lightbox. */
+  openAttachment?: (item: FileLightboxItem) => void
 }
 
 export const FileRefContext = createContext<FileRefOpener | null>(null)

@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
+import { FileRefContext } from '../FileRefLink'
 import { findCommittedMentions } from '../InputComposer.mentions'
 import { DesignFeedbackCard } from '../DesignFeedbackViews'
 import { splitDesignFeedback } from '@/lib/design-feedback'
@@ -191,6 +192,7 @@ function attItemType(att: MessageAttachment): FileLightboxItemType {
 
 function AttachmentStrip({ attachments }: { attachments: MessageAttachment[] }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const openAttachment = useContext(FileRefContext)?.openAttachment
 
   const items: FileLightboxItem[] = useMemo(
     () => attachments.map((att, i) => ({
@@ -208,6 +210,14 @@ function AttachmentStrip({ attachments }: { attachments: MessageAttachment[] }) 
     }
   }, [items.length, lightboxIndex])
 
+  // With a dock, a saved upload opens as a tab beside the chat. An optimistic
+  // blob URL (still sending) is revoked soon, so it stays in the lightbox.
+  const open = (idx: number) => {
+    const item = items[idx]
+    if (openAttachment && item?.src && !item.src.startsWith('blob:')) openAttachment(item)
+    else setLightboxIndex(idx)
+  }
+
   return (
     <>
       <div className="flex flex-wrap justify-end gap-2">
@@ -215,7 +225,7 @@ function AttachmentStrip({ attachments }: { attachments: MessageAttachment[] }) 
           <AttachmentThumb
             key={item.src || idx}
             item={item}
-            onOpen={() => setLightboxIndex(idx)}
+            onOpen={() => open(idx)}
           />
         ))}
       </div>

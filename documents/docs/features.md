@@ -785,6 +785,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   rasterize later pages near the viewport with stable page geometry and bounded
   device-pixel ratio. Multi-file paste into the composer now attaches every
   pasted file instead of only the last one `[v1.92.0]`.
+  On desktop with a workspace, clicking a file or image attached to a sent
+  message opens it as a review-dock tab beside the chat instead (one tab per
+  upload, with Open in new tab and Download); phones, sessions without a
+  workspace, and still-sending uploads keep the lightbox `[v3.24.0]`.
 - **Unified download architecture** `[v1.92.0]` — FileLightbox, workspace
   downloads, and coding-workspace downloads share one download path instead of
   three duplicated blob-to-base64 implementations; iOS downloads now present a

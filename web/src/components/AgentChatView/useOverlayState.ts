@@ -63,14 +63,15 @@ import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
+import type { AttachmentTabRequest, DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
+import type { FileLightboxItem } from '../FileLightbox'
 import type { PreviewTarget } from '@/api/preview'
 import type { ChangedFileStatus } from '../WorkspacePanel/diff-helpers'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { sessionTouchedPaths } from './helpers'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
-export type { DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest }
+export type { AttachmentTabRequest, DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest }
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
@@ -98,6 +99,8 @@ export interface UseOverlayStateResult {
   handledDockDiffRequestKeyRef: React.RefObject<number>
   dockPreviewRequest: PreviewTabRequest | null
   handledDockPreviewRequestKeyRef: React.RefObject<number>
+  dockAttachmentRequest: AttachmentTabRequest | null
+  handledDockAttachmentRequestKeyRef: React.RefObject<number>
   /** Dock view tab currently focused in the mounted dock, else ``null``. */
   dockActiveView: DockView | null
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
@@ -129,6 +132,8 @@ export interface UseOverlayStateResult {
   /** Open a web preview tab in the dock (workspace only). */
   /** ``focusOnly`` shows an open tab for ``target`` without navigating it. */
   handleOpenPreview: (target: PreviewTarget, options?: { focusOnly?: boolean }) => void
+  /** Open a sent message's attachment as a dock tab (workspace only). */
+  handleOpenAttachment: (item: FileLightboxItem) => void
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
   handleToggleAgentCapabilities: () => void
@@ -184,6 +189,8 @@ export function useOverlayState({
   const handledDockDiffRequestKeyRef = useRef(0)
   const [dockPreviewRequest, setDockPreviewRequest] = useState<PreviewTabRequest | null>(null)
   const handledDockPreviewRequestKeyRef = useRef(0)
+  const [dockAttachmentRequest, setDockAttachmentRequest] = useState<AttachmentTabRequest | null>(null)
+  const handledDockAttachmentRequestKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
   const schedulerInDock = Boolean(workspace)
@@ -339,6 +346,14 @@ export function useOverlayState({
     closeOtherMobileOverlays('workspace-panel')
     setWorkspacePanel((value) => value ?? 'changed')
     setDockPreviewRequest((prev) => ({ target, key: (prev?.key ?? 0) + 1, ...(options?.focusOnly ? { focusOnly: true } : {}) }))
+  }, [closeOtherMobileOverlays, isMobile, workspace])
+
+  const handleOpenAttachment = useCallback((item: FileLightboxItem) => {
+    if (!workspace) return
+    if (isMobile) setMobileSidebarOpen(false)
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
+    setDockAttachmentRequest((prev) => ({ item, key: (prev?.key ?? 0) + 1 }))
   }, [closeOtherMobileOverlays, isMobile, workspace])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
@@ -596,6 +611,8 @@ export function useOverlayState({
     handledDockDiffRequestKeyRef,
     dockPreviewRequest,
     handledDockPreviewRequestKeyRef,
+    dockAttachmentRequest,
+    handledDockAttachmentRequestKeyRef,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
@@ -616,6 +633,7 @@ export function useOverlayState({
     handleFileRefOpen,
     handleDiffOpen,
     handleOpenPreview,
+    handleOpenAttachment,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,

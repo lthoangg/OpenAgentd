@@ -101,7 +101,8 @@ function downloadName(item: FileLightboxItem): string {
   return name || `file-${Date.now()}`
 }
 
-async function triggerDownload(item: FileLightboxItem): Promise<void> {
+/** Download an item under its upload name (native save dialog on desktop). */
+export async function triggerDownload(item: FileLightboxItem): Promise<void> {
   const url = resolveApiUrl(item.src) || item.src
   await tauriDownload(url, downloadName(item))
 }

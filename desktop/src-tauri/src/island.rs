@@ -1,0 +1,1387 @@
+//! Agent status island in the MacBook notch (macOS).
+//!
+//! A borderless black webview (`web/island.html`) sits over the notch, or
+//! hangs from the middle of the menu bar on a Mac without one. It shows
+//! whether any session is running or waiting on the user, and briefly that a
+//! turn finished.
+//!
+//! The island never sees the backend credential. The Rust process follows
+//! the backend's global event stream and treats each turn event only as a
+//! signal to refetch `GET /api/agent/sessions?active=true`. That list is the
+//! source of truth: every top-level session that is running or waiting on
+//! the user, the same data the sidebar's "Needs you" list uses. The island
+//! gets a snapshot over IPC (`island-status`).
+//!
+//! The window is a fixed transparent canvas over the notch, so the pill can
+//! morph inside it with CSS (window resizes can't be animated smoothly). The
+//! webview reports the pill's size and whether it has anything to show
+//! (`island_fit`); Rust decides whether the canvas is up (the feature is on,
+//! the webview has something to show, and OpenAgentd is not frontmost unless
+//! the user opted in).
+//!
+//! WebKit tracks the mouse only in the key window (with overlay scrollbars,
+//! the trackpad default), and the island never becomes key so it cannot take
+//! focus. So while the canvas is up, Rust polls the pointer: inside the pill
+//! the canvas takes clicks and the webview gets the position
+//! (`island-pointer`, for hover); outside it, clicks pass through to the
+//! menu bar.
+
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, WebviewWindow};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+
+pub const ISLAND_WINDOW: &str = "island";
+/// Snapshot of the active sessions, sent to the island webview.
+pub const ISLAND_STATUS_EVENT: &str = "island-status";
+/// The notch (or menu bar) geometry changed, e.g. a display was plugged in.
+pub const ISLAND_GEOMETRY_EVENT: &str = "island-geometry";
+/// Where the pointer is over the canvas, while it is over the pill.
+pub const ISLAND_POINTER_EVENT: &str = "island-pointer";
+/// The island settings changed; sent to every window.
+pub const ISLAND_SETTINGS_EVENT: &str = "island-settings-changed";
+
+/// Island size when the screen has no notch: a pill this wide, as tall as
+/// the menu bar (or this tall when the menu bar is hidden).
+const FALLBACK_PILL_WIDTH: f64 = 200.0;
+const FALLBACK_MENU_BAR_HEIGHT: f64 = 24.0;
+/// The transparent window the pill animates inside, in points. The pill
+/// never grows past it.
+pub const CANVAS_WIDTH: f64 = 460.0;
+pub const CANVAS_HEIGHT: f64 = 380.0;
+const MIN_SIZE: f64 = 16.0;
+
+/// Turn events often come in bursts (turn started, title update); one
+/// refetch covers them.
+const REFRESH_DEBOUNCE: Duration = Duration::from_millis(150);
+/// While anything is active, refetch this often even without events, so a
+/// missed event cannot leave the island stuck.
+const SAFETY_REFRESH: Duration = Duration::from_secs(30);
+/// The backend pings every 15 s; this long without a byte means the stream is dead.
+const STREAM_IDLE_LIMIT: Duration = Duration::from_secs(45);
+/// How often to check whether the app switched to another backend.
+const ENDPOINT_RECHECK: Duration = Duration::from_secs(10);
+const RETRY_BASE: Duration = Duration::from_secs(2);
+/// Kept short so the island catches up soon after a backend comes back.
+const RETRY_MAX: Duration = Duration::from_secs(15);
+const LIST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Window focus moves in two steps (old window loses it, new one gains it);
+/// decide whether the app is frontmost once it has settled.
+const FOCUS_SETTLE: Duration = Duration::from_millis(150);
+/// Built this long after launch, so its page load does not compete with
+/// the main window's.
+const PREWARM_DELAY: Duration = Duration::from_secs(3);
+/// How often the pointer is checked: over the pill (row hover follows it),
+/// elsewhere while the island is up, and while it is hidden.
+const POINTER_POLL_INSIDE: Duration = Duration::from_millis(40);
+const POINTER_POLL: Duration = Duration::from_millis(80);
+const POINTER_IDLE_POLL: Duration = Duration::from_millis(400);
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
+/// What the user chose in Settings → General (`desktop-island.json`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct IslandSettings {
+    pub enabled: bool,
+    /// Also show while an OpenAgentd window is in front.
+    pub show_when_frontmost: bool,
+    /// Keep a small pill up while nothing is running.
+    pub show_when_idle: bool,
+    /// Show "Done" / "Failed" when the last turn ends.
+    pub show_finished: bool,
+    pub expand_on_hover: bool,
+}
+
+impl Default for IslandSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_when_frontmost: false,
+            show_when_idle: false,
+            show_finished: true,
+            expand_on_hover: true,
+        }
+    }
+}
+
+/// A partial update; absent fields keep their value.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandSettingsPatch {
+    pub enabled: Option<bool>,
+    pub show_when_frontmost: Option<bool>,
+    pub show_when_idle: Option<bool>,
+    pub show_finished: Option<bool>,
+    pub expand_on_hover: Option<bool>,
+}
+
+impl IslandSettings {
+    pub fn with(self, patch: IslandSettingsPatch) -> Self {
+        Self {
+            enabled: patch.enabled.unwrap_or(self.enabled),
+            show_when_frontmost: patch.show_when_frontmost.unwrap_or(self.show_when_frontmost),
+            show_when_idle: patch.show_when_idle.unwrap_or(self.show_when_idle),
+            show_finished: patch.show_finished.unwrap_or(self.show_finished),
+            expand_on_hover: patch.expand_on_hover.unwrap_or(self.expand_on_hover),
+        }
+    }
+}
+
+// ── Snapshot model ──────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionState {
+    Running,
+    NeedsInput,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandSession {
+    pub id: String,
+    pub title: String,
+    /// Last path component of the session's workspace.
+    pub workspace: Option<String>,
+    pub state: SessionState,
+    /// What the agent asked, while it waits on the user.
+    pub question: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinishedSession {
+    pub id: String,
+    pub title: String,
+    pub failed: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandStatus {
+    /// Bumped on every change, so the webview can tell a new finish from a re-send.
+    pub seq: u64,
+    /// Waiting-on-the-user sessions first.
+    pub sessions: Vec<IslandSession>,
+    /// Set when this change emptied the list because a turn ended.
+    pub finished: Option<FinishedSession>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotchGeometry {
+    pub has_notch: bool,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Default for NotchGeometry {
+    fn default() -> Self {
+        Self { has_notch: false, width: FALLBACK_PILL_WIDTH, height: FALLBACK_MENU_BAR_HEIGHT }
+    }
+}
+
+/// One row of `GET /api/agent/sessions`; only the fields the island uses.
+#[derive(Debug, Deserialize)]
+pub struct SessionRow {
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub running: bool,
+    #[serde(default)]
+    pub needs_input: bool,
+    #[serde(default)]
+    pub parent_session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionPage {
+    #[serde(default)]
+    data: Vec<SessionRow>,
+}
+
+/// Session ids reach us hyphenated (API rows) and bare (some events).
+pub fn id_key(id: &str) -> String {
+    id.chars().filter(|c| *c != '-').flat_map(char::to_lowercase).collect()
+}
+
+fn workspace_label(path: &str) -> Option<String> {
+    let name = path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next()?;
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The Chat workspace is the home directory by default, so its folder name
+/// would be the user's login name; show it as "Chat" like the app does.
+fn session_workspace_label(path: &str, chat_root: Option<&str>) -> Option<String> {
+    let trim = |p: &str| p.trim_end_matches(['/', '\\']).to_string();
+    if chat_root.is_some_and(|root| !root.trim().is_empty() && trim(root) == trim(path)) {
+        return Some("Chat".to_string());
+    }
+    workspace_label(path)
+}
+
+fn session_title(title: Option<&str>) -> String {
+    match title.map(str::trim) {
+        Some(t) if !t.is_empty() => t.to_string(),
+        _ => "Untitled session".to_string(),
+    }
+}
+
+/// The island's list from an active-sessions page. A v2 server ignores
+/// `active=true` and returns a normal page, so the flags are checked here too.
+pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String>, chat_root: Option<&str>) -> Vec<IslandSession> {
+    let mut sessions: Vec<IslandSession> = rows
+        .into_iter()
+        .filter(|row| row.parent_session_id.is_none() && (row.running || row.needs_input))
+        .map(|row| {
+            let state = if row.needs_input { SessionState::NeedsInput } else { SessionState::Running };
+            let question = match state {
+                SessionState::NeedsInput => questions.get(&id_key(&row.id)).cloned(),
+                SessionState::Running => None,
+            };
+            IslandSession {
+                title: session_title(row.title.as_deref()),
+                workspace: row.workspace.as_deref().and_then(|w| session_workspace_label(w, chat_root)),
+                id: row.id,
+                state,
+                question,
+            }
+        })
+        .collect();
+    // Stable: keeps the server's order within each group.
+    sessions.sort_by_key(|s| s.state != SessionState::NeedsInput);
+    sessions
+}
+
+/// The turn to report as finished when the list goes from something to
+/// nothing. A turn the user stopped is their own doing and is not reported.
+pub fn finished_session(
+    previous: &[IslandSession],
+    next: &[IslandSession],
+    statuses: &HashMap<String, String>,
+) -> Option<FinishedSession> {
+    if !next.is_empty() {
+        return None;
+    }
+    previous.iter().find_map(|session| {
+        let status = statuses.get(&id_key(&session.id)).map(String::as_str);
+        (status != Some("stopped")).then(|| FinishedSession {
+            id: session.id.clone(),
+            title: session.title.clone(),
+            failed: matches!(status, Some("error" | "failed")),
+        })
+    })
+}
+
+/// What the stream told us between refetches: each waiting session's
+/// question, and how each turn ended.
+#[derive(Debug, Default)]
+pub struct FeedMemo {
+    questions: HashMap<String, String>,
+    statuses: HashMap<String, String>,
+    /// Path of the backend's Chat workspace, fetched once per connection.
+    chat_root: Option<String>,
+}
+
+impl FeedMemo {
+    /// Record what the event says; true when the active list may have changed.
+    pub fn note(&mut self, event: &SseEvent) -> bool {
+        let data = || serde_json::from_str::<serde_json::Value>(&event.data).unwrap_or_default();
+        match event.event.as_str() {
+            "session_turn_started" => {
+                if let Some(id) = data()["session_id"].as_str() {
+                    self.statuses.remove(&id_key(id));
+                }
+                true
+            }
+            "title_update" => true,
+            "session_turn_completed" => {
+                let data = data();
+                // Subagent turns: the active list only holds top-level sessions.
+                if data["parent_session_id"].is_string() {
+                    return false;
+                }
+                if let (Some(id), Some(status)) = (data["session_id"].as_str(), data["status"].as_str()) {
+                    self.statuses.insert(id_key(id), status.to_string());
+                }
+                true
+            }
+            "desktop_notification" => {
+                let data = data();
+                if data["kind"].as_str() != Some("input_needed") {
+                    return false;
+                }
+                if let (Some(id), Some(body)) = (data["session_id"].as_str(), data["body"].as_str()) {
+                    let body = body.trim();
+                    if !body.is_empty() {
+                        self.questions.insert(id_key(id), body.to_string());
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Drop what no longer applies once `sessions` is current.
+    fn settle(&mut self, sessions: &[IslandSession]) {
+        self.questions.retain(|key, _| {
+            sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key)
+        });
+        self.statuses.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
+    }
+}
+
+// ── SSE ─────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, PartialEq)]
+pub struct SseEvent {
+    pub event: String,
+    pub data: String,
+}
+
+/// Incremental `text/event-stream` parser. Chunks may split lines, and
+/// multi-byte characters, anywhere.
+#[derive(Debug, Default)]
+pub struct SseParser {
+    buffer: Vec<u8>,
+    event: String,
+    data: Option<String>,
+}
+
+impl SseParser {
+    pub fn push(&mut self, bytes: &[u8]) -> Vec<SseEvent> {
+        self.buffer.extend_from_slice(bytes);
+        let mut events = Vec::new();
+        while let Some(end) = self.buffer.iter().position(|b| *b == b'\n') {
+            let mut line: Vec<u8> = self.buffer.drain(..=end).collect();
+            line.pop();
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            let line = String::from_utf8_lossy(&line);
+            if line.is_empty() {
+                if let Some(data) = self.data.take() {
+                    let event = std::mem::take(&mut self.event);
+                    events.push(SseEvent { event: if event.is_empty() { "message".into() } else { event }, data });
+                }
+                self.event.clear();
+                continue;
+            }
+            if line.starts_with(':') {
+                continue;
+            }
+            let (field, value) = match line.split_once(':') {
+                Some((field, value)) => (field, value.strip_prefix(' ').unwrap_or(value)),
+                None => (line.as_ref(), ""),
+            };
+            match field {
+                "event" => self.event = value.to_string(),
+                "data" => match &mut self.data {
+                    Some(data) => {
+                        data.push('\n');
+                        data.push_str(value);
+                    }
+                    None => self.data = Some(value.to_string()),
+                },
+                _ => {}
+            }
+        }
+        events
+    }
+}
+
+// ── Geometry ────────────────────────────────────────────────────────────────
+
+/// A rectangle in AppKit screen coordinates (origin bottom-left, points).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Rect {
+    /// Whether a point is inside, edges included.
+    pub fn contains(&self, x: f64, y: f64) -> bool {
+        x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScreenInfo {
+    pub frame: Rect,
+    /// Top edge of the area below the menu bar.
+    pub visible_top: f64,
+    /// `safeAreaInsets.top`: the notch height, 0 without one (or before macOS 12).
+    pub safe_top: f64,
+    /// Widths of the menu bar areas left and right of the notch.
+    pub aux_left_width: f64,
+    pub aux_right_width: f64,
+}
+
+impl ScreenInfo {
+    fn has_notch(&self) -> bool {
+        self.safe_top > 0.0 && self.aux_left_width > 0.0 && self.aux_right_width > 0.0
+    }
+}
+
+/// The built-in (notched) display if there is one, else the primary display,
+/// which AppKit lists first.
+pub fn pick_screen(screens: &[ScreenInfo]) -> Option<ScreenInfo> {
+    screens.iter().find(|s| s.has_notch()).or_else(|| screens.first()).copied()
+}
+
+pub fn notch_geometry(screen: &ScreenInfo) -> NotchGeometry {
+    if screen.has_notch() {
+        let width = (screen.frame.width - screen.aux_left_width - screen.aux_right_width).max(0.0);
+        return NotchGeometry { has_notch: true, width, height: screen.safe_top };
+    }
+    let menu_bar = screen.frame.y + screen.frame.height - screen.visible_top;
+    let height = if menu_bar > 0.0 { menu_bar } else { FALLBACK_MENU_BAR_HEIGHT };
+    NotchGeometry { has_notch: false, width: FALLBACK_PILL_WIDTH, height }
+}
+
+/// Clamp a pill size the webview asked for to the canvas.
+pub fn fit_size(width: f64, height: f64) -> (f64, f64) {
+    let clamp = |value: f64, max: f64| if value.is_finite() { value.clamp(MIN_SIZE, max) } else { MIN_SIZE };
+    (clamp(width, CANVAS_WIDTH).ceil(), clamp(height, CANVAS_HEIGHT).ceil())
+}
+
+/// A box centred on the notch (or the screen), flush with the top: the
+/// canvas, or the pill inside it.
+pub fn island_frame(screen: &ScreenInfo, width: f64, height: f64) -> Rect {
+    let (width, height) = fit_size(width, height);
+    let center = if screen.has_notch() {
+        let notch = notch_geometry(screen).width;
+        screen.frame.x + screen.aux_left_width + notch / 2.0
+    } else {
+        screen.frame.x + screen.frame.width / 2.0
+    };
+    Rect {
+        x: (center - width / 2.0).round(),
+        y: screen.frame.y + screen.frame.height - height,
+        width,
+        height,
+    }
+}
+
+pub fn should_show(settings: &IslandSettings, frontmost: bool, wants_visible: bool) -> bool {
+    settings.enabled && wants_visible && (!frontmost || settings.show_when_frontmost)
+}
+
+/// The pointer over the canvas, in CSS pixels from its top-left corner.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct PointerPayload {
+    pub inside: bool,
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Screen point (origin bottom-left) to canvas CSS pixels (origin top-left).
+pub fn canvas_point(canvas: &Rect, x: f64, y: f64) -> (f64, f64) {
+    (x - canvas.x, canvas.y + canvas.height - y)
+}
+
+// ── Shared state ────────────────────────────────────────────────────────────
+
+struct Shared {
+    status: IslandStatus,
+    geometry: NotchGeometry,
+    settings: IslandSettings,
+    /// An OpenAgentd app window has focus.
+    frontmost: bool,
+    /// The webview has something to show, with the pill at `size`.
+    wants_visible: bool,
+    size: (f64, f64),
+    /// The canvas and the pill inside it, on screen, while shown.
+    canvas: Option<Rect>,
+    pill: Option<Rect>,
+    /// The pointer as last told to the webview.
+    pointer: Option<PointerPayload>,
+}
+
+fn shared() -> &'static Mutex<Shared> {
+    static SHARED: OnceLock<Mutex<Shared>> = OnceLock::new();
+    SHARED.get_or_init(|| {
+        Mutex::new(Shared {
+            status: IslandStatus::default(),
+            geometry: NotchGeometry::default(),
+            settings: IslandSettings { enabled: false, ..IslandSettings::default() },
+            frontmost: false,
+            wants_visible: false,
+            size: (FALLBACK_PILL_WIDTH, FALLBACK_MENU_BAR_HEIGHT),
+            canvas: None,
+            pill: None,
+            pointer: None,
+        })
+    })
+}
+
+/// Wakes the feed when the feature is switched on or off.
+fn feed_wake() -> &'static tokio::sync::Notify {
+    static WAKE: OnceLock<tokio::sync::Notify> = OnceLock::new();
+    WAKE.get_or_init(tokio::sync::Notify::new)
+}
+
+static FOCUS_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+// ── Lifecycle ───────────────────────────────────────────────────────────────
+
+/// Start the feed and build the island shortly after launch (macOS only).
+pub fn start(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let settings = crate::config::load_island_settings(app);
+        shared().lock().unwrap().settings = settings;
+        tauri::async_runtime::spawn(run_feed(app.clone()));
+        tauri::async_runtime::spawn(run_pointer_watch(app.clone()));
+        if settings.enabled {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(PREWARM_DELAY).await;
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    if let Err(e) = ensure_island(&handle) {
+                        log::warn!("island: build failed: {e:#}");
+                    }
+                });
+            });
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+/// The island window, built on first use. Main thread only.
+#[cfg(target_os = "macos")]
+fn ensure_island(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(window) = app.get_webview_window(ISLAND_WINDOW) {
+        return Ok(window);
+    }
+    let window = tauri::WebviewWindowBuilder::new(app, ISLAND_WINDOW, tauri::WebviewUrl::App("island.html".into()))
+        .title("OpenAgentd status")
+        .inner_size(CANVAS_WIDTH, CANVAS_HEIGHT)
+        .visible(false)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        // Never take keyboard focus from the app the user is typing in, but
+        // let the first click on a row count as a click.
+        .focusable(false)
+        .focused(false)
+        .accept_first_mouse(true)
+        .skip_taskbar(true)
+        .build()?;
+    native::configure(&window);
+    log::info!("island: window built at_ms={}", crate::launch_ms());
+    Ok(window)
+}
+
+/// Show, place, or hide the canvas to match the shared state. Main thread only.
+#[cfg(target_os = "macos")]
+fn apply(app: &AppHandle) {
+    let (show, (width, height)) = {
+        let s = shared().lock().unwrap();
+        (should_show(&s.settings, s.frontmost, s.wants_visible), s.size)
+    };
+    let Some(window) = app.get_webview_window(ISLAND_WINDOW) else {
+        return;
+    };
+    if !show {
+        {
+            let mut s = shared().lock().unwrap();
+            s.canvas = None;
+            s.pill = None;
+        }
+        send_pointer(app, None);
+        let _ = window.hide();
+        return;
+    }
+    let Some(screen) = refresh_geometry(app) else {
+        return;
+    };
+    let canvas = island_frame(&screen, CANVAS_WIDTH, CANVAS_HEIGHT);
+    let pill = island_frame(&screen, width, height);
+    let moved = {
+        let mut s = shared().lock().unwrap();
+        s.pill = Some(pill);
+        s.canvas.replace(canvas) != Some(canvas)
+    };
+    // A resize of the pill is CSS's job; the canvas only moves on a new show
+    // or a display change.
+    if moved {
+        native::place(&window, canvas);
+        // Placing resets click-through; the pointer watch starts over.
+        send_pointer(app, None);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply(_app: &AppHandle) {}
+
+fn schedule_apply(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || apply(&handle));
+}
+
+/// Tell the webview where the pointer is, if that changed. `None`: gone.
+fn send_pointer(app: &AppHandle, pointer: Option<PointerPayload>) {
+    let changed = {
+        let mut s = shared().lock().unwrap();
+        // Once outside, only the first "left" matters.
+        let same = match (s.pointer, pointer) {
+            (Some(a), Some(b)) => a == b || (!a.inside && !b.inside),
+            (None, None) => true,
+            (Some(a), None) | (None, Some(a)) => !a.inside,
+        };
+        s.pointer = pointer;
+        !same
+    };
+    if changed {
+        let payload = pointer.unwrap_or(PointerPayload { inside: false, x: -1.0, y: -1.0 });
+        let _ = app.emit_to(ISLAND_WINDOW, ISLAND_POINTER_EVENT, payload);
+    }
+}
+
+/// Poll the pointer while the canvas is up (see the module docs for why).
+#[cfg(target_os = "macos")]
+async fn run_pointer_watch(app: AppHandle) {
+    loop {
+        let (canvas, inside) = {
+            let s = shared().lock().unwrap();
+            (s.canvas, s.pointer.is_some_and(|p| p.inside))
+        };
+        let Some(canvas) = canvas else {
+            tokio::time::sleep(POINTER_IDLE_POLL).await;
+            continue;
+        };
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let pill = {
+                let s = shared().lock().unwrap();
+                // The canvas may have moved or hidden since it was read.
+                if s.canvas != Some(canvas) {
+                    return;
+                }
+                s.pill
+            };
+            let (Some(pill), Some((x, y))) = (pill, native::mouse_location()) else {
+                return;
+            };
+            let now_inside = pill.contains(x, y);
+            if now_inside != inside {
+                if let Some(window) = handle.get_webview_window(ISLAND_WINDOW) {
+                    native::set_click_through(&window, !now_inside);
+                }
+            }
+            let (cx, cy) = canvas_point(&canvas, x, y);
+            send_pointer(&handle, Some(PointerPayload { inside: now_inside, x: cx, y: cy }));
+        });
+        tokio::time::sleep(if inside { POINTER_POLL_INSIDE } else { POINTER_POLL }).await;
+    }
+}
+
+/// Re-read the screen and tell the webview if the notch changed. Main thread
+/// only; returns the screen the island belongs on.
+#[cfg(target_os = "macos")]
+fn refresh_geometry(app: &AppHandle) -> Option<ScreenInfo> {
+    let screen = pick_screen(&native::screens())?;
+    let geometry = notch_geometry(&screen);
+    let changed = {
+        let mut s = shared().lock().unwrap();
+        std::mem::replace(&mut s.geometry, geometry) != geometry
+    };
+    if changed {
+        let _ = app.emit_to(ISLAND_WINDOW, ISLAND_GEOMETRY_EVENT, geometry);
+    }
+    Some(screen)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn refresh_geometry(_app: &AppHandle) -> Option<ScreenInfo> {
+    None
+}
+
+/// An app window gained or lost focus: hide the island while OpenAgentd is
+/// frontmost, the way iOS hides a Live Activity while its app is open.
+pub fn on_app_focus_changed(app: &AppHandle) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let generation = FOCUS_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(FOCUS_SETTLE).await;
+        if FOCUS_GENERATION.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let frontmost = crate::window::focused_webview_window(&handle)
+                .is_some_and(|w| !crate::window::is_overlay_window(w.label()));
+            let changed = {
+                let mut s = shared().lock().unwrap();
+                std::mem::replace(&mut s.frontmost, frontmost) != frontmost
+            };
+            if changed {
+                apply(&handle);
+            }
+        });
+    });
+}
+
+// ── Feed ────────────────────────────────────────────────────────────────────
+
+/// A client without a total timeout: the event stream stays open for hours.
+fn stream_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_default()
+}
+
+fn is_enabled() -> bool {
+    shared().lock().unwrap().settings.enabled
+}
+
+/// Wait up to `duration`, or less if the feature is switched on or off.
+async fn pause(duration: Duration) {
+    let _ = tokio::time::timeout(duration, feed_wake().notified()).await;
+}
+
+async fn run_feed(app: AppHandle) {
+    let client = stream_client();
+    let mut failures: u32 = 0;
+    loop {
+        if !is_enabled() {
+            clear(&app);
+            feed_wake().notified().await;
+            continue;
+        }
+        let Some((base, token)) = crate::menu::resolve_backend_endpoint(&app).await else {
+            pause(RETRY_BASE).await;
+            continue;
+        };
+        match follow(&app, &client, &base, token.as_deref()).await {
+            Ok(()) => failures = 0,
+            Err(e) => {
+                failures = failures.saturating_add(1);
+                // Stale "running" rows are worse than none while we can't see the backend.
+                clear(&app);
+                let delay = crate::usage::backoff_delay(RETRY_BASE, failures, RETRY_MAX);
+                log::info!("island: event stream unavailable, retrying in {}s: {e:#}", delay.as_secs());
+                pause(delay).await;
+            }
+        }
+    }
+}
+
+/// Follow one backend's event stream until it fails, the app switches
+/// backend, or the feature is turned off.
+async fn follow(app: &AppHandle, client: &reqwest::Client, base: &str, token: Option<&str>) -> Result<()> {
+    let base = base.trim_end_matches('/');
+    let mut memo = FeedMemo::default();
+    let url = format!("{base}/api/events/stream");
+    let mut request = client.get(&url).header(reqwest::header::ACCEPT, "text/event-stream");
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let mut response = request
+        .send()
+        .await
+        .context("open event stream")?
+        .error_for_status()
+        .context("event stream returned an error status")?;
+    // Seed after connecting, so nothing that happens in between is missed.
+    memo.chat_root = chat_root(client, base, token).await;
+    refresh(app, client, base, token, &mut memo).await?;
+    log::info!("island: following {base}");
+
+    let mut parser = SseParser::default();
+    let mut refresh_at: Option<Instant> = None;
+    let mut last_bytes = Instant::now();
+    let mut last_refresh = Instant::now();
+    let mut last_endpoint_check = Instant::now();
+    loop {
+        let now = Instant::now();
+        let wait = refresh_at
+            .map(|at| at.saturating_duration_since(now))
+            .unwrap_or(Duration::from_secs(1))
+            .min(Duration::from_secs(1));
+        tokio::select! {
+            chunk = response.chunk() => match chunk.context("read event stream")? {
+                Some(bytes) => {
+                    last_bytes = Instant::now();
+                    for event in parser.push(&bytes) {
+                        if memo.note(&event) {
+                            refresh_at.get_or_insert(last_bytes + REFRESH_DEBOUNCE);
+                        }
+                    }
+                }
+                None => bail!("event stream closed"),
+            },
+            _ = tokio::time::sleep(wait) => {}
+            _ = feed_wake().notified() => {}
+        }
+        if !is_enabled() {
+            return Ok(());
+        }
+        let now = Instant::now();
+        let active = !shared().lock().unwrap().status.sessions.is_empty();
+        let due = refresh_at.is_some_and(|at| now >= at)
+            || (active && now.duration_since(last_refresh) >= SAFETY_REFRESH);
+        if due {
+            refresh_at = None;
+            last_refresh = now;
+            refresh(app, client, base, token, &mut memo).await?;
+        }
+        if now.duration_since(last_bytes) >= STREAM_IDLE_LIMIT {
+            bail!("event stream went quiet");
+        }
+        if now.duration_since(last_endpoint_check) >= ENDPOINT_RECHECK {
+            last_endpoint_check = now;
+            let current = crate::menu::resolve_backend_endpoint(app).await;
+            let same = current.as_ref().is_some_and(|(b, t)| b.trim_end_matches('/') == base && t.as_deref() == token);
+            if !same {
+                log::info!("island: backend changed, reconnecting");
+                return Ok(());
+            }
+        }
+    }
+}
+
+async fn refresh(app: &AppHandle, client: &reqwest::Client, base: &str, token: Option<&str>, memo: &mut FeedMemo) -> Result<()> {
+    let url = format!("{base}/api/agent/sessions?active=true&limit=100");
+    let mut request = client.get(&url).timeout(LIST_TIMEOUT);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let page: SessionPage = request
+        .send()
+        .await
+        .context("list active sessions")?
+        .error_for_status()
+        .context("active sessions returned an error status")?
+        .json()
+        .await
+        .context("parse active sessions")?;
+    let next = active_sessions(page.data, &memo.questions, memo.chat_root.as_deref());
+    publish(app, next, memo);
+    Ok(())
+}
+
+/// The Chat workspace path from `GET /api/agent/workspace/tree`. Best effort:
+/// without it, Chat sessions fall back to their folder name.
+async fn chat_root(client: &reqwest::Client, base: &str, token: Option<&str>) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Tree {
+        chat: Option<Chat>,
+    }
+    #[derive(Deserialize)]
+    struct Chat {
+        path: String,
+    }
+    let mut request = client.get(format!("{base}/api/agent/workspace/tree")).timeout(LIST_TIMEOUT);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let tree: Tree = match async { request.send().await?.error_for_status()?.json().await }.await {
+        Ok(tree) => tree,
+        Err(err) => {
+            log::warn!("island: could not read the Chat workspace: {err}");
+            return None;
+        }
+    };
+    tree.chat.map(|c| c.path)
+}
+
+fn publish(app: &AppHandle, next: Vec<IslandSession>, memo: &mut FeedMemo) {
+    let status = {
+        let mut s = shared().lock().unwrap();
+        let finished = finished_session(&s.status.sessions, &next, &memo.statuses);
+        if s.status.sessions == next && finished.is_none() {
+            memo.settle(&next);
+            return;
+        }
+        s.status = IslandStatus { seq: s.status.seq + 1, sessions: next, finished };
+        s.status.clone()
+    };
+    memo.settle(&status.sessions);
+    let waiting = status.sessions.iter().filter(|s| s.state == SessionState::NeedsInput).count();
+    log::info!(
+        "island: active={} needs_input={} finished={}",
+        status.sessions.len(),
+        waiting,
+        status.finished.is_some()
+    );
+    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+}
+
+/// Empty the list without reporting a finish.
+fn clear(app: &AppHandle) {
+    let status = {
+        let mut s = shared().lock().unwrap();
+        if s.status.sessions.is_empty() && s.status.finished.is_none() {
+            return;
+        }
+        s.status = IslandStatus { seq: s.status.seq + 1, sessions: Vec::new(), finished: None };
+        s.status.clone()
+    };
+    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+}
+
+// ── Commands ────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandView {
+    status: IslandStatus,
+    geometry: NotchGeometry,
+    settings: IslandSettings,
+}
+
+/// The island's current snapshot, notch geometry and settings, read when it
+/// mounts. Only the island may call it.
+#[tauri::command]
+pub fn island_state(app: AppHandle, window: WebviewWindow) -> Result<IslandView, String> {
+    if window.label() != ISLAND_WINDOW {
+        return Err("only the island reads its state".into());
+    }
+    // Sync commands run on the main thread, where AppKit may be read.
+    let _ = refresh_geometry(&app);
+    let s = shared().lock().unwrap();
+    Ok(IslandView { status: s.status.clone(), geometry: s.geometry, settings: s.settings })
+}
+
+/// The pill's size (its hit area for clicks and hover), and whether the
+/// island has anything to show.
+#[tauri::command]
+pub fn island_fit(app: AppHandle, window: WebviewWindow, width: f64, height: f64, visible: bool) {
+    if window.label() != ISLAND_WINDOW {
+        return;
+    }
+    {
+        let mut s = shared().lock().unwrap();
+        s.size = fit_size(width, height);
+        s.wants_visible = visible;
+    }
+    schedule_apply(&app);
+}
+
+/// Open a session the island is showing in an app window.
+#[tauri::command]
+pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: String) {
+    if window.label() != ISLAND_WINDOW {
+        return;
+    }
+    let known = {
+        let s = shared().lock().unwrap();
+        s.status.sessions.iter().any(|x| x.id == session_id)
+            || s.status.finished.as_ref().is_some_and(|f| f.id == session_id)
+    };
+    if !known {
+        return;
+    }
+    match crate::window::target_webview_window(&app) {
+        Some(target) => {
+            crate::window::show_target_window(&app);
+            let payload = serde_json::json!({ "sessionId": session_id });
+            if let Err(e) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
+                log::warn!("island: open session emit failed: {e:#}");
+            }
+        }
+        None => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let path = format!("/{session_id}");
+                if let Err(e) = crate::window::create_app_window(&app, None, Some(&path)).await {
+                    log::error!("island: open session window failed: {e:#}");
+                }
+            });
+        }
+    }
+}
+
+/// The idle pill was clicked: bring the app forward.
+#[tauri::command]
+pub fn island_show_app(app: AppHandle, window: WebviewWindow) {
+    if window.label() == ISLAND_WINDOW {
+        crate::window::show_target_window(&app);
+    }
+}
+
+/// The island settings, or None where there is no island (off macOS).
+#[tauri::command]
+pub fn island_settings() -> Option<IslandSettings> {
+    cfg!(target_os = "macos").then(|| shared().lock().unwrap().settings)
+}
+
+/// Change some island settings and remember them; returns all of them.
+#[tauri::command]
+pub fn island_update_settings(app: AppHandle, patch: IslandSettingsPatch) -> Result<IslandSettings, String> {
+    if !cfg!(target_os = "macos") {
+        return Err("The notch status is only available on macOS.".into());
+    }
+    let current = shared().lock().unwrap().settings;
+    let next = current.with(patch);
+    crate::config::save_island_settings(&app, &next).map_err(|e| format!("{e:#}"))?;
+    shared().lock().unwrap().settings = next;
+    if next.enabled != current.enabled {
+        feed_wake().notify_one();
+    }
+    log::info!("island: settings={next:?}");
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        #[cfg(target_os = "macos")]
+        if next.enabled {
+            if let Err(e) = ensure_island(&handle) {
+                log::warn!("island: build failed: {e:#}");
+            }
+        }
+        apply(&handle);
+    });
+    let _ = app.emit(ISLAND_SETTINGS_EVENT, next);
+    Ok(next)
+}
+
+// ── AppKit ──────────────────────────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+mod native {
+    use super::{Rect, ScreenInfo};
+    use objc2::runtime::NSObjectProtocol;
+    use objc2::{sel, MainThreadMarker};
+    use objc2_app_kit::{NSEvent, NSMainMenuWindowLevel, NSScreen, NSWindow, NSWindowCollectionBehavior};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+    fn rect(r: NSRect) -> Rect {
+        Rect { x: r.origin.x, y: r.origin.y, width: r.size.width, height: r.size.height }
+    }
+
+    fn info(screen: &NSScreen) -> ScreenInfo {
+        let frame = rect(screen.frame());
+        let visible = rect(screen.visibleFrame());
+        // The notch APIs arrived in macOS 12; the app supports 11.
+        let (safe_top, aux_left_width, aux_right_width) = if screen.respondsToSelector(sel!(safeAreaInsets))
+            && screen.respondsToSelector(sel!(auxiliaryTopLeftArea))
+        {
+            (
+                screen.safeAreaInsets().top,
+                screen.auxiliaryTopLeftArea().size.width,
+                screen.auxiliaryTopRightArea().size.width,
+            )
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+        ScreenInfo { frame, visible_top: visible.y + visible.height, safe_top, aux_left_width, aux_right_width }
+    }
+
+    /// Every display, primary first. Empty off the main thread.
+    pub fn screens() -> Vec<ScreenInfo> {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return Vec::new();
+        };
+        NSScreen::screens(mtm).iter().map(|screen| info(&screen)).collect()
+    }
+
+    /// The pointer in screen coordinates (the same space as window frames).
+    /// None off the main thread.
+    pub fn mouse_location() -> Option<(f64, f64)> {
+        MainThreadMarker::new()?;
+        let point = NSEvent::mouseLocation();
+        Some((point.x, point.y))
+    }
+
+    fn with_ns_window(window: &tauri::WebviewWindow, f: impl FnOnce(&NSWindow)) {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("island: AppKit call off the main thread skipped");
+            return;
+        }
+        match window.ns_window() {
+            // SAFETY: Tauri hands out the window's live NSWindow, and we are on
+            // the main thread, where AppKit objects may be used.
+            Ok(ptr) if !ptr.is_null() => f(unsafe { &*(ptr as *const NSWindow) }),
+            _ => log::warn!("island: no native window"),
+        }
+    }
+
+    /// Above the menu bar, on every Space (full-screen ones too), out of
+    /// Cmd-` cycling and Mission Control.
+    pub fn configure(window: &tauri::WebviewWindow) {
+        with_ns_window(window, |ns| {
+            ns.setLevel(NSMainMenuWindowLevel + 3);
+            ns.setCollectionBehavior(
+                NSWindowCollectionBehavior::CanJoinAllSpaces
+                    | NSWindowCollectionBehavior::Stationary
+                    | NSWindowCollectionBehavior::FullScreenAuxiliary
+                    | NSWindowCollectionBehavior::IgnoresCycle,
+            );
+            ns.setHasShadow(false);
+            // Clicks pass through until the pointer is over the pill.
+            ns.setIgnoresMouseEvents(true);
+        });
+    }
+
+    /// Move to `frame` and bring to the front without activating the app.
+    /// Clicks pass through until the pointer is over the pill again.
+    pub fn place(window: &tauri::WebviewWindow, frame: Rect) {
+        with_ns_window(window, |ns| {
+            let target = NSRect::new(NSPoint::new(frame.x, frame.y), NSSize::new(frame.width, frame.height));
+            ns.setFrame_display(target, true);
+            ns.setIgnoresMouseEvents(true);
+            ns.orderFrontRegardless();
+        });
+    }
+
+    /// Let clicks through to whatever is below (the menu bar), or take them.
+    pub fn set_click_through(window: &tauri::WebviewWindow, through: bool) {
+        with_ns_window(window, |ns| ns.setIgnoresMouseEvents(through));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(id: &str, title: Option<&str>, running: bool, needs_input: bool) -> SessionRow {
+        SessionRow {
+            id: id.into(),
+            title: title.map(Into::into),
+            workspace: Some("/Users/me/code/openagentd".into()),
+            running,
+            needs_input,
+            parent_session_id: None,
+        }
+    }
+
+    fn session(id: &str, state: SessionState) -> IslandSession {
+        IslandSession { id: id.into(), title: format!("T{id}"), workspace: None, state, question: None }
+    }
+
+    fn event(name: &str, data: serde_json::Value) -> SseEvent {
+        SseEvent { event: name.into(), data: data.to_string() }
+    }
+
+    #[test]
+    fn waiting_sessions_come_first_and_idle_or_child_rows_are_dropped() {
+        let mut child = row("c", Some("child"), true, false);
+        child.parent_session_id = Some("a".into());
+        let rows = vec![
+            row("a", Some("Refactor"), true, false),
+            row("b", Some("Ask"), true, true),
+            row("idle", Some("Idle"), false, false),
+            child,
+            row("d", Some("Docs"), true, false),
+        ];
+        let sessions = active_sessions(rows, &HashMap::new(), None);
+        let ids: Vec<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["b", "a", "d"]);
+        assert_eq!(sessions[0].state, SessionState::NeedsInput);
+        assert_eq!(sessions[1].workspace.as_deref(), Some("openagentd"));
+    }
+
+    #[test]
+    fn a_blank_title_reads_untitled_and_the_question_follows_the_session() {
+        let questions = HashMap::from([(id_key("AB-CD"), "Keep the old format?".to_string())]);
+        let sessions = active_sessions(vec![row("ab-cd", Some("  "), false, true)], &questions, None);
+        assert_eq!(sessions[0].title, "Untitled session");
+        assert_eq!(sessions[0].question.as_deref(), Some("Keep the old format?"));
+    }
+
+    #[test]
+    fn a_session_in_the_chat_workspace_is_labelled_chat() {
+        let mut chat = row("a", Some("Hi"), true, false);
+        chat.workspace = Some("/Users/me/".into());
+        let mut project = row("b", Some("Code"), true, false);
+        project.workspace = Some("/Users/me/code/web".into());
+        let sessions = active_sessions(vec![chat, project], &HashMap::new(), Some("/Users/me"));
+        assert_eq!(sessions[0].workspace.as_deref(), Some("Chat"));
+        assert_eq!(sessions[1].workspace.as_deref(), Some("web"));
+    }
+
+    #[test]
+    fn emptying_the_list_reports_the_finished_turn() {
+        let previous = [session("a", SessionState::Running)];
+        let done = finished_session(&previous, &[], &HashMap::new()).unwrap();
+        assert_eq!((done.id.as_str(), done.failed), ("a", false));
+
+        let failed = HashMap::from([(id_key("a"), "error".to_string())]);
+        assert!(finished_session(&previous, &[], &failed).unwrap().failed);
+    }
+
+    #[test]
+    fn a_stopped_turn_or_a_list_that_still_has_sessions_reports_nothing() {
+        let previous = [session("a", SessionState::Running), session("b", SessionState::Running)];
+        assert_eq!(finished_session(&previous, &previous[1..], &HashMap::new()), None);
+
+        let stopped = HashMap::from([(id_key("a"), "stopped".to_string())]);
+        assert_eq!(finished_session(&previous[..1], &[], &stopped), None);
+        assert_eq!(finished_session(&[], &[], &HashMap::new()), None);
+    }
+
+    #[test]
+    fn turn_events_trigger_a_refetch_and_others_do_not() {
+        let mut memo = FeedMemo::default();
+        assert!(memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a"}))));
+        assert!(memo.note(&event("title_update", serde_json::json!({}))));
+        assert!(!memo.note(&event("config_changed", serde_json::json!({}))));
+        assert!(!memo.note(&event("desktop_notification", serde_json::json!({"kind": "assistant_done"}))));
+        let subagent = serde_json::json!({"session_id": "s", "status": "completed", "parent_session_id": "a"});
+        assert!(!memo.note(&event("session_turn_completed", subagent)));
+    }
+
+    #[test]
+    fn the_memo_keeps_questions_and_outcomes_only_while_they_apply() {
+        let mut memo = FeedMemo::default();
+        let ask = serde_json::json!({"kind": "input_needed", "session_id": "a", "body": "Which branch?"});
+        assert!(memo.note(&event("desktop_notification", ask)));
+        let done = serde_json::json!({"session_id": "b", "status": "error"});
+        assert!(memo.note(&event("session_turn_completed", done)));
+        assert_eq!(memo.questions.get("a").map(String::as_str), Some("Which branch?"));
+        assert_eq!(memo.statuses.get("b").map(String::as_str), Some("error"));
+
+        memo.settle(&[session("a", SessionState::Running)]);
+        assert!(memo.questions.is_empty(), "answered: the question no longer applies");
+        assert!(memo.statuses.is_empty());
+
+        memo.statuses.insert("a".into(), "completed".into());
+        assert!(memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a"}))));
+        assert!(memo.statuses.is_empty(), "a new turn forgets the last outcome");
+    }
+
+    #[test]
+    fn sse_events_survive_chunks_split_anywhere() {
+        let wire = "event: session_turn_started\r\ndata: {\"session_id\":\"a\u{e9}\"}\r\n\r\n: ping\r\n\r\nevent: title_update\r\ndata: one\r\ndata: two\r\n\r\n";
+        let bytes = wire.as_bytes();
+        for split in 0..bytes.len() {
+            let mut parser = SseParser::default();
+            let mut events = parser.push(&bytes[..split]);
+            events.extend(parser.push(&bytes[split..]));
+            assert_eq!(
+                events,
+                vec![
+                    SseEvent { event: "session_turn_started".into(), data: "{\"session_id\":\"a\u{e9}\"}".into() },
+                    SseEvent { event: "title_update".into(), data: "one\ntwo".into() },
+                ],
+                "split at {split}"
+            );
+        }
+    }
+
+    fn notched() -> ScreenInfo {
+        // A 14" MacBook Pro at its default scaling.
+        ScreenInfo {
+            frame: Rect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 },
+            visible_top: 944.0,
+            safe_top: 38.0,
+            aux_left_width: 662.0,
+            aux_right_width: 662.0,
+        }
+    }
+
+    fn external() -> ScreenInfo {
+        ScreenInfo {
+            frame: Rect { x: 1512.0, y: -200.0, width: 2560.0, height: 1440.0 },
+            visible_top: 1215.0,
+            safe_top: 0.0,
+            aux_left_width: 0.0,
+            aux_right_width: 0.0,
+        }
+    }
+
+    #[test]
+    fn the_notched_display_wins_and_otherwise_the_primary_one() {
+        assert_eq!(pick_screen(&[external(), notched()]), Some(notched()));
+        assert_eq!(pick_screen(&[external()]), Some(external()));
+        assert_eq!(pick_screen(&[]), None);
+    }
+
+    #[test]
+    fn notch_geometry_comes_from_the_menu_bar_areas_beside_it() {
+        assert_eq!(notch_geometry(&notched()), NotchGeometry { has_notch: true, width: 188.0, height: 38.0 });
+        let plain = notch_geometry(&external());
+        assert_eq!(plain, NotchGeometry { has_notch: false, width: FALLBACK_PILL_WIDTH, height: 25.0 });
+
+        let mut hidden_menu_bar = external();
+        hidden_menu_bar.visible_top = hidden_menu_bar.frame.y + hidden_menu_bar.frame.height;
+        assert_eq!(notch_geometry(&hidden_menu_bar).height, FALLBACK_MENU_BAR_HEIGHT);
+    }
+
+    #[test]
+    fn the_island_is_centred_on_the_notch_and_flush_with_the_top() {
+        let frame = island_frame(&notched(), 340.0, 38.0);
+        assert_eq!(frame, Rect { x: 586.0, y: 944.0, width: 340.0, height: 38.0 });
+        let frame = island_frame(&external(), 220.0, 25.0);
+        assert_eq!(frame, Rect { x: 1512.0 + 1170.0, y: 1215.0, width: 220.0, height: 25.0 });
+    }
+
+    #[test]
+    fn requested_sizes_are_clamped() {
+        assert_eq!(fit_size(2_000.0, 2_000.0), (CANVAS_WIDTH, CANVAS_HEIGHT));
+        assert_eq!(fit_size(f64::NAN, -4.0), (MIN_SIZE, MIN_SIZE));
+        assert_eq!(fit_size(300.4, 37.2), (301.0, 38.0));
+    }
+
+    #[test]
+    fn the_island_shows_only_when_on_wanted_and_the_app_is_in_the_background() {
+        let on = IslandSettings::default();
+        assert!(should_show(&on, false, true));
+        assert!(!should_show(&IslandSettings { enabled: false, ..on }, false, true));
+        assert!(!should_show(&on, true, true), "hidden while OpenAgentd is in front");
+        assert!(!should_show(&on, false, false), "nothing to show");
+    }
+
+    #[test]
+    fn opting_in_keeps_the_island_up_while_the_app_is_in_front() {
+        let opted_in = IslandSettings { show_when_frontmost: true, ..IslandSettings::default() };
+        assert!(should_show(&opted_in, true, true));
+        assert!(!should_show(&IslandSettings { enabled: false, ..opted_in }, true, true));
+    }
+
+    #[test]
+    fn a_settings_patch_changes_only_what_it_names() {
+        let patch: IslandSettingsPatch = serde_json::from_str(r#"{"showWhenIdle": true}"#).unwrap();
+        let next = IslandSettings::default().with(patch);
+        assert_eq!(next, IslandSettings { show_when_idle: true, ..IslandSettings::default() });
+        let json = serde_json::to_value(next).unwrap();
+        assert_eq!(json["showWhenIdle"], true, "the web reads camelCase: {json}");
+    }
+
+    #[test]
+    fn the_pointer_is_reported_in_canvas_pixels_from_the_top_left() {
+        let canvas = Rect { x: 526.0, y: 602.0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
+        assert_eq!(canvas_point(&canvas, 526.0, 982.0), (0.0, 0.0));
+        assert_eq!(canvas_point(&canvas, 756.0, 962.0), (230.0, 20.0));
+    }
+
+    #[test]
+    fn the_pointer_is_over_the_island_inside_its_frame_edges_included() {
+        let frame = Rect { x: 586.0, y: 944.0, width: 340.0, height: 38.0 };
+        assert!(frame.contains(700.0, 960.0));
+        assert!(frame.contains(586.0, 982.0), "top-left corner");
+        assert!(!frame.contains(585.0, 960.0));
+        assert!(!frame.contains(700.0, 943.0), "just below");
+    }
+
+    #[test]
+    fn workspace_labels_are_the_folder_name() {
+        assert_eq!(workspace_label("/Users/me/code/web/"), Some("web".into()));
+        assert_eq!(workspace_label("C:\\code\\api"), Some("api".into()));
+        assert_eq!(workspace_label("/"), None);
+    }
+}

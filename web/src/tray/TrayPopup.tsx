@@ -18,11 +18,10 @@ const CHECKED_TICK_MS = 30_000
 const NO_SERVERS: TrayServerOption[] = []
 
 /** Native menu commands (desktop/src-tauri/src/menu.rs), plus the popup's own ``hide``. */
-type TrayAction = 'show' | 'new_session' | 'settings' | 'quit' | 'usage_manage' | 'hide'
+type TrayAction = 'show' | 'settings' | 'quit' | 'usage_manage' | 'hide'
 
 const ACTIONS: Array<{ action: TrayAction; label: string; keys?: string; key?: string }> = [
   { action: 'show', label: 'Open OpenAgentd' },
-  { action: 'new_session', label: 'New session', keys: '⌘N', key: 'n' },
   { action: 'settings', label: 'Settings', keys: '⌘,', key: ',' },
   { action: 'quit', label: 'Quit OpenAgentd', keys: '⌘Q', key: 'q' },
 ]

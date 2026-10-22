@@ -495,8 +495,24 @@ run from the terminal (the native Rust binary since v3.0.0).
       With no providers it offers Open Providers, and Reconnect goes to
       Settings → Providers.
     - **Keys.** Esc closes it, or the server menu first, which also takes
-      ↑ ↓ Enter. ⌘R refreshes, and ⌘N, ⌘, and ⌘Q run New session, Settings
-      and Quit.
+      ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit. Since
+      `[v3.26.0]` the popup no longer offers New session; that lives in the
+      app window (⌘N).
+  - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
+    another app, a black pill grows out of the MacBook notch (or hangs from
+    the middle of the menu bar on a display without one) whenever an agent
+    is busy. It reads "Working" with the session title or count, turns
+    orange with "Needs input" when an agent waits on a question or a plan
+    review, and shows "Done" (or "Failed") for 4 seconds when the last turn
+    ends; a turn you stopped yourself shows nothing. Hover it to list the
+    active sessions, waiting ones first with their question; click a row or
+    the pill to open that session. The pill grows out of the notch, springs
+    open on hover and shrinks back in, and clicks beside it still reach the
+    menu bar. It never takes focus and shows over full-screen apps.
+    Settings → General → Desktop turns it off, and can also keep it up
+    while OpenAgentd is in front (off by default), keep a small pill when
+    nothing is running (off), skip the "Done" flash, or stop hover from
+    expanding it.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

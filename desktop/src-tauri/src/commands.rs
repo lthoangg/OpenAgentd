@@ -96,7 +96,7 @@ fn first_notification_request(id: &str) -> bool {
 /// (it knows which session is on screen).
 fn another_app_window_focused(app: &AppHandle, caller: &str) -> bool {
     crate::window::focused_webview_window(app)
-        .is_some_and(|w| w.label() != caller && w.label() != crate::tray_popup::TRAY_POPUP_WINDOW)
+        .is_some_and(|w| w.label() != caller && !crate::window::is_overlay_window(w.label()))
 }
 
 #[derive(Clone, Deserialize, Serialize)]

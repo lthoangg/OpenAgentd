@@ -51,6 +51,8 @@
     "allow-get-tray-usage-summary",
     "allow-tray-action",
     "allow-tray-fit",
+    "allow-island-settings",
+    "allow-island-update-settings",
     "allow-updater-check",
     "allow-updater-download",
     "allow-updater-install",

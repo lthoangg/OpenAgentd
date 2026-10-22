@@ -127,7 +127,8 @@ pub(crate) fn notify_bundled_windows(app: &AppHandle, ready: BackendReady) {
         .clone();
     let init_script = frontend_init_script(ready.token.as_deref(), &ready.base_url);
     for window in app.webview_windows().into_values() {
-        if !external.contains_key(window.label()) {
+        // Overlays (tray popup, island) never hold the backend token.
+        if !external.contains_key(window.label()) && !crate::window::is_overlay_window(window.label()) {
             if let Err(e) = window.eval(&init_script) {
                 log::warn!(
                     "inject restarted backend config into {}: {e}",

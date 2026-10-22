@@ -62,27 +62,31 @@ pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     // points at another window, which can make reload-driven queries briefly
     // retarget the wrong backend.
     if let Some(window) = focused_webview_window(app) {
-        // The tray popup is a menu surface, never a navigation/command
-        // target: when it is focused (you just clicked one of its buttons),
-        // actions must fall through to the real app window instead of
-        // navigating/commanding the popup itself.
-        if window.label() != crate::tray_popup::TRAY_POPUP_WINDOW {
+        // The tray popup (and the island) are shell surfaces, never a
+        // navigation/command target: when the popup is focused (you just
+        // clicked one of its buttons), actions must fall through to the real
+        // app window instead of navigating/commanding the popup itself.
+        if !is_overlay_window(window.label()) {
             return Some(window);
         }
     }
     let state: tauri::State<'_, AppState> = app.state();
     let label = state.active_window_label.lock().unwrap().clone();
     if let Some(window) = app.get_webview_window(&label) {
-        if window.label() != crate::tray_popup::TRAY_POPUP_WINDOW {
+        if !is_overlay_window(window.label()) {
             return Some(window);
         }
     }
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         return Some(window);
     }
-    app.webview_windows().into_values().find(|window| {
-        window.label() != crate::tray_popup::TRAY_POPUP_WINDOW
-    })
+    app.webview_windows().into_values().find(|window| !is_overlay_window(window.label()))
+}
+
+/// The tray popup and the notch island: shell surfaces, never app windows
+/// that navigate, take commands, or hold a backend config.
+pub fn is_overlay_window(label: &str) -> bool {
+    label == crate::tray_popup::TRAY_POPUP_WINDOW || label == crate::island::ISLAND_WINDOW
 }
 
 pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
@@ -153,8 +157,18 @@ pub fn emit_frontend_command(app: &AppHandle, command: &str) {
 /// The Vite dev server URL a debug build loads its UI from. It must stay under
 /// `build.devUrl`: Tauri counts URLs there as the app's own origin, which is
 /// what grants the dev window IPC without any remote capability.
-pub fn frontend_dev_url(app_id: &str, window_label: &str) -> String {
-    format!("http://localhost:5173/?oa-app-id={app_id}&oa-window-id={window_label}")
+/// Built from that setting, so `-c '{"build":{"devUrl":"…:5174"}}'` moves
+/// every window when 5173 is taken.
+pub fn frontend_dev_url(dev_url: Option<&str>, app_id: &str, window_label: &str) -> String {
+    let base = dev_url.unwrap_or(DEFAULT_DEV_URL).trim_end_matches('/');
+    format!("{base}/?oa-app-id={app_id}&oa-window-id={window_label}")
+}
+
+const DEFAULT_DEV_URL: &str = "http://localhost:5173";
+
+/// `build.devUrl` from the running config.
+pub fn configured_dev_url<R: tauri::Runtime>(app: &impl Manager<R>) -> Option<String> {
+    app.config().build.dev_url.as_ref().map(|url| url.to_string())
 }
 
 pub fn frontend_webview_url(app: &AppHandle, window_label: &str) -> Result<WebviewUrl> {
@@ -163,7 +177,7 @@ pub fn frontend_webview_url(app: &AppHandle, window_label: &str) -> Result<Webvi
     let app_id = &app.config().identifier;
     if cfg!(debug_assertions) {
         Ok(WebviewUrl::External(
-            frontend_dev_url(app_id, window_label)
+            frontend_dev_url(configured_dev_url(app).as_deref(), app_id, window_label)
                 .parse()
                 .context("parse dev frontend url")?,
         ))
@@ -540,11 +554,13 @@ mod tests {
     fn dev_window_url_stays_under_dev_url() {
         let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let dev_url = config["build"]["devUrl"].as_str().expect("build.devUrl");
+        let url = frontend_dev_url(Some(dev_url), "app", "main");
         assert!(
-            frontend_dev_url("app", "main").starts_with(&format!("{}/", dev_url.trim_end_matches('/'))),
-            "{} is outside devUrl {dev_url}, so the dev window would get no IPC",
-            frontend_dev_url("app", "main")
+            url.starts_with(&format!("{}/", dev_url.trim_end_matches('/'))),
+            "{url} is outside devUrl {dev_url}, so the dev window would get no IPC",
         );
+        let moved = frontend_dev_url(Some("http://localhost:5174/"), "app", "main");
+        assert!(moved.starts_with("http://localhost:5174/?"), "{moved} ignores an overridden devUrl");
     }
 
     // The page paints ~150 ms after the window shows; until then the window

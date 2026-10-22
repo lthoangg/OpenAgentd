@@ -9,6 +9,7 @@ mod commands;
 mod sidecar;
 mod usage;
 mod tray_popup;
+mod island;
 mod watchdog;
 mod network_access;
 mod preview_relay;
@@ -315,7 +316,12 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .context("wait_for_health")?;
 
     let init_script = frontend_init_script(Some(&token), &base);
-    let existing_windows: Vec<tauri::WebviewWindow> = app.webview_windows().into_values().collect();
+    // Overlays (tray popup, island) never hold the backend token.
+    let existing_windows: Vec<tauri::WebviewWindow> = app
+        .webview_windows()
+        .into_values()
+        .filter(|w| !crate::window::is_overlay_window(w.label()))
+        .collect();
     let external_windows = state.window_backend_base_urls.lock().unwrap().clone();
     for window in existing_windows {
         if !external_windows.contains_key(window.label()) {
@@ -326,9 +332,13 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         if cfg!(debug_assertions) {
             window
                 .navigate(
-                    crate::window::frontend_dev_url(&app.config().identifier, window.label())
-                        .parse()
-                        .context("parse dev frontend url")?,
+                    crate::window::frontend_dev_url(
+                        crate::window::configured_dev_url(&app).as_deref(),
+                        &app.config().identifier,
+                        window.label(),
+                    )
+                    .parse()
+                    .context("parse dev frontend url")?,
                 )
                 .context("navigate app window")?;
         }
@@ -657,6 +667,12 @@ fn main() {
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,
             tray_popup::tray_fit,
+            island::island_state,
+            island::island_fit,
+            island::island_open_session,
+            island::island_show_app,
+            island::island_settings,
+            island::island_update_settings,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
@@ -717,6 +733,7 @@ fn main() {
             });
             let watchdog_handle = app.handle().clone();
             tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
+            island::start(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -729,6 +746,14 @@ fn main() {
             } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
                 let state: tauri::State<'_, AppState> = app.state();
                 *state.active_window_label.lock().unwrap() = label.to_string();
+                island::on_app_focus_changed(app);
+            }
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::Focused(false),
+                ..
+            } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
+                island::on_app_focus_changed(app);
             }
             RunEvent::WindowEvent {
                 label,
@@ -755,7 +780,7 @@ fn main() {
                         let remaining = app
                             .webview_windows()
                             .into_iter()
-                            .find(|(k, _)| k != label.as_str() && k != crate::tray_popup::TRAY_POPUP_WINDOW)
+                            .find(|(k, _)| k != label.as_str() && !crate::window::is_overlay_window(k))
                             .map(|(k, _)| k)
                             .unwrap_or_else(|| MAIN_WINDOW.to_string());
                         *state.active_window_label.lock().unwrap() = remaining;

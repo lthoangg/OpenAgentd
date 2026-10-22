@@ -1,15 +1,17 @@
 /**
  * Settings → General — app-wide preferences that live on this device:
- * colour theme and transcript style.
+ * colour theme, transcript style and, in the macOS app, the notch status.
  */
-import { type ComponentType } from 'react'
+import { type ComponentType, useEffect, useState } from 'react'
 
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { Switch } from '@/components/ui/switch'
 import { useThemePreference } from '@/hooks/useThemePreference'
+import { type IslandSettings, readIslandSettings, supportsIsland, updateIslandSettings } from '@/lib/island-setting'
 import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 function SegmentedChoice<T extends string>({ label, options, value, onChange }: {
@@ -29,6 +31,80 @@ function SegmentedChoice<T extends string>({ label, options, value, onChange }: 
         icon: Icon ? <Icon size={13} aria-hidden="true" /> : undefined,
       }))}
     />
+  )
+}
+
+/** The options under the main switch, in the order they are shown. */
+const NOTCH_OPTIONS: ReadonlyArray<{ key: Exclude<keyof IslandSettings, 'enabled'>; label: string; description: string }> = [
+  {
+    key: 'showWhenFrontmost',
+    label: 'Show while OpenAgentd is in front',
+    description: 'By default it steps aside while you use the app, whose sidebar shows the same status.',
+  },
+  {
+    key: 'showWhenIdle',
+    label: 'Show when nothing is running',
+    description: 'Keep a small pill beside the notch; click it to bring OpenAgentd forward.',
+  },
+  {
+    key: 'showFinished',
+    label: 'Show when a turn finishes',
+    description: 'Show "Done" (or "Failed") for a few seconds after the last turn ends.',
+  },
+  {
+    key: 'expandOnHover',
+    label: 'Expand on hover',
+    description: 'Point at it to list the active sessions and their questions.',
+  },
+]
+
+/** macOS app only: the agent status pill in the notch. */
+function NotchStatusSection() {
+  const [settings, setSettings] = useState<IslandSettings | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void readIslandSettings().then((value) => {
+      if (!cancelled) setSettings(value)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (settings === null) return null
+
+  const change = (patch: Partial<IslandSettings>) => {
+    const previous = settings
+    setSettings({ ...settings, ...patch })
+    setError(null)
+    updateIslandSettings(patch).then(setSettings, (err: unknown) => {
+      setSettings(previous)
+      setError(err instanceof Error ? err.message : String(err))
+    })
+  }
+
+  return (
+    <PanelSection title="Desktop" flush>
+      <PanelRow
+        label="Agent status in the notch"
+        htmlFor="island-enabled"
+        description={error ?? 'While you work in another app, the notch shows running agents, questions waiting on you, and finished turns.'}
+      >
+        <Switch id="island-enabled" checked={settings.enabled} onCheckedChange={(enabled) => change({ enabled })} />
+      </PanelRow>
+      {NOTCH_OPTIONS.map((option) => (
+        <PanelRow key={option.key} label={option.label} htmlFor={`island-${option.key}`} description={option.description}>
+          <Switch
+            id={`island-${option.key}`}
+            checked={settings[option.key]}
+            disabled={!settings.enabled}
+            onCheckedChange={(checked) => change({ [option.key]: checked })}
+          />
+        </PanelRow>
+      ))}
+    </PanelSection>
   )
 }
 
@@ -53,6 +129,7 @@ export function GeneralSettingsPage() {
           <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
         </PanelRow>
       </PanelSection>
+      {supportsIsland() && <NotchStatusSection />}
     </SettingsPage>
   )
 }

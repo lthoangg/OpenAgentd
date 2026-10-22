@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "island",
+  "description": "The macOS notch island (web/island.html): events, plus reading its snapshot, sizing its pill, opening a session it shows, and bringing the app forward. No backend access, no settings changes, and no window commands.",
+  "windows": [
+    "island"
+  ],
+  "local": true,
+  "permissions": [
+    "core:event:default",
+    "allow-island-state",
+    "allow-island-fit",
+    "allow-island-open-session",
+    "allow-island-show-app"
+  ]
+}

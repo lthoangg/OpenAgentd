@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-update-settings"
+description = "Enables the island_update_settings command without any pre-configured scope."
+commands.allow = ["island_update_settings"]
+
+[[permission]]
+identifier = "deny-island-update-settings"
+description = "Denies the island_update_settings command without any pre-configured scope."
+commands.deny = ["island_update_settings"]

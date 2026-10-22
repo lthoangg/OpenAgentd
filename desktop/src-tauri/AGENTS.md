@@ -17,6 +17,11 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   backoff budget, then re-points bundled windows; windows on an external
   server are left alone.
 - `src/menu.rs`: tray/menu construction, polling, and event routing.
+- `src/island.rs`: the macOS notch island (`web/island.html`): follows the
+  backend's event stream, refetches the active-session list, and places the
+  window over the notch with AppKit. Its webview has its own capability
+  (`capabilities/island.json`) and, like the tray popup, never gets the
+  backend token (`window::is_overlay_window`).
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
 - `src/network_access.rs`: the "Network access" switch: saved on/off and

@@ -133,10 +133,11 @@ describe('TrayPopup', () => {
     render(<TrayPopup />)
     await screen.findByText('5-hour')
 
-    for (const name of ['Open OpenAgentd', 'New session', 'Settings', 'Quit OpenAgentd']) {
+    for (const name of ['Open OpenAgentd', 'Settings', 'Quit OpenAgentd']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }))
     }
-    expect(actions()).toEqual(['show', 'new_session', 'settings', 'quit'])
+    expect(actions()).toEqual(['show', 'settings', 'quit'])
+    expect(screen.queryByRole('button', { name: /^New session/ })).toBeNull()
   })
 
   it('Esc closes the server menu first, then the popup', async () => {
@@ -167,7 +168,8 @@ describe('TrayPopup', () => {
     await screen.findByText('5-hour')
 
     for (const key of ['n', ',', 'q']) fireEvent.keyDown(document, { key, metaKey: true })
-    expect(actions()).toEqual(['new_session', 'settings', 'quit'])
+    // ⌘N is not the tray's: New session lives in the app window.
+    expect(actions()).toEqual(['settings', 'quit'])
   })
 
   it('picks a server from the keyboard and reads its usage', async () => {

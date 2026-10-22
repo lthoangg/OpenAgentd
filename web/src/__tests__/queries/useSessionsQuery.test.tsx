@@ -13,7 +13,6 @@ import {
   useUpdateSessionTitleMutation,
   useWorkspaceSessionsQuery,
 } from '@/queries/useSessionsQuery'
-import { renameSession } from '@/queries/session-rename'
 import { queryKeys } from '@/queries/keys'
 import { useAgentStore } from '@/stores/useAgentStore'
 
@@ -292,24 +291,6 @@ describe('useUpdateSessionTitleMutation', () => {
     await act(async () => {
       await result.current.mutateAsync({ id: 's1', title: 'New' }).catch(() => {})
     })
-    expect(titleIn(client)).toBe('Old')
-    expect(useAgentStore.getState().sessionTitle).toBe('Old')
-  })
-
-  it('renames from the chat header at once, and rolls back on failure', async () => {
-    setApiBaseUrl('')
-    let fail: (value: Response) => void = () => {}
-    globalThis.fetch = mock(() => new Promise<Response>((resolve) => { fail = resolve })) as unknown as typeof fetch
-    useAgentStore.setState({ sessionId: 's1', sessionTitle: 'Old' })
-    const client = new QueryClient()
-    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page([row]))
-
-    const pending = renameSession(client, 's1', 'New').catch(() => 'failed')
-    expect(titleIn(client)).toBe('New')
-    expect(useAgentStore.getState().sessionTitle).toBe('New')
-
-    fail(new Response(JSON.stringify({ detail: 'nope' }), { status: 422 }))
-    expect(await pending).toBe('failed')
     expect(titleIn(client)).toBe('Old')
     expect(useAgentStore.getState().sessionTitle).toBe('Old')
   })

@@ -1329,9 +1329,10 @@ agent against it.
   without subagents keep no chevron gutter, and child rows sit flat under the
   lead's title without another indent guide.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
-  sidebar row, **Edit title** in its menu, or a click on the session title in
-  the desktop header turns the title into a text field. Enter or clicking away
-  saves, Escape cancels, and the header and sidebar show the new title at once.
+  sidebar row, or **Edit title** in its menu turns the title into a text
+  field. Enter or clicking away saves, Escape cancels, and the header and
+  sidebar show the new title at once. Since `[v3.25.0]` the session title in
+  the desktop chat header is read-only; rename from the sidebar.
 - **Session search** `[v3.0.0]` — the search button in the Workspaces header
   swaps the tree for a search field that matches session titles across every
   workspace, however old. Enter opens the first match and Escape returns to

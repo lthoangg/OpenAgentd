@@ -1,5 +1,4 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { updateSessionTitle } from '@/api/client'
 import type { SessionResponse } from '@/api/types'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { patchSessionTitle } from '@/stores/cache-invalidation-bridge'
@@ -40,18 +39,5 @@ export function applyOptimisticTitle(queryClient: QueryClient, id: string, title
     if (previous === null) return
     patchSessionTitle(queryClient, id, previous)
     if (useAgentStore.getState().sessionId === id) useAgentStore.setState({ sessionTitle: previous })
-  }
-}
-
-/** Rename outside a component's mutation state (e.g. the chat header). */
-export async function renameSession(queryClient: QueryClient, id: string, title: string): Promise<SessionResponse> {
-  const undo = applyOptimisticTitle(queryClient, id, title)
-  try {
-    const updated = await updateSessionTitle(id, title)
-    applySessionRename(queryClient, updated)
-    return updated
-  } catch (error) {
-    undo()
-    throw error
   }
 }

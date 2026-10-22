@@ -6,7 +6,6 @@ import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
@@ -49,8 +48,6 @@ interface AgentChatHeaderProps {
   onOpenPalette?: () => void
   /** Mobile drawer's file search; disabled when omitted (no workspace). */
   onQuickOpen?: () => void
-  /** Rename a session; makes the desktop title editable in place. */
-  onRenameSession?: (sessionId: string, title: string) => void
 }
 
 export const AgentChatHeader = memo(function AgentChatHeader({
@@ -78,16 +75,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onCloseMobileActionsMenu,
   onOpenPalette,
   onQuickOpen,
-  onRenameSession,
 }: AgentChatHeaderProps) {
   const { os } = usePlatform()
   // Published by the mounted transcript; a new chat has no prompts to step.
   const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
   const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
-  // Keyed by session so a switch mid-edit drops the field instead of carrying
-  // the old title onto the new session.
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-  const renaming = renamingSessionId !== null && renamingSessionId === sessionId
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
   const todoSummary = summarizeTodos(todos)
   // The chat workspace reads as "Chat" rather than the home directory's
@@ -130,22 +122,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             />
             <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
           </Tooltip>
-          {workspace && !isMobile && renaming && onRenameSession ? (
-            <span className="ml-1 flex min-w-0 max-w-xs items-center gap-1 text-sm lg:max-w-md xl:max-w-xl">
-              <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
-              <span className="shrink-0 text-(--color-text-muted)">·</span>
-              <InlineTitleInput
-                initial={sessionTitle ?? ''}
-                label="Session title"
-                onSubmit={(title) => {
-                  setRenamingSessionId(null)
-                  onRenameSession(renamingSessionId, title)
-                }}
-                onCancel={() => setRenamingSessionId(null)}
-                className="h-6 w-64 min-w-0 shrink text-sm"
-              />
-            </span>
-          ) : workspace && !isMobile ? (
+          {/* Read-only: sessions are renamed from their sidebar row. */}
+          {workspace && !isMobile ? (
             <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
               <TooltipTrigger
                 className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
@@ -155,18 +133,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     {sessionTitle && (
                       <>
                         <TitleSeparator sessionId={sessionId} title={sessionTitle} />
-                        {onRenameSession && sessionId ? (
-                          <button
-                            type="button"
-                            onClick={() => setRenamingSessionId(sessionId)}
-                            aria-label={`Rename session ${sessionTitle}`}
-                            className="min-w-0 rounded-xs text-left text-(--color-text-muted) transition-colors hover:text-(--color-text)"
-                          >
-                            <AnimatedTitle text={sessionTitle} sessionId={sessionId} />
-                          </button>
-                        ) : (
-                          <AnimatedTitle text={sessionTitle} sessionId={sessionId} className="text-(--color-text-muted)" />
-                        )}
+                        <AnimatedTitle text={sessionTitle} sessionId={sessionId} className="text-(--color-text-muted)" />
                       </>
                     )}
                   </span>

@@ -485,6 +485,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     tray menu. The header features a server selector dropdown `[v2.8.0]` that
     allows inspecting usage across local and remote connected backends
     with live reachability filtering.
+    Since `[v3.25.0]` it looks and moves like the app:
+    - **Layout.** It shares the app's colours and type. A provider with
+      several limits gets one card, with rows named by window ("5-hour",
+      "Weekly"); a provider with one limit is one row. The window fits its
+      content up to 600px, and the list scrolls past that.
+    - **States.** Loading shows placeholder cards. An unreachable server
+      reads "Can't reach ‹server›" with Retry, and the status says Offline.
+      With no providers it offers Open Providers, and Reconnect goes to
+      Settings → Providers.
+    - **Keys.** Esc closes it, or the server menu first, which also takes
+      ↑ ↓ Enter. ⌘R refreshes, and ⌘N, ⌘, and ⌘Q run New session, Settings
+      and Quit.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

@@ -4,13 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>OpenAgentd</title>
+    <script>
+      // The tray follows the OS appearance: it has no window of its own to
+      // store a theme in. Set before paint, and kept in step while it runs.
+      ;(function () {
+        var media = window.matchMedia('(prefers-color-scheme: dark)')
+        var apply = function () {
+          var root = document.documentElement
+          root.classList.toggle('dark', media.matches)
+          root.classList.toggle('light', !media.matches)
+        }
+        apply()
+        media.addEventListener('change', apply)
+      })()
+    </script>
     <style>
       html,
-      body,
-      #root {
+      body {
         margin: 0;
-        width: 100%;
-        height: 100%;
         overflow: hidden;
         background: transparent;
       }

@@ -945,6 +945,13 @@ While another app has focus, `data-window-inactive` hides focus rings, turns
 text selection to `--bg-key` and mutes `aria-current` items, the way Finder
 greys its selection. The browser build keeps the browser's behaviour.
 
+The macOS tray popup (`web/tray.html`) is a separate, small entry with no
+Tailwind. Its stylesheet `tray/tray.css` imports `styles/tokens.css`, the same
+palette and motion tokens as the app; only its glass surface and shadows are
+its own (`tray-css.test.ts` holds the rest to tokens). It follows the OS
+appearance, not a window's theme, and the window is sized to the popup's
+content, 360px wide and up to 600px tall.
+
 ### Keyboard focus model
 
 Tab follows the DOM order: every control is its own Tab stop. Composite

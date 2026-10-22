@@ -396,6 +396,22 @@ pub fn inherited_external_base_url(
         .cloned()
 }
 
+/// Closing a window drops its entry from the per-window backend map, so after
+/// the last one closes an external-server setup (no bundled sidecar) has
+/// nothing to inherit. Fall back to the saved server, like the tray does.
+pub fn with_saved_external_backend(
+    mut external_window_base_urls: HashMap<String, String>,
+    bundled_base_url: Option<&str>,
+    saved_external_base_url: Option<String>,
+) -> HashMap<String, String> {
+    if bundled_base_url.is_none() && !external_window_base_urls.contains_key(MAIN_WINDOW) {
+        if let Some(base) = saved_external_base_url {
+            external_window_base_urls.insert(MAIN_WINDOW.to_string(), base);
+        }
+    }
+    external_window_base_urls
+}
+
 pub async fn create_app_window(
     app: &AppHandle,
     label: Option<&str>,
@@ -418,7 +434,15 @@ async fn create_app_window_with(
     let state: tauri::State<'_, AppState> = app.state();
     let bundled_base_url = state.backend_base_url.lock().await.clone();
     let desktop_token = state.desktop_token.lock().await.clone();
-    let external_window_base_urls = state.window_backend_base_urls.lock().unwrap().clone();
+    let saved_external = crate::config::load_app_backend_config(app)
+        .ok()
+        .and_then(|config| config.active_base_url)
+        .and_then(|base| crate::config::normalize_external_base_url(&base).ok());
+    let external_window_base_urls = with_saved_external_backend(
+        state.window_backend_base_urls.lock().unwrap().clone(),
+        bundled_base_url.as_deref(),
+        saved_external,
+    );
     let active_window_label = state.active_window_label.lock().unwrap().clone();
     let mut init_script = new_window_init_script(
         bundled_base_url.as_deref(),

@@ -821,7 +821,10 @@ mod tests {
     use std::collections::HashMap as StdHashMap;
     use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
-    use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
+    use crate::window::{
+        frontend_init_script, inherited_external_base_url, new_window_init_script,
+        with_saved_external_backend,
+    };
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
@@ -903,6 +906,39 @@ mod tests {
 
         assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
         assert!(!script.contains("/coding"));
+    }
+
+    // Closing the last window drops its backend entry; with no bundled
+    // sidecar the next window (Dock, tray, island) must reuse the saved server.
+    #[test]
+    fn new_window_after_the_last_closes_uses_the_saved_external_backend() {
+        let external = with_saved_external_backend(
+            StdHashMap::new(),
+            None,
+            Some("http://localhost:8000".to_string()),
+        );
+        let script = new_window_init_script(None, None, &external, MAIN_WINDOW, Some("/s"))
+            .expect("saved external backend init script");
+        assert!(script.contains("http://localhost:8000"));
+        assert_eq!(
+            inherited_external_base_url(&external, MAIN_WINDOW).as_deref(),
+            Some("http://localhost:8000")
+        );
+    }
+
+    #[test]
+    fn saved_external_backend_does_not_override_a_live_one() {
+        let mut live = StdHashMap::new();
+        live.insert(MAIN_WINDOW.to_string(), "http://192.168.1.10:4082".to_string());
+        let kept = with_saved_external_backend(live, None, Some("http://localhost:8000".into()));
+        assert_eq!(kept.get(MAIN_WINDOW).map(String::as_str), Some("http://192.168.1.10:4082"));
+
+        let bundled = with_saved_external_backend(
+            StdHashMap::new(),
+            Some("http://127.0.0.1:4082"),
+            Some("http://localhost:8000".into()),
+        );
+        assert!(bundled.is_empty());
     }
 
     // ── inherited_external_base_url ──────────────────────────────────────────

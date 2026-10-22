@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tray-fit"
+description = "Enables the tray_fit command without any pre-configured scope."
+commands.allow = ["tray_fit"]
+
+[[permission]]
+identifier = "deny-tray-fit"
+description = "Denies the tray_fit command without any pre-configured scope."
+commands.deny = ["tray_fit"]

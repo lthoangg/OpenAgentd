@@ -50,6 +50,7 @@
     "allow-set-tray-session",
     "allow-get-tray-usage-summary",
     "allow-tray-action",
+    "allow-tray-fit",
     "allow-updater-check",
     "allow-updater-download",
     "allow-updater-install",

@@ -26,6 +26,16 @@ pub const TRAY_POPUP_WINDOW: &str = "tray-popup";
 /// webview knows to refetch usage instead of showing a stale snapshot.
 pub const TRAY_POPUP_REFRESH_EVENT: &str = "tray-popup-refresh";
 
+/// The popup's own Esc: hide it without running a menu command.
+const TRAY_HIDE_ACTION: &str = "hide";
+
+/// Popup width, and the bounds of its height. The webview reports its
+/// content height through ``tray_fit``; past the max its list scrolls, and
+/// ``tray.css`` caps the surface at the same 600px.
+const TRAY_WIDTH: f64 = 360.0;
+const TRAY_MIN_HEIGHT: f64 = 160.0;
+const TRAY_MAX_HEIGHT: f64 = 600.0;
+
 /// How long after the main window's page loads the popup is built, so its
 /// own page load does not compete with the main window's.
 #[cfg(target_os = "macos")]
@@ -163,7 +173,8 @@ pub fn ensure_tray_popup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Webvie
         WebviewUrl::App("tray.html".into()),
     )
     .title("OpenAgentd")
-    .inner_size(360.0, 480.0)
+    // The webview fits it to its content (tray_fit) once it has rendered.
+    .inner_size(TRAY_WIDTH, 480.0)
     .visible(false)
     .resizable(false)
     .decorations(false)
@@ -439,14 +450,52 @@ pub async fn get_tray_usage_summary(
     }
 }
 
+/// The native menu command a popup action runs; ``hide`` runs none.
+fn menu_command(action: &str) -> Option<&str> {
+    (action != TRAY_HIDE_ACTION).then_some(action)
+}
+
 /// Dispatch a popup action by the same id strings the native menu uses
-/// (``show``, ``new_window``, ``coding``, ``settings``, ``open_config_dir``,
-/// ``quit``, ...), then close the popup — a menu closes after an item fires.
+/// (``show``, ``new_session``, ``settings``, ``usage_manage``, ``quit``,
+/// ...), then close the popup — a menu closes after an item fires. ``hide``
+/// only closes it (Esc).
 #[tauri::command]
 pub fn tray_action(app: AppHandle, action: String) {
-    crate::menu::handle_desktop_menu(&app, &action);
+    if let Some(command) = menu_command(&action) {
+        crate::menu::handle_desktop_menu(&app, command);
+    }
     if let Some(window) = app.get_webview_window(TRAY_POPUP_WINDOW) {
         let _ = window.hide();
+    }
+}
+
+/// The window height for a popup whose content is ``requested`` px tall.
+fn popup_height(requested: f64) -> f64 {
+    if requested.is_finite() {
+        requested.clamp(TRAY_MIN_HEIGHT, TRAY_MAX_HEIGHT)
+    } else {
+        TRAY_MIN_HEIGHT
+    }
+}
+
+/// Size the popup window to its content, then put it back under the tray
+/// icon: macOS keeps a window's bottom edge when it resizes, so without the
+/// re-anchor a taller popup would grow up over the menu bar. Only the popup
+/// may call it.
+#[tauri::command]
+pub fn tray_fit(window: WebviewWindow, height: f64) {
+    if window.label() != TRAY_POPUP_WINDOW {
+        return;
+    }
+    let size = tauri::LogicalSize::new(TRAY_WIDTH, popup_height(height));
+    if let Err(e) = window.set_size(size) {
+        log::warn!("tray popup resize failed: {e:#}");
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    if window.is_visible().unwrap_or(false) {
+        use tauri_plugin_positioner::WindowExt;
+        let _ = window.move_window(tauri_plugin_positioner::Position::TrayBottomCenter);
     }
 }
 
@@ -520,6 +569,21 @@ mod cache_tests {
         assert!(same_reading(Some(&a), Some(&b)));
         assert!(!same_reading(Some(&a), Some(&c)));
         assert!(!same_reading(None, Some(&a)));
+    }
+
+    #[test]
+    fn the_popup_height_follows_its_content_within_bounds() {
+        assert_eq!(popup_height(312.0), 312.0);
+        assert_eq!(popup_height(40.0), TRAY_MIN_HEIGHT);
+        assert_eq!(popup_height(2_000.0), TRAY_MAX_HEIGHT);
+        assert_eq!(popup_height(f64::NAN), TRAY_MIN_HEIGHT);
+    }
+
+    #[test]
+    fn hide_only_closes_the_popup_and_every_other_action_is_a_menu_command() {
+        assert_eq!(menu_command(TRAY_HIDE_ACTION), None);
+        assert_eq!(menu_command("settings"), Some("settings"));
+        assert_eq!(menu_command("quit"), Some("quit"));
     }
 }
 

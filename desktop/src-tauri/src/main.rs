@@ -656,6 +656,7 @@ fn main() {
             menu::set_tray_session,
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,
+            tray_popup::tray_fit,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,

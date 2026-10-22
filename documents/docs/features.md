@@ -757,9 +757,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
   - Inline diffs in tool cards show the first 400 lines with a "Show N more
-    lines" button, and a turn with more than 300 steps shows the latest 300
-    with "Show N earlier steps", so huge patches and long agent runs stay
-    responsive `[v3.14.0, v3.18.0]`.
+    lines" button, so huge patches stay responsive `[v3.14.0]`. A turn shows
+    every one of its steps, however long the agent ran; the "Show N earlier
+    steps" button is gone `[v3.26.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   General → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads

@@ -56,6 +56,7 @@ export interface StreamSubscription {
 export async function putStreamSubscriptions(
   clientId: string,
   subs: StreamSubscription[],
+  signal?: AbortSignal,
 ): Promise<'ok' | 'gone' | 'error'> {
   const url = `${apiBaseUrl()}/events/subscriptions/${encodeURIComponent(clientId)}`
   try {
@@ -63,6 +64,7 @@ export async function putStreamSubscriptions(
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...apiAuthHeaders(url) },
       body: JSON.stringify({ subs }),
+      signal,
     })
     if (res.ok) return 'ok'
     return res.status === 404 ? 'gone' : 'error'

@@ -408,6 +408,7 @@ export function resetSessionState(
   state._pendingMessages = []
   clearReconnectTimer(state)
   state._reconnectAttempts = 0
+  state._silentStreamAttempts = 0
   state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
   state.cacheInvalidations = []
   state._runningPatchedFor = null
@@ -508,6 +509,11 @@ async function loadSessionImpl(
   const liveCountsAtFetch = new Map(
     Object.entries(get().agentStreams).map(([name, s]) => [name, s.currentBlocks.length]),
   )
+  // The question on screen when the request went out. If the live stream
+  // changed it during the fetch (asked, answered, dismissed), the stream is
+  // newer than the response: a response fetched before a review opened
+  // cleared the live card, and the agent looked stuck until the next reload.
+  const questionIdAtFetch = get().pendingQuestion?.id ?? null
   set((draft) => {
     if (draft.sessionId !== sessionId) {
       draft.isAgentWorking = false
@@ -582,11 +588,18 @@ async function loadSessionImpl(
       // Durable, so it outranks whatever the client last saw: a card the user
       // has not resolved is still on the table after a reload, an app restart,
       // or a switch to another device.
-      const restoredQuestion = history.pending_question
+      const historyQuestion = history.pending_question
         ? toPendingQuestion(history.pending_question)
         : null
+      const liveQuestionChanged = (draft.pendingQuestion?.id ?? null) !== questionIdAtFetch
+      const restoredQuestion = liveQuestionChanged ? draft.pendingQuestion : historyQuestion
       const awaitingAnswer = restoredQuestion !== null
-      draft.pendingQuestion = restoredQuestion
+      if (!liveQuestionChanged) draft.pendingQuestion = historyQuestion
+      // A review restored here may be for a plan revision this client never
+      // saw written.
+      if (restoredQuestion?.kind === 'plan_review') {
+        draft.cacheInvalidations.push({ kind: 'plan', sessionId })
+      }
 
       const leadHadNewerActivity = leadName
         ? hasLiveContent(draft.agentStreams[leadName], draft.isAgentWorking, fetchStartedAt)

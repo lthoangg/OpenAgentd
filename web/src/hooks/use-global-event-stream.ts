@@ -108,7 +108,12 @@ export async function handleGlobalEvent(
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
-    if (before.isConnected && before.isAgentWorking) return true
+    if (before.isConnected && before.isAgentWorking) {
+      // Connected is what the store believes, not proof: a feed can go quiet
+      // with no error. Expect updates now, and recover if none arrive.
+      before.expectStreamActivity()
+      return true
+    }
     const sessionGeneration = before._sessionGeneration
     const targetWorkspace = (typeof event.workspace === 'string' && event.workspace)
       ? event.workspace
@@ -290,6 +295,12 @@ export async function handleGlobalEvent(
       markSessionRunning(queryClient, sessionId, true, true)
       // Phones: a light tap says an agent stopped for you (no-op elsewhere).
       haptic('tick')
+      // The card for the session on screen arrives on its own feed. If that
+      // feed missed it, this is the one signal left: fetch it.
+      const metadata = event.metadata as Record<string, unknown> | undefined
+      const questionId = typeof metadata?.question_id === 'string' ? metadata.question_id : null
+      const store = useAgentStore.getState()
+      if (questionId && store.sessionId === sessionId) store.expectQuestion(questionId)
     }
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId

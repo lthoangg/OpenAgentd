@@ -212,4 +212,60 @@ describe('loadSession — pending question hydration', () => {
     expect(pending?.planRevision).toBe(3)
     expect(useAgentStore.getState().agentStreams.lead.status).toBe('waiting_input')
   })
+
+  it('refreshes the plan when it restores a plan review', async () => {
+    mockSessionHistory.mockImplementation(() =>
+      Promise.resolve(
+        historyWithQuestion({
+          pending_question: { id: 'q-plan', session_id: 'lead-sess', tool_call_id: 'call-plan', questions: WIRE_QUESTIONS, created_at: '2026-07-01T00:00:02Z', kind: 'plan_review', plan_revision: 3 },
+        }),
+      ),
+    )
+
+    await useAgentStore.getState().loadSession('lead-sess')
+
+    expect(useAgentStore.getState().cacheInvalidations).toContainEqual({ kind: 'plan', sessionId: 'lead-sess' })
+  })
+
+  /**
+   * A reload that started before the question arrived carries no question.
+   * Applied as is, it cleared the live card: the agent looked stuck until the
+   * next reload.
+   */
+  describe('a question that changed while the history was loading', () => {
+    function historyFetchedBefore(change: () => void, pendingQuestion: unknown) {
+      mockSessionHistory.mockImplementation(async () => {
+        change()
+        return historyWithQuestion({ pending_question: pendingQuestion })
+      })
+    }
+
+    it('keeps a question that arrived live', async () => {
+      historyFetchedBefore(() => {
+        useAgentStore.getState()._handleSSEEvent('question_asked', {
+          question_id: 'q-live', session_id: 'lead-sess', tool_call_id: 'call-live', questions: WIRE_QUESTIONS, kind: 'plan_review', plan_revision: 4,
+        })
+      }, null)
+
+      await useAgentStore.getState().loadSession('lead-sess')
+
+      const state = useAgentStore.getState()
+      expect(state.pendingQuestion?.id).toBe('q-live')
+      expect(state.agentStreams.lead.status).toBe('waiting_input')
+    })
+
+    it('keeps a question closed that was answered live', async () => {
+      useAgentStore.setState({ sessionId: 'lead-sess' })
+      useAgentStore.getState()._handleSSEEvent('question_asked', {
+        question_id: 'q-1', session_id: 'lead-sess', tool_call_id: 'call-1', questions: WIRE_QUESTIONS,
+      })
+      historyFetchedBefore(() => {
+        useAgentStore.getState()._handleSSEEvent('question_answered', { question_id: 'q-1', session_id: 'lead-sess', answers: [['pnpm']] })
+      }, { id: 'q-1', session_id: 'lead-sess', tool_call_id: 'call-1', questions: WIRE_QUESTIONS, created_at: '2026-07-01T00:00:02Z' })
+
+      await useAgentStore.getState().loadSession('lead-sess')
+
+      expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    })
+  })
 })

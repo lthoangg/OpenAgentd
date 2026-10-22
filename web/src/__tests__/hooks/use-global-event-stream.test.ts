@@ -303,6 +303,30 @@ describe('handleGlobalEvent', () => {
     expect(connectStream).not.toHaveBeenCalled()
   })
 
+  it('watches the live feed when a turn starts on a session it believes is connected', async () => {
+    // The feed can look connected and still deliver nothing; the turn start
+    // is the cue to expect updates and to recover if none arrive.
+    const client = new QueryClient()
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+    const expectStreamActivity = mock(() => {})
+    useAgentStore.setState({
+      sessionId: 'current',
+      _sessionGeneration: 1,
+      isConnected: true,
+      isAgentWorking: true,
+      loadSession,
+      connectStream,
+      expectStreamActivity,
+    })
+
+    await handleGlobalEvent(client, 'session_turn_started', { session_id: 'current' }, 1, () => 1)
+
+    expect(expectStreamActivity).toHaveBeenCalledTimes(1)
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(connectStream).not.toHaveBeenCalled()
+  })
+
   it('connects stream on session_turn_started when idle without re-querying scheduler for subagents', async () => {
     const client = new QueryClient()
     const loadSession = mock(async () => {})
@@ -825,6 +849,23 @@ describe('handleGlobalEvent', () => {
     // Not forced: a focused, visible window suppresses it (the card is right
     // there), while a backgrounded window still gets it.
     expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: false, sessionOnScreen: true })
+  })
+
+  it('expects the question card on the session on screen, so a missed card is fetched', async () => {
+    const client = new QueryClient()
+    const expectQuestion = mock(() => {})
+    useAgentStore.setState({ sessionId: 'asking-session', expectQuestion })
+
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-q6', session_id: 'asking-session', kind: 'input_needed',
+      title: 'Plan ready', body: 'Review the plan', metadata: { session_id: 'asking-session', question_id: 'q-9' },
+    }, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-q7', session_id: 'elsewhere', kind: 'input_needed',
+      title: 'Plan ready', body: 'Review the plan', metadata: { session_id: 'elsewhere', question_id: 'q-10' },
+    }, 1, () => 1)
+
+    expect(expectQuestion.mock.calls).toEqual([['q-9']])
   })
 
   // The mobile app cannot tell a focused window from the app being open, so it

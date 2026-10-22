@@ -2400,6 +2400,18 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
   `provider_status`, `permission_asked`, `error`, `done`.
 - **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
   stream replays buffered state then resumes live.
+- **Self-healing live feed** `[v3.26.0]` — a session's live feed that goes
+  quiet with no error no longer leaves a spinning tool card or an empty chat
+  until a reload. A feed attached to a working turn that hears nothing for 10
+  seconds, a turn start with no updates after it, or a global "needs input"
+  whose question card never arrives makes the app reload the session and
+  reattach; after two silent attempts that session uses its own connection.
+  A subscription request that never answers (queued behind the webview's
+  connection limit) restarts the shared stream after 10 seconds. The replay
+  now carries the open question or plan review, a history reload no longer
+  clears a newer live question, and a plan review refreshes the Plan panel.
+  The server logs `mux_subscriptions_synced`, `mux_subscription_ended` and
+  `events_stream_open kind=app|plain`.
 - **Multi-client streaming** `[since v1.0]` — multiple tabs can watch the same
   session simultaneously.
 - **Embeddable web UI** `[since v1.0]` — the wheel-bundled UI can be served

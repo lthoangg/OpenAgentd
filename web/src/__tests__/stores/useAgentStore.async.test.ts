@@ -1789,6 +1789,27 @@ describe("connectStream", () => {
     expect(useAgentStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
   })
 
+  it("stops counting as connected when its live stream is aborted from outside", () => {
+    // Something other than a reconnect (a component cleanup, a send that
+    // tears the old stream down first) aborted the live stream. Left at
+    // `isConnected: true`, every recovery path ("already connected and
+    // working") skipped this session, and the chat stayed frozen until a
+    // reload.
+    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    const abort = useAgentStore.getState().connectStream()
+    abort.abort()
+    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(useAgentStore.getState()._abortController).toBeNull()
+  })
+
+  it("stays connected when a reconnect replaces the stream", () => {
+    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.getState().connectStream()
+    const second = useAgentStore.getState().connectStream()
+    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(useAgentStore.getState()._abortController).toBe(second)
+  })
+
   it("ignores stream events after newSession changes generation", () => {
     let onEvent!: (type: string, data: unknown) => void
     let onDone!: () => void

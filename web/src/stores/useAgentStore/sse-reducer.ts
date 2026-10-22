@@ -770,7 +770,13 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         // ``id``. Normalise before the shared mapper sees it.
         const question = toPendingQuestion({ ...d, id: d.question_id })
         if (!question) break
-        set((draft) => { draft.pendingQuestion = question })
+        set((draft) => {
+          draft.pendingQuestion = question
+          // The Plan panel must show the revision under review, even if this
+          // client missed the `plan` tool finishing (it refreshes on that too).
+          const sid = draft.sessionId ?? question.sessionId
+          if (question.kind === 'plan_review' && sid) draft.cacheInvalidations.push({ kind: 'plan', sessionId: sid })
+        })
         break
       }
 

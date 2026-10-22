@@ -71,6 +71,18 @@ describe("useAgentStore — ask_user", () => {
     expect(pending!.questions[0].options[0].recommended).toBe(true)
   })
 
+  it("refreshes the plan when a plan review opens, so the panel shows the revision under review", () => {
+    ask({ kind: "plan_review", plan_revision: 2 })
+
+    expect(useAgentStore.getState().cacheInvalidations).toEqual([{ kind: "plan", sessionId: SESSION_ID }])
+  })
+
+  it("does not refresh the plan for an ordinary question", () => {
+    ask()
+
+    expect(useAgentStore.getState().cacheInvalidations).toEqual([])
+  })
+
   it("marks the lead as waiting_input and keeps the team live", () => {
     useAgentStore.getState()._handleSSEEvent("agent_status", {
       agent: "openagentd",
@@ -181,6 +193,8 @@ describe("useAgentStore — ask_user", () => {
 
   it("refreshes the plan once when a plan review closes", () => {
     ask({ kind: "plan_review", plan_revision: 2 })
+    // Opening the review refreshed it already (covered above); count the close.
+    useAgentStore.setState({ cacheInvalidations: [] })
 
     // The local answer path and the broadcast both record the outcome.
     useAgentStore.getState().resolveQuestion(QUESTION_ID, [["Approve"]], null)

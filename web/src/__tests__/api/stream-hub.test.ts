@@ -57,12 +57,14 @@ const settle = async () => { for (let i = 0; i < 6; i++) await new Promise<void>
 
 interface Feed { clientId: string | null; callbacks: GlobalEventCallbacks; signal: AbortSignal }
 
-function world() {
+function world(options: { putTimeoutMs?: number } = {}) {
   const locks = fakeLocks()
   const makeChannel = fakeChannels()
   const feeds: Feed[] = []
   const puts: { clientId: string; ids: string[]; sessions: string[] }[] = []
-  const state = { putResult: 'ok' as 'ok' | 'gone' | 'error' }
+  // ``hang``: the request never answers on its own, as one queued behind the
+  // webview's per-host connection limit does; only its signal can end it.
+  const state = { putResult: 'ok' as 'ok' | 'gone' | 'error', hang: false }
   let windows = 0
   let gens = 0
   const makeWindow = (key = 'http://a/api') => {
@@ -71,13 +73,17 @@ function world() {
       locks,
       makeChannel,
       openStream: (clientId, callbacks, signal) => { feeds.push({ clientId, callbacks, signal }) },
-      putSubscriptions: async (clientId, subs) => {
+      putSubscriptions: async (clientId, subs, signal) => {
         puts.push({ clientId, ids: subs.map((s) => s.id).sort(), sessions: subs.map((s) => s.session_id).sort() })
+        if (state.hang) {
+          return new Promise<'error'>((resolve) => signal?.addEventListener('abort', () => resolve('error'), { once: true }))
+        }
         return state.putResult
       },
       key,
       windowId,
       newId: () => `gen${++gens}`,
+      putTimeoutMs: options.putTimeoutMs,
     })
     return hub
   }
@@ -418,5 +424,36 @@ describe('StreamHub: session streams', () => {
     w.feeds[0].callbacks.onOpen?.()
     await settle()
     expect(w.puts).toHaveLength(0)
+  })
+
+  it('restarts the feed when a subscription request never answers, instead of starving every later subscription', async () => {
+    const w = world({ putTimeoutMs: 0 })
+    const hub = w.makeWindow()
+    const watching = global(hub)
+    await settle()
+    w.feeds[0].callbacks.onOpen?.()
+    await settle()
+
+    w.state.hang = true
+    const first = session(hub, 'sid-a')
+    await settle()
+    // The stuck request fails the feed: the session store reconnects from a
+    // transient error, and the global consumer reopens the feed.
+    expect(first.log.errors).toHaveLength(1)
+    expect(isTransientNetworkError(first.log.errors[0])).toBe(true)
+    expect(watching.log.errors).toBe(1)
+    expect(w.feeds[0].signal.aborted).toBe(true)
+
+    // On the reopened feed a new subscription goes out at once.
+    w.state.hang = false
+    global(hub)
+    await settle()
+    w.feeds.at(-1)!.callbacks.onOpen?.()
+    const second = session(hub, 'sid-a')
+    await settle()
+    expect(w.puts.at(-1)!.sessions).toEqual(['sid-a'])
+    w.feeds.at(-1)!.callbacks.onEvent('session_event', frame(w.puts.at(-1)!.ids[0], 'message'))
+    await settle()
+    expect(second.log.events).toEqual(['message'])
   })
 })

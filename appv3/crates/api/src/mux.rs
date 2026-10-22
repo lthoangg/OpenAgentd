@@ -31,6 +31,8 @@ pub fn valid_id(id: &str) -> bool {
 type Queue = Arc<SubQueue<Arc<WireEvent>>>;
 
 pub struct MuxClient {
+    /// The client id, for the log.
+    id: String,
     queue: Queue,
     /// subscription id → (session id, forwarder)
     subs: Mutex<HashMap<String, (String, JoinHandle<()>)>>,
@@ -61,7 +63,7 @@ impl Drop for MuxGuard {
 
 /// A client that reconnects under the same id replaces the old one.
 pub fn register(id: &str) -> (Arc<MuxClient>, MuxGuard) {
-    let client = Arc::new(MuxClient { queue: Arc::new(SubQueue::new(QUEUE_SIZE)), subs: Mutex::new(HashMap::new()) });
+    let client = Arc::new(MuxClient { id: id.to_string(), queue: Arc::new(SubQueue::new(QUEUE_SIZE)), subs: Mutex::new(HashMap::new()) });
     let previous = registry().lock().unwrap().insert(id.to_string(), client.clone());
     if let Some(old) = previous {
         old.queue.terminate();
@@ -89,8 +91,10 @@ fn end_frame(sub_id: &str) -> Arc<WireEvent> {
     Arc::new(WireEvent { event: "session_stream_end".into(), data: format!("{{\"sub_id\":{}}}", json_str(sub_id)) })
 }
 
-async fn forward(queue: Queue, sub_id: String, session_id: String) {
-    if let Some(mut sub) = store().attach(&session_id) {
+async fn forward(queue: Queue, client_id: String, sub_id: String, session_id: String) {
+    let attached = store().attach(&session_id);
+    let had_turn = attached.is_some();
+    if let Some(mut sub) = attached {
         while let Some(ev) = sub.next().await {
             if !queue.push(wrap(&sub_id, &ev)) {
                 tracing::warn!("mux_subscriber_queue_full session_id={}", session_id);
@@ -100,6 +104,7 @@ async fn forward(queue: Queue, sub_id: String, session_id: String) {
         }
     }
     // No streaming turn (the database is authoritative) or the turn ended.
+    tracing::info!("mux_subscription_ended client_id={} sub_id={} session_id={} reason={}", client_id, sub_id, session_id, if had_turn { "turn_over" } else { "no_turn" });
     queue.push(end_frame(&sub_id));
 }
 
@@ -114,6 +119,7 @@ impl MuxClient {
     /// the full desired state, so a repeated or reordered request is harmless.
     pub fn sync(&self, wanted: &[(String, String)]) {
         let mut subs = self.subs.lock().unwrap();
+        let before = subs.len();
         subs.retain(|id, (_, handle)| {
             let keep = wanted.iter().any(|(w, _)| w == id);
             if !keep {
@@ -121,6 +127,8 @@ impl MuxClient {
             }
             keep
         });
+        let removed = before - subs.len();
+        let mut added = 0;
         for (id, sid) in wanted {
             if subs.get(id).is_some_and(|(s, _)| s == sid) {
                 continue;
@@ -128,8 +136,15 @@ impl MuxClient {
             if let Some((_, old)) = subs.remove(id) {
                 old.abort();
             }
-            let handle = tokio::spawn(forward(self.queue.clone(), id.clone(), sid.clone()));
+            let handle = tokio::spawn(forward(self.queue.clone(), self.id.clone(), id.clone(), sid.clone()));
             subs.insert(id.clone(), (sid.clone(), handle));
+            added += 1;
+        }
+        // The only trace of which sessions a window's shared stream carries:
+        // a chat that shows nothing is a subscription that never arrived here,
+        // or one that ended.
+        if added > 0 || removed > 0 {
+            tracing::info!("mux_subscriptions_synced client_id={} added={} removed={} active={}", self.id, added, removed, subs.len());
         }
     }
 

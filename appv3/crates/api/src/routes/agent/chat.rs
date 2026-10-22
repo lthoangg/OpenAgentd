@@ -435,7 +435,7 @@ async fn clear_side_questions(State(st): State<AppState>, AxPath(raw): AxPath<St
 async fn agent_stream(State(st): State<AppState>, AxPath(session_id): AxPath<String>) -> Response {
     if let Some(sid) = py_uuid(&session_id) {
         match db::get_pending_question(&st.pool, &sid).await {
-            Ok(Some(_)) => store().ensure_turn(&session_id),
+            Ok(Some(row)) => store().ensure_parked_turn(&session_id, &row),
             Ok(None) => {}
             Err(e) => tracing::warn!("stream_ensure_turn_failed session_id={} error={}", session_id, e),
         }

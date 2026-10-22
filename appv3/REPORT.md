@@ -694,6 +694,14 @@ explicitly.
     approval as the tool result; anything else resumes in the active mode
     with the feedback. Edits made during the review are included in that
     result.
+  - **Open question in the replay.** An attach to a turn waiting on a
+    question (`ask_user` or a plan review) replays that turn's
+    `question_asked` last, after the agent status, until it is answered,
+    dismissed or superseded. A session parked on a question with no stream
+    state left (expired, or a server restart) gets the frame rebuilt from its
+    `pending_questions` row. Same event and payload as the live one; clients
+    that missed the live frame (a reattach, a feed that went quiet) otherwise
+    showed the agent waiting with no card.
   - **Mode notes.** The Plan-mode note is versioned (`version 3` since
     v3.21.0: reviewer-shaped plans with an Appendix and visuals); a session
     whose last Plan-mode note is older gets the new instructions once, and a

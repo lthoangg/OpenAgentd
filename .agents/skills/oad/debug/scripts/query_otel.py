@@ -67,6 +67,7 @@ def main() -> None:
     chat_calls = 0
     tool_calls = 0
     err_list = []
+    chats: list[tuple[int, dict]] = []
 
     for filepath in files:
         try:
@@ -97,6 +98,7 @@ def main() -> None:
                             agent_runs += 1
                         elif name.startswith("chat"):
                             chat_calls += 1
+                            chats.append((int(s.get("start_time") or 0), s.get("attributes") or {}))
                         elif name.startswith("execute_tool"):
                             tool_calls += 1
         except OSError:
@@ -119,6 +121,41 @@ def main() -> None:
                 if exc_type or exc_msg:
                     print(f"     Exception: {exc_type} -> {exc_msg}")
         print("-" * 80)
+
+    report_cache_busts(chats)
+
+
+def report_cache_busts(chats: list[tuple[int, dict]]) -> None:
+    """Calls that re-wrote a cache the previous call of the same agent had built.
+
+    A bust: a large prompt (>20k tokens) read less than half of the previous
+    call's prompt from cache within 5 minutes (the default cache TTL). The
+    cause comes from `openagentd.request.prefix_change` (tools, system,
+    messages@N); spans written before that attribute existed show `unknown`.
+    """
+    chats.sort(key=lambda c: c[0])
+    prev: dict[tuple, tuple[int, int]] = {}
+    busts: list[tuple[str, int, float, str]] = []
+    for start, a in chats:
+        key = (a.get("gen_ai.conversation.id"), a.get("gen_ai.agent.name"))
+        inp = int(a.get("gen_ai.usage.input_tokens") or 0)
+        read = int(a.get("gen_ai.usage.cache_read.input_tokens") or 0)
+        p = prev.get(key)
+        prev[key] = (start, inp)
+        if not p or inp <= 20_000 or start - p[0] > 300e9 or read >= 0.5 * p[1]:
+            continue
+        if inp < 0.5 * p[1]:
+            cause = "summarized"  # the prompt shrank: a compaction, expected
+        else:
+            cause = str(a.get("openagentd.request.prefix_change") or "unknown")
+        busts.append((str(a.get("gen_ai.request.model")), inp, float(a.get("gen_ai.usage.estimated_cost_usd") or 0), cause))
+    print(f"\n--- Prompt-cache busts ({len(busts)}, ${sum(b[2] for b in busts):.2f}) ---")
+    by_cause: dict[str, list] = {}
+    for b in busts:
+        cause = b[3].split("@")[0] if b[3].startswith("messages@") else b[3]
+        by_cause.setdefault(cause, []).append(b)
+    for cause, items in sorted(by_cause.items(), key=lambda kv: -len(kv[1])):
+        print(f"  {cause:<24} x{len(items):<4} ${sum(i[2] for i in items):7.2f}  avg prompt {sum(i[1] for i in items) / len(items) / 1000:.0f}k")
 
 
 if __name__ == "__main__":

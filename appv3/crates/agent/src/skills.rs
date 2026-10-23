@@ -193,12 +193,29 @@ fn split_frontmatter(text: &str) -> Option<(String, String)> {
 /// `_parse_frontmatter(text)` in lenient (discovery) mode. `Err` carries the
 /// non-YAML exceptions v2 lets escape (`ValueError` from a bad timestamp, …).
 pub fn try_parse_frontmatter(text: &str) -> Result<(Map<String, Value>, String), appv3_core::pyyaml::LoadError> {
+    parse_lenient(text, None)
+}
+
+/// [`try_parse_frontmatter`] for a file: a YAML error is logged with the
+/// path, once per file version (discovery re-reads every skill each turn).
+fn try_parse_frontmatter_at(text: &str, path: &Path) -> Result<(Map<String, Value>, String), appv3_core::pyyaml::LoadError> {
+    parse_lenient(text, Some(path))
+}
+
+fn parse_lenient(text: &str, path: Option<&Path>) -> Result<(Map<String, Value>, String), appv3_core::pyyaml::LoadError> {
     let Some((block, body)) = split_frontmatter(text) else {
         return Ok((Map::new(), text.trim().to_string()));
     };
     match appv3_core::pyyaml::safe_load_py(&block) {
         Err(e) if e.is_yaml_error() => {
-            tracing::warn!("skill_frontmatter_yaml_invalid_recovered error={}", e);
+            match path {
+                Some(p) => {
+                    if let Some(w) = warn_once(p, text, &e.to_string()) {
+                        tracing::warn!("{w}");
+                    }
+                }
+                None => tracing::warn!("skill_frontmatter_yaml_invalid_recovered error={}", e),
+            }
             Ok((lenient_frontmatter(&block), body))
         }
         Err(e) => Err(e),
@@ -210,6 +227,28 @@ pub fn try_parse_frontmatter(text: &str) -> Result<(Map<String, Value>, String),
                 Ok((Map::new(), body))
             }
         },
+    }
+}
+
+/// The warning for `path`'s invalid frontmatter, or `None` when this exact
+/// version of the file was already reported.
+fn warn_once(path: &Path, text: &str, error: &str) -> Option<String> {
+    use std::hash::{Hash, Hasher};
+    static SEEN: OnceLock<std::sync::Mutex<std::collections::HashSet<(PathBuf, u64)>>> = OnceLock::new();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    let fresh = SEEN.get_or_init(Default::default).lock().unwrap().insert((path.to_path_buf(), h.finish()));
+    fresh.then(|| {
+        format!("skill_frontmatter_yaml_invalid_recovered path={} error={} hint=quote a value that contains ': ' (description: \"…\")", path.display(), error.replace('\n', " "))
+    })
+}
+
+#[cfg(test)]
+fn frontmatter_warning(path: &Path, text: &str) -> Option<String> {
+    let (block, _) = split_frontmatter(text)?;
+    match appv3_core::pyyaml::safe_load_py(&block) {
+        Err(e) if e.is_yaml_error() => warn_once(path, text, &e.to_string()),
+        _ => None,
     }
 }
 
@@ -295,7 +334,7 @@ fn discover_in(roots: &[PathBuf], workspace: Option<&Path>) -> Vec<SkillInfo> {
     for dir in roots.iter().filter(|r| r.is_dir()) {
         for (path, stem) in iter_skill_paths(dir) {
             let (name, description) = match std::fs::read_to_string(&path) {
-                Ok(text) => match try_parse_frontmatter(&text) {
+                Ok(text) => match try_parse_frontmatter_at(&text, &path) {
                     Ok((meta, _)) => {
                         let name = meta_str(&meta, "name").unwrap_or_else(|| stem.clone());
                         let desc = render_tokens(&meta_str(&meta, "description").unwrap_or_default(), path.parent(), workspace);
@@ -376,7 +415,7 @@ pub fn skill_tool_description(workspace: Option<&Path>) -> String {
     [
         "Load a skill's instructions. When a task matches a skill below, load it before starting the work.",
         "",
-        "Call this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
+        "Call this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again.",
         "",
         &format_available_skills(workspace, false),
     ]
@@ -434,7 +473,10 @@ impl Tool for SkillTool {
     fn definition_for(&self, ctx: &ToolContext) -> Value {
         let mut def = self.definition();
         if let Some(d) = def.pointer_mut("/function/description") {
-            *d = Value::String(skill_tool_description(Some(&ctx_workspace(ctx))));
+            // Fixed for the session: it opens the cached tools block.
+            let ws = ctx_workspace(ctx);
+            let key = format!("skill_tool_description\u{0}{}", ws.display());
+            *d = Value::String(crate::session_frozen::get_or_freeze(ctx.session_id.as_deref(), &key, || skill_tool_description(Some(&ws))));
         }
         def
     }
@@ -455,19 +497,25 @@ impl Tool for SkillTool {
                 let m: Map<String, Value> = from_msgs.into_iter().map(|(k, v)| (k, Value::String(v))).collect();
                 meta.insert("loaded_skills".into(), Value::Object(m));
             }
-            if let Some(hit) = meta.get("loaded_skills").and_then(|l| l.get(&skill_name)).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
-                tracing::info!("skill_reused name={}", skill_name);
-                return Ok(ToolOutput::text(hit.to_string()));
-            }
         }
+        // An earlier load's text answers only when the skill is gone from
+        // disk; otherwise a load returns the skill's current body.
+        let earlier = || -> Option<String> {
+            let meta = ctx.metadata.lock().unwrap();
+            meta.get("loaded_skills").and_then(|l| l.get(&skill_name)).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from)
+        };
         let roots: Vec<PathBuf> = skill_roots(Some(&workspace)).into_iter().filter(|r| r.is_dir()).collect();
         if roots.is_empty() {
+            if let Some(hit) = earlier() {
+                tracing::info!("skill_reused name={}", skill_name);
+                return Ok(ToolOutput::text(hit));
+            }
             return Ok(ToolOutput::text("Skills directory not found."));
         }
         for dir in &roots {
             for (path, stem) in iter_skill_paths(dir) {
                 let text = tokio::fs::read_to_string(&path).await.map_err(appv3_tools::ToolError::exec)?;
-                let (meta, body) = try_parse_frontmatter(&text).map_err(appv3_tools::ToolError::exec)?;
+                let (meta, body) = try_parse_frontmatter_at(&text, &path).map_err(appv3_tools::ToolError::exec)?;
                 let name = meta_str(&meta, "name").unwrap_or_else(|| stem.clone());
                 if name == skill_name || stem == skill_name {
                     tracing::info!("skill_loaded name={} file={}", name, path.strip_prefix(dir).unwrap_or(&path).display());
@@ -483,6 +531,10 @@ impl Tool for SkillTool {
                     return Ok(ToolOutput::text(rendered));
                 }
             }
+        }
+        if let Some(hit) = earlier() {
+            tracing::info!("skill_reused name={}", skill_name);
+            return Ok(ToolOutput::text(hit));
         }
         let available: Vec<Value> = discover_skills(Some(&workspace)).into_iter().map(|s| Value::String(s.name)).collect();
         Ok(ToolOutput::text(format!("Skill '{skill_name}' not found. Available: {}", crate::pystr::py_repr(&Value::Array(available)))))
@@ -532,6 +584,20 @@ pub(crate) mod tests {
         let (m, b) = parse_frontmatter("no fm\n");
         assert!(m.is_empty());
         assert_eq!(b, "no fm");
+    }
+
+    /// Discovery runs every turn; a broken skill file is reported once per
+    /// version, with its path so the user can fix it.
+    #[test]
+    fn invalid_frontmatter_is_reported_once_per_file_version() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("SKILL.md");
+        let broken = "---\nname: x\ndescription: Check prod in one pass: health, stats\n---\nbody\n";
+        assert_eq!(frontmatter_warning(&path, broken).as_deref().map(|w| w.contains(&path.display().to_string())), Some(true));
+        assert_eq!(frontmatter_warning(&path, broken), None, "the same version is reported once");
+        let edited = broken.replace("stats", "usage stats");
+        assert!(frontmatter_warning(&path, &edited).is_some(), "an edit that is still broken is reported again");
+        assert_eq!(frontmatter_warning(&path, "---\nname: x\ndescription: fine\n---\nbody\n"), None);
     }
 
     #[test]

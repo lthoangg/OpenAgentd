@@ -15,7 +15,40 @@ function report(id: string, fromAgent = "explorer#1"): ContentBlock {
 }
 
 const ids = (item: ReturnType<typeof partitionTurns>[number]) =>
-  item.kind === "user" ? [item.block.id] : item.blocks.map((block) => block.id)
+  item.kind === "assistant" ? item.blocks.map((block) => block.id) : [item.block.id]
+
+function compaction(id: string, forced = true): ContentBlock {
+  return { id, type: "compaction", content: id, extra: forced ? { state: "compacted", forced: true } : { state: "compacted" } }
+}
+
+describe("partitionTurns — compaction", () => {
+  it("sets a forced compaction after a reply apart from that reply", () => {
+    const result = partitionTurns([user("u1"), text("a1"), compaction("c1"), user("u2"), text("a2")])
+    expect(result.map((item) => item.kind)).toEqual(["user", "assistant", "compaction", "user", "assistant"])
+    expect(result.map(ids)).toEqual([["u1"], ["a1"], ["c1"], ["u2"], ["a2"]])
+    expect(result[2]).toMatchObject({ kind: "compaction", index: 2 })
+  })
+
+  it("sets a trailing forced compaction apart", () => {
+    expect(partitionTurns([user("u1"), text("a1"), compaction("c1")]).map((item) => item.kind)).toEqual(["user", "assistant", "compaction"])
+  })
+
+  it("keeps an auto-compaction inside its run", () => {
+    expect(partitionTurns([user("u1"), text("a1"), compaction("c1", false), text("a2")]).map(ids)).toEqual([["u1"], ["a1", "c1", "a2"]])
+    expect(partitionTurns([user("u1"), text("a1"), compaction("c1", false)]).map(ids)).toEqual([["u1"], ["a1", "c1"]])
+  })
+
+  it("keeps a forced compaction that lands inside a turn as one of its steps", () => {
+    expect(partitionTurns([user("u1"), text("a1"), compaction("c1"), text("a2")]).map(ids)).toEqual([["u1"], ["a1", "c1", "a2"]])
+  })
+
+  it("does not merge a live reply into the turn before a forced compaction", () => {
+    const finalized = partitionTurns([user("u1"), text("a1"), compaction("c1")])
+    const result = appendCurrentTurns(finalized, 3, [user("u2"), text("live")])
+    expect(result.map(ids)).toEqual([["u1"], ["a1"], ["c1"], ["u2"], ["live"]])
+    expect(result[4]).toMatchObject({ kind: "assistant", startIndex: 4 })
+  })
+})
 
 describe("partitionTurns", () => {
   it("groups contiguous assistant blocks between user blocks", () => {
@@ -78,9 +111,9 @@ describe("appendCurrentTurns", () => {
 
     expect(
       result.map((item) =>
-        item.kind === "user"
-          ? { kind: item.kind, index: item.index }
-          : { kind: item.kind, startIndex: item.startIndex },
+        item.kind === "assistant"
+          ? { kind: item.kind, startIndex: item.startIndex }
+          : { kind: item.kind, index: item.index },
       ),
     ).toEqual([
       { kind: "user", index: 0 },

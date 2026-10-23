@@ -182,7 +182,7 @@ function CommitHistorySubPanelView({
                       const at = menuPointFor(e.currentTarget)
                       setDesktopCommitActions({ ...target, x: at.clientX, y: at.clientY })
                     }}
-                    className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-3 py-1.5 text-left outline-none focus-visible:bg-(--bg-key)/60"
+                    className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-3 py-1.5 text-left outline-none focus-key:bg-(--bg-key)/60"
                   >
                     <span className="flex w-full items-center gap-2">
                       <Tooltip className="min-w-0 flex-1">

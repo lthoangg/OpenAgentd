@@ -16,6 +16,7 @@
 pub mod agent;
 pub mod console;
 mod inject;
+mod log_throttle;
 mod manager;
 mod proxy;
 mod static_files;

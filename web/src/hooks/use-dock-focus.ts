@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef } from 'react'
 
+import { focusQuietly } from '@/lib/focus/quiet'
 import { layerStack } from '@/lib/keyboard/layers'
 
 /** Focus sits nowhere useful: on ``<body>``, or inside an inert subtree. */
@@ -30,7 +31,10 @@ export function useClaimStrandedFocus(active: boolean, key: string, getTarget: (
   })
   useEffect(() => {
     if (!active || !isFocusStranded()) return
-    getTargetRef.current()?.focus({ preventScroll: true })
+    // Quietly: the user's key press (⌘⇧D) did not steer focus to this tab,
+    // so no ring, fill or tooltip until the keyboard moves on.
+    const target = getTargetRef.current()
+    if (target) focusQuietly(target)
   }, [active, key])
 }
 

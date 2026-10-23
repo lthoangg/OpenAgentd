@@ -46,9 +46,13 @@ import { copyText, useChatMenu } from './ChatContextMenu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { useSessionSwitchHold } from './AgentView/useSessionSwitchHold'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
+const ENTER_EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
 /** Older pages a reload may fetch on its own to reach a prompt (100 rows each). */
 const AUTO_PROMPT_SEEK_PAGES = 2
 /** How long a prompt jump is treated as still in flight. */
@@ -428,8 +432,8 @@ function AssistantText({ content, sessionId, isStreaming }: { content: string; s
 }
 
 export function AgentView({
-  blocks,
-  currentBlocks,
+  blocks: storeBlocks,
+  currentBlocks: storeCurrentBlocks,
   isWorking,
   isTurnOpen = isWorking,
   isAwaitingRestart = false,
@@ -444,7 +448,20 @@ export function AgentView({
   jumpToLatestInComposer = false,
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
-  const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
+  const storeSessionId = useAgentStore((s) => s.sessionId) ?? undefined
+  // A saved session that is still loading only looks empty.
+  const isLoadingHistory = useAgentStore((s) => s.isLoadingHistory)
+  // A switch keeps a transcript on screen until the next one lands (see the
+  // hook). Everything below renders the displayed session, held or not.
+  const hold = useSessionSwitchHold({
+    sessionId: storeSessionId,
+    blocks: storeBlocks,
+    currentBlocks: storeCurrentBlocks,
+    isLoadingHistory,
+  })
+  const blocks = hold?.snapshot.blocks ?? storeBlocks
+  const currentBlocks = hold?.snapshot.currentBlocks ?? storeCurrentBlocks
+  const sessionId = hold?.snapshot.sessionId ?? storeSessionId
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
@@ -503,8 +520,6 @@ export function AgentView({
   // the manual jump's budget: every page it lands renders at once, as one
   // turn, before the reader asked for any of it.
   const hasMoreHistory = useAgentStore((s) => s.hasMore)
-  // A saved session that is still loading only looks empty.
-  const isLoadingHistory = useAgentStore((s) => s.isLoadingHistory)
   const hasLoadedPrompt = useMemo(
     () => turnItems.some((item) => item.kind === 'user' && isDirectUserBlock(item.block)),
     [turnItems],
@@ -541,9 +556,10 @@ export function AgentView({
   const visibleQuotaWait = liveQuotaWait ?? restoredQuotaWait
 
   useEffect(() => {
-    if (!sessionId) return
+    // A held transcript is not the session's live state: keep its record.
+    if (!sessionId || hold) return
     if (!visibleQuotaWait) removeStoredQuotaWait(sessionId)
-  }, [sessionId, visibleQuotaWait])
+  }, [hold, sessionId, visibleQuotaWait])
 
   // One renderer for every turn, so a finished turn's memo holds while the
   // live one streams. Inline in the turns' ``.map`` it was a new closure per
@@ -609,6 +625,25 @@ export function AgentView({
   })
   // Phone: drag or tap the transcript to put the keyboard away.
   useDismissKeyboardOnTouch(scrollRef)
+
+  // A switch fades the next session's transcript in once it has something to
+  // show, before paint so its first frame never shows at full strength. The
+  // first session on mount, and the first message of a new or empty chat
+  // (the draft hand-off has its own motion), appear as they are.
+  const reducedMotion = useReducedMotion() ?? false
+  const enteredSessionRef = useRef(isEmpty ? undefined : sessionId)
+  useLayoutEffect(() => {
+    if (isEmpty || !sessionId) {
+      if (!isLoadingHistory) enteredSessionRef.current = undefined
+      return
+    }
+    const previous = enteredSessionRef.current
+    if (previous === sessionId) return
+    enteredSessionRef.current = sessionId
+    const el = contentRef.current
+    if (previous === undefined || reducedMotion || !el || typeof el.animate !== 'function') return
+    el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATIONS_S.fast * 1000, easing: ENTER_EASE })
+  }, [contentRef, isEmpty, isLoadingHistory, reducedMotion, sessionId])
 
   // ── Follow state for the composer's jump chip ─────────────────────────────
   // Counted from the newest block when the reader scrolled away, so earlier
@@ -858,7 +893,14 @@ export function AgentView({
         one over-wide row then let the whole transcript pan sideways on touch.
         Code, tables and diagrams scroll inside their own boxes. */}
     <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto">
-      <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
+      {/* A held transcript (a switch in progress) is for looking at only.
+          The one being left dims while the next one loads. */}
+      <div
+        ref={contentRef}
+        inert={hold !== null}
+        data-session-hold={hold?.kind}
+        className={`mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
+      >
         {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
         {isEmpty && !isLoadingHistory && (
            emptyState ?? (
@@ -906,6 +948,19 @@ export function AgentView({
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                          onOpenSession={onOpenSession}
+                       />
+                     </div>
+                   )
+                 }
+                 if (item.kind === 'compaction') {
+                   // A ``/compact`` or idle compaction after a reply, on its
+                   // own so the reply keeps its footer (see ``utils/turns.ts``).
+                   return (
+                     <div key={item.block.id} data-block-id={item.block.id}>
+                       <BlockRenderer
+                         block={item.block}
+                         isStreaming={isWorking && item.block.extra?.state === 'compacting'}
+                         sessionId={sessionId}
                        />
                      </div>
                    )

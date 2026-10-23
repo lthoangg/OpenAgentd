@@ -10,6 +10,7 @@ import {
   islandHeight,
   islandMode,
   islandWidth,
+  listOrder,
   primarySessionId,
   type IslandSession,
 } from '@/island/status'
@@ -35,9 +36,10 @@ describe('islandMode', () => {
     expect(islandMode([running('a'), waiting('b')], [], false, defaults)).toBe('needs_input')
   })
 
-  it('stays up as done while a finished session is unread', () => {
+  it('stays up as done while a finished session is unread, even over running work', () => {
     expect(islandMode([], [done('x')], false, defaults)).toBe('done')
-    expect(islandMode([running('a')], [done('x')], false, defaults)).toBe('running')
+    expect(islandMode([running('a')], [done('x')], false, defaults)).toBe('done')
+    expect(islandMode([running('a'), waiting('b')], [done('x')], false, defaults)).toBe('needs_input')
   })
 
   it('expands on hover to list active and unread sessions', () => {
@@ -67,8 +69,9 @@ describe('compactLabels', () => {
     expect(compactLabels([], [done('x'), failed('y')])).toEqual({ lead: 'Done', detail: '2 sessions' })
   })
 
-  it('shows active work over unread finishes', () => {
-    expect(compactLabels([running('a', 'Docs')], [done('x')])).toEqual({ lead: 'Working', detail: 'Docs' })
+  it('shows unread finishes over running work, and a waiting session over both', () => {
+    expect(compactLabels([running('a', 'Docs')], [done('x', 'Fix tooltip slide')])).toEqual({ lead: 'Done', detail: 'Fix tooltip slide' })
+    expect(compactLabels([running('a'), waiting('b', 'Plan review')], [done('x')])).toEqual({ lead: 'Needs input', detail: 'Plan review' })
   })
 })
 
@@ -96,9 +99,19 @@ describe('islandWidth and islandHeight', () => {
 })
 
 describe('primarySessionId', () => {
-  it('opens the first listed session, else the newest unread one', () => {
+  it('opens a waiting session, else the newest unread one, else a running one', () => {
     expect(primarySessionId([waiting('w'), running('r')], [done('x')])).toBe('w')
+    expect(primarySessionId([running('r'), waiting('w')], [done('x')])).toBe('w')
+    expect(primarySessionId([running('r')], [done('x')])).toBe('x')
+    expect(primarySessionId([running('r')], [])).toBe('r')
     expect(primarySessionId([], [done('x'), done('y')])).toBe('x')
     expect(primarySessionId([], [])).toBeNull()
+  })
+})
+
+describe('listOrder', () => {
+  it('lists waiting sessions, then unread finishes, then running work', () => {
+    const order = listOrder([running('r'), waiting('w')], [done('x'), failed('y')]).map((s) => s.id)
+    expect(order).toEqual(['w', 'x', 'y', 'r'])
   })
 })

@@ -12,6 +12,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { markAutoTitle } from '@/lib/auto-title'
+import { forgetPrefetchedHistory } from '@/lib/session-prefetch'
 
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
@@ -97,6 +98,8 @@ export async function handleGlobalEvent(
 
   if (type === 'session_turn_started') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    // A page prefetched before this turn no longer matches the server.
+    if (sessionId) forgetPrefetchedHistory(sessionId)
     if (event.source === 'scheduled_task' || event.task_slug) {
       queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     }
@@ -135,6 +138,7 @@ export async function handleGlobalEvent(
 
   if (type === 'session_turn_completed') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    if (sessionId) forgetPrefetchedHistory(sessionId)
     if (!sessionId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
       return false

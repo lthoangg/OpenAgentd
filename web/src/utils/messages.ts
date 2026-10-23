@@ -234,7 +234,8 @@ export function parseAgentBlocks(
         id: msg.id,
         type: 'compaction',
         content: stripCompactionPrefix(msg.content || ''),
-        extra: { state: 'compacted' },
+        // ``forced``: a ``/compact`` or idle compaction (see ``utils/turns.ts``).
+        extra: msg.extra?.forced === true ? { state: 'compacted', forced: true } : { state: 'compacted' },
         timestamp,
       })
       continue

@@ -345,6 +345,13 @@ describe("parseAgentBlocks", () => {
     expect(blocks[0].content).toBe(""); // msg.content || '' → ""
   });
 
+  it("keeps a forced (/compact or idle) summary marked forced", () => {
+    const [forced] = parseAgentBlocks([makeMsg({ is_summary: true, role: "user", content: "s", extra: { forced: true } })]);
+    const [auto] = parseAgentBlocks([makeMsg({ is_summary: true, role: "user", content: "s" })]);
+    expect(forced.extra).toEqual({ state: "compacted", forced: true });
+    expect(auto.extra).toEqual({ state: "compacted" });
+  });
+
   it("two summary messages produce two compaction blocks in chronological order", () => {
     const t1 = new Date(Date.now() - 10000).toISOString();
     const t2 = new Date().toISOString();

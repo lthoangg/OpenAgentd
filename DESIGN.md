@@ -662,6 +662,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   replaces them, and fade in after `fast` (`oa-fade-in-late`), so a fast load
   never flashes one. A saved session shows a transcript skeleton, not the
   empty state, until its history lands.
+- **Session switches crossfade.** The transcript being left stays, `inert` and
+  dimmed to 70% at `fast`, for up to `fast` while the next one loads (a
+  session viewed recently shows its last transcript instead). The next one is
+  scrolled into place before paint and fades in over `fast` (`ease-out`).
+  Loading states never take the whole pane while a chat is on screen.
 - **Automated titles are revealed, manual ones are not.** A `title_update` from
   the agent lifts the old title out over `base` and wipes the new one in left
   to right over `glacial` (`ease-out`, after an `instant` beat). Its sidebar row
@@ -974,6 +979,9 @@ widgets (tablists, menus, listboxes, comboboxes) keep their own arrow keys.
 - **Quiet focus**: focus a script hands back without a key press (the
   composer pill on page load) goes through `focusQuietly`
   (`lib/focus/quiet.ts`), so it draws no ring until the keyboard moves on.
+  Focus fills use the `focus-key:` variant (keyboard focus that was not
+  handed over quietly), not `focus-visible:`, so quiet focus draws no fill,
+  and a tooltip does not open on it either.
 - **Ring follows input** (desktop): focus rings show only after a key press
   and hide again on the next pointer press. Focus a script gives — the
   composer at launch, a fold after its Collapse click — draws none until the

@@ -15,9 +15,11 @@ import {
   type NotchGeometry,
   allFailed,
   compactLabels,
+  compactMode,
   islandHeight,
   islandMode,
   islandWidth,
+  listOrder,
   primarySessionId,
 } from './status'
 
@@ -199,10 +201,7 @@ export function Island() {
     mode: 'hidden', lead: '', detail: '', failed: false,
   })
   if (wantVisible) {
-    const barMode: IslandMode = mode !== 'expanded'
-      ? mode
-      : sessions.some((s) => s.state === 'needs_input') ? 'needs_input' : sessions.length > 0 ? 'running' : 'done'
-    shown.current = { mode: barMode, ...compactLabels(sessions, unread), failed: allFailed(unread) }
+    shown.current = { mode: compactMode(sessions, unread), ...compactLabels(sessions, unread), failed: allFailed(unread) }
   }
   const { mode: barMode, lead, detail, failed } = shown.current
 
@@ -261,8 +260,7 @@ export function Island() {
           </button>
           {mode === 'expanded' && (
             <ul ref={listRef} className="island-list" aria-label="Sessions">
-              {sessions.map((session) => <SessionRow key={session.id} session={session} hover={hoverRow} />)}
-              {unread.map((session) => <SessionRow key={session.id} session={session} hover={hoverRow} />)}
+              {listOrder(sessions, unread).map((session) => <SessionRow key={session.id} session={session} hover={hoverRow} />)}
             </ul>
           )}
         </div>

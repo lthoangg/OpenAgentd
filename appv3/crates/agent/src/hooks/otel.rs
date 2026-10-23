@@ -6,9 +6,11 @@
 use super::{AgentState, Hook, ModelRequest, RunContext};
 use crate::streaming::StreamTiming;
 use appv3_core::otel::{self, Span, SpanCtx, SpanKind};
-use appv3_providers::{AssistantMessage, ToolCall};
+use appv3_providers::{AssistantMessage, ChatMessage, ToolCall};
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
@@ -24,6 +26,65 @@ pub const OUTPUT_TPS_ATTR: &str = "openagentd.response.output_tokens_per_second"
 /// `agent_run` span attribute (v3 addition): the run was stopped before it
 /// finished. A stop is not a failure, so such runs keep status OK.
 pub const RUN_CANCELLED_ATTR: &str = "openagentd.run.cancelled";
+/// `chat` span attribute (v3 addition): short hash of the final system prompt.
+pub const SYSTEM_SHA_ATTR: &str = "openagentd.request.system_sha";
+/// `chat` span attribute (v3 addition): short hash of the tool definitions.
+pub const TOOLS_SHA_ATTR: &str = "openagentd.request.tools_sha";
+/// `chat` span attribute (v3 addition): what changed in the part of the
+/// previous call's request this call sends again (`tools`, `system`,
+/// `messages@N` for the first changed message). Absent when the previous
+/// request is an unchanged prefix, which is what a prompt cache needs.
+pub const PREFIX_CHANGE_ATTR: &str = "openagentd.request.prefix_change";
+
+fn short_sha(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().take(6).map(|b| format!("{b:02x}")).collect()
+}
+
+/// Hashes of one model request's cacheable parts: the system prompt, the
+/// tool definitions, and every message, in request order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RequestFingerprint {
+    pub system: String,
+    pub tools: String,
+    pub messages: Vec<String>,
+}
+
+impl RequestFingerprint {
+    pub fn of(system_prompt: &str, tool_defs: &[Value], messages: &[ChatMessage]) -> Self {
+        Self {
+            system: short_sha(system_prompt.as_bytes()),
+            tools: short_sha(serde_json::to_string(tool_defs).unwrap_or_default().as_bytes()),
+            messages: messages.iter().map(|m| short_sha(format!("{m:?}").as_bytes())).collect(),
+        }
+    }
+
+    /// What differs from `prev` in the part this request re-sends, or `None`
+    /// when `prev` is an unchanged prefix of this request.
+    pub fn change_since(&self, prev: &Self) -> Option<String> {
+        let mut parts: Vec<String> = Vec::new();
+        if self.tools != prev.tools {
+            parts.push("tools".into());
+        }
+        if self.system != prev.system {
+            parts.push("system".into());
+        }
+        let common = prev.messages.iter().zip(&self.messages).take_while(|(a, b)| a == b).count();
+        if common < prev.messages.len() {
+            parts.push(format!("messages@{common}"));
+        }
+        (!parts.is_empty()).then(|| parts.join(","))
+    }
+}
+
+/// The last request fingerprint per `(conversation, agent)`. Global because
+/// hooks are rebuilt for every turn, and a cache miss usually happens across
+/// turns.
+fn last_requests() -> &'static Mutex<HashMap<String, RequestFingerprint>> {
+    static M: OnceLock<Mutex<HashMap<String, RequestFingerprint>>> = OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+const MAX_TRACKED_REQUESTS: usize = 512;
 
 /// `set_usage_span_attributes` (usage dict from `usage_to_dict`).
 pub fn set_usage_span_attributes(span: &Span, usage: &Value) {
@@ -183,6 +244,24 @@ impl OtelHook {
         // span yet to attribute its spend through.
         attrs.extend(Self::workspace_attr(ctx));
         Span::start(format!("chat {}", self.model), SpanKind::Client, attrs)
+    }
+
+    /// Records the final request's fingerprint on `span`, and what changed
+    /// in the part of this agent's previous request it sends again.
+    pub fn record_request(&self, span: &Span, ctx: &RunContext, system_prompt: &str, tool_defs: &[Value], messages: &[ChatMessage]) {
+        let fp = RequestFingerprint::of(system_prompt, tool_defs, messages);
+        span.set_attr(SYSTEM_SHA_ATTR, json!(fp.system));
+        span.set_attr(TOOLS_SHA_ATTR, json!(fp.tools));
+        let key = format!("{}\u{0}{}", Self::conv(ctx), self.agent_name);
+        let mut last = last_requests().lock().unwrap();
+        if let Some(change) = last.get(&key).and_then(|prev| fp.change_since(prev)) {
+            tracing::info!("request_prefix_changed agent={} session={:?} change={}", self.agent_name, ctx.session_id, change);
+            span.set_attr(PREFIX_CHANGE_ATTR, json!(change));
+        }
+        if last.len() >= MAX_TRACKED_REQUESTS && !last.contains_key(&key) {
+            last.clear();
+        }
+        last.insert(key, fp);
     }
 
     pub fn end_model_span(&self, span: &Span, started: Instant, outcome: ModelOutcome<'_>) {
@@ -463,5 +542,44 @@ mod tests {
         hook.end_model_span(&span, Instant::now(), ModelOutcome::Ok(&answer(0), StreamTiming::default()));
         assert!(!span.has_attr(TTFT_ATTR));
         assert!(!span.has_attr(OUTPUT_TPS_ATTR));
+    }
+
+    #[test]
+    fn an_appended_turn_is_not_a_prefix_change() {
+        let tools = vec![json!({"name": "read"})];
+        let prev = RequestFingerprint::of("sys", &tools, &[ChatMessage::user("a")]);
+        let next = RequestFingerprint::of("sys", &tools, &[ChatMessage::user("a"), ChatMessage::user("b")]);
+        assert_eq!(next.change_since(&prev), None);
+    }
+
+    #[test]
+    fn prefix_change_names_the_changed_parts() {
+        let tools = vec![json!({"name": "read"})];
+        let prev = RequestFingerprint::of("sys", &tools, &[ChatMessage::user("a"), ChatMessage::user("b")]);
+        let edited = RequestFingerprint::of("sys v2", &tools, &[ChatMessage::user("a"), ChatMessage::user("b")]);
+        assert_eq!(edited.change_since(&prev).as_deref(), Some("system"));
+        let more_tools = RequestFingerprint::of("sys", &[json!({"name": "read"}), json!({"name": "grep"})], &[ChatMessage::user("a"), ChatMessage::user("b")]);
+        assert_eq!(more_tools.change_since(&prev).as_deref(), Some("tools"));
+        let rewritten = RequestFingerprint::of("sys", &tools, &[ChatMessage::user("a"), ChatMessage::user("B"), ChatMessage::user("c")]);
+        assert_eq!(rewritten.change_since(&prev).as_deref(), Some("messages@1"));
+    }
+
+    #[test]
+    fn chat_span_records_request_hashes_and_the_change_since_the_last_call() {
+        let hook = OtelHook::new("lead", Some("mock:mock"));
+        let ctx = RunContext { session_id: Some("fp-session".into()), run_id: "r".into(), agent_name: "lead".into(), workspace: None };
+        let first = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
+        hook.record_request(&first, &ctx, "sys", &[], &[ChatMessage::user("a")]);
+        assert!(first.has_attr(SYSTEM_SHA_ATTR));
+        assert!(first.has_attr(TOOLS_SHA_ATTR));
+        assert!(!first.has_attr(PREFIX_CHANGE_ATTR), "nothing to compare the first call with");
+
+        let second = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
+        hook.record_request(&second, &ctx, "sys", &[], &[ChatMessage::user("a"), ChatMessage::user("b")]);
+        assert!(!second.has_attr(PREFIX_CHANGE_ATTR));
+
+        let third = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
+        hook.record_request(&third, &ctx, "sys, edited", &[], &[ChatMessage::user("a"), ChatMessage::user("b")]);
+        assert_eq!(third.attr(PREFIX_CHANGE_ATTR), Some(json!("system")));
     }
 }

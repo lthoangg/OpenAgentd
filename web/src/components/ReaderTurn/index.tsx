@@ -185,7 +185,7 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
   const additions = files.reduce((sum, file) => sum + file.additions, 0)
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
   const rowClass = 'flex h-(--spacing-list-row) w-full min-w-0 items-center gap-2 px-3 text-left text-xs text-(--color-text-2)'
-  const hoverClass = 'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-visible:bg-(--bg-key)/60 focus-visible:outline-none'
+  const hoverClass = 'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-key:bg-(--bg-key)/60 focus-visible:outline-none'
 
   return (
     <section aria-label="Files changed this turn" className="my-2 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">

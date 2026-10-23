@@ -537,9 +537,15 @@ impl SummarizationHook {
         Ok((text, last_usage))
     }
 
-    fn emit_end(&self, ctx: &RunContext, summary: &str, error: bool) {
+    fn emit_end(&self, ctx: &RunContext, summary: &str, error: bool, forced: bool) {
         if let Some(sid) = &ctx.session_id {
-            let meta = if error { json!({"error": true}) } else { json!({}) };
+            let mut meta = json!({});
+            if error {
+                meta["error"] = json!(true);
+            }
+            if forced {
+                meta["forced"] = json!(true);
+            }
             store().push_event(sid, &events::summarization_end(&ctx.agent_name, summary, Some(meta)), false);
         }
     }
@@ -561,6 +567,8 @@ impl SummarizationHook {
 
     /// Returns `(summarised, cancelled)`.
     async fn summarise_inner(&self, ctx: &RunContext, state: &mut AgentState, system_prompt: &str, span: &Span) -> (bool, bool) {
+        // `/compact` and idle compaction run alone, not inside an agent run.
+        let forced = state.meta_get("force_summarization") == Some(Value::Bool(true));
         let eligible: Vec<usize> = (0..state.messages.len())
             .filter(|&i| {
                 let m = &state.messages[i];
@@ -612,7 +620,7 @@ impl SummarizationHook {
         span.set_attr("summarization.has_prior_summary", has_prior);
 
         if let Some(sid) = &ctx.session_id {
-            store().push_event(sid, &events::summarization_start(&ctx.agent_name), false);
+            store().push_event(sid, &events::summarization_start(&ctx.agent_name, forced), false);
         }
         let tools = if state.tool_defs.is_empty() { None } else { Some(state.tool_defs.as_slice()) };
         let tools_chars = tools.map_or(0, |t| serde_json::to_string(t).map_or(0, |s| s.len()));
@@ -626,7 +634,7 @@ impl SummarizationHook {
                 tracing::error!("summarization_llm_failed session_id={:?} error={}", ctx.session_id, e.message);
                 span.set_attr("error.type", e.name.as_str());
                 span.set_error();
-                self.emit_end(ctx, "", true);
+                self.emit_end(ctx, "", true, forced);
                 return (false, false);
             }
         };
@@ -634,7 +642,7 @@ impl SummarizationHook {
             tracing::warn!("summarization_skipped_empty_response session_id={:?} agent={}", ctx.session_id, ctx.agent_name);
             span.set_attr("summarization.skipped", "empty_llm_response");
             span.set_ok();
-            self.emit_end(ctx, "", true);
+            self.emit_end(ctx, "", true, forced);
             return (false, false);
         }
         let to_set: HashSet<usize> = to_summarise.iter().copied().collect();
@@ -662,9 +670,14 @@ impl SummarizationHook {
             }
         }
         let mut meta = MessageMeta { kind: "summary".into(), ..Default::default() };
+        let mut e = Map::new();
         if let Some(u) = &usage {
-            let mut e = Map::new();
             e.insert("usage".into(), u.clone());
+        }
+        if forced {
+            e.insert("forced".into(), json!(true));
+        }
+        if !e.is_empty() {
             meta.extra = Some(e);
         }
         state.messages.insert(first_kept, ChatMessage::User { content: Some(text.clone()), parts: None, meta });
@@ -701,7 +714,7 @@ impl SummarizationHook {
                     false,
                 );
             }
-            self.emit_end(ctx, &text, false);
+            self.emit_end(ctx, &text, false, forced);
             if let Some(f) = &self.on_summary {
                 f(sid, &text);
             }
@@ -861,6 +874,25 @@ mod tests {
     /// note is appended once per switch and not re-added while it exists in
     /// history, so losing it leaves the model without the read-only workflow
     /// and plan tools for the rest of the mode.
+    /// `/compact` and idle compaction mark their summary `forced`, so the UI
+    /// can show it apart from the reply before it; auto-compaction does not.
+    #[tokio::test]
+    async fn forced_compaction_marks_its_summary() {
+        let history = || vec![ChatMessage::user("Fix it."), ChatMessage::assistant("Fixed.")];
+        let forced_of = |state: &AgentState| {
+            let summary = &state.messages[summary_index(state)];
+            summary.meta().extra.as_ref().and_then(|e| e.get("forced")).cloned()
+        };
+
+        let auto = compact(0, history()).await;
+        assert_eq!(forced_of(&auto), None);
+
+        let mut state = AgentState::new(history(), String::new());
+        state.meta_set("force_summarization", json!(true));
+        assert!(hook(0).summarise(&ctx(), &mut state, "sys").await, "compaction did not run");
+        assert_eq!(forced_of(&state), Some(json!(true)));
+    }
+
     #[tokio::test]
     async fn active_plan_mode_note_stays_in_context_after_compaction() {
         let note = mode_note("plan");

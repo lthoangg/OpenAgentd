@@ -24,6 +24,7 @@ pub mod revert;
 pub mod scheduler;
 pub mod service;
 pub mod session;
+pub mod session_frozen;
 pub mod side_question;
 pub mod skills;
 pub mod snapshot;

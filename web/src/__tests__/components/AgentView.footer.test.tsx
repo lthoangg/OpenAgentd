@@ -767,6 +767,39 @@ describe("AgentView — AssistantFooter", () => {
   })
 })
 
+describe("AgentView — footer and a forced compaction", () => {
+  const forcedCompaction = (state: "compacting" | "compacted"): ContentBlock => ({
+    id: "c1", type: "compaction", content: "Summary.", extra: { state, forced: true },
+  })
+  const reply = makeTextBlock("a1", "Done.", new Date(2024, 0, 15, 14, 30, 0))
+
+  it("keeps the reply's footer above a /compact divider", () => {
+    renderStream({ blocks: [makeUserBlock("u1", "Fix it"), reply, forcedCompaction("compacted")] })
+
+    const copy = screen.getByRole("button", { name: /copy response/i })
+    const divider = screen.getByRole("region", { name: "Session compacted" })
+    expect(copy.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("keeps the reply's footer while the compaction runs", () => {
+    renderStream({ blocks: [makeUserBlock("u1", "Fix it"), reply, forcedCompaction("compacting")], isWorking: true })
+
+    expect(screen.getByRole("button", { name: /copy response/i })).toBeTruthy()
+    expect(screen.getByRole("region", { name: "Session compacting" })).toBeTruthy()
+  })
+
+  it("keeps an auto-compaction inside its run, under the run's one footer", () => {
+    renderStream({
+      blocks: [makeUserBlock("u1", "Fix it"), makeTextBlock("a0", "Working on it."), makeCompactionBlock("c1", "Summary."), reply],
+    })
+
+    const copies = screen.getAllByRole("button", { name: /copy response/i })
+    expect(copies).toHaveLength(1)
+    const divider = screen.getByRole("region", { name: "Session compacted" })
+    expect(divider.compareDocumentPosition(copies[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
 describe("AgentView — footer model label", () => {
   function answer(id: string, model: string): ContentBlock {
     return { id, type: "text", content: `answer ${id}`, extra: { model } }

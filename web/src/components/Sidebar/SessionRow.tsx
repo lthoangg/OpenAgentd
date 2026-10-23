@@ -13,6 +13,7 @@ import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
+import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
 import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
 
@@ -181,6 +182,7 @@ function SessionRowView({
                 type="button"
                 data-sidebar-session=""
                 aria-current={isCurrent ? 'page' : undefined}
+                {...(isCurrent ? {} : sessionPrefetchProps(session.id, session.workspace))}
                 onKeyDown={handleRowKeyDown}
                 onMouseDown={(e) => {
                   if (!isModifiedPrimaryClick(e)) return
@@ -337,6 +339,7 @@ function SessionRowView({
                       type="button"
                       data-sidebar-session=""
                       aria-current={isSubCurrent ? 'page' : undefined}
+                      {...(isSubCurrent ? {} : sessionPrefetchProps(sub.session_id, session.workspace))}
                       onKeyDown={(e) => {
                         if (!isDeleteKey(e)) return
                         e.preventDefault()

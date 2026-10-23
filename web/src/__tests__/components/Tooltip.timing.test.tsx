@@ -102,4 +102,14 @@ describe('tooltip timing', () => {
     await act(async () => {})
     expect(screen.getByText('Second hint')).toBeTruthy()
   })
+
+  it('does not open on focus a script handed over quietly', async () => {
+    const { one } = renderPair()
+    const matches = one.matches.bind(one)
+    one.matches = ((selector: string) => selector === ':focus-visible' || matches(selector)) as typeof one.matches
+    one.setAttribute('data-quiet-focus', '')
+    fireEvent.focus(one)
+    await act(async () => {})
+    expect(screen.queryByText('First hint')).toBeNull()
+  })
 })

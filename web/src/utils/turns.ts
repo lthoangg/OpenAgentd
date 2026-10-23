@@ -9,12 +9,18 @@
  * as a subagent's report, that arrives after the agent's work joins that turn
  * as one more step instead of starting a new one. An agent's message that
  * opens a turn (e.g. a lead's task for a member) stays its prompt.
+ *
+ * A forced compaction (``/compact`` or idle compaction, ``extra.forced``)
+ * that ends a turn is an item of its own, so the reply before it keeps its
+ * footer. One that lands inside a turn (a reloaded summary is anchored before
+ * the replies it kept) stays a step of that turn, as an auto-compaction is.
  */
 import type { ContentBlock } from '@/api/types'
 
 export type TurnItem =
   | { kind: 'user'; block: ContentBlock; index: number }
   | { kind: 'assistant'; blocks: ContentBlock[]; startIndex: number }
+  | { kind: 'compaction'; block: ContentBlock; index: number }
 
 export interface PartitionOptions {
   /** Fold agent-sent messages that follow the agent's work into its turn. */
@@ -43,12 +49,29 @@ export function getVisibleTurnWindow(
   }
 }
 
+/** ``blocks[index]`` is a forced compaction that ends its turn: only compactions follow it before a user block or the end. */
+function isStandaloneCompaction(blocks: ContentBlock[], index: number): boolean {
+  const block = blocks[index]
+  if (block.type !== 'compaction' || block.extra?.forced !== true) return false
+  for (let i = index + 1; i < blocks.length; i++) {
+    if (blocks[i].type === 'compaction') continue
+    return blocks[i].type === 'user'
+  }
+  return true
+}
+
 /** ``continuesTurn``: ``blocks`` pick up after an assistant turn, so a leading report folds into it. */
 function partition(blocks: ContentBlock[], foldAgentReports: boolean, continuesTurn: boolean): TurnItem[] {
   const items: TurnItem[] = []
   let turn: ContentBlock[] | null = null
   let followsWork = continuesTurn
   blocks.forEach((block, index) => {
+    if (isStandaloneCompaction(blocks, index)) {
+      items.push({ kind: 'compaction', block, index })
+      turn = null
+      followsWork = false
+      return
+    }
     const joinsTurn = block.type !== 'user' || (foldAgentReports && followsWork && isAgentReport(block))
     if (!joinsTurn) {
       items.push({ kind: 'user', block, index })
@@ -115,9 +138,9 @@ export function appendCurrentTurns(
 
   const lastFinalized = finalizedTurns[finalizedTurns.length - 1]
   const currentTurns = partition(currentBlocks, options.foldAgentReports ?? false, lastFinalized?.kind === 'assistant').map((item) => (
-    item.kind === 'user'
-      ? { ...item, index: item.index + finalizedBlockCount }
-      : { ...item, startIndex: item.startIndex + finalizedBlockCount }
+    item.kind === 'assistant'
+      ? { ...item, startIndex: item.startIndex + finalizedBlockCount }
+      : { ...item, index: item.index + finalizedBlockCount }
   ))
   const firstCurrent = currentTurns[0]
 

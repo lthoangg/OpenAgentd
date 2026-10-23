@@ -45,7 +45,9 @@ pub(crate) async fn proxy(entry: Arc<Entry>, target: &UrlTarget, req: Request) -
     let (upstream, resp) = match tokio_tungstenite::connect_async(up_req).await {
         Ok(pair) => pair,
         Err(e) => {
-            tracing::debug!("preview_ws_upstream_error url={} err={}", url, e);
+            if let Some(skipped) = crate::log_throttle::upstream_error(&target.authority()) {
+                tracing::debug!("preview_ws_upstream_error url={} err={} skipped_since_last={}", url, e, skipped);
+            }
             return plain(StatusCode::BAD_GATEWAY, &format!("Could not open a WebSocket to {}.", target.authority()));
         }
     };

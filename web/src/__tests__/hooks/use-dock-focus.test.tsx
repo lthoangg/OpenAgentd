@@ -37,7 +37,11 @@ describe('useClaimStrandedFocus', () => {
     const { rerender } = render(<ClaimHarness active={false} />)
     screen.getByRole('textbox', { name: 'Composer' }).focus()
     rerender(<ClaimHarness active />)
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Active tab' }))
+    const tab = screen.getByRole('button', { name: 'Active tab' })
+    expect(document.activeElement).toBe(tab)
+    // Quiet: the key press that covered the chat did not steer focus here,
+    // so the tab draws no ring, fill or tooltip.
+    expect(tab.hasAttribute('data-quiet-focus')).toBe(true)
   })
 
   it('leaves focus alone when it is already on a live control', () => {

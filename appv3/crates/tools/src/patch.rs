@@ -562,7 +562,7 @@ pub fn apply_patch(denied: &DeniedPaths, patch_text: &str) -> Result<(String, Ve
             }
             Kind::Delete => {
                 if current.is_none() {
-                    return Err(verr(format!("File not found: {}", denied.display_path(&resolved))));
+                    return Err(verr(format!("File not found: {}{}", denied.display_path(&resolved), denied.absolute_path_hint(&fp.path))));
                 }
                 virt.insert(resolved.clone(), None);
                 continue;
@@ -570,7 +570,7 @@ pub fn apply_patch(denied: &DeniedPaths, patch_text: &str) -> Result<(String, Ve
             Kind::Update => {}
         }
         let Some(cur) = current else {
-            return Err(verr(format!("File not found: {}", denied.display_path(&resolved))));
+            return Err(verr(format!("File not found: {}{}", denied.display_path(&resolved), denied.absolute_path_hint(&fp.path))));
         };
         let content = String::from_utf8(cur.content.clone()).map_err(|e| verr(format!("'utf-8' codec can't decode byte: {e}")))?;
         let (new_content, hunks) = apply_chunks(&content, &fp.chunks, &fp.path)?;

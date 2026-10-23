@@ -747,6 +747,14 @@ describe("CommandPalette — pages inside pages", () => {
     expect(activeLabel(container)).toContain("Switch Workspace/Session…")
   })
 
+  it("focuses the search box, not the back chip, when opened on a page", async () => {
+    render(<CommandPalette commands={nested()} onClose={() => {}} initialPagePath={["switch", "ws:app"]} />)
+    const input = screen.getByPlaceholderText("Search sessions in app…")
+    // The overlay's focus helper runs a frame after mount; wait past it.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(null))))
+    expect(document.activeElement).toBe(input)
+  })
+
   it("steps back one level on Escape and Backspace", async () => {
     const user = userEvent.setup()
     let closed = false

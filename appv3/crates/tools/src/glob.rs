@@ -233,7 +233,7 @@ impl Tool for GlobTool {
         let denied = ctx.denied.clone();
         let resolved = denied.validate_read_path(&directory)?;
         if !resolved.is_dir() {
-            return Err(ToolError::Execution(format!("Not a directory: {}", denied.display_path(&resolved))));
+            return Err(ToolError::Execution(format!("Not a directory: {}{}", denied.display_path(&resolved), denied.absolute_path_hint(&directory))));
         }
         if mode == "path" {
             if Path::new(&pattern).is_absolute() || pattern.starts_with('/') {

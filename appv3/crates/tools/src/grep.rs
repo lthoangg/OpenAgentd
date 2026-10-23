@@ -475,7 +475,7 @@ impl Tool for GrepTool {
         let denied = ctx.denied.clone();
         let resolved = denied.validate_read_path(&directory)?;
         if !resolved.exists() {
-            return Err(ToolError::Execution(format!("File or directory not found: {}", denied.display_path(&resolved))));
+            return Err(ToolError::Execution(format!("File or directory not found: {}{}", denied.display_path(&resolved), denied.absolute_path_hint(&directory))));
         }
         let no_match = format!("No matches for pattern '{pattern}' in {} (include={include})", denied.display_path(&resolved));
         let task = tokio::task::spawn_blocking(move || -> Result<TreeHits, ToolError> {

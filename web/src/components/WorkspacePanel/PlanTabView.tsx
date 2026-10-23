@@ -473,11 +473,13 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         </div>
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-          <div ref={bodyRef} className="relative mx-auto max-w-3xl px-4 py-3 [[data-dock-maximized]_&]:max-w-none">
+          {/* `oa-reading` (index.css): a maximized dock widens tables, code
+              and diagrams while prose keeps its measure. */}
+          <div ref={bodyRef} className="oa-reading relative mx-auto max-w-3xl px-4 py-3">
             <FileRefContext.Provider value={fileOpener}>
               <MarkdownBlock content={parts.body} sessionId={sessionId ?? undefined} />
               {parts.appendix !== null && (
-                <div className="mt-5 border-t border-(--color-border-subtle) pt-2">
+                <div className="oa-reading-measure mt-5 border-t border-(--color-border-subtle) pt-2 text-sm">
                   <button
                     type="button"
                     aria-expanded={appendixOpen}

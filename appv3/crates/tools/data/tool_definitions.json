@@ -257,7 +257,7 @@
     "type": "function",
     "function": {
       "name": "skill",
-      "description": "Load a skill's instructions. When a task matches a skill below, load it before starting the work.\n\nCall this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
+      "description": "Load a skill's instructions. When a task matches a skill below, load it before starting the work.\n\nCall this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -426,7 +426,7 @@
               "properties": {
                 "question": {
                   "description": "The complete question text explaining what decision is required and why.",
-                  "maxLength": 500,
+                  "maxLength": 1000,
                   "minLength": 1,
                   "type": "string"
                 },
@@ -447,7 +447,7 @@
                         "type": "string"
                       },
                       "description": {
-                        "maxLength": 200,
+                        "maxLength": 400,
                         "type": "string",
                         "default": null,
                         "description": "One short line explaining what selecting this option means."
@@ -553,7 +553,7 @@
         "properties": {
           "summary": {
             "description": "Optional one-line note for the reviewer, e.g. what changed since the last revision.",
-            "maxLength": 300,
+            "maxLength": 600,
             "type": "string",
             "default": null
           }

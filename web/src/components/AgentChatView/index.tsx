@@ -447,6 +447,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // A new-session draft (`/?workspace=`): nothing saved yet, so the
   // new-session screen shows until the first message starts the turn.
   const isDraft = !sessionId && Boolean(workspace) && !sessionIdState && !isAgentWorking && !leadHasVisibleBlocks && !leadHasLiveBlocks
+  // A chat already on screen stays through a switch: the loading states
+  // below take the whole pane only when there is nothing to keep showing.
+  const chatOnScreen = Boolean(sessionIdState) || leadHasVisibleBlocks
   // Desktop centers the composer in the draft screen; phones keep it docked.
   const composerInline = isDraft && !isMobile
   // The first message carries the draft into its chat as one motion.
@@ -623,7 +626,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // One composer element: inside the new-session screen while that is
   // centered, else docked/floating at the bottom of the chat column.
-  const composerElement = workspace ? (
+  // While a switch looks up the next session's workspace, the composer stays
+  // (disabled) instead of unmounting; sending needs `workspace` itself.
+  const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
     <FloatingInputComposer
       ref={inputRef}
       boundsRef={mainColumnRef}
@@ -780,7 +785,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           onOpenProviders={() => openSettings('providers')}
           onDismiss={dismissSetupRequired}
         />
-        {isSessionLoading ? (
+        {isSessionLoading && !chatOnScreen ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
@@ -794,7 +799,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </p>
             </div>
           </div>
-        ) : workspace && agentRegistryLoading ? (
+        ) : workspace && agentRegistryLoading && !chatOnScreen ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
@@ -806,7 +811,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </p>
             </div>
           </div>
-        ) : !effectiveWorkspace ? (
+        ) : !effectiveWorkspace && !isSessionLoading ? (
           <EmptyState
             icon={FolderCode}
             title="No workspace attached"
@@ -846,9 +851,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             />
           )}
           <motion.div
+            // Opening a session whose workspace is still being looked up: the
+            // chat on screen stays, for looking at only, until it is known.
+            inert={isSessionLoading}
             className="flex flex-1 flex-col min-h-0"
             initial={draftHandoff.active && !reducedMotion ? { opacity: 0, y: 8 } : false}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: isSessionLoading ? 0.7 : 1, y: 0 }}
             transition={{ duration: DURATIONS_S.base, delay: 0.06, ease: EASINGS.out }}
           >
             <ActiveAgentView

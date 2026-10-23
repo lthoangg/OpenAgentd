@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.27.0 · October 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.27.0)
+**Latest release:** v3.28.0 · October 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.28.0)
 
 ---
 
@@ -515,12 +515,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     "Done" shows once, for the whole job `[v3.27.0]`. It turns
     orange with "Needs input" when an agent waits on a question or a plan
     review, and keeps "Done" (or "Failed") up for a finished session until
-    you open it, in the app or from the pill, or dismiss it. A session that
+    you open it, in the app or from the pill, or dismiss it.
+    Since `[v3.28.0]` the pill ranks Needs input over Done/Failed over
+    Working: a finished session you have not opened shows even while others
+    still run, and the list and a click on the pill follow the same order.
+    A session that
     finishes on screen in the focused window, a turn you stopped yourself,
     and a background idle compaction show nothing. Hover it to list the
-    active sessions, waiting ones first with their question, then the
-    finished ones with a × to dismiss; click a row or the pill to open that
-    session. The pill grows out of the notch, springs open on hover and
+    sessions, waiting ones first with their question, then the finished
+    ones with a × to dismiss, then running ones; click a row or the pill to
+    open that session. The pill grows out of the notch, springs open on hover and
     shrinks back in, and clicks beside it still reach the menu bar. It never
     takes focus and shows over full-screen apps. Settings → General →
     Desktop turns it off, and can also keep it up while OpenAgentd is in
@@ -681,6 +685,18 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Scroll position per session** `[v3.5.0]` — leave a session scrolled up and
   come back to it, and the transcript opens where you were reading; a session
   you left at the bottom keeps following new output. Kept while the app runs.
+- **Calm session switches** `[v3.28.0]` — opening another session no longer
+  flashes a blank or loading screen:
+  - The chat you are leaving stays on screen, slightly dimmed, until the next
+    one is ready, then fades in already scrolled to its newest turn. A slow
+    load shows the transcript placeholder after a beat.
+  - A session you viewed recently shows its last transcript at once, and the
+    real history replaces it silently when it arrives.
+  - Resting the pointer on a sidebar row fetches that session (and its
+    workspace's agents) ahead of the click.
+  - A session in another workspace keeps the chat and the composer in place
+    instead of swapping to an "Opening workspace…" screen.
+  - With Reduce Motion on, the switch snaps without the fade.
 - **A steady transcript while you read** `[v3.25.0]` — scroll up while the
   agent works and the text you are reading holds still:
   - Images, math, diagrams and highlighted code that finish loading above the
@@ -772,6 +788,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     marks prompts and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
+    A `/compact` or idle compaction after a reply keeps the reply's footer
+    under it, with the divider below, and the footer stays while it compacts;
+    a compaction during a run stays inside it, under its one footer
+    `[v3.28.0]`.
   - Inline diffs in tool cards show the first 400 lines with a "Show N more
     lines" button, so huge patches stay responsive `[v3.14.0]`. A turn shows
     every one of its steps, however long the agent ran; the "Show N earlier
@@ -1206,7 +1226,9 @@ agent against it.
     `Ctrl/⌘+Shift+D`, the dock's maximize button or **Maximize Review Dock** in
     the palette gives the dock the full width over the chat; the conversation
     stays loaded underneath. While maximized, the Plan and Side questions tabs
-    drop their reading-column cap and use the full width `[v3.27.0]`. Tabs close
+    keep prose at about 88 characters a line and give tables, code and
+    diagrams a wider band, up to 960px, rather than the full width
+    `[v3.28.0]`. Tabs close
     with ×, middle-click or `Ctrl/⌘+W`, and focus moves to the neighbouring tab.
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.
@@ -1632,6 +1654,10 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   workspace's `AGENTS.md`, so cross-project
   preferences live in one place. Matches how pi, OpenCode, and Codex order
   global → project guidance.
+- **`AGENTS.md` read once per session** `[v3.28.0]` — the global and workspace
+  `AGENTS.md` are read at a session's first turn and kept for the rest of it, so
+  editing them mid-session no longer throws away the provider prompt cache.
+  Edits (and a newly created file) apply from the next session.
 - **Host environment in the shell tool** `[v2.10.0]` — the shell tool schema
   states the OS, CPU architecture, and shell binary the command runs under
   (e.g. `Darwin arm64, shell=zsh`), so the model stops guessing platform
@@ -1819,6 +1845,11 @@ MCP.
   Only loopback URLs are accepted, never the OpenAgentd API port. Everything
   works only while the page is open in the Preview tab; there is no headless
   browser and no screenshots.
+- **Hints on wrong tool names and paths** `[v3.28.0]` — calling a tool by a
+  name from another harness (such as `bash`) answers "Did you mean …?" and
+  lists the available tools. A missing absolute path such as `/DESIGN.md` that
+  exists inside the workspace names the workspace-relative path, so the agent
+  corrects itself on the next call. Path resolution is unchanged.
 - **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
   **coding mode** `[v2.1.0]`, the agent can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
@@ -1840,6 +1871,9 @@ MCP.
   in a turn a scheduled task started, the tool stays listed but refuses when
   called, because nobody is there to answer; `submit_plan` does the same
   `[v3.24.0]`.
+  Question text can be up to 1,000 characters, option descriptions up to 400,
+  and a `submit_plan` summary up to 600, so long questions and summaries are
+  no longer rejected and retried `[v3.28.0]`.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
   Every session lists the same tools on every turn, whoever started it, so a
   scheduled run never invalidates the prompt cache. A task that runs in your
@@ -2106,6 +2140,11 @@ Four orthogonal ways to add capability.
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
     (`.agents/skills/` `[v2.12.0]`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
+  - **Stable skill list, fresh skill content** `[v3.28.0]` — the skill list in the
+    `skill` tool's description is fixed for the session, keeping the prompt cache
+    intact; a skill added or re-described mid-session appears in the next session.
+    Loading a skill always reads its current body from disk, so edits to a skill's
+    instructions apply right away.
   - **Bundled `self-healing` skill with references** `[v3.3.0]` — one bundled skill covers the
     agent's own setup: its `SKILL.md` is an index linking reference files for agents, MCP servers,
     skills, plugins (with the `openagentd` plugin API typings), and image/video generation. It
@@ -2191,6 +2230,9 @@ Everything stays local. No third-party telemetry SaaS.
   (with the slowest 5%), each model row shows its median of both, and a
   model-call span lists them. Calls recorded earlier count toward everything
   else but not toward speed.
+- **Prompt-cache miss causes** `[v3.28.0]` — each model-call span records a
+  fingerprint of the system prompt, the tool list, and the first changed
+  message, so a turn that missed the provider's prompt cache shows what changed.
 - **Sub-agents in session telemetry** `[v3.0.0]` — a session's telemetry view
   counts the sub-agent sessions it started in its spend, turns, and tokens, and
   says how many. The Sessions card lists each sub-agent under its session (in

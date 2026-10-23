@@ -99,7 +99,30 @@ impl WorkspaceInstructionsHook {
 
 #[async_trait]
 impl Hook for WorkspaceInstructionsHook {
-    async fn wrap_system_prompt(&self, _ctx: &RunContext, _state: &AgentState, prompt: String) -> String {
+    /// Read once per session (see [`crate::session_frozen`]): an edit to
+    /// either `AGENTS.md` applies to the next session.
+    async fn wrap_system_prompt(&self, ctx: &RunContext, _state: &AgentState, prompt: String) -> String {
+        let key = format!(
+            "instructions\u{0}{}\u{0}{}\u{0}{}",
+            self.workspace.as_deref().map(|w| w.display().to_string()).unwrap_or_default(),
+            self.include_workspace,
+            self.global.display()
+        );
+        let block = crate::session_frozen::get_or_freeze(ctx.session_id.as_deref(), &key, || self.instructions_block());
+        if block.is_empty() {
+            return prompt;
+        }
+        if prompt.is_empty() {
+            block
+        } else {
+            format!("{prompt}\n\n{block}")
+        }
+    }
+}
+
+impl WorkspaceInstructionsHook {
+    /// The workspace block plus the global and workspace `AGENTS.md`, as on disk now.
+    fn instructions_block(&self) -> String {
         let mut blocks = Vec::new();
         if let Some(ws) = &self.workspace {
             // Here rather than in a built-in prompt: those are written once
@@ -135,15 +158,7 @@ impl Hook for WorkspaceInstructionsHook {
                 }
             }
         }
-        if blocks.is_empty() {
-            return prompt;
-        }
-        let block = blocks.join("\n\n");
-        if prompt.is_empty() {
-            block
-        } else {
-            format!("{prompt}\n\n{block}")
-        }
+        blocks.join("\n\n")
     }
 }
 
@@ -376,5 +391,33 @@ mod tests {
 
         assert_eq!(prompt.matches("Global rule.").count(), 1, "{prompt}");
         assert!(!prompt.contains("## Workspace Instructions"), "{prompt}");
+    }
+
+    /// An `AGENTS.md` edit mid-session would change the system prompt and
+    /// re-send the whole cached context, so a session keeps the version from
+    /// its first call; the next session reads the edit.
+    #[tokio::test]
+    async fn agents_md_edits_apply_to_the_next_session() {
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::write(ws.path().join("AGENTS.md"), "Rule one.").unwrap();
+        let hook = || WorkspaceInstructionsHook {
+            workspace: Some(ws.path().to_path_buf()),
+            include_workspace: true,
+            global: PathBuf::from("/nonexistent/AGENTS.md"),
+            cache: Mutex::new(HashMap::new()),
+        };
+        let ctx = |sid: &str| RunContext { session_id: Some(sid.into()), run_id: "run".into(), agent_name: "test".into(), workspace: None };
+        let state = AgentState::new(Vec::new(), String::new());
+        let sid = format!("agents-md-{}", uuid::Uuid::new_v4());
+
+        let first = hook().wrap_system_prompt(&ctx(&sid), &state, "Base.".into()).await;
+        std::fs::write(ws.path().join("AGENTS.md"), "Rule two, longer.").unwrap();
+        // Hooks are rebuilt every turn, so a fresh hook is the next turn.
+        let later_turn = hook().wrap_system_prompt(&ctx(&sid), &state, "Base.".into()).await;
+        let next_session = hook().wrap_system_prompt(&ctx(&format!("{sid}-next")), &state, "Base.".into()).await;
+
+        assert!(first.contains("Rule one."), "{first}");
+        assert_eq!(later_turn, first, "the session keeps its first AGENTS.md");
+        assert!(next_session.contains("Rule two, longer."), "{next_session}");
     }
 }

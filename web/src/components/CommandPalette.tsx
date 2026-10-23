@@ -432,6 +432,8 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
       onClose={onClose}
       label={hasFiles ? 'Quick Open' : 'Command palette'}
       variant="palette"
+      // Not the first focusable: on a nested page that is the back chip.
+      initialFocus={inputRef}
     >
       {/* A shrinkable column: the palette is capped to the visible area above
           the iOS keyboard (``.app-overlay-palette``), so the list gives way

@@ -1210,7 +1210,9 @@ agent against it.
     `Ctrl/⌘+Shift+D`, the dock's maximize button or **Maximize Review Dock** in
     the palette gives the dock the full width over the chat; the conversation
     stays loaded underneath. While maximized, the Plan and Side questions tabs
-    drop their reading-column cap and use the full width `[v3.27.0]`. Tabs close
+    keep prose at about 88 characters a line and give tables, code and
+    diagrams a wider band, up to 960px, rather than the full width
+    `[v3.28.0]`. Tabs close
     with ×, middle-click or `Ctrl/⌘+W`, and focus moves to the neighbouring tab.
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.

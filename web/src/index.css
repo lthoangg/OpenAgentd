@@ -1003,6 +1003,31 @@ html[data-app-hidden="true"] *::after {
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }
 
+/*
+ * Reading column of the Plan and Side questions tabs in a maximized dock.
+ * Prose keeps an 88-character measure; tables, code and diagrams widen into
+ * a centered band capped at --reading-wide, never the full dock. Elsewhere
+ * the column keeps its max-w-3xl. `ch` is the element's own font: prose is
+ * text-sm, and `-xs` scales a text-xs block's measure to the same width.
+ */
+[data-dock-maximized] .oa-reading {
+  --reading-wide: 960px;
+  max-width: var(--reading-wide);
+  container-type: inline-size;
+}
+[data-dock-maximized] .oa-reading :is(.oa-prose, .oa-reading-measure) {
+  max-width: 88ch;
+  margin-inline: auto;
+}
+[data-dock-maximized] .oa-reading .oa-reading-measure-xs {
+  max-width: calc(88ch * 7 / 6);
+  margin-inline: auto;
+}
+[data-dock-maximized] .oa-reading .oa-prose > :is([data-slot='code-block'], [data-slot='mermaid-block'], .oa-table-container) {
+  width: 100cqi;
+  margin-inline: calc((100% - 100cqi) / 2);
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Tool description — compact prose inside the settings panel.
  * Matches the old plain-text style exactly: xs/muted/relaxed.

@@ -71,12 +71,14 @@ describe('SideQuestionsTabView', () => {
     expect(screen.getByText('first answer')).toBeTruthy()
   })
 
-  it('keeps a reading column that a maximized dock widens to its full width', async () => {
+  it('keeps a reading column that a maximized dock widens without going full width', async () => {
     renderTab()
     await screen.findByText('first answer')
     const list = screen.getByRole('list')
     expect(list.className).toContain('max-w-3xl')
-    expect(list.className).toContain('[[data-dock-maximized]_&]:max-w-none')
+    expect(list.className).toContain('oa-reading')
+    expect(list.className).not.toContain('max-w-none')
+    expect(screen.getAllByRole('listitem')[0].className).toContain('oa-reading-measure-xs')
   })
 
   it('loads the list without the panel above the composer being open', async () => {

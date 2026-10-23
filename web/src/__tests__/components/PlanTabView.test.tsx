@@ -161,11 +161,21 @@ describe('PlanTabView', () => {
     expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
   })
 
-  it('keeps a reading column that a maximized dock widens to its full width', () => {
+  it('keeps a reading column that a maximized dock widens without going full width', () => {
     const { container } = renderTab()
     const body = container.querySelector('.mx-auto')!
     expect(body.className).toContain('max-w-3xl')
-    expect(body.className).toContain('[[data-dock-maximized]_&]:max-w-none')
+    // index.css: under [data-dock-maximized], prose keeps 88ch and wide blocks get a capped band.
+    expect(body.className).toContain('oa-reading')
+    expect(body.className).not.toContain('max-w-none')
+  })
+
+  it('renders tables and code as direct children of the prose, where the wide band applies', () => {
+    const content = '# Wide\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```ts\nconst x = 1\n```\n'
+    const { container } = renderTab({ plan: { ...PLAN, content } })
+    // index.css selects `.oa-reading .oa-prose > :is([data-slot=code-block], .oa-table-container)`.
+    expect(container.querySelector('.oa-reading .oa-prose > .oa-table-container')).not.toBeNull()
+    expect(container.querySelector('.oa-reading .oa-prose > [data-slot="code-block"]')).not.toBeNull()
   })
 
   it('shows the review footer while a plan review is open', () => {

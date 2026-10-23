@@ -98,9 +98,11 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
         )
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-          <ol className="mx-auto flex max-w-3xl flex-col divide-y divide-(--color-border-subtle) text-xs [[data-dock-maximized]_&]:max-w-none">
+          {/* `oa-reading` (index.css): a maximized dock widens tables, code
+              and diagrams while each exchange keeps the prose measure. */}
+          <ol className="oa-reading mx-auto flex max-w-3xl flex-col divide-y divide-(--color-border-subtle) text-xs">
             {exchanges.map((exchange, i) => (
-              <li key={exchange.key}>
+              <li key={exchange.key} className="oa-reading-measure-xs w-full">
                 <article
                   ref={i === exchanges.length - 1 ? newestRef : undefined}
                   aria-label={exchange.question}

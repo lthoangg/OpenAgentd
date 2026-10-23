@@ -9,6 +9,11 @@ use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 
+/// Longest question text; must match `maxLength` in `tool_definitions.json`.
+const MAX_QUESTION_CHARS: usize = 1000;
+/// Longest option description; must match `maxLength` in `tool_definitions.json`.
+const MAX_OPTION_DESCRIPTION_CHARS: usize = 400;
+
 pub struct AskUserTool {
     pub session_id: String,
     pub pool: DbPool,
@@ -108,7 +113,7 @@ pub fn validate_args(args: &Value) -> Result<Vec<Value>, Vec<String>> {
         let before = errs.len();
         let question = req_string(&mut errs, o, "question", &format!("{loc} -> question"));
         if errs.len() == before {
-            str_len_err(&mut errs, &format!("{loc} -> question"), &question, 1, 500);
+            str_len_err(&mut errs, &format!("{loc} -> question"), &question, 1, MAX_QUESTION_CHARS);
         }
         let b2 = errs.len();
         let header = req_string(&mut errs, o, "header", &format!("{loc} -> header"));
@@ -139,8 +144,8 @@ pub fn validate_args(args: &Value) -> Result<Vec<Value>, Vec<String>> {
                         let description = match oo.get("description") {
                             None | Some(Value::Null) => Value::Null,
                             Some(Value::String(s)) => {
-                                if s.chars().count() > 200 {
-                                    errs.push(format!("{ol} -> description: String should have at most 200 characters"));
+                                if s.chars().count() > MAX_OPTION_DESCRIPTION_CHARS {
+                                    errs.push(format!("{ol} -> description: String should have at most {MAX_OPTION_DESCRIPTION_CHARS} characters"));
                                 }
                                 Value::String(s.clone())
                             }
@@ -246,5 +251,18 @@ mod tests {
         let def = appv3_tools::contract_definition("ask_user").unwrap();
         let props = def.pointer("/function/parameters/properties/questions/items/properties").unwrap();
         assert!(props.get("custom").is_none(), "{props}");
+    }
+
+    /// Models kept writing past the old 500/200 limits, each a wasted turn.
+    #[test]
+    fn length_limits_match_the_schema() {
+        let q = |question: String, description: String| json!({"question": question, "header": "H", "options": [{"label": "a", "description": description}, {"label": "b"}]});
+        assert!(validate_args(&q("x".repeat(1000), "d".repeat(400))).is_ok());
+        assert!(validate_args(&q("x".repeat(1001), "d".into())).is_err());
+        assert!(validate_args(&q("x".into(), "d".repeat(401))).is_err());
+        let def = appv3_tools::contract_definition("ask_user").unwrap();
+        let props = def.pointer("/function/parameters/properties/questions/items/properties").unwrap();
+        assert_eq!(props.pointer("/question/maxLength"), Some(&json!(MAX_QUESTION_CHARS)));
+        assert_eq!(props.pointer("/options/items/properties/description/maxLength"), Some(&json!(MAX_OPTION_DESCRIPTION_CHARS)));
     }
 }

@@ -18,7 +18,7 @@ use std::path::Path;
 pub const PLAN_TOOL: &str = "plan";
 pub const SUBMIT_PLAN_TOOL: &str = "submit_plan";
 const MAX_EDITS: usize = 20;
-const MAX_SUMMARY_CHARS: usize = 300;
+const MAX_SUMMARY_CHARS: usize = 600;
 
 fn in_plan_mode(ctx: &ToolContext) -> bool {
     ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan")
@@ -221,7 +221,8 @@ mod tests {
         assert_eq!(parse_summary(&json!({})), Ok(None));
         assert_eq!(parse_summary(&json!({"summary": "  "})), Ok(None));
         assert_eq!(parse_summary(&json!({"summary": "Split step 2"})), Ok(Some("Split step 2".into())));
-        assert!(parse_summary(&json!({"summary": "x".repeat(301)})).is_err());
+        assert_eq!(parse_summary(&json!({"summary": "x".repeat(600)})), Ok(Some("x".repeat(600))), "a 600-char summary fits");
+        assert!(parse_summary(&json!({"summary": "x".repeat(601)})).is_err());
     }
 
     #[test]

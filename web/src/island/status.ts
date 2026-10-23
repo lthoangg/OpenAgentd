@@ -74,18 +74,28 @@ export const EAR_WIDTH = 8
 export const CANVAS_WIDTH = 460
 export const CANVAS_HEIGHT = 380
 
+/**
+ * What the pill shows when it is not expanded. Attention first: a session
+ * waiting on you, then finished work you have not read (even while others
+ * still run), then running work.
+ */
+export function compactMode(
+  sessions: readonly IslandSession[],
+  unread: readonly IslandSession[],
+): Exclude<IslandMode, 'expanded'> {
+  if (sessions.some((s) => s.state === 'needs_input')) return 'needs_input'
+  if (unread.length > 0) return 'done'
+  return sessions.length > 0 ? 'running' : 'hidden'
+}
+
 export function islandMode(
   sessions: readonly IslandSession[],
   unread: readonly IslandSession[],
   hovered: boolean,
   settings: IslandSettings,
 ): IslandMode {
-  if (sessions.length > 0 || unread.length > 0) {
-    if (hovered && settings.expandOnHover) return 'expanded'
-    if (sessions.some((s) => s.state === 'needs_input')) return 'needs_input'
-    return sessions.length > 0 ? 'running' : 'done'
-  }
-  return 'hidden'
+  const mode = compactMode(sessions, unread)
+  return mode !== 'hidden' && hovered && settings.expandOnHover ? 'expanded' : mode
 }
 
 /** The pill's width. `hidden` is the size it shrinks into: the notch itself. */
@@ -102,7 +112,7 @@ export function islandHeight(mode: IslandMode, geometry: NotchGeometry, listHeig
   return Math.min(geometry.height + listHeight, CANVAS_HEIGHT)
 }
 
-/** The two short labels either side of the notch: active work first. */
+/** The two short labels either side of the notch, in {@link compactMode}'s order. */
 export function compactLabels(
   sessions: readonly IslandSession[],
   unread: readonly IslandSession[],
@@ -111,14 +121,14 @@ export function compactLabels(
   if (waiting.length > 0) {
     return { lead: 'Needs input', detail: waiting.length === 1 ? waiting[0].title : `${waiting.length} sessions` }
   }
-  if (sessions.length > 0) {
-    return { lead: 'Working', detail: sessions.length === 1 ? sessions[0].title : `${sessions.length} sessions` }
-  }
   if (unread.length > 0) {
     return {
       lead: allFailed(unread) ? 'Failed' : 'Done',
       detail: unread.length === 1 ? unread[0].title : `${unread.length} sessions`,
     }
+  }
+  if (sessions.length > 0) {
+    return { lead: 'Working', detail: sessions.length === 1 ? sessions[0].title : `${sessions.length} sessions` }
   }
   return { lead: '', detail: '' }
 }
@@ -128,7 +138,15 @@ export function allFailed(unread: readonly IslandSession[]): boolean {
   return unread.length > 0 && unread.every((s) => s.state === 'failed')
 }
 
-/** The session a click on the pill itself opens. */
+/** The session a click on the pill itself opens: the one its labels name first. */
 export function primarySessionId(sessions: readonly IslandSession[], unread: readonly IslandSession[]): string | null {
-  return sessions[0]?.id ?? unread[0]?.id ?? null
+  const waiting = sessions.find((s) => s.state === 'needs_input')
+  return waiting?.id ?? unread[0]?.id ?? sessions[0]?.id ?? null
+}
+
+/** The expanded list: waiting sessions, then unread finished ones, then running ones. */
+export function listOrder(sessions: readonly IslandSession[], unread: readonly IslandSession[]): IslandSession[] {
+  const waiting = sessions.filter((s) => s.state === 'needs_input')
+  const running = sessions.filter((s) => s.state !== 'needs_input')
+  return [...waiting, ...unread, ...running]
 }

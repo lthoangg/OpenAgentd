@@ -515,12 +515,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     "Done" shows once, for the whole job `[v3.27.0]`. It turns
     orange with "Needs input" when an agent waits on a question or a plan
     review, and keeps "Done" (or "Failed") up for a finished session until
-    you open it, in the app or from the pill, or dismiss it. A session that
+    you open it, in the app or from the pill, or dismiss it.
+    Since `[v3.28.0]` the pill ranks Needs input over Done/Failed over
+    Working: a finished session you have not opened shows even while others
+    still run, and the list and a click on the pill follow the same order.
+    A session that
     finishes on screen in the focused window, a turn you stopped yourself,
     and a background idle compaction show nothing. Hover it to list the
-    active sessions, waiting ones first with their question, then the
-    finished ones with a × to dismiss; click a row or the pill to open that
-    session. The pill grows out of the notch, springs open on hover and
+    sessions, waiting ones first with their question, then the finished
+    ones with a × to dismiss, then running ones; click a row or the pill to
+    open that session. The pill grows out of the notch, springs open on hover and
     shrinks back in, and clicks beside it still reach the menu bar. It never
     takes focus and shows over full-screen apps. Settings → General →
     Desktop turns it off, and can also keep it up while OpenAgentd is in

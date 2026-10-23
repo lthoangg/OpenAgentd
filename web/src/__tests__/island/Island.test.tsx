@@ -134,12 +134,13 @@ describe('Island', () => {
     }
   })
 
-  it('lists unread sessions after the active ones, to open or dismiss', async () => {
+  it('lists unread sessions before running ones, to open or dismiss', async () => {
     await mount()
     push(status(2, [running('a', 'Docs')], [done('d', 'Fix tooltip slide')]))
+    expect(screen.getByText('Done')).toBeInTheDocument()
     point(true)
     const rows = within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole('listitem').map((li) => li.textContent)
-    expect(rows).toEqual(['Docsweb', 'Fix tooltip slideweb'])
+    expect(rows).toEqual(['Fix tooltip slideweb', 'Docsweb'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss Fix tooltip slide' }))
     await waitFor(() => expect(dismissed()).toEqual(['d']))

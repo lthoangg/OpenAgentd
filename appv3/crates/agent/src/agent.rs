@@ -493,6 +493,9 @@ impl Agent {
             let span_ctx = model_span.as_ref().map(|(_, s, _)| s.ctx()).or_else(appv3_core::otel::current);
             let call = appv3_core::otel::scope(span_ctx, async {
                 let ModelRequest { messages, system_prompt } = Self::prepare_call(&hooks, &ctx, &mut state, req).await;
+                if let Some((o, span, _)) = &model_span {
+                    o.record_request(span, &ctx, &system_prompt, &tool_defs, &messages);
+                }
                 stream_and_assemble(StreamArgs {
                     ctx: &ctx,
                     state: &state,

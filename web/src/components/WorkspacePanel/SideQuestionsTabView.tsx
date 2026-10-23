@@ -98,7 +98,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
         )
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-          <ol className="mx-auto flex max-w-3xl flex-col divide-y divide-(--color-border-subtle) text-xs">
+          <ol className="mx-auto flex max-w-3xl flex-col divide-y divide-(--color-border-subtle) text-xs [[data-dock-maximized]_&]:max-w-none">
             {exchanges.map((exchange, i) => (
               <li key={exchange.key}>
                 <article

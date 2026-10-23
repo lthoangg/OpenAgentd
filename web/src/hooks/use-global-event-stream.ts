@@ -105,6 +105,13 @@ export async function handleGlobalEvent(
       return false
     }
     markSessionRunning(queryClient, sessionId, true)
+    // A subagent turn starting (a follow-up from its lead, or an answer to
+    // its question) changes what the lead's member list reports; the row
+    // reads it from there while that lead or one of its subagents is open.
+    const parentSessionId = typeof event.parent_session_id === 'string' ? event.parent_session_id : null
+    if (parentSessionId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(parentSessionId) })
+    }
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true

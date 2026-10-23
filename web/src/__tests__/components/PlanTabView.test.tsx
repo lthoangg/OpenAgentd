@@ -161,6 +161,13 @@ describe('PlanTabView', () => {
     expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
   })
 
+  it('keeps a reading column that a maximized dock widens to its full width', () => {
+    const { container } = renderTab()
+    const body = container.querySelector('.mx-auto')!
+    expect(body.className).toContain('max-w-3xl')
+    expect(body.className).toContain('[[data-dock-maximized]_&]:max-w-none')
+  })
+
   it('shows the review footer while a plan review is open', () => {
     useAgentStore.setState({ pendingQuestion: REVIEW })
     renderTab()

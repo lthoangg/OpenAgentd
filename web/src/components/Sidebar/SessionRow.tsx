@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ChevronRight, GitBranch, Loader2, Pencil, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronRight, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
-import { LIST_ROW_GEOMETRY, listRowSurface, listRowText } from '@/components/ui/list-row'
+import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -23,9 +23,11 @@ function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
 /** Where a session's context menu opens: the pointer, or the row for keys. */
 export type MenuPoint = Pick<React.MouseEvent, 'clientX' | 'clientY'>
 
-/** Inline row action: in-flow (never overlays the title), 24px target. */
-const ROW_ACTION =
-  'flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9'
+/** The row's actions menu opens under its More button, like a dropdown. */
+function menuBelow(button: HTMLElement): MenuPoint {
+  const rect = button.getBoundingClientRect()
+  return { clientX: rect.left, clientY: rect.bottom + 4 }
+}
 
 function SessionRowView({
   session,
@@ -80,9 +82,7 @@ function SessionRowView({
   const canPin = Boolean(onSessionPinToggle) && !session.parent_session_id
   const pinLabel = `${pinned ? 'Unpin' : 'Pin'} session ${sessionTitle}`
   // Touch without long-press sheets has no hover: keep actions visible there.
-  const actionsVisibility = mobileLongPressActions
-    ? 'hidden'
-    : 'hidden group-hover/row:flex group-focus-within/row:flex pointer-coarse:flex'
+  const actionsVisibility = mobileLongPressActions ? 'hidden' : rowActionsReveal('row')
   const metaVisibility = mobileLongPressActions
     ? ''
     : 'group-hover/row:hidden group-focus-within/row:hidden pointer-coarse:hidden'
@@ -103,7 +103,9 @@ function SessionRowView({
             member_id: s.agent_name || s.id,
             profile: s.agent_name || 'member',
             title: s.title || s.agent_name || s.id,
-            status: s.running ? 'working' : s.needs_input ? 'waiting_lead' : 'completed',
+            // Waiting first: a subagent asking its lead keeps its turn open,
+            // so it reports `running` as well.
+            status: s.needs_input ? 'waiting_lead' : s.running ? 'working' : 'completed',
             created_at: s.created_at,
             has_pending_question: s.needs_input === true,
           }))
@@ -225,7 +227,7 @@ function SessionRowView({
               e.preventDefault()
               setExpandedOverride(!isExpanded)
             }}
-            className="ml-1 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full bg-(--bg-key) pl-1.5 pr-1 font-mono text-[11px] leading-4 text-(--color-text-subtle) transition-colors hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5"
+            className={`ml-1 ${rowChipClass(!isExpanded && hasActiveWork)}`}
             aria-expanded={isExpanded}
             aria-label={subagentToggleLabel}
             title={subagentToggleLabel}
@@ -293,20 +295,14 @@ function SessionRowView({
             type="button"
             onClick={(e) => {
               e.stopPropagation()
-              onSessionEdit(session)
+              onSessionContextActions(session, menuBelow(e.currentTarget))
             }}
             className={ROW_ACTION}
-            aria-label={`Edit session ${session.title || 'Untitled'}`}
+            aria-haspopup="menu"
+            aria-label={`More actions for ${sessionTitle}`}
+            title="More"
           >
-            <Pencil size={11} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => onSessionDelete(e, session)}
-            className={`${ROW_ACTION} hover:bg-(--color-error-subtle) hover:text-(--color-error)`}
-            aria-label={`Delete session ${session.title || 'Untitled'}`}
-          >
-            <Trash2 size={11} aria-hidden="true" />
+            <MoreHorizontal size={12} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -349,6 +345,11 @@ function SessionRowView({
                       onClick={(e) => {
                         onSessionSelect(subSessionPayload, path, e)
                       }}
+                      onContextMenu={(e) => {
+                        if (mobileLongPressActions) return
+                        e.preventDefault()
+                        onSessionContextActions(subSessionPayload, e)
+                      }}
                       className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
                         isSubCurrent
                           ? 'text-(--color-text) font-semibold'
@@ -359,7 +360,8 @@ function SessionRowView({
                         status={isSubWaiting ? 'needs_input' : isSubWorking ? 'running' : 'idle'}
                         label={isSubWaiting ? 'Subagent waiting for lead' : 'Subagent working'}
                       />
-                      <span className="shrink-0 font-mono text-[11px] font-semibold text-(--color-text)">
+                      {/* Capped: a handle can fall back to the session id. */}
+                      <span className="max-w-[45%] shrink-0 truncate font-mono text-[11px] font-semibold text-(--color-text)">
                         {sub.member_id}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[11px] text-(--color-text-muted)">
@@ -376,11 +378,13 @@ function SessionRowView({
               </Tooltip>
               <button
                 type="button"
-                onClick={(e) => onSessionDelete(e, subSessionPayload)}
-                className={`${ROW_ACTION} h-5 w-5 hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileLongPressActions ? 'hidden' : 'hidden group-hover/sub:flex group-focus-within/sub:flex pointer-coarse:flex'}`}
-                aria-label={`Delete subagent session ${sub.member_id}`}
+                onClick={(e) => onSessionContextActions(subSessionPayload, menuBelow(e.currentTarget))}
+                className={`${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('sub')}`}
+                aria-haspopup="menu"
+                aria-label={`More actions for subagent ${sub.member_id}`}
+                title="More"
               >
-                <Trash2 size={11} aria-hidden="true" />
+                <MoreHorizontal size={12} aria-hidden="true" />
               </button>
             </div>
             )

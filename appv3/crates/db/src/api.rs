@@ -14,6 +14,9 @@ use serde_json::{Map, Value};
 pub struct SessionOverlay {
     pub running: bool,
     pub needs_input: bool,
+    /// The session's own turn ended, but work it started will run it again
+    /// (subagents still running, or a reply another workspace owes it).
+    pub background_work: bool,
     pub pending_interaction_mode: Option<String>,
     pub estimated_cost_usd: Option<f64>,
     pub completion_tokens: Option<i64>,
@@ -56,6 +59,10 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
     put(&mut m, "last_message_at", s.last_message_at.as_deref().map(|t| Value::String(api_dt(t))));
     // v3 addition, omitted when unpinned so v2 response shapes are unchanged.
     put(&mut m, "pinned_at", s.pinned_at.as_deref().map(|p| Value::String(api_dt(p))));
+    // v3 addition, omitted when false for the same reason.
+    if o.background_work {
+        m.insert("background_work".into(), Value::Bool(true));
+    }
     m
 }
 

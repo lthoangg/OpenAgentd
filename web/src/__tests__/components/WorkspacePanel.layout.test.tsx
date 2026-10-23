@@ -108,10 +108,13 @@ describe('Review dock layout', () => {
     expect(useLayoutStore.getState().dockMaximized).toBe(true)
     expect(dock.className).toContain('md:absolute')
     expect(screen.queryByRole('separator', { name: 'Resize review dock' })).toBeNull()
+    // Reading-column tabs widen off this marker.
+    expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(true)
 
     await user.click(screen.getByRole('button', { name: /^Restore review dock/ }))
     expect(useLayoutStore.getState().dockMaximized).toBe(false)
     expect(dock.className).toContain('md:relative')
+    expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 
   it('falls back to an overlay without a maximize toggle when the center is too narrow', async () => {
@@ -119,6 +122,7 @@ describe('Review dock layout', () => {
 
     expect(dock.className).toContain('md:absolute')
     expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review dock/ })).toBeNull()
+    expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 
   it('measures the center element it is given so the shell need not re-render on resize', async () => {
@@ -221,10 +225,12 @@ describe('Review dock layout', () => {
   })
 
   it('keeps mobile on the full-screen sheet without desktop window controls', async () => {
+    useLayoutStore.setState({ dockMaximized: true })
     const { dock } = await renderPanel({ mobile: true })
 
     expect(dock.className).toContain('mobile-safe-top')
     expect(screen.queryByRole('separator', { name: 'Resize review dock' })).toBeNull()
     expect(screen.queryByRole('button', { name: /review dock/ })).toBeNull()
+    expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 })

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-22
+updated: 2026-10-23
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.26.0 · October 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.26.0)
+**Latest release:** v3.27.0 · October 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.27.0)
 
 ---
 
@@ -264,7 +264,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette, and chat actions drawer cover them. Press and hold the
   pinned Chat row in the mobile sidebar to start a new chat session, since the
   inline `+` is hidden on touch.
-- **Palette pages and switching** `[v3.0.0, updated v3.21.0]` — the Command Palette gains
+- **Palette pages and switching** `[v3.0.0, updated v3.21.0, v3.27.0]` — the Command Palette gains
   Switch Session… (recent sessions in every workspace, with running and
   waiting-for-you status) and Switch Workspace… (repositories, worktrees,
   and Chat, most recently active first). Each opens a nested list in place;
@@ -278,6 +278,14 @@ run from the terminal (the native Rust binary since v3.0.0).
   nothing is typed `[v3.21.0]`. → opens the highlighted list and ← on an
   empty query, Backspace, or Escape steps back one level, landing on the
   row that opened it `[v3.21.0]`.
+  `⌘L`/`Ctrl+L` opens Switch Workspace/Session… directly, and
+  `⌘⇧L`/`Ctrl+Shift+L` opens the current workspace's sessions (**Sessions
+  in This Workspace…**, also a palette command and a desktop View menu item)
+  with New Session highlighted; Escape steps back to the workspace list
+  `[v3.27.0]`. Palette, Quick Open, and picker lists now highlight a row on
+  hover only when the mouse actually moves, so a list opening, loading, or
+  scrolling under a parked cursor no longer steals the keyboard's choice
+  `[v3.27.0]`.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.22.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
@@ -501,7 +509,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
     another app, a black pill grows out of the MacBook notch (or hangs from
     the middle of the menu bar on a display without one) whenever an agent
-    is busy. It reads "Working" with the session title or count, turns
+    is busy. It reads "Working" with the session title or count, and a
+    session whose own turn ended while its subagents (or another workspace)
+    still work for it stays "Working" until their reports are in, so
+    "Done" shows once, for the whole job `[v3.27.0]`. It turns
     orange with "Needs input" when an agent waits on a question or a plan
     review, and keeps "Done" (or "Failed") up for a finished session until
     you open it, in the app or from the pill, or dismiss it. A session that
@@ -1194,8 +1205,9 @@ agent against it.
     files are searched with Quick Open (`Ctrl/⌘+P`). On desktop,
     `Ctrl/⌘+Shift+D`, the dock's maximize button or **Maximize Review Dock** in
     the palette gives the dock the full width over the chat; the conversation
-    stays loaded underneath. Tabs close with ×, middle-click or `Ctrl/⌘+W`, and
-    focus moves to the neighbouring tab.
+    stays loaded underneath. While maximized, the Plan and Side questions tabs
+    drop their reading-column cap and use the full width `[v3.27.0]`. Tabs close
+    with ×, middle-click or `Ctrl/⌘+W`, and focus moves to the neighbouring tab.
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.
     - A new dock opens empty, on a launcher with Git, Terminal, Preview and
@@ -1379,6 +1391,19 @@ agent against it.
   window. Unread state stays on this device, and sessions that finish while the
   app is closed are not marked. Since `[v3.26.0]` an idle compaction no longer
   marks a session unread.
+  Since `[v3.27.0]` a session whose subagents are still working keeps its
+  spinner after its own turn ends (in Status view it stays under Working, and
+  a collapsed workspace still lists it), and a subagent that asked its lead a
+  question reads "waiting for lead" in every window rather than "working".
+- **Sidebar row actions** `[v3.27.0]` — every sidebar row's buttons share one
+  borderless 24px style (36px on touch) and appear on hover or keyboard focus
+  in place of the row's age and tags, so titles and folder names keep the row
+  at rest. Session rows offer **Pin** and **More**, subagent rows **More**,
+  and folders **+** and **More**; More opens the same menu as right-click
+  (Pin, Edit title, Delete), so delete is no longer one click from a row.
+  Double-click and F2 still rename, and the Delete key still deletes. A long
+  subagent title now truncates in Pinned and the Status and Date views instead
+  of widening the list past the sidebar.
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and

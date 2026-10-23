@@ -183,7 +183,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     expect(screen.getByText('Trace AST nodes')).toBeTruthy()
   })
 
-  it('triggers onSessionDelete when clicking the subagent delete button', async () => {
+  it('opens the row actions for a subagent from its More button', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -224,7 +224,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
       }
     )
 
-    const handleDelete = mock(() => {})
+    const handleActions = mock(() => {})
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -232,25 +232,24 @@ describe('WorkspaceSessionList — subagent sessions', () => {
           path="/test/workspace"
           currentSessionId="parent-del-test"
           onSessionSelect={() => {}}
-          onSessionDelete={handleDelete}
+          onSessionDelete={() => {}}
           onSessionEdit={() => {}}
           onSessionLongPress={() => {}}
-          onSessionContextActions={() => {}}
+          onSessionContextActions={handleActions}
         />
       </QueryClientProvider>
     )
 
-    const subDeleteBtn = screen.getByLabelText('Delete subagent session explorer#1')
-    expect(subDeleteBtn).toBeTruthy()
+    const subMore = screen.getByLabelText('More actions for subagent explorer#1')
     // Row actions and the subagent pill grow on touch (DESIGN.md touch parity).
-    expect(subDeleteBtn.className).toContain('pointer-coarse:size-9')
-    expect(screen.getByLabelText(/^Edit session /).className).toContain('pointer-coarse:size-9')
+    expect(subMore.className).toContain('pointer-coarse:size-9')
+    expect(screen.getByLabelText(/^More actions for (?!subagent)/).className).toContain('pointer-coarse:size-9')
     expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-9')
-    fireEvent.click(subDeleteBtn)
-    expect(handleDelete).toHaveBeenCalledTimes(1)
-    const deletedArg = handleDelete.mock.calls[0][1] as SessionResponse
-    expect(deletedArg.id).toBe('sub-del-1')
-    expect(deletedArg.parent_session_id).toBe('parent-del-test')
+    fireEvent.click(subMore)
+    expect(handleActions).toHaveBeenCalledTimes(1)
+    const target = handleActions.mock.calls[0][0] as SessionResponse
+    expect(target.id).toBe('sub-del-1')
+    expect(target.parent_session_id).toBe('parent-del-test')
   })
 })
 

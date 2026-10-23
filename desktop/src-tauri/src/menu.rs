@@ -31,6 +31,8 @@ pub const MENU_TOGGLE_SIDEBAR: &str = "toggle_sidebar";
 pub const MENU_TERMINAL: &str = "terminal";
 pub const MENU_QUICK_OPEN: &str = "quick_open";
 pub const MENU_COMMAND_PALETTE: &str = "command_palette";
+pub const MENU_SWITCH_WORKSPACE: &str = "switch_workspace";
+pub const MENU_WORKSPACE_SESSIONS: &str = "workspace_sessions";
 pub const MENU_SCHEDULER: &str = "scheduler";
 pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
 pub const MENU_SETTINGS: &str = "settings";
@@ -161,6 +163,20 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         "Command Palette…",
         true,
         Some("CmdOrCtrl+K"),
+    )?;
+    let view_switch_workspace = MenuItem::with_id(
+        app,
+        MENU_SWITCH_WORKSPACE,
+        "Switch Workspace/Session…",
+        true,
+        Some("CmdOrCtrl+L"),
+    )?;
+    let view_workspace_sessions = MenuItem::with_id(
+        app,
+        MENU_WORKSPACE_SESSIONS,
+        "Sessions in This Workspace…",
+        true,
+        Some("CmdOrCtrl+Shift+L"),
     )?;
     let view_scheduler = MenuItem::with_id(
         app,
@@ -298,6 +314,8 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&view_command_palette)
         .item(&view_quick_open)
+        .item(&view_switch_workspace)
+        .item(&view_workspace_sessions)
         .separator()
         .item(&view_toggle_sidebar)
         .item(&view_terminal)
@@ -578,6 +596,8 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_TERMINAL => emit_frontend_command(app, "terminal"),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
+        MENU_SWITCH_WORKSPACE => emit_frontend_command(app, "switch_workspace"),
+        MENU_WORKSPACE_SESSIONS => emit_frontend_command(app, "workspace_sessions"),
         MENU_SCHEDULER => emit_frontend_command(app, "scheduler"),
         MENU_AGENT_CAPABILITIES => emit_frontend_command(app, "agent_capabilities"),
         MENU_SETTINGS => emit_frontend_command(app, "settings"),

@@ -12,6 +12,8 @@ import { getCodingWorkspaceTree, listSessions } from '@/api/client'
 import { startNewSession } from '@/lib/new-session'
 import { queryKeys } from '@/queries'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
+import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { applySessionSelection } from '../Sidebar.sessions'
 import type { Command } from '../CommandPalette'
 import { buildSwitchCommands } from './paletteSwitchCommands'
@@ -28,6 +30,7 @@ export function usePaletteSwitchCommands({
   sessionId: string | null
 }): Command[] {
   const navigate = useNavigate()
+  const { os } = usePlatform()
   const { data: sessionPages } = useSessionsQuery()
   const { data: tree = null } = useQuery({
     queryKey: queryKeys.coding.tree(),
@@ -57,6 +60,10 @@ export function usePaletteSwitchCommands({
       workspaceSessions: openedWorkspace && workspacePages
         ? { path: openedWorkspace, sessions: workspacePages.pages.flatMap((page) => page.data) }
         : null,
+      shortcuts: {
+        switchWorkspace: shortcutLabel(APP_SHORTCUTS.switchWorkspace, os),
+        workspaceSessions: shortcutLabel(APP_SHORTCUTS.workspaceSessions, os),
+      },
     },
     {
       openSession: (session) => applySessionSelection({ session, workspacePath: session.workspace ?? '', navigate }),
@@ -65,5 +72,5 @@ export function usePaletteSwitchCommands({
       },
       loadWorkspace: setOpenedWorkspace,
     },
-  ), [navigate, openedWorkspace, sessionId, sessionPages, tree, workspace, workspacePages])
+  ), [navigate, openedWorkspace, os, sessionId, sessionPages, tree, workspace, workspacePages])
 }

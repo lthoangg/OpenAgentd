@@ -33,6 +33,8 @@ function panels(open: { scheduler?: boolean; settings?: boolean }) {
       schedulerOpen={open.scheduler ?? false}
       onCloseScheduler={() => {}}
       showPalette={false}
+      palettePage={[]}
+      paletteKey={0}
       paletteCommands={[]}
       quickOpenOpen={false}
       quickOpenQuery=""

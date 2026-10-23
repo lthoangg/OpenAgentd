@@ -61,6 +61,7 @@ import {
   X,
 } from 'lucide-react'
 import { APP_EVENTS } from '@/lib/app-events'
+import { sessionWorking } from '@/lib/active-sessions'
 import {
   useDeleteSessionMutation,
   useSessionsQuery,
@@ -83,6 +84,7 @@ import {
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ROW_ACTION, ROW_TEXT_ACTION, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -959,7 +961,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => setGroupFilter(null)}
-              className="shrink-0 rounded-xs px-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5"
+              className={ROW_TEXT_ACTION}
               aria-label="Show all workspaces"
             >
               Show all
@@ -984,7 +986,7 @@ export function Sidebar({
           const worktreeIsRemoving = worktreeRemoving !== null && allCheckoutPaths.includes(worktreeRemoving)
           const sourceRunningSessions = checkouts.listPaths
             .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
-            .filter((s) => s.running === true)
+            .filter(sessionWorking)
             .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
           const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'main worktree' : 'all')
@@ -1062,11 +1064,7 @@ export function Sidebar({
                             const rect = event.currentTarget.getBoundingClientRect()
                             setCheckoutMenu({ repo: path, x: rect.left, y: rect.bottom + 4 })
                           }}
-                          className={`ml-1 inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-1.5 font-mono text-[11px] leading-4 transition-colors pointer-coarse:h-9 pointer-coarse:px-2.5 ${
-                            checkouts.selected
-                              ? 'bg-(--bg-key) text-(--color-text)'
-                              : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
-                          }`}
+                          className={`ml-1 ${rowChipClass(Boolean(checkouts.selected))}`}
                           aria-haspopup="menu"
                           aria-expanded={checkoutMenu?.repo === path}
                           aria-label={`Checkouts in ${sourceLabel}: ${checkoutLabel}`}
@@ -1091,10 +1089,9 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={() => newSessionIn(sessionTarget)}
-                        // On touch the actions are always shown, so the outline
-                        // would box every row; the bare glyph matches the
-                        // neighbouring row actions there.
-                        className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 pointer-coarse:border-transparent ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                        // Like session rows, the actions take no room at rest,
+                        // so the folder name keeps the whole row.
+                        className={`ml-1 ${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('')}`}
                         aria-label={selectedWorktree ? `New session in worktree ${selectedWorktree.name}` : `New session in ${sourceLabel}`}
                       >
                         <Plus size={11} aria-hidden="true" />
@@ -1106,15 +1103,19 @@ export function Sidebar({
                 {sourceIsChat ? (
                   // Chat has no actions menu; hold its slot so the + lines up
                   // with every other workspace row.
-                  !mobileLongPressActions && <span aria-hidden="true" className="mr-1 w-6 shrink-0 pointer-coarse:w-9" />
+                  !mobileLongPressActions && <span aria-hidden="true" className={`mr-1 w-6 shrink-0 pointer-coarse:w-9 ${rowActionsReveal('')}`} />
                 ) : (
                   <Tooltip>
                     <TooltipTrigger
                       render={
                         <button
                           type="button"
-                          onClick={(event) => setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: event.clientX, y: event.clientY })}
-                          className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                          onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: rect.left, y: rect.bottom + 4 })
+                          }}
+                          className={`mr-1 ${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('')}`}
+                          aria-haspopup="menu"
                           aria-label={`Actions for ${sourceLabel}`}
                         >
                           <MoreHorizontal size={12} aria-hidden="true" />
@@ -1145,7 +1146,7 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={() => selectCheckout(path, null)}
-                        className="shrink-0 rounded-xs px-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5"
+                        className={ROW_TEXT_ACTION}
                         aria-label={`Show all checkouts in ${sourceLabel}`}
                       >
                         Show all
@@ -1739,19 +1740,22 @@ export function Sidebar({
                 {desktopSessionActions.session.pinned_at ? 'Unpin' : 'Pin'}
               </button>
             )}
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                const { session } = desktopSessionActions
-                setDesktopSessionActions(null)
-                handleSessionEdit(session)
-              }}
-            >
-              <Pencil size={12} aria-hidden="true" />
-              Edit title
-            </button>
+            {/* Subagent titles are their task; they have no inline editor. */}
+            {!desktopSessionActions.session.parent_session_id && (
+              <button
+                type="button"
+                role="menuitem"
+                className={CONTEXT_MENU_ITEM_CLASS}
+                onClick={() => {
+                  const { session } = desktopSessionActions
+                  setDesktopSessionActions(null)
+                  handleSessionEdit(session)
+                }}
+              >
+                <Pencil size={12} aria-hidden="true" />
+                Edit title
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

@@ -122,7 +122,7 @@ export function CommitDetail({
             <Collapsible open={expanded}>
               <div className="border-t border-(--color-border-subtle)">
                 {fileDiff ? (
-                  <div className="max-h-[40vh] min-h-0 overflow-y-auto touch-pan-y">
+                  <div className="max-h-[40vh] min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
                     <DiffPreview diff={fileDiff} autoScroll={false} />
                   </div>
                 ) : (

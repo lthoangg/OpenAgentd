@@ -517,7 +517,7 @@ impl AgentSession {
         if !cfg.idle_compaction {
             return skip("disabled");
         }
-        if crate::subagents::has_working_subagents(&sid) || crate::workspace_messages::has_outstanding_replies(&sid) {
+        if crate::subagents::has_pending_work(&sid) {
             return skip("awaiting_work");
         }
         if self.has_open_question().await {
@@ -1002,9 +1002,7 @@ impl AgentSession {
             return None;
         }
         match status {
-            "completed" if crate::subagents::has_working_subagents(session_id) => None,
-            // A reply from another workspace will run this lead again.
-            "completed" if crate::workspace_messages::has_outstanding_replies(session_id) => None,
+            "completed" if crate::subagents::has_pending_work(session_id) => None,
             "completed" => Some("Done"),
             "error" => Some("Failed"),
             _ => None,

@@ -574,7 +574,10 @@ export function WorkspacePanel({
         id={diff.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
         role={diff.data?.is_git_repo ? 'tabpanel' : undefined}
         aria-labelledby={diff.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
-        className="min-h-0 flex-1 overflow-auto touch-pan-y"
+        // Vertical only: ``overflow: auto`` lets one over-wide row pan the
+        // whole list sideways. Tree is the exception: its ASCII rails cannot
+        // wrap, so a graph wider than the dock scrolls sideways.
+        className={cn('min-h-0 flex-1 touch-pan-y', subTab === 'tree' ? 'overflow-auto' : 'overflow-x-hidden overflow-y-auto')}
       >
         {subTab === 'changes' ? (
           <GitReviewSubPanel
@@ -642,7 +645,14 @@ export function WorkspacePanel({
         parked && 'invisible',
       )}
     >
-      <div data-review-dock data-dock-parked={parked || undefined} inert={parked} className="relative flex h-full min-h-0 w-full flex-col">
+      <div
+        data-review-dock
+        data-dock-parked={parked || undefined}
+        // Lets reading-column tabs (Plan, Side questions) drop their width cap.
+        data-dock-maximized={maximizeState === true || undefined}
+        inert={parked}
+        className="relative flex h-full min-h-0 w-full flex-col"
+      >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
         <DockTabBar
           tabs={visibleTabs}

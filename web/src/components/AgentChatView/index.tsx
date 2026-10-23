@@ -255,6 +255,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
+  const palettePage = useUIStore((s) => s.palettePage)
+  const paletteKey = useUIStore((s) => s.paletteKey)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
   const quickOpenQuery = useUIStore((s) => s.quickOpenQuery)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
@@ -967,6 +969,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}
+        palettePage={palettePage}
+        paletteKey={paletteKey}
         paletteCommands={paletteCommands}
         quickOpenOpen={quickOpenOpen}
         quickOpenQuery={quickOpenQuery}

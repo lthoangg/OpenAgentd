@@ -9,8 +9,11 @@
 //! the backend's global event stream and treats each turn event only as a
 //! signal to refetch `GET /api/agent/sessions?active=true`. That list is the
 //! source of truth: every top-level session that is running or waiting on
-//! the user, the same data the sidebar's "Needs you" list uses. The island
-//! gets a snapshot over IPC (`island-status`).
+//! the user, the same data the sidebar's "Needs you" list uses. A lead whose
+//! turn ended while its subagents (or another workspace) still work for it
+//! is listed with `background_work` and counts as running: its work is not
+//! finished until their reports have run it again. The island gets a
+//! snapshot over IPC (`island-status`).
 //!
 //! The window is a fixed transparent canvas over the notch, so the pill can
 //! morph inside it with CSS (window resizes can't be animated smoothly). The
@@ -203,6 +206,10 @@ pub struct SessionRow {
     pub running: bool,
     #[serde(default)]
     pub needs_input: bool,
+    /// The session's turn ended, but subagents (or another workspace) still
+    /// work for it. Missing from older backends.
+    #[serde(default)]
+    pub background_work: bool,
     #[serde(default)]
     pub parent_session_id: Option<String>,
 }
@@ -245,7 +252,7 @@ fn session_title(title: Option<&str>) -> String {
 pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String>, chat_root: Option<&str>) -> Vec<IslandSession> {
     let mut sessions: Vec<IslandSession> = rows
         .into_iter()
-        .filter(|row| row.parent_session_id.is_none() && (row.running || row.needs_input))
+        .filter(|row| row.parent_session_id.is_none() && (row.running || row.background_work || row.needs_input))
         .map(|row| {
             let state = if row.needs_input { SessionState::NeedsInput } else { SessionState::Running };
             let question = row.needs_input.then(|| questions.get(&id_key(&row.id)).cloned()).flatten();
@@ -341,9 +348,11 @@ impl FeedMemo {
             "title_update" => true,
             "session_turn_completed" => {
                 let data = data();
-                // Subagent turns: the active list only holds top-level sessions.
+                // Subagent turns: the active list only holds top-level
+                // sessions, so there is no outcome to keep. Refetch anyway:
+                // the last one ending can finish a lead waiting on it.
                 if data["parent_session_id"].is_string() {
-                    return false;
+                    return true;
                 }
                 if let (Some(id), Some(status)) = (data["session_id"].as_str(), data["status"].as_str()) {
                     let key = id_key(id);
@@ -1303,6 +1312,7 @@ mod tests {
             workspace: Some("/Users/me/code/openagentd".into()),
             running,
             needs_input,
+            background_work: false,
             parent_session_id: None,
         }
     }
@@ -1331,6 +1341,29 @@ mod tests {
         assert_eq!(ids, ["b", "a", "d"]);
         assert_eq!(sessions[0].state, SessionState::NeedsInput);
         assert_eq!(sessions[1].workspace.as_deref(), Some("openagentd"));
+    }
+
+    #[test]
+    fn a_lead_waiting_on_its_subagents_is_still_working() {
+        let mut waiting = row("a", Some("Delegating"), false, false);
+        waiting.background_work = true;
+        let sessions = active_sessions(vec![waiting], &HashMap::new(), None);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].state, SessionState::Running);
+
+        // Its turn completed, but it stays in the list: not finished, not unread.
+        let mut memo = FeedMemo::default();
+        let done = serde_json::json!({"session_id": "a", "status": "completed"});
+        assert!(memo.note(&event("session_turn_completed", done)));
+        assert!(newly_finished(&sessions, &sessions, &memo.statuses).is_empty());
+    }
+
+    #[test]
+    fn an_older_backend_without_background_work_still_parses() {
+        let page: SessionPage = serde_json::from_str(r#"{"data": [{"id": "a", "running": true}]}"#).unwrap();
+        assert!(!page.data[0].background_work);
+        let page: SessionPage = serde_json::from_str(r#"{"data": [{"id": "a", "background_work": true}]}"#).unwrap();
+        assert!(page.data[0].background_work);
     }
 
     #[test]
@@ -1421,8 +1454,10 @@ mod tests {
         assert!(memo.note(&event("title_update", serde_json::json!({}))));
         assert!(!memo.note(&event("config_changed", serde_json::json!({}))));
         assert!(!memo.note(&event("desktop_notification", serde_json::json!({"kind": "assistant_done"}))));
+        // A subagent ending can finish its lead, but leaves no outcome to keep.
         let subagent = serde_json::json!({"session_id": "s", "status": "completed", "parent_session_id": "a"});
-        assert!(!memo.note(&event("session_turn_completed", subagent)));
+        assert!(memo.note(&event("session_turn_completed", subagent)));
+        assert!(memo.statuses.is_empty());
     }
 
     #[test]

@@ -7,6 +7,7 @@ import type { CodingWorkspaceTreeResponse, SessionResponse } from '@/api/types'
 import type { Command } from '@/components/CommandPalette'
 import {
   buildSwitchCommands,
+  switchPagePath,
   type SwitchCommandHandlers,
   type SwitchCommandsInput,
 } from '@/components/AgentChatView/paletteSwitchCommands'
@@ -51,12 +52,41 @@ function byId(commands: Command[], id: string): Command {
 const workspaces = (commands: Command[]) => byId(commands, 'switch-workspace-session').page!.commands
 
 describe('Switch Workspace/Session…', () => {
-  it('is the only switch command, found by session or workspace', () => {
+  it('is found by session or workspace, beside the current workspace\'s sessions', () => {
     const { commands } = build()
-    expect(commands.map((c) => c.id)).toEqual(['switch-workspace-session'])
+    expect(commands.map((c) => c.id)).toEqual(['switch-workspace-session', 'workspace-sessions'])
     expect(commands[0].label).toBe('Switch Workspace/Session…')
     expect(commands[0].keywords).toContain('session')
     expect(commands[0].keywords).toContain('workspace')
+  })
+
+  it('shows the shortcut labels it is given', () => {
+    const { commands } = build({ shortcuts: { switchWorkspace: '⌘L', workspaceSessions: '⌘⇧L' } })
+    expect(commands.map((c) => c.shortcut)).toEqual(['⌘L', '⌘⇧L'])
+  })
+
+  it('lists the current workspace\'s sessions as their own command, which loads them', () => {
+    const { commands, handlers } = build({ sessions: [session('a'), session('b', { workspace: '/repo/docs' })] })
+    const here = byId(commands, 'workspace-sessions')
+    expect(here.label).toBe('Sessions in This Workspace…')
+    expect(here.page!.commands.map((c) => c.label)).toEqual(['New Session', 'a'])
+    here.onOpenPage?.()
+    expect(handlers.loadWorkspace).toHaveBeenCalledWith('/repo/app')
+  })
+
+  it('omits the current workspace\'s sessions without a current workspace', () => {
+    expect(build({ currentWorkspace: null }).commands.map((c) => c.id)).toEqual(['switch-workspace-session'])
+  })
+
+  it('opens the shortcuts on the workspace list or inside the current workspace', () => {
+    const { commands } = build()
+    expect(switchPagePath(commands, 'workspaces')).toEqual(['switch-workspace-session'])
+    expect(switchPagePath(commands, 'sessions')).toEqual(['switch-workspace-session', 'workspace:/repo/app'])
+  })
+
+  it('falls back to the workspace list without a current workspace or before the tree loads', () => {
+    expect(switchPagePath(build({ currentWorkspace: null }).commands, 'sessions')).toEqual(['switch-workspace-session'])
+    expect(switchPagePath(build({ tree: null }).commands, 'sessions')).toEqual(['switch-workspace-session'])
   })
 
   it('is omitted before the workspace tree has loaded', () => {

@@ -30,6 +30,10 @@ export const APP_SHORTCUTS = {
   tasks: { key: 'T' },
   quickOpen: { key: 'P', switcher: true },
   commandPalette: { key: 'K', switcher: true },
+  // The palette opened on Switch Workspace/Session…, or on the current
+  // workspace's sessions inside it.
+  switchWorkspace: { key: 'L', switcher: true },
+  workspaceSessions: { key: 'L', shift: true, switcher: true },
   sidebar: { key: 'B' },
   focusChat: { key: 'I' },
   closeTab: { key: 'W' },

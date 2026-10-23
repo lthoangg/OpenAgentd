@@ -36,6 +36,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('newSession', 'New session'),
         app('commandPalette', 'Command palette'),
         app('quickOpen', 'Quick Open'),
+        app('switchWorkspace', 'Switch workspace or session'),
+        app('workspaceSessions', 'Sessions in this workspace'),
         app('settings', 'Settings'),
         app('shortcutsHelp', 'Keyboard shortcuts'),
         app('sidebar', 'Toggle sidebar'),

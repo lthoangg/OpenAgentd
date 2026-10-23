@@ -250,6 +250,12 @@ export interface SessionResponse {
    * that is busy working.
    */
   needs_input?: boolean
+  /**
+   * The session's own turn ended, but subagents (or another workspace) still
+   * work for it, and their reports will run it again (v3). Set on session
+   * list rows, which `active=true` then includes; absent when false.
+   */
+  background_work?: boolean
   /** When the session was pinned in the sidebar (v3); absent when unpinned. */
   pinned_at?: string | null
 }

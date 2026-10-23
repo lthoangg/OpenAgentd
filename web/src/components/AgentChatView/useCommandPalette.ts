@@ -19,10 +19,12 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useUIStore } from '@/stores/useUIStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
 import { usePaletteSwitchCommands } from './usePaletteSwitchCommands'
+import { switchPagePath } from './paletteSwitchCommands'
 
 export interface UseCommandPaletteArgs {
   workspace: string | null
@@ -166,6 +168,8 @@ export function useCommandPalette({
     appShortcut('tasks', () => { handleToggleTasks() }, { enabled: Boolean(sessionIdState) }),
     appShortcut('quickOpen', () => { handleToggleQuickOpen() }, { enabled: !isMobile && hasQuickOpenWorkspace }),
     appShortcut('commandPalette', () => { handleTogglePalette() }, { enabled: !isMobile }),
+    appShortcut('switchWorkspace', () => { useUIStore.getState().openPaletteAt(switchPagePath(switchCommands, 'workspaces')) }, { enabled: !isMobile }),
+    appShortcut('workspaceSessions', () => { useUIStore.getState().openPaletteAt(switchPagePath(switchCommands, 'sessions')) }, { enabled: !isMobile }),
     appShortcut('sidebar', () => { handleSidebarToggle() }),
     appShortcut('focusChat', () => {
       // The composer is inert under a maximized dock; restore it first.

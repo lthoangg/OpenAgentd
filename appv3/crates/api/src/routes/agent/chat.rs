@@ -691,6 +691,10 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     workspaces.extend(q.get_all("workspaces"));
     let running = running_set();
     let awaiting = db::sessions_awaiting_input(&st.pool).await?;
+    // Leads whose turn ended while subagents (or another workspace) still
+    // work for them: not finished, so the active list keeps them.
+    let pending = appv3_agent::subagents::sessions_with_pending_work();
+    let waiting_on_lead = appv3_agent::subagents::subagents_waiting_on_lead();
     // `sort` and `pinned` are v3 additions (the sidebar's view options); v2
     // ignores them. `sort=activity` orders by `last_message_at`; `pinned=true` is
     // every pinned session in one page, `pinned=false` leaves them out.
@@ -704,11 +708,12 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         Some("false") => Some(false),
         _ => None,
     };
-    // v3 addition: every session running or waiting on the user, in one page,
-    // however old — the sidebar's "Needs you" list and the badge counts. v2
+    // v3 addition: every session running, waiting on the user, or waiting on
+    // work it started (`background_work`), in one page, however old — the
+    // sidebar's "Needs you" list, the badge counts and the notch island. v2
     // ignores the parameter and returns a normal page.
     let (sessions, next_cursor, has_more) = if q.opt("active").as_deref() == Some("true") {
-        let ids: Vec<String> = running.iter().chain(awaiting.iter()).cloned().collect();
+        let ids: Vec<String> = running.iter().chain(awaiting.iter()).chain(pending.iter()).cloned().collect();
         let mut rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
         rows.retain(|s| s.parent_session_id.is_none() && (workspaces.is_empty() || workspaces.contains(&s.workspace)));
         rows.sort_by(|a, b| (&b.created_at, &b.id).cmp(&(&a.created_at, &a.id)));
@@ -725,7 +730,8 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let children = db::list_child_sessions(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
         running: running.contains(&db::codec::api_uuid(&s.id)),
-        needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)),
+        needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)) || waiting_on_lead.contains(&db::codec::api_uuid(&s.id)),
+        background_work: pending.contains(&db::codec::api_uuid(&s.id)),
         ..Default::default()
     };
     let data: Vec<Value> = sessions

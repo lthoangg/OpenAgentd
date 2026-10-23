@@ -786,6 +786,18 @@ and a `menuitemcheckbox` (Show details); it stays open while choices apply.
 Rows in flat views and Pinned name their workspace in mono 11px subtle text,
 which gives way first when the row is narrow.
 
+**Sidebar row actions** share one style (`ROW_ACTION` in `ui/list-row.ts`):
+24px, borderless, `rounded-xs`, subtle glyph, keycap wash on hover, the
+global focus ring, 36px on touch. They take the place of the row's meta (age,
+tags) on hover or keyboard focus and hold no room at rest, so titles and
+folder names keep the row; touch shows them always. Session rows offer **Pin**
+and **More**, subagent rows **More**, folder rows **+** and **More**. More
+opens the same menu as right-click, so destructive actions are never one
+click from a row. Text actions in rows ("Show all") use `ROW_TEXT_ACTION`
+(24px), and count chips (subagents, worktrees) one 20px mono pill
+(`rowChipClass`) that inks when active. Long titles always truncate: a fold
+must never take the width of its longest line.
+
 **New-session hero** (the draft screen): a `text-lg` semibold question with
 the folder in mono, a 24px `rounded-full` folder chip opening a filterable
 listbox (the only `shadow-depth` here), then, on desktop, the full composer

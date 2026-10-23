@@ -125,6 +125,14 @@ describe('DiffPreview content parsing', () => {
     expect(container.textContent).toContain('Binary files a/logo.png and b/logo.png differ')
   })
 
+  it('lets a long note wrap instead of widening the diff', async () => {
+    const note = `Binary or large file not shown: ${'deep/'.repeat(60)}asset.bin`
+    const { container } = await renderDiff(['diff --git a/x b/x', note].join('\n'))
+    const span = Array.from(container.querySelectorAll('span')).find((el) => el.textContent === note)
+    expect(span?.className).toContain('min-w-0')
+    expect(span?.className).toContain('[overflow-wrap:anywhere]')
+  })
+
   it('omits the hunk separator when there are no skipped lines to report', async () => {
     // First (and only) hunk starts at line 1, so there is nothing "unchanged"
     // to report above it. Rendering an empty separator here used to leave a

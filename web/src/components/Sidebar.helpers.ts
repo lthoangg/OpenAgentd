@@ -3,6 +3,7 @@ import type {
   CodingWorkspaceTreeWorktree,
   SessionResponse,
 } from '@/api/types'
+import { sessionWorking } from '@/lib/active-sessions'
 
 export function toggleExpandedPath(current: Set<string>, path: string): Set<string> {
   const next = new Set(current)
@@ -195,7 +196,7 @@ export function groupSessionsByStatus(
   active: readonly SessionResponse[],
 ): SessionGroup[] {
   const needsYou = active.filter((session) => session.needs_input === true)
-  const working = active.filter((session) => session.needs_input !== true && session.running === true)
+  const working = active.filter((session) => session.needs_input !== true && sessionWorking(session))
   const activeIds = new Set([...needsYou, ...working].map((session) => session.id))
   const groups: SessionGroup[] = [
     { id: 'needs_input', label: 'Needs you', sessions: needsYou },

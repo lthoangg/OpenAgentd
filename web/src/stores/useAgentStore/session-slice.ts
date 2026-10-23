@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
+import { takePrefetchedHistory } from '@/lib/session-prefetch'
 import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
@@ -503,7 +504,11 @@ async function loadSessionImpl(
 ): Promise<void> {
   const gen = get()._sessionGeneration
   const settingsVersion = get()._sessionSettingsVersion
-  const fetchStartedAt = Date.now()
+  // A fresh open (history not here yet) may take the page a sidebar hover
+  // prefetched. Its earlier start time only treats more live content as
+  // newer than the page, which keeps it.
+  const prefetched = get().isLoadingHistory ? takePrefetchedHistory(sessionId) : null
+  const fetchStartedAt = prefetched?.startedAt ?? Date.now()
   // How much live content each stream held before the request went out, so
   // the resolve path can tell it apart from anything appended since.
   const liveCountsAtFetch = new Map(
@@ -521,7 +526,7 @@ async function loadSessionImpl(
   })
   try {
     const liveNames = get().liveAgentNames
-    const history = await sessionHistory(sessionId)
+    const history = await (prefetched?.promise.catch(() => sessionHistory(sessionId)) ?? sessionHistory(sessionId))
 
     if (get()._sessionGeneration !== gen) return
 

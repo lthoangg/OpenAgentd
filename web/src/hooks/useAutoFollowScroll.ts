@@ -349,7 +349,9 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     pendingRestoreRef.current = saved ? { ...saved, until: Date.now() + RESTORE_WAIT_MS } : null
   }, [sessionId])
 
-  useEffect(() => {
+  // Layout effects, like the one above: a switch's or a load's first frame
+  // paints already at the bottom (or the restored spot), never at the top.
+  useLayoutEffect(() => {
     if (tryRestore()) return
     // Until a returning session's anchor renders, follow the bottom.
     attachedRef.current = true
@@ -358,7 +360,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     scrollToBottom()
   }, [sessionId, scrollToBottom, syncAnchor, tryRestore])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isUserMessage) {
       // Sending in a session returns it to the live end.
       pendingRestoreRef.current = null

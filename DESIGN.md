@@ -662,6 +662,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   replaces them, and fade in after `fast` (`oa-fade-in-late`), so a fast load
   never flashes one. A saved session shows a transcript skeleton, not the
   empty state, until its history lands.
+- **Session switches crossfade.** The transcript being left stays, `inert` and
+  dimmed to 70% at `fast`, for up to `fast` while the next one loads (a
+  session viewed recently shows its last transcript instead). The next one is
+  scrolled into place before paint and fades in over `fast` (`ease-out`).
+  Loading states never take the whole pane while a chat is on screen.
 - **Automated titles are revealed, manual ones are not.** A `title_update` from
   the agent lifts the old title out over `base` and wipes the new one in left
   to right over `glacial` (`ease-out`, after an `instant` beat). Its sidebar row

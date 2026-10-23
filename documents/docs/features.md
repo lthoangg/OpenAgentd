@@ -681,6 +681,18 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Scroll position per session** `[v3.5.0]` — leave a session scrolled up and
   come back to it, and the transcript opens where you were reading; a session
   you left at the bottom keeps following new output. Kept while the app runs.
+- **Calm session switches** `[v3.28.0]` — opening another session no longer
+  flashes a blank or loading screen:
+  - The chat you are leaving stays on screen, slightly dimmed, until the next
+    one is ready, then fades in already scrolled to its newest turn. A slow
+    load shows the transcript placeholder after a beat.
+  - A session you viewed recently shows its last transcript at once, and the
+    real history replaces it silently when it arrives.
+  - Resting the pointer on a sidebar row fetches that session (and its
+    workspace's agents) ahead of the click.
+  - A session in another workspace keeps the chat and the composer in place
+    instead of swapping to an "Opening workspace…" screen.
+  - With Reduce Motion on, the switch snaps without the fade.
 - **A steady transcript while you read** `[v3.25.0]` — scroll up while the
   agent works and the text you are reading holds still:
   - Images, math, diagrams and highlighted code that finish loading above the

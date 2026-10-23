@@ -24,7 +24,7 @@ export function isDirectUserBlock(block: ContentBlock): boolean {
  * than by turn, because an older page can end inside a turn and merge into it.
  */
 export function turnIndexOfBlock(items: readonly TurnItem[], id: string): number {
-  return items.findIndex((item) => (item.kind === 'user' ? item.block.id === id : item.blocks.some((b) => b.id === id)))
+  return items.findIndex((item) => (item.kind === 'assistant' ? item.blocks.some((b) => b.id === id) : item.block.id === id))
 }
 
 /** The nearest turn before ``before`` that is a prompt the user wrote; -1 when none is loaded. */

@@ -698,6 +698,15 @@ describe("appendCompactionContent", () => {
 });
 
 describe("endCompaction", () => {
+  it("keeps a forced compaction forced from start to end", () => {
+    const started = startCompaction([], true);
+    expect(started[0].extra).toEqual({ state: "compacting", forced: true });
+    expect(endCompaction(started, "s", false)[0].extra).toEqual({ state: "compacted", forced: true });
+    // Reconnect after start was missed: the end frame carries the mark.
+    expect(endCompaction([], "s", false, true)[0].extra).toEqual({ state: "compacted", forced: true });
+    expect(endCompaction(startCompaction([]), "s", false)[0].extra).toEqual({ state: "compacted" });
+  });
+
   it("flips the trailing compacting block to compacted and overwrites content", () => {
     const blocks: ContentBlock[] = [
       { id: "c1", type: "compaction", content: "partial", extra: { state: "compacting" } },

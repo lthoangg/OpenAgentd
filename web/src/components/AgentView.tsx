@@ -910,6 +910,19 @@ export function AgentView({
                      </div>
                    )
                  }
+                 if (item.kind === 'compaction') {
+                   // A ``/compact`` or idle compaction after a reply, on its
+                   // own so the reply keeps its footer (see ``utils/turns.ts``).
+                   return (
+                     <div key={item.block.id} data-block-id={item.block.id}>
+                       <BlockRenderer
+                         block={item.block}
+                         isStreaming={isWorking && item.block.extra?.state === 'compacting'}
+                         sessionId={sessionId}
+                       />
+                     </div>
+                   )
+                 }
                  // Me only the trailing turn (no user block after) can be "live"
                   const isTrailingTurn = globalTurnIndex === turnItems.length - 1
                   // The running turn is timed from its prompt: unlike the stream's

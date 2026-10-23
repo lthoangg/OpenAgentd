@@ -772,6 +772,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     marks prompts and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
+    A `/compact` or idle compaction after a reply keeps the reply's footer
+    under it, with the divider below, and the footer stays while it compacts;
+    a compaction during a run stays inside it, under its one footer
+    `[v3.28.0]`.
   - Inline diffs in tool cards show the first 400 lines with a "Show N more
     lines" button, so huge patches stay responsive `[v3.14.0]`. A turn shows
     every one of its steps, however long the agent ran; the "Show N earlier

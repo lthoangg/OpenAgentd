@@ -290,8 +290,11 @@ pub fn question_dismissed(question_id: &str, session_id: &str, reason: &str) -> 
     }))
 }
 
-pub fn summarization_start(agent: &str) -> Envelope {
-    Envelope::typed(json!({"type": "summarization_start", "agent": agent, "metadata": {}}))
+/// `forced`: a `/compact` or idle compaction, run on its own rather than
+/// inside an agent run; the UI shows it apart from the reply before it.
+pub fn summarization_start(agent: &str, forced: bool) -> Envelope {
+    let metadata = if forced { json!({"forced": true}) } else { json!({}) };
+    Envelope::typed(json!({"type": "summarization_start", "agent": agent, "metadata": metadata}))
 }
 
 pub fn summarization_content(agent: &str, text: &str) -> Envelope {
@@ -354,7 +357,7 @@ mod tests {
             plan_review_asked("q", "s", "c", &[], 1),
             interaction_mode("a", "code"),
             question_dismissed("q", "s", "dismissed"),
-            summarization_start("a"),
+            summarization_start("a", false),
             summarization_content("a", "t"),
             summarization_end("a", "t", None),
         ];

@@ -488,8 +488,9 @@ function getCompactionState(block: ContentBlock): 'compacting' | 'compacted' | n
 /** summarization_start — append a fresh "compacting" divider block, or
  *  re-use an existing in-flight one. Idempotent against reconnect replay
  *  (the backend re-emits ``start`` whenever a subscriber attaches during
- *  compaction). */
-export function startCompaction(blocks: ContentBlock[]): ContentBlock[] {
+ *  compaction). ``forced``: a ``/compact`` or idle compaction, which the
+ *  transcript shows apart from the reply before it (see ``utils/turns.ts``). */
+export function startCompaction(blocks: ContentBlock[], forced = false): ContentBlock[] {
   if (blocks.some((block) => getCompactionState(block) === 'compacting')) {
     // Reconnect replay — block already exists, leave it alone.
     return blocks
@@ -500,7 +501,7 @@ export function startCompaction(blocks: ContentBlock[]): ContentBlock[] {
       id: generateBlockId(),
       type: 'compaction',
       content: '',
-      extra: { state: 'compacting' },
+      extra: forced ? { state: 'compacting', forced: true } : { state: 'compacting' },
     },
   ]
 }
@@ -542,6 +543,7 @@ export function endCompaction(
   blocks: ContentBlock[],
   summary: string,
   error: boolean,
+  forced = false,
 ): ContentBlock[] {
   const extra: Record<string, unknown> = { state: 'compacted' }
   if (error) extra.error = true
@@ -550,6 +552,7 @@ export function endCompaction(
     const block = blocks[i]
     if (getCompactionState(block) === 'compacting') {
       const result = [...blocks]
+      if (forced || block.extra?.forced === true) extra.forced = true
       result[i] = {
         ...block,
         content: summary || block.content,
@@ -559,6 +562,7 @@ export function endCompaction(
     }
   }
   // No in-flight block — synthesize a completed one so the divider still renders.
+  if (forced) extra.forced = true
   return [
     ...blocks,
     {

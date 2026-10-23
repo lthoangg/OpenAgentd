@@ -910,6 +910,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'summarization_start': {
         const agent = d.agent as string
         if (!agent) break
+        const forced = (d.metadata as Record<string, unknown> | undefined)?.forced === true
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
@@ -922,7 +923,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // same way.
           const sealed = stream.currentBlocks
           stream.currentBlocks = []
-          applyLocalBlockTransform(stream, (blocks) => startCompaction([...blocks, ...sealed]))
+          applyLocalBlockTransform(stream, (blocks) => startCompaction([...blocks, ...sealed], forced))
         })
         break
       }
@@ -945,6 +946,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const summary = (d.summary as string | undefined) ?? ''
         const meta = d.metadata as Record<string, unknown> | undefined
         const error = Boolean(meta?.error)
+        const forced = meta?.forced === true
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
@@ -953,7 +955,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // events arrived out of order), so `endCompaction` synthesized a
           // fresh completed one — tag it as unsynced like every other
           // locally-created block.
-          applyLocalBlockTransform(stream, (blocks) => endCompaction(blocks, summary, error))
+          applyLocalBlockTransform(stream, (blocks) => endCompaction(blocks, summary, error, forced))
         })
         break
       }

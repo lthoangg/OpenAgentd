@@ -45,6 +45,8 @@ struct Summ {
     text: String,
     done: bool,
     error: bool,
+    /// A `/compact` or idle compaction; see [`events::summarization_start`].
+    forced: bool,
 }
 
 fn entry<'a, T: Default>(v: &'a mut Vec<(String, T)>, key: &str) -> &'a mut T {
@@ -267,7 +269,8 @@ impl StreamStore {
                 }
             }
             "summarization_start" if !agent.is_empty() => {
-                *entry(&mut state.summarization, agent) = Summ::default();
+                let forced = data.get("metadata").and_then(|m| m.get("forced")).map(truthy).unwrap_or(false);
+                *entry(&mut state.summarization, agent) = Summ { forced, ..Summ::default() };
             }
             "summarization_content" => {
                 let text = get_str("text").unwrap_or("");
@@ -459,12 +462,18 @@ impl StreamStore {
             if agent.is_empty() {
                 continue;
             }
-            replay.push(events::summarization_start(agent));
+            replay.push(events::summarization_start(agent, s.forced));
             if !s.text.is_empty() && !s.done {
                 replay.push(events::summarization_content(agent, &s.text));
             }
             if s.done {
-                let meta = if s.error { json!({"error": true}) } else { json!({}) };
+                let mut meta = json!({});
+                if s.error {
+                    meta["error"] = json!(true);
+                }
+                if s.forced {
+                    meta["forced"] = json!(true);
+                }
                 replay.push(events::summarization_end(agent, &s.text, Some(meta)));
             }
         }
@@ -595,6 +604,26 @@ mod tests {
         assert!(sub.next().await.is_none());
         drop(sub);
         assert!(s.attach("x").is_none());
+    }
+
+    /// A reconnect during a `/compact` still learns it was forced.
+    #[tokio::test]
+    async fn replay_keeps_a_forced_compaction_forced() {
+        let s = leak();
+        s.init_turn("f", false);
+        s.push_event("f", &events::summarization_start("a", true), false);
+        s.push_event("f", &events::summarization_end("a", "sum", Some(json!({"forced": true}))), false);
+        let mut sub = s.attach("f").unwrap();
+        let mut forced = vec![];
+        for _ in 0..2 {
+            let e = sub.next().await.unwrap();
+            let data: Value = serde_json::from_str(&e.data).unwrap();
+            forced.push((e.event.clone(), data.get("metadata").and_then(|m| m.get("forced")).cloned()));
+        }
+        assert_eq!(
+            forced,
+            vec![("summarization_start".to_string(), Some(json!(true))), ("summarization_end".to_string(), Some(json!(true)))]
+        );
     }
 
     #[tokio::test]

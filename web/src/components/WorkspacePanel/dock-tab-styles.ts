@@ -22,7 +22,7 @@ export function dockTabClass(active: boolean): string {
 /** Activate button filling the tab. ``closable`` tabs leave room for the ×. */
 export function dockTabButtonClass(closable: boolean): string {
   return [
-    'flex h-full min-w-0 items-center gap-1.5 outline-none focus-visible:bg-(--bg-key)/60',
+    'flex h-full min-w-0 items-center gap-1.5 outline-none focus-key:bg-(--bg-key)/60',
     closable ? 'pl-3 pr-1' : 'px-3',
   ].join(' ')
 }

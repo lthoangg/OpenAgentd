@@ -67,6 +67,9 @@ function isWarm(): boolean {
 }
 
 function isKeyboardFocus(el: Element): boolean {
+  // Focus a script handed over quietly (lib/focus/quiet.ts) is not the
+  // user's keyboard moving, so it opens no hint.
+  if (el.hasAttribute('data-quiet-focus')) return false
   try {
     return el.matches(':focus-visible')
   } catch {

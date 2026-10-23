@@ -85,7 +85,7 @@ function BreakdownRow({
       style={style}
       className={cn(
         className,
-        'transition-colors duration-(--motion-instant) hover:bg-(--bg-page) focus-visible:bg-(--bg-page) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+        'transition-colors duration-(--motion-instant) hover:bg-(--bg-page) focus-key:bg-(--bg-page) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
       )}
     >
       {body}

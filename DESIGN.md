@@ -979,6 +979,9 @@ widgets (tablists, menus, listboxes, comboboxes) keep their own arrow keys.
 - **Quiet focus**: focus a script hands back without a key press (the
   composer pill on page load) goes through `focusQuietly`
   (`lib/focus/quiet.ts`), so it draws no ring until the keyboard moves on.
+  Focus fills use the `focus-key:` variant (keyboard focus that was not
+  handed over quietly), not `focus-visible:`, so quiet focus draws no fill,
+  and a tooltip does not open on it either.
 - **Ring follows input** (desktop): focus rings show only after a key press
   and hide again on the next pointer press. Focus a script gives — the
   composer at launch, a fold after its Collapse click — draws none until the

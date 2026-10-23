@@ -103,7 +103,7 @@ function DropdownItem({
       className={cn(
         MENU_ITEM_CLASS,
         'outline-none',
-        'transition-colors hover:bg-(--bg-key) focus-visible:bg-(--bg-key)',
+        'transition-colors hover:bg-(--bg-key) focus-key:bg-(--bg-key)',
         highlighted && 'bg-(--bg-key)',
         active ? 'text-(--color-text)' : 'text-(--color-text-2)',
         className,

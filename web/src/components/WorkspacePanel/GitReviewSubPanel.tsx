@@ -95,7 +95,7 @@ function GitReviewSubPanelView({
                           setDesktopFileActions({ file: changedFile, x: at.clientX, y: at.clientY })
                         }}
                         className={cn(
-                          'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 pl-3 text-left text-xs outline-none hover:text-(--color-text) focus-visible:bg-(--bg-key)/60',
+                          'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 pl-3 text-left text-xs outline-none hover:text-(--color-text) focus-key:bg-(--bg-key)/60',
                           isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
                         )}
                         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${changedFile.path}`}

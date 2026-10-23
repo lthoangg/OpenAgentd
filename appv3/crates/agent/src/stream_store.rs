@@ -620,10 +620,7 @@ mod tests {
             let data: Value = serde_json::from_str(&e.data).unwrap();
             forced.push((e.event.clone(), data.get("metadata").and_then(|m| m.get("forced")).cloned()));
         }
-        assert_eq!(
-            forced,
-            vec![("summarization_start".to_string(), Some(json!(true))), ("summarization_end".to_string(), Some(json!(true)))]
-        );
+        assert_eq!(forced, vec![("summarization_start".to_string(), Some(json!(true))), ("summarization_end".to_string(), Some(json!(true)))]);
     }
 
     #[tokio::test]

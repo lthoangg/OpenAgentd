@@ -292,7 +292,10 @@ fn apply_thinking(model: &str, kw: &Kwargs, payload: &mut Map<String, Value>) ->
     }
     let n = model_name(model);
     if level == "none" || level == "off" {
-        if n.starts_with("claude-sonnet-5") {
+        // These models think by default, so "none" must say so: otherwise a
+        // small `max_tokens` (a 64-token title) is all spent thinking and the
+        // reply comes back empty.
+        if n.starts_with("claude-sonnet-5") || n.starts_with("claude-haiku-5") {
             payload.insert("thinking".into(), json!({"type": "disabled"}));
         }
         return false;
@@ -690,6 +693,19 @@ mod tests {
     fn thinking_budget_matches_v2() {
         assert_eq!(thinking_budget("low", 32000), 8000);
         assert_eq!(thinking_budget("high", 1000), 1024);
+    }
+
+    #[test]
+    fn thinking_none_disables_thinking_on_models_that_think_by_default() {
+        let kw: Kwargs = [("thinking_level".to_string(), json!("none"))].into_iter().collect();
+        for model in ["claude-haiku-5-5", "claude-sonnet-5", "anthropic.claude-haiku-5-5"] {
+            let mut p = Map::new();
+            assert!(!apply_thinking(model, &kw, &mut p));
+            assert_eq!(p.get("thinking"), Some(&json!({"type": "disabled"})), "{model}");
+        }
+        let mut p = Map::new();
+        apply_thinking("claude-haiku-4-5", &kw, &mut p);
+        assert_eq!(p.get("thinking"), None);
     }
 
     #[test]

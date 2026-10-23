@@ -427,6 +427,21 @@ fn read_diagnostics_file(file_path: &Path) -> Result<(String, String), std::io::
 type ClientKey = (String, String, Vec<String>);
 type InitKey = (String, String);
 
+/// The language a server is keyed by: the TS family shares one server per
+/// project, since `typescript-language-server` serves all four and the
+/// language id is still sent with each document.
+fn server_lang(lang_id: &str) -> &str {
+    if ts_family(lang_id) {
+        "typescript"
+    } else {
+        lang_id
+    }
+}
+
+fn client_key(ws: &str, lang_id: &str, cmd: &[String]) -> ClientKey {
+    (ws.to_string(), server_lang(lang_id).to_string(), cmd.to_vec())
+}
+
 pub struct LspManager {
     clients: Mutex<Vec<(ClientKey, Arc<LspClient>)>>,
     init_locks: Mutex<Vec<(InitKey, Arc<tokio::sync::Mutex<()>>)>>,
@@ -570,7 +585,8 @@ impl LspManager {
                 || -> Vec<Vec<String>> { detect_project_lsp_commands(lang_id, root).iter().filter_map(&resolve_cmd).filter(|r| !semantic_only || semantic_ok(r)).collect() };
             let first = project_cmds();
             if !first.is_empty() {
-                tracing::info!("Using project-configured LSP for {}: {}", lang_id, cmds_repr(&first));
+                // Every diagnostics pass resolves this; debug keeps it out of the info log.
+                tracing::debug!("Using project-configured LSP for {}: {}", lang_id, cmds_repr(&first));
                 return first;
             }
             if lang_id == "python" && !declared.is_empty() {
@@ -620,7 +636,7 @@ impl LspManager {
             return vec![];
         }
         let ws = workspace_root.to_string_lossy().into_owned();
-        let lock = self.init_lock((ws.clone(), lang_id.to_string()));
+        let lock = self.init_lock((ws.clone(), server_lang(lang_id).to_string()));
         let _g = lock.lock().await;
         if self.stopping.load(Ordering::SeqCst) {
             return vec![];
@@ -642,7 +658,7 @@ impl LspManager {
 
     /// The cached client for `cmd` if it still runs, else a newly started one.
     async fn start_client(&self, ws: &str, workspace_root: &Path, lang_id: &str, cmd: Vec<String>) -> Option<Arc<LspClient>> {
-        let key: ClientKey = (ws.to_string(), lang_id.to_string(), cmd.clone());
+        let key = client_key(ws, lang_id, &cmd);
         if let Some(existing) = self.get_client(&key) {
             if existing.is_running() {
                 return Some(existing);
@@ -996,6 +1012,20 @@ mod tests {
         assert_eq!(py_suffix(Path::new("a/b.PY")), Some(".PY".into()));
         assert_eq!(py_suffix(Path::new(".bashrc")), None);
         assert_eq!(lang_for_path(Path::new("x.tsx")), Some("typescriptreact"));
+    }
+
+    /// One `typescript-language-server` serves `.ts`, `.tsx`, `.js` and
+    /// `.jsx`; keying it by language started a second server per project.
+    #[test]
+    fn ts_family_files_share_one_server_per_project_and_command() {
+        let cmd = sv(&["typescript-language-server", "--stdio"]);
+        let ts = client_key("/w", "typescript", &cmd);
+        for lang in ["typescriptreact", "javascript", "javascriptreact"] {
+            assert_eq!(client_key("/w", lang, &cmd), ts, "{lang}");
+        }
+        assert_ne!(client_key("/other", "typescript", &cmd), ts, "a project gets its own server");
+        assert_ne!(client_key("/w", "typescript", &sv(&["other-ts-server"])), ts, "a different command is a different server");
+        assert_ne!(client_key("/w", "python", &sv(&["ty", "server"])).1, ts.1);
     }
 
     /// Start `cmds` with a fake launcher: names in `failing` fail to start.

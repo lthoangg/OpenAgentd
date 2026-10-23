@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
 import { getVisibleViewport, onVisibleViewportChange, type VisibleViewport } from '@/lib/visible-viewport'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 
 /** Tallest the list grows (Tailwind ``max-h-64``). */
 const LIST_MAX_HEIGHT = 256
@@ -303,7 +304,7 @@ export function ModelCombobox({
                       tabIndex={-1}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => commit(o.id)}
-                      onMouseEnter={() => setHighlight(i)}
+                      {...hoverIntent(() => setHighlight(i))}
                       className={cn(
                         MENU_ITEM_CLASS,
                         'justify-between font-mono transition-colors',

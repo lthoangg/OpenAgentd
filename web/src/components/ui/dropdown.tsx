@@ -55,6 +55,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -254,10 +255,10 @@ function Dropdown({
           if (child.props.value !== undefined) onValueChange?.(child.props.value)
           child.props.onSelect?.()
         },
-        onMouseEnter: () => setHighlight(i),
+        ...hoverIntent(() => setHighlight(i)),
       })
     }
-    return cloneElement(child, { ...shared, onMouseEnter: () => setHighlight(i) })
+    return cloneElement(child, { ...shared, ...hoverIntent(() => setHighlight(i)) })
   })
 
   const navigable = meta.map((m, i) => (m.disabled ? -1 : i)).filter((i) => i >= 0)

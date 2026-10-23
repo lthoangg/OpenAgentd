@@ -24,6 +24,10 @@ interface UIStore {
   schedulerOpen: boolean
   agentCapabilitiesOpen: boolean
   paletteOpen: boolean
+  /** Ids of the palette pages it opens on, outermost first; empty for the root list. */
+  palettePage: string[]
+  /** Bumped when the palette opens at a page, so an open palette remounts there. */
+  paletteKey: number
   quickOpenOpen: boolean
   /** What Quick Open searches for as it opens; empty from its shortcut. */
   quickOpenQuery: string
@@ -37,6 +41,11 @@ interface UIStore {
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
+  /**
+   * Open the palette on a page (Switch Workspace/Session…, or a workspace's
+   * sessions). Closes it when it is already open on that page.
+   */
+  openPaletteAt: (page: string[]) => void
   toggleQuickOpen: () => void
   /** Open Quick Open already searching, e.g. for a file reference that matched several files. */
   openQuickOpen: (query: string) => void
@@ -57,6 +66,8 @@ export const useUIStore = create<UIStore>()(
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
+    palettePage: [],
+    paletteKey: 0,
     quickOpenOpen: false,
     quickOpenQuery: '',
     telemetryOpen: false,
@@ -96,12 +107,31 @@ export const useUIStore = create<UIStore>()(
         const nextOpen = !state.paletteOpen
         state.paletteOpen = nextOpen
         if (nextOpen) {
+          state.palettePage = []
           state.schedulerOpen = false
           state.agentCapabilitiesOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
           state.shortcutsHelpOpen = false
         }
+      })
+      if (useUIStore.getState().paletteOpen) _closeSettings?.()
+    },
+    openPaletteAt: (page) => {
+      set((state) => {
+        const samePage = state.palettePage.length === page.length && state.palettePage.every((id, i) => id === page[i])
+        if (state.paletteOpen && samePage) {
+          state.paletteOpen = false
+          return
+        }
+        state.paletteOpen = true
+        state.palettePage = page
+        state.paletteKey += 1
+        state.schedulerOpen = false
+        state.agentCapabilitiesOpen = false
+        state.quickOpenOpen = false
+        state.telemetryOpen = false
+        state.shortcutsHelpOpen = false
       })
       if (useUIStore.getState().paletteOpen) _closeSettings?.()
     },

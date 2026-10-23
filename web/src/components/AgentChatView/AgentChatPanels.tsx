@@ -31,6 +31,10 @@ interface AgentChatPanelsProps {
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
+  /** Pages the palette opens on (see ``useUIStore.openPaletteAt``). */
+  palettePage: string[]
+  /** Remounts the palette when it is sent to another page while open. */
+  paletteKey: number
   paletteCommands: Command[]
   quickOpenOpen: boolean
   /** Query Quick Open opens with; empty from its shortcut. */
@@ -59,6 +63,8 @@ export function AgentChatPanels({
   schedulerOpen,
   onCloseScheduler,
   showPalette,
+  palettePage,
+  paletteKey,
   paletteCommands,
   quickOpenOpen,
   quickOpenQuery,
@@ -97,7 +103,7 @@ export function AgentChatPanels({
         />
       )}
       {showPalette && (
-        <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
+        <CommandPalette key={paletteKey} commands={paletteCommands} onClose={onClosePalette} initialPagePath={palettePage} />
       )}
       {quickOpenOpen && (
         <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} />

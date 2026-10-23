@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CommandPalette, QuickOpen } from "@/components/CommandPalette"
 import type { Command } from "@/components/CommandPalette"
 import type { WorkspaceFileInfo } from "@/api/types"
+import { resetHoverIntent } from "@/hooks/use-hover-intent"
 
 afterEach(cleanup)
 
@@ -810,6 +811,82 @@ describe("CommandPalette — pages inside pages", () => {
     expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
     await user.keyboard("{ArrowLeft}")
     expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+  })
+})
+
+describe("CommandPalette — hover follows the mouse, not the layout", () => {
+  afterEach(resetHoverIntent)
+  const row = (container: HTMLElement, idx: number) => container.querySelector(`[data-idx='${idx}']`) as HTMLElement
+  const isActive = (el: HTMLElement) => el.className.includes("border-(--color-border-strong)")
+
+  it("keeps the keyboard's row when a row appears under a still pointer", () => {
+    const { container } = render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
+    // The pointer was parked here before the list opened.
+    fireEvent.mouseMove(document.body, { clientX: 100, clientY: 100 })
+
+    fireEvent.mouseEnter(row(container, 2), { clientX: 100, clientY: 100 })
+    fireEvent.mouseOver(row(container, 2), { clientX: 100, clientY: 100 })
+    // Chromium's move after a layout change: same position.
+    fireEvent.mouseMove(row(container, 2), { clientX: 100, clientY: 100 })
+
+    expect(isActive(row(container, 0))).toBe(true)
+    expect(isActive(row(container, 2))).toBe(false)
+  })
+
+  it("highlights the row the mouse actually moves over", () => {
+    const { container } = render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
+    fireEvent.mouseMove(document.body, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(row(container, 2), { clientX: 104, clientY: 101 })
+    expect(isActive(row(container, 2))).toBe(true)
+  })
+
+  it("runs the keyboard's row on Enter while the pointer rests on another", async () => {
+    const user = userEvent.setup()
+    let ran = ""
+    const commands: Command[] = [
+      { id: "a", label: "New Session", action: () => { ran = "a" } },
+      { id: "b", label: "Old Session", action: () => { ran = "b" } },
+    ]
+    const { container } = render(<CommandPalette commands={commands} onClose={() => {}} />)
+    fireEvent.mouseMove(document.body, { clientX: 50, clientY: 50 })
+    fireEvent.mouseMove(row(container, 1), { clientX: 50, clientY: 50 })
+    await user.keyboard("{Enter}")
+    expect(ran).toBe("a")
+  })
+})
+
+describe("CommandPalette — opening on a page", () => {
+  const commands = (workspaces: Command[]): Command[] => [
+    { id: "new-chat", label: "New Chat", action: () => {} },
+    { id: "switch", label: "Switch Workspace/Session…", action: () => {}, page: { placeholder: "Search workspaces…", commands: workspaces } },
+  ]
+  const app = (onOpen?: () => void): Command => ({
+    id: "ws:app",
+    label: "app",
+    action: () => {},
+    onOpenPage: onOpen,
+    page: { placeholder: "Search sessions in app…", commands: [{ id: "new", label: "New Session", browseOnly: true, action: () => {} }] },
+  })
+
+  it("opens on the page it is given and steps back one level at a time", async () => {
+    const user = userEvent.setup()
+    let opened = 0
+    render(<CommandPalette commands={commands([app(() => { opened += 1 })])} initialPagePath={["switch", "ws:app"]} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search sessions in app…")).toBeTruthy()
+    expect(opened).toBe(1)
+
+    await user.keyboard("{Escape}")
+    expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
+    await user.keyboard("{Escape}")
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+  })
+
+  it("waits for a page whose rows load after it opened", () => {
+    const { rerender } = render(<CommandPalette commands={commands([])} initialPagePath={["switch", "ws:app"]} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search workspaces…")).toBeTruthy()
+
+    rerender(<CommandPalette commands={commands([app()])} initialPagePath={["switch", "ws:app"]} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search sessions in app…")).toBeTruthy()
   })
 })
 

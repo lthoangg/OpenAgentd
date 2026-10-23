@@ -264,7 +264,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette, and chat actions drawer cover them. Press and hold the
   pinned Chat row in the mobile sidebar to start a new chat session, since the
   inline `+` is hidden on touch.
-- **Palette pages and switching** `[v3.0.0, updated v3.21.0]` — the Command Palette gains
+- **Palette pages and switching** `[v3.0.0, updated v3.21.0, v3.27.0]` — the Command Palette gains
   Switch Session… (recent sessions in every workspace, with running and
   waiting-for-you status) and Switch Workspace… (repositories, worktrees,
   and Chat, most recently active first). Each opens a nested list in place;
@@ -278,6 +278,14 @@ run from the terminal (the native Rust binary since v3.0.0).
   nothing is typed `[v3.21.0]`. → opens the highlighted list and ← on an
   empty query, Backspace, or Escape steps back one level, landing on the
   row that opened it `[v3.21.0]`.
+  `⌘L`/`Ctrl+L` opens Switch Workspace/Session… directly, and
+  `⌘⇧L`/`Ctrl+Shift+L` opens the current workspace's sessions (**Sessions
+  in This Workspace…**, also a palette command and a desktop View menu item)
+  with New Session highlighted; Escape steps back to the workspace list
+  `[v3.27.0]`. Palette, Quick Open, and picker lists now highlight a row on
+  hover only when the mouse actually moves, so a list opening, loading, or
+  scrolling under a parked cursor no longer steals the keyboard's choice
+  `[v3.27.0]`.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.22.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via

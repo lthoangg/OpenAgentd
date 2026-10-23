@@ -18,6 +18,7 @@ import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { hasFinePointer } from '@/lib/pointer'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 
 export interface MultiSelectOption {
   value: string
@@ -217,7 +218,7 @@ export function MultiSelect({
                       // Keep focus + popover open for fast multi-pick.
                       searchRef.current?.focus()
                     }}
-                    onMouseEnter={() => setHighlight(i)}
+                    {...hoverIntent(() => setHighlight(i))}
                     className={cn(
                       'flex min-h-9 w-full cursor-pointer items-start gap-2 rounded-xs px-2 py-1.5 text-left transition-colors md:min-h-0',
                       isHi ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)',

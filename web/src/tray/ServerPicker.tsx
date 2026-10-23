@@ -3,6 +3,7 @@ import { Check, ChevronDown, Server } from 'lucide-react'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { DURATIONS_S } from '@/lib/motion'
 import type { TrayServerOption } from './usage'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 
 /**
  * The server the popup reads usage from. A listbox: the popup owns the
@@ -87,7 +88,7 @@ export function ServerPicker({ servers, selected, label, open, active, onOpenCha
               className="option"
               aria-selected={server.id === selected}
               data-active={index === active ? '' : undefined}
-              onPointerEnter={() => onActiveChange(index)}
+              {...hoverIntent(() => onActiveChange(index))}
               onClick={() => onChoose(server.id)}
             >
               <span className="option-text">

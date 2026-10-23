@@ -5,6 +5,7 @@ import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/a
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { sameWorkspacePath } from '@/utils/workspace'
 import { hasFinePointer } from '@/lib/pointer'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 
 interface PickerOption {
   path: string
@@ -153,7 +154,7 @@ export function WorkspacePicker({
                 role="option"
                 aria-selected={selected}
                 title={option.kind === 'chat' ? undefined : option.path}
-                onMouseEnter={() => setActiveIndex(index)}
+                {...hoverIntent(() => setActiveIndex(index))}
                 onClick={() => choose(index)}
                 className={`${MENU_ITEM_CLASS} ${index === activeIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2)'} ${option.kind === 'worktree' ? 'pl-7' : ''}`}
               >
@@ -170,7 +171,7 @@ export function WorkspacePicker({
             id={optionId(openFolderIndex)}
             role="option"
             aria-selected={false}
-            onMouseEnter={() => setActiveIndex(openFolderIndex)}
+            {...hoverIntent(() => setActiveIndex(openFolderIndex))}
             onClick={() => choose(openFolderIndex)}
             className={`${MENU_ITEM_CLASS} ${activeIndex === openFolderIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2)'}`}
           >

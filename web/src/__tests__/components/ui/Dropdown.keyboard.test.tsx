@@ -7,14 +7,18 @@
  * trap's reach and strand keyboard users.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { resetHoverIntent } from '@/hooks/use-hover-intent'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  resetHoverIntent()
+})
 
 function renderSelect(value = '', onValueChange = mock(() => undefined)) {
   const result = render(
@@ -221,5 +225,22 @@ describe('Dropdown — keyboard', () => {
     await userEvent.keyboard('{ArrowDown}{Enter}')
 
     expect(onSelect).toHaveBeenCalled()
+  })
+})
+
+describe('Dropdown — hover', () => {
+  it('keeps the keyboard\'s option when the menu opens under a still pointer', async () => {
+    renderSelect()
+    fireEvent.mouseMove(document.body, { clientX: 40, clientY: 40 })
+    trigger().focus()
+    await userEvent.keyboard('{ArrowDown}')
+
+    const high = screen.getByText('High')
+    fireEvent.mouseEnter(high, { clientX: 40, clientY: 40 })
+    fireEvent.mouseMove(high, { clientX: 40, clientY: 40 })
+    expect(activeOptionText()).toBe('Low')
+
+    fireEvent.mouseMove(high, { clientX: 42, clientY: 40 })
+    expect(activeOptionText()).toBe('High')
   })
 })

@@ -41,6 +41,12 @@ function runDesktopCommand(command: unknown): void {
     case 'command_palette':
       dispatchAppShortcut(APP_SHORTCUTS.commandPalette, getPlatform().os)
       break
+    case 'switch_workspace':
+      dispatchAppShortcut(APP_SHORTCUTS.switchWorkspace, getPlatform().os)
+      break
+    case 'workspace_sessions':
+      dispatchAppShortcut(APP_SHORTCUTS.workspaceSessions, getPlatform().os)
+      break
     case 'scheduler':
       // The chat shell decides: dock tab with a workspace, overlay otherwise.
       dispatchAppEvent(APP_EVENTS.toggleScheduler)

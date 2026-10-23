@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { isImeComposing } from '@/lib/keyboard/chord'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 
 /** Nested list a command opens in place of running. */
 export interface CommandPage {
@@ -105,6 +106,8 @@ function splitLine(query: string): { text: string; line?: number; endLine?: numb
 interface CommandPaletteProps {
   commands: Command[]
   onClose: () => void
+  /** Ids of the pages to open on, outermost first (e.g. Switch… › a workspace). */
+  initialPagePath?: string[]
   /** @deprecated Use QuickOpen for file search. */
   workspaceFiles?: WorkspaceFileInfo[]
   /** @deprecated Use QuickOpen for file search. */
@@ -128,6 +131,8 @@ interface PaletteOverlayProps {
   onFileOpen?: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   /** Query the overlay opens with, selected so typing replaces it. */
   initialQuery?: string
+  /** Ids of the pages it opens on, outermost first. */
+  initialPagePath?: string[]
 }
 
 interface QuickOpenProps {
@@ -155,17 +160,21 @@ export function QuickOpen({ workspaceFiles, filesTruncated = false, commands = [
   )
 }
 
-export function CommandPalette({ commands, onClose, workspaceFiles, filesTruncated, onFileOpen }: CommandPaletteProps) {
-  return <PaletteOverlay commands={commands} workspaceFiles={workspaceFiles} filesTruncated={filesTruncated} onFileOpen={onFileOpen} onClose={onClose} />
+export function CommandPalette({ commands, onClose, initialPagePath, workspaceFiles, filesTruncated, onFileOpen }: CommandPaletteProps) {
+  return <PaletteOverlay commands={commands} workspaceFiles={workspaceFiles} filesTruncated={filesTruncated} onFileOpen={onFileOpen} onClose={onClose} initialPagePath={initialPagePath} />
 }
 
-function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen, initialQuery = '' }: PaletteOverlayProps) {
+function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen, initialQuery = '', initialPagePath }: PaletteOverlayProps) {
   const [query, setQuery] = useState(initialQuery)
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery)
   // Ids of the commands whose pages are open, outermost first. Resolved
   // against ``commands`` on each render, so an open page shows rows that
   // load after it opened.
-  const [pagePath, setPagePath] = useState<string[]>([])
+  const [pagePath, setPagePath] = useState<string[]>(() => initialPagePath ?? [])
+  // A path handed in may name pages whose commands have not loaded yet (the
+  // workspace list arrives after the palette opens). It is kept, showing its
+  // deepest page that exists, until it resolves in full once.
+  const [pathSettled, setPathSettled] = useState(!initialPagePath?.length)
   // The command whose page was just left, highlighted again in its list.
   const [restoreId, setRestoreId] = useState<string | null>(null)
   const updateDebouncedQuery = useDebouncedCallback(
@@ -184,20 +193,31 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   const listRef = useRef<HTMLDivElement>(null)
 
   const trail = useMemo(() => {
-    const out: { id: string; title: string; page: CommandPage }[] = []
+    const out: { id: string; title: string; page: CommandPage; cmd: Command }[] = []
     let list = commands
     for (const id of pagePath) {
       const cmd = list.find((c) => c.id === id)
       if (!cmd?.page) break
-      out.push({ id, title: cmd.label.replace(/…$/, ''), page: cmd.page })
+      out.push({ id, title: cmd.label.replace(/…$/, ''), page: cmd.page, cmd })
       list = cmd.page.commands
     }
     return out
   }, [commands, pagePath])
   // A command on the path went away (its list reloaded without it): stay on
   // the deepest page that still exists.
-  if (trail.length < pagePath.length) setPagePath(pagePath.slice(0, trail.length))
+  if (!pathSettled && trail.length === pagePath.length) setPathSettled(true)
+  if (pathSettled && trail.length < pagePath.length) setPagePath(pagePath.slice(0, trail.length))
   const page = trail.length > 0 ? trail[trail.length - 1] : null
+
+  // Each page on the path, once shown, tells its command (to load its rows).
+  const openedPages = useRef(new Set<string>())
+  useEffect(() => {
+    for (const entry of trail) {
+      if (openedPages.current.has(entry.id)) continue
+      openedPages.current.add(entry.id)
+      entry.cmd.onOpenPage?.()
+    }
+  }, [trail])
 
   // Focus input on open, selecting a handed-in query so typing replaces it.
   useEffect(() => {
@@ -311,18 +331,22 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   }, [activeIdx])
 
   const showPage = useCallback((next: Command | null) => {
+    // Steps from the pages shown, not an unresolved handed-in path.
+    const shown = trail.map((entry) => entry.id)
     if (next === null) {
-      setRestoreId(pagePath.length > 0 ? pagePath[pagePath.length - 1] : null)
-      setPagePath(pagePath.slice(0, -1))
+      const left = shown[shown.length - 1] ?? null
+      if (left !== null) openedPages.current.delete(left)
+      setRestoreId(left)
+      setPagePath(shown.slice(0, -1))
     } else {
-      setPagePath([...pagePath, next.id])
-      next.onOpenPage?.()
+      setPagePath([...shown, next.id])
     }
+    setPathSettled(true)
     setQuery('')
     setDebouncedQuery('')
     setActiveIdx(0)
     inputRef.current?.focus()
-  }, [pagePath])
+  }, [trail])
 
   const runCmd = useCallback(
     (cmd: Command) => {
@@ -547,7 +571,7 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
       data-idx={idx}
       type="button"
       onClick={() => onRun(file)}
-      onMouseEnter={() => onActivate(idx)}
+      {...hoverIntent(() => onActivate(idx))}
       className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors focus:outline-none focus-visible:outline-none ${
         isActive
           ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
@@ -586,7 +610,7 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
       data-idx={idx}
       type="button"
       onClick={() => onRun(cmd)}
-      onMouseEnter={() => onActivate(idx)}
+      {...hoverIntent(() => onActivate(idx))}
       className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors focus:outline-none focus-visible:outline-none ${
         isActive
           ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'

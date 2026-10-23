@@ -7,6 +7,7 @@ function resetUIStore(): void {
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
+    palettePage: [],
     quickOpenOpen: false,
     quickOpenQuery: '',
     telemetryOpen: false,
@@ -99,5 +100,31 @@ describe('useUIStore utility modals', () => {
     expect(useUIStore.getState().telemetryOpen).toBe(true)
     useUIStore.getState().toggleTelemetry()
     expect(useUIStore.getState().telemetryOpen).toBe(false)
+  })
+
+  it('openPaletteAt opens the palette on a page, replacing an open one', () => {
+    useUIStore.getState().togglePalette()
+    const key = useUIStore.getState().paletteKey
+    useUIStore.getState().openPaletteAt(['switch', 'workspace:/a'])
+    expect(useUIStore.getState().paletteOpen).toBe(true)
+    expect(useUIStore.getState().palettePage).toEqual(['switch', 'workspace:/a'])
+    expect(useUIStore.getState().paletteKey).toBe(key + 1)
+
+    useUIStore.getState().openPaletteAt(['switch'])
+    expect(useUIStore.getState().paletteOpen).toBe(true)
+    expect(useUIStore.getState().palettePage).toEqual(['switch'])
+  })
+
+  it('openPaletteAt closes the palette already open on that page', () => {
+    useUIStore.getState().openPaletteAt(['switch'])
+    useUIStore.getState().openPaletteAt(['switch'])
+    expect(useUIStore.getState().paletteOpen).toBe(false)
+  })
+
+  it('togglePalette opens on the root list', () => {
+    useUIStore.getState().openPaletteAt(['switch'])
+    useUIStore.getState().closePalette()
+    useUIStore.getState().togglePalette()
+    expect(useUIStore.getState().palettePage).toEqual([])
   })
 })

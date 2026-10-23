@@ -27,8 +27,13 @@ export interface SwitchCommandsInput {
    * loads, that page shows the workspace's rows from ``sessions``.
    */
   workspaceSessions?: { path: string; sessions: SessionResponse[] } | null
+  /** Shortcut labels shown on the two commands, e.g. ``⌘L`` and ``⌘⇧L``. */
+  shortcuts?: { switchWorkspace?: string; workspaceSessions?: string }
   now?: Date
 }
+
+export const SWITCH_COMMAND_ID = 'switch-workspace-session'
+export const WORKSPACE_SESSIONS_COMMAND_ID = 'workspace-sessions'
 
 export interface SwitchCommandHandlers {
   openSession: (session: SessionResponse) => void
@@ -115,13 +120,44 @@ function workspaceCommands(input: SwitchCommandsInput, handlers: SwitchCommandHa
 export function buildSwitchCommands(input: SwitchCommandsInput, handlers: SwitchCommandHandlers): Command[] {
   const workspaces = workspaceCommands(input, handlers, input.now ?? new Date())
   if (workspaces.length === 0) return []
-  return [{
-    id: 'switch-workspace-session',
+  const commands: Command[] = [{
+    id: SWITCH_COMMAND_ID,
     group: 'Session',
     label: 'Switch Workspace/Session…',
     description: 'Pick a workspace, then one of its sessions or a new one',
     keywords: 'session workspace repository worktree chat',
+    shortcut: input.shortcuts?.switchWorkspace,
     page: { placeholder: 'Search workspaces…', commands: workspaces },
     action: () => {},
   }]
+  // The current workspace sorts first; it is absent from a fresh draft with
+  // no workspace picked, or one the tree does not list.
+  const current = workspaces[0]
+  if (current.page && sameWorkspacePath(current.id.slice('workspace:'.length), input.currentWorkspace)) {
+    commands.push({
+      id: WORKSPACE_SESSIONS_COMMAND_ID,
+      group: 'Session',
+      label: 'Sessions in This Workspace…',
+      description: `Open a session in ${current.label} or start a new one`,
+      keywords: 'switch session recent current workspace',
+      shortcut: input.shortcuts?.workspaceSessions,
+      page: current.page,
+      onOpenPage: current.onOpenPage,
+      action: () => {},
+    })
+  }
+  return commands
+}
+
+/**
+ * The pages the palette opens on for a switch shortcut: the workspace list,
+ * or the current workspace's sessions inside it so Esc steps back to the
+ * list. Falls back to the workspace list without a current workspace.
+ */
+export function switchPagePath(commands: Command[], scope: 'workspaces' | 'sessions'): string[] {
+  const root = commands.find((c) => c.id === SWITCH_COMMAND_ID)
+  if (!root) return [SWITCH_COMMAND_ID]
+  const hasCurrent = commands.some((c) => c.id === WORKSPACE_SESSIONS_COMMAND_ID)
+  const current = root.page?.commands[0]
+  return scope === 'sessions' && hasCurrent && current ? [SWITCH_COMMAND_ID, current.id] : [SWITCH_COMMAND_ID]
 }

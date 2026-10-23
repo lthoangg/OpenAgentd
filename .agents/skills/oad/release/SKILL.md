@@ -75,14 +75,35 @@ gh pr create --base main --title "<title>" --body "<bullets>"
   answer false positives with a one-line reason, and re-check CI after each push.
 - Merge: `gh pr merge <n> --merge --delete-branch` (keep history; `--squash` only for a
   single logical change). `--admin` bypasses branch protection: ask first.
+  `main` requires one approving review, so a self-authored PR is blocked without
+  `--admin`: ask about `--admin` as soon as CI is green, not after a failed merge.
+- Run the merge as its own command. Never chain it with `;`, a pipe, or the
+  publish commands: a pipe like `| tail` hides the failure and the release then
+  runs on the old `main`.
 
 ## 4. Publish
 
+Publish only after the merge is confirmed. The gate must pass first; `set -e` stops
+here on any mismatch:
+
 ```bash
+set -e
+test "$(gh pr view <n> --json state -q .state)" = MERGED
 git checkout main && git pull --ff-only
+git status -sb | head -1                          # must be "## main...origin/main", not ahead/behind
+test "$(scripts/release_version.sh)" = <version>  # origin/main carries the bump
+```
+
+If any check fails, stop and fix the merge. Do not dispatch `release.yml`.
+
+```bash
 gh workflow run release.yml -f confirm=release        # creates v<version>, CLI archives (~5 min)
 gh run watch "$(gh run list --workflow=release.yml --limit=1 --json databaseId -q '.[0].databaseId')"
 ```
+
+Check that the run's `headSha` is the merge commit
+(`gh run list --workflow=release.yml --limit=1 --json headSha`). If you dispatched
+on the wrong commit, cancel the run at once (`gh run cancel <id>`).
 
 Write the notes (step 5) and apply them before the desktop build:
 

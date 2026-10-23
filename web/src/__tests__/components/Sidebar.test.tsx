@@ -92,6 +92,8 @@ type TestSession = {
   running?: boolean
   needs_input?: boolean
   pinned_at?: string | null
+  parent_session_id?: string | null
+  subagents?: TestSession[]
 }
 
 let sessionsData: TestSession[] = []
@@ -2024,7 +2026,8 @@ describe('Sidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
 
     await renderSidebarForSessions('session-1')
-    await user.click(screen.getByLabelText('Edit session Old title'))
+    await user.click(screen.getByLabelText('More actions for Old title'))
+    await user.click(screen.getByRole('menuitem', { name: 'Edit title' }))
     const input = screen.getByLabelText('Session title')
     await user.clear(input)
     await user.type(input, 'New title{Enter}')
@@ -2064,8 +2067,7 @@ describe('Sidebar workspace trust flow', () => {
         row('Second'),
         screen.getByLabelText('Collapse repository project'),
         screen.getByLabelText('Pin session First'),
-        screen.getByLabelText('Edit session First'),
-        screen.getByLabelText('Delete session First'),
+        screen.getByLabelText('More actions for First'),
         screen.getByLabelText('Actions for project'),
       ]) expect(el.tabIndex).toBe(0)
     })
@@ -2145,12 +2147,14 @@ describe('Sidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
 
     await renderSidebarForSessions('session-1')
-    await user.click(screen.getByLabelText('Edit session Old title'))
+    await user.click(screen.getByLabelText('More actions for Old title'))
+    await user.click(screen.getByRole('menuitem', { name: 'Edit title' }))
     await user.clear(screen.getByLabelText('Session title'))
     await user.type(screen.getByLabelText('Session title'), '   {Enter}')
     expect(screen.queryByLabelText('Session title')).toBeNull()
 
-    await user.click(screen.getByLabelText('Edit session Old title'))
+    await user.click(screen.getByLabelText('More actions for Old title'))
+    await user.click(screen.getByRole('menuitem', { name: 'Edit title' }))
     await user.type(screen.getByLabelText('Session title'), 'Other{Escape}')
 
     expect(screen.queryByLabelText('Session title')).toBeNull()
@@ -2183,7 +2187,8 @@ describe('Sidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
 
     await renderSidebarForSessions('session-1')
-    await user.click(screen.getByLabelText('Delete session Delete me'))
+    await user.click(screen.getByLabelText('More actions for Delete me'))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }))
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
@@ -2211,7 +2216,8 @@ describe('Sidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
 
     await renderSidebarForSessions('session-1')
-    await user.click(screen.getByLabelText('Delete session Delete me'))
+    await user.click(screen.getByLabelText('More actions for Delete me'))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }))
 
     expect(deleteSessionMutate).not.toHaveBeenCalled()
     expect(screen.getByText('Delete session')).toBeTruthy()
@@ -2496,20 +2502,33 @@ describe('Sidebar workspace trust flow', () => {
       )
     })
 
-    it('pins from the row action left of Edit', async () => {
+    it('pins from the row action left of More', async () => {
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
 
       await renderSidebarForSessions('session-1')
 
       const pin = screen.getByRole('button', { name: 'Pin session Feature' })
-      const edit = screen.getByRole('button', { name: 'Edit session Feature' })
-      expect(pin.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      const more = screen.getByRole('button', { name: 'More actions for Feature' })
+      expect(pin.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       fireEvent.click(pin)
       expect(setSessionPinnedMutate).toHaveBeenCalledWith(
         { id: 'session-1', pinned: true },
         expect.anything(),
       )
+    })
+
+    it('offers Delete but not Edit title for a subagent', async () => {
+      const child = projectSession('child-1', 'explorer#1: Map the repo', { agent_name: 'explorer#1', parent_session_id: 'session-1' })
+      sessionsData = [projectSession('session-1', 'Feature', { subagents: [child] })]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for subagent explorer#1' }))
+      const menu = screen.getByRole('menu')
+      expect(within(menu).queryByRole('menuitem', { name: 'Edit title' })).toBeNull()
+      expect(within(menu).getByRole('menuitem', { name: 'Delete session' })).toBeTruthy()
     })
 
     it('unpins a pinned session from its row action', async () => {

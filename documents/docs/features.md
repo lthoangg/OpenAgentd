@@ -1394,6 +1394,15 @@ agent against it.
   spinner after its own turn ends (in Status view it stays under Working, and
   a collapsed workspace still lists it), and a subagent that asked its lead a
   question reads "waiting for lead" in every window rather than "working".
+- **Sidebar row actions** `[v3.27.0]` — every sidebar row's buttons share one
+  borderless 24px style (36px on touch) and appear on hover or keyboard focus
+  in place of the row's age and tags, so titles and folder names keep the row
+  at rest. Session rows offer **Pin** and **More**, subagent rows **More**,
+  and folders **+** and **More**; More opens the same menu as right-click
+  (Pin, Edit title, Delete), so delete is no longer one click from a row.
+  Double-click and F2 still rename, and the Delete key still deletes. A long
+  subagent title now truncates in Pinned and the Status and Date views instead
+  of widening the list past the sidebar.
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and

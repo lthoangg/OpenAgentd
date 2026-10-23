@@ -64,7 +64,7 @@ describe('WorkspaceSessionList row memoization', () => {
     expect(rowRenders).toBe(3)
 
     // Rows still call the latest handler, not the one from their last render.
-    fireEvent.click(screen.getByLabelText('Edit session Session b'))
+    fireEvent.doubleClick(screen.getByText('Session b'))
     expect(first).not.toHaveBeenCalled()
     expect(latest).toHaveBeenCalledTimes(1)
   })

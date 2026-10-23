@@ -79,6 +79,31 @@ pub fn has_working_subagents(lead: &str) -> bool {
     r.live.get(lead).is_some_and(|m| m.values().any(|i| i.status == "working" && i.session.is_busy()))
 }
 
+/// Every lead with a subagent still running ([`has_working_subagents`]), as
+/// API ids.
+pub fn leads_with_working_subagents() -> HashSet<String> {
+    let r = reg().lock().unwrap();
+    r.live
+        .iter()
+        .filter(|(_, m)| m.values().any(|i| i.status == "working" && i.session.is_busy()))
+        .map(|(lead, _)| db::codec::api_uuid(lead))
+        .collect()
+}
+
+/// Whether a lead whose turn ended still has work coming back to it: a
+/// subagent still running, or a reply another workspace still owes it.
+/// Either starts another lead turn, so the lead is not finished yet.
+pub fn has_pending_work(lead: &str) -> bool {
+    has_working_subagents(lead) || crate::workspace_messages::has_outstanding_replies(lead)
+}
+
+/// Every session [`has_pending_work`], as API ids.
+pub fn sessions_with_pending_work() -> HashSet<String> {
+    let mut ids = leads_with_working_subagents();
+    ids.extend(crate::workspace_messages::sessions_with_outstanding_replies());
+    ids
+}
+
 /// `prune_subagent_output`.
 pub fn prune_subagent_output(output: &str, child_session_id: &str, max_chars: usize) -> String {
     let n = output.chars().count();
@@ -615,6 +640,9 @@ mod tests {
         add("explorer#3", "working", "working");
         assert!(has_working_subagents(lead));
         assert!(!has_working_subagents("another-lead"));
+        assert!(leads_with_working_subagents().contains(lead));
+        assert!(has_pending_work(lead));
+        assert!(sessions_with_pending_work().contains(lead));
     }
 
     #[tokio::test]

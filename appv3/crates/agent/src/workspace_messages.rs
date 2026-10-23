@@ -153,6 +153,11 @@ pub fn has_outstanding_replies(session_id: &str) -> bool {
     outstanding().lock().unwrap().get(&key(session_id)).is_some_and(|n| *n > 0)
 }
 
+/// Every session that [`has_outstanding_replies`], as API ids.
+pub fn sessions_with_outstanding_replies() -> Vec<String> {
+    outstanding().lock().unwrap().iter().filter(|(_, n)| **n > 0).map(|(k, _)| k.clone()).collect()
+}
+
 fn add_outstanding(session_id: &str) {
     *outstanding().lock().unwrap().entry(key(session_id)).or_insert(0) += 1;
 }
@@ -688,8 +693,11 @@ mod tests {
         add_outstanding(&sid);
         settle_outstanding(&sid);
         assert!(has_outstanding_replies(&sid));
+        assert!(sessions_with_outstanding_replies().contains(&sid));
+        assert!(crate::subagents::has_pending_work(&sid));
         settle_outstanding(&sid);
         settle_outstanding(&sid);
         assert!(!has_outstanding_replies(&sid));
+        assert!(!sessions_with_outstanding_replies().contains(&sid));
     }
 }

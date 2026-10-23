@@ -86,6 +86,9 @@ async fn a_lead_with_a_working_subagent_is_not_evicted() {
     wait_until("the member's build to start", || mock.calls.lock().unwrap().len() >= 2).await;
     assert_eq!(lead.state(), "idle");
     assert!(subagents::has_working_subagents(&sid));
+    // The active-sessions list (and the notch) keep the idle lead as busy.
+    assert!(subagents::has_pending_work(&sid));
+    assert!(subagents::sessions_with_pending_work().contains(&sid));
 
     // Idle for the full cutoff while the member is still building.
     let cutoff = Duration::from_secs(manager::SESSION_IDLE_SECONDS);
@@ -102,6 +105,7 @@ async fn a_lead_with_a_working_subagent_is_not_evicted() {
     wait_until("the lead to read the member's report", report_read).await;
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn on the report finishes");
     assert!(!subagents::has_working_subagents(&sid));
+    assert!(!subagents::sessions_with_pending_work().contains(&sid));
 
     // With no member working, an idle lead is evicted as before.
     manager::evict_idle_sessions(Some(Instant::now() + cutoff)).await;

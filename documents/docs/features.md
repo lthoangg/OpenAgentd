@@ -509,7 +509,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
     another app, a black pill grows out of the MacBook notch (or hangs from
     the middle of the menu bar on a display without one) whenever an agent
-    is busy. It reads "Working" with the session title or count, turns
+    is busy. It reads "Working" with the session title or count, and a
+    session whose own turn ended while its subagents (or another workspace)
+    still work for it stays "Working" until their reports are in, so
+    "Done" shows once, for the whole job `[v3.27.0]`. It turns
     orange with "Needs input" when an agent waits on a question or a plan
     review, and keeps "Done" (or "Failed") up for a finished session until
     you open it, in the app or from the pill, or dismiss it. A session that

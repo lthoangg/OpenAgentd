@@ -275,7 +275,9 @@ async fn forward(target: &UrlTarget, host: &str, req: Request) -> Response {
     let resp = match rb.send().await {
         Ok(r) => r,
         Err(e) => {
-            tracing::debug!("preview_upstream_error url={} err={}", url, e);
+            if let Some(skipped) = crate::log_throttle::upstream_error(&target.authority()) {
+                tracing::debug!("preview_upstream_error url={} err={} skipped_since_last={}", url, e, skipped);
+            }
             if parts.method == Method::GET && wants_html(&parts.headers) {
                 return not_running_page(target);
             }

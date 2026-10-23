@@ -473,7 +473,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         </div>
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-          <div ref={bodyRef} className="relative mx-auto max-w-3xl px-4 py-3">
+          <div ref={bodyRef} className="relative mx-auto max-w-3xl px-4 py-3 [[data-dock-maximized]_&]:max-w-none">
             <FileRefContext.Provider value={fileOpener}>
               <MarkdownBlock content={parts.body} sessionId={sessionId ?? undefined} />
               {parts.appendix !== null && (

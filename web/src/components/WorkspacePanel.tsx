@@ -645,7 +645,14 @@ export function WorkspacePanel({
         parked && 'invisible',
       )}
     >
-      <div data-review-dock data-dock-parked={parked || undefined} inert={parked} className="relative flex h-full min-h-0 w-full flex-col">
+      <div
+        data-review-dock
+        data-dock-parked={parked || undefined}
+        // Lets reading-column tabs (Plan, Side questions) drop their width cap.
+        data-dock-maximized={maximizeState === true || undefined}
+        inert={parked}
+        className="relative flex h-full min-h-0 w-full flex-col"
+      >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
         <DockTabBar
           tabs={visibleTabs}

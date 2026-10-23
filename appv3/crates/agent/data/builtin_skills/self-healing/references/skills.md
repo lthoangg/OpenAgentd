@@ -89,6 +89,8 @@ Full instructions the agent reads when it calls skill("skill-name").
 
 ## When changes take effect
 
-Skills are read from disk on every load, so a new skill is loadable by exact
-name immediately and appears in the skill list on the next turn. A session that
-already loaded an older copy keeps using it.
+Skills are read from disk on every load, so a new or edited skill is loadable
+by exact name immediately, and a load returns the skill's current content. The
+skill list (names and descriptions) is fixed for a session so the prompt cache
+stays warm: a new skill, or a changed description, appears in the list in the
+next session.

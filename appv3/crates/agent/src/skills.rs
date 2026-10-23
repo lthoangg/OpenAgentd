@@ -415,7 +415,7 @@ pub fn skill_tool_description(workspace: Option<&Path>) -> String {
     [
         "Load a skill's instructions. When a task matches a skill below, load it before starting the work.",
         "",
-        "Call this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
+        "Call this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again.",
         "",
         &format_available_skills(workspace, false),
     ]
@@ -473,7 +473,10 @@ impl Tool for SkillTool {
     fn definition_for(&self, ctx: &ToolContext) -> Value {
         let mut def = self.definition();
         if let Some(d) = def.pointer_mut("/function/description") {
-            *d = Value::String(skill_tool_description(Some(&ctx_workspace(ctx))));
+            // Fixed for the session: it opens the cached tools block.
+            let ws = ctx_workspace(ctx);
+            let key = format!("skill_tool_description\u{0}{}", ws.display());
+            *d = Value::String(crate::session_frozen::get_or_freeze(ctx.session_id.as_deref(), &key, || skill_tool_description(Some(&ws))));
         }
         def
     }
@@ -494,13 +497,19 @@ impl Tool for SkillTool {
                 let m: Map<String, Value> = from_msgs.into_iter().map(|(k, v)| (k, Value::String(v))).collect();
                 meta.insert("loaded_skills".into(), Value::Object(m));
             }
-            if let Some(hit) = meta.get("loaded_skills").and_then(|l| l.get(&skill_name)).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
-                tracing::info!("skill_reused name={}", skill_name);
-                return Ok(ToolOutput::text(hit.to_string()));
-            }
         }
+        // An earlier load's text answers only when the skill is gone from
+        // disk; otherwise a load returns the skill's current body.
+        let earlier = || -> Option<String> {
+            let meta = ctx.metadata.lock().unwrap();
+            meta.get("loaded_skills").and_then(|l| l.get(&skill_name)).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from)
+        };
         let roots: Vec<PathBuf> = skill_roots(Some(&workspace)).into_iter().filter(|r| r.is_dir()).collect();
         if roots.is_empty() {
+            if let Some(hit) = earlier() {
+                tracing::info!("skill_reused name={}", skill_name);
+                return Ok(ToolOutput::text(hit));
+            }
             return Ok(ToolOutput::text("Skills directory not found."));
         }
         for dir in &roots {
@@ -522,6 +531,10 @@ impl Tool for SkillTool {
                     return Ok(ToolOutput::text(rendered));
                 }
             }
+        }
+        if let Some(hit) = earlier() {
+            tracing::info!("skill_reused name={}", skill_name);
+            return Ok(ToolOutput::text(hit));
         }
         let available: Vec<Value> = discover_skills(Some(&workspace)).into_iter().map(|s| Value::String(s.name)).collect();
         Ok(ToolOutput::text(format!("Skill '{skill_name}' not found. Available: {}", crate::pystr::py_repr(&Value::Array(available)))))

@@ -1654,6 +1654,10 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   workspace's `AGENTS.md`, so cross-project
   preferences live in one place. Matches how pi, OpenCode, and Codex order
   global → project guidance.
+- **`AGENTS.md` read once per session** `[v3.28.0]` — the global and workspace
+  `AGENTS.md` are read at a session's first turn and kept for the rest of it, so
+  editing them mid-session no longer throws away the provider prompt cache.
+  Edits (and a newly created file) apply from the next session.
 - **Host environment in the shell tool** `[v2.10.0]` — the shell tool schema
   states the OS, CPU architecture, and shell binary the command runs under
   (e.g. `Darwin arm64, shell=zsh`), so the model stops guessing platform
@@ -2128,6 +2132,11 @@ Four orthogonal ways to add capability.
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
     (`.agents/skills/` `[v2.12.0]`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
+  - **Stable skill list, fresh skill content** `[v3.28.0]` — the skill list in the
+    `skill` tool's description is fixed for the session, keeping the prompt cache
+    intact; a skill added or re-described mid-session appears in the next session.
+    Loading a skill always reads its current body from disk, so edits to a skill's
+    instructions apply right away.
   - **Bundled `self-healing` skill with references** `[v3.3.0]` — one bundled skill covers the
     agent's own setup: its `SKILL.md` is an index linking reference files for agents, MCP servers,
     skills, plugins (with the `openagentd` plugin API typings), and image/video generation. It

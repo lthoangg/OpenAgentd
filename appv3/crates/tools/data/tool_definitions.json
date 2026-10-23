@@ -257,7 +257,7 @@
     "type": "function",
     "function": {
       "name": "skill",
-      "description": "Load a skill's instructions. When a task matches a skill below, load it before starting the work.\n\nCall this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
+      "description": "Load a skill's instructions. When a task matches a skill below, load it before starting the work.\n\nCall this at most once per skill. If already loaded in the visible conversation, reuse those instructions instead of calling this tool again.",
       "parameters": {
         "type": "object",
         "properties": {

@@ -69,7 +69,10 @@ export function Collapsible({ open, children, keepMounted = false, className, in
       )}
       {...props}
     >
-      <div inert={!open} aria-hidden={open ? undefined : true} className={cn('min-h-0', (!shown || moving) && 'overflow-hidden', innerClassName)}>
+      {/* `min-w-0`: a grid item may not shrink below its content by default,
+       * so one unbreakable line (a truncated title is still one line) would
+       * size the whole fold, and every row in it, past its container. */}
+      <div inert={!open} aria-hidden={open ? undefined : true} className={cn('min-h-0 min-w-0', (!shown || moving) && 'overflow-hidden', innerClassName)}>
         {children}
       </div>
     </div>

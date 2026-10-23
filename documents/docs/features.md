@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.27.0 · October 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.27.0)
+**Latest release:** v3.28.0 · October 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.28.0)
 
 ---
 
@@ -1845,6 +1845,11 @@ MCP.
   Only loopback URLs are accepted, never the OpenAgentd API port. Everything
   works only while the page is open in the Preview tab; there is no headless
   browser and no screenshots.
+- **Hints on wrong tool names and paths** `[v3.28.0]` — calling a tool by a
+  name from another harness (such as `bash`) answers "Did you mean …?" and
+  lists the available tools. A missing absolute path such as `/DESIGN.md` that
+  exists inside the workspace names the workspace-relative path, so the agent
+  corrects itself on the next call. Path resolution is unchanged.
 - **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
   **coding mode** `[v2.1.0]`, the agent can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
@@ -1866,6 +1871,9 @@ MCP.
   in a turn a scheduled task started, the tool stays listed but refuses when
   called, because nobody is there to answer; `submit_plan` does the same
   `[v3.24.0]`.
+  Question text can be up to 1,000 characters, option descriptions up to 400,
+  and a `submit_plan` summary up to 600, so long questions and summaries are
+  no longer rejected and retried `[v3.28.0]`.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
   Every session lists the same tools on every turn, whoever started it, so a
   scheduled run never invalidates the prompt cache. A task that runs in your
@@ -2222,6 +2230,9 @@ Everything stays local. No third-party telemetry SaaS.
   (with the slowest 5%), each model row shows its median of both, and a
   model-call span lists them. Calls recorded earlier count toward everything
   else but not toward speed.
+- **Prompt-cache miss causes** `[v3.28.0]` — each model-call span records a
+  fingerprint of the system prompt, the tool list, and the first changed
+  message, so a turn that missed the provider's prompt cache shows what changed.
 - **Sub-agents in session telemetry** `[v3.0.0]` — a session's telemetry view
   counts the sub-agent sessions it started in its spend, turns, and tokens, and
   says how many. The Sessions card lists each sub-agent under its session (in

@@ -63,7 +63,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
           </Tooltip>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto touch-pan-y">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y">
         {diff.isLoading ? (
           <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading diff…</p>
         ) : diff.isError ? (

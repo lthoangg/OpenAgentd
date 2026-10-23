@@ -277,6 +277,18 @@ describe("DiffView", () => {
     render(<DiffView toolName="patch" args="invalid json" />)
     expect(screen.getByText("invalid json")).toBeTruthy()
   })
+
+  it("wraps raw fallbacks so a long line never scrolls the transcript sideways", () => {
+    const long = "x".repeat(400)
+    const { unmount } = render(<DiffView toolName="patch" args={`not json ${long}`} />)
+    expect(screen.getByText(`not json ${long}`).className).toContain("whitespace-pre-wrap")
+    unmount()
+
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: `no file sections ${long}` })} />)
+    const pre = screen.getByText(`no file sections ${long}`)
+    expect(pre.className).toContain("whitespace-pre-wrap")
+    expect(pre.className).toContain("overflow-x-hidden")
+  })
 })
 
 // ---------------------------------------------------------------------------

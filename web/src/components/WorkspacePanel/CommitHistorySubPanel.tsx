@@ -272,10 +272,11 @@ function CommitHistorySubPanelView({
   if (gitHistory.data?.pages[0]?.is_git_repo === false) return <DockListNotice>Not a git repository</DockListNotice>
   if (parsedGraphLines.length === 0) return <DockListNotice>No graph history.</DockListNotice>
 
-  // One scroller: the dock content area scrolls both axes; ``min-w-max``
-  // keeps long graph lines intact instead of wrapping the ASCII rails.
+  // The dock scroller allows both axes for Tree only. ``min-w-min`` fills the
+  // dock and grows only past the rails + SHA + chips minimum (the ASCII rails
+  // cannot wrap); messages truncate at the dock edge instead of widening it.
   return (
-    <div className="flex min-w-max flex-col px-2 py-1.5 select-none">
+    <div className="flex min-w-min flex-col px-2 py-1.5 select-none">
       {parsedGraphLines.map((line) => (
         <div
           key={line.key}

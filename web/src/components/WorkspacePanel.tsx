@@ -574,7 +574,10 @@ export function WorkspacePanel({
         id={diff.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
         role={diff.data?.is_git_repo ? 'tabpanel' : undefined}
         aria-labelledby={diff.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
-        className="min-h-0 flex-1 overflow-auto touch-pan-y"
+        // Vertical only: ``overflow: auto`` lets one over-wide row pan the
+        // whole list sideways. Tree is the exception: its ASCII rails cannot
+        // wrap, so a graph wider than the dock scrolls sideways.
+        className={cn('min-h-0 flex-1 touch-pan-y', subTab === 'tree' ? 'overflow-auto' : 'overflow-x-hidden overflow-y-auto')}
       >
         {subTab === 'changes' ? (
           <GitReviewSubPanel

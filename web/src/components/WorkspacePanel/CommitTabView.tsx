@@ -81,7 +81,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
   const refs = commit.refs?.split(',').map((ref) => ref.trim()).filter(Boolean) ?? []
 
   return (
-    <div className="h-full min-h-0 overflow-auto touch-pan-y">
+    <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
       <header className="border-b border-(--color-border-subtle) bg-(--bg-page) px-3 py-2.5">
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 text-xs font-medium break-words text-(--color-text)">{subject}</p>
@@ -101,12 +101,12 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
             <TooltipContent side="bottom">Copy full SHA</TooltipContent>
           </Tooltip>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-(--color-text-muted)">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-(--color-text-muted)">
           <span className="font-mono text-(--color-text-subtle)">{commit.short_sha}</span>
           <span>{commit.author_name}</span>
           <span>{formatCommitTime(commit.timestamp)}</span>
           {refs.map((ref) => (
-            <span key={ref} className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key) px-1 font-mono text-(--color-text-2)">
+            <span key={ref} title={ref} className="max-w-full truncate rounded-xs border border-(--color-border-subtle) bg-(--bg-key) px-1 font-mono text-(--color-text-2)">
               {ref}
             </span>
           ))}

@@ -210,7 +210,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="h-full touch-pan-y overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
+          <div className="h-full touch-pan-y overflow-x-hidden overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
             <FileDiffBody kind={kind} moveTo={moveTo} lines={lines} oldStart={oldStart} newStart={newStart} />
           </div>
         </div>
@@ -303,11 +303,11 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
   } else if (model?.kind === 'raw') {
     viewContent =
       model.variant === 'patch' ? (
-        <pre className="overflow-auto overscroll-contain touch-pan-y p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">
+        <pre className="overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]">
           {model.text}
         </pre>
       ) : (
-        <pre className="p-3 font-mono text-xs">{model.text}</pre>
+        <pre className="p-3 whitespace-pre-wrap break-words font-mono text-xs [overflow-wrap:anywhere]">{model.text}</pre>
       )
   } else if (model?.kind === 'single') {
     viewContent = (

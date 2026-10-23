@@ -148,7 +148,7 @@ function GitReviewSubPanelView({
                 <div className="border-t border-(--color-border-subtle)">
                   {fileDiff ? (
                     // Capped peek; "Open diff in tab" gives the full height.
-                    <div className="max-h-[70vh] min-h-0 overflow-y-auto touch-pan-y">
+                    <div className="max-h-[70vh] min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
                       <DiffPreview diff={fileDiff} autoScroll={false} />
                     </div>
                   ) : (

@@ -35,7 +35,7 @@ function TextView({ item }: { item: FileLightboxItem }) {
     return () => { cancelled = true }
   }, [item.src, item.textContent])
   return (
-    <pre className="selectable-text h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text)">
+    <pre className="selectable-text h-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
       {content ?? 'Loading…'}
     </pre>
   )

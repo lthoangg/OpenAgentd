@@ -379,6 +379,37 @@ describe('WorkspacePanel – commit actions (undo/revert)', () => {
 
 // ── commits_ahead badge ───────────────────────────────────────────────────────
 
+describe('WorkspacePanel – git view scroll axes', () => {
+  async function scrollerFor(subTab: 'changes' | 'commits' | 'tree') {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    useGitPanelStore.getState().setSubTab(WORKSPACE, subTab)
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspacePanel workspace={WORKSPACE} open mobile={false} viewRequest={{ view: 'review', key: 1 }} />
+        </QueryClientProvider>,
+      )
+    })
+    return await screen.findByRole('tabpanel')
+  }
+
+  it('scrolls Changes and History vertically only', async () => {
+    for (const subTab of ['changes', 'commits'] as const) {
+      const panel = await scrollerFor(subTab)
+      expect(panel.className).toContain('overflow-x-hidden')
+      expect(panel.className).toContain('overflow-y-auto')
+      cleanup()
+    }
+  })
+
+  it('lets only the Tree graph scroll sideways', async () => {
+    const panel = await scrollerFor('tree')
+    expect(panel.className).toContain('overflow-auto')
+    expect(panel.className).not.toContain('overflow-x-hidden')
+  })
+})
+
 const statusWithDivergence = (ahead: number | null, behind: number | null) => ({
   workspace: WORKSPACE,
   name: 'project',

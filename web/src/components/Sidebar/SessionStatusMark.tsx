@@ -1,12 +1,16 @@
 import { Loader2 } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
+import { sessionWorking } from '@/lib/active-sessions'
 
 export type SessionStatus = 'needs_input' | 'running' | 'unread' | 'idle'
 
-/** Waiting on you outranks running, which outranks unread. */
+/**
+ * Waiting on you outranks running, which outranks unread. A lead whose
+ * subagents still work is running: its own turn ended, its work did not.
+ */
 export function sessionStatus(session: SessionResponse, unread: boolean): SessionStatus {
   if (session.needs_input === true) return 'needs_input'
-  if (session.running === true) return 'running'
+  if (sessionWorking(session)) return 'running'
   return unread ? 'unread' : 'idle'
 }
 

@@ -103,4 +103,10 @@ describe('groupSessionsByStatus', () => {
     expect(groupSessionsByStatus([session('idle')], []).map((g) => g.id)).toEqual(['recent'])
     expect(groupSessionsByStatus([], [])).toEqual([])
   })
+
+  it('keeps a lead under Working while its subagents still work', () => {
+    const lead = session('lead', { running: false, subagents: [session('child', { running: true, parent_session_id: 'lead' })] })
+    const groups = groupSessionsByStatus([lead], [lead])
+    expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([['Working', ['lead']]])
+  })
 })

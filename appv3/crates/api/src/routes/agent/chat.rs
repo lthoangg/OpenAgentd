@@ -694,6 +694,7 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     // Leads whose turn ended while subagents (or another workspace) still
     // work for them: not finished, so the active list keeps them.
     let pending = appv3_agent::subagents::sessions_with_pending_work();
+    let waiting_on_lead = appv3_agent::subagents::subagents_waiting_on_lead();
     // `sort` and `pinned` are v3 additions (the sidebar's view options); v2
     // ignores them. `sort=activity` orders by `last_message_at`; `pinned=true` is
     // every pinned session in one page, `pinned=false` leaves them out.
@@ -729,7 +730,7 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let children = db::list_child_sessions(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
         running: running.contains(&db::codec::api_uuid(&s.id)),
-        needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)),
+        needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)) || waiting_on_lead.contains(&db::codec::api_uuid(&s.id)),
         background_work: pending.contains(&db::codec::api_uuid(&s.id)),
         ..Default::default()
     };

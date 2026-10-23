@@ -103,7 +103,9 @@ function SessionRowView({
             member_id: s.agent_name || s.id,
             profile: s.agent_name || 'member',
             title: s.title || s.agent_name || s.id,
-            status: s.running ? 'working' : s.needs_input ? 'waiting_lead' : 'completed',
+            // Waiting first: a subagent asking its lead keeps its turn open,
+            // so it reports `running` as well.
+            status: s.needs_input ? 'waiting_lead' : s.running ? 'working' : 'completed',
             created_at: s.created_at,
             has_pending_question: s.needs_input === true,
           }))

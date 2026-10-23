@@ -83,11 +83,7 @@ pub fn has_working_subagents(lead: &str) -> bool {
 /// API ids.
 pub fn leads_with_working_subagents() -> HashSet<String> {
     let r = reg().lock().unwrap();
-    r.live
-        .iter()
-        .filter(|(_, m)| m.values().any(|i| i.status == "working" && i.session.is_busy()))
-        .map(|(lead, _)| db::codec::api_uuid(lead))
-        .collect()
+    r.live.iter().filter(|(_, m)| m.values().any(|i| i.status == "working" && i.session.is_busy())).map(|(lead, _)| db::codec::api_uuid(lead)).collect()
 }
 
 /// Whether a lead whose turn ended still has work coming back to it: a
@@ -102,6 +98,15 @@ pub fn sessions_with_pending_work() -> HashSet<String> {
     let mut ids = leads_with_working_subagents();
     ids.extend(crate::workspace_messages::sessions_with_outstanding_replies());
     ids
+}
+
+/// Subagent sessions suspended on `ask_lead`, as API ids. Their turn is
+/// still open (the stream store counts them as running), but they are
+/// waiting on the lead, not working: session rows report them as
+/// `needs_input`, the lead being who must answer.
+pub fn subagents_waiting_on_lead() -> HashSet<String> {
+    let r = reg().lock().unwrap();
+    r.live.values().flat_map(|m| m.values()).filter(|i| i.status == "waiting_lead").map(|i| db::codec::api_uuid(&i.session_id)).collect()
 }
 
 /// `prune_subagent_output`.
@@ -465,6 +470,9 @@ pub async fn on_subagent_question_asked(lead: &str, child: &str, data: &Value, p
         (i.handle.clone(), i.profile_name.clone())
     });
     let (handle, profile) = inst.clone().unwrap_or_else(|| (format!("subagent-{}", crate::util::head_chars(child, 8)), "explorer".into()));
+    // The turn stays open while it waits, so no turn event says so; without
+    // this, every client but the one on the lead's stream shows it working.
+    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "waiting_lead"}));
     let q = data.get("question").map(crate::pystr::py_str).unwrap_or_default();
     let opts: Vec<String> = data.get("options").and_then(|o| o.as_array()).map(|a| a.iter().map(crate::pystr::py_str).collect()).unwrap_or_default();
     let opts_text = if opts.is_empty() { String::new() } else { format!(" (Options: {})", opts.join(", ")) };
@@ -687,5 +695,51 @@ mod tests {
         db::save_message(&pool, &child_sid, db::NewMessage::assistant(None)).await.unwrap();
         on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
         assert_eq!(reported().as_deref(), Some("Subagent 'explorer#1' completed task with no text output."));
+    }
+
+    #[tokio::test]
+    async fn a_subagent_asking_its_lead_reports_that_it_waits() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead = "lead-waiting-subagent";
+        let child_sid = uuid::Uuid::now_v7().to_string();
+        let agent = Agent::new(provider.clone(), "explorer#1", "", vec![], None);
+        let session = AgentSession::new(agent, Some(child_sid.clone()), None, pool.clone(), factory, Some(lead.into()));
+        let inst = SubagentInstance {
+            handle: "explorer#1".into(),
+            profile_name: "explorer".into(),
+            lead_session_id: lead.into(),
+            session_id: child_sid.clone(),
+            session,
+            // `ask_lead` sets this before the turn suspends.
+            status: "waiting_lead".into(),
+            last_result: None,
+            pending_lead_question: Some(json!({"question": "Which branch?", "options": []})),
+            last_error: None,
+            question_delivered: false,
+            result_delivered: false,
+            pending_tool_call_id: None,
+        };
+        reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
+        assert!(subagents_waiting_on_lead().contains(&child_sid));
+
+        let mut feed = broadcaster::broadcaster().attach();
+        on_subagent_question_asked(lead, &child_sid, &json!({"question": "Which branch?"}), &pool).await;
+        let status = loop {
+            let ev = tokio::time::timeout(std::time::Duration::from_secs(5), feed.next()).await.expect("an event").expect("feed open");
+            let data: Value = serde_json::from_str(&ev.data).unwrap();
+            if ev.event == "subagent_status" && data["session_id"] == json!(child_sid) {
+                break data;
+            }
+        };
+        assert_eq!(status["status"], json!("waiting_lead"));
+        assert_eq!(status["lead_session_id"], json!(lead));
+
+        // The lead answers: the subagent works again and no longer waits.
+        with_instance(lead, "explorer#1", |i| i.status = "working".into());
+        assert!(!subagents_waiting_on_lead().contains(&child_sid));
     }
 }

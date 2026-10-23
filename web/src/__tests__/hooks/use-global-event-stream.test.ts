@@ -722,6 +722,46 @@ describe('handleGlobalEvent', () => {
     expect(client.getQueryState(queryKeys.session.subagents('lead-parent'))?.isInvalidated).toBe(true)
   })
 
+  // The lead row lists its subagents from this query when that session (or
+  // one of its subagents) is on screen; a follow-up turn must not read "done".
+  it('invalidates parent subagents on session_turn_started with parent_session_id', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })
+
+    await handleGlobalEvent(client, 'session_turn_started', {
+      session_id: 'child-sess',
+      parent_session_id: 'lead-parent',
+    }, 1, () => 1)
+
+    expect(client.getQueryState(queryKeys.session.subagents('lead-parent'))?.isInvalidated).toBe(true)
+  })
+
+  it('marks a subagent waiting on its lead as waiting, not working', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.subagents('lead-1'), { live_members: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), {
+      pages: [{
+        data: [{
+          id: 'lead-1', title: 'Lead', agent_name: 'code', created_at: null, updated_at: null, running: true,
+          subagents: [{ id: 'child-1', title: 'Child', agent_name: 'explorer#1', created_at: null, updated_at: null, running: true }],
+        }],
+        next_cursor: null,
+        has_more: false,
+      }],
+      pageParams: [null],
+    })
+
+    await handleGlobalEvent(client, 'subagent_status', {
+      lead_session_id: 'lead-1', session_id: 'child-1', handle: 'explorer#1', status: 'waiting_lead',
+    }, 1, () => 1)
+
+    const data = client.getQueryData(queryKeys.session.sessions.infinite()) as {
+      pages: { data: { subagents?: { running?: boolean; needs_input?: boolean }[] }[] }[]
+    }
+    expect(data.pages[0].data[0].subagents?.[0]).toMatchObject({ running: false, needs_input: true })
+  })
+
   it('invalidates coding and session file queries on workspace_files_changed', async () => {
     const client = new QueryClient()
     const keys = [

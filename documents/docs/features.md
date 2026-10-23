@@ -1390,6 +1390,10 @@ agent against it.
   window. Unread state stays on this device, and sessions that finish while the
   app is closed are not marked. Since `[v3.26.0]` an idle compaction no longer
   marks a session unread.
+  Since `[v3.27.0]` a session whose subagents are still working keeps its
+  spinner after its own turn ends (in Status view it stays under Working, and
+  a collapsed workspace still lists it), and a subagent that asked its lead a
+  question reads "waiting for lead" in every window rather than "working".
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and

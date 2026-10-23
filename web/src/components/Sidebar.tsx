@@ -61,6 +61,7 @@ import {
   X,
 } from 'lucide-react'
 import { APP_EVENTS } from '@/lib/app-events'
+import { sessionWorking } from '@/lib/active-sessions'
 import {
   useDeleteSessionMutation,
   useSessionsQuery,
@@ -984,7 +985,7 @@ export function Sidebar({
           const worktreeIsRemoving = worktreeRemoving !== null && allCheckoutPaths.includes(worktreeRemoving)
           const sourceRunningSessions = checkouts.listPaths
             .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
-            .filter((s) => s.running === true)
+            .filter(sessionWorking)
             .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
           const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'main worktree' : 'all')

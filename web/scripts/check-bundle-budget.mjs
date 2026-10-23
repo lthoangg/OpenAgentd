@@ -80,7 +80,9 @@ if (import.meta.main) {
   // optimistic session and settings actions, loading skeletons) added 16 kB /
   // 6 kB gzip, all in the index chunk: 2.53 MB / 770 kB with a 1.87 MB index
   // chunk.
-  const limits = { eagerBytes: 2_540_000, eagerGzipBytes: 773_000, largestChunkBytes: 1_874_000 }
+  // ⌘L / ⌘⇧L switching, hover intent for pickers, and the shared sidebar row
+  // actions reached 2.54 MB / 773.4 kB with a 1.87 MB index chunk (v3.27.0).
+  const limits = { eagerBytes: 2_545_000, eagerGzipBytes: 775_000, largestChunkBytes: 1_878_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

@@ -522,7 +522,11 @@ mod tests {
         let dir_hint = "is an absolute path. Did you mean `oad-hint-web/src` (workspace-relative)?";
         assert!(call("grep", serde_json::json!({"pattern": "x", "directory": "/oad-hint-web/src"})).await.contains(dir_hint));
         assert!(call("glob", serde_json::json!({"pattern": "*", "directory": "/oad-hint-web/src"})).await.contains(dir_hint));
-        // Nothing in the workspace by that name: no hint.
-        assert_eq!(call("read", serde_json::json!({"path": "/oad-hint-missing.md"})).await, "File not found: /oad-hint-missing.md");
+        // Nothing in the workspace by that name: no hint. (Windows shows the
+        // resolved `C:\…` path, so only the message shape is checked.)
+        let missing = call("read", serde_json::json!({"path": "/oad-hint-missing.md"})).await;
+        assert!(missing.starts_with("File not found: "), "{missing}");
+        assert!(missing.ends_with("oad-hint-missing.md"), "{missing}");
+        assert!(!missing.contains("absolute path"), "{missing}");
     }
 }

@@ -306,6 +306,22 @@ impl DeniedPaths {
         }
     }
 
+    /// For a missing absolute `raw` path whose workspace-relative reading
+    /// exists (`/web/src` for the workspace's `web/src`): a sentence naming
+    /// it, prefixed with a space. Empty otherwise. Paths are not rewritten:
+    /// `/` stays the machine root.
+    pub fn absolute_path_hint(&self, raw: &str) -> String {
+        let p = Path::new(raw);
+        if !raw.starts_with('/') || p.exists() {
+            return String::new();
+        }
+        let rel = raw.trim_start_matches('/').trim_end_matches('/');
+        if rel.is_empty() || !self.workspace_root.join(rel).exists() {
+            return String::new();
+        }
+        format!(" `{raw}` is an absolute path. Did you mean `{rel}` (workspace-relative)?")
+    }
+
     /// v2 `check_command`: shell-tokenise and look for denied path tokens.
     pub fn check_command(&self, command_line: &str) -> Option<String> {
         let tokens = split_command(command_line)?;

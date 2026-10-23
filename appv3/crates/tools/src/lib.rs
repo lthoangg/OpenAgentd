@@ -127,7 +127,8 @@ pub enum ToolError {
     Argument(String),
     #[error("{0}")]
     Execution(String),
-    #[error("Tool '{0}' not found.")]
+    /// The full model-facing message, see [`unknown_tool_message`].
+    #[error("{0}")]
     NotFound(String),
     #[error("suspended")]
     Suspended(Suspension),
@@ -245,7 +246,7 @@ pub async fn execute(tools: &ToolSet, ctx: &ToolContext, name: &str, raw_args: &
             serde_json::from_str(raw_args)
                 .map_err(|e| ToolError::Argument(format!("Could not parse arguments for tool '{name}': {}. Raw: {}", py_json_error(&e), py_repr_str(raw_args))))?
         };
-        let tool = tools.get(name).ok_or_else(|| ToolError::NotFound(name.to_string()))?;
+        let tool = tools.get(name).ok_or_else(|| ToolError::NotFound(unknown_tool_message(tools, name)))?;
         if raw_args.is_empty() {
             let def = tool.definition();
             let mut req: Vec<String> = def
@@ -332,6 +333,52 @@ pub fn py_repr_str(s: &str) -> String {
     }
     out.push(q);
     out
+}
+
+/// Names models reach for that mean one of ours (other harnesses' names).
+const TOOL_ALIASES: &[(&str, &str)] = &[
+    ("bash", "shell"),
+    ("sh", "shell"),
+    ("terminal", "shell"),
+    ("run_command", "shell"),
+    ("exec", "shell"),
+    ("edit", "patch"),
+    ("write", "patch"),
+    ("apply_patch", "patch"),
+    ("str_replace", "patch"),
+    ("str_replace_based_edit_tool", "patch"),
+    ("ls", "read"),
+    ("cat", "read"),
+    ("view", "read"),
+    ("find", "glob"),
+    ("search", "grep"),
+    ("todo", "todo_manage"),
+    ("todos", "todo_manage"),
+    ("todo_write", "todo_manage"),
+    ("load_skill", "skill"),
+];
+
+/// `Tool 'x' not found.`, plus the tool the model most likely meant and the
+/// ones it can call, so the next turn recovers instead of guessing again.
+pub fn unknown_tool_message(tools: &ToolSet, name: &str) -> String {
+    let names = tools.names();
+    let norm = |s: &str| s.to_ascii_lowercase().replace('-', "_");
+    let mut wanted = norm(name);
+    for prefix in ["functions.", "default_api.", "default_api:", "mcp__", "mcp_", "tools."] {
+        if let Some(rest) = wanted.strip_prefix(prefix) {
+            wanted = rest.to_string();
+        }
+    }
+    let alias = TOOL_ALIASES.iter().find(|(a, _)| *a == wanted).map(|(_, t)| *t);
+    let guess = names.iter().find(|n| norm(n) == wanted).or_else(|| alias.and_then(|a| names.iter().find(|n| *n == a))).filter(|n| n.as_str() != name);
+    let mut msg = format!("Tool '{name}' not found.");
+    if let Some(g) = guess {
+        msg.push_str(&format!(" Did you mean '{g}'?"));
+    }
+    if !names.is_empty() {
+        msg.push_str(&format!(" Available tools: {}.", names.join(", ")));
+    }
+    msg
 }
 
 /// Approximate Python `json.JSONDecodeError` text: `Expecting value: line 1 column 1 (char 0)`.
@@ -421,5 +468,61 @@ mod tests {
             ]
         );
         assert!(schema_problems(&contract_definition("glob").unwrap()).is_empty());
+    }
+
+    fn named(names: &[&str]) -> ToolSet {
+        struct Named(String);
+        #[async_trait]
+        impl Tool for Named {
+            fn name(&self) -> &str {
+                &self.0
+            }
+            async fn run(&self, _: &ToolContext, _: Value) -> ToolResult {
+                Ok(ToolOutput::text("ok"))
+            }
+        }
+        let mut set = ToolSet::new();
+        for n in names {
+            set.add(Arc::new(Named((*n).into())));
+        }
+        set
+    }
+
+    /// A wrong tool name costs a model turn; the error names the tool the
+    /// model most likely meant and the ones it can call.
+    #[tokio::test]
+    async fn unknown_tool_error_suggests_the_intended_tool() {
+        let set = named(&["read", "shell", "patch", "todo_manage", "skill"]);
+        let d = tempfile::tempdir().unwrap();
+        let run = |name: &'static str| {
+            let (set, ctx) = (set.clone(), ctx(d.path()));
+            async move { execute(&set, &ctx, name, "{}").await.unwrap().text }
+        };
+        assert_eq!(run("bash").await, "Error: Tool 'bash' not found. Did you mean 'shell'? Available tools: read, shell, patch, todo_manage, skill.");
+        assert!(run("mcp_Todo_manage").await.contains("Did you mean 'todo_manage'?"));
+        assert!(run("Read").await.contains("Did you mean 'read'?"));
+        assert!(run("load_skill").await.contains("Did you mean 'skill'?"));
+        assert_eq!(run("teleport").await, "Error: Tool 'teleport' not found. Available tools: read, shell, patch, todo_manage, skill.");
+    }
+
+    /// `/DESIGN.md` is a machine path; when only the workspace's `DESIGN.md`
+    /// exists the error says so, so the model fixes the path next turn.
+    #[tokio::test]
+    async fn missing_absolute_path_hints_at_the_workspace_file() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("oad-hint-web/src")).unwrap();
+        std::fs::write(d.path().join("oad-hint-DESIGN.md"), "x").unwrap();
+        let c = ctx(d.path());
+        let call = |tool: &'static str, args: Value| {
+            let c = c.clone();
+            async move { builtin_tool(tool).unwrap().run(&c, args).await.unwrap_err().to_string() }
+        };
+        let hint = "is an absolute path. Did you mean `oad-hint-DESIGN.md` (workspace-relative)?";
+        assert!(call("read", serde_json::json!({"path": "/oad-hint-DESIGN.md"})).await.contains(hint));
+        let dir_hint = "is an absolute path. Did you mean `oad-hint-web/src` (workspace-relative)?";
+        assert!(call("grep", serde_json::json!({"pattern": "x", "directory": "/oad-hint-web/src"})).await.contains(dir_hint));
+        assert!(call("glob", serde_json::json!({"pattern": "*", "directory": "/oad-hint-web/src"})).await.contains(dir_hint));
+        // Nothing in the workspace by that name: no hint.
+        assert_eq!(call("read", serde_json::json!({"path": "/oad-hint-missing.md"})).await, "File not found: /oad-hint-missing.md");
     }
 }

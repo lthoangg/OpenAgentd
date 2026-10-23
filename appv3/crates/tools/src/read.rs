@@ -309,7 +309,7 @@ impl Tool for ReadTool {
             let resolved = denied.validate_read_path(&path)?;
             let rel = denied.display_path(&resolved);
             if !resolved.exists() {
-                return Err(ToolError::Execution(format!("File not found: {rel}")));
+                return Err(ToolError::Execution(format!("File not found: {rel}{}", denied.absolute_path_hint(&path))));
             }
             if resolved.is_dir() {
                 return Ok(ToolOutput::Text(format_directory(&resolved)?));

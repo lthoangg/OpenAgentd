@@ -52,9 +52,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, WebviewWindow};
-#[cfg(target_os = "macos")]
-use tauri::Manager;
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 use crate::servers::ServerId;
 

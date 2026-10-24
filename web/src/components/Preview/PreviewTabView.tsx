@@ -37,7 +37,6 @@ import { WORKSPACE_TREE_STALE_MS, workspaceFileListQueryOptions } from '@/querie
 import { DOCK_ACTION_BUTTON_CLASS } from '../WorkspacePanel/dock-tab-styles'
 import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale, frameSize } from './devices'
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
-import { parseAddress } from './preview-address'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
@@ -424,9 +423,10 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   const submitUrl = (raw: string) => {
     setUrlDraft(null)
-    const input = parseAddress(raw, workspace)
-    if (!input) return
-    switch (input.kind) {
+    void import('./preview-address').then(({ parseAddress }) => {
+      const input = parseAddress(raw, workspace)
+      if (!input) return
+      switch (input.kind) {
       case 'page':
         navigateTo(input.path)
         return
@@ -446,7 +446,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         } catch {
           setError(`Invalid URL: ${input.url}`)
         }
-    }
+      }
+    })
   }
 
   const reload = async () => {

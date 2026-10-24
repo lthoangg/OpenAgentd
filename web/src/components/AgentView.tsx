@@ -477,7 +477,6 @@ export function AgentView({
   const pinnedPrompt = shownPinnedPrompt && pinnedPromptShows(shownPinnedPrompt, hold ? null : leadRevertTime) ? shownPinnedPrompt : null
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
-  const showEarlierTurnsRef = useRef<() => void>(() => {})
   const onLoadOlderTopRef = useRef<() => void>(() => {})
 
   // The store puts the prompt back in the composer via ``pendingDraft``.
@@ -741,7 +740,6 @@ export function AgentView({
   useEffect(() => {
     onLoadOlderTopRef.current = handleLoadOlderTop
     hiddenTurnCountRef.current = hiddenTurnCount
-    showEarlierTurnsRef.current = showEarlierTurns
   })
 
   // ── Prompt navigation ──────────────────────────────────────────────────────

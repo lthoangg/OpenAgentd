@@ -82,7 +82,11 @@ if (import.meta.main) {
   // chunk.
   // ⌘L / ⌘⇧L switching, hover intent for pickers, and the shared sidebar row
   // actions reached 2.54 MB / 773.4 kB with a 1.87 MB index chunk (v3.27.0).
-  const limits = { eagerBytes: 2_545_000, eagerGzipBytes: 775_000, largestChunkBytes: 1_878_000 }
+  // `/goal` (the composer chip with its popover and phone sheet, the claim
+  // cards, the goal turn divider, the replace dialog and Settings → Goals)
+  // added 39 kB / 12 kB gzip, all in the index chunk: 2.58 MB / 787 kB with a
+  // 1.92 MB index chunk (v3.29.0).
+  const limits = { eagerBytes: 2_585_000, eagerGzipBytes: 788_000, largestChunkBytes: 1_918_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

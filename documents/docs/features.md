@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # Features
@@ -547,6 +547,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     unread sessions. With two or more servers, each row names its server
     ("Builtin" for the bundled one), and a click opens the session in a
     window on that server.
+    Right-click the pill or a session row for a native menu with Open and
+    Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
+    A new window opens on that session's server without navigating an
+    existing window. Cancelling the menu leaves unread notifications intact.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

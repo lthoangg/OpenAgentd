@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Check, CircleAlert, X } from 'lucide-react'
@@ -27,6 +27,7 @@ const STATE_COMMAND = 'island_state'
 const FIT_COMMAND = 'island_fit'
 const OPEN_COMMAND = 'island_open_session'
 const DISMISS_COMMAND = 'island_dismiss'
+const MENU_COMMAND = 'island_context_menu'
 const STATUS_EVENT = 'island-status'
 const GEOMETRY_EVENT = 'island-geometry'
 const SETTINGS_EVENT = 'island-settings-changed'
@@ -81,13 +82,17 @@ function RowMark({ state }: { state: IslandSession['state'] }) {
   return <span className="island-spinner" aria-hidden="true" />
 }
 
-function SessionRow({ session, hover }: { session: IslandSession; hover: RowHover | null }) {
+function SessionRow({ session, hover, onMenu }: {
+  session: IslandSession
+  hover: RowHover | null
+  onMenu: (event: MouseEvent<HTMLElement>, sessionId: string) => void
+}) {
   const hovered = hover?.id === session.id
   const waiting = session.state === 'needs_input'
   const unread = session.state === 'done' || session.state === 'failed'
   const meta = [session.server, waiting ? 'Open' : session.workspace].filter(Boolean).join(' · ')
   return (
-    <li className="island-row-item" data-unread={unread ? '' : undefined}>
+    <li className="island-row-item" data-unread={unread ? '' : undefined} onContextMenu={(event) => onMenu(event, session.id)}>
       <button
         type="button"
         className="island-row"
@@ -136,6 +141,7 @@ export function Island() {
   const [geometry, setGeometry] = useState<NotchGeometry | null>(null)
   const [settings, setSettings] = useState<IslandSettings>(DEFAULT_ISLAND_SETTINGS)
   const [pointer, setPointer] = useState<IslandPointer | null>(null)
+  const [menuStatus, setMenuStatus] = useState<IslandStatus | null>(null)
   const [listHeight, setListHeight] = useState(0)
   /** The pill is out of the notch (false while it grows out or shrinks back). */
   const [open, setOpen] = useState(false)
@@ -145,6 +151,15 @@ export function Island() {
   const wasVisible = useRef(false)
   /** The last snapshot seen; an older one arriving late is dropped. */
   const seenSeq = useRef<number | null>(null)
+
+  const onMenu = useCallback((event: MouseEvent<HTMLElement>, sessionId: string | null) => {
+    event.preventDefault()
+    if (!sessionId || menuStatus || !status) return
+    setMenuStatus(status)
+    void invoke(MENU_COMMAND, { sessionId, x: event.clientX, y: event.clientY })
+      .catch((error: unknown) => console.error('island: context menu failed', error))
+      .finally(() => setMenuStatus(null))
+  }, [menuStatus, status])
 
   const receive = useCallback((next: IslandStatus) => {
     const previous = seenSeq.current
@@ -174,9 +189,11 @@ export function Island() {
     }
   }, [])
 
-  const sessions = status?.sessions ?? NO_SESSIONS
-  const unread = status?.unread ?? NO_SESSIONS
-  const hovered = pointer?.inside ?? false
+  // Live updates still arrive, but cannot shrink the pill under a native menu.
+  const displayedStatus = menuStatus ?? status
+  const sessions = displayedStatus?.sessions ?? NO_SESSIONS
+  const unread = displayedStatus?.unread ?? NO_SESSIONS
+  const hovered = menuStatus !== null || (pointer?.inside ?? false)
   const mode = islandMode(sessions, unread, hovered, settings)
   const wantVisible = mode !== 'hidden'
 
@@ -237,7 +254,7 @@ export function Island() {
   const label = `${lead}: ${detail}. Open in OpenAgentd`
 
   return (
-    <div className="island-canvas">
+    <div className="island-canvas" onContextMenu={(event) => event.preventDefault()}>
       <div
         className="island"
         data-mode={mode}
@@ -247,7 +264,7 @@ export function Island() {
       >
         <span className="island-ear island-ear--left" aria-hidden="true" />
         <div className="island-body">
-          <button type="button" className="island-bar" onClick={onBar} aria-label={wantVisible ? label : 'No active sessions'} tabIndex={wantVisible ? 0 : -1}>
+          <button type="button" className="island-bar" onClick={onBar} onContextMenu={(event) => onMenu(event, primarySessionId(sessions, unread))} aria-label={wantVisible ? label : 'No active sessions'} tabIndex={wantVisible ? 0 : -1}>
             <span className="island-lead" role="status" aria-live="polite">
               {barMode !== 'hidden' && (
                 <span key={barMode} className="island-swap island-lead-inner">
@@ -261,7 +278,7 @@ export function Island() {
           </button>
           {mode === 'expanded' && (
             <ul ref={listRef} className="island-list" aria-label="Sessions">
-              {listOrder(sessions, unread).map((session) => <SessionRow key={session.id} session={session} hover={hoverRow} />)}
+              {listOrder(sessions, unread).map((session) => <SessionRow key={session.id} session={session} hover={hoverRow} onMenu={onMenu} />)}
             </ul>
           )}
         </div>

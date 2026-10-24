@@ -597,7 +597,11 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .manage(state)
         .manage(preview_relay::PreviewRelays::default())
-        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
+        .on_menu_event(|app, event| {
+            if !island::handle_menu_event(app, event.id().as_ref()) {
+                handle_desktop_menu(app, event.id().as_ref());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::show_desktop_notification,
             commands::secure_get_access_key,
@@ -627,6 +631,7 @@ fn main() {
             island::island_state,
             island::island_fit,
             island::island_open_session,
+            island::island_context_menu,
             island::island_dismiss,
             island::island_viewing,
             island::island_settings,

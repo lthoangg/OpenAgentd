@@ -7,12 +7,14 @@ import { useFakeTimers } from '../fake-timers'
 type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let view: IslandView
+let closeMenu: (() => void) | undefined
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
 
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     calls.push([cmd, args])
     if (cmd === 'island_state') return view
+    if (cmd === 'island_context_menu') return new Promise<void>((resolve) => { closeMenu = resolve })
     return undefined
   },
 }))
@@ -59,6 +61,7 @@ async function mount(settings: Partial<IslandSettings> = {}) {
 
 beforeEach(() => {
   calls = []
+  closeMenu = undefined
   handlers.clear()
   view = { status: status(1, []), geometry: { hasNotch: true, width: 188, height: 38 }, settings: DEFAULT_ISLAND_SETTINGS }
 })
@@ -109,6 +112,65 @@ describe('Island', () => {
     fireEvent.click(screen.getByRole('button', { name: /Docs/ }))
     fireEvent.click(screen.getByRole('button', { name: /Working/ }))
     await waitFor(() => expect(opened()).toEqual(['b', 'a']))
+  })
+
+  it('right-clicks a row without opening it and keeps the list up until the menu closes', async () => {
+    await mount()
+    push(status(2, [running('a', 'Refactor auth'), running('b', 'Docs')]))
+    point(true)
+    expect(fireEvent.contextMenu(screen.getByRole('button', { name: /Docs/ }), { clientX: 120, clientY: 80 })).toBe(false)
+    await waitFor(() => expect(calls).toContainEqual(['island_context_menu', { sessionId: 'b', x: 120, y: 80 }]))
+    expect(opened()).toEqual([])
+    expect(dismissed()).toEqual([])
+    point(false)
+    expect(screen.getByRole('list', { name: 'Sessions' })).toBeInTheDocument()
+    await act(async () => closeMenu?.())
+    expect(screen.queryByRole('list')).toBeNull()
+    expect(opened()).toEqual([])
+    expect(dismissed()).toEqual([])
+  })
+
+  it('uses the same priority for right-clicking the pill as for opening it', async () => {
+    await mount({ expandOnHover: false })
+    push(status(2, [running('a', 'Docs')], [done('d', 'Fix tooltip')]))
+    const bar = screen.getByRole('button', { name: /Done:/ })
+    fireEvent.contextMenu(bar, { clientX: 200, clientY: 20 })
+    await waitFor(() => expect(calls).toContainEqual(['island_context_menu', { sessionId: 'd', x: 200, y: 20 }]))
+    expect(opened()).toEqual([])
+    await act(async () => closeMenu?.())
+
+    push(status(3, [waiting('w', 'Review', 'Ship it?'), running('a', 'Docs')], [done('d', 'Fix tooltip')]))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Needs input:/ }), { clientX: 210, clientY: 22 })
+    await waitFor(() => expect(calls).toContainEqual(['island_context_menu', { sessionId: 'w', x: 210, y: 22 }]))
+    await act(async () => closeMenu?.())
+  })
+
+  it('does not request a session menu while the pill has nothing to show', async () => {
+    await mount()
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'No active sessions' }))
+    expect(calls.filter(([cmd]) => cmd === 'island_context_menu')).toEqual([])
+  })
+
+  it('suppresses the WebKit menu on canvas padding without requesting a session action', async () => {
+    await mount()
+    expect(fireEvent.contextMenu(document.querySelector('.island-canvas')!)).toBe(false)
+    expect(calls.filter(([cmd]) => cmd === 'island_context_menu')).toEqual([])
+  })
+
+  it('holds the displayed snapshot during a menu and applies updates after cancellation', async () => {
+    await mount()
+    push(status(2, [running('a', 'Docs')]))
+    point(true)
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Docs/ }), { clientX: 100, clientY: 60 })
+    push(status(3, []))
+    point(false)
+    expect(screen.getByRole('list', { name: 'Sessions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Docs/ })).toBeInTheDocument()
+    await act(async () => closeMenu?.())
+    expect(screen.queryByRole('list')).toBeNull()
+    expect(pill().dataset.open).toBe('false')
+    expect(opened()).toEqual([])
+    expect(dismissed()).toEqual([])
   })
 
   it('keeps a finished session up until it is read, then shrinks away', async () => {

@@ -12,6 +12,10 @@ use crate::servers::ServerId;
 pub const MAIN_WINDOW: &str = "main";
 pub const SECONDARY_WINDOW_PREFIX: &str = "main-";
 
+// Reserve a label and install its server mapping as one creation operation.
+// Otherwise a concurrent failed build can roll back another window's mapping.
+static WINDOW_CREATION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Zoom factor bounds and step. ``ZOOM_STEP`` is the multiplier per
 /// ⌘+/⌘- press (≈20%, matching Chrome). Bounds keep the factor from
 /// reaching values where the UI becomes unusable.
@@ -278,6 +282,23 @@ pub fn new_window_init_script(
     }
 }
 
+/// The server a new window opens on. An `explicit` server wins over the
+/// active window's: an external one always, the builtin only while it runs
+/// (`None`, never another server, so the caller can refuse). With no
+/// `explicit` server it is [`crate::servers::current_server`].
+fn new_window_server(
+    explicit: Option<&ServerId>,
+    active_window: Option<&str>,
+    external: &std::collections::HashMap<String, String>,
+    bundled_running: bool,
+) -> Option<ServerId> {
+    match explicit {
+        Some(ServerId::Bundled) => bundled_running.then_some(ServerId::Bundled),
+        Some(server) => Some(server.clone()),
+        None => crate::servers::current_server(active_window, external, bundled_running),
+    }
+}
+
 pub fn next_window_label(app: &AppHandle) -> String {
     if app.get_webview_window(MAIN_WINDOW).is_none() {
         return MAIN_WINDOW.to_string();
@@ -385,12 +406,23 @@ pub async fn create_app_window(
     label: Option<&str>,
     initial_path: Option<&str>,
 ) -> Result<tauri::WebviewWindow> {
-    create_app_window_with(app, label, initial_path, false).await
+    create_app_window_with(app, label, initial_path, false, None).await
 }
 
 /// New Window: a window that opens on an empty new session.
 pub async fn create_fresh_app_window(app: &AppHandle) -> Result<tauri::WebviewWindow> {
-    create_app_window_with(app, None, None, true).await
+    create_app_window_with(app, None, None, true, None).await
+}
+
+/// A new window on `server`, opened at `initial_path`, whichever window is
+/// active. It errors rather than open on another server or unconnected: an
+/// explicit [`ServerId::Bundled`] needs the builtin running.
+pub async fn create_app_window_on_server(
+    app: &AppHandle,
+    server: ServerId,
+    initial_path: &str,
+) -> Result<tauri::WebviewWindow> {
+    create_app_window_with(app, None, Some(initial_path), false, Some(&server)).await
 }
 
 async fn create_app_window_with(
@@ -398,18 +430,28 @@ async fn create_app_window_with(
     label: Option<&str>,
     initial_path: Option<&str>,
     fresh: bool,
+    explicit_server: Option<&ServerId>,
 ) -> Result<tauri::WebviewWindow> {
+    let _creation = WINDOW_CREATION_LOCK.lock().await;
     let state: tauri::State<'_, AppState> = app.state();
     let bundled_base_url = state.backend_base_url.lock().await.clone();
     let desktop_token = state.desktop_token.lock().await.clone();
-    // The server of the window you are in, else the builtin while it runs.
-    // Never a saved server: those connect only when you choose one.
+    // An explicit server, else the server of the window you are in, else the
+    // builtin while it runs. Never a saved server: those connect only when
+    // you choose one.
     let bundled_running = crate::servers::bundled_running(app).await;
-    let server = crate::servers::current_server(
+    let server = new_window_server(
+        explicit_server,
         crate::servers::active_app_window(app).as_deref(),
         &crate::servers::external_map(app),
         bundled_running,
     );
+    if let Some(explicit) = explicit_server {
+        // Never open unconnected, or on another server, when one was asked for.
+        if server.is_none() || (*explicit == ServerId::Bundled && bundled_base_url.is_none()) {
+            anyhow::bail!("cannot open a window on the builtin server: it is not running");
+        }
+    }
     let mut init_script = new_window_init_script(
         server.as_ref(),
         bundled_base_url.as_deref(),
@@ -426,19 +468,33 @@ async fn create_app_window_with(
     // its frontend bootstraps: `app_backend_status` reads it, and would
     // otherwise report the builtin and override the injected URL. The script
     // and this entry come from the same `server`, so they cannot disagree.
-    if let Some(ServerId::External(base)) = server {
-        state
+    // `previous` is what the label held, so a failed build can put it back.
+    let registered = if let Some(ServerId::External(base)) = server {
+        let previous = state
             .window_backend_base_urls
             .lock()
             .unwrap()
             .insert(window_label.clone(), base);
-    }
+        Some(previous)
+    } else {
+        None
+    };
     // Open at the size of the window you are in, like a browser does; the
     // size saved on the last close/quit is the fallback when none is open.
     let size = target_webview_window(app)
         .and_then(|window| window_size(&window))
         .or_else(|| load_window_state(app).ok().flatten());
-    build_app_window_sized(app, window_label, init_script, size).await
+    let built = build_app_window_sized(app, window_label.clone(), init_script, size).await;
+    if built.is_err() {
+        if let Some(previous) = registered {
+            let mut map = state.window_backend_base_urls.lock().unwrap();
+            match previous {
+                Some(base) => map.insert(window_label, base),
+                None => map.remove(&window_label),
+            };
+        }
+    }
+    built
 }
 
 pub fn target_window_label(app: &AppHandle) -> String {
@@ -486,6 +542,49 @@ pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn external_on(label: &str, base: &str) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::from([(label.to_string(), base.to_string())])
+    }
+
+    #[test]
+    fn explicit_external_server_overrides_a_bundled_active_window() {
+        let other = ServerId::External("https://other.example".into());
+        let server = new_window_server(Some(&other), Some("main"), &Default::default(), true);
+        assert_eq!(server, Some(other));
+    }
+
+    #[test]
+    fn explicit_bundled_server_overrides_an_external_active_window() {
+        let external = external_on("main", "https://other.example");
+        let server = new_window_server(Some(&ServerId::Bundled), Some("main"), &external, true);
+        assert_eq!(server, Some(ServerId::Bundled));
+    }
+
+    #[test]
+    fn explicit_external_server_needs_no_running_builtin() {
+        let other = ServerId::External("https://other.example".into());
+        assert_eq!(new_window_server(Some(&other), None, &Default::default(), false), Some(other));
+    }
+
+    #[test]
+    fn explicit_bundled_server_is_refused_while_it_is_not_running() {
+        // Never the active window's external server instead.
+        let external = external_on("main", "https://other.example");
+        assert_eq!(new_window_server(Some(&ServerId::Bundled), Some("main"), &external, false), None);
+        assert_eq!(new_window_server(Some(&ServerId::Bundled), None, &Default::default(), false), None);
+    }
+
+    #[test]
+    fn without_an_explicit_server_the_current_server_is_used() {
+        let external = external_on("main-2", "https://other.example");
+        for (active, running) in [(Some("main-2"), true), (Some("main"), false), (None, true), (None, false)] {
+            assert_eq!(
+                new_window_server(None, active, &external, running),
+                crate::servers::current_server(active, &external, running),
+            );
+        }
+    }
 
     #[test]
     fn frontend_commands_carry_a_fresh_id() {

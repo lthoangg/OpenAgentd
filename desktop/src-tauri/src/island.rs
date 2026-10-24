@@ -197,6 +197,62 @@ pub struct IslandStatus {
     pub unread: Vec<IslandSession>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SessionAction {
+    Open,
+    NewWindow,
+    Dismiss,
+}
+
+impl SessionAction {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::NewWindow => "new-window",
+            Self::Dismiss => "dismiss",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::NewWindow => "Open in new window",
+            Self::Dismiss => "Dismiss",
+        }
+    }
+}
+
+fn menu_actions(session: &IslandSession) -> Vec<SessionAction> {
+    let mut actions = vec![SessionAction::Open, SessionAction::NewWindow];
+    if matches!(session.state, SessionState::Done | SessionState::Failed) {
+        actions.push(SessionAction::Dismiss);
+    }
+    actions
+}
+
+fn action_session(status: &IslandStatus, session_id: &str, action: SessionAction) -> Result<IslandSession> {
+    let session = status.sessions.iter().chain(&status.unread).find(|s| s.id == session_id)
+        .context("This session is no longer shown in the notch.")?;
+    if session.server_id.is_none() {
+        bail!("The session's server is no longer available.");
+    }
+    if !menu_actions(session).contains(&action) {
+        bail!("Only finished sessions can be dismissed.");
+    }
+    Ok(session.clone())
+}
+
+fn menu_selection(id: &str) -> Option<(SessionAction, &str)> {
+    let (action, session_id) = id.strip_prefix("island:")?.split_once(':')?;
+    let action = match action {
+        "open" => SessionAction::Open,
+        "new-window" => SessionAction::NewWindow,
+        "dismiss" => SessionAction::Dismiss,
+        _ => return None,
+    };
+    Some((action, session_id))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotchGeometry {
@@ -690,6 +746,8 @@ struct Shared {
     pill: Option<Rect>,
     /// The pointer as last told to the webview.
     pointer: Option<PointerPayload>,
+    /// Native menu tracking must not hide or resize the window beneath it.
+    menu_open: bool,
     /// The session each app window shows, by window label ([`id_key`]s).
     viewing: HashMap<String, String>,
 }
@@ -720,6 +778,7 @@ fn shared() -> &'static Mutex<Shared> {
             canvas: None,
             pill: None,
             pointer: None,
+            menu_open: false,
             viewing: HashMap::new(),
         })
     })
@@ -791,6 +850,9 @@ fn ensure_island(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 fn apply(app: &AppHandle) {
     let (show, (width, height)) = {
         let s = shared().lock().unwrap();
+        if s.menu_open {
+            return;
+        }
         (should_show(&s.settings, s.frontmost, s.wants_visible), s.size)
     };
     let Some(window) = app.get_webview_window(ISLAND_WINDOW) else {
@@ -868,6 +930,9 @@ async fn run_pointer_watch(app: AppHandle) {
         let _ = app.run_on_main_thread(move || {
             let pill = {
                 let s = shared().lock().unwrap();
+                if s.menu_open {
+                    return;
+                }
                 // The canvas may have moved or hidden since it was read.
                 if s.canvas != Some(canvas) {
                     return;
@@ -1252,54 +1317,135 @@ pub fn island_fit(app: AppHandle, window: WebviewWindow, width: f64, height: f64
     schedule_apply(&app);
 }
 
-/// Open a session the island is showing, in an app window on its server.
-#[tauri::command]
-pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: String) {
-    if window.label() != ISLAND_WINDOW {
-        return;
+async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAction) -> Result<()> {
+    let session = action_session(&shared().lock().unwrap().status, session_id, action)?;
+    let server = session.server_id.context("The session's server is no longer available.")?;
+    if action == SessionAction::Dismiss {
+        mark_read(app, &id_key(session_id));
+        return Ok(());
     }
-    let server = {
-        let s = shared().lock().unwrap();
-        s.status.sessions.iter().chain(&s.status.unread).find(|x| x.id == session_id).map(|x| x.server_id.clone())
-    };
-    let Some(server) = server else {
-        return;
-    };
-    // The window may already show it, and then reports nothing new.
-    mark_read(&app, &id_key(&session_id));
-    let windows = crate::servers::app_window_labels(&app);
-    let target = server.and_then(|server| {
-        crate::servers::window_for_server(
-            &server,
-            crate::servers::focused_app_window(&app).as_deref(),
-            crate::servers::active_app_window(&app).as_deref(),
-            &windows,
-            &crate::servers::external_map(&app),
-        )
-    });
+    if action == SessionAction::NewWindow {
+        crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
+        mark_read(app, &id_key(session_id));
+        return Ok(());
+    }
+    let windows = crate::servers::app_window_labels(app);
+    let target = crate::servers::window_for_server(
+        &server,
+        crate::servers::focused_app_window(app).as_deref(),
+        crate::servers::active_app_window(app).as_deref(),
+        &windows,
+        &crate::servers::external_map(app),
+    );
     match target.and_then(|label| app.get_webview_window(&label)) {
         Some(target) => {
-            crate::window::show_window(&target);
             let payload = serde_json::json!({ "sessionId": session_id });
-            if let Err(e) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
-                log::warn!("island: open session emit failed: {e:#}");
-            }
+            app.emit_to(target.label(), "desktop-notification-clicked", payload)?;
+            crate::window::show_window(&target);
         }
-        // Every window is closed: a new one opens where the island looks
-        // (the builtin), see `servers::followed_servers`.
         None if windows.is_empty() => {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let path = format!("/{session_id}");
-                if let Err(e) = crate::window::create_app_window(&app, None, Some(&path)).await {
-                    log::error!("island: open session window failed: {e:#}");
-                }
-            });
+            crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
         }
         // Its last window left that server a moment ago; opening it
         // elsewhere would show "not found".
-        None => log::warn!("island: no window is on the server of session {session_id}"),
+        None => bail!("No window is on this session's server anymore."),
     }
+    mark_read(app, &id_key(session_id));
+    Ok(())
+}
+
+fn report_island_error(app: &AppHandle, title: &str, error: &anyhow::Error) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+    log::warn!("island: {title}: {error:#}");
+    app.dialog().message("The session or its server may no longer be available. Try again from OpenAgentd.")
+        .title(title)
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
+}
+
+fn dispatch_session_action(app: &AppHandle, session_id: String, action: SessionAction) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = run_session_action(&app, &session_id, action).await {
+            report_island_error(&app, "Could not open or dismiss session", &error);
+        }
+    });
+}
+
+/// Called by the app's single menu listener, not a new listener per popup.
+pub fn handle_menu_event(app: &AppHandle, id: &str) -> bool {
+    let Some((action, session_id)) = menu_selection(id) else {
+        return false;
+    };
+    dispatch_session_action(app, session_id.to_string(), action);
+    true
+}
+
+/// Open a session the island is showing, in an app window on its server.
+#[tauri::command]
+pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: String) {
+    if window.label() == ISLAND_WINDOW {
+        dispatch_session_action(&app, session_id, SessionAction::Open);
+    }
+}
+
+/// Keep the IPC promise pending until native menu tracking ends.
+#[tauri::command]
+pub async fn island_context_menu(app: AppHandle, window: WebviewWindow, session_id: String, x: f64, y: f64) -> Result<(), String> {
+    if window.label() != ISLAND_WINDOW {
+        return Err("Only the island can show its session menu.".into());
+    }
+    if !x.is_finite() || !y.is_finite() || !(0.0..=CANVAS_WIDTH).contains(&x) || !(0.0..=CANVAS_HEIGHT).contains(&y) {
+        return Err("Invalid menu position.".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            let result = show_session_menu(&handle, &window, &session_id, x, y);
+            if let Err(error) = &result {
+                report_island_error(&handle, "Could not show session menu", error);
+            }
+            let _ = tx.send(result.map_err(|error| error.to_string()));
+        }).map_err(|error| error.to_string())?;
+        rx.await.map_err(|error| error.to_string())?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, session_id);
+        Err("The notch status is only available on macOS.".into())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn show_session_menu(app: &AppHandle, window: &WebviewWindow, session_id: &str, x: f64, y: f64) -> Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+
+    if !window.is_visible()? {
+        return Ok(());
+    }
+    let session = {
+        let s = shared().lock().unwrap();
+        if s.menu_open {
+            return Ok(());
+        }
+        action_session(&s.status, session_id, SessionAction::Open)?
+    };
+    let menu = Menu::new(app)?;
+    for action in menu_actions(&session) {
+        if action == SessionAction::Dismiss {
+            menu.append(&PredefinedMenuItem::separator(app)?)?;
+        }
+        menu.append(&MenuItem::with_id(app, format!("island:{}:{session_id}", action.key()), action.title(), true, None::<&str>)?)?;
+    }
+    // AppKit runs a nested loop here: pointer/focus updates must leave the
+    // island alone, and no shared-state mutex may be held while tracking.
+    shared().lock().unwrap().menu_open = true;
+    let result = window.popup_menu_at(&menu, tauri::LogicalPosition::new(x, y));
+    shared().lock().unwrap().menu_open = false;
+    apply(app);
+    result.context("Show session menu")
 }
 
 /// The × on an unread row: forget it without opening it.
@@ -1493,6 +1639,51 @@ mod tests {
 
     fn remote() -> ServerId {
         ServerId::External(REMOTE.into())
+    }
+
+    #[test]
+    fn session_menus_only_offer_dismiss_for_finished_work() {
+        for state in [SessionState::Running, SessionState::NeedsInput, SessionState::Done, SessionState::Failed] {
+            let item = session("a", state);
+            let actions = menu_actions(&item);
+            assert_eq!(actions[..2], [SessionAction::Open, SessionAction::NewWindow]);
+            assert_eq!(actions.contains(&SessionAction::Dismiss), matches!(state, SessionState::Done | SessionState::Failed));
+        }
+    }
+
+    #[test]
+    fn menu_actions_revalidate_the_target_and_keep_its_server() {
+        let mut item = session("r", SessionState::Done);
+        item.server_id = Some(remote());
+        let mut status = IslandStatus { unread: vec![item], ..IslandStatus::default() };
+        for action in [SessionAction::Open, SessionAction::NewWindow, SessionAction::Dismiss] {
+            assert_eq!(action_session(&status, "r", action).unwrap().server_id, Some(remote()));
+        }
+        assert!(action_session(&status, "unknown", SessionAction::Open).is_err());
+        status.unread.clear();
+        assert!(action_session(&status, "r", SessionAction::NewWindow).is_err());
+        let mut running = session("r", SessionState::Running);
+        running.server_id = Some(remote());
+        status.sessions.push(running);
+        assert!(action_session(&status, "r", SessionAction::Dismiss).is_err());
+    }
+
+    #[test]
+    fn menu_actions_cannot_open_sessions_without_a_known_server() {
+        let status = IslandStatus { sessions: vec![session("a", SessionState::Running)], ..IslandStatus::default() };
+        assert!(action_session(&status, "a", SessionAction::Open).is_err());
+        assert!(action_session(&status, "a", SessionAction::NewWindow).is_err());
+    }
+
+    #[test]
+    fn menu_events_are_scoped_to_the_island_and_encode_the_selected_session() {
+        for action in [SessionAction::Open, SessionAction::NewWindow, SessionAction::Dismiss] {
+            let id = format!("island:{}:a-b-c", action.key());
+            assert_eq!(menu_selection(&id), Some((action, "a-b-c")));
+        }
+        assert_eq!(menu_selection("settings"), None);
+        assert_eq!(menu_selection("island:delete:a"), None);
+        assert_eq!(menu_selection("island:open"), None);
     }
 
     fn ids(sessions: &[IslandSession]) -> Vec<&str> {

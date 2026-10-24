@@ -25,6 +25,7 @@ fn main() {
                 "island_state",
                 "island_fit",
                 "island_open_session",
+                "island_context_menu",
                 "island_dismiss",
                 "island_viewing",
                 "island_settings",

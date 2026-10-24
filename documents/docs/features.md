@@ -652,7 +652,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
-  `/redo`, `/redo-all`, plus user-defined commands. Commands are contextually
+  `/redo`, `/redo-all`, `/btw`, `/goal`, plus user-defined commands. Commands are contextually
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
@@ -665,6 +665,38 @@ run from the terminal (the native Rust binary since v3.0.0).
     without a workspace they open in a panel above the composer, where you step back
     through earlier ones and Close only hides the panel. Show them again with a bare
     `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
+  - **`/goal`** `[v3.29.0]` — `/goal <what done looks like>` (for example `/goal web
+    tests pass and tsc is clean`) keeps the agent working turn after turn without a
+    "continue" from you. It stops when a separate completion check confirms the
+    agent's `update_goal` claim from evidence shown in the conversation, when the
+    agent reports a blocker, or at a limit: 50 turns by default, two turns in a row
+    without tool calls, three rejected claims in a row, or an optional token budget
+    (uncached input plus output). A rejected claim's reason goes back to the agent.
+    The check also reads the runtime's own log of the commands the goal ran, with
+    their exit codes, and the files it changed, so a claim cannot cite a run that
+    failed, never happened, or came before later edits. Claiming again with
+    nothing run since a rejection is turned down without another check.
+    A check that fails to give a verdict neither accepts nor rejects the claim, so
+    the agent can claim again; three such failures in a row pause the goal. Goal
+    turns run unattended by default: the agent decides instead of asking and notes
+    each choice. **Settings → Goals** sets the turn limit, a default token budget
+    for new goals, and allows questions during a goal. The check runs on the
+    session's own model, so it reuses the conversation's prompt cache. A chip
+    beside Code/Plan (kept on the minimized floating bar) shows progress and opens
+    Pause, Resume, and Clear, in a popover on desktop and a bottom sheet on phones;
+    `/goal`, `/goal pause|resume|clear`, and **Cmd+K** do the same. Stop pauses the
+    goal, Plan mode and running subagents make it wait, and a goal running when the
+    app quit comes back paused. A scheduled task that runs in the goal's session
+    skips each run that comes due while the goal works (the scheduler skips busy
+    sessions) and fires again at its next scheduled time. Undoing a goal turn
+    keeps the goal; undoing its objective, or cancelling the objective while it is
+    still queued, ends the goal and gives the text back as `/goal …`. The
+    transcript marks each goal turn and each claim's verdict, the sidebar marks
+    sessions with a live goal, and one notification ("Goal achieved", "Goal
+    blocked", or "Goal paused") arrives when the goal ends. In the Reader
+    transcript the goal's outcome (achieved, blocked, or paused by rejections or
+    failed checks) stays visible, and claims the agent worked past fold into the
+    turn's row as "goal checks". One goal per top-level session.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.

@@ -81,7 +81,8 @@ function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, re
  */
 function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[]) {
   return messages
-    .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') && !userMessageSender(msg))
+    // A goal's queued continuation is a hidden reminder, not the user's message.
+    .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') && !userMessageSender(msg) && !msg.extra?.goal_turn)
     .map((msg) => ({
       id: msg.id,
       sessionId,
@@ -89,6 +90,7 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
       submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
       attachments: msg.attachments ?? undefined,
       sentFromWorkspace: sentFrom(msg.extra)?.workspaceName,
+      ...(msg.extra?.goal ? { goal: true } : {}),
     }))
 }
 

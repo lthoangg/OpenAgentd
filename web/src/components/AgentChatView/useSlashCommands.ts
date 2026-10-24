@@ -19,6 +19,7 @@ import type { RefObject } from 'react'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { renderCommand, renderSnippet } from '@/api/client'
+import { restoredPromptText } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -40,6 +41,8 @@ export interface UseSlashCommandsArgs {
   hasLiveMessages?: boolean
   /** Shows the session's side questions (a bare ``/btw``); defaults to the panel above the composer. */
   onOpenSideQuestions?: (sessionId: string) => void
+  /** Shows the session's goal status (a bare ``/goal``). */
+  onShowGoal?: () => void
 }
 
 export interface UseSlashCommandsResult {
@@ -63,6 +66,7 @@ export function useSlashCommands({
   hasVisibleMessages = false,
   hasLiveMessages = false,
   onOpenSideQuestions,
+  onShowGoal,
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
 
@@ -145,6 +149,9 @@ export function useSlashCommands({
         else useBtwStore.getState().reopen(sessionId)
         break
       }
+      case 'goal':
+        onShowGoal?.()
+        break
       case 'compact':
         useAgentStore.getState().compactAgent()
         break
@@ -152,7 +159,10 @@ export function useSlashCommands({
         void useAgentStore.getState().undoAgent().then(async (response) => {
           const message = response?.message
           if (!message || message.role !== 'user' || message.is_summary) return
-          inputRef.current?.setValue(message.content ?? '')
+          // A goal's own turn gives nothing back; its objective comes back as ``/goal …``.
+          const text = restoredPromptText(message.content ?? '', message.extra)
+          if (text === null) return
+          inputRef.current?.setValue(text)
           const attachments = message.attachments ?? []
           const files = (
             await Promise.all(attachments.map((att) => attachmentToFile(att)))
@@ -197,7 +207,7 @@ export function useSlashCommands({
           )
         break
     }
-  }, [handleNewSession, inputRef, agentWorkspace, pushToast, onOpenSideQuestions])
+  }, [handleNewSession, inputRef, agentWorkspace, pushToast, onOpenSideQuestions, onShowGoal])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */

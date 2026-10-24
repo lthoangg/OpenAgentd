@@ -225,6 +225,7 @@ mock.module('lucide-react', () => ({
   Settings: Icon,
   Settings2: Icon,
   Pencil: Icon,
+  Target: Icon,
   Trash2: Icon,
   X: Icon,
 }))

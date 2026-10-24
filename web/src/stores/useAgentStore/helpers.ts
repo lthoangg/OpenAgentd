@@ -1,4 +1,5 @@
 import type { ContentBlock, PendingQuestion } from '@/api/types'
+import { isGoalTurnBlock } from '@/lib/goal'
 import type { AgentStream, CacheInvalidation, ResolvedQuestion } from './types'
 
 /**
@@ -201,6 +202,15 @@ export function isDirectUserBlock(block: ContentBlock): boolean {
   if (block.type !== 'user') return false
   const fromAgent = block.extra?.from_agent
   return !fromAgent || fromAgent === 'user'
+}
+
+/**
+ * A prompt the user wrote: a direct ``user`` block that is not one of a
+ * goal's own turns, which start from a hidden reminder (still an undo target,
+ * so ``isDirectUserBlock`` keeps counting them).
+ */
+export function isTypedPromptBlock(block: ContentBlock): boolean {
+  return isDirectUserBlock(block) && !isGoalTurnBlock(block)
 }
 
 export function applyRevertBoundary(

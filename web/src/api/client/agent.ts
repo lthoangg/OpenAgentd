@@ -45,6 +45,9 @@ import type {
   SubagentsResponse,
   SideQuestionEvent,
   SideQuestionListResponse,
+  GoalRequest,
+  SessionGoal,
+  SessionGoalResponse,
 } from '../types'
 
 export async function postAgentChat(
@@ -59,6 +62,8 @@ export async function postAgentChat(
   mentions?: string[],
   /** Mode a session started by this message begins in; ignored by an existing session. */
   interactionMode?: SessionInteractionMode,
+  /** Send ``message`` as the objective of a `/goal` (v3). */
+  goal?: GoalRequest,
 ): Promise<AgentChatResponse> {
   const formData = new FormData()
   if (message) {
@@ -85,6 +90,11 @@ export async function postAgentChat(
   }
   if (interactionMode) {
     formData.append('interaction_mode', interactionMode)
+  }
+  if (goal) {
+    formData.append('goal', 'true')
+    if (goal.max_turns !== undefined) formData.append('goal_max_turns', String(goal.max_turns))
+    if (goal.token_budget !== undefined) formData.append('goal_token_budget', String(goal.token_budget))
   }
   if (files && files.length > 0) {
     for (const file of files) {
@@ -739,4 +749,40 @@ export async function updateSessionPlan(sessionId: string, content: string, base
   })
   if (!res.ok) await parseDetailOrThrow(res, 'updateSessionPlan')
   return res.json()
+}
+
+function goalUrl(sessionId: string, action?: 'pause' | 'resume'): string {
+  return `${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/goal${action ? `/${action}` : ''}`
+}
+
+/**
+ * The session's newest goal. The route answers 404 only for a session that
+ * is gone or is a member's (which never has a goal), and a v2 backend has no
+ * such route: each means "no goal".
+ */
+export async function getSessionGoal(sessionId: string): Promise<SessionGoalResponse> {
+  const res = await fetch(goalUrl(sessionId))
+  if (res.status === 404) return { goal: null }
+  if (!res.ok) await parseDetailOrThrow(res, 'getSessionGoal')
+  return res.json()
+}
+
+/** `/goal pause`: the running turn finishes; no new goal turn starts. */
+export async function pauseSessionGoal(sessionId: string): Promise<SessionGoal> {
+  const res = await fetch(goalUrl(sessionId, 'pause'), { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'pauseSessionGoal')
+  return res.json()
+}
+
+/** `/goal resume`: the goal continues, starting a turn when the session is idle. */
+export async function resumeSessionGoal(sessionId: string): Promise<SessionGoal> {
+  const res = await fetch(goalUrl(sessionId, 'resume'), { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'resumeSessionGoal')
+  return res.json()
+}
+
+/** `/goal clear`: end the goal. */
+export async function clearSessionGoal(sessionId: string): Promise<void> {
+  const res = await fetch(goalUrl(sessionId), { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, 'clearSessionGoal')
 }

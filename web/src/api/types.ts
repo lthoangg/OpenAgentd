@@ -258,6 +258,8 @@ export interface SessionResponse {
   background_work?: boolean
   /** When the session was pinned in the sidebar (v3); absent when unpinned. */
   pinned_at?: string | null
+  /** The session's live `/goal` (v3); absent without one. */
+  goal_status?: 'active' | 'paused' | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {
@@ -743,6 +745,54 @@ export interface SessionPlan {
 
 export interface SessionPlanResponse {
   plan: SessionPlan | null
+}
+
+export type SessionGoalStatus = 'active' | 'paused' | 'achieved' | 'cleared'
+
+/** Why a goal is paused (`session_goals.pause_reason`). */
+export type GoalPauseReason =
+  | 'stopped'
+  | 'user'
+  | 'blocked'
+  | 'turn_limit'
+  | 'token_limit'
+  | 'no_progress'
+  | 'unverified'
+  | 'check_failed'
+  | 'error'
+  | 'restart'
+
+/** A `/goal`: an objective the session keeps taking turns toward (v3). */
+export interface SessionGoal {
+  id: string
+  session_id: string
+  objective: string
+  status: SessionGoalStatus
+  pause_reason: GoalPauseReason | null
+  /** The blocker, the last check's reason, or the error that paused it. */
+  detail: string | null
+  max_turns: number
+  token_budget: number | null
+  turns_used: number
+  /** Uncached input plus output tokens of its turns and checks. */
+  tokens_used: number
+  active_seconds: number
+  /** Completion claims the check rejected in a row. */
+  rejected_claims: number
+  created_at: string
+  updated_at: string
+  ended_at: string | null
+}
+
+export interface SessionGoalResponse {
+  /** The newest goal, ended ones included; clients hide a cleared one. */
+  goal: SessionGoal | null
+}
+
+/** Optional limits sent with a `/goal` objective. */
+export interface GoalRequest {
+  max_turns?: number
+  token_budget?: number
 }
 
 export interface AgentChatResponse {

@@ -509,6 +509,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           )
           const queuedIds = new Set(queuedById.keys())
           const eventById = new Map(eventMessages.map((msg) => [msg.id, msg]))
+          // The server's row carries what the bubble shows (``extra.goal``
+          // for a `/goal` objective); a message tracked only locally keeps
+          // what this client knew of it.
+          const extraOf = (msg: (typeof queued)[number]): Record<string, unknown> | undefined => (
+            eventById.get(msg.id)?.extra ?? (msg.goal ? { goal: {} } : undefined)
+          )
           // `message_ids` is the single authoritative order (it is built
           // server-side from the same query, in the same order, as
           // `messages`). Resolve each id against the locally-tracked pending
@@ -526,7 +532,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                   content: msg.content,
                   submittedAt: msg.submittedAt,
                   attachments: msg.attachments,
-                  extra: (msg as { extra?: Record<string, unknown> }).extra,
+                  extra: extraOf(msg),
                 })),
                 ...eventMessages
                   .filter((msg) => !queuedIds.has(msg.id))
@@ -540,7 +546,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                     content: pending.content,
                     submittedAt: pending.submittedAt,
                     attachments: pending.attachments,
-                    extra: (pending as { extra?: Record<string, unknown> }).extra,
+                    extra: extraOf(pending),
                   }]
                 }
                 const ev = eventById.get(id)

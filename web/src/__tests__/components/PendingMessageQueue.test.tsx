@@ -274,6 +274,29 @@ describe('PendingMessageQueue', () => {
     expect(icon?.getAttribute('class')).toContain('lucide-pencil')
   })
 
+  it('marks a queued /goal objective, and gives it back as /goal when edited', async () => {
+    const user = userEvent.setup()
+    let restored: string | undefined
+    const restoreListener = mock((e: unknown) => { restored = (e as CustomEvent<{ content?: string }>).detail?.content })
+    window.addEventListener('queue:restore-draft', restoreListener)
+    answerCancel(204)
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [
+        { id: 'q-goal', sessionId: 'session-1', content: 'tests pass', goal: true },
+        { id: 'q-steer', sessionId: 'session-1', content: 'and docs' },
+      ],
+    })
+
+    const { container } = render(<PendingMessageQueue />)
+    expect(container.querySelectorAll('[data-goal-objective]')).toHaveLength(1)
+
+    await user.click(screen.getAllByLabelText('Edit queued message')[0])
+
+    expect(restored).toBe('/goal tests pass')
+    window.removeEventListener('queue:restore-draft', restoreListener)
+  })
+
   it('keeps the queued bubble flat: it sits in the transcript, it does not float', () => {
     useAgentStore.setState({
       sessionId: 'session-1',

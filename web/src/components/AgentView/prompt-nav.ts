@@ -5,7 +5,7 @@
  * Positions are prompt tops in px from the transcript's top edge, in
  * transcript order, so the rules stay testable without layout.
  */
-import type { ContentBlock } from '@/api/types'
+import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import type { TurnItem } from '@/utils/turns'
 
 /** Where a prompt lands, below the transcript's top edge, after a jump. */
@@ -13,11 +13,6 @@ export const PROMPT_JUMP_MARGIN = 12
 
 /** Slack for sub-pixel layout, so a prompt already on the line counts as there. */
 const EPSILON = 2
-
-/** A prompt the user wrote, not an agent's report. */
-export function isDirectUserBlock(block: ContentBlock): boolean {
-  return block.type === 'user' && !block.extra?.from_agent
-}
 
 /**
  * The turn holding block ``id``; -1 when it is not loaded. By block rather
@@ -31,7 +26,7 @@ export function turnIndexOfBlock(items: readonly TurnItem[], id: string): number
 export function previousPromptTurn(items: readonly TurnItem[], before: number): number {
   for (let i = Math.min(before, items.length) - 1; i >= 0; i--) {
     const item = items[i]
-    if (item.kind === 'user' && isDirectUserBlock(item.block)) return i
+    if (item.kind === 'user' && isTypedPromptBlock(item.block)) return i
   }
   return -1
 }

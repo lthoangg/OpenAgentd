@@ -42,6 +42,8 @@ import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
+import { GoalClaimCard } from '../GoalClaimCard'
+import { UPDATE_GOAL_TOOL } from '@/lib/goal'
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
@@ -397,6 +399,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // A plan submission is reviewed in the Plan tab; its card records the outcome.
   if (isPlanSubmission(name, args)) {
     return <PlanReviewCard toolCallId={toolCallId} args={args} result={result} done={done} />
+  }
+  // ``update_goal`` reads as the claim's outcome: achieved, not yet, or blocked.
+  if (name === UPDATE_GOAL_TOOL) {
+    return <GoalClaimCard args={args} result={result} done={done} animatesIn={animatesIn} />
   }
 
   return (

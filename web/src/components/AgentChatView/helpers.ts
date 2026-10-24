@@ -6,7 +6,7 @@
  */
 import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
-import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
+import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type { SlashCommand } from '../InputComposer'
 import { patchFileStats } from '../ToolCall/diffUtils'
@@ -20,6 +20,13 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
     description: 'Ask a side question without adding it to the chat',
     keepInputOpen: true,
     insertText: 'btw',
+  },
+  {
+    id: 'goal',
+    label: 'Goal',
+    description: 'Keep working until a goal is verifiably done (pause, resume, clear)',
+    keepInputOpen: true,
+    insertText: 'goal',
   },
   { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
@@ -71,12 +78,13 @@ export function btwSubmit(content: string, files: readonly File[] | undefined, s
 /**
  * What composer ↑/↓ steps through, newest first: prompts the user wrote.
  * Sub-agent reports arrive as ``user`` blocks too, but recalling one would
- * put another agent's words in the user's mouth.
+ * put another agent's words in the user's mouth; a goal's own turns start
+ * from a hidden reminder the user never wrote.
  */
 export function composerHistoryPrompts(blocks: readonly ContentBlock[]): string[] {
   const prompts: string[] = []
   for (let i = blocks.length - 1; i >= 0; i--) {
-    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim()) prompts.push(blocks[i].content)
+    if (isTypedPromptBlock(blocks[i]) && blocks[i].content.trim()) prompts.push(blocks[i].content)
   }
   return prompts
 }
@@ -88,7 +96,7 @@ export function composerHistoryPrompts(blocks: readonly ContentBlock[]): string[
 export function newestUserBlockId(blocks: readonly ContentBlock[], prompt: string): string | undefined {
   const text = prompt.trim()
   for (let i = blocks.length - 1; i >= 0; i--) {
-    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim() === text) return blocks[i].id
+    if (isTypedPromptBlock(blocks[i]) && blocks[i].content.trim() === text) return blocks[i].id
   }
   return undefined
 }
@@ -166,6 +174,9 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
         return revertedCount > 0 && !isWorking
       case 'init':
         return inWorkspace
+      case 'goal':
+        // Sets a goal on any session, a new one included; also opens its status.
+        return true
       case 'new':
         return true
       default:

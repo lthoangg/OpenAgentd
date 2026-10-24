@@ -12,6 +12,10 @@ function patch(id: string, lines: string[], extra: Partial<ContentBlock> = {}): 
   return tool(id, 'patch', { patch_text: ['*** Begin Patch', ...lines, '*** End Patch'].join('\n') }, extra)
 }
 const report = (id: string): ContentBlock => ({ id, type: 'user', content: 'findings', extra: { from_agent: 'explorer#1' } })
+const CLAIM = JSON.stringify({ status: 'complete', evidence: 'bun test: 0 failures' })
+function goalClaim(id: string, toolResult: string | undefined, args = CLAIM): ContentBlock {
+  return { id, type: 'tool', content: '', toolName: 'update_goal', toolArgs: args, toolDone: toolResult !== undefined, toolResult }
+}
 /** No ``ask_user`` card is waiting on the user. */
 const settled = () => false
 
@@ -61,6 +65,36 @@ describe('readerSegments — what folds behind the work summary', () => {
     expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
   })
 
+  it("keeps a goal's outcome out of the fold: a claim being checked, achieved, blocked, or one that paused the goal", () => {
+    const outcomes = [
+      goalClaim('checking', undefined),
+      goalClaim('achieved', 'The check confirmed the goal is met: 0 failures.\nThe goal is achieved.'),
+      goalClaim('blocked', 'The goal is paused as blocked until the user resumes it.', JSON.stringify({ status: 'blocked', reason: 'No key.' })),
+      goalClaim('paused', 'The check did not accept the claim: No output.\nIt rejected 3 claims in a row, so the goal is paused.'),
+      goalClaim('check-paused', 'The completion check failed: The check could not run: timed out.\nThe check failed 3 times in a row, so the goal is paused until the user resumes it.'),
+    ]
+    for (const claim of outcomes) {
+      expect(readerSegments([tool('r1', 'read'), claim, text('a1')], settled)).toEqual([
+        { kind: 'work', indices: [0] },
+        { kind: 'block', index: 1 },
+        { kind: 'block', index: 2 },
+      ])
+    }
+  })
+
+  it('folds a rejected goal claim, or one the check failed on, with the work, since the agent keeps going', () => {
+    const rejected = goalClaim('no', 'The check did not accept the claim: No output.\nThe goal stays active.')
+    expect(readerSegments([tool('r1', 'read'), rejected, tool('s1', 'shell'), text('a1')], settled)).toEqual([
+      { kind: 'work', indices: [0, 1, 2] },
+      { kind: 'block', index: 3 },
+    ])
+    const unchecked = goalClaim('unchecked', 'The completion check failed: The check replied without a verdict.\nThe claim was neither accepted nor rejected, and the goal stays active.')
+    expect(readerSegments([tool('r1', 'read'), unchecked, text('a1')], settled)).toEqual([
+      { kind: 'work', indices: [0, 1] },
+      { kind: 'block', index: 2 },
+    ])
+  })
+
   it("folds a subagent's report with the work, and the text before it as narration", () => {
     const blocks = [tool('d1', 'delegate'), text('n1', 'Waiting on the explorer.'), report('r1'), text('a1')]
 
@@ -95,6 +129,7 @@ describe('summarizeWork', () => {
       tool('d1', 'team'),
       report('rp1'),
       tool('x1', 'my_plugin_tool'),
+      goalClaim('gc1', 'The check did not accept the claim: No output.\nThe goal stays active.'),
       text('n1'),
     ]
 
@@ -102,9 +137,9 @@ describe('summarizeWork', () => {
 
     expect(summary).toEqual({
       reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, plans: 0, questions: 0, delegations: 1,
-      reports: 1, previews: 0, mcpCalls: 0, generations: 0, other: 1, thought: true,
+      reports: 1, previews: 0, mcpCalls: 0, generations: 0, checks: 1, other: 1, thought: true,
     })
-    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 delegation, 1 report, 1 other')
+    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 delegation, 1 report, 1 goal check, 1 other')
   })
 
   it('does not count failures; a failed step counts as its kind', () => {

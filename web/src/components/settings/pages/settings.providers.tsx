@@ -14,8 +14,23 @@ import { ProviderCard } from './settings.providers/ProviderCard'
 
 // ─── Filter types ───────────────────────────────────────────────────────────
 
-type StatusFilter = 'all' | 'connected' | 'not-connected'
+type ProviderStatus = 'connected' | 'hidden' | 'not-connected'
+type StatusFilter = 'all' | ProviderStatus
 type KindFilter = 'all' | ProviderInfo['kind']
+
+/** Every provider sits in exactly one status bucket; hidden wins. */
+function providerStatus(p: ProviderInfo): ProviderStatus {
+  if (p.is_disconnected) return 'hidden'
+  return p.is_configured ? 'connected' : 'not-connected'
+}
+
+function matchesQuery(p: ProviderInfo, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return p.label.toLowerCase().includes(q) ||
+    p.id.toLowerCase().includes(q) ||
+    p.description.toLowerCase().includes(q)
+}
 
 // ─── FilterBar ──────────────────────────────────────────────────────────────
 
@@ -71,7 +86,7 @@ export function ProvidersSettingsPage() {
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
 
   const providers = useMemo(() => providersQ.data?.providers ?? [], [providersQ.data?.providers])
-  const connectedCount = providers.filter((p) => p.is_configured).length
+  const connectedCount = providers.filter((p) => providerStatus(p) === 'connected').length
 
   // Eagerly warm every uncached configured provider in parallel. The registry
   // only needs one refresh after every request has settled.
@@ -84,15 +99,8 @@ export function ProvidersSettingsPage() {
   // the user explores — only status + search narrow the kind counts)
   const kindCounts = useMemo<Record<ProviderInfo['kind'], number>>(() => {
     const base = providers.filter((p) => {
-      if (statusFilter === 'connected' && !p.is_configured) return false
-      if (statusFilter === 'not-connected' && p.is_configured) return false
-      if (query.trim()) {
-        const q = query.trim().toLowerCase()
-        if (!p.label.toLowerCase().includes(q) &&
-            !p.id.toLowerCase().includes(q) &&
-            !p.description.toLowerCase().includes(q)) return false
-      }
-      return true
+      if (statusFilter !== 'all' && providerStatus(p) !== statusFilter) return false
+      return matchesQuery(p, query)
     })
     const counts: Record<string, number> = {}
     for (const p of base) counts[p.kind] = (counts[p.kind] ?? 0) + 1
@@ -103,33 +111,19 @@ export function ProvidersSettingsPage() {
   const statusCounts = useMemo(() => {
     const base = providers.filter((p) => {
       if (kindFilter !== 'all' && p.kind !== kindFilter) return false
-      if (query.trim()) {
-        const q = query.trim().toLowerCase()
-        if (!p.label.toLowerCase().includes(q) &&
-            !p.id.toLowerCase().includes(q) &&
-            !p.description.toLowerCase().includes(q)) return false
-      }
-      return true
+      return matchesQuery(p, query)
     })
-    return {
-      connected: base.filter((p) => p.is_configured).length,
-      'not-connected': base.filter((p) => !p.is_configured).length,
-    }
+    const counts: Record<ProviderStatus, number> = { connected: 0, hidden: 0, 'not-connected': 0 }
+    for (const p of base) counts[providerStatus(p)] += 1
+    return counts
   }, [providers, kindFilter, query])
 
   // Final filtered list — all three dimensions compose
   const filtered = useMemo(() => {
     return providers.filter((p) => {
-      if (statusFilter === 'connected' && !p.is_configured) return false
-      if (statusFilter === 'not-connected' && p.is_configured) return false
+      if (statusFilter !== 'all' && providerStatus(p) !== statusFilter) return false
       if (kindFilter !== 'all' && p.kind !== kindFilter) return false
-      if (query.trim()) {
-        const q = query.trim().toLowerCase()
-        if (!p.label.toLowerCase().includes(q) &&
-            !p.id.toLowerCase().includes(q) &&
-            !p.description.toLowerCase().includes(q)) return false
-      }
-      return true
+      return matchesQuery(p, query)
     })
   }, [providers, statusFilter, kindFilter, query])
 
@@ -203,6 +197,16 @@ export function ProvidersSettingsPage() {
                   )}
                 >
                   Connected
+                </FilterChip>
+                <FilterChip
+                  active={statusFilter === 'hidden'}
+                  count={statusCounts.hidden}
+                  disabled={statusCounts.hidden === 0}
+                  onClick={() => setStatusFilter(
+                    statusFilter === 'hidden' ? 'all' : 'hidden'
+                  )}
+                >
+                  Hidden
                 </FilterChip>
                 <FilterChip
                   active={statusFilter === 'not-connected'}

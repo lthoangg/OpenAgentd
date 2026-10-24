@@ -1794,6 +1794,8 @@ agnostic by design.
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
   on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  A **Hidden** status filter chip lists only hidden providers; they no longer
+  count under **Connected** or the header's connected total `[v3.29.0]`.
   A provider that loses its connection (API key deleted, OAuth session revoked or
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected

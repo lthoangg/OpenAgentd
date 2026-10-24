@@ -110,6 +110,13 @@ fn provider_error_to_agent(e: ProviderError) -> AgentError {
 /// Options for one `_run_turn`.
 #[derive(Default, Clone)]
 pub struct TurnOptions {
+    /// This turn starts a new run (a message the user or a schedule sent, a
+    /// Continue, a `/compact`), so it picks up agent config edited since the
+    /// last one. Every other turn continues the current run (a queued steer
+    /// or member report, an answered question, idle compaction) and keeps the
+    /// agent it started with: switching the default model in Settings must
+    /// not switch a session that is still running.
+    pub starts_run: bool,
     pub force_compaction: bool,
     /// A background compaction started by the idle timer (see
     /// [`crate::idle_compaction`]); it sends no desktop notification.
@@ -812,7 +819,7 @@ impl AgentSession {
         *self.lead_suspended.lock().unwrap() = None;
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions { unattended: m.origin == "scheduler", ..Default::default() });
+        self.spawn_turn(TurnOptions { starts_run: true, unattended: m.origin == "scheduler", ..Default::default() });
         Ok((sid, db::codec::api_uuid(&persisted.id)))
     }
 
@@ -849,7 +856,7 @@ impl AgentSession {
         self.set_state("working");
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions { runtime_model: model, runtime_thinking_level: thinking_level, ..Default::default() });
+        self.spawn_turn(TurnOptions { starts_run: true, runtime_model: model, runtime_thinking_level: thinking_level, ..Default::default() });
         Ok((session_id.to_string(), uuid::Uuid::new_v4().to_string()))
     }
 
@@ -862,7 +869,7 @@ impl AgentSession {
         self.set_state("working");
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions { force_compaction: true, ..Default::default() });
+        self.spawn_turn(TurnOptions { starts_run: true, force_compaction: true, ..Default::default() });
         Ok(session_id.to_string())
     }
 
@@ -1081,7 +1088,7 @@ impl AgentSession {
             }
         }
         self.detect_config_drift();
-        if self.config_dirty.load(Ordering::SeqCst) {
+        if opts.starts_run && self.config_dirty.load(Ordering::SeqCst) {
             self.refresh_agent_from_disk();
         }
 

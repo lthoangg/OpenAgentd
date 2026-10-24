@@ -1203,6 +1203,10 @@ executes tools, manages its task list, and inspects workspace repositories.
   field is never committed `[v1.125.0]`. To fall back to the agent's default,
   pick it from the model list like any other model — the dedicated
   `Use agent default` reset button was removed `[v1.126.1]`.
+  Changing the agent's default model, thinking level, prompt or tools in
+  Settings while a session runs no longer switches that run: member reports,
+  queued steers and answered questions continue on the config the run started
+  with, and the edit applies from the user's next message `[v3.30.0]`.
 - **Coding agent profile** `[since v1.0, updated v2.1.0]` — `agents/code.md` is the
  root profile tuned for workspace-aware coding sessions.
 - **Built-in first-party agent profile** `[v1.23.0, v1.118.0, v2.14.0]` — the default `code`

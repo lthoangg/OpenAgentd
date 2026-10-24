@@ -1451,6 +1451,9 @@ agent against it.
   spinner after its own turn ends (in Status view it stays under Working, and
   a collapsed workspace still lists it), and a subagent that asked its lead a
   question reads "waiting for lead" in every window rather than "working".
+  Since `[v3.29.0]` this also holds for subagents listed the moment they
+  start: they could read Completed while still running, which ended the
+  lead's spinner (and the notch's "Working") long before their reports came in.
 - **Sidebar row actions** `[v3.27.0]` — every sidebar row's buttons share one
   borderless 24px style (36px on touch) and appear on hover or keyboard focus
   in place of the row's age and tags, so titles and folder names keep the row

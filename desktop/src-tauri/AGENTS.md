@@ -10,16 +10,23 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   the shared server-config code in `../../native/shell-core/` (re-exported
   under the desktop's existing names).
 - `src/window.rs`: WebViews, platform chrome, zoom, and injected bridge state.
+- `src/servers.rs`: which server each window is on (`ServerId`: builtin or
+  one external URL). The notch, the tray's "Auto" usage, new windows and
+  notification routing all ask it. A saved server is never chosen here;
+  it only becomes a window's server when the user clicks Connect.
 - `src/commands.rs`: Tauri commands exposed to the frontend; access-key and
   download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
 - `src/watchdog.rs`: restarts a crashed bundled sidecar with a bounded
   backoff budget, then re-points bundled windows; windows on an external
   server are left alone.
-- `src/menu.rs`: tray/menu construction, polling, and event routing.
+- `src/menu.rs`: tray/menu construction, polling, and event routing. Usage
+  snapshots, errors and alert dedup are kept per server (`usage::UsageCache`).
 - `src/island.rs`: the macOS notch island (`web/island.html`): follows the
-  backend's event stream, refetches the active-session list, and places the
-  window over the notch with AppKit. Its webview has its own capability
+  event stream of every server with a window open (one task per server,
+  started and stopped by a 2 s supervisor), refetches each one's
+  active-session list, merges them, and places the window over the notch
+  with AppKit. Its webview has its own capability
   (`capabilities/island.json`) and, like the tray popup, never gets the
   backend token (`window::is_overlay_window`).
 - `src/usage.rs`: usage formatting and shared HTTP client.

@@ -164,4 +164,23 @@ describe('Island', () => {
     push(status(4, []))
     expect(screen.getByText('Newer')).toBeInTheDocument()
   })
+
+  it('names the server of each row when sessions come from more than one', async () => {
+    await mount()
+    push(status(2, [
+      { ...waiting('w', 'Plan review', 'Ship it?'), server: 'Builtin' },
+      { ...running('r', 'Deploy'), server: 'LAN server' },
+    ], [{ ...done('d', 'Migrate'), server: 'LAN server' }]))
+    point(true)
+    const rows = within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole('listitem').map((li) => li.textContent)
+    expect(rows).toEqual(['Plan reviewBuiltin · OpenShip it?', 'MigrateLAN server · web', 'DeployLAN server · web'])
+  })
+
+  it('leaves the server out when there is only one', async () => {
+    await mount()
+    push(status(2, [{ ...running('a', 'Docs'), server: null }]))
+    point(true)
+    const rows = within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole('listitem').map((li) => li.textContent)
+    expect(rows).toEqual(['Docsweb'])
+  })
 })

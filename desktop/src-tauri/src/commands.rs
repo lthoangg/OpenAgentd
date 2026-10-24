@@ -16,7 +16,7 @@ use crate::config::{
     load_app_backend_config, normalize_external_base_url, normalize_server_name,
     remove_app_backend_server, save_app_backend_config, AppBackendStatus,
 };
-use crate::window::{create_app_window, frontend_init_script, show_main_window, MAIN_WINDOW};
+use crate::window::{create_app_window, frontend_init_script, show_main_window};
 use crate::menu::update_tray_status;
 use crate::shutdown_sidecar_now;
 
@@ -91,12 +91,13 @@ fn first_notification_request(id: &str) -> bool {
     true
 }
 
-/// Whether an app window other than `caller` has focus. The user is then
-/// looking at the app, and that window decides for itself whether to notify
-/// (it knows which session is on screen).
+/// Whether an app window other than `caller`, on the same server, has
+/// focus. The user is then looking at the app, and that window got the same
+/// event and decides for itself whether to notify (it knows which session is
+/// on screen). A focused window on another server never sees the event.
 fn another_app_window_focused(app: &AppHandle, caller: &str) -> bool {
-    crate::window::focused_webview_window(app)
-        .is_some_and(|w| w.label() != caller && !crate::window::is_overlay_window(w.label()))
+    let focused = crate::servers::focused_app_window(app);
+    crate::servers::focused_window_covers(caller, focused.as_deref(), &crate::servers::external_map(app))
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -133,6 +134,9 @@ pub fn show_desktop_notification(
     // Losing click-routing on a backlogged notification beats leaking an
     // unbounded number of threads.
     let routes_clicks = claim_notification_slot();
+    // A click opens the session in the window that asked: it is on the
+    // session's server, which the focused window may not be.
+    let sender = window.label().to_string();
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
         ensure_notification_application(&app);
@@ -149,13 +153,21 @@ pub fn show_desktop_notification(
                 if action != "default" {
                     return;
                 }
-                show_main_window(&app);
-                if payload.session_id.is_some() {
-                    if let Some(target) = crate::window::target_webview_window(&app) {
-                        if let Err(error) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
-                            log::warn!("desktop_notification_click_emit_failed error={error:#}");
-                        }
+                let target = match app.get_webview_window(&sender) {
+                    Some(window) => {
+                        crate::window::show_window(&window);
+                        Some(window)
                     }
+                    None => {
+                        show_main_window(&app);
+                        crate::window::target_webview_window(&app)
+                    }
+                };
+                let Some(target) = target.filter(|_| payload.session_id.is_some()) else {
+                    return;
+                };
+                if let Err(error) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
+                    log::warn!("desktop_notification_click_emit_failed error={error:#}");
                 }
             }),
             Err(error) => log::warn!("desktop_notification_failed error={error:#}"),
@@ -377,18 +389,14 @@ pub async fn app_use_external_backend(
     }
 
     if persist.unwrap_or(true) {
-        // `active_base_url` is only read at startup and applied to the
-        // *main* window (see `start_backend_and_window`), so only activate it
-        // when this switch happened in the main window. Doing so from a
-        // secondary window would silently redirect the main window (and any
-        // future windows) to this window's chosen server on the next app
-        // launch, even though the two windows are meant to be independent.
-        let activate = window.label() == MAIN_WINDOW;
+        // Keep it in the server list only. It never becomes a server the app
+        // connects to on its own (`active_base_url` is left alone): the next
+        // launch opens on the builtin, and this server stays one Connect away.
         save_app_backend_config(
             &app,
             Some(&normalized),
             normalize_server_name(name).as_deref(),
-            activate,
+            false,
         )
         .map_err(|e| format!("{e:#}"))?;
     }
@@ -500,16 +508,6 @@ pub async fn app_use_bundled_backend(
         .unwrap()
         .remove(window.label());
     crate::preview_relay::close_window(&app, window.label());
-    // Only clear the persisted `active_base_url` when the *main* window
-    // switched back to bundled — that field is only ever read at startup and
-    // applied to the main window, so clearing it from a secondary window
-    // would silently redirect the main window to the bundled sidecar on the
-    // next app launch. Other windows keep their own state in the per-window
-    // `window_backend_base_urls` map, which is the source of truth while the
-    // app is running.
-    if window.label() == MAIN_WINDOW {
-        save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
-    }
     let init_script = frontend_init_script(backend_ready.token.as_deref(), &backend_ready.base_url);
     window
         .eval(&init_script)
@@ -646,46 +644,8 @@ async fn wait_for_health_with(client: &reqwest::Client, base: &str, attempts: u3
     ))
 }
 
-/// Whether the saved external server answers at launch. One attempt: the
-/// bundled backend waits on it, and falling back keeps the saved choice for
-/// the next launch (the Server connection dialog switches back any time).
-pub async fn probe_saved_backend(base: &str) -> Result<()> {
-    wait_for_health_with(crate::usage::shared_client(), base, 1, Duration::ZERO).await
-}
-
 #[cfg(test)]
 mod health_tests {
-    use super::probe_saved_backend;
-    use std::io::{Read, Write};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-
-    /// A server that fails every health check, counting them.
-    fn unhealthy_server() -> (String, Arc<AtomicUsize>) {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let hits = Arc::new(AtomicUsize::new(0));
-        let counted = hits.clone();
-        std::thread::spawn(move || {
-            for mut stream in listener.incoming().flatten() {
-                counted.fetch_add(1, Ordering::SeqCst);
-                let _ = stream.read(&mut [0u8; 4096]);
-                let _ = stream.write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-            }
-        });
-        (base, hits)
-    }
-
-    // Every retry held up the bundled backend: 2 s when the server refused,
-    // 18 s when each request timed out (a remote behind a VPN that is off).
-    #[tokio::test]
-    async fn a_saved_server_that_is_down_is_probed_once() {
-        let (base, hits) = unhealthy_server();
-
-        assert!(probe_saved_backend(&base).await.is_err());
-        assert_eq!(hits.load(Ordering::SeqCst), 1);
-    }
-
     // Inputs here fail before the store is reached, so the test never
     // touches a real access-key file.
     #[tokio::test]

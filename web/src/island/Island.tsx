@@ -85,6 +85,7 @@ function SessionRow({ session, hover }: { session: IslandSession; hover: RowHove
   const hovered = hover?.id === session.id
   const waiting = session.state === 'needs_input'
   const unread = session.state === 'done' || session.state === 'failed'
+  const meta = [session.server, waiting ? 'Open' : session.workspace].filter(Boolean).join(' · ')
   return (
     <li className="island-row-item" data-unread={unread ? '' : undefined}>
       <button
@@ -96,7 +97,7 @@ function SessionRow({ session, hover }: { session: IslandSession; hover: RowHove
       >
         <RowMark state={session.state} />
         <span className="island-row-title">{session.title}</span>
-        <span className="island-row-meta">{waiting ? 'Open' : session.workspace}</span>
+        <span className="island-row-meta">{meta}</span>
         {waiting && session.question && <span className="island-row-question">{session.question}</span>}
       </button>
       {unread && (

@@ -5,15 +5,20 @@
 //! whether any session is running or waiting on the user, and the sessions
 //! that finished since you last looked at them (unread).
 //!
-//! The island never sees the backend credential. The Rust process follows
-//! the backend's global event stream and treats each turn event only as a
+//! It covers every server an app window is on (`servers::followed_servers`):
+//! windows can each be on a different server, and a session waiting on you
+//! matters whichever window it is in. A saved server no window is on is not
+//! followed. With more than one server, each row names its server.
+//!
+//! The island never sees the backend credentials. The Rust process follows
+//! each server's global event stream and treats each turn event only as a
 //! signal to refetch `GET /api/agent/sessions?active=true`. That list is the
 //! source of truth: every top-level session that is running or waiting on
 //! the user, the same data the sidebar's "Needs you" list uses. A lead whose
 //! turn ended while its subagents (or another workspace) still work for it
 //! is listed with `background_work` and counts as running: its work is not
 //! finished until their reports have run it again. The island gets a
-//! snapshot over IPC (`island-status`).
+//! snapshot of all servers over IPC (`island-status`).
 //!
 //! The window is a fixed transparent canvas over the notch, so the pill can
 //! morph inside it with CSS (window resizes can't be animated smoothly). The
@@ -34,10 +39,13 @@
 //! (`island_viewing`), so one finishing on screen in the focused window is
 //! never unread, and focusing a window clears the one it shows. A turn the
 //! user stopped, or a background idle compaction, has nothing new to read.
+//! A session only finishes on its own server: a server that is no longer
+//! followed (its last window closed) drops out without reporting anything.
+//! Clicking a row opens it in a window on its server.
 
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -47,6 +55,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, WebviewWindow};
 #[cfg(target_os = "macos")]
 use tauri::Manager;
+
+use crate::servers::ServerId;
 
 pub const ISLAND_WINDOW: &str = "island";
 /// Snapshot of the active sessions, sent to the island webview.
@@ -76,8 +86,8 @@ const REFRESH_DEBOUNCE: Duration = Duration::from_millis(150);
 const SAFETY_REFRESH: Duration = Duration::from_secs(30);
 /// The backend pings every 15 s; this long without a byte means the stream is dead.
 const STREAM_IDLE_LIMIT: Duration = Duration::from_secs(45);
-/// How often to check whether the app switched to another backend.
-const ENDPOINT_RECHECK: Duration = Duration::from_secs(10);
+/// How often to check which servers the app windows are on. Cheap: no IO.
+const SUPERVISE_EVERY: Duration = Duration::from_secs(2);
 const RETRY_BASE: Duration = Duration::from_secs(2);
 /// Kept short so the island catches up soon after a backend comes back.
 const RETRY_MAX: Duration = Duration::from_secs(15);
@@ -97,6 +107,8 @@ const POINTER_IDLE_POLL: Duration = Duration::from_millis(400);
 const MAX_UNREAD: usize = 6;
 /// How the memo records a turn that only compacted an idle session.
 const IDLE_COMPACTION_STATUS: &str = "idle_compaction";
+/// What a row calls the builtin sidecar, as the Backend connection panel does.
+const BUILTIN_NAME: &str = "Builtin";
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -167,6 +179,11 @@ pub struct IslandSession {
     pub state: SessionState,
     /// What the agent asked, while it waits on the user.
     pub question: Option<String>,
+    /// The server's name, when the island follows more than one.
+    pub server: Option<String>,
+    /// The server the session lives on.
+    #[serde(skip)]
+    pub server_id: Option<ServerId>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -262,6 +279,8 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
                 id: row.id,
                 state,
                 question,
+                server: None,
+                server_id: None,
             }
         })
         .collect();
@@ -313,6 +332,114 @@ pub fn merge_unread(
     }
     unread.truncate(MAX_UNREAD);
     *unread != before
+}
+
+/// One followed server's part of the island.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ServerFeed {
+    /// What rows call it: "Builtin", or the name it was saved under.
+    pub name: String,
+    /// Its active sessions, as last fetched.
+    pub sessions: Vec<IslandSession>,
+}
+
+/// Every followed server's active sessions, and the unread ones from all of
+/// them. A session only ever finishes against its own server's last list.
+#[derive(Debug, Default)]
+pub struct Feeds {
+    servers: BTreeMap<ServerId, ServerFeed>,
+    /// Finished sessions not opened yet, from any server, newest first.
+    unread: Vec<IslandSession>,
+}
+
+impl Feeds {
+    /// Start following `server`. True when it is new.
+    pub fn join(&mut self, server: &ServerId, name: String) -> bool {
+        if self.servers.contains_key(server) {
+            return false;
+        }
+        self.servers.insert(server.clone(), ServerFeed { name, sessions: Vec::new() });
+        true
+    }
+
+    /// Stop following `server`: its sessions and unread rows go without
+    /// being reported as finished. True when it was followed.
+    pub fn forget(&mut self, server: &ServerId) -> bool {
+        self.unread.retain(|u| u.server_id.as_ref() != Some(server));
+        self.servers.remove(server).is_some()
+    }
+
+    /// `server` has sessions in its active list.
+    pub fn is_active(&self, server: &ServerId) -> bool {
+        self.servers.get(server).is_some_and(|feed| !feed.sessions.is_empty())
+    }
+
+    /// Take `next` as `server`'s active list. Sessions that left it are
+    /// finished (`statuses`, see [`newly_finished`]) and become unread when
+    /// `show_finished`, except the one on screen (`viewed`). Ignored for a
+    /// server no longer followed. True when anything changed.
+    pub fn update(
+        &mut self,
+        server: &ServerId,
+        mut next: Vec<IslandSession>,
+        statuses: &HashMap<String, String>,
+        viewed: Option<&str>,
+        show_finished: bool,
+    ) -> bool {
+        let Some(feed) = self.servers.get_mut(server) else {
+            return false;
+        };
+        for session in &mut next {
+            session.server_id = Some(server.clone());
+        }
+        let finished = if show_finished { newly_finished(&feed.sessions, &next, statuses) } else { Vec::new() };
+        let sessions_changed = feed.sessions != next;
+        let unread_changed = merge_unread(&mut self.unread, finished, &next, viewed);
+        feed.sessions = next;
+        sessions_changed || unread_changed
+    }
+
+    /// Empty `server`'s active list without reporting a finish: stale
+    /// "running" rows are worse than none while it can't be reached. What
+    /// finished before stays unread. True when it changed.
+    pub fn clear_sessions(&mut self, server: &ServerId) -> bool {
+        self.servers.get_mut(server).is_some_and(|feed| !std::mem::take(&mut feed.sessions).is_empty())
+    }
+
+    /// The island's lists (see [`merged_lists`]).
+    pub fn lists(&self) -> (Vec<IslandSession>, Vec<IslandSession>) {
+        merged_lists(&self.servers, &self.unread)
+    }
+}
+
+/// The island's two lists across `servers`: waiting sessions first, each
+/// session once (a server reached through two URLs reports it twice), and,
+/// with more than one server, each row named after its server.
+pub fn merged_lists(
+    servers: &BTreeMap<ServerId, ServerFeed>,
+    unread: &[IslandSession],
+) -> (Vec<IslandSession>, Vec<IslandSession>) {
+    let named = servers.len() > 1;
+    let label = |session: &IslandSession| IslandSession {
+        server: session
+            .server_id
+            .as_ref()
+            .and_then(|id| servers.get(id))
+            .filter(|_| named)
+            .map(|feed| feed.name.clone()),
+        ..session.clone()
+    };
+    let mut seen = HashSet::new();
+    let mut sessions: Vec<IslandSession> = servers
+        .values()
+        .flat_map(|feed| &feed.sessions)
+        .filter(|session| seen.insert(id_key(&session.id)))
+        .map(label)
+        .collect();
+    // Stable: keeps each server's order within each group.
+    sessions.sort_by_key(|s| s.state != SessionState::NeedsInput);
+    let unread = unread.iter().filter(|u| seen.insert(id_key(&u.id))).map(label).collect();
+    (sessions, unread)
 }
 
 /// What the stream told us between refetches: each waiting session's
@@ -548,7 +675,9 @@ pub fn canvas_point(canvas: &Rect, x: f64, y: f64) -> (f64, f64) {
 // ── Shared state ────────────────────────────────────────────────────────────
 
 struct Shared {
+    /// What the island shows: every followed server merged, as last sent.
     status: IslandStatus,
+    feeds: Feeds,
     geometry: NotchGeometry,
     settings: IslandSettings,
     /// An OpenAgentd app window has focus.
@@ -563,8 +692,18 @@ struct Shared {
     pointer: Option<PointerPayload>,
     /// The session each app window shows, by window label ([`id_key`]s).
     viewing: HashMap<String, String>,
-    /// The backend the unread sessions belong to.
-    unread_base: Option<String>,
+}
+
+impl Shared {
+    /// Merge the feeds into `status`. The new snapshot, if it changed.
+    fn rebuild(&mut self) -> Option<IslandStatus> {
+        let (sessions, unread) = self.feeds.lists();
+        if self.status.sessions == sessions && self.status.unread == unread {
+            return None;
+        }
+        self.status = IslandStatus { seq: self.status.seq + 1, sessions, unread };
+        Some(self.status.clone())
+    }
 }
 
 fn shared() -> &'static Mutex<Shared> {
@@ -572,6 +711,7 @@ fn shared() -> &'static Mutex<Shared> {
     SHARED.get_or_init(|| {
         Mutex::new(Shared {
             status: IslandStatus::default(),
+            feeds: Feeds::default(),
             geometry: NotchGeometry::default(),
             settings: IslandSettings { enabled: false, ..IslandSettings::default() },
             frontmost: false,
@@ -581,7 +721,6 @@ fn shared() -> &'static Mutex<Shared> {
             pill: None,
             pointer: None,
             viewing: HashMap::new(),
-            unread_base: None,
         })
     })
 }
@@ -827,39 +966,75 @@ async fn pause(duration: Duration) {
     let _ = tokio::time::timeout(duration, feed_wake().notified()).await;
 }
 
+/// Keep one feed per server an app window is on: start following a server
+/// when a window connects to it, stop when its last window leaves it.
 async fn run_feed(app: AppHandle) {
+    let mut tasks: HashMap<ServerId, tauri::async_runtime::JoinHandle<()>> = HashMap::new();
+    loop {
+        let wanted = if is_enabled() { crate::servers::app_followed_servers(&app).await } else { Vec::new() };
+        // A feed also ends by itself when the feature is switched off; one
+        // switched straight back on is started again below.
+        let gone: Vec<ServerId> = tasks
+            .iter()
+            .filter(|(server, task)| !wanted.contains(server) || task.inner().is_finished())
+            .map(|(server, _)| server.clone())
+            .collect();
+        for server in gone {
+            if let Some(task) = tasks.remove(&server) {
+                task.abort();
+            }
+            edit_feeds(&app, |feeds| feeds.forget(&server));
+            log::info!("island: stopped following {}", server.key());
+        }
+        let new: Vec<ServerId> = wanted.into_iter().filter(|server| !tasks.contains_key(server)).collect();
+        if !new.is_empty() {
+            let saved = crate::config::load_app_backend_config(&app).map(|c| c.servers).unwrap_or_default();
+            for server in new {
+                let name = server.display_name(BUILTIN_NAME, &saved);
+                edit_feeds(&app, |feeds| feeds.join(&server, name));
+                tasks.insert(server.clone(), tauri::async_runtime::spawn(follow_server(app.clone(), server)));
+            }
+        }
+        pause(SUPERVISE_EVERY).await;
+    }
+}
+
+/// Follow one server's event stream, reconnecting with a backoff, until the
+/// feature is turned off (or [`run_feed`] stops it).
+async fn follow_server(app: AppHandle, server: ServerId) {
     let client = stream_client();
     let mut failures: u32 = 0;
-    loop {
-        if !is_enabled() {
-            clear(&app, true);
-            feed_wake().notified().await;
-            continue;
-        }
-        let Some((base, token)) = crate::menu::resolve_backend_endpoint(&app).await else {
+    while is_enabled() {
+        let Some((base, token)) = crate::servers::endpoint(&app, &server).await else {
             pause(RETRY_BASE).await;
             continue;
         };
-        match follow(&app, &client, &base, token.as_deref()).await {
-            Ok(()) => failures = 0,
-            Err(e) => {
-                failures = failures.saturating_add(1);
-                // Stale "running" rows are worse than none while we can't see the backend.
-                // What finished before is still unread.
-                clear(&app, false);
-                let delay = crate::usage::backoff_delay(RETRY_BASE, failures, RETRY_MAX);
-                log::info!("island: event stream unavailable, retrying in {}s: {e:#}", delay.as_secs());
-                pause(delay).await;
+        if let Err(e) = follow(&app, &client, &server, &base, token.as_deref(), &mut failures).await {
+            failures = failures.saturating_add(1);
+            edit_feeds(&app, |feeds| feeds.clear_sessions(&server));
+            let delay = crate::usage::backoff_delay(RETRY_BASE, failures, RETRY_MAX);
+            // Once per outage: a server that is off can stay off for hours.
+            if failures == 1 {
+                log::info!("island: event stream from {} unavailable, retrying: {e:#}", server.key());
+            } else {
+                log::debug!("island: event stream from {} unavailable, retrying in {}s: {e:#}", server.key(), delay.as_secs());
             }
+            pause(delay).await;
         }
     }
 }
 
-/// Follow one backend's event stream until it fails, the app switches
-/// backend, or the feature is turned off.
-async fn follow(app: &AppHandle, client: &reqwest::Client, base: &str, token: Option<&str>) -> Result<()> {
+/// Follow `server`'s event stream at `base` until it fails or the feature
+/// is turned off. Resets `failures` once connected.
+async fn follow(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    server: &ServerId,
+    base: &str,
+    token: Option<&str>,
+    failures: &mut u32,
+) -> Result<()> {
     let base = base.trim_end_matches('/');
-    follow_backend(app, base);
     let mut memo = FeedMemo::default();
     let url = format!("{base}/api/events/stream");
     let mut request = client.get(&url).header(reqwest::header::ACCEPT, "text/event-stream");
@@ -874,14 +1049,14 @@ async fn follow(app: &AppHandle, client: &reqwest::Client, base: &str, token: Op
         .context("event stream returned an error status")?;
     // Seed after connecting, so nothing that happens in between is missed.
     memo.chat_root = chat_root(client, base, token).await;
-    refresh(app, client, base, token, &mut memo).await?;
-    log::info!("island: following {base}");
+    refresh(app, client, server, base, token, &mut memo).await?;
+    log::info!("island: {} {base}", if *failures > 0 { "reconnected to" } else { "following" });
+    *failures = 0;
 
     let mut parser = SseParser::default();
     let mut refresh_at: Option<Instant> = None;
     let mut last_bytes = Instant::now();
     let mut last_refresh = Instant::now();
-    let mut last_endpoint_check = Instant::now();
     loop {
         let now = Instant::now();
         let wait = refresh_at
@@ -907,30 +1082,28 @@ async fn follow(app: &AppHandle, client: &reqwest::Client, base: &str, token: Op
             return Ok(());
         }
         let now = Instant::now();
-        let active = !shared().lock().unwrap().status.sessions.is_empty();
+        let active = shared().lock().unwrap().feeds.is_active(server);
         let due = refresh_at.is_some_and(|at| now >= at)
             || (active && now.duration_since(last_refresh) >= SAFETY_REFRESH);
         if due {
             refresh_at = None;
             last_refresh = now;
-            refresh(app, client, base, token, &mut memo).await?;
+            refresh(app, client, server, base, token, &mut memo).await?;
         }
         if now.duration_since(last_bytes) >= STREAM_IDLE_LIMIT {
             bail!("event stream went quiet");
         }
-        if now.duration_since(last_endpoint_check) >= ENDPOINT_RECHECK {
-            last_endpoint_check = now;
-            let current = crate::menu::resolve_backend_endpoint(app).await;
-            let same = current.as_ref().is_some_and(|(b, t)| b.trim_end_matches('/') == base && t.as_deref() == token);
-            if !same {
-                log::info!("island: backend changed, reconnecting");
-                return Ok(());
-            }
-        }
     }
 }
 
-async fn refresh(app: &AppHandle, client: &reqwest::Client, base: &str, token: Option<&str>, memo: &mut FeedMemo) -> Result<()> {
+async fn refresh(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    server: &ServerId,
+    base: &str,
+    token: Option<&str>,
+    memo: &mut FeedMemo,
+) -> Result<()> {
     let url = format!("{base}/api/agent/sessions?active=true&limit=100");
     let mut request = client.get(&url).timeout(LIST_TIMEOUT);
     if let Some(token) = token {
@@ -947,7 +1120,7 @@ async fn refresh(app: &AppHandle, client: &reqwest::Client, base: &str, token: O
         .context("parse active sessions")?;
     let mut next = active_sessions(page.data, &memo.questions, memo.chat_root.as_deref());
     memo.hide_compacting(&mut next);
-    publish(app, next, memo);
+    publish(app, server, next, memo);
     Ok(())
 }
 
@@ -976,80 +1149,59 @@ async fn chat_root(client: &reqwest::Client, base: &str, token: Option<&str>) ->
     tree.chat.map(|c| c.path)
 }
 
-fn publish(app: &AppHandle, next: Vec<IslandSession>, memo: &mut FeedMemo) {
+/// Take `next` as `server`'s active list and send the island the result.
+fn publish(app: &AppHandle, server: &ServerId, next: Vec<IslandSession>, memo: &mut FeedMemo) {
     let viewed = viewed_session(app);
     let status = {
         let mut s = shared().lock().unwrap();
-        let finished = if s.settings.show_finished {
-            newly_finished(&s.status.sessions, &next, &memo.statuses)
-        } else {
-            Vec::new()
-        };
-        let mut unread = s.status.unread.clone();
-        let unread_changed = merge_unread(&mut unread, finished, &next, viewed.as_deref());
-        if s.status.sessions == next && !unread_changed {
-            memo.settle(&next);
-            return;
-        }
-        s.status = IslandStatus { seq: s.status.seq + 1, sessions: next, unread };
-        s.status.clone()
+        let show_finished = s.settings.show_finished;
+        // The outcomes of sessions that just left the list are read here,
+        // before `settle` drops them.
+        let changed = s.feeds.update(server, next.clone(), &memo.statuses, viewed.as_deref(), show_finished);
+        changed.then(|| s.rebuild()).flatten()
     };
-    memo.settle(&status.sessions);
+    memo.settle(&next);
+    let Some(status) = status else {
+        return;
+    };
     let waiting = status.sessions.iter().filter(|s| s.state == SessionState::NeedsInput).count();
     log::info!(
-        "island: active={} needs_input={} unread={}",
+        "island: active={} needs_input={} unread={} (from {})",
         status.sessions.len(),
         waiting,
-        status.unread.len()
+        status.unread.len(),
+        server.key()
     );
     let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
 }
 
-/// Empty the active list without reporting a finish, and the unread list too
-/// when `forget_unread`.
-fn clear(app: &AppHandle, forget_unread: bool) {
+/// Change the feeds, and tell the island if that changed what it shows.
+fn edit_feeds(app: &AppHandle, edit: impl FnOnce(&mut Feeds) -> bool) {
     let status = {
         let mut s = shared().lock().unwrap();
-        let unread = if forget_unread { Vec::new() } else { s.status.unread.clone() };
-        if s.status.sessions.is_empty() && s.status.unread == unread {
+        if !edit(&mut s.feeds) {
             return;
         }
-        s.status = IslandStatus { seq: s.status.seq + 1, sessions: Vec::new(), unread };
-        s.status.clone()
+        match s.rebuild() {
+            Some(status) => status,
+            None => return,
+        }
     };
     let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
 }
 
 /// Change the unread list, and tell the island if that changed it.
 fn edit_unread(app: &AppHandle, edit: impl FnOnce(&mut Vec<IslandSession>)) {
-    let status = {
-        let mut s = shared().lock().unwrap();
-        let mut unread = s.status.unread.clone();
-        edit(&mut unread);
-        if unread == s.status.unread {
-            return;
-        }
-        s.status.unread = unread;
-        s.status.seq += 1;
-        s.status.clone()
-    };
-    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+    edit_feeds(app, |feeds| {
+        let before = feeds.unread.clone();
+        edit(&mut feeds.unread);
+        feeds.unread != before
+    });
 }
 
 /// The session (an [`id_key`]) was opened: it is read.
 fn mark_read(app: &AppHandle, key: &str) {
     edit_unread(app, |unread| unread.retain(|u| id_key(&u.id) != key));
-}
-
-/// Unread sessions belong to one backend; a switch forgets them.
-fn follow_backend(app: &AppHandle, base: &str) {
-    let switched = {
-        let mut s = shared().lock().unwrap();
-        s.unread_base.replace(base.to_string()).is_some_and(|old| old != base)
-    };
-    if switched {
-        edit_unread(app, Vec::clear);
-    }
 }
 
 /// The session on screen in the focused app window, while OpenAgentd is in front.
@@ -1100,30 +1252,42 @@ pub fn island_fit(app: AppHandle, window: WebviewWindow, width: f64, height: f64
     schedule_apply(&app);
 }
 
-/// Open a session the island is showing in an app window.
+/// Open a session the island is showing, in an app window on its server.
 #[tauri::command]
 pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: String) {
     if window.label() != ISLAND_WINDOW {
         return;
     }
-    let known = {
+    let server = {
         let s = shared().lock().unwrap();
-        s.status.sessions.iter().chain(&s.status.unread).any(|x| x.id == session_id)
+        s.status.sessions.iter().chain(&s.status.unread).find(|x| x.id == session_id).map(|x| x.server_id.clone())
     };
-    if !known {
+    let Some(server) = server else {
         return;
-    }
+    };
     // The window may already show it, and then reports nothing new.
     mark_read(&app, &id_key(&session_id));
-    match crate::window::target_webview_window(&app) {
+    let windows = crate::servers::app_window_labels(&app);
+    let target = server.and_then(|server| {
+        crate::servers::window_for_server(
+            &server,
+            crate::servers::focused_app_window(&app).as_deref(),
+            crate::servers::active_app_window(&app).as_deref(),
+            &windows,
+            &crate::servers::external_map(&app),
+        )
+    });
+    match target.and_then(|label| app.get_webview_window(&label)) {
         Some(target) => {
-            crate::window::show_target_window(&app);
+            crate::window::show_window(&target);
             let payload = serde_json::json!({ "sessionId": session_id });
             if let Err(e) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
                 log::warn!("island: open session emit failed: {e:#}");
             }
         }
-        None => {
+        // Every window is closed: a new one opens where the island looks
+        // (the builtin), see `servers::followed_servers`.
+        None if windows.is_empty() => {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let path = format!("/{session_id}");
@@ -1132,6 +1296,9 @@ pub fn island_open_session(app: AppHandle, window: WebviewWindow, session_id: St
                 }
             });
         }
+        // Its last window left that server a moment ago; opening it
+        // elsewhere would show "not found".
+        None => log::warn!("island: no window is on the server of session {session_id}"),
     }
 }
 
@@ -1186,7 +1353,7 @@ pub fn island_update_settings(app: AppHandle, patch: IslandSettingsPatch) -> Res
     crate::config::save_island_settings(&app, &next).map_err(|e| format!("{e:#}"))?;
     shared().lock().unwrap().settings = next;
     if next.enabled != current.enabled {
-        feed_wake().notify_one();
+        feed_wake().notify_waiters();
     }
     if !next.show_finished {
         edit_unread(&app, Vec::clear);
@@ -1318,7 +1485,128 @@ mod tests {
     }
 
     fn session(id: &str, state: SessionState) -> IslandSession {
-        IslandSession { id: id.into(), title: format!("T{id}"), workspace: None, state, question: None }
+        IslandSession { id: id.into(), title: format!("T{id}"), workspace: None, state, question: None, server: None, server_id: None }
+    }
+
+    const REMOTE: &str = "http://192.168.1.30:4082";
+    const REMOTE_NAME: &str = "LAN server";
+
+    fn remote() -> ServerId {
+        ServerId::External(REMOTE.into())
+    }
+
+    fn ids(sessions: &[IslandSession]) -> Vec<&str> {
+        sessions.iter().map(|s| s.id.as_str()).collect()
+    }
+
+    /// The builtin and a remote server both followed, with these active lists.
+    fn two_servers(on_builtin: &[&str], on_remote: &[&str]) -> Feeds {
+        let mut feeds = Feeds::default();
+        feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
+        feeds.join(&remote(), REMOTE_NAME.into());
+        let running = |list: &[&str]| -> Vec<IslandSession> { list.iter().map(|id| session(id, SessionState::Running)).collect() };
+        feeds.update(&ServerId::Bundled, running(on_builtin), &HashMap::new(), None, true);
+        feeds.update(&remote(), running(on_remote), &HashMap::new(), None, true);
+        feeds
+    }
+
+    // The notch used to follow one server at a time, so sessions running or
+    // waiting on you on any other server never showed.
+    #[test]
+    fn sessions_from_every_followed_server_are_shown_and_named() {
+        let mut feeds = two_servers(&["a", "b"], &["r"]);
+        let mut asked = session("q", SessionState::NeedsInput);
+        asked.question = Some("Which branch?".into());
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running), asked], &HashMap::new(), None, true);
+
+        let (sessions, _) = feeds.lists();
+        assert_eq!(ids(&sessions), ["q", "a", "r"], "waiting first, across servers");
+        let servers: Vec<Option<&str>> = sessions.iter().map(|s| s.server.as_deref()).collect();
+        assert_eq!(servers, [Some(BUILTIN_NAME), Some(BUILTIN_NAME), Some(REMOTE_NAME)]);
+    }
+
+    #[test]
+    fn one_server_needs_no_name_on_its_rows() {
+        let mut feeds = Feeds::default();
+        feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), None, true);
+        assert_eq!(feeds.lists().0[0].server, None);
+    }
+
+    // Switching the followed server used to diff the old server's list
+    // against the new one's: every session still running there turned Done.
+    #[test]
+    fn a_server_dropping_out_reports_nothing_as_finished() {
+        let mut feeds = two_servers(&["a"], &["r"]);
+        assert!(feeds.forget(&remote()));
+        let (sessions, unread) = feeds.lists();
+        assert_eq!(ids(&sessions), ["a"]);
+        assert!(unread.is_empty());
+    }
+
+    // Following another server used to wipe the previous server's unread rows.
+    #[test]
+    fn unread_survives_activity_on_another_server() {
+        let mut feeds = two_servers(&["a"], &["r"]);
+        assert!(feeds.update(&remote(), vec![], &HashMap::new(), None, true));
+        assert_eq!(ids(&feeds.lists().1), ["r"]);
+
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running), session("b", SessionState::Running)], &HashMap::new(), None, true);
+        let (_, unread) = feeds.lists();
+        assert_eq!(ids(&unread), ["r"]);
+        assert_eq!(unread[0].server.as_deref(), Some(REMOTE_NAME));
+        assert_eq!(unread[0].server_id, Some(remote()), "a click opens it on its own server");
+    }
+
+    #[test]
+    fn a_server_that_cannot_be_reached_empties_its_list_but_keeps_unread() {
+        let mut feeds = two_servers(&["a"], &["r", "s"]);
+        feeds.update(&remote(), vec![session("s", SessionState::Running)], &HashMap::new(), None, true);
+        assert!(feeds.clear_sessions(&remote()));
+        let (sessions, unread) = feeds.lists();
+        assert_eq!(ids(&sessions), ["a"]);
+        assert_eq!(ids(&unread), ["r"], "s did not finish: the server went away");
+        assert!(!feeds.clear_sessions(&remote()), "already empty");
+    }
+
+    #[test]
+    fn a_forgotten_server_takes_its_unread_rows_with_it() {
+        let mut feeds = two_servers(&["a"], &["r"]);
+        feeds.update(&remote(), vec![], &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, vec![], &HashMap::new(), None, true);
+        assert_eq!(ids(&feeds.lists().1), ["a", "r"]);
+        feeds.forget(&remote());
+        assert_eq!(ids(&feeds.lists().1), ["a"]);
+    }
+
+    #[test]
+    fn a_list_from_a_server_no_longer_followed_is_ignored() {
+        let mut feeds = two_servers(&["a"], &[]);
+        feeds.forget(&remote());
+        assert!(!feeds.update(&remote(), vec![session("late", SessionState::Running)], &HashMap::new(), None, true));
+        assert_eq!(ids(&feeds.lists().0), ["a"]);
+    }
+
+    #[test]
+    fn the_same_session_seen_through_two_urls_is_listed_once() {
+        let lan = ServerId::External("http://192.168.1.40:4082".into());
+        let mut feeds = Feeds::default();
+        feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
+        feeds.join(&lan, "This Mac over LAN".into());
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), None, true);
+        feeds.update(&lan, vec![session("A", SessionState::Running)], &HashMap::new(), None, true);
+        assert_eq!(ids(&feeds.lists().0), ["a"]);
+    }
+
+    #[test]
+    fn a_finish_keeps_its_outcome_and_respects_show_finished() {
+        let mut feeds = two_servers(&[], &["r", "s"]);
+        let statuses = HashMap::from([(id_key("r"), "error".to_string())]);
+        feeds.update(&remote(), vec![session("s", SessionState::Running)], &statuses, None, true);
+        assert_eq!(feeds.lists().1[0].state, SessionState::Failed);
+
+        feeds.update(&remote(), vec![], &HashMap::new(), None, false);
+        assert_eq!(ids(&feeds.lists().1), ["r"], "s finished while finished sessions are hidden");
     }
 
     fn event(name: &str, data: serde_json::Value) -> SseEvent {

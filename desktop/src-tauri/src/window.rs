@@ -1,5 +1,4 @@
-use anyhow::{anyhow, Context, Result};
-use std::collections::HashMap;
+use anyhow::{Context, Result};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{
@@ -8,6 +7,7 @@ use tauri::{
 
 use crate::AppState;
 use crate::config::{load_window_state, window_size, SavedWindowState};
+use crate::servers::ServerId;
 
 pub const MAIN_WINDOW: &str = "main";
 pub const SECONDARY_WINDOW_PREFIX: &str = "main-";
@@ -97,10 +97,7 @@ pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
 
 pub fn show_target_window(app: &AppHandle) {
     if let Some(window) = target_webview_window(app) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.eval(THROTTLE_RESUME_SCRIPT);
+        show_window(&window);
     } else {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -109,6 +106,14 @@ pub fn show_target_window(app: &AppHandle) {
             }
         });
     }
+}
+
+/// Bring one window to the front.
+pub fn show_window(window: &tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.eval(THROTTLE_RESUME_SCRIPT);
 }
 
 static NEXT_FRONTEND_COMMAND_ID: AtomicU64 = AtomicU64::new(1);
@@ -255,28 +260,22 @@ pub fn backend_unavailable_init_script() -> String {
 pub const FRESH_WINDOW_INIT_SCRIPT: &str =
     "Object.defineProperty(window, '__OAD_FRESH_WINDOW__', { value: true, writable: true, configurable: true });";
 
+/// The script a new window starts with, on `server` (see
+/// [`crate::servers::current_server`]). Without a server, or before the
+/// builtin has an address, the window opens unconnected: its loading screen
+/// offers Choose Server, and it connects once a backend is up.
 pub fn new_window_init_script(
+    server: Option<&ServerId>,
     bundled_base_url: Option<&str>,
     desktop_token: Option<&str>,
-    external_window_base_urls: &HashMap<String, String>,
-    active_window_label: &str,
     initial_path: Option<&str>,
-) -> Result<String> {
+) -> String {
     let initial_path = initial_path.or(Some("/"));
-    if let Some(base) = external_window_base_urls.get(active_window_label) {
-        return Ok(frontend_init_script_with_path(None, base, initial_path));
+    match (server, bundled_base_url) {
+        (Some(ServerId::External(base)), _) => frontend_init_script_with_path(None, base, initial_path),
+        (Some(ServerId::Bundled), Some(base)) => frontend_init_script_with_path(desktop_token, base, initial_path),
+        _ => backend_unavailable_init_script(),
     }
-    if let Some(base) = bundled_base_url {
-        return Ok(frontend_init_script_with_path(
-            desktop_token,
-            base,
-            initial_path,
-        ));
-    }
-    if let Some(base) = external_window_base_urls.get(MAIN_WINDOW) {
-        return Ok(frontend_init_script_with_path(None, base, initial_path));
-    }
-    Err(anyhow!("backend is not ready"))
 }
 
 pub fn next_window_label(app: &AppHandle) -> String {
@@ -381,37 +380,6 @@ async fn build_app_window_sized(
     Ok(win)
 }
 
-/// Resolve the external backend a freshly created window should inherit, if
-/// any. Mirrors the precedence used by [`new_window_init_script`]: prefer the
-/// active window's external backend, then fall back to the main window's
-/// external backend. Returns `None` when the new window should use the bundled
-/// sidecar.
-pub fn inherited_external_base_url(
-    external_window_base_urls: &HashMap<String, String>,
-    active_window_label: &str,
-) -> Option<String> {
-    external_window_base_urls
-        .get(active_window_label)
-        .or_else(|| external_window_base_urls.get(MAIN_WINDOW))
-        .cloned()
-}
-
-/// Closing a window drops its entry from the per-window backend map, so after
-/// the last one closes an external-server setup (no bundled sidecar) has
-/// nothing to inherit. Fall back to the saved server, like the tray does.
-pub fn with_saved_external_backend(
-    mut external_window_base_urls: HashMap<String, String>,
-    bundled_base_url: Option<&str>,
-    saved_external_base_url: Option<String>,
-) -> HashMap<String, String> {
-    if bundled_base_url.is_none() && !external_window_base_urls.contains_key(MAIN_WINDOW) {
-        if let Some(base) = saved_external_base_url {
-            external_window_base_urls.insert(MAIN_WINDOW.to_string(), base);
-        }
-    }
-    external_window_base_urls
-}
-
 pub async fn create_app_window(
     app: &AppHandle,
     label: Option<&str>,
@@ -434,38 +402,31 @@ async fn create_app_window_with(
     let state: tauri::State<'_, AppState> = app.state();
     let bundled_base_url = state.backend_base_url.lock().await.clone();
     let desktop_token = state.desktop_token.lock().await.clone();
-    let saved_external = crate::config::load_app_backend_config(app)
-        .ok()
-        .and_then(|config| config.active_base_url)
-        .and_then(|base| crate::config::normalize_external_base_url(&base).ok());
-    let external_window_base_urls = with_saved_external_backend(
-        state.window_backend_base_urls.lock().unwrap().clone(),
-        bundled_base_url.as_deref(),
-        saved_external,
+    // The server of the window you are in, else the builtin while it runs.
+    // Never a saved server: those connect only when you choose one.
+    let bundled_running = crate::servers::bundled_running(app).await;
+    let server = crate::servers::current_server(
+        crate::servers::active_app_window(app).as_deref(),
+        &crate::servers::external_map(app),
+        bundled_running,
     );
-    let active_window_label = state.active_window_label.lock().unwrap().clone();
     let mut init_script = new_window_init_script(
+        server.as_ref(),
         bundled_base_url.as_deref(),
         desktop_token.as_deref(),
-        &external_window_base_urls,
-        &active_window_label,
         initial_path,
-    )?;
+    );
     if fresh {
         init_script.push_str(FRESH_WINDOW_INIT_SCRIPT);
     }
-    let inherited_external =
-        inherited_external_base_url(&external_window_base_urls, &active_window_label);
     let window_label = label
         .map(str::to_string)
         .unwrap_or_else(|| next_window_label(app));
-    // When the new window inherits an external backend, register it under the
-    // new window's own label *before* its frontend bootstraps. Otherwise
-    // `app_backend_status` would report the bundled backend for this label,
-    // overwriting the injected external base URL — and, when no bundled sidecar
-    // is running, the window would stay stuck on the loading screen because
-    // `sidecar_running` never becomes true.
-    if let Some(base) = inherited_external {
+    // Register an external server under the new window's own label *before*
+    // its frontend bootstraps: `app_backend_status` reads it, and would
+    // otherwise report the builtin and override the injected URL. The script
+    // and this entry come from the same `server`, so they cannot disagree.
+    if let Some(ServerId::External(base)) = server {
         state
             .window_backend_base_urls
             .lock()

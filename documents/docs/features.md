@@ -797,6 +797,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the
     chat actions menu do the same.
+  - Opening a session loads everything from your latest prompt to the end,
+    up to 500 messages, so a long run shows the prompt it answers in both
+    transcript styles, with no scrolling or extra requests. A longer run
+    loads its newest 500 messages with the prompt pinned above them and a
+    dashed line where the rest sits; scrolling up fills it in, as older
+    history loads. The "Show earlier messages" button is gone: scrolling to
+    the top reveals those turns `[v3.29.0]`.
   - `path:line` and `path:start-end` references (also `#L42-L58`) in replies
     and tool output open the file in the review dock with those lines
     selected. A bare name or partial path (`Button.tsx`,

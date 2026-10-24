@@ -381,4 +381,73 @@ describe('AgentView — a loaded page holding no prompt', () => {
 
     expect(loadOlder).not.toHaveBeenCalled()
   })
+
+  it('leaves history alone when the server pinned the prompt', async () => {
+    const loadOlder = mock(async () => true)
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt: loadOlder, pinnedPrompt: { id: 'p1', type: 'user', content: 'keep going' } })
+
+    render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
+    await act(async () => {})
+
+    expect(loadOlder).not.toHaveBeenCalled()
+    useAgentStore.setState({ pinnedPrompt: null })
+  })
+})
+
+/** A run longer than the first page loads its newest rows; its prompt is pinned above them. */
+describe('AgentView — a pinned prompt', () => {
+  const RUN: ContentBlock[] = [
+    { id: 'run:t1', type: 'thinking', content: 'thinking' },
+    { id: 'run:a1', type: 'text', content: 'still working' },
+  ]
+  const startedAt = Date.now() - (2 * 60 + 16) * 60_000
+  const PINNED: ContentBlock = { id: 'p1', type: 'user', content: 'keep going', timestamp: new Date(startedAt) }
+
+  beforeEach(() => {
+    useAgentStore.setState({ hasMore: true, pinnedPrompt: PINNED })
+  })
+
+  afterEach(() => {
+    useAgentStore.setState({ hasMore: false, pinnedPrompt: null, _leadRevertTime: null })
+    useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+  })
+
+  it('shows the prompt above the loaded run, with a plain line and no button', () => {
+    const { container } = render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
+
+    const pinned = container.querySelector<HTMLElement>('[data-pinned-prompt]')
+    expect(pinned?.textContent).toContain('keep going')
+    expect(pinned?.dataset.promptId).toBe('p1')
+    // Not a loaded row: a view hold must anchor on those.
+    expect(pinned?.querySelector('[data-block-id]') ?? pinned?.dataset.blockId).toBeUndefined()
+    const gap = container.querySelector('[data-history-gap]')
+    expect(gap?.getAttribute('aria-hidden')).toBe('true')
+    expect(gap?.compareDocumentPosition(container.querySelector('[data-block-id="run:a1"]')!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(screen.queryAllByRole('button').filter((b) => /earlier/i.test(b.textContent ?? ''))).toEqual([])
+  })
+
+  it('times the running turn from it in the reader view', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    const { container } = render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={true} />)
+
+    expect(container.querySelector('[data-pinned-prompt]')?.textContent).toContain('keep going')
+    expect(screen.getByText(/· 2h 16m/)).toBeTruthy()
+  })
+
+  it('is a prompt for ⌥⌘↑', () => {
+    const { container } = render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
+    const scrollTo = layOut(container, { p1: -900 })
+
+    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+
+    expect(lastTop(scrollTo)).toBe(landing(-900))
+  })
+
+  it('goes once an undo takes the prompt back', () => {
+    useAgentStore.setState({ _leadRevertTime: startedAt })
+    const { container } = render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
+
+    expect(container.querySelector('[data-pinned-prompt]')).toBeNull()
+    expect(container.querySelector('[data-history-gap]')).toBeNull()
+  })
 })

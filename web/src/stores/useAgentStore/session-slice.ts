@@ -49,6 +49,8 @@ function messagesBeforeRevert(session: { revert?: { message_id?: string } | null
 function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, revertTime: number | null) {
   draft.hasMore = history.has_more
   draft.nextCursor = history.next_cursor
+  const pinnedId = draft.pinnedPrompt?.id
+  if (pinnedId && history.lead.messages.some((msg) => msg.id === pinnedId)) draft.pinnedPrompt = null
   const prepend = (stream: AgentStream, messages: MessageResponse[]) => {
     // Claim results orphaned by the page boundary: the newer page may hold a
     // tool result whose call row is in this older page.
@@ -415,6 +417,7 @@ export function resetSessionState(
   state._runningPatchedFor = null
   state.hasMore = false
   state.nextCursor = null
+  state.pinnedPrompt = null
   // A saved session's history is not here yet; a draft has none to wait for.
   state.isLoadingHistory = options.sessionId !== null
   state._leadRevertTime = null
@@ -468,6 +471,7 @@ export type SessionSlice = Pick<
   | '_runningPatchedFor'
   | 'hasMore'
   | 'nextCursor'
+  | 'pinnedPrompt'
   | 'isLoadingHistory'
   | '_leadRevertTime'
   | '_syncedThrough'
@@ -805,6 +809,7 @@ async function loadSessionImpl(
 
       draft.hasMore = history.has_more
       draft.nextCursor = history.next_cursor
+      draft.pinnedPrompt = history.latest_prompt ? parseAgentBlocks([history.latest_prompt])[0] ?? null : null
       draft.isLoadingHistory = false
       draft._leadRevertTime = revertBoundaryTime(history.lead)
       // Everything in this response is server-confirmed, so nothing is
@@ -853,6 +858,7 @@ export const createSessionSlice: StateCreator<
   _runningPatchedFor: null,
   hasMore: false,
   nextCursor: null,
+  pinnedPrompt: null,
   isLoadingHistory: false,
   _leadRevertTime: null,
   _syncedThrough: null,

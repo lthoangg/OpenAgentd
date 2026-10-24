@@ -11,7 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, render } from "@testing-library/react"
 import type { ContentBlock } from "@/api/types"
 
 // ── Store mock ────────────────────────────────────────────────────────────────
@@ -140,14 +140,14 @@ describe("AgentView — scroll-to-top pagination", () => {
     expect(mockLoadOlderMessages).not.toHaveBeenCalled()
   })
 
-  it("shows hidden turns button when local turns exceed render window", async () => {
+  it("offers no button for turns past the render window", async () => {
     // 90 turns = 180 blocks (user+text pairs) → hiddenTurnCount > 0 with INITIAL=80
     const manyBlocks = makeTurns(90)
     const { container } = render(
       <AgentView blocks={manyBlocks} currentBlocks={[]} isWorking={false} />,
     )
-    const btn = container.querySelector("button[aria-label*='earlier']")
-    expect(btn).not.toBeNull()
+    expect(container.querySelector('[data-block-id="u0"]')).toBeNull()
+    expect(container.querySelector("button[aria-label*='earlier']")).toBeNull()
   })
 
   it("calls showEarlierTurns (not loadOlderMessages) when hiddenTurnCount > 0", async () => {
@@ -162,9 +162,9 @@ describe("AgentView — scroll-to-top pagination", () => {
     await scrollTo(el, 0)
     // loadOlderMessages must NOT fire — local hidden turns should be shown first
     expect(mockLoadOlderMessages).not.toHaveBeenCalled()
-    // The hidden-turns button should still (or now) be present
-    const btn = container.querySelector("button[aria-label*='earlier']")
-    expect(btn).not.toBeNull()
+    // 180 items, 80 rendered: one reveal brings 80 more, down to item 20 (u10).
+    expect(container.querySelector('[data-block-id="u10"]')).not.toBeNull()
+    expect(container.querySelector('[data-block-id="u9"]')).toBeNull()
   })
 
   it("calls loadOlderMessages after all local hidden turns are revealed (stale-closure regression)", async () => {
@@ -314,17 +314,20 @@ describe("AgentView — earlier turns landing above the view", () => {
     expect(el.dataset.viewHold).toBeUndefined()
   })
 
-  it("keeps the view where the reader was when they show earlier turns", async () => {
+  it("keeps the view where the reader was when earlier turns are revealed", async () => {
     // 45 turns are 90 items; the 80 rendered leave 10 items (10 blocks) hidden.
     const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
     const el = getScrollEl(container)
     await readAt(el, 400)
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Show 10 earlier turns" }))
+    // Near the top, which reveals them. One synchronous act, as a browser
+    // commits the reveal before the hold's release frame.
+    act(() => {
+      Object.defineProperty(el, "scrollTop", { value: 250, configurable: true, writable: true })
+      el.dispatchEvent(new Event("scroll", { bubbles: true }))
     })
 
-    expect(el.scrollTop).toBe(1400)
+    expect(el.scrollTop).toBe(1250)
   })
 
   it("keeps rendered replies mounted when earlier turns load above them", async () => {

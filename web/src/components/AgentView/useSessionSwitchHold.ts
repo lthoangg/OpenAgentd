@@ -22,6 +22,8 @@ export interface TranscriptSnapshot {
   sessionId: string
   blocks: ContentBlock[]
   currentBlocks: ContentBlock[]
+  /** The prompt pinned above ``blocks``, if any (see ``AgentStore.pinnedPrompt``). */
+  pinnedPrompt: ContentBlock | null
 }
 
 /** Last rendered blocks per session, newest last. In memory only. */
@@ -47,11 +49,13 @@ export function useSessionSwitchHold({
   sessionId,
   blocks,
   currentBlocks,
+  pinnedPrompt,
   isLoadingHistory,
 }: {
   sessionId: string | undefined
   blocks: ContentBlock[]
   currentBlocks: ContentBlock[]
+  pinnedPrompt: ContentBlock | null
   isLoadingHistory: boolean
 }): SessionSwitchHold {
   const hasContent = shows(blocks) || shows(currentBlocks)
@@ -71,10 +75,10 @@ export function useSessionSwitchHold({
   // Before paint, so the next render already knows what this one showed.
   useLayoutEffect(() => {
     if (!sessionId || !hasContent) return
-    const snapshot = { sessionId, blocks, currentBlocks }
+    const snapshot = { sessionId, blocks, currentBlocks, pinnedPrompt }
     lastShownRef.current = snapshot
     remember(snapshot)
-  }, [sessionId, blocks, currentBlocks, hasContent])
+  }, [sessionId, blocks, currentBlocks, pinnedPrompt, hasContent])
 
   const outgoingFor = hold?.kind === 'outgoing' ? sessionId : undefined
   useEffect(() => {

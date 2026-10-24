@@ -90,7 +90,10 @@ if (import.meta.main) {
   // themes) had already measured 2.576 MB / 784.8 kB; the second (connection
   // banner, scheduler draft guard, sidebar row keys, window-wide drops, retry
   // states) added 7.6 kB / 2.4 kB gzip.
-  const limits = { eagerBytes: 2_590_000, eagerGzipBytes: 790_000, largestChunkBytes: 1_915_000 }
+  // `/goal` (the Goal dock tab, the claim cards, the goal turn divider, the
+  // replace dialog and Settings → Goals) adds about 40 kB / 12 kB gzip, all in
+  // the index chunk.
+  const limits = { eagerBytes: 2_630_000, eagerGzipBytes: 803_000, largestChunkBytes: 1_955_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

@@ -42,6 +42,11 @@
 //! A session only finishes on its own server: a server that is no longer
 //! followed (its last window closed) drops out without reporting anything.
 //! Clicking a row opens it in a window on its server.
+//!
+//! A session working toward a `/goal` shows how far it has got (the list's
+//! `goal_turns_used` / `goal_max_turns`), and when its last turn ends the row
+//! says what became of the goal, from the `goal` the finishing turn's
+//! `desktop_notification` carries, so the notch and the notification agree.
 
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
@@ -182,6 +187,36 @@ pub struct IslandSession {
     /// The server the session lives on.
     #[serde(skip)]
     pub server_id: Option<ServerId>,
+    /// The session's `/goal`: its progress while it runs, what became of it
+    /// once its last turn ended.
+    pub goal: Option<IslandGoal>,
+}
+
+/// A session's `/goal`, as the island shows it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum IslandGoal {
+    /// Working: the turn it is on, of its limit.
+    Active {
+        turn: i64,
+        #[serde(rename = "maxTurns")]
+        max_turns: i64,
+    },
+    Achieved,
+    Paused,
+    Blocked,
+}
+
+impl IslandGoal {
+    /// What became of a goal, from a notification's `goal`.
+    fn outcome(goal: &str) -> Option<Self> {
+        match goal {
+            "achieved" => Some(Self::Achieved),
+            "paused" => Some(Self::Paused),
+            "blocked" => Some(Self::Blocked),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -283,6 +318,14 @@ pub struct SessionRow {
     pub background_work: bool,
     #[serde(default)]
     pub parent_session_id: Option<String>,
+    /// The live `/goal`'s status and progress; missing without one, or from
+    /// older backends.
+    #[serde(default)]
+    pub goal_status: Option<String>,
+    #[serde(default)]
+    pub goal_turns_used: Option<i64>,
+    #[serde(default)]
+    pub goal_max_turns: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -327,6 +370,13 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
         .map(|row| {
             let state = if row.needs_input { SessionState::NeedsInput } else { SessionState::Running };
             let question = row.needs_input.then(|| questions.get(&id_key(&row.id)).cloned()).flatten();
+            // The turn that runs, or between turns (subagents) the last one taken.
+            let goal = match (row.goal_status.as_deref(), row.goal_turns_used, row.goal_max_turns) {
+                (Some("active"), Some(used), Some(max)) => {
+                    Some(IslandGoal::Active { turn: if row.running { (used + 1).min(max) } else { used.max(1) }, max_turns: max })
+                }
+                _ => None,
+            };
             IslandSession {
                 title: session_title(row.title.as_deref()),
                 workspace: row.workspace.as_deref().and_then(|w| session_workspace_label(w, chat_root)),
@@ -335,6 +385,7 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
                 question,
                 server: None,
                 server_id: None,
+                goal,
             }
         })
         .collect();
@@ -346,22 +397,26 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
 /// Sessions that left the active list, as finished rows. A turn the user
 /// stopped is their own doing, and an idle compaction only summarised what
 /// was already read; neither is reported. Without an outcome (a missed
-/// event) the turn counts as done.
+/// event) the turn counts as done. A goal's last turn carries what became of
+/// the goal (`goals`, from its notification).
 pub fn newly_finished(
     previous: &[IslandSession],
     next: &[IslandSession],
     statuses: &HashMap<String, String>,
+    goals: &HashMap<String, IslandGoal>,
 ) -> Vec<IslandSession> {
     previous
         .iter()
         .filter(|p| !next.iter().any(|n| n.id == p.id))
         .filter_map(|session| {
-            let state = match statuses.get(&id_key(&session.id)).map(String::as_str) {
+            let key = id_key(&session.id);
+            let state = match statuses.get(&key).map(String::as_str) {
                 Some("stopped" | IDLE_COMPACTION_STATUS) => return None,
                 Some("error" | "failed") => SessionState::Failed,
                 _ => SessionState::Done,
             };
-            Some(IslandSession { state, question: None, ..session.clone() })
+            let goal = goals.get(&key).cloned();
+            Some(IslandSession { state, question: None, goal, ..session.clone() })
         })
         .collect()
 }
@@ -429,14 +484,15 @@ impl Feeds {
     }
 
     /// Take `next` as `server`'s active list. Sessions that left it are
-    /// finished (`statuses`, see [`newly_finished`]) and become unread when
-    /// `show_finished`, except the one on screen (`viewed`). Ignored for a
-    /// server no longer followed. True when anything changed.
+    /// finished (`statuses` and `goals`, see [`newly_finished`]) and become
+    /// unread when `show_finished`, except the one on screen (`viewed`).
+    /// Ignored for a server no longer followed. True when anything changed.
     pub fn update(
         &mut self,
         server: &ServerId,
         mut next: Vec<IslandSession>,
         statuses: &HashMap<String, String>,
+        goals: &HashMap<String, IslandGoal>,
         viewed: Option<&str>,
         show_finished: bool,
     ) -> bool {
@@ -446,7 +502,7 @@ impl Feeds {
         for session in &mut next {
             session.server_id = Some(server.clone());
         }
-        let finished = if show_finished { newly_finished(&feed.sessions, &next, statuses) } else { Vec::new() };
+        let finished = if show_finished { newly_finished(&feed.sessions, &next, statuses, goals) } else { Vec::new() };
         let sessions_changed = feed.sessions != next;
         let unread_changed = merge_unread(&mut self.unread, finished, &next, viewed);
         feed.sessions = next;
@@ -497,11 +553,13 @@ pub fn merged_lists(
 }
 
 /// What the stream told us between refetches: each waiting session's
-/// question, and how each turn ended.
+/// question, how each turn ended, and what became of a goal whose last turn
+/// just ended.
 #[derive(Debug, Default)]
 pub struct FeedMemo {
     questions: HashMap<String, String>,
     statuses: HashMap<String, String>,
+    goals: HashMap<String, IslandGoal>,
     /// Sessions running an idle compaction, kept out of the list.
     compacting: HashSet<String>,
     /// Path of the backend's Chat workspace, fetched once per connection.
@@ -518,6 +576,7 @@ impl FeedMemo {
                 if let Some(id) = data["session_id"].as_str() {
                     let key = id_key(id);
                     self.statuses.remove(&key);
+                    self.goals.remove(&key);
                     if data["idle_compaction"].as_bool() == Some(true) {
                         self.compacting.insert(key);
                     } else {
@@ -527,6 +586,8 @@ impl FeedMemo {
                 true
             }
             "title_update" => true,
+            // Goal progress and status show on the session's row.
+            "session_goal" => true,
             "session_turn_completed" => {
                 let data = data();
                 // Subagent turns: the active list only holds top-level
@@ -545,6 +606,14 @@ impl FeedMemo {
             }
             "desktop_notification" => {
                 let data = data();
+                // A goal's last turn: its row says what became of the goal.
+                // The turn's own completion event follows and refetches.
+                if data["kind"].as_str() == Some("assistant_done") {
+                    if let (Some(id), Some(goal)) = (data["session_id"].as_str(), data["goal"].as_str().and_then(IslandGoal::outcome)) {
+                        self.goals.insert(id_key(id), goal);
+                    }
+                    return false;
+                }
                 if data["kind"].as_str() != Some("input_needed") {
                     return false;
                 }
@@ -566,6 +635,7 @@ impl FeedMemo {
             sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key)
         });
         self.statuses.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
+        self.goals.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
     }
 
     /// Drop sessions that are only compacting: a background summary is not work to watch.
@@ -1220,7 +1290,7 @@ fn publish(app: &AppHandle, server: &ServerId, next: Vec<IslandSession>, memo: &
         let show_finished = s.settings.show_finished;
         // The outcomes of sessions that just left the list are read here,
         // before `settle` drops them.
-        let changed = s.feeds.update(server, next.clone(), &memo.statuses, viewed.as_deref(), show_finished);
+        let changed = s.feeds.update(server, next.clone(), &memo.statuses, &memo.goals, viewed.as_deref(), show_finished);
         changed.then(|| s.rebuild()).flatten()
     };
     memo.settle(&next);
@@ -1625,11 +1695,14 @@ mod tests {
             needs_input,
             background_work: false,
             parent_session_id: None,
+            goal_status: None,
+            goal_turns_used: None,
+            goal_max_turns: None,
         }
     }
 
     fn session(id: &str, state: SessionState) -> IslandSession {
-        IslandSession { id: id.into(), title: format!("T{id}"), workspace: None, state, question: None, server: None, server_id: None }
+        IslandSession { id: id.into(), title: format!("T{id}"), workspace: None, state, question: None, server: None, server_id: None, goal: None }
     }
 
     const REMOTE: &str = "http://192.168.1.30:4082";
@@ -1694,8 +1767,8 @@ mod tests {
         feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
         feeds.join(&remote(), REMOTE_NAME.into());
         let running = |list: &[&str]| -> Vec<IslandSession> { list.iter().map(|id| session(id, SessionState::Running)).collect() };
-        feeds.update(&ServerId::Bundled, running(on_builtin), &HashMap::new(), None, true);
-        feeds.update(&remote(), running(on_remote), &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, running(on_builtin), &HashMap::new(), &HashMap::new(), None, true);
+        feeds.update(&remote(), running(on_remote), &HashMap::new(), &HashMap::new(), None, true);
         feeds
     }
 
@@ -1706,7 +1779,7 @@ mod tests {
         let mut feeds = two_servers(&["a", "b"], &["r"]);
         let mut asked = session("q", SessionState::NeedsInput);
         asked.question = Some("Which branch?".into());
-        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running), asked], &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running), asked], &HashMap::new(), &HashMap::new(), None, true);
 
         let (sessions, _) = feeds.lists();
         assert_eq!(ids(&sessions), ["q", "a", "r"], "waiting first, across servers");
@@ -1718,7 +1791,7 @@ mod tests {
     fn one_server_needs_no_name_on_its_rows() {
         let mut feeds = Feeds::default();
         feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
-        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
         assert_eq!(feeds.lists().0[0].server, None);
     }
 
@@ -1737,10 +1810,10 @@ mod tests {
     #[test]
     fn unread_survives_activity_on_another_server() {
         let mut feeds = two_servers(&["a"], &["r"]);
-        assert!(feeds.update(&remote(), vec![], &HashMap::new(), None, true));
+        assert!(feeds.update(&remote(), vec![], &HashMap::new(), &HashMap::new(), None, true));
         assert_eq!(ids(&feeds.lists().1), ["r"]);
 
-        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running), session("b", SessionState::Running)], &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running), session("b", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
         let (_, unread) = feeds.lists();
         assert_eq!(ids(&unread), ["r"]);
         assert_eq!(unread[0].server.as_deref(), Some(REMOTE_NAME));
@@ -1750,7 +1823,7 @@ mod tests {
     #[test]
     fn a_server_that_cannot_be_reached_empties_its_list_but_keeps_unread() {
         let mut feeds = two_servers(&["a"], &["r", "s"]);
-        feeds.update(&remote(), vec![session("s", SessionState::Running)], &HashMap::new(), None, true);
+        feeds.update(&remote(), vec![session("s", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
         assert!(feeds.clear_sessions(&remote()));
         let (sessions, unread) = feeds.lists();
         assert_eq!(ids(&sessions), ["a"]);
@@ -1761,8 +1834,8 @@ mod tests {
     #[test]
     fn a_forgotten_server_takes_its_unread_rows_with_it() {
         let mut feeds = two_servers(&["a"], &["r"]);
-        feeds.update(&remote(), vec![], &HashMap::new(), None, true);
-        feeds.update(&ServerId::Bundled, vec![], &HashMap::new(), None, true);
+        feeds.update(&remote(), vec![], &HashMap::new(), &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, vec![], &HashMap::new(), &HashMap::new(), None, true);
         assert_eq!(ids(&feeds.lists().1), ["a", "r"]);
         feeds.forget(&remote());
         assert_eq!(ids(&feeds.lists().1), ["a"]);
@@ -1772,7 +1845,7 @@ mod tests {
     fn a_list_from_a_server_no_longer_followed_is_ignored() {
         let mut feeds = two_servers(&["a"], &[]);
         feeds.forget(&remote());
-        assert!(!feeds.update(&remote(), vec![session("late", SessionState::Running)], &HashMap::new(), None, true));
+        assert!(!feeds.update(&remote(), vec![session("late", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true));
         assert_eq!(ids(&feeds.lists().0), ["a"]);
     }
 
@@ -1782,8 +1855,8 @@ mod tests {
         let mut feeds = Feeds::default();
         feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
         feeds.join(&lan, "This Mac over LAN".into());
-        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), None, true);
-        feeds.update(&lan, vec![session("A", SessionState::Running)], &HashMap::new(), None, true);
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
+        feeds.update(&lan, vec![session("A", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
         assert_eq!(ids(&feeds.lists().0), ["a"]);
     }
 
@@ -1791,10 +1864,10 @@ mod tests {
     fn a_finish_keeps_its_outcome_and_respects_show_finished() {
         let mut feeds = two_servers(&[], &["r", "s"]);
         let statuses = HashMap::from([(id_key("r"), "error".to_string())]);
-        feeds.update(&remote(), vec![session("s", SessionState::Running)], &statuses, None, true);
+        feeds.update(&remote(), vec![session("s", SessionState::Running)], &statuses, &HashMap::new(), None, true);
         assert_eq!(feeds.lists().1[0].state, SessionState::Failed);
 
-        feeds.update(&remote(), vec![], &HashMap::new(), None, false);
+        feeds.update(&remote(), vec![], &HashMap::new(), &HashMap::new(), None, false);
         assert_eq!(ids(&feeds.lists().1), ["r"], "s finished while finished sessions are hidden");
     }
 
@@ -1832,7 +1905,7 @@ mod tests {
         let mut memo = FeedMemo::default();
         let done = serde_json::json!({"session_id": "a", "status": "completed"});
         assert!(memo.note(&event("session_turn_completed", done)));
-        assert!(newly_finished(&sessions, &sessions, &memo.statuses).is_empty());
+        assert!(newly_finished(&sessions, &sessions, &memo.statuses, &memo.goals).is_empty());
     }
 
     #[test]
@@ -1868,7 +1941,7 @@ mod tests {
         asked.question = Some("Which branch?".into());
         let previous = [session("a", SessionState::Running), asked, session("c", SessionState::Running)];
         let statuses = HashMap::from([(id_key("b"), "error".to_string())]);
-        let finished = newly_finished(&previous, &previous[2..], &statuses);
+        let finished = newly_finished(&previous, &previous[2..], &statuses, &HashMap::new());
         let got: Vec<(&str, SessionState)> = finished.iter().map(|s| (s.id.as_str(), s.state)).collect();
         assert_eq!(got, [("a", SessionState::Done), ("b", SessionState::Failed)]);
         assert_eq!(finished[1].question, None);
@@ -1881,7 +1954,56 @@ mod tests {
             (id_key("a"), "stopped".to_string()),
             (id_key("b"), IDLE_COMPACTION_STATUS.to_string()),
         ]);
-        assert!(newly_finished(&previous, &[], &statuses).is_empty());
+        assert!(newly_finished(&previous, &[], &statuses, &HashMap::new()).is_empty());
+    }
+
+    #[test]
+    fn a_session_working_toward_a_goal_shows_the_turn_it_is_on() {
+        let goal = |mut r: SessionRow, status: &str| {
+            (r.goal_status, r.goal_turns_used, r.goal_max_turns) = (Some(status.into()), Some(6), Some(50));
+            r
+        };
+        let mut between = goal(row("b", Some("Waits on subagents"), false, false), "active");
+        between.background_work = true;
+        let rows = vec![goal(row("a", Some("Migrate"), true, false), "active"), between, goal(row("c", Some("Paused one"), true, false), "paused")];
+        let sessions = active_sessions(rows, &HashMap::new(), None);
+        let goals: Vec<Option<IslandGoal>> = sessions.iter().map(|s| s.goal.clone()).collect();
+        assert_eq!(
+            goals,
+            [Some(IslandGoal::Active { turn: 7, max_turns: 50 }), Some(IslandGoal::Active { turn: 6, max_turns: 50 }), None],
+            "the running turn, the last one between turns, and nothing for a paused goal's own turn"
+        );
+        assert_eq!(serde_json::to_value(&goals[0]).unwrap(), serde_json::json!({"status": "active", "turn": 7, "maxTurns": 50}));
+
+        let page: SessionPage = serde_json::from_str(r#"{"data": [{"id": "a", "running": true}]}"#).unwrap();
+        assert_eq!(page.data[0].goal_status, None, "an older backend has no goals");
+    }
+
+    #[test]
+    fn a_goal_s_last_turn_says_what_became_of_the_goal() {
+        let mut memo = FeedMemo::default();
+        let note = serde_json::json!({"kind": "assistant_done", "session_id": "a", "title": "Goal achieved · web", "goal": "achieved"});
+        assert!(!memo.note(&event("desktop_notification", note)), "the turn's completion refetches");
+        let blocked = serde_json::json!({"kind": "assistant_done", "session_id": "b", "goal": "blocked"});
+        memo.note(&event("desktop_notification", blocked));
+
+        let previous = [session("a", SessionState::Running), session("b", SessionState::Running), session("c", SessionState::Running)];
+        let finished = newly_finished(&previous, &[], &memo.statuses, &memo.goals);
+        let got: Vec<(&str, SessionState, Option<IslandGoal>)> = finished.iter().map(|s| (s.id.as_str(), s.state, s.goal.clone())).collect();
+        assert_eq!(
+            got,
+            [
+                ("a", SessionState::Done, Some(IslandGoal::Achieved)),
+                ("b", SessionState::Done, Some(IslandGoal::Blocked)),
+                ("c", SessionState::Done, None),
+            ]
+        );
+        assert_eq!(serde_json::to_value(&finished[0].goal).unwrap(), serde_json::json!({"status": "achieved"}));
+
+        // A new turn (the user moved on) is not the goal's.
+        assert!(memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a"}))));
+        assert!(!memo.goals.contains_key("a"));
+        assert!(memo.note(&event("session_goal", serde_json::json!({"session_id": "a"}))), "goal progress refetches");
     }
 
     #[test]

@@ -197,6 +197,15 @@ button:focus-visible {
   color: var(--color-error);
 }
 
+/* A goal achieved takes the blue accent; one paused waits quietly. */
+.island-mark--goal {
+  color: var(--accent-blue);
+}
+
+.island-mark--paused {
+  color: var(--color-text-muted);
+}
+
 .island-dot {
   flex: none;
   width: 8px;

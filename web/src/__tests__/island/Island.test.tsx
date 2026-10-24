@@ -220,6 +220,21 @@ describe('Island', () => {
     expect(screen.queryByRole('list')).toBeNull()
   })
 
+  it("shows a goal's turn while it works, and its outcome once its last turn ends", async () => {
+    await mount()
+    push(status(2, [{ ...running('a', 'Migrate'), goal: { status: 'active', turn: 7, maxTurns: 50 } }]))
+    expect(screen.getByText('Goal 7/50')).toBeInTheDocument()
+
+    push(status(3, [], [{ ...done('a', 'Migrate'), goal: { status: 'achieved' } }]))
+    expect(screen.getByText('Goal achieved')).toBeInTheDocument()
+    expect(pill().querySelector('.island-mark--goal')).not.toBeNull()
+
+    point(true)
+    const row = within(screen.getByRole('list', { name: 'Sessions' })).getByRole('button', { name: /^Migrate/ })
+    expect(row.textContent).toBe('MigrateGoal achieved')
+    expect(row.querySelector('.island-mark--goal')).not.toBeNull()
+  })
+
   it('ignores a snapshot older than the one it has', async () => {
     await mount()
     push(status(5, [running('a', 'Newer')]))

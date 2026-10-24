@@ -681,19 +681,27 @@ run from the terminal (the native Rust binary since v3.0.0).
     turns run unattended by default: the agent decides instead of asking and notes
     each choice. **Settings → Goals** sets the turn limit, a default token budget
     for new goals, and allows questions during a goal. The check runs on the
-    session's own model, so it reuses the conversation's prompt cache. A chip
-    beside Code/Plan (kept on the minimized floating bar) shows progress and opens
-    Pause, Resume, and Clear, in a popover on desktop and a bottom sheet on phones;
-    `/goal`, `/goal pause|resume|clear`, and **Cmd+K** do the same. Stop pauses the
+    session's own model, so it reuses the conversation's prompt cache. A **Goal**
+    tab in the review dock (the drawer on phones) shows the objective, turns,
+    tokens and time, the last check, what the session is doing now (running a
+    turn, waiting for your answer, for Code mode, for subagents, or for your
+    queued messages), and Pause, Resume, and Clear. Its title follows the goal
+    ("Goal 7/50", "Goal paused"), and setting a goal opens it on desktop. A bare
+    `/goal`, **Cmd+K → Goal**, and the dock's **+** menu open it;
+    `/goal pause|resume|clear` and **Cmd+K** control the goal. Stop pauses the
     goal, Plan mode and running subagents make it wait, and a goal running when the
     app quit comes back paused. A scheduled task that runs in the goal's session
     skips each run that comes due while the goal works (the scheduler skips busy
     sessions) and fires again at its next scheduled time. Undoing a goal turn
     keeps the goal; undoing its objective, or cancelling the objective while it is
     still queued, ends the goal and gives the text back as `/goal …`. The
-    transcript marks each goal turn and each claim's verdict, the sidebar marks
-    sessions with a live goal, and one notification ("Goal achieved", "Goal
-    blocked", or "Goal paused") arrives when the goal ends. In the Reader
+    transcript marks each goal turn and each claim's verdict; each turn's divider
+    says why the goal went on (no claim yet, the check said not yet, the check gave
+    no verdict, or you resumed it), with the check's full reason on hover or tap.
+    An achieved goal shows in blue. The sidebar marks sessions with a live goal,
+    one notification ("Goal achieved", "Goal blocked", or "Goal paused") arrives
+    when the goal ends, and on macOS the notch shows a running goal's progress
+    ("Goal 7/50") and the same outcome. In the Reader
     transcript the goal's outcome (achieved, blocked, or paused by rejections or
     failed checks) stays visible, and claims the agent worked past fold into the
     turn's row as "goal checks". One goal per top-level session.

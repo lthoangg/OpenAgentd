@@ -6,6 +6,14 @@
 /** `done` and `failed` are finished sessions not opened yet (unread). */
 export type SessionState = 'running' | 'needs_input' | 'done' | 'failed'
 
+/**
+ * A session's `/goal`: how far it has got while it works, and on a finished
+ * row what became of it (as the turn's notification says).
+ */
+export type IslandGoal =
+  | { status: 'active'; turn: number; maxTurns: number }
+  | { status: 'achieved' | 'paused' | 'blocked' }
+
 export interface IslandSession {
   id: string
   title: string
@@ -16,6 +24,8 @@ export interface IslandSession {
   question: string | null
   /** The server's name, when the sessions come from more than one server. */
   server?: string | null
+  /** Absent from older shells. */
+  goal?: IslandGoal | null
 }
 
 export interface IslandStatus {
@@ -114,6 +124,19 @@ export function islandHeight(mode: IslandMode, geometry: NotchGeometry, listHeig
   return Math.min(geometry.height + listHeight, CANVAS_HEIGHT)
 }
 
+const GOAL_OUTCOMES: Record<Exclude<IslandGoal['status'], 'active'>, string> = {
+  achieved: 'Goal achieved',
+  paused: 'Goal paused',
+  blocked: 'Goal blocked',
+}
+
+/** "Goal 7/50" while the goal works, else the notification's words for what became of it. */
+export function goalLabel(session: IslandSession): string | null {
+  const goal = session.goal
+  if (!goal) return null
+  return goal.status === 'active' ? `Goal ${goal.turn}/${goal.maxTurns}` : GOAL_OUTCOMES[goal.status]
+}
+
 /** The two short labels either side of the notch, in {@link compactMode}'s order. */
 export function compactLabels(
   sessions: readonly IslandSession[],
@@ -125,12 +148,13 @@ export function compactLabels(
   }
   if (unread.length > 0) {
     return {
-      lead: allFailed(unread) ? 'Failed' : 'Done',
+      lead: (unread.length === 1 && goalLabel(unread[0])) || (allFailed(unread) ? 'Failed' : 'Done'),
       detail: unread.length === 1 ? unread[0].title : `${unread.length} sessions`,
     }
   }
   if (sessions.length > 0) {
-    return { lead: 'Working', detail: sessions.length === 1 ? sessions[0].title : `${sessions.length} sessions` }
+    if (sessions.length === 1) return { lead: goalLabel(sessions[0]) ?? 'Working', detail: sessions[0].title }
+    return { lead: 'Working', detail: `${sessions.length} sessions` }
   }
   return { lead: '', detail: '' }
 }

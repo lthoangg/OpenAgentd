@@ -1316,6 +1316,12 @@ agent against it.
     access key. That needs a server with an access key, and a reverse proxy
     in front of it must pass WebSocket upgrades. **Open in browser** is off
     there, and a plain browser on another device shows a notice instead.
+    Since `[v3.29.0]` the address bar also opens workspace files from any
+    Preview tab: type a path from the workspace root (`docs/mockup.html`,
+    `./docs/mockup.html`) or paste a full path or `file://` link inside the
+    workspace. From a dev-server tab the file opens in its own Preview tab; a
+    path that is not a workspace file shows an error in place (start with `/`
+    for a page on the dev server). The "Nothing is running" page says so.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move

@@ -37,6 +37,7 @@ import { WORKSPACE_TREE_STALE_MS, workspaceFileListQueryOptions } from '@/querie
 import { DOCK_ACTION_BUTTON_CLASS } from '../WorkspacePanel/dock-tab-styles'
 import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale, frameSize } from './devices'
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
+import { parseAddress } from './preview-address'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
@@ -398,25 +399,53 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     }
   }
 
-  const submitUrl = (raw: string) => {
-    const value = raw.trim()
-    setUrlDraft(null)
-    if (!value) return
-    if (value.startsWith('/')) {
-      navigateTo(value)
-      return
-    }
-    const looksLikeUrl = value.includes('://') || /^[\w.-]*:\d+/.test(value) || value.startsWith('localhost')
-    if (!looksLikeUrl && target.kind === 'file') {
-      navigateTo(`/${value}`)
-      return
-    }
+  /**
+   * A workspace file typed in a dev-server tab opens in its own tab, once
+   * the server confirms it is a file. A full path that is not one is still
+   * a path on the dev server.
+   */
+  const openWorkspaceFile = async (path: string, fallback?: string) => {
+    const next: PreviewTarget = { kind: 'file', path }
     try {
-      const u = new URL(value.includes('://') ? value : `http://${value}`)
-      if (target.kind === 'url' && u.origin === targetOrigin) navigateTo(`${u.pathname}${u.search}${u.hash}`)
-      else onOpenTarget?.({ kind: 'url', url: value })
-    } catch {
-      setError(`Invalid URL: ${value}`)
+      await openPreview(workspace, next)
+    } catch (err) {
+      if (fallback) {
+        navigateTo(fallback)
+        return
+      }
+      const message = err instanceof Error ? err.message : String(err)
+      const host = targetOrigin ? targetOrigin.replace(/^[a-z]+:\/\//i, '') : null
+      setError(host ? `${message} Start with / for a page on ${host}.` : message)
+      return
+    }
+    setError(null)
+    onOpenTarget?.(next)
+  }
+
+  const submitUrl = (raw: string) => {
+    setUrlDraft(null)
+    const input = parseAddress(raw, workspace)
+    if (!input) return
+    switch (input.kind) {
+      case 'page':
+        navigateTo(input.path)
+        return
+      case 'invalid':
+        setError(input.message)
+        return
+      case 'file':
+        // A file tab's server is the workspace: its other files open in place.
+        if (target.kind === 'file') navigateTo(`/${input.path}`)
+        else void openWorkspaceFile(input.path, input.fallback)
+        return
+      case 'url':
+        try {
+          const u = new URL(input.url.includes('://') ? input.url : `http://${input.url}`)
+          if (target.kind === 'url' && u.origin === targetOrigin) navigateTo(`${u.pathname}${u.search}${u.hash}`)
+          else onOpenTarget?.({ kind: 'url', url: input.url })
+        } catch {
+          setError(`Invalid URL: ${input.url}`)
+        }
     }
   }
 

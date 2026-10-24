@@ -2017,6 +2017,42 @@ describe("loadAgentStatus", () => {
     await useAgentStore.getState().loadAgentStatus("/ws-a")
     expect(mockAgentStatus).toHaveBeenLastCalledWith("/ws-a", "old-sid")
   })
+
+  // The roster names the workspace's lead agent ("code"), never a subagent.
+  // Applied to an open subagent session it repointed the view at an empty
+  // "code" stream, so the subagent's transcript and live output vanished.
+  it("keeps an open subagent session on its own agent", async () => {
+    mockSessionHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "child-sid",
+          agent_name: "worker#1",
+          parent_session_id: "lead-sid",
+          running: true,
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [{ id: "m1", role: "user", content: "[Task from Lead]: run the build", created_at: "2026-10-24T15:00:00Z" }],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    mockAgentStatus.mockImplementation(() =>
+      Promise.resolve({ lead: { name: "code", model: "gpt-4", state: "idle" }, members: [] })
+    )
+    await useAgentStore.getState().loadSession("child-sid")
+    expect(useAgentStore.getState().leadName).toBe("worker#1")
+
+    await useAgentStore.getState().loadAgentStatus("/ws", undefined, "child-sid")
+
+    const state = useAgentStore.getState()
+    expect(state.leadName).toBe("worker#1")
+    expect(state.agentStreams["worker#1"].blocks.length).toBeGreaterThan(0)
+    expect(state.agentStreams["worker#1"].status).not.toBe("offline")
+  })
 })
 
 // ── loadSession ───────────────────────────────────────────────────────────────

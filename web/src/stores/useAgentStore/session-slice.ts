@@ -1002,6 +1002,11 @@ export const createSessionSlice: StateCreator<
         const allAgents = [status.lead, ...status.members]
         const liveNames = allAgents.map((a) => a.name)
         set((draft) => {
+          // The roster describes the workspace's lead agent. A subagent
+          // session runs its own agent, which its history names; applying the
+          // roster there pointed the view at an empty lead stream, and the
+          // subagent's transcript and live output vanished.
+          if (draft.parentSessionId && draft.sessionId === currentSessionId) return
           draft.leadName = status.lead.name
           draft.liveAgentNames = liveNames
           const historicalNames = draft.agentNames.filter((name) => !liveNames.includes(name))

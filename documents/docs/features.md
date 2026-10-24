@@ -1431,6 +1431,8 @@ agent against it.
   Since `[v3.1.0]` the count pill beside the title is the toggle, so sessions
   without subagents keep no chevron gutter, and child rows sit flat under the
   lead's title without another indent guide.
+  Since `[v3.29.0]` a running subagent opens with its transcript and live
+  output; it used to open blank, under the lead agent's name.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
   sidebar row, or **Edit title** in its menu turns the title into a text
   field. Enter or clicking away saves, Escape cancels, and the header and

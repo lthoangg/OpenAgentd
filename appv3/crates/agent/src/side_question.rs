@@ -85,7 +85,7 @@ impl Hook for RequestFrameHook {
 
 /// The frame a turn of `sid` would send now, rebuilt the way
 /// `execute_turn` builds it. Used when no turn ran in this process yet.
-async fn rebuild_frame(session: &AgentSession, agent: &Agent, sid: &str, workspace: &str) -> RequestFrame {
+pub(crate) async fn rebuild_frame(session: &AgentSession, agent: &Agent, sid: &str, workspace: &str) -> RequestFrame {
     let ws = (!workspace.is_empty()).then(|| workspace.to_string());
     let agent_mode = settings().workspace_mode(ws.as_deref().map(Path::new));
     let ctx = RunContext { session_id: Some(sid.to_string()), run_id: "side_question".into(), agent_name: agent.name.clone(), workspace: ws.clone() };

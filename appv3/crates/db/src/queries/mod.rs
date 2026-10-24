@@ -1,6 +1,7 @@
 //! Query layer, one module per table. All functions accept UUIDs in either
 //! spelling and write the v2 on-disk encoding (see [`crate::codec`]).
 
+pub mod goals;
 pub mod messages;
 pub mod questions;
 pub mod sessions;
@@ -9,6 +10,7 @@ pub mod tasks;
 pub mod workspace_groups;
 pub mod workspaces;
 
+pub use goals::*;
 pub use messages::*;
 pub use questions::*;
 pub use sessions::*;

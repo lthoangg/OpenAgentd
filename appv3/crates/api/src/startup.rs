@@ -58,6 +58,8 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     tracing::info!("server_starting version={} app_env={}", appv3_core::VERSION, settings().app_env);
     ensure_workspace_initialized()?;
     manager::init(pool.clone(), loader::default_provider_factory());
+    // No turn survives a restart: a goal that was running waits for Resume.
+    appv3_agent::goal::pause_after_restart(pool).await;
     let sched = scheduler::init(pool.clone());
     appv3_agent::stream_store::store().spawn_sweeper();
     appv3_agent::snapshot::start_maintenance(pool.clone());

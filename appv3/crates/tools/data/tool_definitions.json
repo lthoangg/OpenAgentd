@@ -553,6 +553,41 @@
       }
     }
   },
+  "update_goal": {
+    "type": "function",
+    "function": {
+      "name": "update_goal",
+      "description": "Report on the goal the user set with /goal (fails without one). 'complete': output in this conversation proves every requirement; list it. A separate check reviews the claim; if it rejects it, keep working on what it names. 'blocked': the same blocker stopped you for 3 turns in a row and you need the user.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "'complete' or 'blocked'.",
+            "enum": [
+              "complete",
+              "blocked"
+            ],
+            "type": "string"
+          },
+          "evidence": {
+            "default": null,
+            "description": "[complete] Commands run with their results, and files changed.",
+            "maxLength": 4000,
+            "type": "string"
+          },
+          "reason": {
+            "default": null,
+            "description": "[blocked] What blocks you and what you need.",
+            "maxLength": 2000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      }
+    }
+  },
   "team": {
     "type": "function",
     "function": {

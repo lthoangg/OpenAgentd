@@ -22,6 +22,8 @@ pub struct SessionOverlay {
     pub completion_tokens: Option<i64>,
     pub agent_name: Option<String>,
     pub subagents: Vec<Value>,
+    /// The session's live `/goal` status (`active` or `paused`), if any.
+    pub goal_status: Option<String>,
 }
 
 fn put(map: &mut Map<String, Value>, key: &str, value: Option<Value>) {
@@ -63,6 +65,8 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
     if o.background_work {
         m.insert("background_work".into(), Value::Bool(true));
     }
+    // v3 addition, omitted without a live goal.
+    put(&mut m, "goal_status", o.goal_status.clone().map(Value::String));
     m
 }
 

@@ -644,22 +644,6 @@ describe("InputComposer — minimized state", () => {
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
     expect(textarea.getAttribute("disabled")).toBeNull()
   })
-
-  it("keeps the action slot (the goal chip) on the minimized strip, without expanding it on click", () => {
-    const onUnminimize = mock(() => {})
-    const onSlotClick = mock(() => {})
-    render(
-      <InputComposer
-        onSubmit={() => {}}
-        minimized
-        onUnminimize={onUnminimize}
-        actionSlot={<button type="button" onClick={onSlotClick}>Goal · 7/50</button>}
-      />,
-    )
-    fireEvent.click(screen.getByRole("button", { name: "Goal · 7/50" }))
-    expect(onSlotClick).toHaveBeenCalledTimes(1)
-    expect(onUnminimize).not.toHaveBeenCalled()
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -12,7 +12,9 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
-import type { SessionPlan } from '@/api/types'
+import { useAgentStore } from '@/stores/useAgentStore'
+import { queryKeys } from '@/queries/keys'
+import type { SessionGoal, SessionPlan } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
 
@@ -52,9 +54,16 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-async function renderPanel({ mobile = false, plan = PLAN, chatWorkspace = false }: { mobile?: boolean; plan?: SessionPlan | null; chatWorkspace?: boolean } = {}) {
+const GOAL: SessionGoal = {
+  id: 'g1', session_id: 'session-1', objective: 'web tests pass', status: 'active', pause_reason: null, detail: null,
+  max_turns: 50, token_budget: null, turns_used: 6, tokens_used: 1200, active_seconds: 90, rejected_claims: 0,
+  created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', ended_at: null,
+}
+
+async function renderPanel({ mobile = false, plan = PLAN, chatWorkspace = false, goal = null }: { mobile?: boolean; plan?: SessionPlan | null; chatWorkspace?: boolean; goal?: SessionGoal | null } = {}) {
   const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  queryClient.setQueryData(queryKeys.goal('session-1'), { goal })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
@@ -70,6 +79,7 @@ async function renderPanel({ mobile = false, plan = PLAN, chatWorkspace = false 
       </QueryClientProvider>,
     )
   })
+  return queryClient
 }
 
 async function openMenu() {
@@ -85,7 +95,7 @@ describe('Review dock "+" menu', () => {
     await screen.findByRole('button', { name: 'Session plan' })
 
     const menu = await openMenu()
-    expect(rowNames(menu)).toEqual(['Git', 'Plan (open)', 'Tasks', 'Side Questions', 'Schedule', 'Terminal', 'Preview', 'Open File'])
+    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side Questions', 'Schedule', 'Terminal', 'Preview', 'Open File'])
 
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Git' }))
     expect(screen.queryByRole('menu')).toBeNull()
@@ -110,8 +120,9 @@ describe('Review dock "+" menu', () => {
     expect(screen.queryByRole('button', { name: 'New terminal' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
-    // Tasks and side questions open above the chat on phones, not in the dock.
-    expect(rowNames(await openMenu())).toEqual(['Git', 'Plan (open)', 'Schedule', 'Terminal', 'Preview', 'Open File'])
+    // Tasks and side questions open above the chat on phones, not in the
+    // dock; the plan and the goal open here everywhere.
+    expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Schedule', 'Terminal', 'Preview', 'Open File'])
   })
 
   it('keeps desktop icons beside "+"', async () => {
@@ -124,6 +135,31 @@ describe('Review dock "+" menu', () => {
 
   it('drops Git in a chat workspace and Plan without a plan', async () => {
     await renderPanel({ mobile: true, plan: null, chatWorkspace: true })
-    expect(rowNames(await openMenu())).toEqual(['Schedule', 'Terminal', 'Preview', 'Open File'])
+    expect(rowNames(await openMenu())).toEqual(['Goal', 'Schedule', 'Terminal', 'Preview', 'Open File'])
+  })
+
+  it('opens the Goal tab, titled with how far the goal has got', async () => {
+    useAgentStore.setState({ isAgentWorking: true })
+    try {
+      const client = await renderPanel({ goal: GOAL })
+      await screen.findByRole('button', { name: 'Session plan' })
+      await userEvent.setup().click(within(await openMenu()).getByRole('menuitem', { name: 'Goal' }))
+
+      const tab = screen.getByRole('button', { name: 'Goal 7/50' })
+      expect(tab.getAttribute('aria-current')).toBe('true')
+      expect(document.querySelector('[data-goal-now]')?.textContent).toBe('Working on turn 7 of 50')
+
+      await act(async () => {
+        client.setQueryData(queryKeys.goal('session-1'), { goal: { ...GOAL, status: 'paused', pause_reason: 'stopped' } })
+      })
+      expect((await screen.findByRole('button', { name: 'Goal paused' })).getAttribute('aria-current')).toBe('true')
+    } finally {
+      useAgentStore.setState({ isAgentWorking: false })
+    }
+  })
+
+  it('puts a live goal on the empty launcher', async () => {
+    await renderPanel({ plan: null, goal: GOAL })
+    expect(screen.getByRole('group', { name: 'Open in the dock' }).textContent).toContain('Goal')
   })
 })

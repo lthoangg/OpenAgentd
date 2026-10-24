@@ -3,9 +3,11 @@ import type { ContentBlock, SessionGoal } from '@/api/types'
 import {
   formatGoalDuration,
   formatGoalTokens,
-  goalChipState,
+  goalNow,
   goalSubmit,
+  goalTabTitle,
   goalTurnInfo,
+  goalTurnReason,
   isGoalObjectiveBlock,
   parseGoalClaim,
   parseGoalCommand,
@@ -33,7 +35,7 @@ function makeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
   }
 }
 
-const IDLE = { running: false, waitingForUser: false, planMode: false }
+const IDLE = { running: false, waitingForUser: false, planMode: false, queuedMessages: 0, subagentsRunning: 0 }
 
 describe('parseGoalCommand', () => {
   it('reads the status, the three actions, and an objective', () => {
@@ -68,8 +70,12 @@ describe('goalSubmit', () => {
     expect(goalSubmit('/goal pause', 's1', makeGoal())).toEqual({ kind: 'action', action: 'pause' })
     expect(goalSubmit('/goal pause', 's1', makeGoal({ status: 'cleared' }))).toEqual({ kind: 'no-goal' })
     expect(goalSubmit('/goal resume', null, null)).toEqual({ kind: 'no-session' })
+  })
+
+  it('shows the Goal tab for a bare /goal, with or without a goal', () => {
     expect(goalSubmit('/goal', 's1', makeGoal({ status: 'achieved' }))).toEqual({ kind: 'show' })
-    expect(goalSubmit('/goal', 's1', null)).toEqual({ kind: 'no-goal' })
+    expect(goalSubmit('/goal', 's1', null)).toEqual({ kind: 'show' })
+    expect(goalSubmit('/goal status', null, null)).toEqual({ kind: 'show' })
   })
 
   it('refuses an objective over the length limit', () => {
@@ -78,23 +84,40 @@ describe('goalSubmit', () => {
   })
 })
 
-describe('goalChipState', () => {
-  it('counts the running turn and the time while the goal works', () => {
-    expect(goalChipState(makeGoal(), { ...IDLE, running: true })).toEqual({ tone: 'active', label: 'Goal · 7/50 · 12m 30s', short: '7/50' })
-    expect(goalChipState(makeGoal({ active_seconds: 20 }), IDLE)).toEqual({ tone: 'active', label: 'Goal · 6/50', short: '6/50' })
+describe('goalTabTitle', () => {
+  it('counts the running turn while the goal works', () => {
+    expect(goalTabTitle(makeGoal(), true)).toBe('Goal 7/50')
+    expect(goalTabTitle(makeGoal(), false)).toBe('Goal 6/50')
+    expect(goalTabTitle(makeGoal({ turns_used: 0 }), false)).toBe('Goal 1/50')
   })
 
-  it('names why a goal waits or stopped', () => {
-    expect(goalChipState(makeGoal(), { ...IDLE, waitingForUser: true })?.label).toBe('Goal · waiting for you')
-    expect(goalChipState(makeGoal(), { ...IDLE, planMode: true })?.label).toBe('Goal · waiting for Code mode')
-    expect(goalChipState(makeGoal({ status: 'paused', pause_reason: 'turn_limit' }), IDLE)).toEqual({ tone: 'paused', label: 'Goal paused · turn limit', short: 'Paused' })
-    expect(goalChipState(makeGoal({ status: 'paused', pause_reason: 'blocked' }), IDLE)?.tone).toBe('blocked')
-    expect(goalChipState(makeGoal({ status: 'achieved' }), IDLE)?.label).toBe('Goal achieved')
+  it('names how a goal stopped, and stays plain without one', () => {
+    expect(goalTabTitle(makeGoal({ status: 'paused', pause_reason: 'turn_limit' }), false)).toBe('Goal paused')
+    expect(goalTabTitle(makeGoal({ status: 'paused', pause_reason: 'blocked' }), false)).toBe('Goal blocked')
+    expect(goalTabTitle(makeGoal({ status: 'achieved' }), false)).toBe('Goal achieved')
+    expect(goalTabTitle(makeGoal({ status: 'cleared' }), false)).toBe('Goal')
+    expect(goalTabTitle(null, true)).toBe('Goal')
+  })
+})
+
+describe('goalNow', () => {
+  it('says which turn runs, and that queued messages go first', () => {
+    expect(goalNow(makeGoal(), { ...IDLE, running: true })).toEqual({ tone: 'active', text: 'Working on turn 7 of 50', note: null })
+    expect(goalNow(makeGoal(), { ...IDLE, running: true, queuedMessages: 2 })?.note).toBe("2 queued messages run before the goal's next turn.")
   })
 
-  it('shows nothing without a goal or for a cleared one', () => {
-    expect(goalChipState(null, IDLE)).toBeNull()
-    expect(goalChipState(makeGoal({ status: 'cleared' }), IDLE)).toBeNull()
+  it('names what the goal waits for', () => {
+    expect(goalNow(makeGoal(), { ...IDLE, running: true, waitingForUser: true })).toMatchObject({ tone: 'wait', text: 'Waiting for your answer' })
+    expect(goalNow(makeGoal(), { ...IDLE, planMode: true })).toMatchObject({ tone: 'wait', text: 'Waiting for Code mode' })
+    expect(goalNow(makeGoal(), { ...IDLE, subagentsRunning: 1 })).toMatchObject({ tone: 'active', text: 'Waiting for 1 subagent' })
+    expect(goalNow(makeGoal(), IDLE)).toMatchObject({ tone: 'active', text: 'Starting the next turn' })
+  })
+
+  it('says how a goal stopped', () => {
+    expect(goalNow(makeGoal({ status: 'paused', pause_reason: 'stopped' }), IDLE)).toMatchObject({ tone: 'paused', text: 'Paused: stopped' })
+    expect(goalNow(makeGoal({ status: 'paused', pause_reason: 'blocked' }), IDLE)).toMatchObject({ tone: 'blocked', text: 'Blocked' })
+    expect(goalNow(makeGoal({ status: 'achieved', turns_used: 3 }), IDLE)).toMatchObject({ tone: 'achieved', text: 'Achieved in 3 turns' })
+    expect(goalNow(makeGoal({ status: 'cleared' }), IDLE)).toBeNull()
   })
 })
 
@@ -116,10 +139,32 @@ describe('transcript markers', () => {
     const cont: ContentBlock = { id: 'u2', type: 'user', content: '<goal_reminder …>', extra: { goal_turn: { id: 'g1', turn: 3, max_turns: 50 } } }
     const objective: ContentBlock = { id: 'u1', type: 'user', content: 'ship it', extra: { goal: { id: 'g1' } } }
     const prompt: ContentBlock = { id: 'u3', type: 'user', content: 'hello' }
-    expect(goalTurnInfo(cont)).toEqual({ turn: 3, maxTurns: 50 })
+    expect(goalTurnInfo(cont)).toEqual({ turn: 3, maxTurns: 50, why: null, check: null, tokensUsed: null })
     expect(goalTurnInfo(prompt)).toBeNull()
     expect(isGoalObjectiveBlock(objective)).toBe(true)
     expect(isGoalObjectiveBlock(prompt)).toBe(false)
+  })
+
+  it('reads why the goal went on, with the rejecting check in its own words', () => {
+    const turn = (goal_turn: Record<string, unknown>): ContentBlock => ({ id: 'u2', type: 'user', content: '<goal_reminder …>', extra: { goal_turn } })
+    const rejected = goalTurnInfo(turn({ id: 'g1', turn: 3, max_turns: 50, why: 'rejected', check: ' No `bun test` output. ', tokens_used: 412_000 }))!
+    expect(rejected).toEqual({ turn: 3, maxTurns: 50, why: 'rejected', check: 'No `bun test` output.', tokensUsed: 412_000 })
+    expect(goalTurnReason(rejected)).toEqual({
+      short: 'check said not yet',
+      text: 'The agent said the goal was met. The check did not accept it:',
+      check: 'No `bun test` output.',
+    })
+
+    const unclaimed = goalTurnInfo(turn({ turn: 2, max_turns: 50, why: 'unclaimed' }))!
+    expect(goalTurnReason(unclaimed).short).toBe('not done yet')
+    expect(goalTurnReason(goalTurnInfo(turn({ turn: 2, why: 'check_failed' }))!).short).toBe('check failed')
+    expect(goalTurnReason(goalTurnInfo(turn({ turn: 2, why: 'resumed' }))!).short).toBe('resumed')
+  })
+
+  it('explains a turn from before the reason was recorded, without a label', () => {
+    const old = goalTurnInfo({ id: 'u2', type: 'user', content: '…', extra: { goal_turn: { turn: 2, max_turns: 50, why: 'later', check: 'stale' } } })!
+    expect(old).toMatchObject({ why: null, check: null })
+    expect(goalTurnReason(old)).toEqual({ short: null, text: 'The last turn ended before the goal was met, so the goal went on.', check: null })
   })
 
   it('gives back a goal objective as its /goal command, and a goal turn as nothing', () => {

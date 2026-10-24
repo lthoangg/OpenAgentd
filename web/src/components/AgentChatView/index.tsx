@@ -31,7 +31,6 @@ import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalSubmit, MAX_GOAL_OBJECTIVE_CHARS, type GoalAction } from '@/lib/goal'
-import { useGoalUiStore } from '@/stores/useGoalUiStore'
 import { useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -67,7 +66,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { BtwPanel } from '../BtwPanel'
-import { GoalChip } from '../GoalChip'
 import { GoalReplaceDialog } from './GoalReplaceDialog'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
@@ -333,6 +331,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleToggleTasks,
     handleOpenPlan,
     handleOpenSideQuestions,
+    handleOpenGoal,
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
@@ -399,18 +398,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // ── /goal ──────────────────────────────────────────────────────────────────
   const { data: goalData } = useSessionGoalQuery(sessionIdState)
   const goal = goalData?.goal ?? null
-  const [goalOpen, setGoalOpen] = useState(false)
-  // The status lives in the chip's popover: an achieved goal's dismissed
-  // chip comes back to show it, until the next message.
-  const showGoal = useCallback(() => {
-    if (goal?.status === 'achieved') useGoalUiStore.getState().restore(goal.id)
-    setGoalOpen(true)
-  }, [goal])
-  // A popover left open does not follow the user to another session.
-  useEffect(() => { setGoalOpen(false) }, [sessionIdState])
+  // The goal lives in the dock's Goal tab: `/goal`, the palette and the
+  // dock's "+" menu open it.
+  const showGoal = handleOpenGoal
   const [goalDraft, setGoalDraft] = useState<GoalDraft | null>(null)
-  // An open ``ask_user`` (only possible with the questions opt-in) stalls the goal.
-  const waitingForUser = useAgentStore((s) => Boolean(s.pendingQuestion) && s.pendingQuestion?.kind !== 'plan_review')
   const { mutate: mutateGoal } = useGoalActionMutation()
   const handleGoalAction = useCallback((action: GoalAction) => {
     if (!sessionIdState) return
@@ -422,10 +413,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const sendGoal = useCallback((draft: Omit<GoalDraft, 'replaces'>) => {
     if (!workspace) return
     void deliverGoalFromComposer(workspace, inputRef.current, draft)
-  }, [workspace])
+    // Desktop shows the new goal's progress beside the chat; phones keep
+    // the chat on screen (the transcript marks the goal).
+    if (dockViewsEnabled) handleOpenGoal()
+  }, [workspace, dockViewsEnabled, handleOpenGoal])
   const paletteGoal = useMemo(
-    () => (goal ? { status: goal.status, onShow: showGoal, onAction: handleGoalAction } : undefined),
-    [goal, showGoal, handleGoalAction],
+    () => (workspace ? { status: goal?.status ?? null, onShow: showGoal, onAction: handleGoalAction } : undefined),
+    [workspace, goal?.status, showGoal, handleGoalAction],
   )
 
   // ``/goal …`` from the composer. Returns false when ``content`` is not one.
@@ -739,8 +733,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         if (!workspace) return
         if (handleBtwSubmit(content, files)) return
         if (handleGoalSubmit(content, files, mentions)) return
-        // An achieved goal's chip stays until the user moves on.
-        if (goal?.status === 'achieved') useGoalUiStore.getState().dismiss(goal.id)
         if (!files || files.length === 0) {
           const builtInCmd = parseBuiltInSlashCommand(content)
           if (builtInCmd) {
@@ -784,16 +776,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       }}
       // The new-session draft picks a mode locally; the first message carries it.
       interactionModeDisabled={isSwitchingInteractionMode || (!sessionIdState && !isDraft)}
-      actionSlot={sessionIdState ? (
-        <GoalChip
-          sessionId={sessionIdState}
-          running={isAgentWorking}
-          waitingForUser={waitingForUser}
-          planMode={(sessionPendingInteractionMode ?? sessionInteractionMode) === 'plan'}
-          open={goalOpen}
-          onOpenChange={setGoalOpen}
-        />
-      ) : null}
       revertedCount={leadRevertedCount}
       revertedMessages={leadRevertedMessages}
       onRedo={() => { void handleSlashCommand('redo') }}

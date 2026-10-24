@@ -326,7 +326,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     case 'user': {
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
       const goalTurn = goalTurnInfo(block)
-      if (goalTurn) return <GoalTurnDivider turn={goalTurn.turn} maxTurns={goalTurn.maxTurns} />
+      if (goalTurn) return <GoalTurnDivider info={goalTurn} />
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} goal={isGoalObjectiveBlock(block)} />
     }
     case 'thinking':

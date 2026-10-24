@@ -243,3 +243,33 @@ describe('useOverlayState side questions', () => {
     })
   }
 })
+
+describe('useOverlayState Goal view', () => {
+  it('opens the dock on its Goal tab on desktop', () => {
+    const { result } = renderOverlay()
+
+    act(() => result.current.handleOpenGoal())
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'goal', key: 1 })
+  })
+
+  it('opens the dock drawer on phones too, closing the tasks popover', () => {
+    const { result } = renderOverlay({ isMobile: true })
+    act(() => result.current.handleToggleTasks())
+
+    act(() => result.current.handleOpenGoal())
+
+    expect(result.current.dockViewRequest).toEqual({ view: 'goal', key: 1 })
+    expect(result.current.showTodos).toBe(false)
+  })
+
+  it('does nothing without a workspace, which has no dock', () => {
+    const { result } = renderOverlay({ workspace: null })
+
+    act(() => result.current.handleOpenGoal())
+
+    expect(result.current.dockViewRequest).toBeNull()
+    expect(result.current.workspacePanel).toBeNull()
+  })
+})

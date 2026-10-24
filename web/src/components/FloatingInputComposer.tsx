@@ -177,8 +177,6 @@ interface FloatingInputComposerProps {
   interactionModePending?: boolean
   onInteractionModeChange?: (mode: SessionInteractionMode) => void
   interactionModeDisabled?: boolean
-  /** Shown after the Code/Plan switch (the `/goal` chip). */
-  actionSlot?: React.ReactNode
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
   onRedo?: () => void

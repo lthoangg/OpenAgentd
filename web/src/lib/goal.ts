@@ -1,7 +1,7 @@
 /**
- * `/goal` helpers: the command parser, the chip's state, the transcript's
- * goal markers, and the `update_goal` card's outcome. Pure, so the rules
- * stay testable without rendering.
+ * `/goal` helpers: the command parser, the Goal tab's title and status, the
+ * transcript's goal markers, and the `update_goal` card's outcome. Pure, so
+ * the rules stay testable without rendering.
  */
 import type { ContentBlock, GoalPauseReason, SessionGoal } from '@/api/types'
 
@@ -65,23 +65,17 @@ export function goalSubmit(content: string, sessionId: string | null, goal: Sess
     if (command.objective.length > MAX_GOAL_OBJECTIVE_CHARS) return { kind: 'too-long' }
     return { kind: 'set', objective: command.objective, replaces: sessionId && isLiveGoal(goal) ? goal : null }
   }
+  // The Goal tab shows the goal, or how to set one.
+  if (command.kind === 'status') return { kind: 'show' }
   if (!sessionId) return { kind: 'no-session' }
-  const achieved = goal?.status === 'achieved'
-  if (!isLiveGoal(goal)) return command.kind === 'status' && achieved ? { kind: 'show' } : { kind: 'no-goal' }
-  return command.kind === 'status' ? { kind: 'show' } : { kind: 'action', action: command.action }
+  if (!isLiveGoal(goal)) return { kind: 'no-goal' }
+  return { kind: 'action', action: command.action }
 }
 
-// ── chip ──────────────────────────────────────────────────────────────────────
+// ── Goal tab ──────────────────────────────────────────────────────────────────
 
+/** Colour of a goal's status: running (blue), waiting on the user (orange), stopped, blocked, achieved (blue). */
 export type GoalTone = 'active' | 'wait' | 'paused' | 'blocked' | 'achieved'
-
-export interface GoalChipState {
-  tone: GoalTone
-  /** Full label (desktop). */
-  label: string
-  /** Collapsed label (phones). */
-  short: string
-}
 
 const PAUSE_LABELS: Record<GoalPauseReason, string> = {
   stopped: 'stopped',
@@ -122,22 +116,73 @@ export function goalTurnNumber(goal: SessionGoal, running: boolean): number {
   return goal.status === 'active' && running ? Math.min(goal.turns_used + 1, goal.max_turns) : goal.turns_used
 }
 
-/** The chip for ``goal``; ``null`` when there is nothing to show (no goal, or a cleared one). */
-export function goalChipState(
-  goal: SessionGoal | null | undefined,
-  ctx: { running: boolean; waitingForUser: boolean; planMode: boolean },
-): GoalChipState | null {
-  if (!goal || goal.status === 'cleared') return null
-  if (goal.status === 'achieved') return { tone: 'achieved', label: 'Goal achieved', short: 'Done' }
-  const turns = `${goalTurnNumber(goal, ctx.running)}/${goal.max_turns}`
-  if (goal.status === 'paused') {
-    if (goal.pause_reason === 'blocked') return { tone: 'blocked', label: 'Goal blocked', short: 'Blocked' }
-    return { tone: 'paused', label: `Goal paused · ${pauseReasonLabel(goal.pause_reason)}`, short: 'Paused' }
+/** The status a goal shows in its tab's header and on the notch. */
+export function goalStatusTone(goal: SessionGoal): GoalTone {
+  if (goal.status === 'achieved') return 'achieved'
+  if (goal.status === 'paused') return goal.pause_reason === 'blocked' ? 'blocked' : 'paused'
+  return 'active'
+}
+
+/**
+ * The Goal tab's title: how far a running goal has got ("Goal 7/50"), or
+ * how it ended. Plain "Goal" without one.
+ */
+export function goalTabTitle(goal: SessionGoal | null | undefined, running: boolean): string {
+  if (!goal || goal.status === 'cleared') return 'Goal'
+  switch (goalStatusTone(goal)) {
+    case 'achieved': return 'Goal achieved'
+    case 'blocked': return 'Goal blocked'
+    case 'paused': return 'Goal paused'
+    default: return `Goal ${Math.max(1, goalTurnNumber(goal, running))}/${goal.max_turns}`
   }
-  if (ctx.waitingForUser) return { tone: 'wait', label: 'Goal · waiting for you', short: turns }
-  if (ctx.planMode) return { tone: 'paused', label: 'Goal · waiting for Code mode', short: 'Plan' }
-  const time = goal.active_seconds >= 60 ? ` · ${formatGoalDuration(goal.active_seconds)}` : ''
-  return { tone: 'active', label: `Goal · ${turns}${time}`, short: turns }
+}
+
+/** What the session is doing that the goal waits on, or works through. */
+export interface GoalSessionState {
+  /** A turn is running. */
+  running: boolean
+  /** The agent asked the user something (``ask_user``) and waits for the answer. */
+  waitingForUser: boolean
+  /** The session is in Plan mode, or switches to it after this turn. */
+  planMode: boolean
+  /** Messages the user queued behind the running turn. */
+  queuedMessages: number
+  /** Subagents still working; their reports wake the session. */
+  subagentsRunning: number
+}
+
+export interface GoalNow {
+  tone: GoalTone
+  /** One line: what is happening now. */
+  text: string
+  /** A second line, when something runs before the goal's next turn. */
+  note: string | null
+}
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`
+}
+
+/** What a goal is doing right now, given the session's state; ``null`` without one. */
+export function goalNow(goal: SessionGoal | null | undefined, s: GoalSessionState): GoalNow | null {
+  if (!goal || goal.status === 'cleared') return null
+  if (goal.status === 'achieved') {
+    return { tone: 'achieved', text: `Achieved in ${plural(goal.turns_used, 'turn')}`, note: null }
+  }
+  if (goal.status === 'paused') {
+    const tone = goalStatusTone(goal)
+    return { tone, text: tone === 'blocked' ? 'Blocked' : `Paused: ${pauseReasonLabel(goal.pause_reason)}`, note: null }
+  }
+  const queued = s.queuedMessages > 0
+    ? `${plural(s.queuedMessages, 'queued message')} ${s.queuedMessages === 1 ? 'runs' : 'run'} before the goal's next turn.`
+    : null
+  if (s.waitingForUser) return { tone: 'wait', text: 'Waiting for your answer', note: 'The agent asked you something. The goal goes on once you answer.' }
+  if (s.running) return { tone: 'active', text: `Working on turn ${goalTurnNumber(goal, true)} of ${goal.max_turns}`, note: queued }
+  if (s.planMode) return { tone: 'wait', text: 'Waiting for Code mode', note: 'The goal starts its next turn when the session switches to Code mode.' }
+  if (s.subagentsRunning > 0) {
+    return { tone: 'active', text: `Waiting for ${plural(s.subagentsRunning, 'subagent')}`, note: 'Their reports start the next turn.' }
+  }
+  return { tone: 'active', text: 'Starting the next turn', note: queued }
 }
 
 export function formatGoalTokens(n: number): string {
@@ -158,12 +203,64 @@ export function formatGoalDuration(seconds: number): string {
 
 // ── transcript ────────────────────────────────────────────────────────────────
 
+/**
+ * Why the goal started a turn on its own (``extra.goal_turn.why``): the last
+ * turn ended without a claim, the check rejected one, the check gave no
+ * verdict, or the user resumed the goal. ``null`` on rows from before the
+ * backend recorded it.
+ */
+export type GoalTurnWhy = 'unclaimed' | 'rejected' | 'check_failed' | 'resumed'
+
+export interface GoalTurnInfo {
+  turn: number
+  maxTurns: number
+  why: GoalTurnWhy | null
+  /** The rejecting check's reason (``why === 'rejected'``). */
+  check: string | null
+  /** Tokens the goal had used when the turn started. */
+  tokensUsed: number | null
+}
+
+const TURN_WHYS: readonly GoalTurnWhy[] = ['unclaimed', 'rejected', 'check_failed', 'resumed']
+
 /** A turn the goal started on its own (``extra.goal_turn``): shown as a divider, not a bubble. */
-export function goalTurnInfo(block: ContentBlock): { turn: number; maxTurns: number } | null {
+export function goalTurnInfo(block: ContentBlock): GoalTurnInfo | null {
   if (block.type !== 'user') return null
-  const info = block.extra?.goal_turn as { turn?: unknown; max_turns?: unknown } | undefined
+  const info = block.extra?.goal_turn as { turn?: unknown; max_turns?: unknown; why?: unknown; check?: unknown; tokens_used?: unknown } | undefined
   if (!info || typeof info !== 'object' || typeof info.turn !== 'number') return null
-  return { turn: info.turn, maxTurns: typeof info.max_turns === 'number' ? info.max_turns : info.turn }
+  const why = TURN_WHYS.find((w) => w === info.why) ?? null
+  const check = typeof info.check === 'string' && info.check.trim() ? info.check.trim() : null
+  return {
+    turn: info.turn,
+    maxTurns: typeof info.max_turns === 'number' ? info.max_turns : info.turn,
+    why,
+    check: why === 'rejected' ? check : null,
+    tokensUsed: typeof info.tokens_used === 'number' ? info.tokens_used : null,
+  }
+}
+
+/**
+ * Why the goal went on, for its turn divider: ``short`` beside the turn
+ * number (``null`` on rows that did not record it), ``text`` when the user
+ * asks for more, and ``check`` the rejecting check's own words.
+ */
+export function goalTurnReason(info: GoalTurnInfo): { short: string | null; text: string; check: string | null } {
+  switch (info.why) {
+    case 'rejected':
+      return {
+        short: 'check said not yet',
+        text: info.check ? 'The agent said the goal was met. The check did not accept it:' : 'The agent said the goal was met. The check did not accept it.',
+        check: info.check,
+      }
+    case 'check_failed':
+      return { short: 'check failed', text: 'The agent said the goal was met, but the check gave no verdict, so the goal went on.', check: null }
+    case 'resumed':
+      return { short: 'resumed', text: 'You resumed the goal.', check: null }
+    case 'unclaimed':
+      return { short: 'not done yet', text: 'The last turn ended without the agent saying the goal was met, so the goal went on.', check: null }
+    default:
+      return { short: null, text: 'The last turn ended before the goal was met, so the goal went on.', check: null }
+  }
 }
 
 export function isGoalTurnBlock(block: ContentBlock): boolean {

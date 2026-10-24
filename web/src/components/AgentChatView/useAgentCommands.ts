@@ -28,7 +28,9 @@ import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
 /** The session's goal as the palette needs it. */
 export interface UseAgentCommandsGoal {
-  status: SessionGoalStatus
+  /** ``null`` without a goal: the tab then explains how to set one. */
+  status: SessionGoalStatus | null
+  /** Opens the dock's Goal tab. */
   onShow: () => void
   onAction: (action: GoalAction) => void
 }
@@ -59,16 +61,25 @@ interface UseAgentCommandsArgs {
   handleOpenPreview?: () => void
   /** Once the session exists: reopens its ``/btw`` side questions. */
   handleOpenSideQuestions?: () => void
-  /** The session's goal, when it has one to show or act on. */
+  /** The session's goal, with a workspace to show its tab in. */
   goal?: UseAgentCommandsGoal
 }
 
-/** Palette entries for the session's `/goal`. */
+/** Palette entries for the session's `/goal`: its tab always, actions while it is live. */
 function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
-  if (!goal || goal.status === 'cleared') return []
+  if (!goal) return []
   const keywords = 'goal objective loop continue autonomous'
   const out: Command[] = [
-    { id: 'goal-status', group: 'Session', label: 'Goal Status', description: 'Progress, limits, and the last completion check', keywords, action: goal.onShow },
+    {
+      id: 'goal-open',
+      group: 'View',
+      label: 'Goal',
+      description: goal.status === null || goal.status === 'cleared'
+        ? 'How to set a goal the agent works toward across turns'
+        : 'Progress, limits, and the last completion check',
+      keywords,
+      action: goal.onShow,
+    },
   ]
   if (goal.status === 'active') {
     out.push({ id: 'goal-pause', group: 'Session', label: 'Pause Goal', description: 'Let the current turn finish, then stop continuing', keywords, action: () => goal.onAction('pause') })

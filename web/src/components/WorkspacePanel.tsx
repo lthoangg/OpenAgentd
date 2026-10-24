@@ -2,8 +2,8 @@
  * WorkspacePanel — the review dock.
  *
  * Editor-style tab strip (Git review, file previews, full-height diffs,
- * commits, web previews, terminals, and on desktop the agent Tasks, Plan,
- * `/btw` side questions, and Schedule views)
+ * commits, web previews, terminals, the session's Plan and Goal, and on
+ * desktop the agent Tasks, `/btw` side questions, and Schedule views)
  * over one content area. Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
@@ -50,6 +50,9 @@ import {
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useAgentStore } from '@/stores/useAgentStore'
+import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { goalTabTitle, isLiveGoal } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -70,6 +73,7 @@ import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { PlanTabView } from './WorkspacePanel/PlanTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
+import { GoalTabView } from './WorkspacePanel/GoalTabView'
 import { AttachmentTabView } from './WorkspacePanel/AttachmentTabView'
 import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -94,6 +98,7 @@ import {
   type DockViewRequest,
   type PreviewTabRequest,
   BTW_TAB,
+  GOAL_TAB,
   PLAN_TAB,
   REVIEW_TAB_ID,
   SCHEDULE_TAB,
@@ -460,11 +465,25 @@ export function WorkspacePanel({
   const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
   const previewTabs = visibleTabs.filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
   const openQuickOpen = () => useUIStore.getState().openQuickOpen('')
+  // The Goal tab's title follows the goal ("Goal 7/50", "Goal paused").
+  const { data: goalData } = useSessionGoalQuery(sessionId)
+  const goal = goalData?.goal ?? null
+  const agentWorking = useAgentStore((s) => s.isAgentWorking)
+  const goalTitle = goalTabTitle(goal, agentWorking)
+  const stripTabs = useMemo(
+    () => (visibleTabs.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
+      ? visibleTabs.map((tab) => (tab.type === 'goal' ? { ...tab, title: goalTitle } : tab))
+      : visibleTabs),
+    [visibleTabs, goalTitle],
+  )
+  const openGoal = sessionId ? () => openTab(GOAL_TAB) : undefined
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
-  // above the chat on phones, so only desktop lists them here.
+  // above the chat on phones, so only desktop lists them here; the plan and
+  // the goal open here everywhere.
   const openItems = dockOpenItems(os, {
     onOpenGit: chatWorkspace ? undefined : openGitTab,
+    onOpenGoal: openGoal,
     onOpenPlan: plan ? () => openTab(PLAN_TAB) : undefined,
     onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB),
     onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB),
@@ -661,7 +680,7 @@ export function WorkspacePanel({
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
         <DockTabBar
-          tabs={visibleTabs}
+          tabs={stripTabs}
           activeTabId={activeTabId}
           workspace={workspace}
           terminalMetas={terminalMetas}
@@ -732,6 +751,8 @@ export function WorkspacePanel({
             />
           ) : activeTab?.type === 'btw' ? (
             <SideQuestionsTabView sessionId={sessionId} active={open} />
+          ) : activeTab?.type === 'goal' ? (
+            <GoalTabView sessionId={sessionId} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : activeTab?.type === 'preview' ? (
@@ -740,6 +761,8 @@ export function WorkspacePanel({
             <DockLauncher
               os={os}
               onOpenGit={chatWorkspace ? undefined : openGitTab}
+              // A live goal is one tap away from the empty dock.
+              onOpenGoal={isLiveGoal(goal) ? openGoal : undefined}
               onOpenTerminal={openTerminal}
               onOpenPreview={canPreview ? openNewPreview : undefined}
               onOpenFile={mobile ? undefined : openQuickOpen}

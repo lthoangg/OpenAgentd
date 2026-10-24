@@ -17,7 +17,7 @@
  * focused tab, or Move Left / Move Right in the tab menu.
  */
 import { Fragment, useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, Check, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, Check, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, Target, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -79,6 +79,8 @@ function TabIcon({ tab }: { tab: DockTab }) {
       return <FileText size={12} className="shrink-0" aria-hidden="true" />
     case 'btw':
       return <MessageCircleQuestion size={12} className="shrink-0" aria-hidden="true" />
+    case 'goal':
+      return <Target size={12} className="shrink-0" aria-hidden="true" />
     case 'file':
       return <FileTypeIcon name={tab.file.name || tab.file.path} size={13} />
     case 'attachment':
@@ -287,7 +289,7 @@ export function DockTabBar({
               className={cn(dockTabButtonClass(true), 'flex-1')}
             >
               <TabIcon tab={tab} />
-              <span className={cn('truncate', !isViewTab(tab) && 'font-mono')}>{tab.title}</span>
+              <span className={cn('truncate', !isViewTab(tab) && 'font-mono', tab.type === 'goal' && 'tabular-nums')}>{tab.title}</span>
             </button>
           )
           return (

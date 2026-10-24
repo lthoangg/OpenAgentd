@@ -4,7 +4,7 @@
  * made of the claim, then the evidence the agent claimed.
  *
  * Colour carries the outcome only. The achieved and blocked cards tint their
- * header strip (success, error); a claim being checked or not yet accepted
+ * header strip (the blue accent, error); a claim being checked or not yet accepted
  * stays neutral, with an orange "Not yet" as its one accent. The evidence
  * starts open on an achieved goal, since it is what the user judges, and
  * closed while the agent keeps working.
@@ -56,8 +56,8 @@ const FRAME: Record<CardKind, { title: string; icon: typeof Target; border: stri
   achieved: {
     title: 'Goal achieved',
     icon: CircleCheck,
-    border: 'border-(--color-success)/30',
-    header: 'border-(--color-success)/30 bg-(--color-success-subtle) text-(--accent-green-text)',
+    border: 'border-(--accent-blue)/35',
+    header: 'border-(--accent-blue)/35 bg-(--accent-blue-soft) text-(--accent-blue-text)',
   },
   blocked: {
     title: 'Goal blocked',

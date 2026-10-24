@@ -27,6 +27,7 @@ import { useUIStore } from "@/stores/useUIStore"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import { THEME_STORAGE_KEY } from "@/lib/theme"
 import type { Command } from "@/components/CommandPalette"
+import type { SessionGoalStatus } from "@/api/types"
 
 afterEach(cleanup)
 
@@ -118,6 +119,25 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(cmd.shortcut).toBe("Ctrl+Shift+G")
     cmd.action()
     expect(handleOpenGit).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens the Goal tab with or without a goal, and lists the actions a live goal takes", () => {
+    const onShow = mock(() => {})
+    const onAction = mock(() => {})
+    const ids = (status: SessionGoalStatus | null) =>
+      renderHook(() => useAgentCommands(makeArgs({ goal: { status, onShow, onAction } }))).result.current.filter((c) => c.id.startsWith("goal-"))
+
+    const none = ids(null)
+    expect(none.map((c) => c.id)).toEqual(["goal-open"])
+    expect(none[0].description).toBe("How to set a goal the agent works toward across turns")
+    none[0].action()
+    expect(onShow).toHaveBeenCalledTimes(1)
+
+    expect(ids("active").map((c) => c.id)).toEqual(["goal-open", "goal-pause", "goal-clear"])
+    expect(ids("paused").map((c) => c.id)).toEqual(["goal-open", "goal-resume", "goal-clear"])
+    expect(ids("achieved").map((c) => c.id)).toEqual(["goal-open"])
+    byId(ids("paused"), "goal-resume").action()
+    expect(onAction).toHaveBeenCalledWith("resume")
   })
 })
 

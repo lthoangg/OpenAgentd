@@ -1,10 +1,11 @@
 /**
  * `/goal` in the transcript: the objective carries a badge, a turn the goal
- * started on its own reads as a divider (not a prompt the user wrote), and
- * prompt navigation skips it.
+ * started on its own reads as a divider (not a prompt the user wrote) that
+ * says why the goal went on, and prompt navigation skips it.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -29,26 +30,61 @@ const REMINDER = '<goal_reminder turn="2" max_turns="50" tokens_used="1200">\nCo
 const BLOCKS: ContentBlock[] = [
   { id: 'u1', type: 'user', content: 'web tests pass', extra: { goal: { id: 'g1' } } },
   { id: 'a1', type: 'text', content: 'Fixed the reducer.' },
-  { id: 'u2', type: 'user', content: REMINDER, extra: { goal_turn: { id: 'g1', turn: 2, max_turns: 50 } } },
+  { id: 'u2', type: 'user', content: REMINDER, extra: { goal_turn: { id: 'g1', turn: 2, max_turns: 50, why: 'unclaimed', tokens_used: 1200 } } },
   { id: 'a2', type: 'text', content: 'Ran the suite.' },
 ]
 
+const REJECTED: ContentBlock = {
+  id: 'u3',
+  type: 'user',
+  content: REMINDER,
+  extra: { goal_turn: { id: 'g1', turn: 3, max_turns: 50, why: 'rejected', check: 'No `bun test` run after the last patch is shown.', tokens_used: 412_000 } },
+}
+
 describe('AgentView — goal markers', () => {
-  it('badges the objective and shows a continuation as a divider', () => {
+  it('badges the objective and shows a continuation as a divider that says why', () => {
     const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
 
     expect(container.querySelector('[data-goal-objective]')?.textContent).toContain('Goal set')
-    const divider = screen.getByRole('separator', { name: 'Goal continues: turn 2 of 50' })
-    expect(divider.textContent).toBe('Goal · turn 2 of 50')
+    const divider = screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' })
+    expect(divider.textContent).toBe('Goal · turn 2 of 50 · not done yet')
     // The hidden reminder is never shown as the user's words.
     expect(screen.queryByText(/goal_reminder/)).toBeNull()
+  })
+
+  it("opens the check's reason when the divider is pressed, as touch has no hover", () => {
+    render(<AgentView blocks={[...BLOCKS, REJECTED]} currentBlocks={[]} isWorking={false} />)
+
+    const divider = screen.getByRole('group', { name: 'Goal continues: turn 3 of 50' })
+    const toggle = divider.querySelector('button')!
+    expect(toggle.textContent).toBe('Goal · turn 3 of 50 · check said not yet')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(toggle)
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const reason = divider.querySelector('[data-goal-turn-reason]')!
+    expect(reason.textContent).toContain('The agent said the goal was met. The check did not accept it:')
+    expect(reason.textContent).toContain('No bun test run after the last patch is shown.')
+    expect(reason.textContent).toContain('412k tokens used before this turn.')
+  })
+
+  it('shows why on hover', async () => {
+    const user = userEvent.setup()
+    render(<AgentView blocks={[...BLOCKS, REJECTED]} currentBlocks={[]} isWorking={false} />)
+
+    await user.hover(screen.getByRole('button', { name: /turn 3 of 50/ }))
+
+    const tip = await screen.findByRole('tooltip', undefined, { timeout: 2000 })
+    expect(tip.textContent).toContain('The check did not accept it:No bun test run after the last patch is shown.')
   })
 
   it("marks the goal's last allowed turn", () => {
     const last: ContentBlock = { id: 'u3', type: 'user', content: REMINDER, extra: { goal_turn: { id: 'g1', turn: 50, max_turns: 50 } } }
     render(<AgentView blocks={[...BLOCKS, last]} currentBlocks={[]} isWorking={false} />)
 
-    expect(screen.getByRole('separator', { name: 'Goal continues: turn 50 of 50, the last one' }).textContent).toBe('Goal · turn 50 of 50 · last')
+    // A turn from before the reason was recorded has no reason in its label.
+    expect(screen.getByRole('group', { name: 'Goal continues: turn 50 of 50, the last one' }).textContent).toBe('Goal · turn 50 of 50 · last')
   })
 
   it('shows the goal markers and the achieved card in reader mode, with the work folded', () => {
@@ -65,7 +101,7 @@ describe('AgentView — goal markers', () => {
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
     expect(container.querySelector('[data-goal-objective]')).not.toBeNull()
-    expect(screen.getByRole('separator', { name: 'Goal continues: turn 2 of 50' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' }).textContent).toBe('Goal · turn 2 of 50 · not done yet')
     expect(screen.getByRole('region', { name: 'Goal achieved' }).textContent).toContain('The run shows 0 failures.')
     expect(screen.getByRole('button', { name: /^1 command/ }).getAttribute('aria-expanded')).toBe('false')
   })

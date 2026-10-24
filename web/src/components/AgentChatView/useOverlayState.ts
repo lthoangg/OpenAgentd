@@ -156,6 +156,8 @@ export interface UseOverlayStateResult {
    * with a workspace, else the panel above the composer. Never hides them.
    */
   handleOpenSideQuestions: (sessionId: string) => void
+  /** Show the session's `/goal`: the dock's Goal tab (the drawer on phones). */
+  handleOpenGoal: () => void
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void
   closeAllDrawers: () => void
@@ -502,6 +504,16 @@ export function useOverlayState({
     setDockViewRequest((prev) => ({ view: 'btw', key: (prev?.key ?? 0) + 1 }))
   }, [dockViewsEnabled])
 
+  // The session's goal: the dock's Goal tab, in the drawer on phones (as the
+  // plan is). Without a workspace there is no dock to show it in.
+  const handleOpenGoal = useCallback(() => {
+    if (!workspace) return
+    if (isMobile) setMobileSidebarOpen(false)
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
+    setDockViewRequest((prev) => ({ view: 'goal', key: (prev?.key ?? 0) + 1 }))
+  }, [closeOtherMobileOverlays, isMobile, workspace])
+
   // A new plan review brings the plan forward on desktop, once per review.
   // Phones leave the chat on screen; the transcript card opens the plan.
   const planReviewId = useAgentStore((s) => (s.pendingQuestion?.kind === 'plan_review' ? s.pendingQuestion.id : null))
@@ -658,6 +670,7 @@ export function useOverlayState({
     handleToggleTasks,
     handleOpenPlan,
     handleOpenSideQuestions,
+    handleOpenGoal,
     handleToggleFilesPanel,
     handleOpenTerminal,
     closeAllDrawers,

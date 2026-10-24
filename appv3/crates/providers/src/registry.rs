@@ -324,7 +324,8 @@ pub fn load_model_registry() -> Arc<Registry> {
     if let Some(r) = REGISTRY.read().unwrap().as_ref() {
         return r.clone();
     }
-    let provider_overlay: Registry = crate::codex::model_registry_overlay(crate::codex::cached_catalog().as_ref()).into_iter().collect();
+    let mut provider_overlay: Registry = crate::codex::model_registry_overlay(crate::codex::cached_catalog().as_ref()).into_iter().collect();
+    provider_overlay.extend(crate::grok::model_registry_overlay(crate::grok::cached_catalog().as_ref()));
     let reg = Arc::new(build_registry_with(read_models_dev().as_ref(), &provider_overlay, &load_overlay()));
     *REGISTRY.write().unwrap() = Some(reg.clone());
     reg
@@ -356,6 +357,7 @@ pub async fn refresh_model_registry(force: bool) {
     }
     if fresh {
         let _ = crate::codex::load_catalog(force).await;
+        let _ = crate::grok::load_catalog(force).await;
         clear_model_registry_caches();
         return;
     }
@@ -378,6 +380,7 @@ pub async fn refresh_model_registry(force: bool) {
     }
     // `refresh_runtime_model_metadata(force)`.
     let _ = crate::codex::load_catalog(force).await;
+    let _ = crate::grok::load_catalog(force).await;
     clear_model_registry_caches();
 }
 

@@ -443,6 +443,12 @@ pub async fn fit_request_images(messages: Vec<ChatMessage>, label: &str) -> Vec<
 }
 
 /// `stream_and_assemble`.
+/// Providers that route or cache by conversation and need the session id
+/// as the `session_id` kwarg (Codex `session-id`, Grok Build `x-grok-conv-id`).
+pub fn routes_by_session(provider_name: Option<&str>) -> bool {
+    matches!(provider_name, Some("codex" | "grok"))
+}
+
 pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage, Option<Usage>, StreamTiming), ModelError> {
     let mut full = String::new();
     let mut reasoning = String::new();
@@ -466,7 +472,7 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
     let effective_interrupt = if a.provider.support_interrupt() { a.interrupt.cloned() } else { None };
     let tools = if a.tool_defs.is_empty() { None } else { Some(a.tool_defs) };
     let mut kwargs = Kwargs::new();
-    if a.provider.provider_name() == Some("codex") {
+    if routes_by_session(a.provider.provider_name()) {
         if let Some(sid) = &a.ctx.session_id {
             kwargs.insert("session_id".into(), json!(sid));
         }
@@ -667,6 +673,14 @@ mod tests {
     use appv3_providers::ChatCompletionDelta;
     use async_trait::async_trait;
     use std::sync::Mutex;
+
+    #[test]
+    fn session_routed_providers_get_the_session_id() {
+        assert!(routes_by_session(Some("codex")));
+        assert!(routes_by_session(Some("grok")));
+        assert!(!routes_by_session(Some("openai")));
+        assert!(!routes_by_session(None));
+    }
 
     #[derive(Default)]
     struct StatusLog(Mutex<Vec<ProviderStatus>>);

@@ -237,7 +237,7 @@ impl AgentSession {
         let id = db::codec::api_uuid(&rec.id);
         let _ = tx.send(events::btw_start(&id, question));
         let mut kwargs = Kwargs::new();
-        if provider.provider_name() == Some("codex") {
+        if crate::streaming::routes_by_session(provider.provider_name()) {
             kwargs.insert("session_id".into(), json!(sid));
         }
         let job = Job {

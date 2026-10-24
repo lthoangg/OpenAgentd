@@ -37,6 +37,8 @@ pub enum Flavor {
     Copilot(CopilotModel),
     /// `_CodexResponsesHandler`.
     Codex(Arc<CodexTurn>),
+    /// Grok Build: per-request conversation and request-id headers.
+    Grok,
 }
 
 /// Copilot per-model capability resolved from the live `/models` catalog.
@@ -441,19 +443,22 @@ impl CompletionsHandler {
         }
     }
 
-    pub fn request_headers(&self, body: &Value) -> Vec<(String, String)> {
+    pub fn request_headers(&self, body: &Value, merged: &Kwargs) -> Vec<(String, String)> {
         if self.copilot() {
             let msgs = body.get("messages").and_then(|m| m.as_array()).cloned().unwrap_or_default();
             return copilot_headers(&self.headers, &msgs, false);
         }
+        if let Flavor::Grok = self.flavor {
+            return crate::grok::request_headers(&self.headers, merged);
+        }
         self.headers.clone()
     }
 
-    fn request(&self, client: &reqwest::Client, body: &Value) -> reqwest::RequestBuilder {
+    fn request(&self, client: &reqwest::Client, body: &Value, merged: &Kwargs) -> reqwest::RequestBuilder {
         // Headers first: `json()` adds Content-Type only when absent, while
         // `header()` appends, so the reverse order sends it twice.
         let mut req = client.post(format!("{}/chat/completions", self.base_url));
-        for (k, v) in self.request_headers(body) {
+        for (k, v) in self.request_headers(body, merged) {
             req = req.header(k, v);
         }
         req.json(body)
@@ -497,14 +502,14 @@ impl CompletionsHandler {
         cost_model: Option<&str>,
     ) -> ProviderResult<AssistantMessage> {
         let body = self.build_request(messages, tools, false, merged);
-        let resp = sse::send_checked(self.request(client, &body).timeout(DEFAULT_REQUEST_TIMEOUT), "openai_chat").await?;
+        let resp = sse::send_checked(self.request(client, &body, merged).timeout(DEFAULT_REQUEST_TIMEOUT), "openai_chat").await?;
         let data: Value = resp.json().await.map_err(ProviderError::from_reqwest)?;
         Ok(self.parse_response(&data, cost_model))
     }
 
     pub async fn stream(&self, client: &reqwest::Client, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, merged: &Kwargs) -> ProviderResult<ChunkStream> {
         let body = self.build_request(messages, tools, true, merged);
-        let resp = sse::send_stream(self.request(client, &body), Some(DEFAULT_REQUEST_TIMEOUT), "openai_stream").await?;
+        let resp = sse::send_stream(self.request(client, &body, merged), Some(DEFAULT_REQUEST_TIMEOUT), "openai_stream").await?;
         let events = sse::data_json_idle(resp, Some("[DONE]"), false, Some(DEFAULT_REQUEST_TIMEOUT));
         let copilot = self.copilot();
         let s = async_stream::stream! {
@@ -803,6 +808,7 @@ impl ResponsesHandler {
     pub fn request_headers(&self, body: &Value, merged: &Kwargs) -> Vec<(String, String)> {
         match &self.flavor {
             Flavor::Plain => self.headers.clone(),
+            Flavor::Grok => crate::grok::request_headers(&self.headers, merged),
             Flavor::Copilot(_) => {
                 let items = body.get("input").and_then(|m| m.as_array()).cloned().unwrap_or_default();
                 copilot_headers(&self.headers, &items, true)
@@ -1372,8 +1378,21 @@ mod tests {
     fn completions_request_sends_one_content_type() {
         let headers = vec![("Content-Type".into(), "application/json".into())];
         let h = CompletionsHandler::new("m", "http://127.0.0.1:1", headers, CompletionsDialect::OpenAi);
-        let req = h.request(&reqwest::Client::new(), &json!({"model": "m"})).build().unwrap();
+        let req = h.request(&reqwest::Client::new(), &json!({"model": "m"}), &Kwargs::new()).build().unwrap();
         assert_eq!(content_types(&req), vec!["application/json"]);
+    }
+
+    #[test]
+    fn grok_flavor_adds_request_headers_on_both_apis() {
+        let mut kw = Kwargs::new();
+        kw.insert("session_id".into(), json!("s1"));
+        let has_conv = |req: &reqwest::Request| req.headers().get("x-grok-conv-id").and_then(|v| v.to_str().ok()) == Some("s1");
+        let mut c = CompletionsHandler::new("m", "http://127.0.0.1:1", vec![], CompletionsDialect::OpenAi);
+        c.flavor = Flavor::Grok;
+        assert!(has_conv(&c.request(&reqwest::Client::new(), &json!({"model": "m"}), &kw).build().unwrap()));
+        let mut r = ResponsesHandler::new("m", "http://127.0.0.1:1", vec![], true);
+        r.flavor = Flavor::Grok;
+        assert!(has_conv(&r.request(&reqwest::Client::new(), &json!({"model": "m"}), &kw).build().unwrap()));
     }
 
     #[test]

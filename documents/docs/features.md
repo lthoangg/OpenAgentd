@@ -1700,7 +1700,7 @@ agnostic by design.
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
-| Grok Build | `grok:grok-4.5` | `agentd auth grok` `[v1.112.0]` |
+| Grok Build | `grok:grok-4.7` | `agentd auth grok` `[v1.112.0]` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
@@ -1755,8 +1755,13 @@ agnostic by design.
   direct API-key-backed `xai:` provider, with live model discovery and the
   Grok Build proxy's required model-routing headers. Grok billing usage is
   available in Settings, the native usage tray, and the manual provider smoke
-  script; billing periods with no measurable allowance stay period-only and
-  zero values are not treated as unlimited.
+  script. The live `/models` catalog picks each model's API (Responses or
+  Chat Completions), Grok Build's default context window, and its
+  reasoning-effort levels; requests carry the session as `x-grok-conv-id`.
+  Usage reads xAI's zero-omitting billing fields as 0%, shows prepaid credits
+  in dollars, and falls back to the legacy monthly limit. Token refresh
+  retries transient failures and keeps the saved session unless xAI rejects
+  the grant `[v3.29.0]`.
 - **Codex usage monitor** `[v1.32.0, v1.131.0, v1.131.1]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
   Workspace spend caps report used/limit/remaining amounts and a reset time — the only

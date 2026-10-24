@@ -797,12 +797,13 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
-    let goals = db::live_goal_statuses(&st.pool, &ids).await?;
+    let goals = db::live_goal_summaries(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
         running: running.contains(&db::codec::api_uuid(&s.id)),
         needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)) || waiting_on_lead.contains(&db::codec::api_uuid(&s.id)),
         background_work: pending.contains(&db::codec::api_uuid(&s.id)),
-        goal_status: goals.get(&s.id).cloned(),
+        goal_status: goals.get(&s.id).map(|g| g.status.clone()),
+        goal_turns: goals.get(&s.id).map(|g| (g.turns_used, g.max_turns)),
         ..Default::default()
     };
     let data: Vec<Value> = sessions
@@ -896,8 +897,9 @@ async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>)
     let Some(root) = db::get_session(&st.pool, &sid).await? else { return Err(ApiError::not_found("Session not found.")) };
     let (lead, _, _) = db::history_page(&st.pool, &sid, None).await?;
     let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
-    let goal_status = db::live_session_goal(&st.pool, &sid).await?.map(|g| g.status);
-    let m = session_response(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, ..Default::default() });
+    let goal = db::live_session_goal(&st.pool, &sid).await?;
+    let (goal_status, goal_turns) = (goal.as_ref().map(|g| g.status.clone()), goal.as_ref().map(|g| (g.turns_used, g.max_turns)));
+    let m = session_response(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
     Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
 }
 

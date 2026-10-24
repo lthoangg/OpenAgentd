@@ -268,11 +268,16 @@ explicitly.
     it is still queued) clears its goal, since the rules note goes with
     that message; undoing a `goal_turn` row keeps the goal.
   - *Continuation:* when a goal turn ends normally, `run_turn` accounts it
-    and queues a user row with `extra.goal_turn {id, turn, max_turns}`
-    holding a `<goal_reminder>`. It then runs like an activated queued
+    and queues a user row with `extra.goal_turn {id, turn, max_turns, why,
+    tokens_used, check?}` holding a `<goal_reminder>`. `why` says why the
+    goal went on, for the transcript's turn divider: `unclaimed` (the last
+    turn ended without a claim), `rejected` (the last check said not yet;
+    `check` is its reason), `check_failed` (the last check gave no
+    verdict) or `resumed`. It then runs like an activated queued
     message, without `close_turn`, so no notification fires until the goal
     stops; that one is titled `Goal achieved`, `Goal blocked` or `Goal
-    paused` instead of `Done`. Queued messages, working subagents, an open question,
+    paused` instead of `Done`, and the `desktop_notification` payload gains
+    `goal` (`achieved|blocked|paused`). Queued messages, working subagents, an open question,
     and Plan mode make it wait (`PATCH` to Code mode starts it). Two turns
     in a row without tool calls pause it (`no_progress`), as do the turn
     and token limits, a failed turn (`error`), and Stop (`stopped`).
@@ -319,7 +324,8 @@ explicitly.
   - *Events and sessions:* the global stream gains `session_goal
     {session_id, goal}` (`sse_events.json`), sent on every goal change,
     ended goals included. `SessionResponse` gains `goal_status`
-    (`active|paused`, omitted otherwise) on the list and detail routes.
+    (`active|paused`, omitted otherwise) and the live goal's
+    `goal_turns_used` and `goal_max_turns` on the list and detail routes.
   - *Settings:* `settings.yaml` gains `goals: {max_turns, token_budget,
     allow_questions}`, each written only when it differs from the default
     (50, no budget, `false`). `GET/PUT /api/settings/goals` returns them plus

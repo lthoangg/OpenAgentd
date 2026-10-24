@@ -716,13 +716,14 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     assert_eq!(first["extra"]["goal"]["id"], g["id"], "{first}");
     let cont = msgs.iter().find(|m| m["extra"]["goal_turn"].is_object()).expect("continuation message");
     assert_eq!(cont["extra"]["goal_turn"]["turn"], 2, "{cont}");
+    assert_eq!(cont["extra"]["goal_turn"]["why"], "unclaimed", "the divider says why the goal went on: {cont}");
     assert!(cont["content"].as_str().unwrap().starts_with("<goal_reminder turn=\"2\" max_turns=\"6\""), "{cont}");
 
     let (_, v) = c.json("GET", &format!("/api/agent/sessions/{sid}"), None).await;
-    assert_eq!(v["goal_status"], "paused", "{v}");
+    assert_eq!((v["goal_status"].clone(), v["goal_turns_used"].clone(), v["goal_max_turns"].clone()), (json!("paused"), json!(2), json!(6)), "{v}");
     let (_, v) = c.json("GET", "/api/agent/sessions?limit=50", None).await;
     let row = v["data"].as_array().unwrap().iter().find(|s| s["id"] == sid.as_str()).expect("listed");
-    assert_eq!(row["goal_status"], "paused", "{row}");
+    assert_eq!((row["goal_status"].clone(), row["goal_turns_used"].clone(), row["goal_max_turns"].clone()), (json!("paused"), json!(2), json!(6)), "{row}");
 
     // Resume starts the next turn with fresh no-progress counters.
     let (st, v) = c.json("POST", &format!("/api/agent/sessions/{sid}/goal/resume"), None).await;

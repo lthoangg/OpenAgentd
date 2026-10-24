@@ -149,17 +149,25 @@ pub async fn pause_active_session_goals(pool: &DbPool, reason: &str) -> Result<V
         .await?)
 }
 
-/// Live goal status by on-disk session id, for the given session ids.
-pub async fn live_goal_statuses(pool: &DbPool, session_ids: &[String]) -> Result<HashMap<String, String>> {
+/// A live goal as session lists show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveGoalSummary {
+    pub status: String,
+    pub turns_used: i64,
+    pub max_turns: i64,
+}
+
+/// Live goals by on-disk session id, for the given session ids.
+pub async fn live_goal_summaries(pool: &DbPool, session_ids: &[String]) -> Result<HashMap<String, LiveGoalSummary>> {
     let mut out = HashMap::new();
     for chunk in session_ids.chunks(500) {
         let marks = vec!["?"; chunk.len()].join(",");
-        let sql = format!("SELECT session_id, status FROM session_goals WHERE {LIVE} AND session_id IN ({marks})");
-        let mut q = sqlx::query_as::<_, (String, String)>(sqlx::AssertSqlSafe(&*sql));
+        let sql = format!("SELECT session_id, status, turns_used, max_turns FROM session_goals WHERE {LIVE} AND session_id IN ({marks})");
+        let mut q = sqlx::query_as::<_, (String, String, i64, i64)>(sqlx::AssertSqlSafe(&*sql));
         for sid in chunk {
             q = q.bind(db_id(sid));
         }
-        out.extend(q.fetch_all(pool).await?);
+        out.extend(q.fetch_all(pool).await?.into_iter().map(|(sid, status, turns_used, max_turns)| (sid, LiveGoalSummary { status, turns_used, max_turns })));
     }
     Ok(out)
 }
@@ -257,9 +265,9 @@ mod tests {
         assert_eq!(live_session_goal(&pool, SID).await.unwrap().unwrap().pause_reason.as_deref(), Some("restart"));
         assert_eq!(live_session_goal(&pool, OTHER).await.unwrap().unwrap().pause_reason.as_deref(), Some("user"));
 
-        let statuses = live_goal_statuses(&pool, &[SID.to_string(), OTHER.to_string()]).await.unwrap();
-        assert_eq!(statuses.get(&db_id(SID)).map(String::as_str), Some(GOAL_PAUSED));
-        assert_eq!(statuses.len(), 2);
+        let goals = live_goal_summaries(&pool, &[SID.to_string(), OTHER.to_string()]).await.unwrap();
+        assert_eq!(goals.get(&db_id(SID)), Some(&LiveGoalSummary { status: GOAL_PAUSED.into(), turns_used: 0, max_turns: 50 }));
+        assert_eq!(goals.len(), 2);
     }
 
     #[tokio::test]

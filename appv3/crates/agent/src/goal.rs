@@ -583,11 +583,31 @@ pub async fn release_ended_notes(pool: &DbPool, session_id: &str) -> Result<usiz
 }
 
 /// Save the queued message that starts continuation turn `turn`.
-async fn queue_reminder(pool: &DbPool, session_id: &str, goal: &SessionGoal, turn: i64, resumed: bool) -> Result<()> {
+async fn queue_reminder(pool: &DbPool, session_id: &str, goal: &SessionGoal, turn: i64, resumed: bool, check_failed: bool) -> Result<()> {
     let mut extra = Map::new();
-    extra.insert(GOAL_TURN_KEY.into(), json!({"id": db::codec::api_uuid(&goal.id), "turn": turn, "max_turns": goal.max_turns}));
+    extra.insert(GOAL_TURN_KEY.into(), turn_extra(goal, turn, resumed, check_failed));
     db::save_queued_user_message(pool, session_id, &reminder_text(goal, turn, resumed), Some(extra)).await?;
     Ok(())
+}
+
+/// `extra.goal_turn` of continuation turn `turn`: which goal and turn, and
+/// why the goal went on, for the transcript's turn divider. `why` is
+/// `resumed` (the user resumed it), `rejected` (the last check said not yet;
+/// `check` is its reason), `check_failed` (the last check gave no verdict),
+/// or `unclaimed` (the last turn ended without a claim).
+fn turn_extra(goal: &SessionGoal, turn: i64, resumed: bool, check_failed: bool) -> Value {
+    let check = goal.detail.as_deref().filter(|_| goal.rejected_claims > 0);
+    let why = match (resumed, check, check_failed) {
+        (true, ..) => "resumed",
+        (_, Some(_), _) => "rejected",
+        (_, None, true) => "check_failed",
+        _ => "unclaimed",
+    };
+    let mut v = json!({"id": db::codec::api_uuid(&goal.id), "turn": turn, "max_turns": goal.max_turns, "why": why, "tokens_used": goal.tokens_used});
+    if let Some(c) = check {
+        v["check"] = json!(c);
+    }
+    v
 }
 
 async fn save(pool: &DbPool, goal: &SessionGoal) -> Result<SessionGoal> {
@@ -716,7 +736,7 @@ impl AgentSession {
     /// should run first. Returns whether one was queued.
     async fn continue_goal(&self, session_id: &str, resumed: bool) -> Result<bool> {
         let pool = &self.pool;
-        let _lock = self.goal_lock().lock().await;
+        let local = self.goal_lock().lock().await;
         let Some(mut goal) = db::live_session_goal(pool, session_id).await?.filter(SessionGoal::is_active) else { return Ok(false) };
         // Queued messages run first; the goal goes on after them.
         if db::has_queued_user_messages(pool, session_id).await? {
@@ -735,7 +755,7 @@ impl AgentSession {
         }
         match next_step(&goal) {
             Next::Continue(n) => {
-                queue_reminder(pool, session_id, &goal, n, resumed).await?;
+                queue_reminder(pool, session_id, &goal, n, resumed, local.check_failures > 0).await?;
                 tracing::info!("goal_continues session_id={} goal_id={} turn={}", session_id, goal.id, n);
                 Ok(true)
             }
@@ -1227,6 +1247,24 @@ mod tests {
         assert!(last.contains("tsc was not run"));
         assert!(last.contains("last turn the goal allows"));
         assert!(last.contains("resumed"));
+    }
+
+    /// The transcript's turn divider says why the goal went on.
+    #[test]
+    fn a_continuation_turn_records_why_the_goal_went_on() {
+        let mut g = goal();
+        g.tokens_used = 900;
+        let unclaimed = turn_extra(&g, 2, false, false);
+        assert_eq!(unclaimed, json!({"id": "g", "turn": 2, "max_turns": 3, "why": "unclaimed", "tokens_used": 900}));
+        assert_eq!(turn_extra(&g, 2, false, true)["why"], "check_failed");
+        assert_eq!(turn_extra(&g, 2, true, true)["why"], "resumed");
+
+        g.rejected_claims = 1;
+        g.detail = Some("No `bun test` output.".into());
+        let rejected = turn_extra(&g, 3, false, false);
+        assert_eq!((rejected["why"].as_str(), rejected["check"].as_str()), (Some("rejected"), Some("No `bun test` output.")));
+        g.rejected_claims = 0;
+        assert!(turn_extra(&g, 3, false, false).get("check").is_none(), "a reason from before a resume is not the last check");
     }
 
     #[test]

@@ -251,13 +251,15 @@ async fn a_goal_notifies_once_with_its_outcome() {
     h.start_goal("make it work", 2).await;
     h.finish().await;
 
-    let mut titles = vec![];
+    let mut seen = vec![];
     while let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(300), global.next()).await {
         if e.event == "desktop_notification" && e.data.contains(&h.sid) {
-            titles.push(serde_json::from_str::<Value>(&e.data).unwrap()["title"].as_str().unwrap_or_default().to_string());
+            let v = serde_json::from_str::<Value>(&e.data).unwrap();
+            seen.push((v["title"].as_str().unwrap_or_default().to_string(), v["goal"].clone()));
         }
     }
-    assert_eq!(titles, ["Goal paused · notify"], "one notification, after the last turn");
+    // `goal` lets the notch mark the outcome without reading the title.
+    assert_eq!(seen, [("Goal paused · notify".to_string(), json!("paused"))], "one notification, after the last turn");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -305,6 +307,12 @@ async fn an_early_claim_is_rejected_and_a_proven_one_achieves_the_goal() {
     let rows = appv3_db::llm_window_rows(&h.pool, &h.sid, false).await.unwrap();
     let results: Vec<String> = rows.iter().filter(|r| r.role == "tool").filter_map(|r| r.content.clone()).collect();
     assert!(results[0].starts_with("The check did not accept the claim: No test output is shown."), "{}", results[0]);
+    let reminder = rows.iter().filter_map(|r| r.extra_json()).find(|e| e.get("goal_turn").is_some()).expect("a continuation turn");
+    assert_eq!(
+        (reminder["goal_turn"]["why"].clone(), reminder["goal_turn"]["check"].clone()),
+        (json!("rejected"), json!("No test output is shown.")),
+        "the turn divider can say why the goal went on"
+    );
     assert!(results[2].starts_with("The check confirmed the goal is met"), "{}", results[2]);
     // Nothing of the check is stored in the transcript.
     assert!(!rows.iter().any(|r| r.content.as_deref().is_some_and(|c| c.contains("<goal_check>"))));

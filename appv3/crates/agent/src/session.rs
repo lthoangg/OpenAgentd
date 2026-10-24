@@ -1020,12 +1020,17 @@ impl AgentSession {
                 let last_error = self.last_error();
                 let replied = crate::workspace_messages::on_turn_closed(&self.pool, session_id, status, self.cancel.is_set(), last_error.as_deref()).await;
                 let label = if notify && !replied { self.notification_status(session_id, status) } else { None };
-                let label = match (label, goal_id) {
-                    (Some("Done"), Some(id)) => Some(self.goal_notification_status(session_id, id).await.unwrap_or("Done")),
-                    (l, _) => l,
+                // A goal's last turn says what became of the goal instead of "Done".
+                let goal = match (label, goal_id) {
+                    (Some("Done"), Some(id)) => self.goal_outcome(session_id, id).await,
+                    _ => None,
                 };
-                if let Some(label) = label {
-                    broadcaster::publish("desktop_notification", self.completion_notification(session_id, label).await);
+                if let Some(label) = goal.map(notification::goal_status).or(label) {
+                    let mut payload = self.completion_notification(session_id, label).await;
+                    if let Some(goal) = goal {
+                        payload["goal"] = json!(goal);
+                    }
+                    broadcaster::publish("desktop_notification", payload);
                 }
             }
             Some(lead) => {
@@ -1067,10 +1072,10 @@ impl AgentSession {
         }
     }
 
-    /// The notification status for the last turn of goal `goal_id`.
-    async fn goal_notification_status(&self, session_id: &str, goal_id: &str) -> Option<&'static str> {
+    /// What became of goal `goal_id` after its last turn (see [`notification::goal_outcome`]).
+    async fn goal_outcome(&self, session_id: &str, goal_id: &str) -> Option<&'static str> {
         match db::get_session_goal(&self.pool, session_id, goal_id).await {
-            Ok(Some(g)) => notification::goal_status(&g.status, g.pause_reason.as_deref()),
+            Ok(Some(g)) => notification::goal_outcome(&g.status, g.pause_reason.as_deref()),
             Ok(None) => None,
             Err(e) => {
                 tracing::warn!("goal_notification_lookup_failed session_id={} error={}", session_id, e);

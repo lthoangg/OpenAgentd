@@ -24,6 +24,8 @@ pub struct SessionOverlay {
     pub subagents: Vec<Value>,
     /// The session's live `/goal` status (`active` or `paused`), if any.
     pub goal_status: Option<String>,
+    /// The live goal's `(turns_used, max_turns)`, if any.
+    pub goal_turns: Option<(i64, i64)>,
 }
 
 fn put(map: &mut Map<String, Value>, key: &str, value: Option<Value>) {
@@ -67,6 +69,10 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
     }
     // v3 addition, omitted without a live goal.
     put(&mut m, "goal_status", o.goal_status.clone().map(Value::String));
+    if let Some((used, max)) = o.goal_turns {
+        m.insert("goal_turns_used".into(), serde_json::json!(used));
+        m.insert("goal_max_turns".into(), serde_json::json!(max));
+    }
     m
 }
 

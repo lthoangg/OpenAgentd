@@ -584,6 +584,12 @@ impl Agent {
                 });
             }
             let dropped = extra.get("dropped_tool_calls").map(crate::util::truthy).unwrap_or(false);
+            // A call cut short by Stop returns nothing; that is the user
+            // stopping, not the model answering empty.
+            if !has_payload(&assistant) && !dropped && interrupted() {
+                tracing::info!("agent_iteration_interrupted agent={} iteration={}", self.name, iteration);
+                break;
+            }
             if !has_payload(&assistant) && !dropped {
                 let aborted = !extra.get("finish_reason").map(crate::util::truthy).unwrap_or(false);
                 let prev_tool = matches!(state.messages.last(), Some(ChatMessage::Tool { .. }));
@@ -829,6 +835,8 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use appv3_providers::{ChunkStream, Kwargs, ProviderResult, ToolSpec};
+    use std::sync::Mutex;
 
     #[test]
     fn merged_question_calls_keep_non_ascii_text_verbatim() {
@@ -836,5 +844,80 @@ mod tests {
         let dup = ToolCall::new("b", "ask_user", r#"{"questions": [{"question": "Größe?"}]}"#);
         merge_question_calls(&mut primary, &[dup]);
         assert_eq!(primary.function.arguments, r#"{"questions":[{"question":"Chọn màu?"},{"question":"Größe?"}]}"#);
+    }
+
+    /// The user presses Stop while the model call is still waiting.
+    struct StoppedMidCall {
+        stop: Event,
+        calls: Mutex<usize>,
+        kw: Kwargs,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for StoppedMidCall {
+        fn model(&self) -> &str {
+            "mock"
+        }
+        fn provider_name(&self) -> Option<&str> {
+            Some("mock")
+        }
+        fn base_kwargs(&self) -> &Kwargs {
+            &self.kw
+        }
+        async fn chat(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> ProviderResult<AssistantMessage> {
+            unreachable!("the loop streams")
+        }
+        async fn stream(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> ProviderResult<ChunkStream> {
+            *self.calls.lock().unwrap() += 1;
+            self.stop.set();
+            Ok(Box::pin(futures::stream::pending()))
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A call cut short by Stop returns nothing, which once read as the
+    /// model answering empty: every Stop logged `agent_empty_response_retry`.
+    #[tokio::test]
+    async fn stop_during_a_model_call_is_not_an_empty_response() {
+        let logs = Captured::default();
+        let sink = logs.clone();
+        let subscriber = tracing_subscriber::fmt().with_writer(move || sink.clone()).with_ansi(false).finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let stop = Event::new();
+        let provider = Arc::new(StoppedMidCall { stop: stop.clone(), calls: Mutex::new(0), kw: Kwargs::new() });
+        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
+        let root = tempfile::tempdir().unwrap();
+        let opts = RunOptions {
+            session_id: None,
+            metadata: Map::new(),
+            hooks: vec![],
+            injected_tools: vec![],
+            interrupt: Some(stop),
+            hard_cancel: None,
+            checkpointer: None,
+            provider: None,
+            model_id: None,
+            denied: Arc::new(DeniedPaths::new(root.path(), None)),
+            workspace: None,
+        };
+
+        agent.run(vec![ChatMessage::user("hi")], opts).await.unwrap();
+
+        assert_eq!(*provider.calls.lock().unwrap(), 1);
+        let text = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
+        assert!(!text.contains("agent_empty_response_retry"), "{text}");
+        assert!(text.contains("agent_iteration_interrupted"), "{text}");
     }
 }

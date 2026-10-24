@@ -387,9 +387,20 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
             db::insert_raw_tool_message(pool, &child_sid, &format!("Lead answered: {message}"), &t, "ask_lead").await.map_err(|e| SubagentError::General(e.to_string()))?;
         }
         inst_session.resume_after_question_answer().await;
-    } else if let Err(e) =
-        inst_session.handle_user_message(UserMessage { content: format!("[Lead]: {message}"), session_id: child_sid.clone(), origin: "agent".into(), ..Default::default() }).await
-    {
+        return Ok(json!({"status": "sent", "member_id": handle, "message": format!("Message delivered to '{handle}' in background.")}));
+    }
+    let content = format!("[Lead]: {message}");
+    let _g = inst_session.user_message_lock.lock().await;
+    // A member still working reads the follow-up when its turn ends. Starting
+    // a turn beside it left one of the two running unseen: the session read
+    // idle once the other ended, so Stop and deleting the lead skipped it.
+    if inst_session.has_active_user_turn() {
+        db::save_queued_user_message(pool, &child_sid, &content, None).await.map_err(|e| SubagentError::General(e.to_string()))?;
+        // The turn may have ended between the check and the save.
+        if !inst_session.has_active_user_turn() {
+            inst_session.activate_queued_user_messages(&child_sid).await;
+        }
+    } else if let Err(e) = inst_session.handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), ..Default::default() }).await {
         mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
         return Err(SubagentError::General(e.to_string()));
     }
@@ -541,12 +552,28 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
 pub async fn stop_all_subagents(lead: &str) {
     let insts: Vec<SubagentInstance> = reg().lock().unwrap().live.get(lead).map(|m| m.values().cloned().collect()).unwrap_or_default();
     for i in &insts {
-        if i.status != "completed" && i.status != "error" {
-            i.session.handle_stop().await;
-        }
+        // The session, not the registry status, knows whether a turn runs:
+        // a status set by an earlier stop must not shield a turn still going.
+        i.session.handle_stop().await;
         with_instance(lead, &i.handle, |x| x.status = "error".into());
     }
     tracing::info!("stopped_all_subagents lead_session_id={}", lead);
+}
+
+/// Stop every member of every lead and wait, up to `limit`, for their turns
+/// to end. Server shutdown runs it before closing the database, so a stopped
+/// turn's last save still lands.
+pub async fn stop_all_members(limit: std::time::Duration) {
+    let sessions: Vec<Arc<AgentSession>> = reg().lock().unwrap().live.values().flat_map(|m| m.values().map(|i| i.session.clone())).collect();
+    for s in &sessions {
+        s.handle_stop().await;
+    }
+    let waits = sessions.iter().map(|s| s.wait_for_stop(limit));
+    let settled = futures::future::join_all(waits).await;
+    let pending = settled.iter().filter(|done| !**done).count();
+    if pending > 0 {
+        tracing::warn!("subagents_stop_timeout pending={}", pending);
+    }
 }
 
 /// `remove_subagent`.

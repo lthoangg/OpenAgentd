@@ -817,7 +817,9 @@ impl AgentSession {
     }
 
     pub async fn handle_stop(&self) -> bool {
-        if !self.is_busy() {
+        // A turn task still running is stopped even if the state already
+        // reads idle, or nothing could ever reach it.
+        if !self.is_busy() && self.active_task_done() {
             return false;
         }
         self.cancel.set();
@@ -1245,7 +1247,9 @@ impl AgentSession {
         }
         hooks.push(Arc::new(WorkspaceInstructionsHook::new(Some(&workspace), agent_mode == "coding")));
         hooks.extend(self.test_hooks.lock().unwrap().iter().cloned());
-        let checkpointer = Checkpointer::new(self.pool.clone(), Some(sid.clone()), Some(name.clone()));
+        let checkpointer = Checkpointer::new(self.pool.clone(), Some(sid.clone()), Some(name.clone()))
+            .stop_when_session_gone(self.cancel.clone())
+            .stop_when_session_gone(self.hard_cancel.clone());
         checkpointer.mark_loaded(&history);
         hooks.push(Arc::new(ToolResultOffloadHook::default()));
         if is_lead {

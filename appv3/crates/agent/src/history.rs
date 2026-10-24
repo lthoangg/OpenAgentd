@@ -203,7 +203,9 @@ pub fn apply_llm_content_overrides(messages: Vec<ChatMessage>) -> Vec<ChatMessag
         if let ChatMessage::User { content, parts, meta } = &mut msg {
             if let Some(extra) = meta.extra.as_ref() {
                 let truthy = |k: &str| extra.get(k).map(crate::util::truthy).unwrap_or(false);
-                if truthy("attachment_for_message_id") && !truthy("mention_context") {
+                // An attachment's text row is replaced by the hint below; a
+                // queued message's @-mention context and goal rules are read.
+                if truthy("attachment_for_message_id") && !truthy("mention_context") && !truthy(crate::goal::GOAL_NOTE_KEY) {
                     continue;
                 }
                 if let Some(Value::Array(atts)) = extra.get("attachments") {

@@ -30,9 +30,30 @@ pub fn body(text: &str) -> Option<String> {
     Some(format!("{head}…"))
 }
 
+/// The status of a `/goal` run whose last turn just ended, from the goal's
+/// `status` and `pause_reason`; `None` while it still runs (or was cleared),
+/// so the turn's own status is used.
+pub fn goal_status(status: &str, pause_reason: Option<&str>) -> Option<&'static str> {
+    match (status, pause_reason) {
+        ("achieved", _) => Some("Goal achieved"),
+        ("paused", Some("blocked")) => Some("Goal blocked"),
+        ("paused", _) => Some("Goal paused"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_goal_turn_names_what_became_of_the_goal() {
+        assert_eq!(goal_status("achieved", None), Some("Goal achieved"));
+        assert_eq!(goal_status("paused", Some("blocked")), Some("Goal blocked"));
+        assert_eq!(goal_status("paused", Some("turn_limit")), Some("Goal paused"));
+        assert_eq!(goal_status("active", None), None, "a goal still running says nothing new");
+        assert_eq!(goal_status("cleared", None), None);
+    }
 
     #[test]
     fn title_appends_the_workspace_directory_name() {

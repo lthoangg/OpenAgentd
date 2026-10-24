@@ -426,6 +426,8 @@ pub struct Dispatch {
     pub origin: String,
     /// Extra keys stored on the user message row.
     pub extra: Option<serde_json::Map<String, Value>>,
+    /// Hidden notes saved right after the message (see [`UserMessage::context_notes`]).
+    pub context_notes: Vec<(String, serde_json::Map<String, Value>)>,
 }
 
 /// `dispatch_user_message` → `(session_id, n_attachments, message_id)`.
@@ -449,6 +451,7 @@ pub async fn dispatch_user_message(session: &AgentSession, d: Dispatch) -> Resul
             mentions: d.mentions,
             origin: if d.origin.is_empty() { "user".into() } else { d.origin },
             extra: d.extra,
+            context_notes: d.context_notes,
         })
         .await?;
     tracing::info!("agent_service_dispatched session_id={} attachments={}", sid, n);

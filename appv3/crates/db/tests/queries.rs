@@ -15,7 +15,8 @@ async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
     (dir, pool)
 }
 
-/// Deleting a session tree takes its `/btw` side questions with it.
+/// Deleting a session tree takes its `/btw` side questions and `/goal`
+/// goals with it.
 #[tokio::test]
 async fn deleting_a_session_removes_its_side_questions() {
     let (_d, pool) = fresh().await;
@@ -24,11 +25,15 @@ async fn deleting_a_session_removes_its_side_questions() {
     let other = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
     for s in [&lead, &child, &other] {
         insert_side_question(&pool, &s.id, "why?").await.unwrap();
+        insert_session_goal(&pool, &s.id, "done", 50, None).await.unwrap();
     }
     delete_session_rows(&pool, &lead.id).await.unwrap();
     assert_eq!(count_side_questions(&pool, &lead.id).await.unwrap(), 0);
     assert_eq!(count_side_questions(&pool, &child.id).await.unwrap(), 0);
     assert_eq!(count_side_questions(&pool, &other.id).await.unwrap(), 1);
+    assert!(latest_session_goal(&pool, &lead.id).await.unwrap().is_none());
+    assert!(latest_session_goal(&pool, &child.id).await.unwrap().is_none());
+    assert!(live_session_goal(&pool, &other.id).await.unwrap().is_some());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

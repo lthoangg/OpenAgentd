@@ -7,6 +7,7 @@ pub mod broadcaster;
 pub mod checkpointer;
 pub mod errors;
 pub mod events;
+pub mod goal;
 pub mod history;
 pub mod hooks;
 pub mod idle_compaction;

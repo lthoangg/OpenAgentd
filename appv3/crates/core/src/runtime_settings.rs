@@ -82,6 +82,49 @@ impl WorkspaceMessagesSettings {
     }
 }
 
+/// `goals` — `/goal` limits and whether goal turns may ask questions (v3
+/// only). Written only when it differs from the default, so files stay
+/// unchanged. The completion check always runs on the session's own model,
+/// so it reuses the turn's prompt cache.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GoalSettings {
+    /// Turns a new goal may run; `None` means [`DEFAULT_GOAL_MAX_TURNS`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<i64>,
+    /// New tokens (uncached input plus output) a new goal may spend before
+    /// it pauses; `None` means no budget.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<i64>,
+    /// Let the agent ask the user questions during a goal. Off: goal turns
+    /// run unattended, so `ask_user` and `submit_plan` refuse.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub allow_questions: bool,
+}
+
+pub const DEFAULT_GOAL_MAX_TURNS: i64 = 50;
+/// Largest accepted `max_turns`.
+pub const MAX_GOAL_MAX_TURNS: i64 = 1000;
+
+impl GoalSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+    /// The effective turn limit. A hand-edited value outside
+    /// 1..=[`MAX_GOAL_MAX_TURNS`] falls back to the default.
+    pub fn max_turns(&self) -> i64 {
+        match self.max_turns {
+            Some(n) if (1..=MAX_GOAL_MAX_TURNS).contains(&n) => n,
+            _ => DEFAULT_GOAL_MAX_TURNS,
+        }
+    }
+    /// The default budget for a new goal. A hand-edited value below 1 means
+    /// no budget.
+    pub fn token_budget(&self) -> Option<i64> {
+        self.token_budget.filter(|n| *n >= 1)
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ProviderUiSettings {
@@ -126,6 +169,8 @@ pub struct RuntimeSettings {
     pub lsp: IndexMap<String, Vec<String>>,
     #[serde(skip_serializing_if = "WorkspaceMessagesSettings::is_default")]
     pub workspace_messages: WorkspaceMessagesSettings,
+    #[serde(skip_serializing_if = "GoalSettings::is_default")]
+    pub goals: GoalSettings,
 }
 
 pub fn load_runtime_settings_from(path: &Path) -> Result<RuntimeSettings> {
@@ -158,6 +203,11 @@ pub fn save_runtime_settings(cfg: &RuntimeSettings) -> Result<()> {
 /// settings fall back to the default).
 pub fn workspace_messages_enabled() -> bool {
     load_runtime_settings().map(|c| c.workspace_messages.enabled).unwrap_or(true)
+}
+
+/// `/goal` settings (defaults when the file is unreadable).
+pub fn goal_settings() -> GoalSettings {
+    load_runtime_settings().map(|c| c.goals).unwrap_or_default()
 }
 
 fn cleaned_sorted(models: &[String]) -> Vec<String> {
@@ -432,6 +482,40 @@ mod tests {
         let p = dir.path().join("settings.yaml");
         std::fs::write(&p, &text).unwrap();
         assert!(load_runtime_settings_from(&p).unwrap().title_generation.update_after_compaction);
+    }
+
+    #[test]
+    fn goal_settings_written_only_when_set() {
+        let mut cfg = RuntimeSettings::default();
+        assert!(!to_pyyaml(&cfg).unwrap().contains("goals"));
+        assert_eq!(cfg.goals.max_turns(), DEFAULT_GOAL_MAX_TURNS);
+        assert!(!cfg.goals.allow_questions);
+        cfg.goals = GoalSettings { max_turns: Some(20), token_budget: Some(500_000), allow_questions: true };
+        let text = to_pyyaml(&cfg).unwrap();
+        assert!(text.ends_with("goals:\n  max_turns: 20\n  token_budget: 500000\n  allow_questions: true\n"), "{text}");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.yaml");
+        std::fs::write(&p, &text).unwrap();
+        let back = load_runtime_settings_from(&p).unwrap().goals;
+        assert_eq!((back.max_turns(), back.token_budget(), back.allow_questions), (20, Some(500_000), true));
+    }
+
+    #[test]
+    fn a_goal_token_budget_below_one_means_no_budget() {
+        let with = |n: Option<i64>| GoalSettings { token_budget: n, ..Default::default() }.token_budget();
+        assert_eq!(with(None), None);
+        assert_eq!(with(Some(0)), None);
+        assert_eq!(with(Some(-3)), None);
+        assert_eq!(with(Some(80_000)), Some(80_000));
+    }
+
+    #[test]
+    fn goal_max_turns_out_of_range_falls_back_to_default() {
+        let with = |n: Option<i64>| GoalSettings { max_turns: n, ..Default::default() }.max_turns();
+        assert_eq!(with(None), 50);
+        assert_eq!(with(Some(0)), 50);
+        assert_eq!(with(Some(5000)), 50);
+        assert_eq!(with(Some(7)), 7);
     }
 
     #[test]

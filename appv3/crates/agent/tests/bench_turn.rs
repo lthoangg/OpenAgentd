@@ -84,6 +84,7 @@ impl LlmProvider for ScriptedProvider {
         match turn {
             MockTurn::Chunks(chunks) => Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok)))),
             MockTurn::Error(e) => Err(e),
+            MockTurn::Hang => Ok(Box::pin(futures::stream::pending())),
         }
     }
 }

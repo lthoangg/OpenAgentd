@@ -137,7 +137,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// facts given inside a request.
 /// Lowered by 16 once the canonical temp root (`/private` on macOS) was left
 /// out, so the count is the same on every OS.
-const LEAD_ALWAYS_ON_CHARS: usize = 36_476;
+/// Raised by 765 for `update_goal`, listed for every lead so the cached
+/// tool definitions do not change when the user sets a `/goal`.
+const LEAD_ALWAYS_ON_CHARS: usize = 37_241;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

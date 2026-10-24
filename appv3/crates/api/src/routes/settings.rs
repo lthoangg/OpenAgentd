@@ -27,6 +27,7 @@ pub fn router() -> Router<AppState> {
         .route("/summarization", get(get_summarization).put(put_summarization))
         .route("/title-generation", get(get_title).put(put_title))
         .route("/workspace-messages", get(get_workspace_messages).put(put_workspace_messages))
+        .route("/goals", get(get_goals).put(put_goals))
         .route("/multimodal", get(get_multimodal).put(put_multimodal))
         .route("/providers", get(list_providers))
         .route("/providers/usage-summary", get(usage_summary).put(|b: Bytes| save_provider_named("usage-summary".into(), b)))
@@ -275,6 +276,52 @@ async fn put_workspace_messages(raw: Bytes) -> ApiResult<Response> {
     cfg.workspace_messages.enabled = enabled;
     rs::save_runtime_settings(&cfg).map_err(internal)?;
     Ok(json(json!({"enabled": enabled})))
+}
+
+// ── goals (v3 only) ─────────────────────────────────────────────────────────
+
+fn goals_json(g: &rs::GoalSettings) -> Value {
+    json!({
+        "max_turns": g.max_turns(),
+        "default_max_turns": rs::DEFAULT_GOAL_MAX_TURNS,
+        "token_budget": g.token_budget(),
+        "allow_questions": g.allow_questions,
+    })
+}
+
+async fn get_goals() -> ApiResult<Response> {
+    let cfg = rs::load_runtime_settings().map_err(internal)?;
+    Ok(json(goals_json(&cfg.goals)))
+}
+
+/// Fields the body omits keep their stored values; `max_turns: null`
+/// restores the default and `token_budget: null` removes the budget.
+async fn put_goals(raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let has = |k: &str| v.as_object().is_some_and(|o| o.contains_key(k));
+    let max_turns = if has("max_turns") { Some(b.opt_int("max_turns")) } else { None };
+    let token_budget = if has("token_budget") { Some(b.opt_int("token_budget")) } else { None };
+    let allow_questions = if has("allow_questions") { Some(b.bool("allow_questions", Some(false))) } else { None };
+    b.finish(&["max_turns", "token_budget", "allow_questions"])?;
+    if matches!(max_turns, Some(Some(n)) if !(1..=rs::MAX_GOAL_MAX_TURNS).contains(&n)) {
+        return Err(ApiError::unprocessable(format!("max_turns must be an integer from 1 to {} or null", rs::MAX_GOAL_MAX_TURNS)));
+    }
+    if matches!(token_budget, Some(Some(n)) if n < 1) {
+        return Err(ApiError::unprocessable("token_budget must be a positive integer or null"));
+    }
+    let mut cfg = rs::load_runtime_settings().map_err(internal)?;
+    if let Some(n) = max_turns {
+        cfg.goals.max_turns = n.filter(|n| *n != rs::DEFAULT_GOAL_MAX_TURNS);
+    }
+    if let Some(n) = token_budget {
+        cfg.goals.token_budget = n;
+    }
+    if let Some(on) = allow_questions {
+        cfg.goals.allow_questions = on;
+    }
+    rs::save_runtime_settings(&cfg).map_err(internal)?;
+    Ok(json(goals_json(&cfg.goals)))
 }
 
 // ── multimodal ──────────────────────────────────────────────────────────────

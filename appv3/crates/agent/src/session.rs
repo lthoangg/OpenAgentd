@@ -142,6 +142,9 @@ pub struct UserMessage {
     pub origin: String,
     /// Extra keys stored on the message row (e.g. `sent_from`).
     pub extra: Option<Map<String, Value>>,
+    /// Hidden context notes saved right after the message, pinned, each
+    /// `(text, extra)` (e.g. a `/goal`'s rules).
+    pub context_notes: Vec<(String, Map<String, Value>)>,
 }
 
 /// The provider a turn of this session calls (see
@@ -198,6 +201,12 @@ pub struct AgentSession {
     /// System prompt and tools of the lead's last model call, which `/btw`
     /// side questions reuse so they hit the same prompt cache.
     request_frame: crate::side_question::FrameSlot,
+    /// The `/goal` turn running now, if any (see [`crate::goal`]).
+    goal_turn: Mutex<Option<crate::goal::GoalTurn>>,
+    /// Held across each read-modify-write of the session's goal row: a
+    /// turn's accounting, Stop, the API and `update_goal` all write it.
+    /// It also guards the goal state that is not stored.
+    goal_lock: tokio::sync::Mutex<crate::goal::GoalLocal>,
     me: Weak<AgentSession>,
 }
 
@@ -242,6 +251,8 @@ impl AgentSession {
             stop_grace: Mutex::new(STOP_GRACE),
             test_hooks: Mutex::new(vec![]),
             request_frame: Default::default(),
+            goal_turn: Mutex::new(None),
+            goal_lock: tokio::sync::Mutex::new(Default::default()),
             me: me.clone(),
         })
     }
@@ -309,6 +320,7 @@ impl AgentSession {
             // Sessions without a user workspace keep the plan in the data dir.
             injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
             injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
+            injected.push(Arc::new(crate::tools::goal::UpdateGoalTool { session: self.me.clone() }));
             if agent_mode == "coding" && !workspace.is_empty() {
                 injected.push(Arc::new(crate::tools::preview::PreviewTool));
             }
@@ -323,6 +335,10 @@ impl AgentSession {
 
     pub(crate) fn request_frame(&self) -> &crate::side_question::FrameSlot {
         &self.request_frame
+    }
+
+    pub(crate) fn goal_lock(&self) -> &tokio::sync::Mutex<crate::goal::GoalLocal> {
+        &self.goal_lock
     }
 
     pub fn name(&self) -> String {
@@ -682,7 +698,7 @@ impl AgentSession {
         self.config_dirty.store(false, Ordering::SeqCst);
     }
 
-    async fn has_open_question(&self) -> bool {
+    pub(crate) async fn has_open_question(&self) -> bool {
         db::get_pending_question(&self.pool, &self.session_id()).await.ok().flatten().is_some()
     }
 
@@ -805,6 +821,12 @@ impl AgentSession {
             note.pinned = Some(true);
             db::save_message(&self.pool, &sid, note).await?;
         }
+        for (text, note_extra) in &m.context_notes {
+            let mut e = note_extra.clone();
+            e.insert("hidden_from_user".into(), json!(true));
+            let note = NewMessage { kind: Some("note".into()), pinned: Some(true), extra: Some(e), ..NewMessage::user(text.clone()) };
+            db::save_message(&self.pool, &sid, note).await?;
+        }
 
         store().init_turn(&sid, true);
         self.set_state("working");
@@ -824,6 +846,7 @@ impl AgentSession {
         self.hard_cancel.set();
         if self.parent_session_id.is_none() {
             Box::pin(crate::subagents::stop_all_subagents(&self.session_id())).await;
+            self.pause_goal_on_stop(&self.session_id()).await;
         }
         self.dismiss_pending_question("dismissed", None).await;
         *self.lead_suspended.lock().unwrap() = None;
@@ -951,13 +974,15 @@ impl AgentSession {
         }
         self.set_active_turn(false);
         // The user ended the turn by dismissing the question; nothing new to tell them.
-        self.close_turn(session_id, "completed", false, false).await;
+        self.close_turn(session_id, "completed", false, false, None).await;
         true
     }
 
     /// `idle_compaction` marks a background compaction turn on the event, so
     /// clients do not flag the session as having something new to read.
-    async fn close_turn(&self, session_id: &str, status: &str, notify: bool, idle_compaction: bool) {
+    /// `goal_id`: the turn worked on that `/goal`, so its notification names
+    /// what became of the goal.
+    async fn close_turn(&self, session_id: &str, status: &str, notify: bool, idle_compaction: bool, goal_id: Option<&str>) {
         store().push_event(session_id, &events::done(Some(json!({"session_id": session_id}))), true);
         store().mark_done(session_id);
         match &self.parent_session_id {
@@ -967,6 +992,10 @@ impl AgentSession {
                 let last_error = self.last_error();
                 let replied = crate::workspace_messages::on_turn_closed(&self.pool, session_id, status, self.cancel.is_set(), last_error.as_deref()).await;
                 let label = if notify && !replied { self.notification_status(session_id, status) } else { None };
+                let label = match (label, goal_id) {
+                    (Some("Done"), Some(id)) => Some(self.goal_notification_status(session_id, id).await.unwrap_or("Done")),
+                    (l, _) => l,
+                };
                 if let Some(label) = label {
                     broadcaster::publish("desktop_notification", self.completion_notification(session_id, label).await);
                 }
@@ -1006,6 +1035,18 @@ impl AgentSession {
             "completed" => Some("Done"),
             "error" => Some("Failed"),
             _ => None,
+        }
+    }
+
+    /// The notification status for the last turn of goal `goal_id`.
+    async fn goal_notification_status(&self, session_id: &str, goal_id: &str) -> Option<&'static str> {
+        match db::get_session_goal(&self.pool, session_id, goal_id).await {
+            Ok(Some(g)) => notification::goal_status(&g.status, g.pause_reason.as_deref()),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!("goal_notification_lookup_failed session_id={} error={}", session_id, e);
+                None
+            }
         }
     }
 
@@ -1150,6 +1191,23 @@ impl AgentSession {
         // A background compaction was not asked for, so it never notifies.
         let notify = !opts.idle_compaction;
         let mut completed = false;
+        // Account a `/goal` turn and queue the goal's next one before queued
+        // messages start, so the continuation runs as the next turn.
+        let goal_turn = self.goal_turn.lock().unwrap().take();
+        let goal_id = goal_turn.as_ref().map(|t| t.goal_id.clone());
+        if self.parent_session_id.is_none() && !opts.force_compaction && !opts.idle_compaction && !sid.is_empty() {
+            use crate::goal::TurnEnd;
+            let how = if errored {
+                TurnEnd::Failed(self.last_error())
+            } else if qs.is_some() || ls.is_some() {
+                TurnEnd::Suspended
+            } else if self.cancel.is_set() {
+                TurnEnd::Stopped
+            } else {
+                TurnEnd::Completed
+            };
+            self.goal_turn_ended(&sid, goal_turn, how).await;
+        }
         if let Some(q) = qs.as_ref().filter(|_| !errored) {
             self.set_state("waiting_input");
             let mut e = Map::new();
@@ -1168,11 +1226,11 @@ impl AgentSession {
             if !activated {
                 self.set_state("idle");
                 self.emit("agent_status", Some("idle"), None);
-                self.close_turn(&sid, "completed", notify, opts.idle_compaction).await;
+                self.close_turn(&sid, "completed", notify, opts.idle_compaction, goal_id.as_deref()).await;
                 completed = true;
             }
         } else {
-            self.close_turn(&sid, "error", notify, opts.idle_compaction).await;
+            self.close_turn(&sid, "error", notify, opts.idle_compaction, goal_id.as_deref()).await;
         }
         if !activated {
             self.set_active_turn(false);
@@ -1220,6 +1278,8 @@ impl AgentSession {
             self.resolve_runtime_provider(&agent, runtime_model.as_deref(), runtime_thinking.as_deref()).map_err(provider_error_to_agent)?;
         let provider_for_hooks = runtime_provider.clone().unwrap_or_else(|| agent.provider.clone());
         let is_lead = self.parent_session_id.is_none();
+        // A lead turn in Code mode while a `/goal` is active works on it.
+        let goal = if opts.force_compaction || opts.idle_compaction { None } else { self.goal_for_turn(&sid, &interaction).await };
 
         let ws_path = session_workspace_dir(&sid, Some(&workspace));
         let denied = Arc::new(DeniedPaths::new(&ws_path, Some(sid.clone())));
@@ -1244,6 +1304,11 @@ impl AgentSession {
             }
         }
         hooks.push(Arc::new(WorkspaceInstructionsHook::new(Some(&workspace), agent_mode == "coding")));
+        if let Some(g) = &goal {
+            let counters = Arc::new(crate::goal::TurnCounters::default());
+            hooks.push(Arc::new(crate::goal::GoalTurnHook { counters: counters.clone() }));
+            *self.goal_turn.lock().unwrap() = Some(crate::goal::GoalTurn { goal_id: g.id.clone(), started: std::time::Instant::now(), counters });
+        }
         hooks.extend(self.test_hooks.lock().unwrap().iter().cloned());
         let checkpointer = Checkpointer::new(self.pool.clone(), Some(sid.clone()), Some(name.clone()));
         checkpointer.mark_loaded(&history);
@@ -1273,6 +1338,10 @@ impl AgentSession {
         }
         if opts.unattended {
             meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));
+        } else if goal.is_some() && !appv3_core::runtime_settings::goal_settings().allow_questions {
+            // Nobody watches a goal by default: questions and plan reviews refuse.
+            meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));
+            meta.insert(crate::agent::UNATTENDED_REASON_META.into(), json!(crate::agent::UNATTENDED_GOAL));
         }
         if opts.force_compaction {
             meta.insert("force_summarization".into(), json!(true));

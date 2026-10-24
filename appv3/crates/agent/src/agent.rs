@@ -31,12 +31,19 @@ pub const SUBMIT_MERGED: &str = "Merged into your other submit_plan call.";
 /// to answer `ask_user` or review `submit_plan`. Both stay listed (the tool
 /// definitions are part of the cached prompt prefix) and refuse when called.
 pub const UNATTENDED_META: &str = "unattended";
+/// Turn metadata key beside [`UNATTENDED_META`]: why nobody is there.
+/// `"goal"` is a `/goal` turn; absent is a scheduled task.
+pub const UNATTENDED_REASON_META: &str = "unattended_reason";
+pub const UNATTENDED_GOAL: &str = "goal";
 
 fn waits_on_a_person(tool: &str) -> bool {
     matches!(tool, ASK_USER | SUBMIT_PLAN)
 }
 
-fn unattended_refusal(tool: &str) -> String {
+fn unattended_refusal(tool: &str, reason: Option<&str>) -> String {
+    if reason == Some(UNATTENDED_GOAL) {
+        return crate::prompts::s("goal_unattended_refusal").replace("{tool}", tool);
+    }
     format!(
         "Error: Tool '{tool}' is unavailable: a scheduled task started this turn, so nobody is there to answer. Decide on your own and explain your choices in your final reply."
     )
@@ -340,14 +347,16 @@ impl Agent {
         }
         let mode = meta.lock().unwrap().get("interaction_mode").and_then(|v| v.as_str()).map(String::from);
         let unattended = meta.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
+        let unattended_reason = meta.lock().unwrap().get(UNATTENDED_REASON_META).and_then(Value::as_str).map(String::from);
         let exec = |call: ToolCall| {
             let mut tctx = base.clone();
             tctx.tool_call_id = call.id.clone();
             tctx.output = scope.output.clone();
             let mode = mode.clone();
+            let unattended_reason = unattended_reason.clone();
             async move {
                 match mode {
-                    _ if unattended && waits_on_a_person(&call.function.name) => Ok((unattended_refusal(&call.function.name), (None, None))),
+                    _ if unattended && waits_on_a_person(&call.function.name) => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
                     Some(m) if !tool_allowed_in_mode(&m, &call.function.name) => Ok((format!("Error: Tool '{}' is unavailable in Plan mode.", call.function.name), (None, None))),
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
@@ -674,7 +683,9 @@ impl Agent {
                 tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && waits_on_a_person(&tc.function.name)));
             let meta = state.metadata.clone();
             let mut base_ctx = base_ctx.clone();
-            if tc_list.iter().any(|tc| tc.function.name == "skill") {
+            // `skill` reads the conversation; `update_goal` hands it to the
+            // completion check.
+            if tc_list.iter().any(|tc| tc.function.name == "skill" || tc.function.name == crate::tools::goal::UPDATE_GOAL_TOOL) {
                 base_ctx.messages = Some(Arc::new(state.messages_for_llm()));
             }
             let base_ctx = &base_ctx;

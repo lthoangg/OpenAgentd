@@ -111,11 +111,35 @@ fn form_bool(form: &RawForm, k: &str, errs: &mut Vec<Value>) -> bool {
     }
 }
 
+fn form_int(form: &RawForm, k: &str, errs: &mut Vec<Value>) -> Option<i64> {
+    let v = form.opt(k)?;
+    match v.trim().parse::<i64>() {
+        Ok(n) => Some(n),
+        Err(_) => {
+            errs.push(int_parsing(&["body", k], &v));
+            None
+        }
+    }
+}
+
+/// A `/goal` whose objective could not be sent must not stay active. Call
+/// without `user_message_lock`: clearing may release the goal's notes.
+async fn abandon_goal(agent: &appv3_agent::session::AgentSession, sid: &str) {
+    if let Err(e) = agent.clear_goal(sid).await {
+        tracing::warn!("goal_abandon_failed session_id={} error={}", sid, e);
+    }
+}
+
 async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Response> {
     let form = read_form(req).await?;
     let mut errs = vec![];
     let interrupt = form_bool(&form, "interrupt", &mut errs);
     let fast_mode = form_bool(&form, "fast_mode", &mut errs);
+    // v3 addition: `/goal` — the message is the objective of a goal the
+    // session keeps taking turns toward (see `appv3_agent::goal`).
+    let goal = form_bool(&form, "goal", &mut errs);
+    let goal_max_turns = form_int(&form, "goal_max_turns", &mut errs);
+    let goal_token_budget = form_int(&form, "goal_token_budget", &mut errs);
     let workspace = form.opt("workspace");
     if workspace.is_none() {
         errs.insert(0, verr("missing", &loc(&["body", "workspace"]), "Field required", Value::Null));
@@ -156,6 +180,8 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     // ChatForm._validate_message_or_interrupt
     let invalid = if interrupt && message.is_some() {
         Some("interrupt and message are mutually exclusive.")
+    } else if interrupt && goal {
+        Some("interrupt and goal are mutually exclusive.")
     } else if interrupt && session_id.is_none() {
         Some("session_id is required when interrupt=true.")
     } else if !interrupt && message.is_none() {
@@ -169,6 +195,9 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     };
     if let Some(msg) = invalid {
         return Err(ApiError::unprocessable(format!("Value error, {msg}")));
+    }
+    if goal {
+        appv3_agent::goal::validate(message.as_deref().unwrap_or(""), goal_max_turns, goal_token_budget).map_err(goal_err)?;
     }
     let model_provided = form.has("model");
     let thinking_provided = form.has("thinking_level");
@@ -238,8 +267,24 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     if resolved.existed_id.is_some() {
         db::cleanup_reverted_tail(&st.pool, &sid).await?;
     }
+    // The goal is stored first, so the turn its objective starts is a goal turn.
+    let (goal_extra, goal_notes) = if goal {
+        let g = agent.start_goal(&sid, &message, goal_max_turns, goal_token_budget).await.map_err(goal_err)?;
+        // A goal this one replaced leaves its rules note; release it ahead
+        // of the new one's. A running turn releases it when it ends.
+        if !agent.has_active_user_turn() {
+            if let Err(e) = appv3_agent::goal::release_ended_notes(&st.pool, &sid).await {
+                tracing::warn!("goal_note_release_failed session_id={} error={}", sid, e);
+            }
+        }
+        let (extra, note) = appv3_agent::goal::message_extras(&g);
+        let text = appv3_agent::goal::note_text(&message, appv3_core::runtime_settings::goal_settings().allow_questions);
+        (Some(extra), vec![(text, note)])
+    } else {
+        (None, vec![])
+    };
     if resolved.existed_id.is_some() && agent.has_active_user_turn() && !agent.is_awaiting_question_answer() {
-        let qid = persist_queued_user_message(
+        let queued = persist_queued_user_message(
             &st.pool,
             QueueArgs {
                 agent: &agent,
@@ -254,9 +299,21 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
                 thinking_level: thinking_level.clone(),
                 thinking_level_provided: thinking_provided,
                 fast: fast_mode,
+                extra: goal_extra,
+                context_notes: goal_notes,
             },
         )
-        .await?;
+        .await;
+        let qid = match queued {
+            Ok(qid) => qid,
+            Err(e) => {
+                drop(_guard);
+                if goal {
+                    abandon_goal(&agent, &sid).await;
+                }
+                return Err(e);
+            }
+        };
         if !agent.has_active_user_turn() {
             agent.activate_queued_user_messages(&sid).await;
         } else if agent.is_stopping() {
@@ -278,9 +335,15 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         service_tier: fast_mode.then(|| "fast".to_string()),
         mentions,
         origin: "user".into(),
-        extra: None,
+        extra: goal_extra,
+        context_notes: goal_notes,
     };
-    match appv3_agent::service::dispatch_user_message(&agent, d).await {
+    let sent = appv3_agent::service::dispatch_user_message(&agent, d).await;
+    if sent.is_err() && goal {
+        drop(_guard);
+        abandon_goal(&agent, &sid).await;
+    }
+    match sent {
         Ok((sid, n, mid)) => {
             tracing::info!("agent_chat_received session_id={} attachments={}", sid, n);
             Ok(json_code(202, json!({"status": "accepted", "session_id": sid, "message_id": mid})))
@@ -300,8 +363,14 @@ pub fn session_err(e: SessionError) -> ApiError {
 async fn cancel_queued(State(st): State<AppState>, AxPath((sid, mid)): AxPath<(String, String)>) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &sid)?;
     let mid = path_uuid("message_id", &mid)?;
+    let row = db::get_message(&st.pool, &mid).await?;
     if !db::cancel_queued_user_message(&st.pool, &sid, &mid).await? {
         return Err(ApiError::not_found("Queued message not found."));
+    }
+    // A goal's objective takes its goal with it.
+    if let Some(row) = row.filter(|r| appv3_agent::goal::objective_goal_id(r).is_some()) {
+        let agent = resolve_agent_for_existing_session(&st.pool, &sid).await?;
+        agent.clear_cancelled_goal(&sid, &row).await.map_err(goal_err)?;
     }
     Ok(no_content())
 }
@@ -728,10 +797,12 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
+    let goals = db::live_goal_statuses(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
         running: running.contains(&db::codec::api_uuid(&s.id)),
         needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)) || waiting_on_lead.contains(&db::codec::api_uuid(&s.id)),
         background_work: pending.contains(&db::codec::api_uuid(&s.id)),
+        goal_status: goals.get(&s.id).cloned(),
         ..Default::default()
     };
     let data: Vec<Value> = sessions
@@ -825,7 +896,8 @@ async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>)
     let Some(root) = db::get_session(&st.pool, &sid).await? else { return Err(ApiError::not_found("Session not found.")) };
     let (lead, _, _) = db::history_page(&st.pool, &sid, None).await?;
     let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
-    let m = session_response(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, ..Default::default() });
+    let goal_status = db::live_session_goal(&st.pool, &sid).await?.map(|g| g.status);
+    let m = session_response(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, ..Default::default() });
     Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
 }
 
@@ -911,6 +983,14 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
     }
     if let Some(m) = &mode {
         row = appv3_agent::interaction_mode::set_mode(&st.pool, &sid, m).await?.0;
+        // A goal waits in Plan mode; switching to Code starts its next turn.
+        if m == "code" && db::live_session_goal(&st.pool, &sid).await?.is_some_and(|g| g.is_active()) {
+            let agent = resolve_agent_for_existing_session(&st.pool, &sid).await?;
+            let sid = sid.clone();
+            tokio::spawn(async move {
+                agent.kick_goal(&sid, false).await;
+            });
+        }
     }
     Ok(json(Value::Object(session_response(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))
 }

@@ -355,6 +355,101 @@ async fn queued_messages_promote_to_tail() {
     assert_eq!(win.last().unwrap().snapshot().as_deref(), Some("snap1"));
 }
 
+/// `n` assistant rows, as one long agent run writes them.
+async fn save_steps(pool: &appv3_db::DbPool, sid: &str, n: usize) {
+    for i in 0..n {
+        save_message(pool, sid, NewMessage::assistant(Some(format!("step {i}")))).await.unwrap();
+    }
+}
+
+/// A user row another agent sent, in the given `extra` shape.
+fn from_agent(text: &str, extra: serde_json::Value) -> NewMessage {
+    NewMessage { extra: extra.as_object().cloned(), ..NewMessage::user(text) }
+}
+
+/// Reopening a run longer than one page starts at the prompt it answers.
+#[tokio::test]
+async fn first_history_page_reaches_back_to_the_latest_prompt() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    save_steps(&pool, &s.id, 50).await;
+    let prompt = save_message(&pool, &s.id, NewMessage::user("go")).await.unwrap();
+    save_steps(&pool, &s.id, 150).await;
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows.len(), 151);
+    assert_eq!(page.rows[0].id, prompt.id);
+    assert!(page.has_more);
+    assert_eq!(page.boundary.as_ref().map(|b| &b.id), Some(&prompt.id));
+    assert!(page.latest_prompt.is_none(), "the prompt is in the page");
+}
+
+/// A short run still loads a full page, so the turns before it show too.
+#[tokio::test]
+async fn first_history_page_keeps_a_full_page_for_a_short_run() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    save_steps(&pool, &s.id, 150).await;
+    save_message(&pool, &s.id, NewMessage::user("go")).await.unwrap();
+    save_steps(&pool, &s.id, 10).await;
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows.len(), HISTORY_PAGE_SIZE as usize);
+    assert!(page.has_more);
+    assert!(page.latest_prompt.is_none());
+}
+
+/// A run over the cap loads its newest rows and hands back the prompt to pin.
+#[tokio::test]
+async fn first_history_page_caps_a_long_run_and_returns_its_prompt() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let prompt = save_message(&pool, &s.id, NewMessage::user("keep going")).await.unwrap();
+    save_steps(&pool, &s.id, FIRST_PAGE_MAX as usize + 20).await;
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows.len(), FIRST_PAGE_MAX as usize);
+    assert!(page.has_more);
+    assert_eq!(page.latest_prompt.map(|p| p.id), Some(prompt.id));
+}
+
+/// Only a prompt the user wrote counts: not an agent's report, a queued
+/// message, or a compaction summary.
+#[tokio::test]
+async fn first_history_page_skips_rows_the_user_did_not_write() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let prompt = save_message(&pool, &s.id, NewMessage::user("real")).await.unwrap();
+    save_steps(&pool, &s.id, 150).await;
+    save_message(&pool, &s.id, from_agent("report", serde_json::json!({"from_agent": "explorer"}))).await.unwrap();
+    save_message(&pool, &s.id, from_agent("legacy report", serde_json::json!({"routing": {"from_agent": "worker"}}))).await.unwrap();
+    save_message(&pool, &s.id, from_agent("old report", serde_json::json!({"from_agents": ["worker"]}))).await.unwrap();
+    save_queued_user_message(&pool, &s.id, "later", None).await.unwrap();
+    save_message(&pool, &s.id, NewMessage { is_summary: true, ..NewMessage::user("summary") }).await.unwrap();
+    save_steps(&pool, &s.id, 10).await;
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows[0].id, prompt.id);
+    assert_eq!(page.rows.len(), 1 + 150 + 5 + 10);
+}
+
+/// A staged undo hides the newest prompt, so the page reaches the one before.
+#[tokio::test]
+async fn first_history_page_reaches_past_a_staged_undo() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let first = save_message(&pool, &s.id, NewMessage::user("first")).await.unwrap();
+    save_steps(&pool, &s.id, 150).await;
+    let undone = save_message(&pool, &s.id, NewMessage::user("second")).await.unwrap();
+    save_steps(&pool, &s.id, 20).await;
+    assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), HISTORY_PAGE_SIZE as usize);
+
+    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&undone, None))), ..Default::default() }).await.unwrap().unwrap();
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows[0].id, first.id);
+    assert_eq!(page.rows.len(), 1 + 150 + 1 + 20);
+}
+
 #[tokio::test]
 async fn pending_question_round_trip() {
     let (_d, pool) = fresh().await;

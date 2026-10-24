@@ -11,6 +11,10 @@ use serde_json::{Map, Value};
 /// v2 history page size (`_HISTORY_PAGE_SIZE`).
 pub const HISTORY_PAGE_SIZE: i64 = 100;
 
+/// Most rows the lead's first history page holds when it reaches back to the
+/// latest prompt (see [`first_history_page`]).
+pub const FIRST_PAGE_MAX: i64 = 500;
+
 /// A message to persist (v2 `save_message` arguments).
 #[derive(Debug, Default, Clone)]
 pub struct NewMessage {
@@ -299,6 +303,10 @@ const QUEUED_ROWS_SQL: &str = "SELECT * FROM session_messages WHERE session_id =
 
 /// Newest-first page, returned chronological. `(rows, has_more, boundary)`.
 pub async fn history_page(pool: &DbPool, session_id: &str, before: Option<(i64, Option<String>)>) -> Result<(Vec<SessionMessage>, bool, Option<SessionMessage>)> {
+    history_page_of(pool, session_id, before, HISTORY_PAGE_SIZE).await
+}
+
+async fn history_page_of(pool: &DbPool, session_id: &str, before: Option<(i64, Option<String>)>, limit: i64) -> Result<(Vec<SessionMessage>, bool, Option<SessionMessage>)> {
     let sid = db_id(session_id);
     let mut sql = format!("SELECT * FROM session_messages WHERE session_id = ? AND {USER_VISIBLE}");
     match &before {
@@ -314,12 +322,67 @@ pub async fn history_page(pool: &DbPool, session_id: &str, before: Option<(i64, 
             q = q.bind(db_id(id));
         }
     }
-    let mut rows = q.bind(HISTORY_PAGE_SIZE + 1).fetch_all(pool).await?;
-    let has_more = rows.len() as i64 > HISTORY_PAGE_SIZE;
-    rows.truncate(HISTORY_PAGE_SIZE as usize);
+    let mut rows = q.bind(limit + 1).fetch_all(pool).await?;
+    let has_more = rows.len() as i64 > limit;
+    rows.truncate(limit as usize);
     rows.reverse();
     let boundary = if has_more { rows.first().cloned() } else { None };
     Ok((rows, has_more, boundary))
+}
+
+/// A prompt the user wrote: a user chat row that no agent or workspace sent.
+/// Matches the web's `isPromptMessage`; queued rows and summaries have their
+/// own kinds.
+const PROMPT: &str = "role = 'user' AND kind = 'chat' \
+                      AND json_extract(extra, '$.from_agent') IS NULL \
+                      AND json_extract(extra, '$.routing.from_agent') IS NULL \
+                      AND json_extract(extra, '$.from_agents[0]') IS NULL \
+                      AND json_extract(extra, '$.routing.from_agents[0]') IS NULL";
+
+/// The lead's newest history page. See [`first_history_page`].
+pub struct FirstHistoryPage {
+    /// Chronological, like [`history_page`].
+    pub rows: Vec<SessionMessage>,
+    pub has_more: bool,
+    /// Oldest row of the page when older rows exist (the next cursor).
+    pub boundary: Option<SessionMessage>,
+    /// The latest prompt, set only when it is older than `rows`: the run
+    /// since it is longer than [`FIRST_PAGE_MAX`], so the client pins it.
+    pub latest_prompt: Option<SessionMessage>,
+}
+
+/// Newest page of `session`, reaching back to the latest prompt the user
+/// wrote, so a reopened run shows what it answers: at least
+/// [`HISTORY_PAGE_SIZE`] rows, at most [`FIRST_PAGE_MAX`]. A staged undo
+/// hides its boundary prompt, so the prompt before it counts instead.
+pub async fn first_history_page(pool: &DbPool, session: &ChatSession) -> Result<FirstHistoryPage> {
+    let prompt = latest_prompt_row(pool, session).await?;
+    let limit = match &prompt {
+        Some(p) => {
+            let sql = format!("SELECT COUNT(*) FROM session_messages WHERE session_id = ? AND {USER_VISIBLE} AND (seq, id) >= (?, ?)");
+            let since: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(&*sql)).bind(&session.id).bind(p.seq).bind(&p.id).fetch_one(pool).await?;
+            since.clamp(HISTORY_PAGE_SIZE, FIRST_PAGE_MAX)
+        }
+        None => HISTORY_PAGE_SIZE,
+    };
+    let (rows, has_more, boundary) = history_page_of(pool, &session.id, None, limit).await?;
+    // Over the cap, or a row landed between the count and the page.
+    let latest_prompt = prompt.filter(|p| !rows.iter().any(|r| r.id == p.id));
+    Ok(FirstHistoryPage { rows, has_more, boundary, latest_prompt })
+}
+
+async fn latest_prompt_row(pool: &DbPool, session: &ChatSession) -> Result<Option<SessionMessage>> {
+    let boundary = revert_boundary(pool, session).await?;
+    let mut sql = format!("SELECT * FROM session_messages WHERE session_id = ? AND {PROMPT}");
+    if boundary.is_some() {
+        sql.push_str(" AND (seq, id) < (?, ?)");
+    }
+    sql.push_str(" ORDER BY seq DESC, id DESC LIMIT 1");
+    let mut q = sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)).bind(&session.id);
+    if let Some(b) = &boundary {
+        q = q.bind(b.seq).bind(&b.id);
+    }
+    Ok(q.fetch_optional(pool).await?)
 }
 
 /// Rows created after the uuid7 `since` cursor, `(seq, id)` ordered.

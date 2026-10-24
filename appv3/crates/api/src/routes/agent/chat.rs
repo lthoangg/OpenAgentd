@@ -11,7 +11,7 @@ use appv3_agent::service::RawAttachment;
 use appv3_agent::session::SessionError;
 use appv3_agent::{manager, store};
 use appv3_core::settings;
-use appv3_db::api::{session_response, MessagesView, SessionOverlay};
+use appv3_db::api::{session_response, MessageView, MessagesView, SessionOverlay};
 use appv3_db::{self as db, DbPool};
 use axum::extract::{FromRequest, Multipart, Path as AxPath, Request, State};
 use axum::http::{header, StatusCode};
@@ -1011,6 +1011,10 @@ struct HistoryBody<'a> {
     next_cursor: Option<String>,
     truncated: bool,
     pending_question: Option<Value>,
+    /// First page only, and only when the run since the latest prompt is
+    /// longer than the page: that prompt, for the client to pin above it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_prompt: Option<MessageView<'a>>,
 }
 
 fn member_part<'a>(statuses: &[(String, String)], sub: &db::ChatSession, msgs: &'a [db::SessionMessage], totals: &UsageTotals) -> MemberPart<'a> {
@@ -1072,7 +1076,7 @@ async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, 
             }
             members.push(member_part(&statuses, sub, rows, &totals));
         }
-        return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more: false, next_cursor: None, truncated, pending_question: None }));
+        return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more: false, next_cursor: None, truncated, pending_question: None, latest_prompt: None }));
     }
 
     let mut cursor: Option<(i64, Option<String>)> = None;
@@ -1090,7 +1094,14 @@ async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, 
         cursor = Some((head.trim().parse::<i64>().map_err(|_| invalid())?, before_id));
     }
     let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
-    let (lead_rows, has_more, boundary) = db::history_page(pool, &sid, cursor.clone()).await?;
+    // The newest page reaches back to the latest prompt (see `first_history_page`).
+    let (lead_rows, has_more, boundary, latest_prompt) = if first_page {
+        let page = db::first_history_page(pool, &root).await?;
+        (page.rows, page.has_more, page.boundary, page.latest_prompt)
+    } else {
+        let (rows, has_more, boundary) = db::history_page(pool, &sid, cursor.clone()).await?;
+        (rows, has_more, boundary, None)
+    };
     ensure_agent_ready(&root).await?;
     // Members ride on the newest page only. The client shows member rows from
     // that page alone, and a member's `seq` is its own — paging it with the
@@ -1110,7 +1121,8 @@ async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, 
         None => vec![],
     };
     let lead = lead_part(&root, &lead_rows, totals.as_ref());
-    Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending }))
+    let latest_prompt = latest_prompt.as_ref().map(MessageView);
+    Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending, latest_prompt }))
 }
 
 #[cfg(test)]
@@ -1169,12 +1181,17 @@ mod tests {
             next_cursor: Some("5|x".into()),
             truncated: false,
             pending_question: None,
+            latest_prompt: None,
         };
         let msg = r#"{"id":"01234567-89ab-cdef-0123-456789abcdef","session_id":"fedcba98-7654-3210-fedc-ba9876543210","role":"assistant","tool_calls":[{"id": "c"}],"seq":5,"kind":"chat","is_summary":false,"created_at":"2026-09-23T06:56:28Z","file_message":false}"#;
         let expected = format!(
             r#"{{"lead":{{"id":"l","messages":[{msg}]}},"members":[{{"name":"m","session_id":"s","messages":[],"running":true,"estimated_cost_usd":0.5,"completion_tokens":3}}],"has_more":true,"next_cursor":"5|x","truncated":false,"pending_question":null}}"#
         );
         assert_eq!(String::from_utf8(serde_json::to_vec(&body).unwrap()).unwrap(), expected);
+        // A run longer than the page carries its prompt; the key is absent otherwise.
+        let pinned = HistoryBody { latest_prompt: Some(MessageView(&rows[0])), ..body };
+        let expected = format!(r#"{},"latest_prompt":{msg}}}"#, &expected[..expected.len() - 1]);
+        assert_eq!(serde_json::to_string(&pinned).unwrap(), expected);
         let delta = HistoryBody {
             lead: WithMessages { session: Map::new(), messages: MessagesView(&[]) },
             members: vec![],
@@ -1182,6 +1199,7 @@ mod tests {
             next_cursor: None,
             truncated: true,
             pending_question: Some(json!({"id": "q"})),
+            latest_prompt: None,
         };
         assert_eq!(
             serde_json::to_string(&delta).unwrap(),

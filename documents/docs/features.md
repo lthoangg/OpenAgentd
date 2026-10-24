@@ -1152,7 +1152,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0, updated v2.22.0, v2.23.0]` — when an
+- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0, updated v2.22.0, v2.23.0, v3.30.0]` — when an
   OAuth provider (such as Codex, GitHub Copilot, or Grok) or any configured
   model hits rate-limiting or quota exhaustion with a known reset window
   (detected via headers, JSON metadata, body text phrasing, or live usage API
@@ -1163,7 +1163,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   the window resets. Stale quota-wait banners are cleared when turns resume,
   when later transcript activity supersedes the wait state, or when a reopened
   session is no longer actively waiting. The user can manually stop or
-  interrupt at any time.
+  interrupt at any time. An account spend cap (such as Anthropic's monthly
+  spend limit) is not waited out: the turn fails at once and says to raise
+  the limit or switch model `[v3.30.0]`.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
   responses (400/401/403/404/422) are classified into typed errors that carry
   the provider's own explanation instead of a bare status code. 401/403 render

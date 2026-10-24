@@ -198,6 +198,14 @@ impl<'a> RetryStream<'a> {
                 }
                 let retry_after;
                 if status == 429 {
+                    if is_spend_limit_429(status, body) {
+                        tracing::warn!("llm_provider_spend_limit model={} body={}", self.label, crate::util::head_chars(body, 300));
+                        return Err(AgentError::RateLimit(format!(
+                            "{} reached the account's spend limit. Raise the limit in the provider's console, or switch to another model.",
+                            self.label
+                        ))
+                        .into());
+                    }
                     let reset = parse_retry_after(&err);
                     if reset as f64 > MAX_DELAY {
                         if reset > MAX_QUOTA_WAIT_SECONDS {
@@ -213,6 +221,7 @@ impl<'a> RetryStream<'a> {
                         }
                         self.quota_waits += 1;
                         let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
+                        tracing::warn!("llm_provider_quota_wait model={} status={} wait={:.0}s quota_wait={}/{}", self.label, status, wait, self.quota_waits, MAX_QUOTA_WAITS);
                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
                         let msg = format!(
                             "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
@@ -777,6 +786,30 @@ mod tests {
         let statuses = log.0.lock().unwrap();
         assert_eq!(statuses.len() as i64, MAX_NETWORK_ATTEMPTS);
         assert_eq!(statuses.last().unwrap().status, "exhausted");
+    }
+
+    /// An account's spend cap does not lift on its own within the quota
+    /// wait, whatever reset time the response carries: in production a turn
+    /// parked on Anthropic's monthly cap for 79 minutes. It fails at once and
+    /// says what to do.
+    #[tokio::test(start_paused = true)]
+    async fn a_spend_limit_429_fails_at_once_with_what_to_do() {
+        let body = r#"{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account's monthly spend limit. Please try again later."}}"#;
+        let spend_limit = MockTurn::Error(ProviderError::http(429, "https://api.anthropic.com/v1/messages", body.into(), vec![("retry-after".into(), "3600".into())]));
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(vec![spend_limit, MockProvider::text("too late")]));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "claude:claude-opus", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None).retry_network_indefinitely();
+
+        let started = tokio::time::Instant::now();
+        let err = drain(&mut rs).await.unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(1), "waited {:?}", started.elapsed());
+        let ModelError::Agent(AgentError::RateLimit(message)) = err else { panic!("{err:?}") };
+        assert!(message.contains("spend limit"), "{message}");
+        assert!(message.contains("claude:claude-opus"), "{message}");
+        assert!(log.0.lock().unwrap().iter().all(|s| s.status != "waiting_quota"), "it waited for a quota reset");
     }
 
     /// Answers after `latency`, then streams each chunk after its delay.

@@ -244,6 +244,12 @@ pub fn is_non_retryable_429(status: u16, body: &str) -> bool {
     NON_RETRYABLE_429_MARKERS.iter().any(|m| b.contains(m))
 }
 
+/// A 429 for a cap only the account owner can lift, such as Anthropic's
+/// "monthly spend limit". Waiting out the reset it advertises is pointless.
+pub fn is_spend_limit_429(status: u16, body: &str) -> bool {
+    status == 429 && body.to_lowercase().contains("spend limit")
+}
+
 /// `parse_retry_after`.
 pub fn parse_retry_after(err: &ProviderError) -> i64 {
     let h = |n: &str| err.header(n).unwrap_or("").to_string();

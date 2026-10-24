@@ -32,6 +32,7 @@ export type SettingsSection =
   | 'plugins'
   // The former Automation page, split into one page per job.
   | 'workspaces'
+  | 'goals'
   | 'titles'
   | 'context'
   | 'media'

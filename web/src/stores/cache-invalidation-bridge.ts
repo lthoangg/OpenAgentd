@@ -346,6 +346,36 @@ export function patchSessionTitle(
   )
 }
 
+/**
+ * A session's live goal changed (``session_goal``): set ``goal_status`` on
+ * its cached rows so the sidebar dot follows without a list refetch.
+ * ``null`` means no live goal.
+ */
+export function patchSessionGoalStatus(
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
+  sessionId: string,
+  status: 'active' | 'paused' | null,
+): void {
+  const same = (current: SessionResponse['goal_status']) => (current ?? null) === status
+  queryClient.setQueryData<SessionResponse>(
+    queryKeys.session.sessions.detail(sessionId),
+    (old) => (old && !same(old.goal_status) ? { ...old, goal_status: status } : old),
+  )
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.session.sessions.all() },
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      let changed = false
+      const pages = old.pages.map((page) => {
+        if (!page.data.some((s) => s.id === sessionId && !same(s.goal_status))) return page
+        changed = true
+        return { ...page, data: page.data.map((s) => (s.id === sessionId ? { ...s, goal_status: status } : s)) }
+      })
+      return changed ? { ...old, pages } : old
+    },
+  )
+}
+
 function prependSessionToInfiniteData(
   old: InfiniteData<SessionPageResponse> | undefined,
   session: SessionResponse,

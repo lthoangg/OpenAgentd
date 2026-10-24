@@ -139,6 +139,22 @@ describe('postAgentChat', () => {
     expect(form.get('thinking_level')).toBe('high')
   })
 
+  it('sends a /goal objective with its flag and limits', async () => {
+    const forms: FormData[] = []
+    globalThis.fetch = mock((_url, init) => {
+      forms.push((init as RequestInit).body as FormData)
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postAgentChat('tests pass', 'sid', false, '/tmp', undefined, undefined, undefined, false, undefined, undefined, { max_turns: 20, token_budget: 500_000 })
+    await postAgentChat('tests pass', 'sid', false, '/tmp', undefined, undefined, undefined, false, undefined, undefined, {})
+    await postAgentChat('hello', 'sid', false, '/tmp')
+
+    expect([forms[0].get('goal'), forms[0].get('goal_max_turns'), forms[0].get('goal_token_budget')]).toEqual(['true', '20', '500000'])
+    expect([forms[1].get('goal'), forms[1].has('goal_max_turns')]).toEqual(['true', false])
+    expect(forms[2].has('goal')).toBe(false)
+  })
+
   it('sends fast_mode only when requested', async () => {
     let body: BodyInit | null | undefined
     globalThis.fetch = mock((_url, init) => {

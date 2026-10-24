@@ -1046,6 +1046,33 @@ describe('queued messages mid-turn injection and reconciliation', () => {
     expect(pending.some((m) => m.id === 'pm-2')).toBe(true)
   })
 
+  it('loads a queued /goal objective with its mark, and no queued goal continuation', async () => {
+    useAgentStore.setState((state) => {
+      state.sessionId = 'lead-sess'
+      state._pendingMessages = []
+      return state
+    })
+    mockSessionHistory.mockImplementation(() => Promise.resolve({
+      lead: {
+        id: 'lead-sess',
+        agent_name: 'lead',
+        running: false,
+        messages: [
+          { id: 'q-goal', role: 'user', kind: 'queued', content: 'tests pass', extra: { goal: { id: 'g1' } } },
+          { id: 'q-turn', role: 'user', kind: 'queued', content: '<goal_reminder turn="2">', extra: { goal_turn: { id: 'g1', turn: 2, max_turns: 50 } } },
+        ],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    }))
+
+    await useAgentStore.getState().loadSession('lead-sess')
+
+    const pending = useAgentStore.getState()._pendingMessages
+    expect(pending.map((m) => [m.id, m.goal ?? false])).toEqual([['q-goal', true]])
+  })
+
   it('loads correct chat history when switching between subsession and lead session', async () => {
     // 1. Load subagent session
     mockSessionHistory.mockImplementationOnce(() => Promise.resolve({

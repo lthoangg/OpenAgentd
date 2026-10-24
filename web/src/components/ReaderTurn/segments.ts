@@ -16,9 +16,12 @@
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
  * An ``ask_user`` or ``submit_plan`` card stays out only while it waits on the
- * user; once answered or closed it is one more step of the work.
+ * user; once answered or closed it is one more step of the work. A ``/goal``
+ * claim stays out when it is the goal's outcome (checking, achieved, blocked,
+ * or paused); a rejected claim the agent keeps working past folds.
  */
 import type { ContentBlock } from '@/api/types'
+import { isGoalOutcome, UPDATE_GOAL_TOOL } from '@/lib/goal'
 import { isAgentReport } from '@/utils/turns'
 
 import { patchFileStats } from '../ToolCall/diffUtils'
@@ -41,6 +44,7 @@ function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   if (isAgentReport(block)) return true
   if (block.type !== 'tool') return false
   if (USER_GATED_TOOLS.has(block.toolName ?? '')) return !awaitsUser(block)
+  if (block.toolName === UPDATE_GOAL_TOOL) return !isGoalOutcome(block)
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 
@@ -76,6 +80,8 @@ export interface WorkSummary {
   commands: number
   edits: number
   reports: number
+  /** ``/goal`` completion claims the check did not accept. */
+  checks: number
   other: number
   failed: number
   thought: boolean
@@ -94,10 +100,11 @@ const STEP_KIND: Record<string, StepKind> = {
   shell: 'commands',
   bg: 'commands',
   patch: 'edits',
+  [UPDATE_GOAL_TOOL]: 'checks',
 }
 
 export function summarizeWork(blocks: readonly ContentBlock[]): WorkSummary {
-  const summary: WorkSummary = { reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, reports: 0, other: 0, failed: 0, thought: false }
+  const summary: WorkSummary = { reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, reports: 0, checks: 0, other: 0, failed: 0, thought: false }
   for (const block of blocks) {
     if (block.type === 'thinking' && block.content.trim()) summary.thought = true
     if (isAgentReport(block)) summary.reports += 1
@@ -119,6 +126,7 @@ export function workSummaryDetail(summary: WorkSummary): string {
     count(summary.commands, 'command'),
     count(summary.edits, 'edit'),
     count(summary.reports, 'report'),
+    count(summary.checks, 'goal check'),
     summary.other ? `${summary.other} other` : '',
   ].filter(Boolean).join(', ')
 }

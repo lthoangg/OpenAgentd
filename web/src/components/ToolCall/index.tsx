@@ -39,6 +39,8 @@ import { TOOL_CHIP_CLASS } from './chipStyles'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
+import { GoalClaimCard } from '../GoalClaimCard'
+import { UPDATE_GOAL_TOOL } from '@/lib/goal'
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
@@ -388,6 +390,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // ``submit_plan`` is reviewed in the Plan tab; its card records the outcome.
   if (name === SUBMIT_PLAN) {
     return <PlanReviewCard toolCallId={toolCallId} args={args} result={result} done={done} />
+  }
+  // ``update_goal`` reads as the claim's outcome: achieved, not yet, or blocked.
+  if (name === UPDATE_GOAL_TOOL) {
+    return <GoalClaimCard args={args} result={result} done={done} animatesIn={animatesIn} />
   }
 
   return (

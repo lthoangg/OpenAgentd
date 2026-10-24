@@ -114,6 +114,9 @@ export interface InputComposerProps {
   interactionModePending?: boolean
   onInteractionModeChange?: (mode: SessionInteractionMode) => void
   interactionModeDisabled?: boolean
+  /** Shown after the Code/Plan switch in the action row (the `/goal` chip);
+   *  stays on the minimized strip. */
+  actionSlot?: React.ReactNode
   /**
    * When true, the component renders only the inner rounded pill (no
    * top border, no background row chrome). A parent wrapper is expected
@@ -222,6 +225,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   interactionModePending = false,
   onInteractionModeChange,
   interactionModeDisabled = false,
+  actionSlot,
   floating = false,
   filesBelow = false,
   suggestionsBelow,
@@ -1036,6 +1040,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           />
         </div>
       )}
+      {/* The slot (the goal chip) is status, so the minimized strip keeps it.
+          Its clicks, popover included (portals bubble through React), must
+          not expand the bar. One wrapper in both states, so it never remounts. */}
+      {actionSlot && <div className="contents" onClick={minimized ? stopClick : undefined}>{actionSlot}</div>}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
           ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always
           takes the full row (flex-basis:100%, order:-1) so the textarea sits

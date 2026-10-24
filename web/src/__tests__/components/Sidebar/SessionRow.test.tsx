@@ -36,10 +36,10 @@ const lead: SessionResponse = {
   }],
 }
 
-function row(onContext: (session: SessionResponse, at: { clientX: number; clientY: number }) => void) {
+function row(onContext: (session: SessionResponse, at: { clientX: number; clientY: number }) => void, session: SessionResponse = lead) {
   return (
     <SessionRow
-      session={lead}
+      session={session}
       isCurrent
       isEditing={false}
       currentSessionId="lead"
@@ -81,5 +81,19 @@ describe('SessionRow actions', () => {
     fireEvent.click(screen.getByLabelText('More actions for subagent explorer#1'))
     const [session] = onContext.mock.calls[0] as unknown as [SessionResponse]
     expect(session).toMatchObject({ id: 'child', parent_session_id: 'lead' })
+  })
+})
+
+describe('SessionRow goal mark', () => {
+  it('marks a session working toward a goal, and one whose goal is paused', () => {
+    const { container, rerender } = render(row(() => {}, { ...lead, goal_status: 'active' }))
+    expect(container.querySelector('[data-goal-status]')?.getAttribute('title')).toBe('Working toward a goal')
+    expect(screen.getByText(/goal active/)).toBeTruthy()
+
+    rerender(row(() => {}, { ...lead, goal_status: 'paused' }))
+    expect(container.querySelector('[data-goal-status]')?.getAttribute('title')).toBe('Goal paused')
+
+    rerender(row(() => {}, { ...lead, goal_status: null }))
+    expect(container.querySelector('[data-goal-status]')).toBeNull()
   })
 })

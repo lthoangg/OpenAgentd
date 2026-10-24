@@ -107,6 +107,10 @@ export const queryKeys = {
   },
   todos: (sessionId: string) => ['todos', sessionId] as const,
   plan: (sessionId: string) => ['plan', sessionId] as const,
+  /** A session's newest `/goal` (``session_goal`` events write it in place). */
+  goal: (sessionId: string) => ['goal', sessionId] as const,
+  /** Every session's goal: the prefix a resync refetches. */
+  goals: () => ['goal'] as const,
   /** `/btw` side questions of a session (list and count share the prefix). */
   sideQuestions: {
     all: (sessionId: string) => ['side-questions', sessionId] as const,
@@ -124,6 +128,7 @@ export const queryKeys = {
     summarization: () => ['settings', 'summarization'] as const,
     titleGeneration: () => ['settings', 'titleGeneration'] as const,
     workspaceMessages: () => ['settings', 'workspaceMessages'] as const,
+    goals: () => ['settings', 'goals'] as const,
     multimodal: () => ['settings', 'multimodal'] as const,
     providers: () => ['settings', 'providers'] as const,
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,

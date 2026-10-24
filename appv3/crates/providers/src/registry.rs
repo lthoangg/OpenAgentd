@@ -5,6 +5,7 @@
 //! `{config}/model_registry.yaml` overlay (final authority).
 
 use crate::catalog;
+use chrono::{DateTime, Datelike, Timelike, Utc, Weekday};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -449,16 +450,47 @@ pub fn get_model_limits(model_id: Option<&str>) -> ModelLimits {
 }
 
 pub fn get_model_cost(model_id: Option<&str>) -> ModelCost {
-    if let Some((p, m)) = model_id.and_then(|s| s.split_once(':')) {
-        if p.eq_ignore_ascii_case("deepseek") {
-            match m.to_lowercase().as_str() {
-                "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp" => return ModelCost { input: Some(0.44), output: Some(1.32), cache_read: Some(0.014), cache_write: None },
-                "deepseek-v4-pro" => return ModelCost { input: Some(1.32), output: Some(3.96), cache_read: Some(0.044), cache_write: None },
-                _ => {}
-            }
-        }
+    deepseek_peak_cost(model_id).unwrap_or_else(|| get_model_entry(model_id).map(|v| cost_of(&v)).unwrap_or_default())
+}
+
+/// The price in effect at `at`: [`get_model_cost`], except that DeepSeek's
+/// own models cost half outside its peak hours.
+pub fn get_model_cost_at(model_id: Option<&str>, at: DateTime<Utc>) -> ModelCost {
+    match deepseek_peak_cost(model_id) {
+        Some(peak) if deepseek_off_peak(at) => ModelCost {
+            input: peak.input.map(|p| p / 2.0),
+            output: peak.output.map(|p| p / 2.0),
+            cache_read: peak.cache_read.map(|p| p / 2.0),
+            cache_write: peak.cache_write.map(|p| p / 2.0),
+        },
+        Some(peak) => peak,
+        None => get_model_cost(model_id),
     }
-    get_model_entry(model_id).map(|v| cost_of(&v)).unwrap_or_default()
+}
+
+/// DeepSeek's peak prices (USD per 1M tokens), from
+/// <https://api-docs.deepseek.com/quick_start/pricing>. models.dev lists the
+/// off-peak price as the base, so its DeepSeek entries are not used. The
+/// retired `deepseek-v4-flash` names are served and billed as Flash.
+fn deepseek_peak_cost(model_id: Option<&str>) -> Option<ModelCost> {
+    let (p, m) = model_id?.split_once(':')?;
+    if !p.eq_ignore_ascii_case("deepseek") {
+        return None;
+    }
+    let (input, output, cache_read) = match m.to_lowercase().as_str() {
+        "deepseek-flash" | "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp" => (0.30, 1.20, 0.006),
+        "deepseek-v4-pro" => (1.32, 3.96, 0.044),
+        _ => return None,
+    };
+    Some(ModelCost { input: Some(input), output: Some(output), cache_read: Some(cache_read), cache_write: None })
+}
+
+/// DeepSeek's peak hours are 01:00–04:00 and 06:00–10:00 UTC, Monday to
+/// Friday; everything else costs half. Chinese public holidays are also
+/// off-peak, but are not tracked here, so those days are priced as peak.
+fn deepseek_off_peak(at: DateTime<Utc>) -> bool {
+    let weekend = matches!(at.weekday(), Weekday::Sat | Weekday::Sun);
+    weekend || !matches!(at.hour(), 1..=3 | 6..=9)
 }
 
 pub fn get_model_thinking_levels(model_id: Option<&str>) -> Vec<String> {
@@ -538,5 +570,50 @@ mod tests {
         assert_eq!(g["thinking"]["levels"], json!(["none", "low", "medium", "high"]));
         // codex inherits openai metadata via metadata_source_provider
         assert!(reg.contains_key("codex:gpt-z"));
+    }
+
+    fn utc(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
+        use chrono::TimeZone;
+        Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
+    }
+
+    fn cost(input: f64, output: f64, cache_read: f64) -> ModelCost {
+        ModelCost { input: Some(input), output: Some(output), cache_read: Some(cache_read), cache_write: None }
+    }
+
+    #[test]
+    fn deepseek_peak_hours_are_weekday_mornings_utc() {
+        // Monday 2026-10-26.
+        for (h, min) in [(1, 0), (2, 0), (3, 59), (6, 0), (9, 59)] {
+            assert!(!deepseek_off_peak(utc(2026, 10, 26, h, min)), "{h}:{min:02} is peak");
+        }
+        for (h, min) in [(0, 59), (4, 0), (5, 0), (10, 0), (12, 0), (23, 0)] {
+            assert!(deepseek_off_peak(utc(2026, 10, 26, h, min)), "{h}:{min:02} is off-peak");
+        }
+        // Friday morning is peak; all of Saturday is off-peak.
+        assert!(!deepseek_off_peak(utc(2026, 10, 23, 2, 0)));
+        assert!(deepseek_off_peak(utc(2026, 10, 24, 2, 0)));
+    }
+
+    #[test]
+    fn deepseek_uses_the_official_peak_prices_and_halves_them_off_peak() {
+        let peak = utc(2026, 10, 26, 2, 0);
+        let off = utc(2026, 10, 24, 2, 0);
+        for m in ["deepseek:deepseek-flash", "deepseek:deepseek-v4-flash", "DeepSeek:deepseek-v4-flash-vision-exp"] {
+            assert_eq!(get_model_cost_at(Some(m), peak), cost(0.30, 1.20, 0.006), "{m}");
+            assert_eq!(get_model_cost_at(Some(m), off), cost(0.15, 0.60, 0.003), "{m}");
+            assert_eq!(get_model_cost(Some(m)), cost(0.30, 1.20, 0.006), "{m} lists the peak price");
+        }
+        assert_eq!(get_model_cost_at(Some("deepseek:deepseek-v4-pro"), peak), cost(1.32, 3.96, 0.044));
+        assert_eq!(get_model_cost_at(Some("deepseek:deepseek-v4-pro"), off), cost(0.66, 1.98, 0.022));
+    }
+
+    #[test]
+    fn only_the_deepseek_table_gets_the_off_peak_discount() {
+        let off = utc(2026, 10, 24, 2, 0);
+        // Registry prices (a future DeepSeek model, another provider) are used as listed.
+        for m in ["deepseek:deepseek-v9", "openrouter:deepseek/deepseek-v4-flash", "openai:gpt-5"] {
+            assert_eq!(get_model_cost_at(Some(m), off), get_model_cost(Some(m)), "{m}");
+        }
     }
 }

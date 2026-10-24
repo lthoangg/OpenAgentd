@@ -2279,6 +2279,10 @@ Everything stays local. No third-party telemetry SaaS.
   priced at the cache-write rate instead of being silently dropped by a bare-id
   registry miss, and the estimate applies DeepSeek's published off-peak rates
   (50% of peak outside Mon–Fri 01:00–04:00 and 06:00–10:00 UTC) `[v2.4.2]`.
+  Since `[v3.29.0]` DeepSeek replies use DeepSeek's current peak prices,
+  including `deepseek-flash` (also used for the retired `deepseek-v4-flash`
+  names), and get the off-peak half price again, by the time each reply
+  finishes. Chinese public holidays are priced as peak.
   The telemetry dashboard also reports cache-write tokens separately from cache
   reads in the totals, provider:model, and cache-by-step views `[v2.4.2]`.
 - **Prompt budget report** `[v1.102.0]` *(deprecated — removed with the v2

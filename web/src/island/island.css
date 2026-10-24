@@ -289,6 +289,11 @@ button:focus-visible {
 }
 
 .island-row-meta {
+  /* "Server name · workspace": the server name must not crowd the title out. */
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 11px;
   color: var(--color-text-muted);
 }

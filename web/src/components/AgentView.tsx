@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, mem
 import { Seal } from '@/components/brand/Logo'
 
 import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { ChevronDown, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
@@ -90,6 +90,12 @@ function blockElement(root: HTMLElement, id: string): HTMLElement | undefined {
   // else takes the scan instead of needing CSS.escape.
   if (/^[\w-]+$/.test(id)) return root.querySelector<HTMLElement>(`[data-block-id="${id}"]`) ?? undefined
   return Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]')).find((el) => el.dataset.blockId === id)
+}
+
+/** A pinned prompt stays up until an undo takes it back with the rest of its run. */
+function pinnedPromptShows(prompt: ContentBlock, revertTime: number | null): boolean {
+  const at = prompt.timestamp?.getTime()
+  return revertTime === null || at === undefined || at < revertTime
 }
 
 function isProviderErrorBlock(block: ContentBlock): boolean {
@@ -451,20 +457,26 @@ export function AgentView({
   const storeSessionId = useAgentStore((s) => s.sessionId) ?? undefined
   // A saved session that is still loading only looks empty.
   const isLoadingHistory = useAgentStore((s) => s.isLoadingHistory)
+  const storePinnedPrompt = useAgentStore((s) => s.pinnedPrompt)
+  const leadRevertTime = useAgentStore((s) => s._leadRevertTime)
   // A switch keeps a transcript on screen until the next one lands (see the
   // hook). Everything below renders the displayed session, held or not.
   const hold = useSessionSwitchHold({
     sessionId: storeSessionId,
     blocks: storeBlocks,
     currentBlocks: storeCurrentBlocks,
+    pinnedPrompt: storePinnedPrompt,
     isLoadingHistory,
   })
   const blocks = hold?.snapshot.blocks ?? storeBlocks
   const currentBlocks = hold?.snapshot.currentBlocks ?? storeCurrentBlocks
   const sessionId = hold?.snapshot.sessionId ?? storeSessionId
+  // A run longer than the first page loads without the prompt it answers;
+  // that prompt is pinned above the loaded rows until its own page lands.
+  const shownPinnedPrompt = hold ? hold.snapshot.pinnedPrompt : storePinnedPrompt
+  const pinnedPrompt = shownPinnedPrompt && pinnedPromptShows(shownPinnedPrompt, hold ? null : leadRevertTime) ? shownPinnedPrompt : null
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
-  const showEarlierTurnsRef = useRef<() => void>(() => {})
   const onLoadOlderTopRef = useRef<() => void>(() => {})
 
   // The store puts the prompt back in the composer via ``pendingDraft``.
@@ -511,14 +523,15 @@ export function AgentView({
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
   )
-  // A reload shows only the newest page of history. When one long agent run
-  // fills it, no prompt is loaded at all, and reader mode folds the run into
-  // a short view that may not scroll, so nothing ever asks for older pages.
-  // Fetch back to the nearest prompt once per session so the run shows what
-  // it answers. The detailed transcript renders that run in full, so it
-  // scrolls and loads older pages on its own. The seek is capped well below
-  // the manual jump's budget: every page it lands renders at once, as one
-  // turn, before the reader asked for any of it.
+  // The first history page reaches back to the latest prompt, or pins it when
+  // the run is longer than the page. A server from before that sends only the
+  // newest page, which one long agent run can fill with no prompt at all, and
+  // reader mode folds the run into a short view that may not scroll, so
+  // nothing ever asks for older pages. Fetch back to the nearest prompt once
+  // per session so the run shows what it answers. The detailed transcript
+  // renders that run in full, so it scrolls and loads older pages on its own.
+  // The seek is capped well below the manual jump's budget: every page it
+  // lands renders at once, as one turn, before the reader asked for any of it.
   const hasMoreHistory = useAgentStore((s) => s.hasMore)
   const hasLoadedPrompt = useMemo(
     () => turnItems.some((item) => item.kind === 'user' && isDirectUserBlock(item.block)),
@@ -526,14 +539,20 @@ export function AgentView({
   )
   const promptSeekedForRef = useRef<string | null>(null)
   const hasTurns = turnItems.length > 0
+  const hasPinnedPrompt = pinnedPrompt !== null
   useEffect(() => {
-    if (!readerTranscript || !hasMoreHistory || hasLoadedPrompt || !hasTurns) return
+    if (!readerTranscript || !hasMoreHistory || hasLoadedPrompt || hasPinnedPrompt || !hasTurns) return
     const state = useAgentStore.getState()
     // A page already on its way lands new turns, which runs this again.
     if (state._loadingOlder || promptSeekedForRef.current === (sessionId ?? '')) return
     promptSeekedForRef.current = sessionId ?? ''
     void state.loadOlderUntilPrompt(AUTO_PROMPT_SEEK_PAGES).catch(() => false)
-  }, [hasLoadedPrompt, hasMoreHistory, hasTurns, readerTranscript, sessionId, turnItems])
+  }, [hasLoadedPrompt, hasMoreHistory, hasPinnedPrompt, hasTurns, readerTranscript, sessionId, turnItems])
+  // Pinned above the rendered turns only when none are hidden, so it always
+  // sits right above the rows it belongs to.
+  const showPinnedPrompt = pinnedPrompt !== null && hiddenTurnCount === 0
+  // A running turn is timed from its prompt; a pinned one stands in for it.
+  const pinnedStartedAt = pinnedPrompt && !hasLoadedPrompt ? pinnedPrompt.timestamp?.getTime() : undefined
   const finalizedMCPAppResources = useMemo(() => latestMCPAppResources(blocks), [blocks])
   // Rebuilt per token from the live blocks, but keyed on its contents so the
   // Set (and every renderer holding it) only changes when an app's latest
@@ -721,7 +740,6 @@ export function AgentView({
   useEffect(() => {
     onLoadOlderTopRef.current = handleLoadOlderTop
     hiddenTurnCountRef.current = hiddenTurnCount
-    showEarlierTurnsRef.current = showEarlierTurns
   })
 
   // ── Prompt navigation ──────────────────────────────────────────────────────
@@ -916,18 +934,25 @@ export function AgentView({
          )}
 
          <div className="space-y-3">
-              {hiddenTurnCount > 0 && (
-                <div className="flex justify-center py-2">
-                  <button
-                    type="button"
-                    onClick={showEarlierTurns}
-                    className="inline-flex min-h-8 items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
-                    aria-label={`Show ${Math.min(TURN_RENDER_STEP, hiddenTurnCount)} earlier turns`}
-                  >
-                    <ChevronUp size={13} aria-hidden="true" />
-                    Show earlier messages · {hiddenTurnCount} hidden
-                  </button>
-                </div>
+              {/* Turns past the render window, and older pages, come in as the
+                  reader scrolls to the top (``handleLoadOlderTop``). */}
+              {showPinnedPrompt && (
+                <>
+                  {/* The run's prompt, above its newest rows. No ``data-block-id``:
+                      a view hold anchors on loaded rows, so the gap fills
+                      below this without moving the view. */}
+                  <div data-prompt-id={pinnedPrompt.id} data-pinned-prompt="">
+                    <BlockRenderer
+                      block={pinnedPrompt}
+                      isStreaming={false}
+                      sessionId={sessionId}
+                      onMentionFileOpen={onMentionFileOpen}
+                      onOpenSession={onOpenSession}
+                    />
+                  </div>
+                  {/* Where the rows between the prompt and the page sit, unloaded. */}
+                  <div aria-hidden="true" data-history-gap="" className="border-t border-dashed border-(--color-border-strong)" />
+                </>
               )}
               {visibleTurnItems.map((item, k) => {
                  const globalTurnIndex = hiddenTurnCount + k
@@ -970,7 +995,7 @@ export function AgentView({
                   // The running turn is timed from its prompt: unlike the stream's
                   // own start mark, the prompt's time survives a reload.
                   const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
-                  const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : undefined
+                  const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : isTrailingTurn ? pinnedStartedAt : undefined
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}

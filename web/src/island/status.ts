@@ -14,6 +14,8 @@ export interface IslandSession {
   state: SessionState
   /** What the agent asked, while it waits on the user. */
   question: string | null
+  /** The server's name, when the sessions come from more than one server. */
+  server?: string | null
 }
 
 export interface IslandStatus {

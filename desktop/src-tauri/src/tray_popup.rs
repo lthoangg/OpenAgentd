@@ -11,6 +11,11 @@
 //! indirectly, through IPC commands that run in the Rust process (which owns
 //! the credential). ``get_tray_usage_summary`` hands back the cached snapshot
 //! the usage poll loop maintains, and refreshes it in the background.
+//!
+//! "Auto" is the server the app is on: the active window's, else the
+//! builtin (``servers::current_server``), never a saved server on its own.
+//! Its name, numbers and error all come from that one server, so the label
+//! can't name one server over another's numbers.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
@@ -19,8 +24,14 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::AppState;
+use crate::servers::{ServerId, BUNDLED_KEY};
 
 pub const TRAY_POPUP_WINDOW: &str = "tray-popup";
+
+/// What the popup calls the builtin sidecar.
+const BUNDLED_NAME: &str = "Local Bundled";
+const AUTO_ID: &str = "auto";
+const NO_SERVER_NAME: &str = "No Server Connected";
 
 /// Event emitted right before the popup is shown so the (long-lived, hidden)
 /// webview knows to refetch usage instead of showing a stale snapshot.
@@ -123,6 +134,39 @@ fn same_reading(
         (None, None) => true,
         _ => false,
     }
+}
+
+type Reading = (Option<crate::usage::UsageSummaryBody>, Option<String>);
+
+/// Whether the popup would show the same thing for two readings.
+fn same_view(a: &Reading, b: &Reading) -> bool {
+    same_reading(a.0.as_ref(), b.0.as_ref()) && a.1 == b.1
+}
+
+/// The picker's options. "Auto" leads when there is a choice to make, and
+/// also when Auto's server is not among the live ones: a single live server
+/// would otherwise lock the picker on Auto's offline one.
+fn picker_servers(
+    available: Vec<crate::usage::TrayServerOption>,
+    auto: Option<&ServerId>,
+    auto_name: &str,
+) -> Vec<crate::usage::TrayServerOption> {
+    let auto_offline = auto.is_some_and(|server| {
+        !available.iter().any(|option| match server {
+            ServerId::Bundled => option.id == BUNDLED_KEY,
+            ServerId::External(_) => option.id != BUNDLED_KEY && ServerId::external(&option.id) == *server,
+        })
+    });
+    let mut servers = Vec::new();
+    if available.len() > 1 || (auto_offline && !available.is_empty()) {
+        servers.push(crate::usage::TrayServerOption {
+            id: AUTO_ID.to_string(),
+            name: "Auto (Active Window)".to_string(),
+            detail: auto.map(|_| auto_name.to_string()),
+        });
+    }
+    servers.extend(available);
+    servers
 }
 
 /// Probe saved servers concurrently and record the results. Returns true
@@ -285,45 +329,19 @@ pub async fn get_tray_usage_summary(
         }
     }
 
-    // Determine current active endpoint
-    let (active_name, active_id) = {
-        let target_label = state.active_window_label.lock().unwrap().clone();
-        let external_map = state.window_backend_base_urls.lock().unwrap().clone();
-        if let Some(base) = external_map.get(&target_label).or_else(|| external_map.get(crate::window::MAIN_WINDOW)) {
-            let norm_base = crate::config::normalize_external_base_url(base).unwrap_or_else(|_| base.clone());
-            if available_urls.contains(base) || available_urls.contains(&norm_base) {
-                let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
-                (name, base.clone())
-            } else if sidecar_alive {
-                ("Local Bundled".to_string(), "bundled".to_string())
-            } else {
-                let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
-                (name, base.clone())
-            }
-        } else if let Some(ref base) = saved_config.active_base_url {
-            let norm_base = crate::config::normalize_external_base_url(base).unwrap_or_else(|_| base.clone());
-            if available_urls.contains(base) || available_urls.contains(&norm_base) {
-                let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
-                (name, base.clone())
-            } else if sidecar_alive {
-                ("Local Bundled".to_string(), "bundled".to_string())
-            } else {
-                let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
-                (name, base.clone())
-            }
-        } else if sidecar_alive {
-            ("Local Bundled".to_string(), "bundled".to_string())
-        } else {
-            ("No Server Connected".to_string(), "auto".to_string())
-        }
+    // "Auto": the server the app is on, named and read from the same place.
+    let auto = crate::servers::app_current_server(&app).await;
+    let (active_name, active_id) = match &auto {
+        Some(server) => (server.display_name(BUNDLED_NAME, &saved_config.servers), server.key().to_string()),
+        None => (NO_SERVER_NAME.to_string(), AUTO_ID.to_string()),
     };
 
     let mut available_servers = Vec::new();
 
     if sidecar_alive {
         available_servers.push(crate::usage::TrayServerOption {
-            id: "bundled".to_string(),
-            name: "Local Bundled".to_string(),
+            id: BUNDLED_KEY.to_string(),
+            name: BUNDLED_NAME.to_string(),
             detail: None,
         });
     }
@@ -340,76 +358,79 @@ pub async fn get_tray_usage_summary(
         }
     }
 
-    let mut servers = Vec::new();
-    if available_servers.len() > 1 {
-        servers.push(crate::usage::TrayServerOption {
-            id: "auto".to_string(),
-            name: "Auto (Active Window)".to_string(),
-            detail: if active_name != "No Server Connected" { Some(active_name.clone()) } else { None },
-        });
-    }
-    servers.extend(available_servers);
+    let servers = picker_servers(available_servers, auto.as_ref(), &active_name);
 
-    let mut selected = target_server.unwrap_or_else(|| "auto".to_string());
-    if selected != "auto" && !servers.iter().any(|s| s.id == selected) {
-        selected = "auto".to_string();
+    let mut selected = target_server.unwrap_or_else(|| AUTO_ID.to_string());
+    if selected != AUTO_ID && !servers.iter().any(|s| s.id == selected) {
+        selected = AUTO_ID.to_string();
     }
 
-    if selected == "auto" {
+    if selected == AUTO_ID {
+        let Some(server) = auto else {
+            return Ok(crate::usage::TrayUsageResult {
+                summary: None,
+                server_name: active_name,
+                server_id: active_id,
+                servers,
+                selected_server_id: AUTO_ID.to_string(),
+                error: Some("No server is connected.".to_string()),
+            });
+        };
         let force = force.unwrap_or(false);
-        let cached = state.usage_summary.lock().await.clone();
-        let snapshot = match cached {
+        let cached = state.usage.lock().await.reading(&server);
+        let (summary, error) = match cached {
             // Answer with the snapshot now; refresh behind it at most every
             // USAGE_OPEN_REFRESH_GAP and reload the popup if it changed.
-            Some(snapshot) if !force => {
+            (Some(_), _) if !force => {
                 if tray_cache().lock().unwrap().claim_usage_refresh(Instant::now()) {
                     let app = app.clone();
-                    let before = snapshot.clone();
+                    let before = cached.clone();
+                    let server = server.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = crate::menu::refresh_usage_now(&app, false).await;
-                        let after = app.state::<AppState>().usage_summary.lock().await.clone();
-                        if !same_reading(Some(&before), after.as_ref()) {
+                        let _ = crate::menu::refresh_server_usage(&app, &server, false).await;
+                        let after = app.state::<AppState>().usage.lock().await.reading(&server);
+                        if !same_view(&before, &after) {
                             notify_popup(&app);
                         }
                     });
                 }
-                Some(snapshot)
+                cached
             }
             // Nothing to show yet, or the Refresh button: wait for the fetch.
             _ => {
                 tray_cache().lock().unwrap().claim_usage_refresh(Instant::now());
-                let _ = crate::menu::refresh_usage_now(&app, force).await;
-                state.usage_summary.lock().await.clone()
+                let _ = crate::menu::refresh_server_usage(&app, &server, force).await;
+                state.usage.lock().await.reading(&server)
             }
         };
         return Ok(crate::usage::TrayUsageResult {
-            summary: snapshot,
+            summary,
             server_name: active_name,
             server_id: active_id,
             servers,
-            selected_server_id: "auto".to_string(),
-            error: None,
+            selected_server_id: AUTO_ID.to_string(),
+            error,
         });
     }
 
-    if selected == "bundled" {
-        let name = "Local Bundled".to_string();
+    if selected == BUNDLED_KEY {
+        let name = BUNDLED_NAME.to_string();
         if let Some(base) = bundled_base {
             match crate::usage::fetch_usage_summary(&base, desktop_token.as_deref(), force.unwrap_or(false)).await {
                 Ok(summary) => Ok(crate::usage::TrayUsageResult {
                     summary: Some(summary),
                     server_name: name,
-                    server_id: "bundled".to_string(),
+                    server_id: BUNDLED_KEY.to_string(),
                     servers,
-                    selected_server_id: "bundled".to_string(),
+                    selected_server_id: BUNDLED_KEY.to_string(),
                     error: None,
                 }),
                 Err(err) => Ok(crate::usage::TrayUsageResult {
                     summary: None,
                     server_name: name,
-                    server_id: "bundled".to_string(),
+                    server_id: BUNDLED_KEY.to_string(),
                     servers,
-                    selected_server_id: "bundled".to_string(),
+                    selected_server_id: BUNDLED_KEY.to_string(),
                     error: Some(format!("{err:#}")),
                 }),
             }
@@ -417,9 +438,9 @@ pub async fn get_tray_usage_summary(
             Ok(crate::usage::TrayUsageResult {
                 summary: None,
                 server_name: name,
-                server_id: "bundled".to_string(),
+                server_id: BUNDLED_KEY.to_string(),
                 servers,
-                selected_server_id: "bundled".to_string(),
+                selected_server_id: BUNDLED_KEY.to_string(),
                 error: Some("Local bundled backend is not running".to_string()),
             })
         }
@@ -584,6 +605,49 @@ mod cache_tests {
         assert_eq!(menu_command(TRAY_HIDE_ACTION), None);
         assert_eq!(menu_command("settings"), Some("settings"));
         assert_eq!(menu_command("quit"), Some("quit"));
+    }
+
+    fn option(id: &str, name: &str) -> crate::usage::TrayServerOption {
+        crate::usage::TrayServerOption { id: id.into(), name: name.into(), detail: None }
+    }
+
+    fn ids(servers: &[crate::usage::TrayServerOption]) -> Vec<&str> {
+        servers.iter().map(|s| s.id.as_str()).collect()
+    }
+
+    // With Auto's server down and only the builtin answering, the picker
+    // used to hold one option and lock. Auto must stay beside it.
+    #[test]
+    fn an_offline_auto_server_keeps_the_picker_open() {
+        let remote = ServerId::External("http://192.168.1.30:4082".into());
+        let servers = picker_servers(vec![option(BUNDLED_KEY, BUNDLED_NAME)], Some(&remote), "LAN server");
+        assert_eq!(ids(&servers), [AUTO_ID, BUNDLED_KEY]);
+        assert_eq!(servers[0].detail.as_deref(), Some("LAN server"));
+    }
+
+    #[test]
+    fn a_single_live_server_that_is_auto_needs_no_picker() {
+        let servers = picker_servers(vec![option(BUNDLED_KEY, BUNDLED_NAME)], Some(&ServerId::Bundled), BUNDLED_NAME);
+        assert_eq!(ids(&servers), [BUNDLED_KEY]);
+
+        let remote = ServerId::External("http://192.168.1.30:4082".into());
+        let servers = picker_servers(vec![option("http://192.168.1.30:4082/", "LAN server")], Some(&remote), "LAN server");
+        assert_eq!(ids(&servers), ["http://192.168.1.30:4082/"], "saved URLs compare normalized");
+    }
+
+    #[test]
+    fn two_live_servers_offer_auto_first() {
+        let available = vec![option(BUNDLED_KEY, BUNDLED_NAME), option("http://192.168.1.30:4082", "LAN server")];
+        assert_eq!(ids(&picker_servers(available, None, NO_SERVER_NAME)), [AUTO_ID, BUNDLED_KEY, "http://192.168.1.30:4082"]);
+    }
+
+    #[test]
+    fn the_popup_reloads_when_only_the_error_changed() {
+        let body = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5, cached: false };
+        let ok: Reading = (Some(body.clone()), None);
+        let failed: Reading = (Some(body), Some("timed out".into()));
+        assert!(same_view(&ok, &ok.clone()));
+        assert!(!same_view(&ok, &failed));
     }
 }
 

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
+#[cfg(not(target_os = "macos"))]
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{
@@ -11,10 +12,11 @@ use tauri::tray::TrayIconBuilder;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::usage::{
-    backoff_delay, critical_providers, fetch_usage_summary, format_failed_footer,
-    format_footer, format_notification_body, format_summary_rows, has_critical_usage,
-    notification_transitions, UsageRow, UsageSummaryBody,
+    backoff_delay, fetch_usage_summary, format_failed_footer, format_footer,
+    format_notification_body, format_summary_rows, has_critical_usage, UsageRow,
+    UsageSummaryBody,
 };
+use crate::servers::ServerId;
 use crate::window::{
     adjust_zoom, create_fresh_app_window, emit_frontend_command, set_zoom,
     show_main_window, ZOOM_DEFAULT, ZOOM_STEP,
@@ -692,38 +694,6 @@ pub(crate) fn external_usage_access_key(
     }
 }
 
-/// Resolve the ``(base_url, bearer_token)`` pair the tray should use to
-/// reach the OpenAgentd backend right now: the main window's external
-/// server if one is configured, otherwise the bundled sidecar (with its
-/// desktop session token). Returns ``None`` while the backend hasn't
-/// finished starting yet.
-pub(crate) async fn resolve_backend_endpoint(app: &AppHandle) -> Option<(String, Option<String>)> {
-    let state: tauri::State<'_, AppState> = app.state();
-    let target_label = state.active_window_label.lock().unwrap().clone();
-    let external_map = state.window_backend_base_urls.lock().unwrap().clone();
-    if let Some(base) = external_map
-        .get(&target_label)
-        .or_else(|| external_map.get(crate::window::MAIN_WINDOW))
-        .cloned()
-    {
-        let access_key =
-            external_usage_access_key(crate::commands::secure_get_access_key(base.clone()).await);
-        return Some((base, access_key));
-    }
-    if let Some(active_base) = crate::config::load_app_backend_config(app)
-        .ok()
-        .and_then(|c| c.active_base_url)
-    {
-        let access_key = external_usage_access_key(
-            crate::commands::secure_get_access_key(active_base.clone()).await,
-        );
-        return Some((active_base, access_key));
-    }
-    let base = state.backend_base_url.lock().await.clone()?;
-    let token = state.desktop_token.lock().await.clone();
-    Some((base, token))
-}
-
 pub(crate) fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -755,21 +725,10 @@ async fn update_tray_critical_badge(state: &tauri::State<'_, AppState>, critical
     }
 }
 
-/// Fire one native notification for providers that newly crossed the
-/// critical usage threshold, and re-arm providers that dropped back
-/// below it (quota window reset). Dedup state lives in
-/// ``AppState.usage_notified`` — the pure transition logic is
-/// ``usage::notification_transitions`` (unit-tested).
-async fn notify_critical_crossings(
-    app: &AppHandle,
-    state: &tauri::State<'_, AppState>,
-    body: &UsageSummaryBody,
-) {
-    let current = critical_providers(body);
-    let mut notified = state.usage_notified.lock().await;
-    let (to_notify, next) = notification_transitions(&current, &notified);
-    *notified = next;
-    drop(notified);
+/// Fire one native notification for the providers that newly crossed the
+/// critical usage threshold (``to_notify``, from ``UsageCache::record``,
+/// which keeps the dedup state per server).
+fn notify_critical_crossings(app: &AppHandle, body: &UsageSummaryBody, to_notify: &[String]) {
     if to_notify.is_empty() {
         return;
     }
@@ -791,7 +750,7 @@ async fn notify_critical_crossings(
     }
 }
 
-async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, String>) {
+async fn update_tray_usage(app: &AppHandle, server: &ServerId, result: Result<UsageSummaryBody, String>) {
     let state: tauri::State<'_, AppState> = app.state();
 
     let now = now_unix();
@@ -800,8 +759,8 @@ async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, Str
             let rows = format_summary_rows(&body, now);
             let footer = format_footer(&body, now);
             let critical = has_critical_usage(&body);
-            notify_critical_crossings(app, &state, &body).await;
-            *state.usage_summary.lock().await = Some(body);
+            let to_notify = state.usage.lock().await.record(server, body.clone());
+            notify_critical_crossings(app, &body, &to_notify);
             (rows, footer, critical)
         }
         Err(err) => {
@@ -809,13 +768,17 @@ async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, Str
             // the numbers, not the fetch status; only the footer reports
             // the failure. (The backend additionally substitutes per-
             // provider last-good data for transient upstream failures.)
-            let cached = state.usage_summary.lock().await.clone();
+            let cached = {
+                let mut usage = state.usage.lock().await;
+                usage.record_failure(server, err.clone());
+                usage.reading(server).0
+            };
             let rows = cached
                 .as_ref()
                 .map(|body| format_summary_rows(body, now))
                 .unwrap_or_default();
             let critical = cached.as_ref().is_some_and(has_critical_usage);
-            log::warn!("usage_summary_fetch_failed error={err}");
+            log::warn!("usage_summary_fetch_failed server={} error={err}", server.key());
             let footer = format_failed_footer(cached.as_ref(), now, &err);
             (rows, footer, critical)
         }
@@ -888,41 +851,44 @@ async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, Str
     }
 }
 
-/// Fetch usage now and redraw the tray submenu. Used by both the manual
-/// "Refresh Usage Now" action (``force_refresh=true``, bypassing the
-/// backend's short-lived cache) and the periodic background poll
+/// Fetch usage from the server the app is on (the active window's, see
+/// ``servers::current_server``) and redraw the tray submenu. Used by both
+/// the manual "Refresh Usage Now" action (``force_refresh=true``, bypassing
+/// the backend's short-lived cache) and the periodic background poll
 /// (``force_refresh=false``, happy to reuse a recent cached snapshot).
 ///
 /// Returns whether the fetch succeeded, so the background poll loop can
 /// back off after repeated failures instead of hammering an unreachable
 /// backend or a provider stuck returning errors every 5 minutes forever.
 pub async fn refresh_usage_now(app: &AppHandle, force_refresh: bool) -> bool {
+    let Some(server) = crate::servers::app_current_server(app).await else {
+        log::debug!("usage_summary_skip_poll reason=no_server");
+        return false;
+    };
+    refresh_server_usage(app, &server, force_refresh).await
+}
+
+/// Fetch usage from one server and record it under that server.
+pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refresh: bool) -> bool {
     let state: tauri::State<'_, AppState> = app.state();
     // Collapse overlapping triggers (background poll + manual refresh +
     // tray-open refresh racing after wake-from-sleep) into one in-flight
-    // fetch. compare_exchange wins exactly once; losers simply skip —
-    // the winner's redraw covers them within seconds.
-    if state
-        .usage_fetch_inflight
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
+    // fetch per server; losers simply skip — the winner's redraw covers
+    // them within seconds.
+    if !state.usage_fetch_inflight.lock().unwrap().insert(server.clone()) {
         log::debug!("usage_summary_skip_poll reason=fetch_already_inflight");
         return true; // don't count a skipped poll as a failure for backoff
     }
-    let result = async {
-        let Some((base_url, token)) = resolve_backend_endpoint(app).await else {
-            log::debug!("usage_summary_skip_poll reason=backend_not_ready");
-            return false;
-        };
-        let outcome = fetch_usage_summary(&base_url, token.as_deref(), force_refresh).await;
-        let success = outcome.is_ok();
-        update_tray_usage(app, outcome.map_err(|e| format!("{e:#}"))).await;
-        success
-    }
-    .await;
-    state.usage_fetch_inflight.store(false, Ordering::SeqCst);
-    result
+    let outcome = match crate::servers::endpoint(app, server).await {
+        Some((base_url, token)) => fetch_usage_summary(&base_url, token.as_deref(), force_refresh)
+            .await
+            .map_err(|e| format!("{e:#}")),
+        None => Err("The builtin backend is not running.".to_string()),
+    };
+    let success = outcome.is_ok();
+    update_tray_usage(app, server, outcome).await;
+    state.usage_fetch_inflight.lock().unwrap().remove(server);
+    success
 }
 
 /// Unix-seconds timestamp of the last tray-open-triggered refresh.
@@ -960,7 +926,11 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
     // (or external server) is actually reachable, and never earlier.
     // Bounded so an unconfigured/never-starting backend doesn't spin here.
     for _ in 0..(USAGE_POLL_STARTUP_WAIT_MAX.as_secs() / USAGE_POLL_STARTUP_PROBE.as_secs()) {
-        if resolve_backend_endpoint(&app).await.is_some() {
+        let reachable = match crate::servers::app_current_server(&app).await {
+            Some(server) => crate::servers::endpoint(&app, &server).await.is_some(),
+            None => false,
+        };
+        if reachable {
             break;
         }
         tokio::time::sleep(USAGE_POLL_STARTUP_PROBE).await;

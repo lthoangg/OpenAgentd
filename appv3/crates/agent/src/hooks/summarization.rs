@@ -449,7 +449,9 @@ impl SummarizationHook {
         if let Some(m) = max_tokens {
             span.set_attr("gen_ai.request.max_tokens", m);
         }
-        let res = otel::scope(Some(span.ctx()), self.call_llm_inner(ctx, messages, tools, max_tokens, model_id.clone(), provider_name.as_deref() == Some("codex"))).await;
+        let res =
+            otel::scope(Some(span.ctx()), self.call_llm_inner(ctx, messages, tools, max_tokens, model_id.clone(), crate::streaming::routes_by_session(provider_name.as_deref())))
+                .await;
         match res {
             Err(f) => {
                 if f.cancelled {
@@ -489,14 +491,14 @@ impl SummarizationHook {
         tools: Option<&[Value]>,
         max_tokens: Option<i64>,
         model_id: Option<String>,
-        is_codex: bool,
+        send_session_id: bool,
     ) -> Result<(String, Option<appv3_providers::Usage>), LlmFailure> {
         let mut kw = Kwargs::new();
         if let Some(m) = max_tokens {
             kw.insert("max_tokens".into(), json!(m));
         }
         kw.insert("tool_choice".into(), json!("none"));
-        if is_codex {
+        if send_session_id {
             if let Some(s) = &ctx.session_id {
                 kw.insert("session_id".into(), json!(s));
             }

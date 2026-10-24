@@ -41,6 +41,8 @@ desktop/src-tauri/
   src/main.rs         app entry, AppState, run-event handling, IPC registration
   src/sidecar.rs      sidecar spawn, port detection, token handshake, log files
   src/window.rs       window builders and init scripts (frontend token, backend URL)
+  src/servers.rs      which server each window is on; used by notch, tray "Auto", new windows, notifications
+  src/island.rs       macOS notch island: one event-stream task per followed server
   src/updater.rs      update check, install, restart
   src/menu.rs  tray_popup.rs  usage.rs  watchdog.rs  commands.rs  config.rs
   tauri.conf.json              production config (updater endpoint, CSP, bundles)
@@ -56,6 +58,7 @@ desktop/src-tauri/
 | Sidecar won't start or exits | `sidecar.rs`: args, env, port; then the backend log (`references/production.md`) |
 | Token missing or rejected | `sidecar.rs` handshake → `appv3/crates/api/src/middleware.rs` (`desktop_token`) |
 | Window missing or wrong size | `window.rs` builders and all three config variants |
+| Notch, tray "Auto" usage, a new window or a notification click on the wrong server | `servers.rs` (`current_server`, `followed_servers`, `window_for_server`); `desktop.log` has `island: following`, `island: event stream from … unavailable`, `island: stopped following` per server |
 | IPC command not found | `#[tauri::command]`, `invoke_handler` registration, and a `capabilities/` entry |
 | CSP blocks a resource | `app.security.csp` in every config variant |
 | Update installs but the old version reopens | `install()` swaps the bundle and returns; restart exactly once. Check `updater.rs` for a second restart and for a second click while installing |

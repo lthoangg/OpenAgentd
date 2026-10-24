@@ -24,6 +24,8 @@ mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 const originalFetch = globalThis.fetch
 let previewBodies: Record<string, unknown>[] = []
 let workspaceFiles: { path: string; mtime: number }[] = []
+// Workspace paths the preview API answers as "not a file".
+let missingPaths = new Set<string>()
 
 // The previewed page is simulated with postMessage: answer the iframe's own
 // page load locally instead of reaching for the network.
@@ -39,12 +41,16 @@ beforeEach(() => {
   localStorage.clear()
   previewBodies = []
   workspaceFiles = []
+  missingPaths = new Set()
   globalThis.fetch = mock(async (input: unknown, raw?: unknown) => {
     const url = String(input)
     const init = raw as RequestInit | undefined
     if (url.endsWith('/api/preview')) {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>
       previewBodies.push(body)
+      if (typeof body.path === 'string' && missingPaths.has(body.path)) {
+        return new Response(JSON.stringify({ detail: `'${body.path}' is not a file in the workspace.` }), { status: 422 })
+      }
       const path = body.path ? `/${String(body.path)}` : '/pricing'
       return new Response(JSON.stringify({ id: 'p1', workspace: WS, kind: body.path ? 'file' : 'url', target: body.path ? WS : 'http://localhost:5173', port: 52011, origin: ORIGIN, path, url: `${ORIGIN}${path}`, console_errors: 0 }))
     }
@@ -62,7 +68,11 @@ afterEach(() => {
   relayError = null
 })
 
-async function renderView(target: PreviewTarget = { kind: 'url', url: 'http://localhost:5173/pricing' }, onSendComments = mock((_text: unknown) => {})) {
+async function renderView(
+  target: PreviewTarget = { kind: 'url', url: 'http://localhost:5173/pricing' },
+  onSendComments = mock((_text: unknown) => {}),
+  onOpenTarget = mock((..._args: unknown[]) => {}),
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   // happy-dom loads the iframe's page itself (answered by the interceptor
   // above) and fires a real `load` some time after mount, which runs
@@ -80,7 +90,7 @@ async function renderView(target: PreviewTarget = { kind: 'url', url: 'http://lo
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <PreviewTabView workspace={WS} tabId="preview:1" target={target} navKey={0} onSendComments={onSendComments} />
+        <PreviewTabView workspace={WS} tabId="preview:1" target={target} navKey={0} onSendComments={onSendComments} onOpenTarget={onOpenTarget} />
       </QueryClientProvider>,
     )
   })
@@ -93,13 +103,21 @@ async function renderView(target: PreviewTarget = { kind: 'url', url: 'http://lo
   const frameWindow = iframe.contentWindow as Window
   const commands: Record<string, unknown>[] = []
   frameWindow.postMessage = ((data: Record<string, unknown>) => commands.push(data)) as typeof frameWindow.postMessage
-  return { iframe, frameWindow, commands, onSendComments }
+  return { iframe, frameWindow, commands, onSendComments, onOpenTarget }
 }
 
 function fromPage(frameWindow: Window, data: Record<string, unknown>, origin = ORIGIN) {
   act(() => {
     window.dispatchEvent(new MessageEvent('message', { data: { ns: PREVIEW_NS, v: 1, ...data }, origin, source: frameWindow }))
   })
+}
+
+/** Type into the address bar and press Enter. */
+function enterAddress(value: string) {
+  const address = screen.getByRole('textbox', { name: 'Preview address' })
+  fireEvent.focus(address)
+  fireEvent.change(address, { target: { value } })
+  fireEvent.submit(address.closest('form') as HTMLFormElement)
 }
 
 const element = {
@@ -367,6 +385,59 @@ describe('PreviewTabView', () => {
     const { iframe } = await renderView({ kind: 'file', path: 'designs/landing.html' })
     expect(previewBodies[0]).toEqual({ workspace: WS, path: 'designs/landing.html' })
     expect(iframe.getAttribute('src')).toBe(`${ORIGIN}/designs/landing.html`)
+  })
+
+  describe('address bar', () => {
+    it('opens a workspace file typed in a dev-server tab in its own tab', async () => {
+      const { onOpenTarget } = await renderView()
+      enterAddress('./web/.preview/index.html')
+      await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'file', path: 'web/.preview/index.html' }))
+      expect(previewBodies.at(-1)).toEqual({ workspace: WS, path: 'web/.preview/index.html' })
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('opens a pasted full path inside the workspace as a file', async () => {
+      const { onOpenTarget } = await renderView()
+      enterAddress(`${WS}/docs/mockup.html`)
+      await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'file', path: 'docs/mockup.html' }))
+    })
+
+    it('reports a missing file in place without opening a tab', async () => {
+      missingPaths.add('nope.html')
+      const { onOpenTarget } = await renderView()
+      enterAddress('nope.html')
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toContain("'nope.html' is not a file in the workspace. Start with / for a page on localhost:5173.")
+      expect(onOpenTarget).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the dev server for a full path that is not a workspace file', async () => {
+      missingPaths.add('settings')
+      const { frameWindow, commands, onOpenTarget } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      enterAddress(`${WS}/settings`)
+      await waitFor(() => expect(commands).toContainEqual(expect.objectContaining({ type: 'navigate', path: `${WS}/settings` })))
+      expect(onOpenTarget).not.toHaveBeenCalled()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('keeps rooted paths and other local servers working as before', async () => {
+      const { frameWindow, commands, onOpenTarget } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      enterAddress('/about')
+      await waitFor(() => expect(commands).toContainEqual(expect.objectContaining({ type: 'navigate', path: '/about' })))
+      enterAddress('localhost:3000')
+      await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'url', url: 'localhost:3000' }))
+      expect(previewBodies.filter((b) => 'path' in b)).toHaveLength(0)
+    })
+
+    it('navigates in place when a file tab is given another workspace file', async () => {
+      const { frameWindow, commands, onOpenTarget } = await renderView({ kind: 'file', path: 'designs/landing.html' })
+      fromPage(frameWindow, { type: 'ready', path: '/designs/landing.html', title: 'Landing', status: 'ok' })
+      enterAddress(`${WS}/designs/pricing.html`)
+      await waitFor(() => expect(commands).toContainEqual(expect.objectContaining({ type: 'navigate', path: '/designs/pricing.html' })))
+      expect(onOpenTarget).not.toHaveBeenCalled()
+    })
   })
 
   it('explains that a browser on another device cannot preview', async () => {

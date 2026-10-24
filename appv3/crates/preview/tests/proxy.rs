@@ -105,6 +105,7 @@ async fn shows_a_retry_page_while_the_server_is_down_and_takes_console_batches()
     assert_eq!(page.status(), StatusCode::BAD_GATEWAY);
     let body = page.text().await.unwrap();
     assert!(body.contains("Nothing is running") && body.contains("upstream-down") && body.contains(INSPECTOR_PATH));
+    assert!(body.contains("Or type a workspace file path, like <code>docs/index.html</code>, in the address bar."), "{body}");
 
     let posted = http().post(format!("{base}/__openagentd/console")).body(r#"{"entries":[{"level":"error","message":"boom","url":"/"}]}"#).send().await.unwrap();
     assert_eq!(posted.status(), StatusCode::NO_CONTENT);

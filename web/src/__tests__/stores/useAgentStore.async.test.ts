@@ -100,6 +100,7 @@ const INITIAL_STATE = {
   _leadRevertTime: null,
   _workspace: null,
   _loadingOlder: false,
+  pinnedPrompt: null,
   _resolvedSessionReadyId: null,
   _unloading: false,
   _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
@@ -2016,11 +2017,73 @@ describe("loadAgentStatus", () => {
     await useAgentStore.getState().loadAgentStatus("/ws-a")
     expect(mockAgentStatus).toHaveBeenLastCalledWith("/ws-a", "old-sid")
   })
+
+  // The roster names the workspace's lead agent ("code"), never a subagent.
+  // Applied to an open subagent session it repointed the view at an empty
+  // "code" stream, so the subagent's transcript and live output vanished.
+  it("keeps an open subagent session on its own agent", async () => {
+    mockSessionHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "child-sid",
+          agent_name: "worker#1",
+          parent_session_id: "lead-sid",
+          running: true,
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [{ id: "m1", role: "user", content: "[Task from Lead]: run the build", created_at: "2026-10-24T15:00:00Z" }],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    mockAgentStatus.mockImplementation(() =>
+      Promise.resolve({ lead: { name: "code", model: "gpt-4", state: "idle" }, members: [] })
+    )
+    await useAgentStore.getState().loadSession("child-sid")
+    expect(useAgentStore.getState().leadName).toBe("worker#1")
+
+    await useAgentStore.getState().loadAgentStatus("/ws", undefined, "child-sid")
+
+    const state = useAgentStore.getState()
+    expect(state.leadName).toBe("worker#1")
+    expect(state.agentStreams["worker#1"].blocks.length).toBeGreaterThan(0)
+    expect(state.agentStreams["worker#1"].status).not.toBe("offline")
+  })
 })
 
 // ── loadSession ───────────────────────────────────────────────────────────────
 
 describe("loadSession", () => {
+  it("pins the latest prompt when the first page starts after it", async () => {
+    mockSessionHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: { id: "lead-sess", agent_name: "lead", title: null, created_at: null, updated_at: null, sub_sessions: [], messages: [makeMessageResponse({ id: "a9", role: "assistant", content: "step 900" })] },
+        members: [],
+        has_more: true,
+        next_cursor: "c1",
+        latest_prompt: makeMessageResponse({ id: "p1", role: "user", content: "keep going" }),
+      })
+    )
+
+    await useAgentStore.getState().loadSession("sess-1")
+
+    const pinned = useAgentStore.getState().pinnedPrompt
+    expect(pinned).toMatchObject({ id: "p1", type: "user", content: "keep going" })
+    expect(useAgentStore.getState().agentStreams.lead.blocks.map((b) => b.content)).toEqual(["step 900"])
+  })
+
+  it("drops a pin the new page no longer needs", async () => {
+    useAgentStore.setState({ pinnedPrompt: { id: "p0", type: "user", content: "old" } })
+
+    await useAgentStore.getState().loadSession("sess-1")
+
+    expect(useAgentStore.getState().pinnedPrompt).toBeNull()
+  })
+
   it("renders history without waiting for agent status", async () => {
     let resolveStatus!: (value: unknown) => void
     mockAgentStatus.mockImplementation(() => new Promise((resolve) => { resolveStatus = resolve }))
@@ -3029,6 +3092,32 @@ describe("isLoadingHistory", () => {
 // ── loadOlderMessages ─────────────────────────────────────────────────────────
 
 describe("loadOlderMessages", () => {
+  const olderPage = (ids: string[]) => ({
+    lead: { id: "lead-sess", agent_name: "lead", title: null, created_at: null, updated_at: null, sub_sessions: [], messages: ids.map((id) => makeMessageResponse({ id, role: id.startsWith("p") ? "user" : "assistant", content: id })) },
+    members: [],
+    has_more: true,
+    next_cursor: "c-older",
+  })
+
+  it("keeps the pinned prompt until the page holding it lands", async () => {
+    useAgentStore.setState({
+      sessionId: "sess-1",
+      hasMore: true,
+      nextCursor: "c1",
+      leadName: "lead",
+      pinnedPrompt: { id: "p1", type: "user", content: "keep going" },
+      agentStreams: { lead: makeStream({ blocks: [{ id: "a9", type: "text" as const, content: "step 900" }] }) },
+    })
+    mockSessionHistory.mockImplementation(() => Promise.resolve(olderPage(["a5", "a6"])))
+    await useAgentStore.getState().loadOlderMessages()
+    expect(useAgentStore.getState().pinnedPrompt?.id).toBe("p1")
+
+    mockSessionHistory.mockImplementation(() => Promise.resolve(olderPage(["a0", "p1", "a1"])))
+    await useAgentStore.getState().loadOlderMessages()
+    expect(useAgentStore.getState().pinnedPrompt).toBeNull()
+    expect(useAgentStore.getState().agentStreams.lead.blocks.map((b) => b.id)).toContain("p1")
+  })
+
   it("does nothing when hasMore is false", async () => {
     useAgentStore.setState({ sessionId: "sess-1", hasMore: false, nextCursor: "2024-01-01T00:00:00Z" })
     await useAgentStore.getState().loadOlderMessages()

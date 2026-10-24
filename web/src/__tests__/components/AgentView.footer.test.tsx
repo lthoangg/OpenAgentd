@@ -206,21 +206,15 @@ describe("AgentView — mentioned files", () => {
 })
 
 describe("AgentView — message windowing", () => {
-  it("renders recent turns first and lets users reveal older turns", async () => {
-    const user = userEvent.setup()
+  it("renders recent turns first, with no button for the older ones", () => {
     const blocks = Array.from({ length: 85 }, (_, i) => makeUserBlock(`u${i}`, `message ${i}`))
 
     renderStream({ blocks })
 
     expect(screen.queryByText("message 0")).toBeNull()
     expect(screen.getByText("message 84")).toBeTruthy()
-    const showEarlier = screen.getByRole("button", { name: /show 5 earlier turns/i })
-    expect(showEarlier.textContent).toContain("5 hidden")
-
-    await user.click(showEarlier)
-
-    expect(screen.getByText("message 0")).toBeTruthy()
-    expect(screen.queryByRole("button", { name: /earlier turns/i })).toBeNull()
+    // Scrolling to the top reveals them (next test).
+    expect(screen.queryByRole("button", { name: /earlier/i })).toBeNull()
   })
 
   it("reveals older local turns when scrolling to the top", () => {
@@ -251,7 +245,8 @@ describe("AgentView — message windowing", () => {
     expect(screen.queryByText("answer 0")).toBeNull()
     expect(screen.getByText("question 159")).toBeTruthy()
     expect(screen.getByText("answer 159")).toBeTruthy()
-    expect(screen.getByRole("button", { name: /show 80 earlier turns/i })).toBeTruthy()
+    expect(screen.getByText("question 120")).toBeTruthy()
+    expect(screen.queryByText("question 119")).toBeNull()
   })
 })
 

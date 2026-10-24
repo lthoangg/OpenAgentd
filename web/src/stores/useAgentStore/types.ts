@@ -210,6 +210,12 @@ export interface AgentStoreState {
   _syncedThrough: string | null
   _workspace: string | null
   _loadingOlder: boolean
+  /**
+   * The latest prompt, when the run since it is longer than the first history
+   * page (the server sends ``latest_prompt``). The transcript pins it above
+   * the loaded rows until the older page holding the real one lands.
+   */
+  pinnedPrompt: ContentBlock | null
   _resolvedSessionReadyId: string | null
   _unloading: boolean
   _reconnectTimer: ReturnType<typeof setTimeout> | null

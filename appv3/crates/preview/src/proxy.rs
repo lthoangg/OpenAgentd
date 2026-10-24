@@ -246,13 +246,15 @@ fn wants_html(headers: &HeaderMap) -> bool {
 }
 
 /// Shown while nothing listens on the target; refreshes itself so the page
-/// appears once the dev server starts.
+/// appears once the dev server starts. It also says the address bar opens
+/// workspace files, for when there is no dev server to wait for.
 pub(crate) fn not_running_page(target: &UrlTarget) -> Response {
     let authority = target.authority();
     let html = format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"2\"><meta name=\"openagentd-preview\" content=\"upstream-down\"><title>Waiting for {authority}</title>\
 <style>body{{font:14px/1.5 system-ui,sans-serif;color:#555;display:grid;place-items:center;height:100vh;margin:0;background:#fafaf8}}code{{font-family:ui-monospace,monospace}}</style></head>\
-<body><div><p>Nothing is running on <code>{authority}</code> yet.</p><p>Start the dev server; this page retries every 2 seconds.</p></div></body></html>"
+<body><div><p>Nothing is running on <code>{authority}</code> yet.</p><p>Start the dev server; this page retries every 2 seconds.</p>\
+<p>Or type a workspace file path, like <code>docs/index.html</code>, in the address bar.</p></div></body></html>"
     );
     let body = inject(html.as_bytes());
     (StatusCode::BAD_GATEWAY, [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store"), (header::CONTENT_SECURITY_POLICY, FRAME_ANCESTORS)], body)

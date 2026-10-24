@@ -13,6 +13,7 @@ mod island;
 mod watchdog;
 mod network_access;
 mod preview_relay;
+mod servers;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -31,7 +32,7 @@ use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use tokio::sync::Mutex;
 
 use crate::sidecar::Sidecar;
-use crate::config::{load_app_backend_config, save_window_state};
+use crate::config::save_window_state;
 use crate::window::{
     build_app_window, backend_unavailable_init_script, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX,
     ZOOM_DEFAULT, show_main_window, target_webview_window, frontend_init_script,
@@ -86,22 +87,20 @@ pub struct AppState {
     pub usage_rows: Arc<Mutex<Vec<MenuItem<Wry>>>>,
     /// Trailing "Checked Xm ago" row in the usage submenu.
     pub usage_footer: Arc<Mutex<Option<MenuItem<Wry>>>>,
-    /// Last successfully fetched usage snapshot — kept so a failed poll
-    /// can redraw the previous data instead of blanking the menu.
-    pub usage_summary: Arc<Mutex<Option<crate::usage::UsageSummaryBody>>>,
+    /// Usage readings per server: the last good snapshot (so a failed poll
+    /// can redraw the previous data instead of blanking the menu), the
+    /// latest error, and which providers were already alerted on.
+    pub usage: Arc<Mutex<crate::usage::UsageCache>>,
     /// Rows as last rendered into the submenu. Compared against freshly
     /// formatted rows so an unchanged snapshot skips the remove/insert
     /// churn on the native menu entirely (only the footer timestamp is
     /// refreshed) — see `menu::update_tray_usage`.
     pub usage_rendered_rows: Arc<Mutex<Vec<crate::usage::UsageRow>>>,
-    /// Guard so overlapping refresh triggers (background poll + manual
-    /// refresh + tray-open refresh racing after wake-from-sleep) collapse
-    /// into a single in-flight fetch instead of doubling up requests.
-    pub usage_fetch_inflight: Arc<AtomicBool>,
-    /// Providers already notified for being at/above the critical usage
-    /// threshold. A provider is removed when it drops below the threshold
-    /// (quota reset), re-arming its one-shot notification.
-    pub usage_notified: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Servers with a usage fetch in flight, so overlapping refresh
+    /// triggers (background poll + manual refresh + tray-open refresh
+    /// racing after wake-from-sleep) collapse into one fetch per server,
+    /// and a slow server does not hold up another's.
+    pub usage_fetch_inflight: Arc<StdMutex<std::collections::HashSet<crate::servers::ServerId>>>,
     /// Tray icon handle, used to toggle a subtle "!" title badge (macOS
     /// menu bar text next to the icon) when any connected provider is at
     /// or above the critical usage threshold — see `menu::update_tray_usage`.
@@ -404,7 +403,6 @@ pub async fn shutdown_sidecar_now_with_grace(app: &AppHandle, grace: Duration) {
 
 /// The backend a launch settled on, before it is published to the window.
 enum StartedBackend {
-    External(String),
     Bundled {
         sidecar: Box<Sidecar>,
         handshake: crate::sidecar::Handshake,
@@ -437,27 +435,11 @@ async fn start_backend_and_window(
     window
 }
 
-/// Probe the saved external server, else spawn the bundled sidecar and wait
-/// until it is healthy. Touches no window, so it can run while one builds.
+/// Spawn the bundled sidecar and wait until it is healthy. Touches no
+/// window, so it can run while one builds. A launch never connects to a
+/// saved server: those are choices in Choose Server, made per window.
 async fn start_backend(app: AppHandle) -> Result<StartedBackend> {
     let state: tauri::State<'_, AppState> = app.state();
-    if let Some(active_base_url) = load_app_backend_config(&app)
-        .ok()
-        .and_then(|config| config.active_base_url)
-    {
-        match crate::config::normalize_external_base_url(&active_base_url) {
-            Ok(base) => match crate::commands::probe_saved_backend(&base).await {
-                Ok(()) => return Ok(StartedBackend::External(base)),
-                Err(e) => {
-                    log::warn!("desktop: saved external backend is not reachable at startup (at_ms={}): {e:#}", launch_ms())
-                }
-            },
-            Err(e) => {
-                log::warn!("desktop: saved external backend URL is invalid at startup: {e:#}")
-            }
-        }
-    }
-
     let guard = BackendStartGuard::try_acquire(
         state.backend_starting.clone(),
         state.backend_failed.clone(),
@@ -513,30 +495,6 @@ async fn start_backend(app: AppHandle) -> Result<StartedBackend> {
 async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
     match started {
-        StartedBackend::External(base) => {
-            state
-                .window_backend_base_urls
-                .lock()
-                .unwrap()
-                .insert(MAIN_WINDOW.to_string(), base.clone());
-            if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-                window
-                    .eval(frontend_init_script(None, &base))
-                    .context("inject external backend config")?;
-            }
-            update_tray_status(app, "Status: Running");
-            app.emit(
-                "backend-ready",
-                BackendReady {
-                    port: 0,
-                    version: "external".to_string(),
-                    base_url: base,
-                    token: None,
-                    sidecar_running: false,
-                },
-            )
-            .ok();
-        }
         StartedBackend::Bundled { sidecar, handshake, base, mut guard } => {
             let token = handshake.token.clone();
             let init_script = frontend_init_script(Some(&token), &base);
@@ -599,10 +557,9 @@ fn main() {
         usage_submenu: Arc::new(Mutex::new(None)),
         usage_rows: Arc::new(Mutex::new(Vec::new())),
         usage_footer: Arc::new(Mutex::new(None)),
-        usage_summary: Arc::new(Mutex::new(None)),
+        usage: Arc::new(Mutex::new(crate::usage::UsageCache::default())),
         usage_rendered_rows: Arc::new(Mutex::new(Vec::new())),
-        usage_fetch_inflight: Arc::new(AtomicBool::new(false)),
-        usage_notified: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        usage_fetch_inflight: Arc::new(StdMutex::new(std::collections::HashSet::new())),
         tray_icon: Arc::new(Mutex::new(None)),
     };
 
@@ -640,7 +597,11 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .manage(state)
         .manage(preview_relay::PreviewRelays::default())
-        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
+        .on_menu_event(|app, event| {
+            if !island::handle_menu_event(app, event.id().as_ref()) {
+                handle_desktop_menu(app, event.id().as_ref());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::show_desktop_notification,
             commands::secure_get_access_key,
@@ -670,6 +631,7 @@ fn main() {
             island::island_state,
             island::island_fit,
             island::island_open_session,
+            island::island_context_menu,
             island::island_dismiss,
             island::island_viewing,
             island::island_settings,
@@ -824,9 +786,9 @@ mod tests {
     use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
     use crate::window::{
-        frontend_init_script, inherited_external_base_url, new_window_init_script,
-        with_saved_external_backend,
+        frontend_init_script, new_window_init_script,
     };
+    use crate::servers::{current_server, ServerId};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
@@ -861,18 +823,17 @@ mod tests {
     }
 
     #[test]
-    fn new_window_uses_active_external_backend_before_bundled() {
+    fn new_window_uses_the_active_windows_external_server() {
         let mut external = StdHashMap::new();
         external.insert("main-2".to_string(), "http://192.168.1.10:4082".to_string());
+        let server = current_server(Some("main-2"), &external, true);
 
         let script = new_window_init_script(
+            server.as_ref(),
             Some("http://127.0.0.1:4082"),
             Some("desktop-token"),
-            &external,
-            "main-2",
             Some("/session-1"),
-        )
-        .expect("external backend init script");
+        );
 
         assert!(script.contains("http://192.168.1.10:4082"));
         assert!(!script.contains("desktop-token"));
@@ -880,113 +841,58 @@ mod tests {
     }
 
     #[test]
-    fn new_window_falls_back_to_bundled_backend() {
+    fn new_window_from_a_builtin_window_uses_the_builtin() {
         let script = new_window_init_script(
+            Some(&ServerId::Bundled),
             Some("http://127.0.0.1:4082"),
             Some("desktop-token"),
-            &StdHashMap::new(),
-            MAIN_WINDOW,
             Some("/session-1"),
-        )
-        .expect("bundled backend init script");
+        );
 
         assert!(script.contains("http://127.0.0.1:4082"));
         assert!(script.contains("desktop-token"));
         assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/session-1","#));
     }
 
+    // New Window from a builtin window while `main` was on another server
+    // used to load the builtin but register `main`'s server, and the window
+    // bootstrapped onto `main`'s server.
+    #[test]
+    fn a_new_window_from_a_builtin_window_stays_on_builtin() {
+        let mut external = StdHashMap::new();
+        external.insert(MAIN_WINDOW.to_string(), "http://192.168.1.30:4082".to_string());
+        assert_eq!(current_server(Some("main-2"), &external, true), Some(ServerId::Bundled));
+    }
+
     #[test]
     fn new_window_without_a_target_opens_a_new_session() {
         let script = new_window_init_script(
+            Some(&ServerId::Bundled),
             Some("http://127.0.0.1:4082"),
             Some("desktop-token"),
-            &StdHashMap::new(),
-            MAIN_WINDOW,
             None,
-        )
-        .expect("bundled backend init script");
+        );
 
         assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
         assert!(!script.contains("/coding"));
     }
 
-    // Closing the last window drops its backend entry; with no bundled
-    // sidecar the next window (Dock, tray, island) must reuse the saved server.
+    // A saved server only connects when you choose it: with the builtin
+    // stopped and every window closed, the next window opens unconnected
+    // (its loading screen offers Choose Server) instead of on the saved one.
     #[test]
-    fn new_window_after_the_last_closes_uses_the_saved_external_backend() {
-        let external = with_saved_external_backend(
-            StdHashMap::new(),
-            None,
-            Some("http://localhost:8000".to_string()),
-        );
-        let script = new_window_init_script(None, None, &external, MAIN_WINDOW, Some("/s"))
-            .expect("saved external backend init script");
-        assert!(script.contains("http://localhost:8000"));
-        assert_eq!(
-            inherited_external_base_url(&external, MAIN_WINDOW).as_deref(),
-            Some("http://localhost:8000")
-        );
+    fn with_builtin_stopped_and_no_window_a_new_window_opens_not_connected() {
+        let server = current_server(None, &StdHashMap::new(), false);
+        assert_eq!(server, None);
+        let script = new_window_init_script(server.as_ref(), Some("http://127.0.0.1:4082"), Some("desktop-token"), Some("/s"));
+        assert!(script.contains("__OAD_BACKEND_UNAVAILABLE__"));
+        assert!(!script.contains("desktop-token"));
     }
 
     #[test]
-    fn saved_external_backend_does_not_override_a_live_one() {
-        let mut live = StdHashMap::new();
-        live.insert(MAIN_WINDOW.to_string(), "http://192.168.1.10:4082".to_string());
-        let kept = with_saved_external_backend(live, None, Some("http://localhost:8000".into()));
-        assert_eq!(kept.get(MAIN_WINDOW).map(String::as_str), Some("http://192.168.1.10:4082"));
-
-        let bundled = with_saved_external_backend(
-            StdHashMap::new(),
-            Some("http://127.0.0.1:4082"),
-            Some("http://localhost:8000".into()),
-        );
-        assert!(bundled.is_empty());
-    }
-
-    // ── inherited_external_base_url ──────────────────────────────────────────
-    //
-    // A new window must record the external backend it inherits under its own
-    // label so `app_backend_status` reports the right backend during bootstrap.
-    // Without this, an external-backend window stays stuck on the loading
-    // screen (no bundled sidecar => `sidecar_running` never turns true).
-
-    #[test]
-    fn inherited_external_prefers_active_window_backend() {
-        let mut external = StdHashMap::new();
-        external.insert(
-            MAIN_WINDOW.to_string(),
-            "http://192.168.1.10:4082".to_string(),
-        );
-        external.insert("main-2".to_string(), "http://192.168.1.20:4082".to_string());
-
-        assert_eq!(
-            inherited_external_base_url(&external, "main-2").as_deref(),
-            Some("http://192.168.1.20:4082")
-        );
-    }
-
-    #[test]
-    fn inherited_external_falls_back_to_main_window_backend() {
-        let mut external = StdHashMap::new();
-        external.insert(
-            MAIN_WINDOW.to_string(),
-            "http://192.168.1.10:4082".to_string(),
-        );
-
-        // Active window has no external backend recorded, but the main window
-        // does — the new window should still inherit it.
-        assert_eq!(
-            inherited_external_base_url(&external, "main-3").as_deref(),
-            Some("http://192.168.1.10:4082")
-        );
-    }
-
-    #[test]
-    fn inherited_external_is_none_for_bundled_backend() {
-        assert_eq!(
-            inherited_external_base_url(&StdHashMap::new(), MAIN_WINDOW),
-            None
-        );
+    fn a_builtin_that_never_started_opens_the_window_not_connected() {
+        let script = new_window_init_script(Some(&ServerId::Bundled), None, None, None);
+        assert!(script.contains("__OAD_BACKEND_UNAVAILABLE__"));
     }
 
     // ── dialog_result_is_accept ──────────────────────────────────────────────

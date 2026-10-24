@@ -13,9 +13,11 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use std::time::Duration;
+
+use crate::servers::ServerId;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageWindow {
@@ -843,9 +845,95 @@ pub fn format_notification_body(labels: &[String]) -> String {
     )
 }
 
+/// The tray's usage readings, kept per server: what one server reported is
+/// never shown, or alerted on, as another's.
+#[derive(Debug, Default)]
+pub struct UsageCache {
+    /// Last good snapshot from each server, kept so a failed poll can still
+    /// show the previous numbers.
+    snapshots: HashMap<ServerId, UsageSummaryBody>,
+    /// Why the latest fetch from a server failed; a good one clears it.
+    errors: HashMap<ServerId, String>,
+    /// Providers already notified as critical, per server.
+    notified: HashMap<ServerId, HashSet<String>>,
+}
+
+impl UsageCache {
+    /// Store a good reading from `server`. Returns the providers that newly
+    /// crossed the critical threshold there (see [`notification_transitions`]).
+    pub fn record(&mut self, server: &ServerId, body: UsageSummaryBody) -> Vec<String> {
+        let previous = self.notified.get(server).cloned().unwrap_or_default();
+        let (to_notify, next) = notification_transitions(&critical_providers(&body), &previous);
+        self.notified.insert(server.clone(), next);
+        self.errors.remove(server);
+        self.snapshots.insert(server.clone(), body);
+        to_notify
+    }
+
+    /// The latest fetch from `server` failed.
+    pub fn record_failure(&mut self, server: &ServerId, error: String) {
+        self.errors.insert(server.clone(), error);
+    }
+
+    /// The last good reading from `server`, and why the latest fetch failed
+    /// if it did.
+    pub fn reading(&self, server: &ServerId) -> (Option<UsageSummaryBody>, Option<String>) {
+        (self.snapshots.get(server).cloned(), self.errors.get(server).cloned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn body(items: Vec<UsageSummaryItem>, checked_at: i64) -> UsageSummaryBody {
+        UsageSummaryBody { items, checked_at, cached: false }
+    }
+
+    #[test]
+    fn a_snapshot_from_another_server_is_never_read_as_this_ones() {
+        let remote = ServerId::External("http://192.168.1.30:4082".into());
+        let mut cache = UsageCache::default();
+        cache.record(&remote, body(vec![item_ok("codex", "Codex", 40.0, None)], 100));
+
+        assert_eq!(cache.reading(&ServerId::Bundled), (None, None));
+        assert_eq!(cache.reading(&remote).0.map(|b| b.checked_at), Some(100));
+    }
+
+    #[test]
+    fn a_failed_fetch_keeps_the_last_numbers_and_says_why() {
+        let remote = ServerId::External("http://192.168.1.30:4082".into());
+        let mut cache = UsageCache::default();
+        cache.record_failure(&remote, "operation timed out".into());
+        assert_eq!(cache.reading(&remote), (None, Some("operation timed out".into())));
+
+        cache.record(&remote, body(vec![], 100));
+        cache.record_failure(&remote, "operation timed out".into());
+        let (snapshot, error) = cache.reading(&remote);
+        assert_eq!(snapshot.map(|b| b.checked_at), Some(100));
+        assert_eq!(error.as_deref(), Some("operation timed out"));
+
+        cache.record(&remote, body(vec![], 200));
+        assert_eq!(cache.reading(&remote).1, None, "a good fetch clears the error");
+    }
+
+    // Switching windows between a server at 95% and one at 20% used to
+    // re-arm the alert on every switch, so it fired again each time.
+    #[test]
+    fn usage_alerts_are_deduplicated_per_server() {
+        let hot = ServerId::External("http://192.168.1.30:4082".into());
+        let mut cache = UsageCache::default();
+        let critical = || body(vec![item_ok("claude", "Claude", 95.0, None)], 1);
+        let calm = || body(vec![item_ok("claude", "Claude", 20.0, None)], 1);
+
+        assert_eq!(cache.record(&hot, critical()), ["claude"]);
+        assert!(cache.record(&ServerId::Bundled, calm()).is_empty());
+        assert!(cache.record(&hot, critical()).is_empty(), "already told about this server's Claude");
+        assert!(cache.record(&ServerId::Bundled, calm()).is_empty());
+
+        assert!(cache.record(&hot, calm()).is_empty());
+        assert_eq!(cache.record(&hot, critical()), ["claude"], "re-armed after its own quota reset");
+    }
 
     #[test]
     fn native_client_uses_platform_certificate_roots() {

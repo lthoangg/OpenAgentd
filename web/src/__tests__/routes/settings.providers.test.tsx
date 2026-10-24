@@ -663,4 +663,72 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.getByText('$42.50')).toBeTruthy()
     expect(screen.getByText('Pay-as-you-go')).toBeTruthy()
   })
+
+  describe('Hidden status filter', () => {
+    const provider = (
+      id: string,
+      overrides: Partial<ProvidersListBody['providers'][number]> = {},
+    ): ProvidersListBody['providers'][number] => ({
+      id, label: id, description: `${id} provider`, kind: 'api_key', credentials: [],
+      saved_credentials: {}, env_var: '', env_vars: [], oauth_command: '', docs_url: '',
+      is_configured: true, is_saved: true, is_reachable: true, cached_models: [],
+      visible_models: [], is_disconnected: false, supports_fast_mode: false, public_access: false,
+      ...overrides,
+    })
+
+    function useMixedProviders() {
+      server.use(
+        http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+          has_any_configured: true,
+          providers: [
+            provider('Alpha'),
+            provider('Bravo', { is_disconnected: true }),
+            provider('Charlie', { is_disconnected: true }),
+            provider('Delta', { is_configured: false, is_saved: false, is_reachable: null }),
+          ],
+        })),
+      )
+    }
+
+    const chip = (label: string) =>
+      screen.getByRole('button', { name: new RegExp(`^${label}\\s*\\d+$`) })
+
+    it('counts each provider under exactly one status', async () => {
+      useMixedProviders()
+      renderPage()
+      expect(await screen.findByText('Alpha')).toBeTruthy()
+
+      expect(chip('Connected').textContent).toContain('1')
+      expect(chip('Hidden').textContent).toContain('2')
+      expect(chip('Not connected').textContent).toContain('1')
+      expect(screen.getByText('1 connected')).toBeTruthy()
+    })
+
+    it('shows only hidden providers when Hidden is active, and toggles back', async () => {
+      useMixedProviders()
+      renderPage()
+      expect(await screen.findByText('Alpha')).toBeTruthy()
+
+      fireEvent.click(chip('Hidden'))
+      expect(screen.queryByText('Alpha')).toBeNull()
+      expect(screen.queryByText('Delta')).toBeNull()
+      expect(screen.getByText('Bravo')).toBeTruthy()
+      expect(screen.getByText('Charlie')).toBeTruthy()
+
+      fireEvent.click(chip('Hidden'))
+      expect(screen.getByText('Alpha')).toBeTruthy()
+      expect(screen.getByText('Delta')).toBeTruthy()
+    })
+
+    it('composes Hidden with the search box', async () => {
+      useMixedProviders()
+      renderPage()
+      expect(await screen.findByText('Alpha')).toBeTruthy()
+
+      fireEvent.click(chip('Hidden'))
+      fireEvent.change(screen.getByPlaceholderText('Filter providers…'), { target: { value: 'brav' } })
+      expect(screen.getByText('Bravo')).toBeTruthy()
+      expect(screen.queryByText('Charlie')).toBeNull()
+    })
+  })
 })

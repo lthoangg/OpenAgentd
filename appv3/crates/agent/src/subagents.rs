@@ -231,6 +231,16 @@ fn publish_both(lead: &str, event: &str, payload: Value) {
     store().push_event(lead, &Envelope::from_parts(event, payload), true);
 }
 
+/// A member whose turn was refused never runs, so nothing else will report
+/// it: record the failure, or it stays listed as working for good.
+fn mark_turn_refused(lead: &str, handle: &str, child: &str, error: &str) {
+    with_instance(lead, handle, |i| {
+        i.status = "error".into();
+        i.last_error = Some(error.to_string());
+    });
+    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "error"}));
+}
+
 /// `spawn_subagent(..., wait=False)`.
 #[allow(clippy::too_many_arguments)] // mirrors v2's spawn_subagent signature
 pub async fn spawn_subagent(
@@ -338,7 +348,7 @@ pub async fn spawn_subagent(
         "subagent_spawned",
         json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "profile": profile, "workspace": workspace, "title": title, "status": "working", "running": true}),
     );
-    child
+    if let Err(e) = child
         .handle_user_message(UserMessage {
             content: format!("[Task from Lead]: {task}"),
             session_id: child_sid.clone(),
@@ -349,7 +359,10 @@ pub async fn spawn_subagent(
             ..Default::default()
         })
         .await
-        .map_err(|e| SubagentError::General(e.to_string()))?;
+    {
+        mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
+        return Err(SubagentError::General(e.to_string()));
+    }
     Ok(json!({"status": "spawned", "member_id": handle, "profile": profile, "session_id": child_sid, "message": format!("Subagent '{handle}' spawned in background.")}))
 }
 
@@ -374,11 +387,11 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
             db::insert_raw_tool_message(pool, &child_sid, &format!("Lead answered: {message}"), &t, "ask_lead").await.map_err(|e| SubagentError::General(e.to_string()))?;
         }
         inst_session.resume_after_question_answer().await;
-    } else {
-        inst_session
-            .handle_user_message(UserMessage { content: format!("[Lead]: {message}"), session_id: child_sid, origin: "agent".into(), ..Default::default() })
-            .await
-            .map_err(|e| SubagentError::General(e.to_string()))?;
+    } else if let Err(e) =
+        inst_session.handle_user_message(UserMessage { content: format!("[Lead]: {message}"), session_id: child_sid.clone(), origin: "agent".into(), ..Default::default() }).await
+    {
+        mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
+        return Err(SubagentError::General(e.to_string()));
     }
     Ok(json!({"status": "sent", "member_id": handle, "message": format!("Message delivered to '{handle}' in background.")}))
 }
@@ -495,14 +508,12 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
             let handle = row.agent_name.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| db::codec::api_uuid(&row.id));
             seen.insert(handle.clone());
             let (status, last_error, pending) = match live.get(&handle) {
-                Some(i) => {
-                    let mut status = i.status.clone();
-                    if status == "working" && i.session.active_task_done() {
-                        status = "completed".into();
-                        with_instance(lead, &handle, |x| x.status = "completed".into());
-                    }
-                    (status, i.last_error.clone(), i.pending_lead_question.is_some())
-                }
+                // The status is the member's lifecycle as its turns report
+                // it. No turn task is not "done": a member is listed working
+                // before its first turn spawns (the web refetches on
+                // `subagent_spawned`), and inferring completion there kept the
+                // lead off the active list while its members still worked.
+                Some(i) => (i.status.clone(), i.last_error.clone(), i.pending_lead_question.is_some()),
                 None => ("completed".into(), None, false),
             };
             let profile_name = parse_instance_handle(&handle).map(|p| p.0).unwrap_or_else(|| handle.clone());
@@ -651,6 +662,93 @@ mod tests {
         assert!(leads_with_working_subagents().contains(lead));
         assert!(has_pending_work(lead));
         assert!(sessions_with_pending_work().contains(lead));
+    }
+
+    /// The web refetches a lead's members as soon as `subagent_spawned`
+    /// arrives, which is before the member's first turn has started (its
+    /// workspace snapshot alone can take seconds). Listing it then once
+    /// settled it as completed for good: the lead left the active list, and
+    /// the notch called it finished while every member still worked.
+    #[tokio::test]
+    async fn listing_a_subagent_before_its_turn_starts_keeps_it_working() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead_row = db::create_session(&pool, db::NewSession { workspace: "/tmp".into(), ..Default::default() }).await.unwrap();
+        let lead = db::codec::api_uuid(&lead_row.id);
+        let child_row = db::create_session(
+            &pool,
+            db::NewSession { parent_session_id: Some(lead.clone()), agent_name: Some("worker#1".into()), workspace: "/tmp".into(), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let child_sid = db::codec::api_uuid(&child_row.id);
+        // Registered and marked working, its turn not spawned yet.
+        let agent = Agent::new(provider.clone(), "worker#1", "", vec![], None);
+        let session = AgentSession::new(agent, Some(child_sid.clone()), None, pool.clone(), factory, Some(lead.clone()));
+        let inst = SubagentInstance {
+            handle: "worker#1".into(),
+            profile_name: "worker".into(),
+            lead_session_id: lead.clone(),
+            session_id: child_sid,
+            session: session.clone(),
+            status: "working".into(),
+            last_result: None,
+            pending_lead_question: None,
+            last_error: None,
+            question_delivered: false,
+            result_delivered: false,
+            pending_tool_call_id: None,
+        };
+        reg().lock().unwrap().live.entry(lead.clone()).or_default().insert("worker#1".into(), inst);
+
+        let listed = list_subagents(&lead, &pool).await;
+        assert_eq!(listed["subagents"][0]["status"], json!("working"), "{listed}");
+
+        // Its turn starts: the lead still has work coming back to it.
+        session.set_state("working");
+        assert!(has_working_subagents(&lead), "listing settled the starting member as done");
+    }
+
+    /// A member whose turn never starts never reports, so the failure is
+    /// recorded where the turn was refused; listed as working, it would stay
+    /// so for good.
+    #[tokio::test]
+    async fn a_follow_up_that_cannot_start_a_turn_marks_the_member_failed() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead = "lead-follow-up-refused";
+        let child = db::create_session(&pool, db::NewSession { workspace: "/tmp".into(), ..Default::default() }).await.unwrap();
+        let child_sid = db::codec::api_uuid(&child.id);
+        // An open question refuses machine-sent messages.
+        db::create_pending_question(&pool, &child_sid, "call_q", &[json!({"question": "Which?"})]).await.unwrap();
+        let agent = Agent::new(provider.clone(), "worker#1", "", vec![], None);
+        let session = AgentSession::new(agent, Some(child_sid.clone()), None, pool.clone(), factory, Some(lead.into()));
+        let inst = SubagentInstance {
+            handle: "worker#1".into(),
+            profile_name: "worker".into(),
+            lead_session_id: lead.into(),
+            session_id: child_sid,
+            session,
+            status: "completed".into(),
+            last_result: None,
+            pending_lead_question: None,
+            last_error: None,
+            question_delivered: false,
+            result_delivered: false,
+            pending_tool_call_id: None,
+        };
+        reg().lock().unwrap().live.entry(lead.into()).or_default().insert("worker#1".into(), inst);
+
+        assert!(send_subagent_message(lead, "worker#1", "one more thing", &pool).await.is_err());
+        let (status, error) = with_instance(lead, "worker#1", |i| (i.status.clone(), i.last_error.clone())).unwrap();
+        assert_eq!(status, "error");
+        assert!(error.is_some_and(|e| !e.is_empty()));
     }
 
     #[tokio::test]

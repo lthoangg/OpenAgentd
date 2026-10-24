@@ -468,6 +468,7 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::NO_CONTENT);
 
     history_paging_flow(&c, &pool, &ws).await;
+    history_first_page_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     side_question_flow(&c, &pool, &sid).await;
@@ -779,6 +780,61 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     }
 
     for id in [&member.id, &lead.id] {
+        let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(id)), None).await;
+        assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+    }
+}
+
+/// The newest page reaches back to the latest prompt the user wrote, so a
+/// reopened run shows what it answers. A run longer than the cap comes back
+/// as its newest rows plus the prompt, for the client to pin; members keep
+/// their own newest page.
+async fn history_first_page_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let workspace = ws.display().to_string();
+    let new_session = |parent: Option<String>| {
+        let workspace = workspace.clone();
+        async move {
+            let agent_name = parent.as_ref().map(|_| "explorer".to_string());
+            appv3_db::create_session(pool, appv3_db::NewSession { workspace, parent_session_id: parent, agent_name, ..Default::default() }).await.unwrap()
+        }
+    };
+    let steps = |sid: String, n: usize| async move {
+        for i in 0..n {
+            appv3_db::save_message(pool, &sid, appv3_db::NewMessage::assistant(Some(format!("step {i}")))).await.unwrap();
+        }
+    };
+
+    let run = new_session(None).await;
+    let member = new_session(Some(run.id.clone())).await;
+    steps(run.id.clone(), 30).await;
+    let prompt = appv3_db::save_message(pool, &run.id, appv3_db::NewMessage::user("fix it")).await.unwrap();
+    steps(run.id.clone(), 150).await;
+    steps(member.id.clone(), 150).await;
+    let rid = appv3_db::codec::api_uuid(&run.id);
+    let (st, page) = c.json("GET", &format!("/api/agent/{rid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK, "{page}");
+    assert_eq!(page["lead"]["messages"].as_array().map(Vec::len), Some(151));
+    assert_eq!(page["lead"]["messages"][0]["id"], json!(appv3_db::codec::api_uuid(&prompt.id)));
+    assert_eq!(page["has_more"], json!(true));
+    assert!(page.get("latest_prompt").is_none(), "the prompt is in the page: {page}");
+    assert_eq!(page["members"][0]["messages"].as_array().map(Vec::len), Some(100), "members keep their newest page");
+
+    let long = new_session(None).await;
+    let prompt = appv3_db::save_message(pool, &long.id, appv3_db::NewMessage::user("keep going")).await.unwrap();
+    steps(long.id.clone(), appv3_db::FIRST_PAGE_MAX as usize + 5).await;
+    let lid = appv3_db::codec::api_uuid(&long.id);
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK, "{page}");
+    assert_eq!(page["lead"]["messages"].as_array().map(Vec::len), Some(appv3_db::FIRST_PAGE_MAX as usize));
+    assert_eq!(page["latest_prompt"]["id"], json!(appv3_db::codec::api_uuid(&prompt.id)));
+    assert_eq!(page["latest_prompt"]["content"], json!("keep going"));
+    let cursor = page["next_cursor"].as_str().expect("older page cursor");
+    let (st, older) = c.json("GET", &format!("/api/agent/{lid}/history?before={}", urlencode(cursor)), None).await;
+    assert_eq!(st, StatusCode::OK, "{older}");
+    assert_eq!(older["lead"]["messages"].as_array().map(Vec::len), Some(6));
+    assert!(older.get("latest_prompt").is_none(), "older pages never pin: {older}");
+
+    for id in [&member.id, &run.id, &long.id] {
         let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(id)), None).await;
         assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
     }

@@ -49,6 +49,8 @@ function messagesBeforeRevert(session: { revert?: { message_id?: string } | null
 function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, revertTime: number | null) {
   draft.hasMore = history.has_more
   draft.nextCursor = history.next_cursor
+  const pinnedId = draft.pinnedPrompt?.id
+  if (pinnedId && history.lead.messages.some((msg) => msg.id === pinnedId)) draft.pinnedPrompt = null
   const prepend = (stream: AgentStream, messages: MessageResponse[]) => {
     // Claim results orphaned by the page boundary: the newer page may hold a
     // tool result whose call row is in this older page.
@@ -415,6 +417,7 @@ export function resetSessionState(
   state._runningPatchedFor = null
   state.hasMore = false
   state.nextCursor = null
+  state.pinnedPrompt = null
   // A saved session's history is not here yet; a draft has none to wait for.
   state.isLoadingHistory = options.sessionId !== null
   state._leadRevertTime = null
@@ -468,6 +471,7 @@ export type SessionSlice = Pick<
   | '_runningPatchedFor'
   | 'hasMore'
   | 'nextCursor'
+  | 'pinnedPrompt'
   | 'isLoadingHistory'
   | '_leadRevertTime'
   | '_syncedThrough'
@@ -805,6 +809,7 @@ async function loadSessionImpl(
 
       draft.hasMore = history.has_more
       draft.nextCursor = history.next_cursor
+      draft.pinnedPrompt = history.latest_prompt ? parseAgentBlocks([history.latest_prompt])[0] ?? null : null
       draft.isLoadingHistory = false
       draft._leadRevertTime = revertBoundaryTime(history.lead)
       // Everything in this response is server-confirmed, so nothing is
@@ -853,6 +858,7 @@ export const createSessionSlice: StateCreator<
   _runningPatchedFor: null,
   hasMore: false,
   nextCursor: null,
+  pinnedPrompt: null,
   isLoadingHistory: false,
   _leadRevertTime: null,
   _syncedThrough: null,
@@ -996,6 +1002,11 @@ export const createSessionSlice: StateCreator<
         const allAgents = [status.lead, ...status.members]
         const liveNames = allAgents.map((a) => a.name)
         set((draft) => {
+          // The roster describes the workspace's lead agent. A subagent
+          // session runs its own agent, which its history names; applying the
+          // roster there pointed the view at an empty lead stream, and the
+          // subagent's transcript and live output vanished.
+          if (draft.parentSessionId && draft.sessionId === currentSessionId) return
           draft.leadName = status.lead.name
           draft.liveAgentNames = liveNames
           const historicalNames = draft.agentNames.filter((name) => !liveNames.includes(name))

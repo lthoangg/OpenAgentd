@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.28.0 · October 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.28.0)
+**Latest release:** v3.29.0 · October 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.29.0)
 
 ---
 
@@ -99,8 +99,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     and scroll without stalls.
   - The desktop app's bundled backend is ready ~220 ms after launch (was
     ~880 ms). A saved server that is offline costs one 2 s check instead of
-    up to 18 s, and in dark mode a new window opens dark instead of
-    flashing light.
+    up to 18 s (since `[v3.29.0]` launch never checks saved servers at all),
+    and in dark mode a new window opens dark instead of flashing light.
   - An idle server uses almost no CPU (under 10 ms a minute, was 60 ms).
   - `grep` keeps the matches it found when it times out. `read` caps
     directory listings and reports binary files instead of dumping them.
@@ -245,7 +245,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   after their reports are handled. With several desktop windows open, each
   notification shows once and is skipped while another OpenAgentd window is
   focused, and clicking it opens the session in one window instead of all of
-  them.
+  them. Since `[v3.29.0]` only a focused window on the same server skips it,
+  so a question from a server you are not looking at still shows, and
+  clicking it opens the window that sent it.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
@@ -493,6 +495,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     tray menu. The header features a server selector dropdown `[v2.8.0]` that
     allows inspecting usage across local and remote connected backends
     with live reachability filtering.
+    Since `[v3.29.0]` **Auto** reads the server of the window you are in
+    (the builtin backend when no window is open), and its name, numbers and
+    error always come from that one server: it never falls back to a saved
+    server, and an unreachable one reads "Can't reach ‹server›" instead of
+    showing old numbers. Each server keeps its own last reading and usage
+    alerts, so switching servers neither shows one server's numbers under
+    another's name nor repeats a notification. When Auto's server is
+    offline the selector still lists Auto, so you can pick another server.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",
@@ -530,6 +540,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     Desktop turns it off, and can also keep it up while OpenAgentd is in
     front (off by default), stop keeping finished sessions, or stop hover
     from expanding it.
+    Since `[v3.29.0]` it follows every server that has a window open,
+    instead of one server picked from the focused window (with a saved
+    server as fallback): a server that is down no longer leaves it empty,
+    and switching windows never turns running work into "Done" or drops
+    unread sessions. With two or more servers, each row names its server
+    ("Builtin" for the bundled one), and a click opens the session in a
+    window on that server.
+    Right-click the pill or a session row for a native menu with Open and
+    Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
+    A new window opens on that session's server without navigating an
+    existing window. Cancelling the menu leaves unread notifications intact.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -549,7 +570,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`. New windows now inherit the active
   window's current backend selection instead of failing when the bundled sidecar
-  is unavailable `[v1.64.1]`. View → Zoom In / Out / Reset now applies per
+  is unavailable `[v1.64.1]`. Since `[v3.29.0]` a new window always takes
+  the server of the window you opened it from (or the builtin backend when
+  none is open), never the main window's or a saved server; with the builtin
+  backend stopped and no window open it opens unconnected, with Choose
+  Server. View → Zoom In / Out / Reset now applies per
   desktop window instead of globally across all open windows `[v1.66.1]`. On
   macOS, each desktop window now updates its native title to the active coding
   workspace name or session title so the Dock window list distinguishes
@@ -776,6 +801,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the
     chat actions menu do the same.
+  - Opening a session loads everything from your latest prompt to the end,
+    up to 500 messages, so a long run shows the prompt it answers in both
+    transcript styles, with no scrolling or extra requests. A longer run
+    loads its newest 500 messages with the prompt pinned above them and a
+    dashed line where the rest sits; scrolling up fills it in, as older
+    history loads. The "Show earlier messages" button is gone: scrolling to
+    the top reveals those turns `[v3.29.0]`.
   - `path:line` and `path:start-end` references (also `#L42-L58`) in replies
     and tool output open the file in the review dock with those lines
     selected. A bare name or partial path (`Button.tsx`,
@@ -957,7 +989,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   TLS). See [Install the Android app](../../mobile/INSTALL-ANDROID.md).
 - **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `agentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
-- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
+- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. Since `[v3.29.0]` the desktop app never connects to a saved server on its own: launch always starts the builtin backend, and saved servers are listed with Online/Offline and Connect, joining only the window where you click Connect (the next launch is back on builtin). The mobile app, which has no builtin backend, still reconnects to its last server.
   The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server connection dialog.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 - **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
@@ -1295,6 +1327,12 @@ agent against it.
     access key. That needs a server with an access key, and a reverse proxy
     in front of it must pass WebSocket upgrades. **Open in browser** is off
     there, and a plain browser on another device shows a notice instead.
+    Since `[v3.29.0]` the address bar also opens workspace files from any
+    Preview tab: type a path from the workspace root (`docs/mockup.html`,
+    `./docs/mockup.html`) or paste a full path or `file://` link inside the
+    workspace. From a dev-server tab the file opens in its own Preview tab; a
+    path that is not a workspace file shows an error in place (start with `/`
+    for a page on the dev server). The "Nothing is running" page says so.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move
@@ -1397,6 +1435,8 @@ agent against it.
   Since `[v3.1.0]` the count pill beside the title is the toggle, so sessions
   without subagents keep no chevron gutter, and child rows sit flat under the
   lead's title without another indent guide.
+  Since `[v3.29.0]` a running subagent opens with its transcript and live
+  output; it used to open blank, under the lead agent's name.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
   sidebar row, or **Edit title** in its menu turns the title into a text
   field. Enter or clicking away saves, Escape cancels, and the header and
@@ -1417,6 +1457,9 @@ agent against it.
   spinner after its own turn ends (in Status view it stays under Working, and
   a collapsed workspace still lists it), and a subagent that asked its lead a
   question reads "waiting for lead" in every window rather than "working".
+  Since `[v3.29.0]` this also holds for subagents listed the moment they
+  start: they could read Completed while still running, which ended the
+  lead's spinner (and the notch's "Working") long before their reports came in.
 - **Sidebar row actions** `[v3.27.0]` — every sidebar row's buttons share one
   borderless 24px style (36px on touch) and appear on hover or keyboard focus
   in place of the row's age and tags, so titles and folder names keep the row
@@ -1700,7 +1743,7 @@ agnostic by design.
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
-| Grok Build | `grok:grok-4.5` | `agentd auth grok` `[v1.112.0]` |
+| Grok Build | `grok:grok-4.7` | `agentd auth grok` `[v1.112.0]` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
@@ -1755,8 +1798,13 @@ agnostic by design.
   direct API-key-backed `xai:` provider, with live model discovery and the
   Grok Build proxy's required model-routing headers. Grok billing usage is
   available in Settings, the native usage tray, and the manual provider smoke
-  script; billing periods with no measurable allowance stay period-only and
-  zero values are not treated as unlimited.
+  script. The live `/models` catalog picks each model's API (Responses or
+  Chat Completions), Grok Build's default context window, and its
+  reasoning-effort levels; requests carry the session as `x-grok-conv-id`.
+  Usage reads xAI's zero-omitting billing fields as 0%, shows prepaid credits
+  in dollars, and falls back to the legacy monthly limit. Token refresh
+  retries transient failures and keeps the saved session unless xAI rejects
+  the grant `[v3.29.0]`.
 - **Codex usage monitor** `[v1.32.0, v1.131.0, v1.131.1]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
   Workspace spend caps report used/limit/remaining amounts and a reset time — the only
@@ -1768,6 +1816,8 @@ agnostic by design.
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
   on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  A **Hidden** status filter chip lists only hidden providers; they no longer
+  count under **Connected** or the header's connected total `[v3.29.0]`.
   A provider that loses its connection (API key deleted, OAuth session revoked or
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected
@@ -2251,6 +2301,10 @@ Everything stays local. No third-party telemetry SaaS.
   priced at the cache-write rate instead of being silently dropped by a bare-id
   registry miss, and the estimate applies DeepSeek's published off-peak rates
   (50% of peak outside Mon–Fri 01:00–04:00 and 06:00–10:00 UTC) `[v2.4.2]`.
+  Since `[v3.29.0]` DeepSeek replies use DeepSeek's current peak prices,
+  including `deepseek-flash` (also used for the retired `deepseek-v4-flash`
+  names), and get the off-peak half price again, by the time each reply
+  finishes. Chinese public holidays are priced as peak.
   The telemetry dashboard also reports cache-write tokens separately from cache
   reads in the totals, provider:model, and cache-by-step views `[v2.4.2]`.
 - **Prompt budget report** `[v1.102.0]` *(deprecated — removed with the v2

@@ -139,7 +139,7 @@ async fn token_request(form: &[(&str, &str)]) -> Result<Map<String, Value>, Toke
     }
 }
 
-fn b64_lenient(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn b64_lenient(s: &str) -> Option<Vec<u8>> {
     use base64::engine::{general_purpose::GeneralPurposeConfig, DecodePaddingMode, GeneralPurpose};
     use base64::Engine;
     let eng = GeneralPurpose::new(

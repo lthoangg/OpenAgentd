@@ -353,6 +353,11 @@ export interface SessionHistoryResponse {
    * be read as "the question was resolved".
    */
   pending_question?: PendingQuestionResponse | null
+  /**
+   * First page only: the latest prompt the user wrote, set when the run since
+   * it is longer than the page, so the page starts after it.
+   */
+  latest_prompt?: MessageResponse | null
 }
 
 /**

@@ -3,7 +3,7 @@ import { ChevronRight, Target } from 'lucide-react'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Collapsible } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { formatGoalTokens, goalTurnReason, type GoalTurnInfo } from '@/lib/goal'
+import { goalTurnReason, type GoalTurnInfo } from '@/lib/goal'
 import { cn } from '@/lib/utils'
 
 /**
@@ -14,8 +14,9 @@ import { cn } from '@/lib/utils'
  *
  * The label says why the goal went on in a few words ("check said not
  * yet"). Hovering it (desktop) shows the full reason, and pressing it
- * (any device, since touch has no hover) opens it under the divider with the
- * check's own words. The goal's last allowed turn says so.
+ * (any device, since touch has no hover) opens it under the divider: the
+ * check's own words when it rejected a claim. The goal's last allowed turn
+ * says so.
  */
 export function GoalTurnDivider({ info }: { info: GoalTurnInfo }) {
   const { turn, maxTurns } = info
@@ -23,7 +24,6 @@ export function GoalTurnDivider({ info }: { info: GoalTurnInfo }) {
   const reason = goalTurnReason(info)
   const [open, setOpen] = useState(false)
   const bodyId = useId()
-  const tokens = info.tokensUsed ? `${formatGoalTokens(info.tokensUsed)} tokens used before this turn.` : null
 
   const toggle = (
     <button
@@ -64,24 +64,21 @@ export function GoalTurnDivider({ info }: { info: GoalTurnInfo }) {
           {/* Open, the same words sit under the divider. */}
           {!open && (
             <TooltipContent className="max-w-sm leading-relaxed">
-              {reason.text}
               {/* Plain text on the dark hint: code spans lose their backticks. */}
-              {reason.check && <span className="mt-1 block">{reason.check.replaceAll('`', '')}</span>}
+              {reason.text.replaceAll('`', '')}
             </TooltipContent>
           )}
         </Tooltip>
         <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-(--color-border)" />
       </div>
       <Collapsible open={open}>
-        <div
+        <p
           id={bodyId}
           data-goal-turn-reason
-          className="mx-auto flex max-w-xl flex-col gap-1 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs leading-relaxed text-(--color-text-2) selectable-text"
+          className="mx-auto max-w-xl break-words rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs leading-relaxed text-(--color-text-2) selectable-text"
         >
-          <p>{reason.text}</p>
-          {reason.check && <p className="break-words text-(--color-text)"><InlineCodeText text={reason.check} /></p>}
-          {tokens && <p className="text-[11px] text-(--color-text-muted)">{tokens}</p>}
-        </div>
+          <InlineCodeText text={reason.text} />
+        </p>
       </Collapsible>
     </div>
   )

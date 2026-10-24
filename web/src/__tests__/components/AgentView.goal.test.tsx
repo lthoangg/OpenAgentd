@@ -64,9 +64,8 @@ describe('AgentView — goal markers', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const reason = divider.querySelector('[data-goal-turn-reason]')!
-    expect(reason.textContent).toContain('The agent said the goal was met. The check did not accept it:')
-    expect(reason.textContent).toContain('No bun test run after the last patch is shown.')
-    expect(reason.textContent).toContain('412k tokens used before this turn.')
+    // The check's own words, nothing around them.
+    expect(reason.textContent).toBe('No bun test run after the last patch is shown.')
   })
 
   it('shows why on hover', async () => {
@@ -76,7 +75,7 @@ describe('AgentView — goal markers', () => {
     await user.hover(screen.getByRole('button', { name: /turn 3 of 50/ }))
 
     const tip = await screen.findByRole('tooltip', undefined, { timeout: 2000 })
-    expect(tip.textContent).toContain('The check did not accept it:No bun test run after the last patch is shown.')
+    expect(tip.textContent).toBe('No bun test run after the last patch is shown.')
   })
 
   it("marks the goal's last allowed turn", () => {

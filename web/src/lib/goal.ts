@@ -217,8 +217,6 @@ export interface GoalTurnInfo {
   why: GoalTurnWhy | null
   /** The rejecting check's reason (``why === 'rejected'``). */
   check: string | null
-  /** Tokens the goal had used when the turn started. */
-  tokensUsed: number | null
 }
 
 const TURN_WHYS: readonly GoalTurnWhy[] = ['unclaimed', 'rejected', 'check_failed', 'resumed']
@@ -226,7 +224,7 @@ const TURN_WHYS: readonly GoalTurnWhy[] = ['unclaimed', 'rejected', 'check_faile
 /** A turn the goal started on its own (``extra.goal_turn``): shown as a divider, not a bubble. */
 export function goalTurnInfo(block: ContentBlock): GoalTurnInfo | null {
   if (block.type !== 'user') return null
-  const info = block.extra?.goal_turn as { turn?: unknown; max_turns?: unknown; why?: unknown; check?: unknown; tokens_used?: unknown } | undefined
+  const info = block.extra?.goal_turn as { turn?: unknown; max_turns?: unknown; why?: unknown; check?: unknown } | undefined
   if (!info || typeof info !== 'object' || typeof info.turn !== 'number') return null
   const why = TURN_WHYS.find((w) => w === info.why) ?? null
   const check = typeof info.check === 'string' && info.check.trim() ? info.check.trim() : null
@@ -235,31 +233,27 @@ export function goalTurnInfo(block: ContentBlock): GoalTurnInfo | null {
     maxTurns: typeof info.max_turns === 'number' ? info.max_turns : info.turn,
     why,
     check: why === 'rejected' ? check : null,
-    tokensUsed: typeof info.tokens_used === 'number' ? info.tokens_used : null,
   }
 }
 
 /**
  * Why the goal went on, for its turn divider: ``short`` beside the turn
- * number (``null`` on rows that did not record it), ``text`` when the user
- * asks for more, and ``check`` the rejecting check's own words.
+ * number (``null`` on rows that did not record it), and ``text`` when the
+ * user asks for more: a rejecting check's own words (which may hold
+ * backtick code spans), or what happened when there are none.
  */
-export function goalTurnReason(info: GoalTurnInfo): { short: string | null; text: string; check: string | null } {
+export function goalTurnReason(info: GoalTurnInfo): { short: string | null; text: string } {
   switch (info.why) {
     case 'rejected':
-      return {
-        short: 'check said not yet',
-        text: info.check ? 'The agent said the goal was met. The check did not accept it:' : 'The agent said the goal was met. The check did not accept it.',
-        check: info.check,
-      }
+      return { short: 'check said not yet', text: info.check ?? "The check did not accept the agent's claim that the goal was met." }
     case 'check_failed':
-      return { short: 'check failed', text: 'The agent said the goal was met, but the check gave no verdict, so the goal went on.', check: null }
+      return { short: 'check failed', text: 'The agent said the goal was met, but the check gave no verdict, so the goal went on.' }
     case 'resumed':
-      return { short: 'resumed', text: 'You resumed the goal.', check: null }
+      return { short: 'resumed', text: 'You resumed the goal.' }
     case 'unclaimed':
-      return { short: 'not done yet', text: 'The last turn ended without the agent saying the goal was met, so the goal went on.', check: null }
+      return { short: 'not done yet', text: 'The last turn ended without the agent saying the goal was met, so the goal went on.' }
     default:
-      return { short: null, text: 'The last turn ended before the goal was met, so the goal went on.', check: null }
+      return { short: null, text: 'The last turn ended before the goal was met, so the goal went on.' }
   }
 }
 

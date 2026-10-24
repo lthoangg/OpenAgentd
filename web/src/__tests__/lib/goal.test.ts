@@ -139,7 +139,7 @@ describe('transcript markers', () => {
     const cont: ContentBlock = { id: 'u2', type: 'user', content: '<goal_reminder …>', extra: { goal_turn: { id: 'g1', turn: 3, max_turns: 50 } } }
     const objective: ContentBlock = { id: 'u1', type: 'user', content: 'ship it', extra: { goal: { id: 'g1' } } }
     const prompt: ContentBlock = { id: 'u3', type: 'user', content: 'hello' }
-    expect(goalTurnInfo(cont)).toEqual({ turn: 3, maxTurns: 50, why: null, check: null, tokensUsed: null })
+    expect(goalTurnInfo(cont)).toEqual({ turn: 3, maxTurns: 50, why: null, check: null })
     expect(goalTurnInfo(prompt)).toBeNull()
     expect(isGoalObjectiveBlock(objective)).toBe(true)
     expect(isGoalObjectiveBlock(prompt)).toBe(false)
@@ -148,12 +148,10 @@ describe('transcript markers', () => {
   it('reads why the goal went on, with the rejecting check in its own words', () => {
     const turn = (goal_turn: Record<string, unknown>): ContentBlock => ({ id: 'u2', type: 'user', content: '<goal_reminder …>', extra: { goal_turn } })
     const rejected = goalTurnInfo(turn({ id: 'g1', turn: 3, max_turns: 50, why: 'rejected', check: ' No `bun test` output. ', tokens_used: 412_000 }))!
-    expect(rejected).toEqual({ turn: 3, maxTurns: 50, why: 'rejected', check: 'No `bun test` output.', tokensUsed: 412_000 })
-    expect(goalTurnReason(rejected)).toEqual({
-      short: 'check said not yet',
-      text: 'The agent said the goal was met. The check did not accept it:',
-      check: 'No `bun test` output.',
-    })
+    expect(rejected).toEqual({ turn: 3, maxTurns: 50, why: 'rejected', check: 'No `bun test` output.' })
+    expect(goalTurnReason(rejected)).toEqual({ short: 'check said not yet', text: 'No `bun test` output.' })
+    // A rejection whose words were not recorded still says what happened.
+    expect(goalTurnReason(goalTurnInfo(turn({ turn: 3, why: 'rejected' }))!).text).toBe("The check did not accept the agent's claim that the goal was met.")
 
     const unclaimed = goalTurnInfo(turn({ turn: 2, max_turns: 50, why: 'unclaimed' }))!
     expect(goalTurnReason(unclaimed).short).toBe('not done yet')
@@ -164,7 +162,7 @@ describe('transcript markers', () => {
   it('explains a turn from before the reason was recorded, without a label', () => {
     const old = goalTurnInfo({ id: 'u2', type: 'user', content: '…', extra: { goal_turn: { turn: 2, max_turns: 50, why: 'later', check: 'stale' } } })!
     expect(old).toMatchObject({ why: null, check: null })
-    expect(goalTurnReason(old)).toEqual({ short: null, text: 'The last turn ended before the goal was met, so the goal went on.', check: null })
+    expect(goalTurnReason(old)).toEqual({ short: null, text: 'The last turn ended before the goal was met, so the goal went on.' })
   })
 
   it('gives back a goal objective as its /goal command, and a goal turn as nothing', () => {

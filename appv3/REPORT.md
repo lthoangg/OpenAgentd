@@ -269,7 +269,7 @@ explicitly.
     that message; undoing a `goal_turn` row keeps the goal.
   - *Continuation:* when a goal turn ends normally, `run_turn` accounts it
     and queues a user row with `extra.goal_turn {id, turn, max_turns, why,
-    tokens_used, check?}` holding a `<goal_reminder>`. `why` says why the
+    check?}` holding a `<goal_reminder>`. `why` says why the
     goal went on, for the transcript's turn divider: `unclaimed` (the last
     turn ended without a claim), `rejected` (the last check said not yet;
     `check` is its reason), `check_failed` (the last check gave no
@@ -326,6 +326,15 @@ explicitly.
     ended goals included. `SessionResponse` gains `goal_status`
     (`active|paused`, omitted otherwise) and the live goal's
     `goal_turns_used` and `goal_max_turns` on the list and detail routes.
+  - *Telemetry:* a goal turn's `agent_run` span gains `openagentd.goal.id`
+    (API id) and `openagentd.goal.turn` (from 1). Each check request gets
+    its own `goal_check` CLIENT span under the `update_goal` tool span:
+    `gen_ai.operation.name=goal_check`, the session, agent, provider,
+    model, workspace and goal id, the `gen_ai.usage.*` tokens and estimated
+    cost, `goal_check.attempt`, and `goal_check.met` when the reply had a
+    verdict (`goal_check.stopped` when Stop dropped it mid-request). The
+    check's spend therefore counts in the Telemetry totals, per session,
+    and as its own step in `cache_by_step`.
   - *Settings:* `settings.yaml` gains `goals: {max_turns, token_budget,
     allow_questions}`, each written only when it differs from the default
     (50, no budget, `false`). `GET/PUT /api/settings/goals` returns them plus

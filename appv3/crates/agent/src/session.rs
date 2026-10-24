@@ -1319,10 +1319,14 @@ impl AgentSession {
         let ws_path = session_workspace_dir(&sid, Some(&workspace));
         let denied = Arc::new(DeniedPaths::new(&ws_path, Some(sid.clone())));
         let memory = self.memory_context().await;
+        let mut otel_hook = crate::hooks::otel::OtelHook::new(&name, effective_model.as_deref());
+        if let Some(g) = &goal {
+            otel_hook = otel_hook.with_run_attrs(crate::goal::run_span_attrs(g));
+        }
         let mut hooks: Vec<HookRef> = vec![
             Arc::new(CurrentDateHook),
             Arc::new(StreamPublisherHook::new(&sid, &name, true)),
-            Arc::new(crate::hooks::otel::OtelHook::new(&name, effective_model.as_deref())),
+            Arc::new(otel_hook),
             Arc::new(crate::hooks::lsp::LspHook { enabled: agent_mode == "coding", denied: denied.clone() }),
             Arc::new(RuntimeProtocolHook),
             Arc::new(MemoryContextHook { content: memory, lead: is_lead }),

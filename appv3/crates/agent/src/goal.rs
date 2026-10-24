@@ -20,14 +20,20 @@
 //!   frame (system prompt and tools), so the provider's prompt cache covers
 //!   it, plus a hidden `<goal_check>` message. Nothing of the check is saved
 //!   to the transcript; the verdict goes on the goal row.
+//! - **Telemetry:** a goal turn's `agent_run` span names its goal and turn
+//!   ([`run_span_attrs`]), and each check request gets a `goal_check` span
+//!   with its spend ([`CheckSpan`]).
 
+use crate::hooks::otel::{set_usage_span_attributes, GOAL_ID_ATTR, GOAL_TURN_ATTR, WORKSPACE_ATTR};
 use crate::hooks::{AgentState, Hook, RunContext};
 use crate::session::AgentSession;
 use crate::streaming::{fit_request_images, merge_consecutive_user_messages, ModelError, RetryItem, RetryStream};
 use anyhow::{anyhow, Result};
+use appv3_core::otel::{self, Span, SpanCtx, SpanKind};
 use appv3_core::runtime_settings::{self as rs, GoalSettings, MAX_GOAL_MAX_TURNS};
 use appv3_db::codec::{db_id, json_col, now_db};
 use appv3_db::{self as db, DbPool, NewMessage, SessionGoal, GOAL_ACHIEVED, GOAL_ACTIVE, GOAL_CLEARED, GOAL_PAUSED};
+use appv3_providers::usage::usage_to_dict;
 use appv3_providers::{AssistantMessage, ChatMessage, Kwargs, ToolCall, Usage};
 use appv3_tools::ToolContext;
 use async_trait::async_trait;
@@ -517,6 +523,95 @@ pub enum TurnEnd {
     Failed(Option<String>),
 }
 
+// ── Telemetry ────────────────────────────────────────────────────────────────
+
+/// `goal_check` span attribute: which ask of one claim's check this request
+/// is (a reply without a verdict is asked again).
+const CHECK_ATTEMPT_ATTR: &str = "goal_check.attempt";
+/// `goal_check` span attribute: the verdict, absent when the reply had none.
+const CHECK_MET_ATTR: &str = "goal_check.met";
+/// `goal_check` span attribute: the request was dropped unfinished.
+const CHECK_STOPPED_ATTR: &str = "goal_check.stopped";
+
+/// The `agent_run` span attributes of a turn working on `goal`, which has
+/// accounted the turns before it.
+pub fn run_span_attrs(goal: &SessionGoal) -> Vec<(&'static str, Value)> {
+    vec![(GOAL_ID_ATTR, json!(db::codec::api_uuid(&goal.id))), (GOAL_TURN_ATTR, json!(goal.turns_used + 1))]
+}
+
+/// Whose completion check a request is, for its span (API ids).
+struct CheckSpanTarget<'a> {
+    session_id: &'a str,
+    goal_id: &'a str,
+    agent: &'a str,
+    workspace: &'a str,
+    provider: Option<&'a str>,
+    /// `provider:model`.
+    model_id: Option<&'a str>,
+}
+
+/// One completion-check request's `goal_check` span. The check is not an
+/// agent run, so no `chat` span covers its request: this span carries its
+/// spend, as `/btw` and compaction spans do, so the check counts in
+/// telemetry and the spend totals. Dropped unfinished (the user stopped the
+/// turn while it ran), it still ends.
+struct CheckSpan(Span);
+
+impl CheckSpan {
+    fn start(t: &CheckSpanTarget<'_>, attempt: usize) -> Self {
+        let split = t.model_id.and_then(|m| m.split_once(':'));
+        let mut attrs = vec![
+            ("gen_ai.operation.name", json!("goal_check")),
+            ("gen_ai.conversation.id", json!(t.session_id)),
+            ("gen_ai.agent.name", json!(t.agent)),
+            (GOAL_ID_ATTR, json!(t.goal_id)),
+            (CHECK_ATTEMPT_ATTR, json!(attempt)),
+        ];
+        if let Some(p) = t.provider.or(split.map(|(p, _)| p)).filter(|p| !p.is_empty()) {
+            attrs.push(("gen_ai.provider.name", json!(p)));
+        }
+        if let Some(m) = split.map(|(_, m)| m).or(t.model_id).filter(|m| !m.is_empty()) {
+            attrs.push(("gen_ai.request.model", json!(m)));
+        }
+        if !t.workspace.is_empty() {
+            attrs.push((WORKSPACE_ATTR, json!(t.workspace)));
+        }
+        Self(Span::start("goal_check", SpanKind::Client, attrs))
+    }
+
+    fn ctx(&self) -> SpanCtx {
+        self.0.ctx()
+    }
+
+    /// The request finished: `usage` as `usage_to_dict` gives it, `met` the
+    /// verdict (`None` when the reply had none).
+    fn finish(self, usage: Option<&Value>, met: Option<bool>) {
+        if let Some(u) = usage {
+            set_usage_span_attributes(&self.0, u);
+        }
+        if let Some(met) = met {
+            self.0.set_attr(CHECK_MET_ATTR, met);
+        }
+        self.0.set_ok();
+        self.0.end();
+    }
+
+    fn fail(self, why: &str) {
+        self.0.set_attr("error.type", "GoalCheckError");
+        self.0.exit_with_exception("GoalCheckError", why);
+    }
+}
+
+impl Drop for CheckSpan {
+    fn drop(&mut self) {
+        if self.0.is_recording() {
+            self.0.set_attr(CHECK_STOPPED_ATTR, true);
+            self.0.set_ok();
+            self.0.end();
+        }
+    }
+}
+
 // ── Storage ──────────────────────────────────────────────────────────────────
 
 /// Check a new goal's objective and limits.
@@ -603,7 +698,7 @@ fn turn_extra(goal: &SessionGoal, turn: i64, resumed: bool, check_failed: bool) 
         (_, None, true) => "check_failed",
         _ => "unclaimed",
     };
-    let mut v = json!({"id": db::codec::api_uuid(&goal.id), "turn": turn, "max_turns": goal.max_turns, "why": why, "tokens_used": goal.tokens_used});
+    let mut v = json!({"id": db::codec::api_uuid(&goal.id), "turn": turn, "max_turns": goal.max_turns, "why": why});
     if let Some(c) = check {
         v["check"] = json!(c);
     }
@@ -1015,6 +1110,16 @@ impl AgentSession {
         if crate::streaming::routes_by_session(provider.provider_name()) {
             kwargs.insert("session_id".into(), json!(sid));
         }
+        let model_id = model.clone().or_else(|| provider.cost_model_id()).filter(|m| !m.is_empty());
+        let (api_sid, api_goal) = (db::codec::api_uuid(&db_id(sid)), db::codec::api_uuid(&goal.id));
+        let target = CheckSpanTarget {
+            session_id: &api_sid,
+            goal_id: &api_goal,
+            agent: &agent.name,
+            workspace: &row.workspace,
+            provider: provider.provider_name(),
+            model_id: model_id.as_deref(),
+        };
         // The same request each time, so a second ask is cached too.
         let ask = || async {
             let mut rs = RetryStream::new(provider.clone(), label.clone(), &messages, tools, kwargs.clone(), None, None);
@@ -1041,13 +1146,26 @@ impl AgentSession {
                     Err(ModelError::Transient { message, .. }) => return Err(anyhow!(message)),
                 }
             }
-            Ok((text, usage.as_ref().map_or(0, call_tokens), calls))
+            Ok((text, usage, calls))
         };
         let mut tokens = 0;
         for attempt in 1..=CHECK_ATTEMPTS {
-            let (text, spent, calls) = tokio::time::timeout(CHECK_TIMEOUT, ask()).await.map_err(|_| anyhow!("timed out"))??;
-            tokens += spent;
-            if let Some(v) = read_verdict(&text) {
+            let span = CheckSpan::start(&target, attempt);
+            let (text, usage, calls) = match otel::scope(Some(span.ctx()), tokio::time::timeout(CHECK_TIMEOUT, ask())).await {
+                Ok(Ok(reply)) => reply,
+                Ok(Err(e)) => {
+                    span.fail(&e.to_string());
+                    return Err(e);
+                }
+                Err(_) => {
+                    span.fail("timed out");
+                    return Err(anyhow!("timed out"));
+                }
+            };
+            tokens += usage.as_ref().map_or(0, call_tokens);
+            let verdict = read_verdict(&text);
+            span.finish(usage.as_ref().map(|u| usage_to_dict(u, model_id.as_deref())).as_ref(), verdict.as_ref().map(|v| v.met));
+            if let Some(v) = verdict {
                 return Ok((Some(v), tokens));
             }
             tracing::warn!("goal_check_no_verdict session_id={} goal_id={} attempt={} reply_chars={} tool_calls={:?}", sid, goal.id, attempt, text.chars().count(), calls);
@@ -1078,6 +1196,7 @@ fn reject(goal: &mut SessionGoal, why: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use appv3_core::otel::StatusCode;
 
     fn goal() -> SessionGoal {
         SessionGoal {
@@ -1253,9 +1372,8 @@ mod tests {
     #[test]
     fn a_continuation_turn_records_why_the_goal_went_on() {
         let mut g = goal();
-        g.tokens_used = 900;
         let unclaimed = turn_extra(&g, 2, false, false);
-        assert_eq!(unclaimed, json!({"id": "g", "turn": 2, "max_turns": 3, "why": "unclaimed", "tokens_used": 900}));
+        assert_eq!(unclaimed, json!({"id": "g", "turn": 2, "max_turns": 3, "why": "unclaimed"}));
         assert_eq!(turn_extra(&g, 2, false, true)["why"], "check_failed");
         assert_eq!(turn_extra(&g, 2, true, true)["why"], "resumed");
 
@@ -1265,6 +1383,68 @@ mod tests {
         assert_eq!((rejected["why"].as_str(), rejected["check"].as_str()), (Some("rejected"), Some("No `bun test` output.")));
         g.rejected_claims = 0;
         assert!(turn_extra(&g, 3, false, false).get("check").is_none(), "a reason from before a resume is not the last check");
+    }
+
+    /// Telemetry can sum one goal's spend: its turns' run spans name it.
+    #[test]
+    fn a_goal_turn_names_its_goal_and_turn_on_its_run_span() {
+        let mut g = goal();
+        g.id = "01a16d9a622d759bb568da5aa3e3f108".into();
+        g.turns_used = 2;
+        assert_eq!(run_span_attrs(&g), vec![(GOAL_ID_ATTR, json!("01a16d9a-622d-759b-b568-da5aa3e3f108")), (GOAL_TURN_ATTR, json!(3))]);
+    }
+
+    fn check_target() -> CheckSpanTarget<'static> {
+        CheckSpanTarget { session_id: "s-1", goal_id: "g-1", agent: "lead", workspace: "/w/app", provider: Some("agy"), model_id: Some("agy:claude") }
+    }
+
+    /// The check is not an agent run, so no `chat` span covers its request:
+    /// its own span carries the spend, or telemetry and the spend totals
+    /// miss it.
+    #[test]
+    fn a_check_request_records_its_spend_and_verdict() {
+        let check = CheckSpan::start(&check_target(), 1);
+        let span = check.0.clone();
+        check.finish(Some(&json!({"input": 12000, "cache": 11000, "output": 40, "cost": {"estimated_usd": 0.006}})), Some(false));
+
+        assert!(!span.is_recording());
+        assert_eq!(span.status(), StatusCode::Ok);
+        assert_eq!(span.attr("gen_ai.operation.name"), Some(json!("goal_check")));
+        assert_eq!(span.attr("gen_ai.conversation.id"), Some(json!("s-1")));
+        assert_eq!(span.attr("gen_ai.agent.name"), Some(json!("lead")));
+        assert_eq!(span.attr("gen_ai.provider.name"), Some(json!("agy")));
+        assert_eq!(span.attr("gen_ai.request.model"), Some(json!("claude")));
+        assert_eq!(span.attr(WORKSPACE_ATTR), Some(json!("/w/app")));
+        assert_eq!(span.attr(GOAL_ID_ATTR), Some(json!("g-1")));
+        assert_eq!(span.attr(CHECK_ATTEMPT_ATTR), Some(json!(1)));
+        assert_eq!(span.attr("gen_ai.usage.input_tokens"), Some(json!(12000)));
+        assert_eq!(span.attr("gen_ai.usage.cache_read.input_tokens"), Some(json!(11000)));
+        assert_eq!(span.attr("gen_ai.usage.output_tokens"), Some(json!(40)));
+        assert_eq!(span.attr("gen_ai.usage.estimated_cost_usd"), Some(json!(0.006)));
+        assert_eq!(span.attr(CHECK_MET_ATTR), Some(json!(false)));
+    }
+
+    #[test]
+    fn a_failed_or_stopped_check_request_still_ends_its_span() {
+        let failed = CheckSpan::start(&check_target(), 2);
+        let span = failed.0.clone();
+        failed.fail("timed out");
+        assert!(!span.is_recording());
+        assert_eq!(span.status(), StatusCode::Error);
+
+        // The user stopped the turn while the check ran: the request is dropped.
+        let stopped = CheckSpan::start(&check_target(), 1);
+        let span = stopped.0.clone();
+        drop(stopped);
+        assert!(!span.is_recording());
+        assert_eq!(span.attr(CHECK_STOPPED_ATTR), Some(json!(true)));
+
+        // A reply without a verdict is a finished request, not a failure.
+        let no_verdict = CheckSpan::start(&check_target(), 1);
+        let span = no_verdict.0.clone();
+        no_verdict.finish(None, None);
+        assert_eq!(span.status(), StatusCode::Ok);
+        assert!(!span.has_attr(CHECK_MET_ATTR));
     }
 
     #[test]

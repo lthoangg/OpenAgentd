@@ -35,6 +35,12 @@ pub const TOOLS_SHA_ATTR: &str = "openagentd.request.tools_sha";
 /// `messages@N` for the first changed message). Absent when the previous
 /// request is an unchanged prefix, which is what a prompt cache needs.
 pub const PREFIX_CHANGE_ATTR: &str = "openagentd.request.prefix_change";
+/// `agent_run` and `goal_check` span attribute (v3 addition): the `/goal`
+/// a goal turn or completion check works for (API id).
+pub const GOAL_ID_ATTR: &str = "openagentd.goal.id";
+/// `agent_run` span attribute (v3 addition): which of its goal's turns the
+/// run is, from 1.
+pub const GOAL_TURN_ATTR: &str = "openagentd.goal.turn";
 
 fn short_sha(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().take(6).map(|b| format!("{b:02x}")).collect()
@@ -179,13 +185,21 @@ pub struct OtelHook {
     agent_span: Mutex<Option<Span>>,
     token: Mutex<Option<Option<SpanCtx>>>,
     run_start: Mutex<Option<Instant>>,
+    /// Extra `agent_run` span attributes (a goal turn's goal).
+    run_attrs: Vec<(&'static str, Value)>,
 }
 
 impl OtelHook {
     pub fn new(agent_name: &str, model_id: Option<&str>) -> Self {
         let (provider, model) = parse_model_id(model_id);
         instruments();
-        Self { agent_name: agent_name.into(), provider, model, agent_span: Mutex::new(None), token: Mutex::new(None), run_start: Mutex::new(None) }
+        Self { agent_name: agent_name.into(), provider, model, agent_span: Mutex::new(None), token: Mutex::new(None), run_start: Mutex::new(None), run_attrs: Vec::new() }
+    }
+
+    /// Adds `attrs` to every `agent_run` span this hook starts.
+    pub fn with_run_attrs(mut self, attrs: Vec<(&'static str, Value)>) -> Self {
+        self.run_attrs = attrs;
+        self
     }
 
     fn conv(ctx: &RunContext) -> String {
@@ -363,6 +377,7 @@ impl Hook for OtelHook {
             ("run_id", json!(ctx.run_id)),
         ];
         attrs.extend(Self::workspace_attr(ctx));
+        attrs.extend(self.run_attrs.iter().cloned());
         let span = Span::start(format!("agent_run {}", self.agent_name), SpanKind::Internal, attrs);
         *self.token.lock().unwrap() = otel::attach(Some(span.ctx()));
         *self.agent_span.lock().unwrap() = Some(span);
@@ -452,6 +467,22 @@ mod tests {
         assert!(!span.is_recording());
         assert_eq!(span.status(), StatusCode::Ok);
         assert!(span.has_attr("gen_ai.usage.input_tokens"));
+    }
+
+    /// A `/goal` turn's run span names its goal and turn, so one goal's
+    /// spend can be found in telemetry.
+    #[tokio::test]
+    async fn a_goal_turn_run_span_names_its_goal() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")).with_run_attrs(vec![(GOAL_ID_ATTR, json!("g-1")), (GOAL_TURN_ATTR, json!(3))]));
+        let res = agent(vec![MockProvider::text("hello")]).run(vec![ChatMessage::user("hi")], run_opts(&hook, Default::default())).await;
+        assert!(res.is_ok());
+        let span = hook.run_span().unwrap();
+        assert_eq!(span.attr(GOAL_ID_ATTR), Some(json!("g-1")));
+        assert_eq!(span.attr(GOAL_TURN_ATTR), Some(json!(3)));
+
+        let plain = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        agent(vec![MockProvider::text("hello")]).run(vec![ChatMessage::user("hi")], run_opts(&plain, Default::default())).await.unwrap();
+        assert!(!plain.run_span().unwrap().has_attr(GOAL_ID_ATTR));
     }
 
     #[tokio::test]

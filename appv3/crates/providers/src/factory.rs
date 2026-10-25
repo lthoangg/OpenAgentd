@@ -91,7 +91,24 @@ pub fn require_api_key(creds: &CredentialStore, env_var: &str, label: &str) -> P
 pub const UNCONFIGURED_TOKEN: &str = "__PROVIDER_MODEL__";
 
 pub fn unconfigured_message(agent_name: Option<&str>) -> String {
-    format!("Agent '{}' has no model configured. Open Settings → Providers in the UI to add a provider and select a model.", agent_name.unwrap_or("?"))
+    let subject = match agent_name {
+        Some(name) => format!("Agent '{name}' has no model configured."),
+        None => "No model is configured yet.".to_string(),
+    };
+    format!("{subject} Connect a model provider on the new-session screen or in Settings → Providers.")
+}
+
+#[cfg(test)]
+mod unconfigured_message_tests {
+    use super::*;
+
+    #[test]
+    fn names_the_agent_when_known_and_never_shows_a_question_mark() {
+        assert!(unconfigured_message(Some("code")).starts_with("Agent 'code' has no model configured."));
+        let anonymous = unconfigured_message(None);
+        assert!(anonymous.starts_with("No model is configured yet."));
+        assert!(!anonymous.contains('?'));
+    }
 }
 
 fn named<P: LlmProvider + 'static>(p: P) -> Arc<dyn LlmProvider> {

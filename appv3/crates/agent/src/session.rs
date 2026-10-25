@@ -696,6 +696,19 @@ impl AgentSession {
         self.config_dirty.store(false, Ordering::SeqCst);
     }
 
+    /// Reload the agent when its files changed and no turn is running, so
+    /// readers such as the agent registry see a model set since it loaded
+    /// (a turn reloads on its own when it starts).
+    pub fn refresh_config_if_idle(&self) {
+        if self.is_busy() {
+            return;
+        }
+        self.detect_config_drift();
+        if self.config_dirty.load(Ordering::SeqCst) {
+            self.refresh_agent_from_disk();
+        }
+    }
+
     async fn has_open_question(&self) -> bool {
         db::get_pending_question(&self.pool, &self.session_id()).await.ok().flatten().is_some()
     }

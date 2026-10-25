@@ -949,6 +949,22 @@ explicitly.
   request carries the desktop token and comes from a loopback peer on the
   private listener. v2 had no equivalent. Tests: `api/src/network_access.rs`,
   `cli/tests/serve_shutdown.rs`.
+- **Default model on the first credential (v3 only):** `PUT
+  /api/settings/providers/{id}` and `POST
+  /api/settings/providers/{id}/credentials` set the provider's suggested
+  model on every agent whose model is still unconfigured
+  (`loader::has_unconfigured_agent_models`), and add `default_model` (the
+  `<provider>:<model>` set, or `null`) and `agents_updated` to their
+  responses. The model comes from `providers/src/suggest.rs`: the catalog's
+  `suggested_models` patterns, where `*` matches a version, applied to the
+  provider's live models, newest first by registry release date. `POST
+  /api/settings/default-model` also takes `{"provider": "<id>"}` in place of
+  `provider_model`, returns the model it applied as `provider_model`, and
+  writes to `settings().agents_dir` (it used `config_dir/agents`, which
+  ignored `AGENTS_DIR`). With no agent name, the unconfigured-model error now
+  reads "No model is configured yet." instead of "Agent '?'". In v2, saving a
+  key never changed an agent's model. Tests:
+  `api/tests/default_model_on_save.rs`, `providers/src/suggest.rs`.
 
 ## 4. Layout
 

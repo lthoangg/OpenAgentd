@@ -21,6 +21,7 @@ pub mod plugin_json;
 pub mod pool;
 pub mod registry;
 pub mod sse;
+pub mod suggest;
 pub mod types;
 pub mod usage;
 

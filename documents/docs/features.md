@@ -384,6 +384,25 @@ run from the terminal (the native Rust binary since v3.0.0).
   In Windows contrast themes, keyboard focus is drawn as an outline in the
   system highlight colour, and an on switch and the chosen segment of a
   segmented control stay visible.
+- **Clearer feedback and recovery** `[v3.31.0]`:
+  - When the backend stops answering for about 3 seconds, a slim banner under
+    the header says it cannot reach the server and is retrying, with a
+    **Change server** button. It goes away once the server answers again.
+    A brief stream drop does not show it.
+  - Closing the scheduler's new or edit task form with changes asks
+    "Discard this task?" first. A field's error clears as soon as you fix
+    it, and submitting focuses the first field with an error.
+  - A task list, commit or diff that fails to load shows **Retry**. Error
+    messages no longer start with "Error:".
+  - Skeletons and spinners appear only when loading takes longer than a
+    moment, so a fast load does not flash one.
+  - A session search with no results repeats the query and offers
+    **Clear search**.
+  - The close-terminal dialog focuses **Cancel**, so Enter no longer stops a
+    running shell.
+  - Screen readers announce an MCP server's state in plain words, overlays
+    turn opaque when the system's "Reduce transparency" setting is on, and
+    rendered markdown files keep a readable line length.
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -1023,6 +1042,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On Linux machines with an NVIDIA driver, the app turns off WebKit's
     DMABUF renderer unless you have set `WEBKIT_DISABLE_DMABUF_RENDERER`
     yourself. This avoids a blank window.
+  - In the sidebar, ↑/↓ move between rows, and Home/End jump to the first
+    and last row.
+  - On Windows and Linux, Alt+←/→ go back and forward, like ⌘[ / ⌘] on
+    macOS. Text fields and the terminal keep Alt+arrow for moving by word.
+  - When a session starts needing you while the window is in the
+    background, the Windows taskbar button flashes and the macOS Dock icon
+    bounces once.
+  - Files dropped anywhere in the window, including the sidebar and the
+    dock, attach to the message being written.
 - **Remote-backend mobile shell** `[v1.34.0, v1.106.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
@@ -1042,6 +1070,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     image menu. Message text, images, code and input fields keep it.
   - Switches and segmented controls tick with a light haptic, and git
     actions end with a success or error haptic.
+  - List rows darken while your finger is on them.
+  - On an Android phone turned sideways, the drawers and the review dock
+    stay usable and keep clear of the camera cutout.
 - **Sideloadable iOS app** `[v3.7.0]` — each release includes an ad-hoc-signed
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new

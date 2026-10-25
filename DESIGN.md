@@ -528,7 +528,9 @@ desktop-first and walk styles back down.
 - `tab-bar` (36px) — the review dock's editor-tab strip.
 - `toolbar` (32px) — the single view toolbar under a tab bar.
 - `list-row` (28px) — sidebar and dock list rows (`ui/list-row.ts` holds the
-  shared geometry and the hover / current washes).
+  shared geometry and the hover / current washes). Touch has no hover, so a
+  finger press shows the current-row wash (`pointer-coarse:active:`); a mouse
+  press does not, because the click selects the row at once.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
@@ -878,6 +880,10 @@ primitives in `components/ui/`:
 - **Notices.** States and warnings between sections (a failed server, a
   scanned link, a security caveat, lint results, a failed run) use `Callout`
   (neutral, info, success, warning or error tone). Field errors stay inline.
+  A failed load offers Retry next to its message. An unreachable backend is
+  the one app-wide notice: `ConnectionBanner`, a slim warning-tone row under
+  the header with **Change server**. It shows only after the health check has
+  failed its retries (~3s) and leaves without a "reconnected" message.
 - **Tokens.** `ui/panel-tokens.ts` holds the type steps (`TEXT`), icon sizes,
   row padding and `OVERLAY_BODY`. Do not hand-roll caps strips, nested cards
   or ad-hoc notice boxes on these surfaces.
@@ -1013,6 +1019,12 @@ it came from the keyboard.
 The Tauri webview sets `data-mobile-shell` on `<html>`, which switches the
 document to `position: fixed` and disables text selection outside content
 regions. Reference viewport is 390×844.
+
+A phone turned sideways (Android; iPhone is portrait-only) is wider than `md`
+but still mobile: `useIsMobile` also matches a height under 580px. Gate
+mobile-only surfaces on `useIsMobile`, not on `md:` classes, which would apply
+desktop layout to them. Drawers fixed to a screen edge sit outside the shell's
+side padding, so they add `pl-safe` / `pr-safe` to clear a camera cutout.
 
 Keyboard handling is the subtle part: `--app-vh` and `--app-vt` track the visual
 viewport, and overlays follow the keyboard by **translating** rather than

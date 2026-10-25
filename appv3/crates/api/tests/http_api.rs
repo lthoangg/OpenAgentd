@@ -569,8 +569,64 @@ async fn http_api_end_to_end() {
     preview_routes(&c, root.path()).await;
     preview_tunnel(&c, &pool, root.path()).await;
     first_chat_mode_flow(&c, root.path()).await;
+    provider_credentials_flow(&c, root.path()).await;
 
     appv3_api::startup::shutdown().await;
+}
+
+/// Several keys per provider: add, list (no secret values), reorder,
+/// disable, remove. Stored in `credentials.yaml`, never the process env.
+async fn provider_credentials_flow(c: &Client, root: &std::path::Path) {
+    std::env::remove_var("OPENROUTER_API_KEY");
+    let base = "/api/settings/providers/openrouter/credentials";
+    let (personal_key, work_key) = ("sk-or-test-personal-1111", "sk-or-test-work-2222");
+    let (st, a) = c.json("POST", base, Some(json!({"label": "Personal", "api_key": personal_key}))).await;
+    assert_eq!(st, StatusCode::CREATED, "{a}");
+    let (st, b) = c.json("POST", base, Some(json!({"label": "Work", "api_key": work_key}))).await;
+    assert_eq!(st, StatusCode::CREATED, "{b}");
+    let (a, b) = (a["id"].as_str().unwrap().to_string(), b["id"].as_str().unwrap().to_string());
+
+    let (st, v) = c.json("GET", base, None).await;
+    assert_eq!(st, StatusCode::OK);
+    let labels: Vec<&str> = v["credentials"].as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap()).collect();
+    assert_eq!(labels, ["Personal", "Work"]);
+    assert_eq!(v["credentials"][0]["hint"], json!("…1111"));
+    assert_eq!(v["credentials"][0]["in_use"], json!(true));
+    assert_eq!(v["env_pinned"], json!(false));
+    let (_, providers) = c.json("GET", "/api/settings/providers", None).await;
+    for body in [v.to_string(), providers.to_string()] {
+        assert!(!body.contains(personal_key) && !body.contains(work_key), "secret leaked: {body}");
+    }
+    assert!(std::env::var("OPENROUTER_API_KEY").is_err(), "saving a key must not touch the process env");
+    let store = root.join("config").join(appv3_core::credentials::FILE_NAME);
+    let text = std::fs::read_to_string(&store).unwrap();
+    assert!(text.contains(personal_key) && text.contains(work_key));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&store).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    let (st, v) = c.json("PUT", &format!("{base}/order"), Some(json!({"ids": [b, a]}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["credentials"][0]["label"], json!("Work"));
+
+    let (st, v) = c.json("PATCH", &format!("{base}/{b}"), Some(json!({"label": "Team", "disabled": true}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!((v["label"].clone(), v["status"].clone()), (json!("Team"), json!("disabled")));
+
+    let (st, v) = c.json("POST", base, Some(json!({"extra": {"PATH": "/tmp"}}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "foreign value names are refused: {v}");
+
+    let (st, _) = c.json("DELETE", &format!("{base}/{b}"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, v) = c.json("GET", base, None).await;
+    assert_eq!(v["credentials"].as_array().unwrap().len(), 1);
+    assert!(!std::fs::read_to_string(&store).unwrap().contains(work_key));
+    let (st, _) = c.json("DELETE", &format!("{base}/{b}"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _) = c.json("DELETE", &format!("{base}/{a}"), None).await;
+    assert_eq!(st, StatusCode::OK);
 }
 
 /// A first message can start its session in Plan mode (the new-session

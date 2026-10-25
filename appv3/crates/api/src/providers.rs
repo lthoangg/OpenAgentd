@@ -4,8 +4,7 @@
 //! builtin catalog plus native provider plugins.
 
 use appv3_core::runtime_settings::{self as rs, ProviderUiSettings};
-use appv3_core::settings;
-pub use appv3_providers::creds::{dotenv_values, CredentialStore};
+pub use appv3_providers::creds::CredentialStore;
 use appv3_providers::plugin::find_provider_plugin;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -39,41 +38,31 @@ pub fn provider_is_configured(entry: &Value) -> bool {
         return plugin.info().credentials.iter().filter(|f| f.required).all(|f| !store.get(&f.name).is_empty());
     }
     let env = |n: &str| appv3_core::env::os_environ(n).filter(|v| !v.is_empty()).is_some();
+    let st = CredentialStore::for_provider(id, HashMap::new());
     match kind {
         "local" => true,
         "oauth" => {
-            if id == "copilot" && ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_COPILOT_TOKEN"].iter().any(|n| env(n)) {
+            if id == "copilot" && appv3_providers::copilot::env_github_token().is_some() {
                 return true;
             }
-            let file = match id {
-                "codex" => "codex_oauth.json",
-                "copilot" => "copilot_oauth.json",
-                "grok" => "grok_oauth.json",
-                _ => return false,
-            };
-            settings().cache_dir.join(file).is_file()
+            appv3_providers::oauth::is_builtin(id) && appv3_core::credentials::snapshot().enabled(id).iter().any(|c| c.has_secret())
         }
         "cloud_creds" => {
             if id == "bedrock" {
-                let st = CredentialStore::new(HashMap::new());
-                return env("AWS_BEARER_TOKEN_BEDROCK")
-                    || !st.get("AWS_BEARER_TOKEN_BEDROCK").is_empty()
-                    || env("AWS_BEDROCK_PROFILE")
-                    || !st.get("AWS_BEDROCK_PROFILE").is_empty()
-                    || env("AWS_PROFILE");
+                return !st.get("AWS_BEARER_TOKEN_BEDROCK").is_empty() || !st.get("AWS_BEDROCK_PROFILE").is_empty() || env("AWS_PROFILE");
             }
-            entry.get("env_vars").and_then(|v| v.as_array()).map(|a| a.iter().all(|n| env(n.as_str().unwrap_or("")))).unwrap_or(true)
+            entry.get("env_vars").and_then(|v| v.as_array()).map(|a| a.iter().all(|n| !st.get(n.as_str().unwrap_or("")).is_empty())).unwrap_or(true)
         }
         _ => {
             let var = s(entry, "env_var");
-            !var.is_empty() && !CredentialStore::new(HashMap::new()).get(var).is_empty()
+            !var.is_empty() && !st.get(var).is_empty()
         }
     }
 }
 
 /// `_provider_saved_overrides(entry)`.
 pub fn saved_overrides(entry: &Value) -> HashMap<String, String> {
-    let st = CredentialStore::new(HashMap::new());
+    let st = CredentialStore::for_provider(s(entry, "id"), HashMap::new());
     let mut names: Vec<String> = vec![];
     if !s(entry, "env_var").is_empty() {
         names.push(s(entry, "env_var").into());
@@ -150,7 +139,8 @@ fn resolve(overrides: &HashMap<String, String>, name: &str, default: &str) -> St
     if let Some(v) = overrides.get(name) {
         return v.clone();
     }
-    std::env::var(name).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| default.to_string())
+    let owner = appv3_providers::credentials_migration::owner_of(name);
+    Some(appv3_core::credentials::lookup(owner.as_deref(), name)).filter(|v| !v.is_empty()).unwrap_or_else(|| default.to_string())
 }
 
 async fn get_json(url: &str, headers: &[(&str, String)]) -> anyhow::Result<Value> {
@@ -256,7 +246,7 @@ pub fn daemon_base_url(id: &str) -> String {
         "cliproxy" => ("CLIPROXY_BASE_URL", "http://localhost:8317/v1"),
         _ => return String::new(),
     };
-    std::env::var(var).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| default.into())
+    Some(appv3_core::credentials::lookup(Some(id), var)).filter(|v| !v.is_empty()).unwrap_or_else(|| default.into())
 }
 
 fn reach_cache() -> &'static std::sync::Mutex<HashMap<String, (std::time::Instant, bool)>> {

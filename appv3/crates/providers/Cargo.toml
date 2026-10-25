@@ -21,6 +21,7 @@ reqwest.workspace = true
 sha2.workspace = true
 regex.workspace = true
 uuid.workspace = true
+indexmap = "2"
 chrono.workspace = true
 base64 = "0.23"
 url = "2"
@@ -28,3 +29,6 @@ hex = "0.4"
 rand = "0.10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 fast_image_resize = "6"
+
+[dev-dependencies]
+tempfile = "3"

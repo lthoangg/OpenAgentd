@@ -148,14 +148,21 @@ fn auth_list_shows_logins_and_logout_removes_them() {
     for id in ["codex", "copilot", "grok"] {
         assert!(provider_line(&out, id).contains("not logged in"), "{out}");
     }
+    // A legacy token file is migrated into credentials.yaml on first use and
+    // left in place (never deleted); logout removes the stored account.
     let token = sb.write("cache/codex_oauth.json", "{}");
     let out = stdout(&sb.run(&["auth"]));
     assert!(!provider_line(&out, "codex").contains("not logged in"), "{out}");
+    let store = sb.path("config/credentials.yaml");
+    assert!(std::fs::read_to_string(&store).unwrap().contains("codex"));
 
     let o = sb.run(&["auth", "logout", "codex"]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
     assert!(stdout(&o).contains("Logged out of codex"), "{}", stdout(&o));
-    assert!(!token.exists());
+    assert!(!std::fs::read_to_string(&store).unwrap().contains("codex:"));
+    assert!(token.exists(), "legacy files are kept as a backup");
+    let out = stdout(&sb.run(&["auth", "list"]));
+    assert!(provider_line(&out, "codex").contains("not logged in"), "{out}");
     assert!(stdout(&sb.run(&["auth", "logout", "codex"])).contains("was not logged in"));
 }
 
@@ -216,6 +223,38 @@ fn transfer_round_trip_redacts_secrets() {
     let o = sb.run(&["transfer", "import", bad.to_str().unwrap(), "--config-dir", other.to_str().unwrap()]);
     assert_eq!(code(&o), 1);
     assert!(stderr(&o).contains("not a valid tar.gz archive"), "{}", stderr(&o));
+}
+
+#[test]
+fn transfer_leaves_the_credential_store_out_unless_secrets_are_included() {
+    let sb = Sandbox::new();
+    sb.write("config/agents/code.md", "---\nname: code\n---\nbody\n");
+    let store = "version: 1\nproviders:\n  openai:\n  - id: cred_a\n    label: Personal\n    values:\n      OPENAI_API_KEY: sk-test-transfer-1234\n";
+    sb.write("config/credentials.yaml", store);
+    std::fs::create_dir_all(sb.path("out")).unwrap();
+
+    let plain = sb.path("out/plain.tar.gz");
+    let o = sb.run(&["transfer", "export", "-o", plain.to_str().unwrap()]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stdout(&o).contains("credentials.yaml left out"), "{}", stdout(&o));
+    let other = sb.path("other");
+    let o = sb.run(&["transfer", "import", plain.to_str().unwrap(), "--config-dir", other.to_str().unwrap()]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(other.join("agents/code.md").is_file());
+    assert!(!other.join("credentials.yaml").exists(), "the store stays home by default");
+
+    let full = sb.path("out/full.tar.gz");
+    let o = sb.run(&["transfer", "export", "-o", full.to_str().unwrap(), "--include-secrets"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let third = sb.path("third");
+    let o = sb.run(&["transfer", "import", full.to_str().unwrap(), "--config-dir", third.to_str().unwrap()]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(std::fs::read_to_string(third.join("credentials.yaml")).unwrap().contains("sk-test-transfer-1234"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(third.join("credentials.yaml")).unwrap().permissions().mode() & 0o777, 0o600);
+    }
 }
 
 #[test]

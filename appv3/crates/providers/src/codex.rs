@@ -1,6 +1,7 @@
 //! OpenAI Codex (ChatGPT subscription) — port of `providers/codex/*`
 //! (`codex.py`, `oauth.py`, `catalog.py`, `usage.py`).
 
+use crate::oauth::TokenSlot;
 use crate::openai::{shared_client, CodexTurn, CompletionsDialect, Flavor, OpenAiProvider};
 use crate::plugin::*;
 use crate::types::*;
@@ -28,8 +29,9 @@ fn user_agent() -> String {
     format!("openagentd/{VERSION}")
 }
 
-pub fn oauth_path() -> PathBuf {
-    settings().cache_dir.join("codex_oauth.json")
+/// The Codex account currently serving requests.
+pub fn oauth_slot() -> TokenSlot {
+    TokenSlot::active("codex")
 }
 
 fn now_s() -> f64 {
@@ -48,8 +50,11 @@ pub struct CodexAuth {
 }
 
 impl CodexAuth {
-    pub fn load(path: &Path) -> Option<Self> {
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    pub fn load(slot: &TokenSlot) -> Option<Self> {
+        Self::from_doc(&slot.load()?)
+    }
+
+    pub fn from_doc(v: &Value) -> Option<Self> {
         let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(String::from);
         let expires_at = match v.get("expires_at")? {
             Value::Number(n) => n.as_f64()?,
@@ -64,13 +69,18 @@ impl CodexAuth {
         Some(Self { access_token: s("access_token")?, refresh_token: s("refresh_token")?, expires_at, account_id })
     }
 
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    pub fn to_doc(&self) -> Value {
         let mut m = Map::new();
         m.insert("access_token".into(), json!(self.access_token));
         m.insert("refresh_token".into(), json!(self.refresh_token));
         m.insert("expires_at".into(), Value::Number(serde_json::Number::from_f64(self.expires_at).unwrap_or_else(|| 0.into())));
         m.insert("account_id".into(), json!(self.account_id));
-        appv3_core::secret_files::write_secret_file(path, &(appv3_core::pyjson::dumps_indent(&Value::Object(m), 2) + "\n"))
+        Value::Object(m)
+    }
+
+    /// Store into `slot` (a known account is updated, not duplicated).
+    pub fn save(&self, slot: &mut TokenSlot) -> std::io::Result<()> {
+        slot.save(self.to_doc(), self.account_id.as_deref())
     }
 
     pub fn is_expired(&self) -> bool {
@@ -78,10 +88,10 @@ impl CodexAuth {
     }
 
     /// Exchange the refresh token (once, under a process-wide lock) and persist.
-    pub async fn refresh(&self, path: &Path) -> Result<Self, String> {
+    pub async fn refresh(&self, slot: &TokenSlot) -> Result<Self, String> {
         static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
         let _g = LOCK.lock().await;
-        let current = Self::load(path);
+        let current = Self::load(slot);
         if let Some(c) = current.as_ref().filter(|c| !c.is_expired()) {
             return Ok(c.clone());
         }
@@ -90,8 +100,8 @@ impl CodexAuth {
             Ok(t) => t,
             Err(TokenError::Status(st, msg)) => {
                 if st == 400 || st == 401 {
-                    let _ = std::fs::remove_file(path);
-                    let _ = appv3_core::runtime_settings::forget_provider_models("codex");
+                    slot.revoke();
+                    crate::oauth::forget_models_if_disconnected("codex");
                 }
                 return Err(msg);
             }
@@ -104,7 +114,7 @@ impl CodexAuth {
             expires_at: now_s() + expires_in(&tokens),
             account_id: extract_account_id(&tokens).or(source.account_id.clone()),
         };
-        new.save(path).map_err(|e| e.to_string())?;
+        new.save(&mut slot.clone()).map_err(|e| e.to_string())?;
         Ok(new)
     }
 }
@@ -173,14 +183,14 @@ pub fn extract_account_id(tokens: &Map<String, Value>) -> Option<String> {
 }
 
 /// `_load_token()` → `(access_token, account_id)`, refreshing when expired.
-pub async fn load_token() -> Result<(String, Option<String>), String> {
-    let path = oauth_path();
-    let Some(mut auth) = CodexAuth::load(&path) else {
+pub async fn load_token(slot: &TokenSlot) -> Result<(String, Option<String>), String> {
+    let path = slot;
+    let Some(mut auth) = CodexAuth::load(path) else {
         return Err("Codex OAuth credentials not found. Run:\n  agentd auth codex\nto authenticate with your ChatGPT account.".into());
     };
     if auth.is_expired() {
         tracing::info!("codex_token_expired refreshing");
-        auth = auth.refresh(&path).await.map_err(|e| format!("Codex token refresh failed: {e}\nRun: agentd auth codex"))?;
+        auth = auth.refresh(path).await.map_err(|e| format!("Codex token refresh failed: {e}\nRun: agentd auth codex"))?;
     }
     Ok((auth.access_token, auth.account_id))
 }
@@ -189,10 +199,19 @@ pub async fn load_token() -> Result<(String, Option<String>), String> {
 
 /// `CodexProvider(model, model_kwargs)`.
 pub fn build(model: &str, model_kwargs: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
-    // A valid token is a file read; only a refresh needs the async helper.
-    let (token, account_id) = match CodexAuth::load(&oauth_path()) {
+    build_for(model, model_kwargs, &oauth_slot())
+}
+
+/// The provider for one stored account.
+pub fn build_for(model: &str, model_kwargs: Kwargs, slot: &TokenSlot) -> ProviderResult<Arc<dyn LlmProvider>> {
+    // A valid token is a store read; only a refresh needs the async helper.
+    let (token, account_id) = match CodexAuth::load(slot) {
         Some(auth) if !auth.is_expired() => (auth.access_token, auth.account_id),
-        _ => block_on_thread(load_token()).map_err(ProviderError::Invalid)?,
+        _ => block_on_thread({
+            let s = slot.clone();
+            async move { load_token(&s).await }
+        })
+        .map_err(ProviderError::Invalid)?,
     };
     let p = provider_for(model, &token, account_id, model_kwargs);
     tracing::debug!("codex_provider model={}", model);
@@ -246,7 +265,7 @@ pub fn cached_catalog() -> Option<Value> {
 }
 
 async fn fetch_catalog() -> Option<Value> {
-    let path = oauth_path();
+    let path = oauth_slot();
     let mut auth = CodexAuth::load(&path)?;
     let res: Result<Value, String> = async {
         if auth.is_expired() {
@@ -393,13 +412,12 @@ pub enum UsageError {
     Unavailable(String),
 }
 
-async fn usage_headers() -> Result<Vec<(String, String)>, UsageError> {
-    let path = oauth_path();
-    let Some(mut auth) = CodexAuth::load(&path) else {
+async fn usage_headers(slot: &TokenSlot) -> Result<Vec<(String, String)>, UsageError> {
+    let Some(mut auth) = CodexAuth::load(slot) else {
         return Err(UsageError::Credentials("Codex OAuth credentials not found.".into()));
     };
     if auth.is_expired() {
-        auth = auth.refresh(&path).await.map_err(UsageError::Unavailable)?;
+        auth = auth.refresh(slot).await.map_err(UsageError::Unavailable)?;
     }
     let mut h = vec![
         ("Authorization".to_string(), format!("Bearer {}", auth.access_token)),
@@ -496,10 +514,15 @@ fn usage_limit(
     })
 }
 
-/// `codex.usage.get_usage()`.
+/// `codex.usage.get_usage()` for the account in use.
 pub async fn get_usage() -> Result<Value, UsageError> {
+    get_usage_for(&oauth_slot()).await
+}
+
+/// Usage of one stored account.
+pub async fn get_usage_for(slot: &TokenSlot) -> Result<Value, UsageError> {
     let res: Result<Value, UsageError> = async {
-        let h = usage_headers().await?;
+        let h = usage_headers(slot).await?;
         let r = with_headers(shared_client().get("https://chatgpt.com/backend-api/wham/usage"), &h)
             .timeout(Duration::from_secs(5))
             .send()
@@ -551,9 +574,9 @@ pub fn usage_from_payload(payload: &Value) -> Result<Value, UsageError> {
 }
 
 /// `codex.usage.consume_reset()` — redeem one available reset credit.
-pub async fn consume_reset(credit_id: Option<&str>) -> Result<Value, UsageError> {
+pub async fn consume_reset(credit_id: Option<&str>, slot: &TokenSlot) -> Result<Value, UsageError> {
     let res: Result<(), UsageError> = async {
-        let h = usage_headers().await?;
+        let h = usage_headers(slot).await?;
         let un = |m: &str| UsageError::Unavailable(m.to_string());
         let list_url = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
         let r = with_headers(shared_client().get(list_url), &h)
@@ -602,7 +625,7 @@ pub async fn consume_reset(credit_id: Option<&str>) -> Result<Value, UsageError>
         }
         return Err(e);
     }
-    get_usage().await
+    get_usage_for(slot).await
 }
 
 // ── OAuth login ─────────────────────────────────────────────────────────────
@@ -732,22 +755,22 @@ async fn exchange_json(url: &str, form: &[(&str, &str)]) -> Result<Map<String, V
     })
 }
 
-fn save_tokens(tokens: &Map<String, Value>, path: &Path, sink: Option<&OAuthSink>) -> Result<(), String> {
+fn save_tokens(tokens: &Map<String, Value>, slot: &mut TokenSlot, sink: Option<&OAuthSink>) -> Result<(), String> {
     let account_id = extract_account_id(tokens);
     let get = |k: &str| tokens.get(k).and_then(|v| v.as_str()).map(String::from).ok_or(format!("'{k}'"));
     let auth = CodexAuth { access_token: get("access_token")?, refresh_token: get("refresh_token")?, expires_at: now_s() + expires_in(tokens), account_id: account_id.clone() };
-    auth.save(path).map_err(|e| e.to_string())?;
+    auth.save(slot).map_err(|e| e.to_string())?;
     let suffix = account_id.as_ref().map(|a| format!(" (account: {a})")).unwrap_or_default();
     say(
         sink,
         "success",
-        &format!("Saved to {}{suffix}. Use model: codex:gpt-5.4", path.display()),
-        json!({"oauth_path": path.display().to_string(), "account_id": account_id.unwrap_or_default(), "suggested_model": "codex:gpt-5.4"}),
+        &format!("Saved to {}{suffix}. Use model: codex:gpt-5.4", slot.display()),
+        json!({"credential_id": slot.credential_id, "account_label": slot.label(), "account_id": account_id.unwrap_or_default(), "suggested_model": "codex:gpt-5.4"}),
     );
     Ok(())
 }
 
-async fn pkce_login(path: &Path, sink: Option<&OAuthSink>) -> Result<(), String> {
+async fn pkce_login(path: &mut TokenSlot, sink: Option<&OAuthSink>) -> Result<(), String> {
     let redirect_uri = format!("http://localhost:{OAUTH_PORT}/auth/callback");
     let verifier = generate_verifier();
     let state = b64url(&random_bytes(32));
@@ -788,7 +811,7 @@ async fn post_json(url: &str, body: &Value) -> Result<reqwest::Response, String>
         .map_err(|e| e.to_string())
 }
 
-async fn device_login(path: &Path, sink: Option<&OAuthSink>) -> Result<(), String> {
+async fn device_login(path: &mut TokenSlot, sink: Option<&OAuthSink>) -> Result<(), String> {
     let url = format!("{ISSUER}/api/accounts/deviceauth/usercode");
     let r = post_json(&url, &json!({"client_id": CLIENT_ID})).await?;
     let st = r.status().as_u16();
@@ -834,13 +857,14 @@ async fn device_login(path: &Path, sink: Option<&OAuthSink>) -> Result<(), Strin
 }
 
 /// `codex.oauth.login(device=..., browser=..., event_sink=...)`.
-pub async fn login(sink: Option<OAuthSink>, device: bool, browser: bool) -> Result<(), String> {
+/// `slot` is the account to reconnect, or a new one to add.
+pub async fn login(sink: Option<OAuthSink>, device: bool, browser: bool, slot: TokenSlot) -> Result<(), String> {
     let sink = sink.as_ref();
-    let path = oauth_path();
+    let mut path = slot;
     say(sink, "started", "=== OpenAI Codex OAuth Login ===", json!({}));
     if let Some(existing) = CodexAuth::load(&path) {
         if !existing.is_expired() {
-            say(sink, "success", &format!("Valid token found in {}", path.display()), json!({"already_authenticated": true}));
+            say(sink, "success", &format!("Valid token found in {}", path.display()), json!({"already_authenticated": true, "credential_id": path.credential_id}));
             return Ok(());
         }
         say(sink, "refreshing", "Token expired. Refreshing...", json!({}));
@@ -853,12 +877,12 @@ pub async fn login(sink: Option<OAuthSink>, device: bool, browser: bool) -> Resu
         }
     }
     if browser {
-        return pkce_login(&path, sink).await;
+        return pkce_login(&mut path, sink).await;
     }
     if device || sink.is_some() {
-        device_login(&path, sink).await
+        device_login(&mut path, sink).await
     } else {
-        pkce_login(&path, sink).await
+        pkce_login(&mut path, sink).await
     }
 }
 
@@ -890,14 +914,10 @@ mod tests {
     }
 
     #[test]
-    fn save_format_is_python_indent2() {
-        let dir = std::env::temp_dir().join(format!("codex-test-{}", std::process::id()));
-        let p = dir.join("codex_oauth.json");
-        CodexAuth { access_token: "a".into(), refresh_token: "r".into(), expires_at: 1767225600.5, account_id: None }.save(&p).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&p).unwrap(),
-            "{\n  \"access_token\": \"a\",\n  \"refresh_token\": \"r\",\n  \"expires_at\": 1767225600.5,\n  \"account_id\": null\n}\n"
-        );
-        let _ = std::fs::remove_dir_all(dir);
+    fn token_document_keeps_the_legacy_shape() {
+        let a = CodexAuth { access_token: "a".into(), refresh_token: "r".into(), expires_at: 1767225600.5, account_id: None };
+        assert_eq!(appv3_core::pyjson::dumps_compact(&a.to_doc()), r#"{"access_token":"a","refresh_token":"r","expires_at":1767225600.5,"account_id":null}"#);
+        let back = CodexAuth::from_doc(&a.to_doc()).unwrap();
+        assert_eq!((back.access_token, back.expires_at), ("a".to_string(), 1767225600.5));
     }
 }

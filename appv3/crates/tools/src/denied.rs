@@ -25,6 +25,14 @@ pub fn builtin_skills_root() -> PathBuf {
     appv3_core::settings().cache_dir.join("v3-builtin-skills")
 }
 
+/// Files in the config dir that hold secrets: the credential store, its
+/// lock, and the dotenv backup the migration keeps. Agent tools never
+/// touch them.
+pub fn secret_config_files() -> Vec<PathBuf> {
+    let cfg = &appv3_core::settings().config_dir;
+    vec![cfg.join(appv3_core::credentials::FILE_NAME), cfg.join(format!(".{}.lock", appv3_core::credentials::FILE_NAME)), cfg.join(".env.migrated")]
+}
+
 /// Python `fnmatch.translate` → anchored regex.
 pub fn fnmatch_translate(pat: &str) -> String {
     let chars: Vec<char> = pat.chars().collect();
@@ -208,10 +216,13 @@ impl DeniedPaths {
         let _ = std::fs::create_dir_all(workspace);
         let workspace_root = resolve(workspace);
         let s = appv3_core::settings();
-        let denied_roots: Vec<PathBuf> = roots.unwrap_or_else(|| vec![s.data_dir.clone(), s.state_dir.clone(), s.cache_dir.clone()]).iter().map(|p| resolve(p)).collect();
+        let secret_files = secret_config_files();
+        let denied_roots: Vec<PathBuf> =
+            roots.unwrap_or_else(|| [vec![s.data_dir.clone(), s.state_dir.clone(), s.cache_dir.clone()], secret_config_files()].concat()).iter().map(|p| resolve(p)).collect();
         let pats = patterns.unwrap_or_else(load_denied_patterns);
         let denied_patterns = pats.into_iter().filter_map(|p| pattern_regex(&p).map(|r| (p, r))).collect();
-        let shell_denied_roots = vec![resolve(&s.config_dir).join("memory")];
+        let mut shell_denied_roots = vec![resolve(&s.config_dir).join("memory")];
+        shell_denied_roots.extend(secret_files.iter().map(|p| resolve(p)));
         let state_root = resolve(&s.state_dir);
         let mut allowed = vec![workspace_root.clone(), state_root.join("logs"), state_root.join("otel"), state_root.join("telemetry")];
         if let Some(sid) = session_id.as_deref().filter(|s| !s.is_empty()) {
@@ -406,6 +417,19 @@ mod tests {
         assert!(fnmatch("a/b.py", "*.py"), "fnmatch * crosses /");
         assert!(fnmatch("x1", "x[0-9]"));
         assert!(!fnmatch("xa", "x[!a]"));
+    }
+
+    #[test]
+    fn the_credential_store_is_denied_to_file_and_shell_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = DeniedPaths::new(&tmp.path().join("ws"), None);
+        let cfg = &appv3_core::settings().config_dir;
+        for f in [appv3_core::credentials::FILE_NAME, ".env.migrated"] {
+            let p = cfg.join(f);
+            assert!(d.validate_path(p.to_str().unwrap()).is_err(), "{f} writable");
+            assert!(d.validate_read_path(p.to_str().unwrap()).is_err(), "{f} readable");
+            assert!(d.check_command(&format!("cat {}", p.display())).is_some(), "{f} reachable from the shell");
+        }
     }
 
     #[test]

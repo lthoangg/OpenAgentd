@@ -2,6 +2,7 @@
 //! `oauth.py`, `usage.py`).
 
 use crate::codex::say;
+use crate::oauth::TokenSlot;
 use crate::openai::{set_header, shared_client, CompletionsDialect, Flavor, OpenAiProvider};
 use crate::plugin::*;
 use crate::types::*;
@@ -21,8 +22,9 @@ const MODELS_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 const SCOPES: [&str; 6] = ["openid", "profile", "email", "offline_access", "grok-cli:access", "api:access"];
 const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 
-pub fn oauth_path() -> PathBuf {
-    settings().cache_dir.join("grok_oauth.json")
+/// The Grok account currently serving requests.
+pub fn oauth_slot() -> TokenSlot {
+    TokenSlot::active("grok")
 }
 
 fn now_s() -> f64 {
@@ -30,7 +32,7 @@ fn now_s() -> f64 {
 }
 
 /// The access token's `sub` claim (the xAI user id), read without verification.
-fn token_subject(token: &str) -> Option<String> {
+pub(crate) fn token_subject(token: &str) -> Option<String> {
     let payload = token.split('.').nth(1)?;
     let claims: Value = serde_json::from_slice(&crate::codex::b64_lenient(payload)?).ok()?;
     claims.get("sub")?.as_str().filter(|s| !s.is_empty()).map(String::from)
@@ -132,8 +134,11 @@ fn refresh_failure(status: u16, body: &str) -> RefreshFailure {
 const REFRESH_RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(200), Duration::from_secs(1)];
 
 impl GrokAuth {
-    pub fn load(path: &Path) -> Option<Self> {
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    pub fn load(slot: &TokenSlot) -> Option<Self> {
+        Self::from_doc(&slot.load()?)
+    }
+
+    pub fn from_doc(v: &Value) -> Option<Self> {
         let access_token = v.get("access_token")?.as_str()?.to_string();
         let refresh_token = match v.get("refresh_token") {
             None | Some(Value::Null) => None,
@@ -148,29 +153,35 @@ impl GrokAuth {
         Some(Self { access_token, refresh_token, expires_at })
     }
 
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    pub fn to_doc(&self) -> Value {
         let mut m = Map::new();
         m.insert("access_token".into(), json!(self.access_token));
         m.insert("refresh_token".into(), json!(self.refresh_token));
         m.insert("expires_at".into(), Value::Number(serde_json::Number::from_f64(self.expires_at).unwrap_or_else(|| 0.into())));
-        appv3_core::secret_files::write_secret_file(path, &(appv3_core::pyjson::dumps_indent(&Value::Object(m), 2) + "\n"))
+        Value::Object(m)
+    }
+
+    /// Store into `slot` (the same xAI user is updated, not duplicated).
+    pub fn save(&self, slot: &mut TokenSlot) -> std::io::Result<()> {
+        let sub = token_subject(&self.access_token);
+        slot.save(self.to_doc(), sub.as_deref())
     }
 
     pub fn is_expired(&self) -> bool {
         now_s() >= self.expires_at - 60.0
     }
 
-    pub async fn refresh(&self, path: &Path) -> Result<Self, RefreshError> {
+    pub async fn refresh(&self, slot: &TokenSlot) -> Result<Self, RefreshError> {
         static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
         let _g = LOCK.lock().await;
-        let current = Self::load(path);
+        let current = Self::load(slot);
         if let Some(c) = current.as_ref().filter(|c| !c.is_expired()) {
             return Ok(c.clone());
         }
         let source = current.unwrap_or_else(|| self.clone());
         let forget = || {
-            let _ = std::fs::remove_file(path);
-            let _ = appv3_core::runtime_settings::forget_provider_models("grok");
+            slot.revoke();
+            crate::oauth::forget_models_if_disconnected("grok");
         };
         let Some(rt) = source.refresh_token.clone() else {
             forget();
@@ -211,7 +222,7 @@ impl GrokAuth {
         };
         let rotated = data.get("refresh_token").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from).unwrap_or(rt);
         let new = Self { access_token: access.into(), refresh_token: Some(rotated), expires_at: now_s() + positive_seconds(data.get("expires_in"), 3600) as f64 };
-        new.save(path).map_err(|e| RefreshError::Value(e.to_string()))?;
+        new.save(&mut slot.clone()).map_err(|e| RefreshError::Value(e.to_string()))?;
         Ok(new)
     }
 }
@@ -225,6 +236,7 @@ pub struct GrokProvider {
     kw: Kwargs,
     pub provider_name: Option<String>,
     inner: RwLock<(String, Arc<OpenAiProvider>)>,
+    slot: TokenSlot,
 }
 
 pub fn make_inner(model: &str, token: &str, kw: &Kwargs) -> Arc<OpenAiProvider> {
@@ -240,37 +252,46 @@ pub fn make_inner(model: &str, token: &str, kw: &Kwargs) -> Arc<OpenAiProvider> 
     Arc::new(p)
 }
 
-async fn load_access_token() -> Result<String, String> {
-    let path = oauth_path();
-    let Some(mut auth) = GrokAuth::load(&path) else {
+async fn load_access_token(slot: &TokenSlot) -> Result<String, String> {
+    let path = slot;
+    let Some(mut auth) = GrokAuth::load(path) else {
         return Err("Grok Build OAuth credentials not found. Run:\n  agentd auth grok\nto authenticate with your Grok subscription.".into());
     };
     if auth.is_expired() {
-        auth = auth.refresh(&path).await.map_err(|_| "Grok Build token refresh failed. Run: agentd auth grok".to_string())?;
+        auth = auth.refresh(path).await.map_err(|_| "Grok Build token refresh failed. Run: agentd auth grok".to_string())?;
     }
     Ok(auth.access_token)
 }
 
 pub fn build(model: &str, model_kwargs: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
-    // A valid token is a file read; only a refresh needs the async helper.
-    let token = match GrokAuth::load(&oauth_path()) {
+    build_for(model, model_kwargs, &oauth_slot())
+}
+
+/// The provider for one stored account.
+pub fn build_for(model: &str, model_kwargs: Kwargs, slot: &TokenSlot) -> ProviderResult<Arc<dyn LlmProvider>> {
+    // A valid token is a store read; only a refresh needs the async helper.
+    let token = match GrokAuth::load(slot) {
         Some(auth) if !auth.is_expired() => auth.access_token,
-        _ => block_on_thread(load_access_token()).map_err(ProviderError::Invalid)?,
+        _ => block_on_thread({
+            let s = slot.clone();
+            async move { load_access_token(&s).await }
+        })
+        .map_err(ProviderError::Invalid)?,
     };
     let inner = make_inner(model, &token, &model_kwargs);
     tracing::debug!("grok_build_provider model={}", model);
-    Ok(Arc::new(GrokProvider { model: model.into(), kw: model_kwargs, provider_name: Some("grok".into()), inner: RwLock::new((token, inner)) }))
+    Ok(Arc::new(GrokProvider { model: model.into(), kw: model_kwargs, provider_name: Some("grok".into()), inner: RwLock::new((token, inner)), slot: slot.clone() }))
 }
 
 impl GrokProvider {
     /// `_refresh_session_if_needed`.
     async fn current(&self) -> ProviderResult<Arc<OpenAiProvider>> {
-        let path = oauth_path();
-        let Some(mut auth) = GrokAuth::load(&path) else {
+        let path = &self.slot;
+        let Some(mut auth) = GrokAuth::load(path) else {
             return Err(ProviderError::Invalid("Grok Build OAuth credentials not found. Run: agentd auth grok".into()));
         };
         if auth.is_expired() {
-            auth = auth.refresh(&path).await.map_err(|_| ProviderError::Invalid("Grok Build token refresh failed. Run: agentd auth grok".into()))?;
+            auth = auth.refresh(path).await.map_err(|_| ProviderError::Invalid("Grok Build token refresh failed. Run: agentd auth grok".into()))?;
         }
         {
             let g = self.inner.read().unwrap();
@@ -425,7 +446,7 @@ async fn fetch_models(token: &str, timeout: Duration) -> Result<Value, (Option<u
 
 /// Fetch and cache the live catalog; `Ok(None)` when not signed in.
 async fn fetch_catalog() -> Result<Option<Value>, String> {
-    let path = oauth_path();
+    let path = oauth_slot();
     let Some(mut auth) = GrokAuth::load(&path) else { return Ok(None) };
     if auth.is_expired() {
         auth = auth.refresh(&path).await.map_err(|e| e.to_string())?;
@@ -552,12 +573,16 @@ fn limits(values: &Map<String, Value>) -> Vec<UsageLimit> {
     out
 }
 
-/// `grok.usage.get_usage()`.
+/// `grok.usage.get_usage()` for the account in use.
 pub async fn get_usage() -> Result<Value, UsageError> {
-    let path = oauth_path();
-    let Some(auth) = GrokAuth::load(&path) else { return Err(UsageError::Credentials("Grok Build OAuth credentials not found.".into())) };
+    get_usage_for(&oauth_slot()).await
+}
+
+/// Usage of one stored account.
+pub async fn get_usage_for(slot: &TokenSlot) -> Result<Value, UsageError> {
+    let Some(auth) = GrokAuth::load(slot) else { return Err(UsageError::Credentials("Grok Build OAuth credentials not found.".into())) };
     let res: Result<Value, String> = async {
-        let auth = if auth.is_expired() { auth.refresh(&path).await.map_err(|e| e.to_string())? } else { auth };
+        let auth = if auth.is_expired() { auth.refresh(slot).await.map_err(|e| e.to_string())? } else { auth };
         let url = format!("{API_BASE}/billing?format=credits");
         let r = with_headers(shared_client().get(&url), &session_headers(&auth.access_token, None)).timeout(Duration::from_secs(5)).send().await.map_err(|e| e.to_string())?;
         let st = r.status().as_u16();
@@ -625,7 +650,7 @@ fn suggested_model() -> String {
     ids[0].clone()
 }
 
-async fn success(auth: &GrokAuth, path: &Path, sink: Option<&OAuthSink>, already: bool) -> Result<(), String> {
+async fn success(auth: &GrokAuth, path: &mut TokenSlot, sink: Option<&OAuthSink>, already: bool) -> Result<(), String> {
     say(sink, "verifying", "Verifying Grok Build access...", json!({}));
     match verify_access(&auth.access_token).await {
         Err(VerifyErr::Rejected) => return Err("Grok Build rejected the saved OAuth session.".into()),
@@ -637,7 +662,7 @@ async fn success(auth: &GrokAuth, path: &Path, sink: Option<&OAuthSink>, already
         sink,
         "success",
         &format!("Grok Build connected. Saved credentials to {}.", path.display()),
-        json!({"oauth_path": path.display().to_string(), "suggested_model": format!("grok:{}", suggested_model()), "already_authenticated": already}),
+        json!({"credential_id": path.credential_id, "account_label": path.label(), "suggested_model": format!("grok:{}", suggested_model()), "already_authenticated": already}),
     );
     Ok(())
 }
@@ -650,7 +675,7 @@ fn client_form(req: reqwest::RequestBuilder, surface: &str, form: &[(&str, &str)
         .timeout(Duration::from_secs(30))
 }
 
-async fn device_flow(path: &Path, sink: Option<&OAuthSink>) -> Result<(), String> {
+async fn device_flow(path: &mut TokenSlot, sink: Option<&OAuthSink>) -> Result<(), String> {
     let surface = if sink.is_some() { "ui" } else { "cli" };
     say(sink, "requesting_device_code", "Requesting device code...", json!({}));
     let url = format!("{ISSUER}/oauth2/device/code");
@@ -723,22 +748,23 @@ async fn device_flow(path: &Path, sink: Option<&OAuthSink>) -> Result<(), String
     Err("Grok Build device code expired. Try again.".into())
 }
 
-/// `grok.oauth.login(event_sink=...)` (RFC 8628 device flow).
-pub async fn login(sink: Option<OAuthSink>) -> Result<(), String> {
+/// `grok.oauth.login(event_sink=...)` (RFC 8628 device flow). `slot` is
+/// the account to reconnect, or a new one to add.
+pub async fn login(sink: Option<OAuthSink>, slot: TokenSlot) -> Result<(), String> {
     let sink = sink.as_ref();
-    let path = oauth_path();
+    let mut path = slot;
     say(sink, "started", "Starting Grok Build device login...", json!({}));
     if let Some(existing) = GrokAuth::load(&path) {
         let res: Result<(), String> = async {
             let auth = if existing.is_expired() { existing.refresh(&path).await.map_err(|e| e.to_string())? } else { existing };
-            success(&auth, &path, sink, true).await
+            success(&auth, &mut path.clone(), sink, true).await
         }
         .await;
         if res.is_ok() {
             return Ok(());
         }
     }
-    match device_flow(&path, sink).await {
+    match device_flow(&mut path, sink).await {
         Ok(()) => Ok(()),
         Err(e) => {
             say(sink, "failed", &e, json!({"reason": "exception"}));

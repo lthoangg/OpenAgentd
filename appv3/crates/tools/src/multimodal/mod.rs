@@ -388,9 +388,11 @@ pub(crate) fn opt_str_list(a: &mut crate::args::Args, name: &str) -> Option<Vec<
     }
 }
 
-/// `settings.<KEY>` then `os.getenv(<KEY>)`.
+/// An exported `<KEY>`, then the stored credential in use for the
+/// provider that owns it (`OPENAI_API_KEY` → OpenAI, …).
 pub(crate) fn api_key(name: &str) -> String {
-    std::env::var(name).unwrap_or_default()
+    let owner = appv3_providers::credentials_migration::owner_of(name);
+    appv3_core::credentials::lookup(owner.as_deref(), name)
 }
 
 #[cfg(test)]

@@ -80,16 +80,16 @@ fn forget_provider_credentials(model_id: Option<&str>) {
     let Some((pid, _)) = split_provider_model(model_id) else {
         return;
     };
-    let _ = appv3_core::runtime_settings::forget_provider_models(&pid);
-    let cache = &settings().cache_dir;
-    let file = match pid.as_str() {
-        "codex" => Some(cache.join("codex_oauth.json")),
-        "copilot" => Some(cache.join("copilot_oauth.json")),
-        "grok" => Some(cache.join("grok_oauth.json")),
-        _ => None,
-    };
-    if let Some(f) = file {
-        let _ = std::fs::remove_file(f);
+    // A provider with one OAuth account loses that login (it shows as
+    // needing a reconnect). With several, the failed one was already put on
+    // cooldown and the others may still work.
+    let f = appv3_core::credentials::snapshot();
+    let enabled = f.enabled(&pid);
+    if appv3_providers::oauth::is_builtin(&pid) && enabled.len() == 1 {
+        appv3_providers::oauth::TokenSlot::new(&pid, &enabled[0].id).revoke();
+        let _ = appv3_core::runtime_settings::forget_provider_models(&pid);
+    } else if enabled.len() <= 1 {
+        let _ = appv3_core::runtime_settings::forget_provider_models(&pid);
     }
 }
 

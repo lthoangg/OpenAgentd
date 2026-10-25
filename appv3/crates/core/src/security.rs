@@ -1,8 +1,9 @@
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
 
-/// Denied directory and file names.
-const DENIED_EXACT: &[&str] = &[".git", ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", ".ssh", ".aws", ".gnupg"];
+/// Denied directory and file names. `credentials.yaml` is the secret store's
+/// name, so a copy of it is never served or picked up either.
+const DENIED_EXACT: &[&str] = &[".git", ".env", ".env.local", ".env.production", crate::credentials::FILE_NAME, "id_rsa", "id_ed25519", ".ssh", ".aws", ".gnupg"];
 
 /// Check if a path or component matches the security denylist.
 pub fn is_denied_path(path: &Path) -> bool {
@@ -52,6 +53,7 @@ mod tests {
         assert!(is_denied_path(Path::new("/home/user/.git/config")));
         assert!(is_denied_path(Path::new("/home/user/.env")));
         assert!(is_denied_path(Path::new("/home/user/.env.production")));
+        assert!(is_denied_path(Path::new("/home/user/.config/openagentd/credentials.yaml")));
         assert!(is_denied_path(Path::new("/home/user/.ssh/id_rsa")));
         assert!(!is_denied_path(Path::new("/home/user/src/main.rs")));
     }

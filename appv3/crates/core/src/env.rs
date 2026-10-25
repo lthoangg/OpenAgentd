@@ -41,6 +41,13 @@ pub fn os_environ(name: &str) -> Option<String> {
     }
 }
 
+/// Names a dotenv file put into this process's environment (sorted).
+pub fn injected_keys() -> Vec<String> {
+    let mut keys: Vec<String> = injected().lock().unwrap().keys().cloned().collect();
+    keys.sort();
+    keys
+}
+
 /// Load key-value pairs from an env file without overwriting existing environment variables.
 pub fn load_env_file(path: &Path) {
     if !path.exists() {
@@ -80,8 +87,8 @@ pub fn init_env() {
     load_env_file(Path::new(".env"));
 }
 
-/// Load the active config dir's `.env` (provider keys saved via the UI live
-/// there; in development that is `.openagentd/dev/config/.env`).
+/// Load the active config dir's `.env` (non-secret settings; provider keys
+/// moved to `credentials.yaml`, and any left here are not used for them).
 pub fn load_config_env(config_dir: &Path) {
     load_env_file(&config_dir.join(".env"));
 }

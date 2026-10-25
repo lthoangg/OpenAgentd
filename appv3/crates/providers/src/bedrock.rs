@@ -269,8 +269,8 @@ fn is_anthropic_model(m: &str) -> bool {
 
 /// Factory entry: token → named profile → default chain; region from
 /// settings / env.
-pub fn build(model: &str, model_kwargs: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
-    let setting = |n: &str| std::env::var(n).ok().filter(|v| !v.is_empty());
+pub fn build(model: &str, model_kwargs: Kwargs, creds: &crate::creds::CredentialStore) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let setting = |n: &str| Some(creds.get(n)).filter(|v| !v.is_empty());
     let region = resolve_bedrock_region(setting("AWS_BEDROCK_REGION").as_deref()).map_err(ProviderError::Invalid)?;
     Ok(Arc::new(BedrockProvider {
         model: model.into(),
@@ -343,7 +343,8 @@ impl LlmProvider for BedrockProvider {
 
 /// `model_discovery._bedrock_models(overrides)`.
 pub async fn discover_models(overrides: &HashMap<String, String>) -> Result<Vec<String>, String> {
-    let resolve = |n: &str| overrides.get(n).cloned().filter(|v| !v.is_empty()).or_else(|| std::env::var(n).ok().filter(|v| !v.is_empty()));
+    let creds = crate::creds::CredentialStore::for_provider("bedrock", overrides.clone());
+    let resolve = |n: &str| Some(creds.get(n)).filter(|v| !v.is_empty());
     let region = resolve_bedrock_region(resolve("AWS_BEDROCK_REGION").or_else(|| env("AWS_DEFAULT_REGION")).as_deref())?;
     let token = match resolve("AWS_BEARER_TOKEN_BEDROCK") {
         Some(t) => t,

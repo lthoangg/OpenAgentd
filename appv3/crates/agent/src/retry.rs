@@ -250,6 +250,40 @@ pub fn is_spend_limit_429(status: u16, body: &str) -> bool {
     status == 429 && body.to_lowercase().contains("spend limit")
 }
 
+/// Upper bound on credential switches within one model call.
+pub const MAX_CREDENTIAL_SWITCHES: i64 = 16;
+
+/// For a failed request a multi-credential provider should take to its
+/// next credential: why (`rate_limit`, `quota`, `spend_limit`, `auth`) and
+/// how long to skip the credential that failed. `None` for errors another
+/// key would not fix (bad request, unknown model, server errors).
+pub fn credential_cooldown(err: &ProviderError) -> Option<(&'static str, f64)> {
+    let status = err.status()?;
+    let body = err.body();
+    match status {
+        429 if is_spend_limit_429(status, body) => Some(("spend_limit", 3600.0)),
+        429 => {
+            let reset = parse_retry_after(err);
+            let reason = if is_non_retryable_429(status, body) || reset as f64 > MAX_DELAY { "quota" } else { "rate_limit" };
+            Some((reason, if reset > 0 { reset as f64 + CLOCK_SKEW_BUFFER_SECONDS } else { MAX_DELAY }))
+        }
+        402 => Some(("spend_limit", 3600.0)),
+        401 | 403 => Some(("auth", 600.0)),
+        _ => None,
+    }
+}
+
+/// How the transcript says why a credential was left.
+pub fn switch_reason_text(reason: &str, cooldown_secs: f64) -> String {
+    match reason {
+        "rate_limit" => "was rate-limited".into(),
+        "quota" => format!("hit its usage limit (resets in {})", format_duration(cooldown_secs)),
+        "spend_limit" => "reached its spend limit".into(),
+        "auth" => "was rejected by the provider".into(),
+        _ => "failed".into(),
+    }
+}
+
 /// `parse_retry_after`.
 pub fn parse_retry_after(err: &ProviderError) -> i64 {
     let h = |n: &str| err.header(n).unwrap_or("").to_string();

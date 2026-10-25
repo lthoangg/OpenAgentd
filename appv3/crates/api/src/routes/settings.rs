@@ -6,6 +6,7 @@ use crate::schema::Body;
 use crate::usage::{self, UsageError};
 use crate::util::*;
 use crate::AppState;
+use appv3_core::credentials as cred_store;
 use appv3_core::pyyaml::Py;
 use appv3_core::runtime_settings as rs;
 use appv3_core::settings;
@@ -36,6 +37,9 @@ pub fn router() -> Router<AppState> {
         .route("/providers/{id}/visible-models", put(visible_models))
         .route("/providers/{id}/disconnect", put(disconnect))
         .route("/providers/{id}/test", post(test_provider))
+        .route("/providers/{id}/credentials", get(list_credentials).post(add_credential))
+        .route("/providers/{id}/credentials/order", put(order_credentials))
+        .route("/providers/{id}/credentials/{credential_id}", axum::routing::patch(update_credential).delete(delete_credential))
         .route("/providers/{id}", put(save_provider))
         .route("/default-model", post(default_model))
 }
@@ -425,6 +429,8 @@ async fn list_providers() -> ApiResult<Response> {
             "supports_fast_mode": entry.get("supports_fast_mode").and_then(|v| v.as_bool()).unwrap_or(false),
             "public_access": entry.get("public_access").and_then(|v| v.as_bool()).unwrap_or(false),
             "model_costs": model_costs(id, &cached),
+            "stored_credentials": credentials_json(entry),
+            "env_pinned": appv3_providers::pool::env_pinned(id),
         }));
     }
     let any = out.iter().any(|p| p["is_configured"] == json!(true));
@@ -461,16 +467,18 @@ async fn provider_models(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Re
     let mut b = Body::new(&v)?;
     let token = b.str("api_key", Some(""));
     let extra = b.dict_str("extra");
-    b.finish(&["api_key", "extra"])?;
+    let credential_id = b.opt_str("credential_id");
+    b.finish(&["api_key", "extra", "credential_id"])?;
     let entry = find_or_404(&id)?;
     if rs::provider_is_disconnected(&id) {
         return Err(ApiError::conflict(format!("Provider '{id}' is disconnected. Reconnect it first.")));
     }
     let mut overrides = prov::saved_overrides(entry);
+    overrides.extend(credential_overrides(&id, credential_id.as_deref())?);
     overrides.extend(build_overrides(entry, &token, &extra));
     let found = prov::filter_agent_model_ids(prov::discover_provider_models(entry, &overrides).await);
     if !found.is_empty() {
-        if token.is_empty() && extra.is_empty() {
+        if token.is_empty() && extra.is_empty() && credential_id.is_none() {
             let _ = rs::set_provider_cached_models(&id, &found);
         }
         let costs = model_costs(&id, &found);
@@ -486,7 +494,8 @@ async fn usage_summary(q: Qs) -> ApiResult<Response> {
 
 async fn provider_usage(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response> {
     let token = q.opt("api_key");
-    match usage::get_provider_usage(&id, token.as_deref()).await {
+    let credential_id = q.opt("credential_id").filter(|c| !c.is_empty());
+    match usage::get_provider_usage(&id, token.as_deref(), credential_id.as_deref()).await {
         Ok(v) => Ok(json(v)),
         Err(UsageError::Unsupported(_)) => Err(ApiError::not_found(format!("Usage monitoring unsupported for '{id}'."))),
         Err(UsageError::Credentials(m)) => Err(ApiError::not_found(m)),
@@ -494,8 +503,9 @@ async fn provider_usage(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response
     }
 }
 
-async fn provider_reset(AxPath(id): AxPath<String>) -> ApiResult<Response> {
-    match usage::consume_provider_reset(&id).await {
+async fn provider_reset(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response> {
+    let credential_id = q.opt("credential_id").filter(|c| !c.is_empty());
+    match usage::consume_provider_reset(&id, credential_id.as_deref()).await {
         Ok(v) => Ok(json(v)),
         Err(UsageError::Unsupported(_)) => Err(ApiError::not_found(format!("Rate limit reset unsupported for '{id}'."))),
         Err(UsageError::Credentials(m)) => Err(ApiError::new(401, m)),
@@ -523,106 +533,9 @@ async fn disconnect(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Respons
     Ok(json(json!({"provider": id, "is_disconnected": rs::provider_is_disconnected(&id)})))
 }
 
-fn test_lock() -> &'static tokio::sync::Mutex<()> {
-    static L: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    L.get_or_init(Default::default)
-}
-
-async fn test_provider(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
-    let v = body_value(&raw)?;
-    let mut b = Body::new(&v)?;
-    let token = b.str("api_key", Some(""));
-    let model = b.str("model", None);
-    let extra = b.dict_str("extra");
-    b.finish(&["api_key", "model", "extra"])?;
-    let entry = find_or_404(&id)?;
-    let _g = test_lock().lock().await;
-    let mut saved: Vec<(String, Option<String>)> = vec![];
-    let env_var = s(entry, "env_var");
-    if !token.is_empty() && !env_var.is_empty() {
-        saved.push((env_var.into(), std::env::var(env_var).ok()));
-    }
-    for (k, _) in &extra {
-        saved.push((k.clone(), std::env::var(k).ok()));
-    }
-    // Hide the candidate credential from shells spawned while the test runs.
-    // A variable the user already had stays theirs (it is restored after).
-    for (k, _) in saved.iter().filter(|(_, prev)| prev.is_none()) {
-        appv3_core::env::mark_server_set(k);
-    }
-    if !token.is_empty() && !env_var.is_empty() {
-        std::env::set_var(env_var, &token);
-    }
-    for (k, val) in &extra {
-        std::env::set_var(k, val);
-    }
-    let started = std::time::Instant::now();
-    let res: Result<(), String> = async {
-        let p = appv3_providers::factory::build_provider(Some(&format!("{id}:{model}")), Default::default()).map_err(|e| e.to_string())?;
-        let mut kw = appv3_providers::Kwargs::new();
-        kw.insert("max_tokens".into(), json!(1));
-        p.chat(&[appv3_providers::ChatMessage::user("ping")], None, &kw).await.map_err(|e| e.to_string())?;
-        Ok(())
-    }
-    .await;
-    for (k, prev) in saved.into_iter().rev() {
-        match prev {
-            Some(p) => std::env::set_var(&k, p),
-            None => std::env::remove_var(&k),
-        }
-    }
-    Ok(json(match res {
-        Ok(()) => json!({"ok": true, "latency_ms": started.elapsed().as_millis() as i64, "error": null}),
-        Err(e) => {
-            tracing::warn!("provider_test_failed provider={} error={}", id, e);
-            json!({"ok": false, "latency_ms": null, "error": e})
-        }
-    }))
-}
-
-/// `_write_env_credentials`.
-fn write_env_credentials(env_file: &Path, creds: &[(String, String)]) -> std::io::Result<()> {
-    let lookup = |k: &str| creds.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
-    if !env_file.exists() {
-        let mut lines: Vec<String> =
-            ["# Generated by openagentd", "# Edit as needed. See .env.example for the full reference.", "", "APP_ENV=production", ""].map(String::from).to_vec();
-        lines.extend(creds.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| format!("{k}={v}")));
-        return appv3_core::secret_files::write_secret_file(env_file, &(lines.join("\n") + "\n"));
-    }
-    let existing = std::fs::read_to_string(env_file)?;
-    let mut out: Vec<String> = vec![];
-    let mut handled: Vec<String> = vec![];
-    for line in existing.lines() {
-        let key = line.split('=').next().unwrap_or("").trim().to_string();
-        match lookup(&key) {
-            None => out.push(line.to_string()),
-            Some(v) => {
-                handled.push(key.clone());
-                if !v.is_empty() {
-                    out.push(format!("{key}={v}"));
-                }
-            }
-        }
-    }
-    for (k, v) in creds {
-        if !handled.contains(k) && !v.is_empty() {
-            out.push(format!("{k}={v}"));
-        }
-    }
-    appv3_core::secret_files::write_secret_file(env_file, &(out.join("\n") + "\n"))
-}
-
-async fn save_provider(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
-    save_provider_named(id, raw).await
-}
-
-async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
-    let v = body_value(&raw)?;
-    let mut b = Body::new(&v)?;
-    let token = b.str("api_key", Some(""));
-    let extra = b.dict_str("extra");
-    b.finish(&["api_key", "extra"])?;
-    let entry = find_or_404(&id)?;
+/// Candidate values for one credential: the primary secret (`api_key`)
+/// under the provider's main field name, plus `extra` named fields.
+fn entry_values(entry: &Value, token: &str, extra: &[(String, String)]) -> Vec<(String, String)> {
     let mut creds: Vec<(String, String)> = vec![];
     let set = |creds: &mut Vec<(String, String)>, k: String, v: String| match creds.iter_mut().find(|(n, _)| *n == k) {
         Some(slot) => slot.1 = v,
@@ -632,7 +545,7 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
     let fields = entry.get("credentials").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if !fields.is_empty() {
         if !token.is_empty() {
-            set(&mut creds, s(&fields[0], "name").to_string(), token.clone());
+            set(&mut creds, s(&fields[0], "name").to_string(), token.to_string());
         }
         for f in &fields {
             let name = s(f, "name");
@@ -640,37 +553,314 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
                 set(&mut creds, name.to_string(), val);
             }
         }
-    } else if s(entry, "kind") == "api_key" && !s(entry, "env_var").is_empty() {
-        set(&mut creds, s(entry, "env_var").to_string(), token.clone());
-    } else if s(entry, "kind") == "cloud_creds" {
-        for n in entry.get("env_vars").and_then(|v| v.as_array()).into_iter().flatten() {
-            let n = n.as_str().unwrap_or("");
-            if let Some(val) = extra_get(n) {
-                set(&mut creds, n.to_string(), val);
-            }
-        }
+    } else if !s(entry, "env_var").is_empty() && !token.is_empty() {
+        set(&mut creds, s(entry, "env_var").to_string(), token.to_string());
     }
-    for (k, val) in &extra {
+    for (k, val) in extra {
         if !creds.iter().any(|(n, _)| n == k) {
             creds.push((k.clone(), val.clone()));
         }
     }
-    if creds.is_empty() {
-        return Ok(json(json!({"saved": false})));
-    }
-    let env_file = settings().config_dir.join(".env");
-    write_env_credentials(&env_file, &creds).map_err(internal)?;
-    let _ = rs::clear_provider_cached_models(&id);
-    for (k, val) in &creds {
-        appv3_core::env::mark_server_set(k);
-        if val.is_empty() {
-            std::env::remove_var(k);
-        } else {
-            std::env::set_var(k, val);
+    creds
+}
+
+/// Only names that configure this provider may be stored on it.
+fn check_value_names(id: &str, values: &[(String, String)]) -> ApiResult<()> {
+    for (k, _) in values {
+        if appv3_providers::credentials_migration::owner_of(k).as_deref() != Some(id) {
+            return Err(ApiError::unprocessable(format!("'{k}' is not a setting of provider '{id}'.")));
         }
     }
-    tracing::info!("provider_credentials_saved provider={} env_vars={:?}", id, creds.iter().map(|(k, _)| k).collect::<Vec<_>>());
-    Ok(json(json!({"saved": true})))
+    Ok(())
+}
+
+fn store_err(e: impl std::fmt::Display) -> ApiError {
+    ApiError::unprocessable(e.to_string())
+}
+
+/// Stored values of one credential (all of the provider's when `None`
+/// names the credential in use), as overrides for discovery and tests.
+fn credential_overrides(id: &str, credential_id: Option<&str>) -> ApiResult<std::collections::HashMap<String, String>> {
+    let Some(cid) = credential_id.filter(|c| !c.is_empty()) else { return Ok(Default::default()) };
+    let f = cred_store::load().map_err(store_err)?;
+    let c = f.find(id, cid).ok_or_else(|| ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")))?;
+    Ok(c.values.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| (k.clone(), v.clone())).collect())
+}
+
+async fn test_provider(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let token = b.str("api_key", Some(""));
+    let model = b.str("model", None);
+    let extra = b.dict_str("extra");
+    let credential_id = b.opt_str("credential_id");
+    b.finish(&["api_key", "model", "extra", "credential_id"])?;
+    let entry = find_or_404(&id)?;
+    let mut overrides = credential_overrides(&id, credential_id.as_deref())?;
+    overrides.extend(entry_values(entry, &token, &extra).into_iter().filter(|(_, v)| !v.is_empty()));
+    let started = std::time::Instant::now();
+    let res: Result<(), String> = async {
+        let pm = format!("{id}:{model}");
+        let p = blocking(move || appv3_providers::factory::build_provider_with_overrides(Some(&pm), Default::default(), overrides)).await.map_err(|e| e.to_string())?;
+        let mut kw = appv3_providers::Kwargs::new();
+        kw.insert("max_tokens".into(), json!(1));
+        p.chat(&[appv3_providers::ChatMessage::user("ping")], None, &kw).await.map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    .await;
+    Ok(json(match res {
+        Ok(()) => json!({"ok": true, "latency_ms": started.elapsed().as_millis() as i64, "error": null}),
+        Err(e) => {
+            tracing::warn!("provider_test_failed provider={} error={}", id, e);
+            json!({"ok": false, "latency_ms": null, "error": e})
+        }
+    }))
+}
+
+async fn save_provider(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
+    save_provider_named(id, raw).await
+}
+
+/// `PUT /providers/{id}`: set values on one credential — `credential_id`,
+/// else the credential in use — creating the provider's first credential
+/// when it has none. An empty value clears that field.
+async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let token = b.str("api_key", Some(""));
+    let extra = b.dict_str("extra");
+    let credential_id = b.opt_str("credential_id");
+    b.finish(&["api_key", "extra", "credential_id"])?;
+    let entry = find_or_404(&id)?;
+    let values = entry_values(entry, &token, &extra);
+    if values.is_empty() {
+        return Ok(json(json!({"saved": false})));
+    }
+    check_value_names(&id, &values)?;
+    let target = credential_id.or_else(|| cred_store::current(&id)).or_else(|| cred_store::snapshot().provider(&id).first().map(|c| c.id.clone()));
+    let pid = id.clone();
+    let names: Vec<String> = values.iter().map(|(k, _)| k.clone()).collect();
+    let cid = blocking(move || {
+        cred_store::update(|f| {
+            let existing = target.as_deref().and_then(|t| f.find(&pid, t)).map(|c| c.id.clone());
+            let c = match existing {
+                Some(eid) => f.find_mut(&pid, &eid).expect("exists"),
+                None => {
+                    f.provider_mut(&pid).push(cred_store::Credential::new("Default"));
+                    f.provider_mut(&pid).last_mut().expect("pushed")
+                }
+            };
+            for (k, val) in values {
+                if val.is_empty() {
+                    c.values.shift_remove(&k);
+                } else {
+                    c.values.insert(k, val);
+                }
+            }
+            c.id.clone()
+        })
+    })
+    .await
+    .map_err(store_err)?;
+    cred_store::clear_cooldown(&id, &cid);
+    let _ = rs::clear_provider_cached_models(&id);
+    tracing::info!("provider_credentials_saved provider={} credential={} names={:?}", id, cid, names);
+    Ok(json(json!({"saved": true, "credential_id": cid})))
+}
+
+// ── credential list ─────────────────────────────────────────────────────────
+
+/// Last four characters of a secret, for telling keys apart.
+fn mask(v: &str) -> String {
+    let chars: Vec<char> = v.chars().collect();
+    if chars.len() <= 8 {
+        return "••••".into();
+    }
+    format!("…{}", chars[chars.len() - 4..].iter().collect::<String>())
+}
+
+/// Public metadata of one stored credential (never a secret value).
+pub fn credential_meta(entry: &Value, c: &cred_store::Credential, in_use: bool) -> Value {
+    let id = s(entry, "id");
+    let oauth_kind = s(entry, "kind") == "oauth";
+    let cooldown = cred_store::cooldown(id, &c.id);
+    let primary = if s(entry, "env_var").is_empty() {
+        entry.get("credentials").and_then(|v| v.as_array()).and_then(|a| a.first()).map(|f| s(f, "name").to_string()).unwrap_or_default()
+    } else {
+        s(entry, "env_var").to_string()
+    };
+    let secret_names: Vec<String> = entry
+        .get("credentials")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|f| f.get("secret").and_then(|v| v.as_bool()).unwrap_or(false))
+        .map(|f| s(f, "name").to_string())
+        .chain(std::iter::once(primary.clone()))
+        .collect();
+    let hint = match (&c.oauth, c.value(&primary)) {
+        (Some(_), _) => Value::Null,
+        (None, Some(v)) => json!(mask(v)),
+        _ => Value::Null,
+    };
+    let needs_reconnect = oauth_kind && c.oauth.is_none() && !c.has_secret();
+    let status = if c.disabled {
+        "disabled"
+    } else if needs_reconnect {
+        "needs_reconnect"
+    } else if cooldown.is_some() {
+        "cooling_down"
+    } else {
+        "ready"
+    };
+    let settings_shown: Map<String, Value> = c.values.iter().filter(|(k, _)| !secret_names.contains(k)).map(|(k, v)| (k.clone(), json!(v))).collect();
+    json!({
+        "id": c.id,
+        "label": c.label,
+        "disabled": c.disabled,
+        "kind": if c.oauth.is_some() || oauth_kind { "oauth" } else { "api_key" },
+        "hint": hint,
+        "settings": settings_shown,
+        "status": status,
+        "in_use": in_use && !c.disabled,
+        "cooldown_until": cooldown.as_ref().map(|c| c.until as i64),
+        "cooldown_reason": cooldown.map(|c| c.reason),
+    })
+}
+
+/// Every stored credential of `entry`'s provider, in priority order.
+pub fn credentials_json(entry: &Value) -> Value {
+    let id = s(entry, "id");
+    let f = cred_store::snapshot();
+    let enabled = f.enabled(id);
+    let in_use = cred_store::current(id).filter(|c| enabled.iter().any(|e| e.id == *c)).or_else(|| enabled.first().map(|c| c.id.clone()));
+    Value::Array(f.provider(id).iter().map(|c| credential_meta(entry, c, in_use.as_deref() == Some(c.id.as_str()))).collect())
+}
+
+async fn list_credentials(AxPath(id): AxPath<String>) -> ApiResult<Response> {
+    let entry = find_or_404(&id)?;
+    cred_store::load().map_err(store_err)?;
+    Ok(json(json!({"provider": id, "credentials": credentials_json(entry), "env_pinned": appv3_providers::pool::env_pinned(&id)})))
+}
+
+async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let label = b.str("label", Some(""));
+    let token = b.str("api_key", Some(""));
+    let extra = b.dict_str("extra");
+    b.finish(&["label", "api_key", "extra"])?;
+    let entry = find_or_404(&id)?;
+    if s(entry, "kind") == "oauth" && token.is_empty() && extra.is_empty() {
+        return Err(ApiError::unprocessable("OAuth accounts are added by signing in (GET /api/auth/{provider}/login)."));
+    }
+    let values: Vec<(String, String)> = entry_values(entry, &token, &extra).into_iter().filter(|(_, v)| !v.is_empty()).collect();
+    if values.is_empty() {
+        return Err(ApiError::unprocessable("Provide api_key or extra values for the new credential."));
+    }
+    check_value_names(&id, &values)?;
+    let pid = id.clone();
+    let label = crate::routes::library::py_strip(&label);
+    let c = blocking(move || {
+        cred_store::update(|f| {
+            let n = f.provider(&pid).len() + 1;
+            let mut c = cred_store::Credential::new(if label.is_empty() { format!("Key {n}") } else { label });
+            c.values = values.into_iter().collect();
+            f.provider_mut(&pid).push(c.clone());
+            c
+        })
+    })
+    .await
+    .map_err(store_err)?;
+    let _ = rs::clear_provider_cached_models(&id);
+    tracing::info!("provider_credential_added provider={} credential={}", id, c.id);
+    Ok(json_code(201, credential_meta(entry, &c, false)))
+}
+
+async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let has = |k: &str| v.as_object().is_some_and(|o| o.contains_key(k));
+    let label = b.opt_str("label");
+    let disabled = if has("disabled") { Some(b.bool("disabled", None)) } else { None };
+    let token = b.str("api_key", Some(""));
+    let extra = b.dict_str("extra");
+    b.finish(&["label", "disabled", "api_key", "extra"])?;
+    let entry = find_or_404(&id)?;
+    let values = entry_values(entry, &token, &extra);
+    check_value_names(&id, &values)?;
+    let (pid, c2) = (id.clone(), cid.clone());
+    let updated = blocking(move || {
+        cred_store::update(|f| {
+            let c = f.find_mut(&pid, &c2)?;
+            if let Some(l) = label {
+                c.label = crate::routes::library::py_strip(&l);
+            }
+            if let Some(d) = disabled {
+                c.disabled = d;
+            }
+            for (k, val) in values {
+                if val.is_empty() {
+                    c.values.shift_remove(&k);
+                } else {
+                    c.values.insert(k, val);
+                }
+            }
+            Some(c.clone())
+        })
+    })
+    .await
+    .map_err(store_err)?;
+    let c = updated.ok_or_else(|| ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")))?;
+    if !token.is_empty() || !extra.is_empty() {
+        cred_store::clear_cooldown(&id, &cid);
+        let _ = rs::clear_provider_cached_models(&id);
+    }
+    Ok(json(credential_meta(entry, &c, cred_store::current(&id).as_deref() == Some(cid.as_str()))))
+}
+
+async fn delete_credential(AxPath((id, cid)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let entry = find_or_404(&id)?;
+    let (pid, c2) = (id.clone(), cid.clone());
+    let removed = blocking(move || cred_store::update(|f| f.remove(&pid, &c2).is_some())).await.map_err(store_err)?;
+    if !removed {
+        return Err(ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")));
+    }
+    cred_store::clear_cooldown(&id, &cid);
+    if !prov::provider_is_configured(entry) {
+        let _ = rs::forget_provider_models(&id);
+    }
+    tracing::info!("provider_credential_removed provider={} credential={}", id, cid);
+    Ok(json(json!({"ok": true, "provider": id, "credential_id": cid})))
+}
+
+async fn order_credentials(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let ids = b.list_str("ids");
+    b.finish(&["ids"])?;
+    let entry = find_or_404(&id)?;
+    let pid = id.clone();
+    let ok = blocking(move || {
+        cred_store::update(|f| {
+            let list = f.provider_mut(&pid);
+            let mut have: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
+            let mut want: Vec<&str> = ids.iter().map(String::as_str).collect();
+            have.sort_unstable();
+            want.sort_unstable();
+            if have != want {
+                return false;
+            }
+            list.sort_by_key(|c| ids.iter().position(|i| *i == c.id));
+            true
+        })
+    })
+    .await
+    .map_err(store_err)?;
+    if !ok {
+        return Err(ApiError::unprocessable("ids must list every credential of the provider exactly once."));
+    }
+    Ok(json(json!({"provider": id, "credentials": credentials_json(entry)})))
 }
 
 async fn default_model(raw: Bytes) -> ApiResult<Response> {

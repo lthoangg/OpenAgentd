@@ -1,38 +1,18 @@
 //! `ProviderCredentialStore` — port of `plugin_registry.ProviderCredentialStore`
-//! (overrides → real process env → `{CONFIG_DIR}/.env`).
+//! (overrides → real process env → `credentials.yaml`).
 
-use appv3_core::settings;
+use appv3_core::{credentials, settings};
+use indexmap::IndexMap;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-
-/// `dotenv_values(path)` (python-dotenv semantics, simplified).
-pub fn dotenv_values(path: &Path) -> HashMap<String, String> {
-    let mut out = HashMap::new();
-    let Ok(text) = std::fs::read_to_string(path) else { return out };
-    for line in text.lines() {
-        let t = line.trim();
-        if t.is_empty() || t.starts_with('#') {
-            continue;
-        }
-        let t = t.strip_prefix("export ").unwrap_or(t);
-        let Some((k, v)) = t.split_once('=') else { continue };
-        let k = k.trim().to_string();
-        let mut v = v.trim().to_string();
-        if v.len() >= 2 && ((v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\''))) {
-            v = v[1..v.len() - 1].to_string();
-        } else if let Some(i) = v.find(" #") {
-            v = v[..i].trim_end().to_string();
-        }
-        out.insert(k, v);
-    }
-    out
-}
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct CredentialStore {
     pub provider_id: String,
     overrides: HashMap<String, String>,
-    saved: HashMap<String, String>,
+    /// One specific stored credential's values (a credential pool's pick);
+    /// `None` reads whichever credential currently serves the provider.
+    pinned: Option<IndexMap<String, String>>,
 }
 
 impl CredentialStore {
@@ -41,7 +21,13 @@ impl CredentialStore {
     }
 
     pub fn for_provider(provider_id: &str, overrides: HashMap<String, String>) -> Self {
-        CredentialStore { provider_id: provider_id.to_string(), overrides, saved: dotenv_values(&settings().env_file()) }
+        CredentialStore { provider_id: provider_id.to_string(), overrides, pinned: None }
+    }
+
+    /// Reads `values` (one stored credential) after overrides and the
+    /// exported environment.
+    pub fn for_credential(provider_id: &str, values: IndexMap<String, String>) -> Self {
+        CredentialStore { provider_id: provider_id.to_string(), overrides: HashMap::new(), pinned: Some(values) }
     }
 
     /// Explicit overrides (values being validated before they are saved).
@@ -54,7 +40,13 @@ impl CredentialStore {
         if let Some(v) = self.overrides.get(name) {
             return v.clone();
         }
-        appv3_core::env::os_environ(name).filter(|v| !v.is_empty()).or_else(|| self.saved.get(name).cloned().filter(|v| !v.is_empty())).unwrap_or_default()
+        if let Some(v) = credentials::env_override(name) {
+            return v;
+        }
+        match &self.pinned {
+            Some(values) => values.get(name).cloned().unwrap_or_default(),
+            None => credentials::stored(Some(&self.provider_id).filter(|p| !p.is_empty()).map(String::as_str), name).unwrap_or_default(),
+        }
     }
 
     /// `{CACHE_DIR}/provider-plugins/<id>` (created).

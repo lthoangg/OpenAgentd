@@ -32,24 +32,38 @@ pub fn auth_router() -> Router<AppState> {
         .route("/{provider_id}/callback", post(oauth_callback))
 }
 
-async fn oauth_disconnect(AxPath(id): AxPath<String>) -> ApiResult<Response> {
+/// `DELETE /api/auth/{provider}`: sign out one account (`?credential_id=`)
+/// or, without it, every account of the provider.
+async fn oauth_disconnect(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axum::extract::RawQuery) -> ApiResult<Response> {
     let plugin = appv3_providers::plugin::find_provider_plugin(&id);
     if crate::providers::find(&id).is_none() && plugin.is_none() {
         return Err(ApiError::not_found(format!("Unknown OAuth provider '{id}'.")));
     }
-    if let Some(p) = appv3_providers::oauth::oauth_path(&id) {
-        if p.is_file() {
-            if let Err(e) = std::fs::remove_file(&p) {
-                tracing::warn!("failed_to_delete_oauth_file provider={} path={} error={}", id, p.display(), e);
-            }
-        } else if plugin.is_some() {
-            remove_plugin_tokens(&id);
+    let credential_id = q.as_deref().map(|q| appv3_providers::plugin::qs_first(&appv3_providers::plugin::parse_qs(q), "credential_id")).filter(|c| !c.is_empty());
+    if appv3_providers::oauth::is_builtin(&id) {
+        let (pid, cid) = (id.clone(), credential_id.clone());
+        let removed = blocking(move || {
+            appv3_core::credentials::update(|f| match &cid {
+                Some(c) => usize::from(f.remove(&pid, c).is_some()),
+                None => f.providers.shift_remove(&pid).map(|l| l.len()).unwrap_or(0),
+            })
+        })
+        .await
+        .map_err(|e| ApiError::unprocessable(e.to_string()))?;
+        if credential_id.is_some() && removed == 0 {
+            return Err(ApiError::not_found(format!("Credential '{}' not found for '{id}'.", credential_id.unwrap_or_default())));
+        }
+        if let Some(c) = &credential_id {
+            appv3_core::credentials::clear_cooldown(&id, c);
         }
     } else if plugin.is_some() {
         remove_plugin_tokens(&id);
     }
-    let _ = rs::forget_provider_models(&id);
-    Ok(json(json!({"ok": true, "provider": id})))
+    let still_connected = appv3_core::credentials::snapshot().enabled(&id).iter().any(|c| c.has_secret());
+    if !still_connected {
+        let _ = rs::forget_provider_models(&id);
+    }
+    Ok(json(json!({"ok": true, "provider": id, "credential_id": credential_id})))
 }
 
 /// Remove a provider plugin's token directory.
@@ -70,7 +84,19 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
     if !builtin && plugin.is_none() {
         return Err(ApiError::not_found(format!("Unknown OAuth provider '{id}'. Known: ['codex', 'copilot', 'grok'].")));
     }
-    let browser = id == "codex" && q.as_deref().map(|q| appv3_providers::plugin::qs_first(&appv3_providers::plugin::parse_qs(q), "mode") == "browser").unwrap_or(false);
+    let qs = q.as_deref().map(appv3_providers::plugin::parse_qs).unwrap_or_default();
+    let browser = id == "codex" && appv3_providers::plugin::qs_first(&qs, "mode") == "browser";
+    // `?credential_id=` reconnects that account; otherwise a new one is added.
+    let slot = match appv3_providers::plugin::qs_first(&qs, "credential_id") {
+        c if c.is_empty() => appv3_providers::oauth::TokenSlot::new_account(&id),
+        c => {
+            let s = appv3_providers::oauth::TokenSlot::new(&id, &c);
+            if builtin && !s.exists() {
+                return Err(ApiError::not_found(format!("Credential '{c}' not found for '{id}'.")));
+            }
+            s
+        }
+    };
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Arc<WireEvent>>();
     let failed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let sink: appv3_providers::plugin::OAuthSink = {
@@ -88,7 +114,7 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
     tokio::spawn(async move {
         let res = match plugin {
             Some(p) => p.login(sink).await,
-            None => appv3_providers::oauth::builtin_login(&id, browser, sink).await,
+            None => appv3_providers::oauth::builtin_login(&id, browser, sink, slot).await,
         };
         if let Err(e) = res {
             tracing::warn!("oauth_login_failed provider={} error={}", id, e);

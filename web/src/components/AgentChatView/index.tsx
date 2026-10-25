@@ -74,6 +74,7 @@ import type {
   ContentBlock,
   MessageAttachment,
 } from '@/api/types'
+import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -788,6 +789,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </div>
             </div>
           )}
+        <ConnectionBanner />
         {/* The draft screen carries its own setup card instead. */}
         {!isDraft && (
           <ProviderSetupNotice

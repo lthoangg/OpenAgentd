@@ -60,6 +60,24 @@ fn log_panics() {
     }));
 }
 
+/// WebKitGTK's DMA-BUF renderer draws a blank or white window with the
+/// proprietary NVIDIA driver (common on Wayland). Turn it off there, before
+/// any webview starts, unless the user already chose a value.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn dmabuf_workaround_needed(already_set: bool, nvidia_driver: bool) -> bool {
+    !already_set && nvidia_driver
+}
+
+#[cfg(target_os = "linux")]
+fn apply_linux_webview_workarounds() {
+    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+    if dmabuf_workaround_needed(std::env::var_os(VAR).is_some(), nvidia) {
+        // Still single-threaded: nothing else reads the environment yet.
+        std::env::set_var(VAR, "1");
+    }
+}
+
 /// Shared application state.
 pub struct AppState {
     pub sidecar: Arc<Mutex<Option<Sidecar>>>,
@@ -548,6 +566,8 @@ async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()>
 fn main() {
     LAUNCHED.get_or_init(Instant::now);
     log_panics();
+    #[cfg(target_os = "linux")]
+    apply_linux_webview_workarounds();
     let state = AppState {
         sidecar: Arc::new(Mutex::new(None)),
         desktop_token: Arc::new(Mutex::new(None)),
@@ -804,6 +824,13 @@ mod tests {
     use crate::servers::{current_server, ServerId};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
+
+    #[test]
+    fn dmabuf_is_turned_off_only_for_nvidia_and_never_over_a_user_choice() {
+        assert!(dmabuf_workaround_needed(false, true));
+        assert!(!dmabuf_workaround_needed(false, false));
+        assert!(!dmabuf_workaround_needed(true, true));
+    }
 
     #[test]
     fn logging_panics_keeps_the_previous_hook() {

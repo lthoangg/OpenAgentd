@@ -846,7 +846,9 @@ export function Sidebar({
             animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : DURATIONS_S.base), ease: EASINGS.sheet }}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay) md:hidden"
+            // No `md:hidden`: a landscape phone is wider than md but still
+            // mobile (useIsMobile's height rule); `isMobile` already gates it.
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay)"
             aria-hidden="true"
             onClick={onMobileClose}
           />
@@ -860,9 +862,12 @@ export function Sidebar({
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
+      // The drawer is fixed to the left edge, outside the shell's safe-area
+      // padding: `pl-safe` keeps its rows clear of a landscape cutout while
+      // its width (and so the closed -280px offset) stays the same.
       className={
         isMobile
-          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
+          ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
           : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
       }
     >

@@ -233,4 +233,13 @@ describe('Review dock layout', () => {
     expect(screen.queryByRole('button', { name: /review dock/ })).toBeNull()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
+
+  it('keeps the mobile sheet fixed and full width on a landscape phone wider than md', async () => {
+    const { dock } = await renderPanel({ mobile: true })
+    const classes = dock.className.split(' ')
+
+    // No desktop `md:` layout leaks in when the phone is wider than md.
+    expect(classes.filter((c) => c.startsWith('md:'))).toEqual([])
+    expect(classes).toEqual(expect.arrayContaining(['fixed', 'w-full', 'pl-safe', 'pr-safe']))
+  })
 })

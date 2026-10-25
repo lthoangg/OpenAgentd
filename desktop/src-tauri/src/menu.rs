@@ -51,6 +51,7 @@ pub const MENU_CHECK_UPDATES: &str = "check_updates";
 pub const MENU_OPEN_CONFIG_DIR: &str = "open_config_dir";
 pub const MENU_REVEAL_DESKTOP_LOG: &str = "reveal_desktop_log";
 pub const MENU_REVEAL_BACKEND_LOG: &str = "reveal_backend_log";
+pub const MENU_EXPORT_DIAGNOSTICS: &str = "export_diagnostics";
 pub const MENU_HELP_WEBSITE: &str = "help_website";
 pub const MENU_HELP_GITHUB: &str = "help_github";
 pub const MENU_HELP_RELEASE_NOTES: &str = "help_release_notes";
@@ -275,6 +276,13 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
+    let help_export_diagnostics = MenuItem::with_id(
+        app,
+        MENU_EXPORT_DIAGNOSTICS,
+        "Export Diagnostics…",
+        true,
+        None::<&str>,
+    )?;
 
     let app_menu = SubmenuBuilder::new(app, "OpenAgentd")
         .item(&app_about)
@@ -349,6 +357,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&help_open_config_dir)
         .item(&help_reveal_desktop_log)
         .item(&help_reveal_backend_log)
+        .item(&help_export_diagnostics)
         .build()?;
     let menu = Menu::with_items(
         app,
@@ -438,6 +447,13 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
+    let tray_export_diagnostics = MenuItem::with_id(
+        app,
+        MENU_EXPORT_DIAGNOSTICS,
+        "Export Diagnostics…",
+        true,
+        None::<&str>,
+    )?;
     let tray_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload Window", true, None::<&str>)?;
     let tray_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
 
@@ -491,6 +507,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
             &tray_open_config_dir,
             &tray_reveal_desktop_log,
             &tray_reveal_backend_log,
+            &tray_export_diagnostics,
             &tray_reload,
             &PredefinedMenuItem::separator(app)?,
             &tray_quit,
@@ -612,6 +629,7 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_OPEN_CONFIG_DIR => open_config_dir(app),
         MENU_REVEAL_DESKTOP_LOG => reveal_desktop_log(app),
         MENU_REVEAL_BACKEND_LOG => reveal_backend_log(app),
+        MENU_EXPORT_DIAGNOSTICS => crate::diagnostics::export_from_menu(app),
         MENU_HELP_WEBSITE => open_help_url(app, WEBSITE_URL),
         MENU_HELP_GITHUB => open_help_url(app, REPO_URL),
         MENU_HELP_RELEASE_NOTES => open_help_url(app, RELEASE_NOTES_URL),

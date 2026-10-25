@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod diagnostics;
 mod window;
 mod updater;
 mod menu;

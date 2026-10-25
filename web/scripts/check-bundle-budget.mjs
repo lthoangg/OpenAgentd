@@ -85,7 +85,12 @@ if (import.meta.main) {
   // Several keys and accounts per provider (the credential list, add-key and
   // add-account flows, the switched-credential notice, their client calls)
   // added 16 kB / 4.3 kB gzip: 2.56 MB / 779 kB with a 1.89 MB index chunk.
-  const limits = { eagerBytes: 2_562_000, eagerGzipBytes: 780_000, largestChunkBytes: 1_895_000 }
+  // The v3.31.0 native-feel passes reached 2.58 MB / 787 kB with a 1.91 MB
+  // index chunk: the first (Android Back, theme sync, haptics, contrast
+  // themes) had already measured 2.576 MB / 784.8 kB; the second (connection
+  // banner, scheduler draft guard, sidebar row keys, window-wide drops, retry
+  // states) added 7.6 kB / 2.4 kB gzip.
+  const limits = { eagerBytes: 2_590_000, eagerGzipBytes: 790_000, largestChunkBytes: 1_915_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

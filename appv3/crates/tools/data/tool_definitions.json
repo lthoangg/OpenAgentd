@@ -570,8 +570,20 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "spawn",
+              "send",
+              "interrupt",
+              "stop",
+              "list"
+            ],
+            "default": null,
+            "description": "Defaults to 'send' with a target, else 'spawn'."
+          },
           "profile": {
-            "description": "Subagent profile name to delegate to (see available profiles in tool description).",
+            "description": "Subagent profile name (see available profiles in tool description). Required to spawn.",
             "type": "string"
           },
           "task": {
@@ -581,13 +593,10 @@
           "target": {
             "type": "string",
             "default": null,
-            "description": "Optional live subagent handle (e.g. 'explorer#1') to send follow-up instructions or answer a question. Omit to spawn a new instance."
+            "description": "Live subagent handle (e.g. 'explorer#1'), required for send, interrupt and stop. Omit to spawn a new instance."
           }
         },
-        "required": [
-          "profile",
-          "task"
-        ]
+        "required": []
       }
     }
   },

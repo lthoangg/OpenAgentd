@@ -1020,6 +1020,16 @@ executes tools, manages its task list, and inspects workspace repositories.
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
   A lead stays loaded while its subagents work, so a job longer than 30 minutes
   still reports back instead of being cancelled when the idle lead was unloaded `[v3.24.0]`.
+- **Lead control over its subagents** `[v3.30.0]` — `delegate` takes an `action`:
+  `interrupt` cuts one subagent's current step short and starts it on a new task at
+  once, `stop` ends one subagent's work without a report (a later task resumes it with
+  its context), and `list` shows each subagent's status. Calls without an `action`
+  spawn or send as before; a follow-up sent to a busy subagent now says it waits for
+  the subagent's current work. A subagent that fails tells the lead the real reason
+  (e.g. "Provider Authentication Failed: …") and whether retrying can help, instead
+  of "Subagent turn failed with error." One that can't reach its model (out of quota,
+  or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
+  Stopped subagents show as `stopped` rather than `error`.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or

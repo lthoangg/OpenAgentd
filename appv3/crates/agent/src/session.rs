@@ -190,6 +190,9 @@ pub struct AgentSession {
     question_suspended: Mutex<Option<Value>>,
     lead_suspended: Mutex<Option<Value>>,
     last_error: Mutex<Option<String>>,
+    /// The last failed turn's `format_agent_error` (message, title, code,
+    /// category), which a member's failure report hands to its lead.
+    last_error_info: Mutex<Option<Value>>,
     pending_interaction_mode: Mutex<Option<String>>,
     /// `<openagentd_memory>` as of this session's first turn. Frozen so the
     /// system prompt stays byte-identical across turns (prefix caching);
@@ -242,6 +245,7 @@ impl AgentSession {
             question_suspended: Mutex::new(None),
             lead_suspended: Mutex::new(None),
             last_error: Mutex::new(None),
+            last_error_info: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),
             memory_snapshot: Mutex::new(None),
             idle_timer: Mutex::new(None),
@@ -352,6 +356,9 @@ impl AgentSession {
     }
     pub fn last_error(&self) -> Option<String> {
         self.last_error.lock().unwrap().clone()
+    }
+    pub fn last_error_info(&self) -> Option<Value> {
+        self.last_error_info.lock().unwrap().clone()
     }
     pub fn lead_suspended(&self) -> Option<Value> {
         self.lead_suspended.lock().unwrap().clone()
@@ -981,7 +988,8 @@ impl AgentSession {
                 }
             }
             Some(lead) => {
-                crate::subagents::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set()).await;
+                let error = if status == "error" { self.last_error_info() } else { None };
+                crate::subagents::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set(), error.as_ref()).await;
             }
         }
         let mut payload = json!({"session_id": session_id, "status": status});
@@ -1135,6 +1143,7 @@ impl AgentSession {
                 self.set_state("error");
                 let info = format_agent_error(&e, Some(&self.name()));
                 *self.last_error.lock().unwrap() = info["message"].as_str().map(String::from);
+                *self.last_error_info.lock().unwrap() = Some(info.clone());
                 let mut data = Map::new();
                 for k in ["message", "title", "code", "category"] {
                     data.insert(k.into(), info[k].clone());
@@ -1251,6 +1260,8 @@ impl AgentSession {
             if let Some(t) = build_title_generation_hook(provider_for_hooks.clone(), self.pool.clone()) {
                 hooks.push(Arc::new(t));
             }
+        } else if let Some(lead) = &self.parent_session_id {
+            hooks.push(Arc::new(crate::subagents::MemberStallHook::new(lead, &name, self.pool.clone())));
         }
         hooks.push(Arc::new(WorkspaceInstructionsHook::new(Some(&workspace), agent_mode == "coding")));
         hooks.extend(self.test_hooks.lock().unwrap().iter().cloned());

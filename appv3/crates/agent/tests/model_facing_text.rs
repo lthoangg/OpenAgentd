@@ -137,7 +137,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// facts given inside a request.
 /// Lowered by 16 once the canonical temp root (`/private` on macOS) was left
 /// out, so the count is the same on every OS.
-const LEAD_ALWAYS_ON_CHARS: usize = 36_476;
+/// Raised by 358 for `delegate`'s `action` (interrupt, stop, list) and the
+/// line telling the lead that a failed or stalled subagent says why.
+const LEAD_ALWAYS_ON_CHARS: usize = 36_834;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

@@ -1096,6 +1096,32 @@ html[data-app-hidden="true"] *::after {
 :where(input, textarea):focus-visible {
   outline: none;
 }
+/* Windows contrast themes (forced colors) repaint every fill as Canvas and
+ * drop box-shadows, which erases Tailwind focus rings and any state shown
+ * only by a fill. Paint those in system colours instead. */
+@media (forced-colors: active) {
+  :focus-visible:not([data-quiet-focus]) {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  [data-slot="switch"] > span {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+  [data-slot="switch"][data-checked] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    border-color: Highlight;
+  }
+  [data-slot="switch"][data-checked] > span {
+    background-color: HighlightText;
+  }
+  [data-slot="segmented-control"] [aria-checked="true"] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+}
 @media (pointer: coarse) {
   [data-slot="button"] {
     min-height: 44px;

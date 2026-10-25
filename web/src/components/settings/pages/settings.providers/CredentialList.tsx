@@ -12,6 +12,7 @@ import {
   useUpdateProviderCredentialMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
+import { errorMessage } from '@/utils/errors'
 import { UsagePanel } from './UsagePanel'
 
 /** OAuth providers whose usage the backend can read per account. */
@@ -41,7 +42,23 @@ const COOLDOWN_LABEL: Record<string, string> = {
   auth: 'Rejected',
 }
 
-function StatusPills({ credential, now, pinned }: { credential: StoredCredential; now: number; pinned: boolean }) {
+/** Ticks only while mounted, i.e. only for a credential that is cooling down. */
+function CooldownPill({ reason, until }: { reason: string | null; until: number | null }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!until) return undefined
+    const t = window.setInterval(() => setNow(Date.now()), 15_000)
+    return () => window.clearInterval(t)
+  }, [until])
+  return (
+    <span className={PILL_WARN}>
+      {COOLDOWN_LABEL[reason ?? ''] ?? 'Cooling down'}
+      {until ? ` · resets in ${formatCountdown(until, now)}` : ''}
+    </span>
+  )
+}
+
+function StatusPills({ credential, pinned }: { credential: StoredCredential; pinned: boolean }) {
   if (pinned) return <span className={PILL_MUTED}>Standby</span>
   return (
     <>
@@ -49,18 +66,13 @@ function StatusPills({ credential, now, pinned }: { credential: StoredCredential
       {credential.status === 'ready' && <span className={PILL_OK}>Ready</span>}
       {credential.status === 'disabled' && <span className={PILL_MUTED}>Disabled</span>}
       {credential.status === 'needs_reconnect' && <span className={PILL_ERROR}>Reconnect required</span>}
-      {credential.status === 'cooling_down' && (
-        <span className={PILL_WARN}>
-          {COOLDOWN_LABEL[credential.cooldown_reason ?? ''] ?? 'Cooling down'}
-          {credential.cooldown_until ? ` · resets in ${formatCountdown(credential.cooldown_until, now)}` : ''}
-        </span>
-      )}
+      {credential.status === 'cooling_down' && <CooldownPill reason={credential.cooldown_reason} until={credential.cooldown_until} />}
     </>
   )
 }
 
 function AccountUsage({ providerId, credentialId }: { providerId: string; credentialId: string }) {
-  const q = useProviderUsageQuery(providerId, true, undefined, credentialId)
+  const q = useProviderUsageQuery(providerId, true, credentialId)
   if (q.isLoading) {
     return (
       <p className="inline-flex items-center gap-1 font-mono text-[11px] text-(--color-text-subtle)">
@@ -87,7 +99,6 @@ export function CredentialList({
   const credentials = provider.stored_credentials ?? []
   const isOauth = provider.kind === 'oauth'
   const pinned = Boolean(provider.env_pinned)
-  const [now, setNow] = useState(() => Date.now())
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const [usageOpen, setUsageOpen] = useState<string | null>(null)
@@ -97,15 +108,7 @@ export function CredentialList({
   const signOut = useDisconnectOauthProviderMutation()
   const push = useToastStore((s) => s.push)
 
-  const cooling = credentials.some((c) => c.status === 'cooling_down')
-  useEffect(() => {
-    if (!cooling) return undefined
-    const t = window.setInterval(() => setNow(Date.now()), 15_000)
-    return () => window.clearInterval(t)
-  }, [cooling])
-
-  const fail = (title: string, err: unknown) =>
-    push({ tone: 'error', title, description: err instanceof Error ? err.message : String(err) })
+  const fail = (title: string, err: unknown) => push({ tone: 'error', title, description: errorMessage(err) })
 
   const move = (index: number, delta: -1 | 1) => {
     const ids = credentials.map((c) => c.id)
@@ -191,7 +194,7 @@ export function CredentialList({
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-(--color-text)">{c.label || c.id}</span>
                   {c.hint && <span className="font-mono text-[11px] text-(--color-text-muted)">{c.hint}</span>}
-                  <StatusPills credential={c} now={now} pinned={pinned} />
+                  <StatusPills credential={c} pinned={pinned} />
                 </div>
               )}
               {settingsText && <p className="mt-0.5 truncate font-mono text-[11px] text-(--color-text-subtle)">{settingsText}</p>}

@@ -367,11 +367,8 @@ export async function saveProviderVisibleModels(
   return res.json()
 }
 
-export async function getProviderUsage(providerId: string, apiKey?: string, credentialId?: string): Promise<ProviderUsageResponse> {
-  const params = new URLSearchParams()
-  if (apiKey) params.set('api_key', apiKey)
-  if (credentialId) params.set('credential_id', credentialId)
-  const query = params.toString() ? `?${params.toString()}` : ''
+export async function getProviderUsage(providerId: string, credentialId?: string): Promise<ProviderUsageResponse> {
+  const query = credentialId ? `?credential_id=${encodeURIComponent(credentialId)}` : ''
   const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage${query}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
   return res.json()

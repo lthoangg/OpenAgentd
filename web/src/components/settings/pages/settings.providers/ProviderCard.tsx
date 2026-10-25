@@ -236,7 +236,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   const handleOauthDisconnect = async () => {
     try {
-      await disconnectOauthMutation.mutateAsync(provider.id)
+      await disconnectOauthMutation.mutateAsync({ providerId: provider.id })
       push({
         tone: 'success',
         title: 'OAuth account disconnected',

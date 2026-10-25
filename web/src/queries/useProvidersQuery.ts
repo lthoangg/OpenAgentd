@@ -77,10 +77,10 @@ export function useProviderModelsMutation() {
   })
 }
 
-export function useProviderUsageQuery(providerId: string, enabled: boolean, apiKey?: string, credentialId?: string) {
+export function useProviderUsageQuery(providerId: string, enabled: boolean, credentialId?: string) {
   return useQuery({
     queryKey: queryKeys.settings.providerUsage(providerId, credentialId),
-    queryFn: () => getProviderUsage(providerId, apiKey, credentialId),
+    queryFn: () => getProviderUsage(providerId, credentialId),
     enabled,
     refetchInterval: enabled ? 60_000 : false,
     staleTime: 30_000,
@@ -136,14 +136,10 @@ export function useDisconnectProviderMutation() {
 }
 
 export function useDisconnectOauthProviderMutation() {
-  const client = useQueryClient()
+  const invalidate = useInvalidateProviderCredentials()
   return useMutation({
-    mutationFn: (args: string | { providerId: string; credentialId?: string }) =>
-      typeof args === 'string' ? disconnectOauthProvider(args) : disconnectOauthProvider(args.providerId, args.credentialId),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
-      void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
-    },
+    mutationFn: ({ providerId, credentialId }: { providerId: string; credentialId?: string }) => disconnectOauthProvider(providerId, credentialId),
+    onSuccess: (_data, { providerId }) => invalidate(providerId),
   })
 }
 

@@ -45,4 +45,15 @@ describe('shortcutHelp', () => {
     const labels = shortcutHelp('linux').flatMap((group) => group.entries.map((entry) => entry.label))
     expect(new Set(labels).size).toBe(labels.length)
   })
+
+  it('lists Alt+arrows for back and forward off macOS only', () => {
+    expect(find('windows', 'Back')?.keys).toEqual(['Ctrl+[', 'Alt+←'])
+    expect(find('windows', 'Forward')?.keys).toEqual(['Ctrl+]', 'Alt+→'])
+    expect(find('macos', 'Back')?.keys).toEqual(['⌘['])
+  })
+
+  it('lists the sidebar row keys', () => {
+    expect(find('macos', 'Previous and next sidebar row')?.keys).toEqual(['↑', '↓'])
+    expect(find('macos', 'First and last sidebar row')?.keys).toEqual(['Home', 'End'])
+  })
 })

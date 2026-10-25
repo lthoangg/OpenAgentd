@@ -22,4 +22,9 @@ describe('coarse-pointer touch targets', () => {
     expect(dockTabCloseClass(false)).toContain('pointer-coarse:size-8')
     expect(dockTabCloseClass(true)).toContain('pointer-coarse:size-8')
   })
+
+  it('sizes buttons 44px on touch, and 48dp in the Android app (Material)', () => {
+    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*\[data-slot="button"\]\s*\{\s*min-height:\s*44px;\s*min-width:\s*44px;\s*\}/)
+    expect(css).toMatch(/html\[data-mobile-shell="android"\] \[data-slot="button"\]\s*\{\s*min-height:\s*48px;\s*min-width:\s*48px;\s*\}/)
+  })
 })

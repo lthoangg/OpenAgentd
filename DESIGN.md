@@ -731,7 +731,7 @@ buttons never shift size between states.
 
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
-- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 44px` on `[data-slot="button"]`. Prefer `Button` over a bare `<button>` for icon actions.
+- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 44px` on `[data-slot="button"]` (48px in the Android app, Material's minimum). Prefer `Button` over a bare `<button>` for icon actions.
 - `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-11`. Full-width rows stay easy to hit at 36px; 44px left 12px text looking sparse. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - Controls inside the 36px app header and tab bar grow only to that height (`pointer-coarse:size-9`, tab close `pointer-coarse:size-8`), because overlays are positioned from `--spacing-app-header`.

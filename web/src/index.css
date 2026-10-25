@@ -1101,6 +1101,11 @@ html[data-app-hidden="true"] *::after {
     min-height: 44px;
     min-width: 44px;
   }
+  /* Material's minimum touch target is 48dp; 44pt is Apple's. */
+  html[data-mobile-shell="android"] [data-slot="button"] {
+    min-height: 48px;
+    min-width: 48px;
+  }
 }
 
 /* Touch density (DESIGN.md): list rows are 36px on touch. Full-width rows are

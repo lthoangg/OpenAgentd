@@ -171,7 +171,7 @@ pub fn build_member(name: &str, model: &str, model_kwargs: Kwargs, creds: &Crede
             if spec.default_api_key.is_empty() {
                 key = require_api_key(creds, spec.env_var, spec.label)?;
             }
-            let base_url = spec.base_url_env_var.map(&env).filter(|s| !s.is_empty()).unwrap_or_else(|| spec.base_url.to_string());
+            let base_url = spec.base_url_env_var.map(env).filter(|s| !s.is_empty()).unwrap_or_else(|| spec.base_url.to_string());
             match name {
                 "opencode" | "opencode-go" => build_opencode(name, model, &key, &base_url, kw),
                 "deepseek" => {

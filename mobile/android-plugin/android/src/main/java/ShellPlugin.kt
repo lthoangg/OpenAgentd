@@ -7,6 +7,7 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
 import android.webkit.MimeTypeMap
+import android.webkit.WebView
 import androidx.core.content.FileProvider
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -28,9 +29,35 @@ class SecretArgs {
     var value: String? = null
 }
 
+@InvokeArg
+class WidgetArgs {
+    /** Snapshot JSON, validated by the shell's `widgets.rs`. */
+    lateinit var snapshot: String
+}
+
 @TauriPlugin
 class ShellPlugin(private val activity: Activity) : Plugin(activity) {
+    companion object {
+        /**
+         * Whether the app's webview is up in this process. WidgetLinkActivity
+         * reads it to pick how to hand a widget's deep link to the app.
+         */
+        @Volatile
+        var webViewLoaded = false
+            private set
+    }
+
     private val secrets by lazy { KeystoreSecretStore(activity.applicationContext) }
+
+    override fun load(webView: WebView) {
+        super.load(webView)
+        webViewLoaded = true
+    }
+
+    override fun onDestroy() {
+        webViewLoaded = false
+        super.onDestroy()
+    }
 
     /** Share a file from the app cache directory through the system chooser. */
     @Command
@@ -110,6 +137,20 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.resolve(result)
         } catch (ex: Exception) {
             invoke.reject(ex.message ?: "Credential store unavailable")
+        }
+    }
+
+    /** Save the home-screen widget snapshot and redraw the placed widgets. */
+    @Command
+    fun updateWidgets(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(WidgetArgs::class.java)
+            val context = activity.applicationContext
+            WidgetStore.save(context, args.snapshot)
+            Widgets.refreshAll(context)
+            invoke.resolve()
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Could not update widgets")
         }
     }
 }

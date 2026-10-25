@@ -33,6 +33,13 @@ struct SharePayload<'a> {
     path: &'a str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WidgetPayload<'a> {
+    /// The snapshot JSON, already validated by the shell.
+    snapshot: &'a str,
+}
+
 impl<R: Runtime> AndroidShell<R> {
     /// Offer `path` (a file inside the app cache directory) to other apps
     /// through the system share chooser. Blocks until the chooser is shown;
@@ -42,6 +49,15 @@ impl<R: Runtime> AndroidShell<R> {
             .run_mobile_plugin::<serde::de::IgnoredAny>("shareFile", SharePayload { path })
             .map(|_| ())
             .map_err(|e| format!("Share file: {e}"))
+    }
+
+    /// Save the home-screen widget snapshot and redraw every placed widget.
+    /// Blocks on the JNI call; call it off the async runtime.
+    pub fn update_widgets(&self, snapshot: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("updateWidgets", WidgetPayload { snapshot })
+            .map(|_| ())
+            .map_err(|e| format!("Update widgets: {e}"))
     }
 }
 

@@ -10,9 +10,12 @@
 # though nothing loads it at runtime.
 #
 # SideStore, AltStore, Sideloadly and TrollStore re-sign every IPA with the
-# installing user's identity, so the IPA ships ad-hoc signed with no
-# entitlements and none of the above. The SideStore source feed lists the
-# same (empty) entitlements; a mismatch makes SideStore refuse the install.
+# installing user's identity, so the IPA ships ad-hoc signed with none of the
+# above. Its only entitlement is the App Group the app shares with its
+# home-screen widget extension: the sideloading tool registers that group
+# for the user's account (renaming it, see ios-widget/Shared). The SideStore
+# source feed lists the same entitlements; a mismatch makes SideStore refuse
+# the install.
 #
 # Output: dist/OpenAgentd_<version>_iOS.ipa and its .sha256.
 
@@ -43,22 +46,55 @@ app="$stage/Payload/$APP_NAME"
 mkdir -p "$stage/Payload"
 ditto "$ARCHIVE_APP" "$app"
 
-# Strip the developer's provisioning profile, the old signature and the
+# Strip the developer's provisioning profiles, the old signatures and the
 # never-loaded static library before signing.
 rm -rf "$app/embedded.mobileprovision" "$app/_CodeSignature"
+find "$app/PlugIns" -maxdepth 2 \( -name embedded.mobileprovision -o -name _CodeSignature \) \
+  -exec rm -rf {} + 2>/dev/null || true
 find "$app" -name '*.a' -type f -delete
 
-# Sign nested code first, then the bundle. No --entitlements: ad-hoc, empty.
+bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+app_group="group.$bundle_id"
+group_entitlements="$stage/app-group.entitlements"
+cat > "$group_entitlements" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>$app_group</string>
+  </array>
+</dict>
+</plist>
+PLIST
+
+# Sign nested code first, then the bundle: frameworks with no entitlements,
+# the widget extension and the app with only the shared App Group.
 if [ -d "$app/Frameworks" ]; then
   find "$app/Frameworks" \( -name '*.framework' -o -name '*.dylib' \) -maxdepth 1 -print0 \
     | xargs -0 -I{} codesign --force --sign - --timestamp=none {}
 fi
-codesign --force --sign - --timestamp=none "$app"
+extensions=()
+if [ -d "$app/PlugIns" ]; then
+  while IFS= read -r -d '' appex; do extensions+=("$appex"); done \
+    < <(find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print0)
+fi
+for appex in ${extensions[@]+"${extensions[@]}"}; do
+  codesign --force --sign - --timestamp=none --entitlements "$group_entitlements" "$appex"
+done
+codesign --force --sign - --timestamp=none --entitlements "$group_entitlements" "$app"
 
-codesign --verify --strict "$app" || die "signature verification failed"
-entitlements="$(codesign -d --entitlements - --xml "$app" 2>/dev/null || true)"
-[ -z "$entitlements" ] || die "signed app unexpectedly has entitlements: $entitlements"
-[ ! -e "$app/embedded.mobileprovision" ] || die "embedded.mobileprovision still present"
+codesign --verify --strict --deep "$app" || die "signature verification failed"
+# The only entitlement left must be the App Group, on the app and every extension.
+for bundle in "$app" ${extensions[@]+"${extensions[@]}"}; do
+  signed="$(codesign -d --entitlements - --xml "$bundle" 2>/dev/null || true)"
+  keys="$(printf '%s' "$signed" | plutil -convert json -o - - 2>/dev/null \
+    | python3 -c 'import json,sys; print(" ".join(sorted(json.load(sys.stdin))))' 2>/dev/null || true)"
+  [ "$keys" = "com.apple.security.application-groups" ] \
+    || die "$(basename "$bundle") has unexpected entitlements: ${keys:-none}"
+  [ ! -e "$bundle/embedded.mobileprovision" ] || die "embedded.mobileprovision still present in $(basename "$bundle")"
+done
 [ -z "$(find "$app" -name '*.a' -type f -print -quit)" ] || die "static library still present"
 
 mkdir -p "$DIST_DIR"

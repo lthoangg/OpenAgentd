@@ -248,6 +248,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   them. Since `[v3.29.0]` only a focused window on the same server skips it,
   so a question from a server you are not looking at still shows, and
   clicking it opens the window that sent it.
+- **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
+  for the mobile app: **Quick start** (start a new session, or continue the
+  last one), **Sessions** (up to three sessions, the ones that need you first,
+  then the ones still working) and **Next task** (the next scheduled task,
+  with a countdown on iOS, and whether its last run passed). Tapping one opens
+  that session, a new session in your last folder, or the scheduler on that
+  task. The widgets show what the app last synced, with an "as of" time;
+  after 30 minutes the "Needs you" and "Working" labels turn into plain ages.
+  They never hold the server address or access key. The `openagentd://new`
+  and `openagentd://scheduler?task=<id>` links they use work from anywhere,
+  and links into the Android app now also work on older Android System
+  WebView versions.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a

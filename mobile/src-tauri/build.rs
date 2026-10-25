@@ -12,6 +12,7 @@ fn main() {
                 "secure_delete_access_key",
                 "preview_relay_open",
                 "preview_relay_close",
+                "widget_update_snapshot",
             ]),
         ),
     )

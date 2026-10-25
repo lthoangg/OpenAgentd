@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quick start (small): continue the last session or start a new one. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/openagentd_widget_background"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/openagentd_widget_brand"
+        android:textColor="@color/openagentd_widget_muted"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:id="@+id/openagentd_widget_quick_last"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/openagentd_widget_quick_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/openagentd_widget_continue"
+            android:textColor="@color/openagentd_widget_muted"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/openagentd_widget_quick_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/openagentd_widget_text"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/openagentd_widget_quick_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/openagentd_widget_muted"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/openagentd_widget_quick_new"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/openagentd_widget_button"
+        android:gravity="center"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp"
+        android:text="@string/openagentd_widget_new_session"
+        android:textColor="@color/openagentd_widget_button_text"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+</LinearLayout>

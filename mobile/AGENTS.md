@@ -41,6 +41,14 @@ defaults to the newest under `$ANDROID_HOME/ndk`). Android-only native code
 lives in the `android-plugin/` Tauri plugin. Its Kotlin library manifest is
 merged into the generated app, so don't patch `src-tauri/gen/android/`.
 
+Home-screen widgets: the web UI sends a snapshot through
+`widget_update_snapshot` (`src-tauri/src/widgets.rs`, which refuses unknown
+fields so nothing else reaches widget storage). Android draws it with the
+AppWidget providers in `android-plugin/` (`Widgets.kt`). iOS uses the WidgetKit
+extension in `ios-widget/`, which `scripts/patch-ios-widget.sh` adds to the
+generated Xcode project (with xcodegen) before every iOS build, together with
+the App Group the app and the extension share.
+
 ## Constraints
 
 - Keep remote-server connection behavior distinct from desktop's bundled

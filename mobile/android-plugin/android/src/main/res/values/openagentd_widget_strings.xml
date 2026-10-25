@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="openagentd_widget_quick_label">Quick start</string>
+    <string name="openagentd_widget_quick_description">Start a new session or continue your last one.</string>
+    <string name="openagentd_widget_inbox_label">Sessions</string>
+    <string name="openagentd_widget_inbox_description">Sessions that need you or are still working.</string>
+    <string name="openagentd_widget_task_label">Next task</string>
+    <string name="openagentd_widget_task_description">Your next scheduled task and how its last run went.</string>
+    <string name="openagentd_widget_brand">OpenAgentd</string>
+    <string name="openagentd_widget_continue">Continue</string>
+    <string name="openagentd_widget_new_session">+ New session</string>
+    <string name="openagentd_widget_no_sessions">No sessions yet</string>
+    <string name="openagentd_widget_inbox_empty">Nothing needs you right now</string>
+    <string name="openagentd_widget_as_of">as of %1$s ago</string>
+    <string name="openagentd_widget_as_of_now">as of just now</string>
+    <string name="openagentd_widget_needs_you">Needs you</string>
+    <string name="openagentd_widget_working">Working</string>
+    <string name="openagentd_widget_no_tasks">No scheduled tasks</string>
+    <string name="openagentd_widget_last_run">Last run</string>
+    <string name="openagentd_widget_run_ok">ok</string>
+    <string name="openagentd_widget_run_failed">failed</string>
+</resources>

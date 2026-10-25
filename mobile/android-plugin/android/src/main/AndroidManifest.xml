@@ -13,6 +13,10 @@
   The provider is a FileProvider subclass: the Tauri app template already
   declares androidx.core.content.FileProvider, and the manifest merger keys
   providers by class name.
+
+  The receivers are the home-screen widgets (Widgets.kt). They only draw the
+  snapshot the app saved and open the app's own deep links, through
+  WidgetLinkActivity (see there for why a link needs it).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:networkSecurityConfig="@xml/openagentd_network_security_config">
@@ -25,5 +29,49 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/openagentd_file_paths" />
         </provider>
+
+        <activity
+            android:name="app.openagentd.shell.WidgetLinkActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <receiver
+            android:name="app.openagentd.shell.QuickStartWidget"
+            android:exported="false"
+            android:label="@string/openagentd_widget_quick_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/openagentd_widget_quick_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.openagentd.shell.InboxWidget"
+            android:exported="false"
+            android:label="@string/openagentd_widget_inbox_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/openagentd_widget_inbox_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.openagentd.shell.NextTaskWidget"
+            android:exported="false"
+            android:label="@string/openagentd_widget_task_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/openagentd_widget_task_info" />
+        </receiver>
     </application>
 </manifest>

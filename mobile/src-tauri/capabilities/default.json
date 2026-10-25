@@ -24,6 +24,7 @@
     "allow-app-remove-backend-server",
     "allow-save-workspace-file",
     "allow-preview-relay-open",
-    "allow-preview-relay-close"
+    "allow-preview-relay-close",
+    "allow-widget-update-snapshot"
   ]
 }

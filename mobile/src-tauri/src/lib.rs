@@ -12,6 +12,8 @@ use openagentd_shell_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+mod widgets;
+
 /// Total budget for one workspace download. Mobile talks to a remote
 /// server over whatever network the phone has, so keep this shorter than
 /// the desktop's 300 s.
@@ -138,6 +140,17 @@ async fn preview_relay_open(
 #[tauri::command]
 fn preview_relay_close(relays: tauri::State<'_, PreviewRelays>, preview_id: String) -> bool {
     relays.0.close(RELAY_SCOPE, &preview_id)
+}
+
+/// Save what the home-screen widgets show (see `widgets.rs`).
+#[tauri::command]
+async fn widget_update_snapshot(
+    app: AppHandle,
+    snapshot: widgets::WidgetSnapshot,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || widgets::publish(&app, snapshot))
+        .await
+        .map_err(|e| format!("Widget update failed: {e}"))?
 }
 
 #[derive(Clone, Serialize)]
@@ -480,6 +493,7 @@ pub fn run() {
             save_workspace_file,
             preview_relay_open,
             preview_relay_close,
+            widget_update_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

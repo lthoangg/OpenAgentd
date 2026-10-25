@@ -76,6 +76,7 @@ python3 ../scripts/make_sidestore_source.py \
   --download-url "$DOWNLOAD_URL" \
   --notes-file "$work/notes.md" \
   --previous "$work/source.json" \
+  --entitlement com.apple.security.application-groups \
   --out "$SOURCE"
 
 # The rolling release stays a pre-release so it never becomes

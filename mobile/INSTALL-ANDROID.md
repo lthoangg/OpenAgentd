@@ -69,6 +69,23 @@ The server has no built-in TLS. To reach it from outside a trusted network, put
 an HTTPS reverse proxy (or a private network such as a VPN) in front of it, and
 connect to that address instead.
 
+## Home-screen widgets
+
+Touch and hold an empty spot on the home screen, tap **Widgets**, and find
+OpenAgentd. There are three:
+
+- **Quick start** (2×2): continue your last session, or start a new one in
+  your last folder.
+- **Sessions** (4×2): up to three sessions, the ones that need you first, then
+  the ones still working, then recent ones.
+- **Next task** (2×2): your next scheduled task and whether its last run
+  passed. Tapping it opens the scheduler on that task.
+
+The widgets show what the app knew the last time it was open, with an "as of"
+time. Open the app to refresh them. After 30 minutes, "Needs you" and
+"Working" turn into plain ages, because the session may have moved on. The
+widgets never store the server address or access key.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -79,3 +96,4 @@ connect to that address instead.
 | "Unauthorized" when connecting | The access key doesn't match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |
 | The app asks for the access key again after restoring a backup or moving to a new phone | Expected. The encryption key stays on the original device, so re-enter the access key. |
 | The screen is blank or looks broken | Update **Android System WebView** and **Chrome** in Google Play. |
+| Tapping a widget does nothing | Android cancels a widget's taps when the app is force-stopped. Open the app once and the widgets work again. |

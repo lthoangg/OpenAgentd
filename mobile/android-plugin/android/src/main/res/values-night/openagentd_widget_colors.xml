@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="openagentd_widget_bg">#1F1914</color>
+    <color name="openagentd_widget_border">#3A2F25</color>
+    <color name="openagentd_widget_text">#F3EDE0</color>
+    <color name="openagentd_widget_muted">#A8987F</color>
+    <color name="openagentd_widget_button_bg">#FAF6EC</color>
+    <color name="openagentd_widget_button_text">#1A1714</color>
+    <color name="openagentd_widget_needs_bg">#4A3112</color>
+    <color name="openagentd_widget_running_bg">#17324A</color>
+    <color name="openagentd_widget_idle_bg">#2E261D</color>
+    <color name="openagentd_widget_failed_bg">#4A1A2C</color>
+</resources>

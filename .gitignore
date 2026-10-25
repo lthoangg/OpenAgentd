@@ -132,6 +132,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Android signing keys (package-apk.sh reads ANDROID_KEYSTORE from the env)
+*.jks
+*.keystore
+keystore.properties
+
 # Spyder project settings
 .spyderproject
 .spyproject

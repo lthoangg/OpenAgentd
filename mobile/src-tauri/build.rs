@@ -14,6 +14,7 @@ fn main() {
                 "preview_relay_close",
                 "widget_update_snapshot",
                 "app_move_to_background",
+                "set_app_theme",
             ]),
         ),
     )

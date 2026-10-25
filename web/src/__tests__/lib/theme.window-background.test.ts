@@ -78,3 +78,36 @@ describe('desktop window background follows the theme preference', () => {
     expect(invokes).toEqual([])
   })
 })
+
+describe('mobile shells follow the theme preference', () => {
+  it('tells the iOS shell, which has no window id', async () => {
+    os = 'ios'
+    delete window.__OAD_WINDOW_ID__
+    setThemePreference('dark')
+    await flush()
+
+    expect(invokes).toEqual([{ command: 'set_app_theme', args: { preference: 'dark' } }])
+  })
+
+  it('tells the Android shell when the page starts', async () => {
+    os = 'android'
+    setThemePreference('system')
+    await flush()
+    invokes.length = 0
+
+    const stop = initTheme()
+    await flush()
+    stop()
+
+    expect(invokes).toEqual([{ command: 'set_app_theme', args: { preference: 'system' } }])
+  })
+
+  it('stays quiet in mobile browsers', async () => {
+    os = 'ios'
+    isTauri = false
+    setThemePreference('dark')
+    await flush()
+
+    expect(invokes).toEqual([])
+  })
+})

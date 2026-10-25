@@ -68,6 +68,22 @@ impl<R: Runtime> AndroidShell<R> {
             .map(|_| ())
             .map_err(|e| format!("Move to background: {e}"))
     }
+
+    /// Match the status bar and webview background to the web UI's theme
+    /// preference (`"light"`, `"dark"`, or `"system"`) and remember it for
+    /// the next launch. Blocks on the JNI call; call it off the async runtime.
+    pub fn set_app_theme(&self, preference: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("setAppTheme", ThemePayload { preference })
+            .map(|_| ())
+            .map_err(|e| format!("Set app theme: {e}"))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ThemePayload<'a> {
+    preference: &'a str,
 }
 
 pub trait AndroidShellExt<R: Runtime> {

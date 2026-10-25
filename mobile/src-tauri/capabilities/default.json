@@ -26,6 +26,7 @@
     "allow-preview-relay-open",
     "allow-preview-relay-close",
     "allow-widget-update-snapshot",
-    "allow-app-move-to-background"
+    "allow-app-move-to-background",
+    "allow-set-app-theme"
   ]
 }

@@ -13,6 +13,7 @@
 import { broadcastMessage } from './broadcast-channel'
 import { isDesktopShell } from './desktop-shell'
 import { desktopWindowId, windowScopedKey } from './desktop-window-identity'
+import { getPlatform } from '@/hooks/use-platform'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -74,16 +75,28 @@ export function applyTheme(resolved: ResolvedTheme): void {
 }
 
 /**
- * Tell the desktop shell this window's preference. It paints the native
- * window background to match (seen while resizing and before the next
- * launch's first paint) and remembers an explicit pick, so a dark pick on
- * a light system does not flash cream at launch. Only app windows carry a
- * window id; the tray popup and island follow the OS on their own.
+ * Tell the native shell the preference, so native surfaces match the page.
+ *
+ * Desktop (`set_window_theme`): paints the window background to match (seen
+ * while resizing and before the next launch's first paint) and remembers an
+ * explicit pick, so a dark pick on a light system does not flash cream at
+ * launch. Only app windows carry a window id; the tray popup and island
+ * follow the OS on their own.
+ *
+ * Mobile (`set_app_theme`): also sets the status bar (and on iOS the
+ * keyboard and system sheets) to the pick instead of the system appearance.
  */
-function syncDesktopWindowTheme(preference: ThemePreference): void {
-  if (!isDesktopShell() || !desktopWindowId()) return
+function shellThemeCommand(): string | null {
+  if (isDesktopShell()) return desktopWindowId() ? 'set_window_theme' : null
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android') ? 'set_app_theme' : null
+}
+
+function syncShellTheme(preference: ThemePreference): void {
+  const command = shellThemeCommand()
+  if (!command) return
   void import('@tauri-apps/api/core')
-    .then(({ invoke }) => invoke('set_window_theme', { preference }))
+    .then(({ invoke }) => invoke(command, { preference }))
     .catch(() => {})
 }
 
@@ -95,7 +108,7 @@ export function setThemePreference(preference: ThemePreference): void {
     // best-effort — still apply class below
   }
   applyTheme(resolveTheme(preference))
-  syncDesktopWindowTheme(preference)
+  syncShellTheme(preference)
   broadcastMessage({ type: 'theme_changed', preference, storageKey: key })
 }
 
@@ -111,7 +124,7 @@ export function setThemePreference(preference: ThemePreference): void {
 export function initTheme(): () => void {
   const preference = readStoredPreference()
   applyTheme(resolveTheme(preference))
-  syncDesktopWindowTheme(preference)
+  syncShellTheme(preference)
 
   if (typeof window === 'undefined' || !window.matchMedia) {
     return () => {}
@@ -122,14 +135,14 @@ export function initTheme(): () => void {
     // Only react when the user prefers "system"; explicit picks are sticky.
     if (readStoredPreference() === 'system') {
       applyTheme(mql.matches ? 'dark' : 'light')
-      syncDesktopWindowTheme('system')
+      syncShellTheme('system')
     }
   }
   const onStorage = (event: StorageEvent) => {
     if (event.key === themeStorageKey() || event.key === null) {
       const stored = readStoredPreference()
       applyTheme(resolveTheme(stored))
-      syncDesktopWindowTheme(stored)
+      syncShellTheme(stored)
     }
   }
 

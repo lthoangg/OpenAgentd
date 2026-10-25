@@ -12,6 +12,7 @@ use openagentd_shell_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+mod theme;
 mod widgets;
 
 /// Total budget for one workspace download. Mobile talks to a remote
@@ -509,6 +510,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_deep_link::init())
+        .setup(|_app| {
+            #[cfg(target_os = "ios")]
+            theme::paint_launch_background(_app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             secure_get_access_key,
             secure_set_access_key,
@@ -522,6 +528,7 @@ pub fn run() {
             preview_relay_close,
             widget_update_snapshot,
             app_move_to_background,
+            theme::set_app_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

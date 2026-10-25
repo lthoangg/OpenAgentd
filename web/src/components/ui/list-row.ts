@@ -1,7 +1,9 @@
 /**
  * Sidebar and dock list rows (DESIGN.md → list-row): 28px (36px on touch,
  * via ``--spacing-list-row``) ``rounded-sm`` rows in ``text-xs``, a keycap
- * wash on hover and a deeper one on the current row.
+ * wash on hover and a deeper one on the current row. Touch has no hover, so
+ * a finger press shows the current-row wash right away instead; a mouse
+ * press does not, since the click selects the row at once.
  */
 
 /** Row geometry; callers add tone, or use ``listRowClass``. */
@@ -10,7 +12,7 @@ export const LIST_ROW_GEOMETRY =
 
 /** Background for a row (or the wrapper of a row with inline actions). */
 export function listRowSurface(current = false): string {
-  return current ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'
+  return current ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35 pointer-coarse:active:bg-(--bg-key)/60'
 }
 
 /** Text tone: current rows are ink, the rest step down and lift on hover. */
@@ -30,7 +32,7 @@ export function listRowClass({ current = false }: { current?: boolean } = {}): s
  * focus ring is the global `:focus-visible` one.
  */
 export const ROW_ACTION =
-  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9 pointer-coarse:active:bg-(--bg-key)'
 
 /** A text action inside a list row (e.g. "Show all"), sized like `ROW_ACTION`. */
 export const ROW_TEXT_ACTION =

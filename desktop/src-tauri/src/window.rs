@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, EventTarget, Manager, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, EventTarget, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
 };
 
 use crate::AppState;
-use crate::config::{load_window_state, window_size, SavedWindowState};
+use crate::config::{load_window_state, restorable_position, window_size, SavedWindowState, ScreenArea};
 use crate::servers::ServerId;
 
 pub const MAIN_WINDOW: &str = "main";
@@ -345,6 +345,8 @@ async fn build_app_window_sized(
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
         height: 820,
+        x: None,
+        y: None,
     });
     let mut config = app.config().app.windows.first()
         .cloned()
@@ -375,6 +377,20 @@ async fn build_app_window_sized(
     if let Some(size) = saved_size {
         win.set_size(PhysicalSize::new(size.width, size.height))
             .ok();
+        let screens: Vec<ScreenArea> = win
+            .available_monitors()
+            .unwrap_or_default()
+            .iter()
+            .map(|m| ScreenArea {
+                x: m.position().x,
+                y: m.position().y,
+                width: m.size().width,
+                height: m.size().height,
+            })
+            .collect();
+        if let Some((x, y)) = restorable_position(&size, &screens) {
+            win.set_position(PhysicalPosition::new(x, y)).ok();
+        }
     }
     let state: tauri::State<'_, AppState> = app.state();
     let zoom = state
@@ -479,11 +495,15 @@ async fn create_app_window_with(
     } else {
         None
     };
-    // Open at the size of the window you are in, like a browser does; the
-    // size saved on the last close/quit is the fallback when none is open.
-    let size = target_webview_window(app)
-        .and_then(|window| window_size(&window))
-        .or_else(|| load_window_state(app).ok().flatten());
+    // Open at the size of the window you are in, like a browser does, and
+    // let the OS place it. With no window open, reopen at the size and place
+    // saved on the last close/quit.
+    let size = match target_webview_window(app) {
+        Some(window) => window_size(&window)
+            .or_else(|| load_window_state(app).ok().flatten())
+            .map(SavedWindowState::size_only),
+        None => load_window_state(app).ok().flatten(),
+    };
     let built = build_app_window_sized(app, window_label.clone(), init_script, size).await;
     if built.is_err() {
         if let Some(previous) = registered {

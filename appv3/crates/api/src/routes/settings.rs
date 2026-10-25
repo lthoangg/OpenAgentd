@@ -860,6 +860,10 @@ async fn order_credentials(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<
     if !ok {
         return Err(ApiError::unprocessable("ids must list every credential of the provider exactly once."));
     }
+    // A reorder states the user's preference now: the next request uses the
+    // new first ready credential instead of sticking to the current one.
+    cred_store::clear_current(&id);
+    tracing::info!("provider_credentials_reordered provider={}", id);
     Ok(json(json!({"provider": id, "credentials": credentials_json(entry)})))
 }
 

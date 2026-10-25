@@ -371,6 +371,13 @@ pub fn set_current(provider_id: &str, id: &str) {
     state().lock().unwrap().current.insert(provider_id.to_string(), id.to_string());
 }
 
+/// Forget the sticky credential, so the next request starts from the top of
+/// the list. A manual reorder calls this: the user's new first choice is
+/// used at once, even though switching costs the provider's prompt cache.
+pub fn clear_current(provider_id: &str) {
+    state().lock().unwrap().current.remove(provider_id);
+}
+
 /// Pick the credential to use: the sticky current one while it is ready,
 /// else the first ready one in order, else (all cooling down) the one that
 /// recovers first. `None` only when nothing is enabled.
@@ -559,6 +566,20 @@ mod tests {
         assert_eq!(select(pid, &enabled).unwrap().id, "b", "a recovered, but b keeps serving until it fails");
         set_cooldown(pid, "b", now_s() + 60.0, "quota");
         assert_eq!(rotate_from(pid, "b", &enabled).unwrap().id, "c", "fall through in order after the failed one");
+    }
+
+    #[test]
+    fn after_a_reorder_the_new_first_ready_credential_is_used() {
+        let pid = "test-select-reorder";
+        let (a, b, c) = (cred("a", "1"), cred("b", "2"), cred("c", "3"));
+        set_current(pid, "a");
+        let reordered = vec![&c, &b, &a];
+        assert_eq!(select(pid, &reordered).unwrap().id, "a", "sticky while nothing changed");
+        clear_current(pid);
+        assert_eq!(select(pid, &reordered).unwrap().id, "c");
+        clear_current(pid);
+        set_cooldown(pid, "c", now_s() + 60.0, "quota");
+        assert_eq!(select(pid, &reordered).unwrap().id, "b", "a cooling first choice is skipped");
     }
 
     #[test]

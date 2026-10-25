@@ -1844,7 +1844,8 @@ agnostic by design.
   limit or quota (429), a spend limit or 402, or is rejected (401/403 after an
   OAuth refresh), the same turn continues on the next ready credential with the
   same model, and the transcript notes the switch. Selection is sticky: it stays
-  on the new credential until that one fails. Cooldowns are shared by every
+  on the new credential until that one fails. Reordering the list switches to
+  the new first ready credential at once. Cooldowns are shared by every
   session and subagent, and title and summary calls skip cooling credentials.
   Only when every credential is cooling down does the agent wait for the
   earliest reset. Keys in one organization often share limits, so extra keys

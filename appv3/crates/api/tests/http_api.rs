@@ -607,9 +607,16 @@ async fn provider_credentials_flow(c: &Client, root: &std::path::Path) {
         assert_eq!(std::fs::metadata(&store).unwrap().permissions().mode() & 0o777, 0o600);
     }
 
+    // Personal served a request, so requests stick to it ...
+    appv3_core::credentials::set_current("openrouter", &a);
+    let (_, v) = c.json("GET", base, None).await;
+    assert_eq!((v["credentials"][0]["in_use"].clone(), v["credentials"][1]["in_use"].clone()), (json!(true), json!(false)));
+    // ... until the user reorders: the new first credential is used at once.
     let (st, v) = c.json("PUT", &format!("{base}/order"), Some(json!({"ids": [b, a]}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");
     assert_eq!(v["credentials"][0]["label"], json!("Work"));
+    assert_eq!(v["credentials"][0]["in_use"], json!(true), "reordering switches to the new first credential: {v}");
+    assert_eq!(v["credentials"][1]["in_use"], json!(false), "{v}");
 
     let (st, v) = c.json("PATCH", &format!("{base}/{b}"), Some(json!({"label": "Team", "disabled": true}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");

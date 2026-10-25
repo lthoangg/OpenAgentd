@@ -197,6 +197,34 @@ pub async fn secure_get_access_key(origin: String) -> Result<Option<String>, Str
     off_main_thread(move || openagentd_shell_core::get_access_key(&origin)).await
 }
 
+/// The page's theme preference for its window: `"light"`, `"dark"`, or
+/// `"system"`. Paints the native window background to match now, and saves
+/// an explicit pick so the next launch opens without a flash of the other
+/// theme (see `config::saved_window_theme`).
+#[tauri::command]
+pub async fn set_window_theme(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    preference: String,
+) -> Result<(), String> {
+    let theme = match preference.as_str() {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        "system" => None,
+        other => return Err(format!("unknown theme preference: {other}")),
+    };
+    let painted = theme.or_else(|| window.theme().ok()).unwrap_or(tauri::Theme::Light);
+    window
+        .set_background_color(Some(crate::window::window_background(painted)))
+        .ok();
+    let label = window.label().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::config::save_window_theme(&app, &label, theme).map_err(|e| format!("{e:#}"))
+    })
+    .await
+    .map_err(|e| format!("save window theme: {e}"))?
+}
+
 #[tauri::command]
 pub async fn secure_set_access_key(origin: String, key: String) -> Result<(), String> {
     off_main_thread(move || openagentd_shell_core::set_access_key(&origin, &key)).await

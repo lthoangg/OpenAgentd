@@ -389,9 +389,9 @@ async fn build_app_window_sized(
     // OpenAgentd/File/Edit/View/Window bar duplicates the in-app chrome.
     #[cfg(target_os = "windows")]
     win.hide_menu().context("hide Windows application menu")?;
-    // The UI follows the system theme unless the user picked one, so the
-    // system appearance is the best guess before the page has painted.
-    let theme = win.theme().ok();
+    // The page paints its saved theme pick, or the system theme without
+    // one, so match it before the page has painted.
+    let theme = crate::config::saved_window_theme(app, win.label()).or_else(|| win.theme().ok());
     if let Some(theme) = theme {
         win.set_background_color(Some(window_background(theme))).ok();
     }

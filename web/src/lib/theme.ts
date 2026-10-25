@@ -11,7 +11,8 @@
  */
 
 import { broadcastMessage } from './broadcast-channel'
-import { windowScopedKey } from './desktop-window-identity'
+import { isDesktopShell } from './desktop-shell'
+import { desktopWindowId, windowScopedKey } from './desktop-window-identity'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -72,6 +73,20 @@ export function applyTheme(resolved: ResolvedTheme): void {
   applyThemeColor(resolved)
 }
 
+/**
+ * Tell the desktop shell this window's preference. It paints the native
+ * window background to match (seen while resizing and before the next
+ * launch's first paint) and remembers an explicit pick, so a dark pick on
+ * a light system does not flash cream at launch. Only app windows carry a
+ * window id; the tray popup and island follow the OS on their own.
+ */
+function syncDesktopWindowTheme(preference: ThemePreference): void {
+  if (!isDesktopShell() || !desktopWindowId()) return
+  void import('@tauri-apps/api/core')
+    .then(({ invoke }) => invoke('set_window_theme', { preference }))
+    .catch(() => {})
+}
+
 export function setThemePreference(preference: ThemePreference): void {
   const key = themeStorageKey()
   try {
@@ -80,6 +95,7 @@ export function setThemePreference(preference: ThemePreference): void {
     // best-effort — still apply class below
   }
   applyTheme(resolveTheme(preference))
+  syncDesktopWindowTheme(preference)
   broadcastMessage({ type: 'theme_changed', preference, storageKey: key })
 }
 
@@ -95,6 +111,7 @@ export function setThemePreference(preference: ThemePreference): void {
 export function initTheme(): () => void {
   const preference = readStoredPreference()
   applyTheme(resolveTheme(preference))
+  syncDesktopWindowTheme(preference)
 
   if (typeof window === 'undefined' || !window.matchMedia) {
     return () => {}
@@ -105,11 +122,14 @@ export function initTheme(): () => void {
     // Only react when the user prefers "system"; explicit picks are sticky.
     if (readStoredPreference() === 'system') {
       applyTheme(mql.matches ? 'dark' : 'light')
+      syncDesktopWindowTheme('system')
     }
   }
   const onStorage = (event: StorageEvent) => {
     if (event.key === themeStorageKey() || event.key === null) {
-      applyTheme(resolveTheme(readStoredPreference()))
+      const stored = readStoredPreference()
+      applyTheme(resolveTheme(stored))
+      syncDesktopWindowTheme(stored)
     }
   }
 

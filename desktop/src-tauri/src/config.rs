@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -136,9 +137,87 @@ pub fn save_island_settings(app: &AppHandle, settings: &crate::island::IslandSet
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
+/// Each app window's explicit theme pick (`desktop-window-theme.json`, label
+/// → `"light"` / `"dark"`). The page keeps its preference in webview
+/// storage, which the shell cannot read before the page loads; this copy
+/// lets a new window open with the background its page will paint.
+type WindowThemes = BTreeMap<String, String>;
+
+fn window_themes_from(bytes: Option<&[u8]>) -> WindowThemes {
+    bytes
+        .and_then(|b| serde_json::from_slice(b).ok())
+        .unwrap_or_default()
+}
+
+fn theme_named(name: &str) -> Option<tauri::Theme> {
+    match name {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    }
+}
+
+/// The pick saved for `label`; `None` follows the system.
+fn window_theme_in(themes: &WindowThemes, label: &str) -> Option<tauri::Theme> {
+    themes.get(label).and_then(|name| theme_named(name))
+}
+
+/// `themes` with `label` set to `theme`, or cleared for the system theme.
+fn with_window_theme(mut themes: WindowThemes, label: &str, theme: Option<tauri::Theme>) -> WindowThemes {
+    match theme {
+        Some(tauri::Theme::Dark) => themes.insert(label.to_string(), "dark".into()),
+        Some(_) => themes.insert(label.to_string(), "light".into()),
+        None => themes.remove(label),
+    };
+    themes
+}
+
+fn read_window_themes(app: &AppHandle) -> WindowThemes {
+    let bytes = app_config_file(app, "desktop-window-theme.json")
+        .ok()
+        .and_then(|path| std::fs::read(path).ok());
+    window_themes_from(bytes.as_deref())
+}
+
+pub fn saved_window_theme(app: &AppHandle, label: &str) -> Option<tauri::Theme> {
+    window_theme_in(&read_window_themes(app), label)
+}
+
+pub fn save_window_theme(app: &AppHandle, label: &str, theme: Option<tauri::Theme>) -> Result<()> {
+    let themes = read_window_themes(app);
+    if window_theme_in(&themes, label) == theme {
+        return Ok(());
+    }
+    let path = app_config_file(app, "desktop-window-theme.json")?;
+    let bytes = serde_json::to_vec_pretty(&with_window_theme(themes, label, theme))
+        .context("serialize window themes")?;
+    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_theme_picks_are_kept_per_window_and_cleared_for_system() {
+        let themes = with_window_theme(WindowThemes::new(), "main", Some(tauri::Theme::Dark));
+        let themes = with_window_theme(themes, "main-2", Some(tauri::Theme::Light));
+        assert_eq!(window_theme_in(&themes, "main"), Some(tauri::Theme::Dark));
+        assert_eq!(window_theme_in(&themes, "main-2"), Some(tauri::Theme::Light));
+        assert_eq!(window_theme_in(&themes, "main-3"), None);
+
+        let themes = with_window_theme(themes, "main", None);
+        assert_eq!(window_theme_in(&themes, "main"), None);
+        assert_eq!(window_theme_in(&themes, "main-2"), Some(tauri::Theme::Light));
+    }
+
+    #[test]
+    fn unreadable_window_theme_files_follow_the_system() {
+        assert!(window_themes_from(None).is_empty());
+        assert!(window_themes_from(Some(b"not json")).is_empty());
+        let odd = window_themes_from(Some(br#"{"main": "sepia"}"#));
+        assert_eq!(window_theme_in(&odd, "main"), None);
+    }
 
     #[test]
     fn island_settings_default_per_key_and_read_older_files() {

@@ -619,6 +619,7 @@ fn main() {
             commands::secure_get_access_key,
             commands::secure_set_access_key,
             commands::secure_delete_access_key,
+            commands::set_window_theme,
             commands::save_workspace_file,
             commands::backend_health,
             commands::backend_logs_path,

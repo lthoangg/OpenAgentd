@@ -619,10 +619,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
         open: (ref) => void handleFileRefOpen(ref),
         openDiff: (ref) => void handleDiffOpen(ref),
+        ...(previewsAvailable() ? { openPreview: handleOpenPreview } : {}),
         // Phones keep the full-screen lightbox, with pinch-zoom and swipe.
         ...(dockViewsEnabled ? { openAttachment: handleOpenAttachment } : {}),
       }
-    : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, workspace])
+    : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, handleOpenPreview, workspace])
 
   // One composer element: inside the new-session screen while that is
   // centered, else docked/floating at the bottom of the chat column.

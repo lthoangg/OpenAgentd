@@ -1345,6 +1345,10 @@ agent against it.
     workspace. From a dev-server tab the file opens in its own Preview tab; a
     path that is not a workspace file shows an error in place (start with `/`
     for a page on the dev server). The "Nothing is running" page says so.
+    Local HTTP(S) links in workspace chat responses open in Preview instead
+    of a browser tab, including `localhost`, `127.x.x.x`, and `::1` targets
+    `[v3.29.0]`. The link menu's **Open link** does the same; public web links
+    and clients without Preview keep their existing browser behavior.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move

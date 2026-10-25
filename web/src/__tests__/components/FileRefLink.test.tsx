@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
-import { FileRefContext, LinkifiedText, type FileRefOpener } from '@/components/FileRefLink'
+import { FileRefContext, LinkifiedText, MarkdownLink, type FileRefOpener } from '@/components/FileRefLink'
 import { ToolResult } from '@/components/ToolResult'
 import { MarkdownBlock } from '@/utils/markdown'
 import type { FileRef } from '@/utils/file-refs'
@@ -101,6 +102,109 @@ describe('file references in Markdown', () => {
     expect(screen.queryByRole('button')).toBeNull()
     fireEvent.click(screen.getByRole('link', { name: 'src/a.ts' }))
     expect(files.open).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('local web links in Markdown', () => {
+  it.each([
+    'http://localhost:5173/page?q=1#section',
+    'https://localhost:5173/page',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.2:3000',
+    'http://[::1]:3000',
+  ])('opens %s in Preview instead of a browser tab', (url) => {
+    const files = { ...opener(), openPreview: mock(() => {}) }
+    render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content={`See [the app](${url}).`} />
+      </FileRefContext.Provider>,
+    )
+
+    const link = screen.getByRole('link', { name: 'the app' })
+    expect(fireEvent.click(link)).toBe(false)
+    expect(link.getAttribute('target')).toBeNull()
+    expect(files.openPreview).toHaveBeenCalledWith({ kind: 'url', url })
+    expect(files.open).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'http://localhost:5173/page?q=1#section',
+    '<http://localhost:5173/page?q=1#section>',
+  ])('leaves unlinked URL text unchanged: %s', (text) => {
+    const files = { ...opener(), openPreview: mock(() => {}) }
+    render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content={`See ${text}`} />
+      </FileRefContext.Provider>,
+    )
+
+    // The renderer does not autolink these forms; linkification is unchanged.
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByText(`See ${text}`)).toBeTruthy()
+    expect(files.openPreview).not.toHaveBeenCalled()
+  })
+
+  it('supports keyboard activation and the app menu Open link action', async () => {
+    const url = 'http://localhost:5173/page'
+    const files = { ...opener(), openPreview: mock(() => {}) }
+    render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content={`[the app](${url})`} />
+      </FileRefContext.Provider>,
+    )
+    const user = userEvent.setup()
+    screen.getByRole('link', { name: 'the app' }).focus()
+    await user.keyboard('{Enter}')
+    expect(files.openPreview).toHaveBeenCalledWith({ kind: 'url', url })
+
+    await user.keyboard('{Shift>}{F10}{/Shift}')
+    await user.click(screen.getByRole('menuitem', { name: 'Open link' }))
+    expect(files.openPreview).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    'https://example.com',
+    'http://localhost.example.com:3000',
+    'http://127.0.0.1.example.com:3000',
+    'http://localhost@external.example:3000',
+  ])('keeps %s as an external link', (url) => {
+    const files = { ...opener(), openPreview: mock(() => {}) }
+    render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content={`[the site](${url})`} />
+      </FileRefContext.Provider>,
+    )
+
+    const link = screen.getByRole('link', { name: 'the site' })
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(files.openPreview).not.toHaveBeenCalled()
+  })
+
+  it('does not route non-HTTP URLs to Preview', () => {
+    const files = { ...opener(), openPreview: mock(() => {}) }
+    render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownLink href="ftp://localhost:3000">the site</MarkdownLink>
+      </FileRefContext.Provider>,
+    )
+    expect(screen.getByRole('link', { name: 'the site' }).getAttribute('target')).toBe('_blank')
+    expect(files.openPreview).not.toHaveBeenCalled()
+  })
+
+  it('keeps the browser link when Preview is unavailable', () => {
+    render(
+      <FileRefContext.Provider value={opener()}>
+        <MarkdownBlock content="[the app](http://localhost:5173)" />
+      </FileRefContext.Provider>,
+    )
+
+    const link = screen.getByRole('link', { name: 'the app' })
+    expect(link.getAttribute('target')).toBe('_blank')
+  })
+
+  it('keeps the browser link outside a workspace', () => {
+    render(<MarkdownBlock content="[the app](http://localhost:5173)" />)
+    expect(screen.getByRole('link', { name: 'the app' }).getAttribute('target')).toBe('_blank')
   })
 })
 

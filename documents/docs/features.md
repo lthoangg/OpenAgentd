@@ -222,6 +222,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   macOS update archives ship already signed with the stable
   identifier-only requirement, so v3.19.0 and later install them without the
   "signature verification failed" error `[v3.20.0]`.
+  Since `[v3.31.0]`, pressing Install while agents are still working warns
+  that restarting may interrupt their turns. You can then choose **Restart
+  anyway** or **Later**.
   Mobile leaves updates to its platform distribution channel.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
@@ -375,6 +378,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   **Appearance** section with a System / Light / Dark choice, and the Command
   Palette has **Theme…**, a list of System, Light and Dark that marks the
   current one `[v3.21.0]`. The mobile drawer keeps its theme button.
+- **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
+  system's "Increase contrast" setting on, muted text and borders get
+  stronger tones in both themes, with borders at least 3:1 against the page.
+  In Windows contrast themes, keyboard focus is drawn as an outline in the
+  system highlight colour, and an on switch and the chosen segment of a
+  segmented control stay visible.
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -999,12 +1008,40 @@ run from the terminal (the native Rust binary since v3.0.0).
   in the phone apps `[v3.25.0]`.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
-- **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
+- **Restored desktop window size** `[v1.52.0, updated v3.31.0]` — desktop windows reopen at the
   last normal size saved on quit, while minimized/maximized dimensions are ignored.
+  Since `[v3.31.0]` the main window also reopens where it was. If that screen
+  is no longer connected, it is moved onto one that is. New windows opened
+  from an existing one only take its size.
+- **Desktop shell polish** `[v3.31.0]`:
+  - Before the UI loads, the window background uses the theme you picked in
+    the app, even when it differs from the system theme, so it no longer
+    flashes light paper.
+  - Sessions, files and settings keep loading with Wi-Fi off, because the
+    builtin backend runs on your machine.
+  - A crash of the desktop shell is written to `desktop.log`.
+  - On Linux machines with an NVIDIA driver, the app turns off WebKit's
+    DMABUF renderer unless you have set `WEBKIT_DISABLE_DMABUF_RENDERER`
+    yourself. This avoids a blank window.
 - **Remote-backend mobile shell** `[v1.34.0, v1.106.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
   remembered-server launches prefetch and reuse native credentials.
+- **Mobile app that feels native** `[v3.31.0]`:
+  - On Android, Back closes the open sheet, dialog or drawer first, then goes
+    back a page. On the first page it sends the app to the background instead
+    of quitting.
+  - On iOS, when the system ends the app's web content in the background, the
+    app reloads instead of showing a blank screen. Your draft and the screen
+    you were on are kept.
+  - The launch screen, status bar and navigation bar follow the theme picked
+    in the app (or the system theme when it is set to System). On Android,
+    the launch screen uses the paper colours instead of white or grey.
+  - Buttons are at least 48 dp tall on Android (44 pt on iOS).
+  - Long-pressing app buttons and icons no longer opens the iOS link and
+    image menu. Message text, images, code and input fields keep it.
+  - Switches and segmented controls tick with a light haptic, and git
+    actions end with a success or error haptic.
 - **Sideloadable iOS app** `[v3.7.0]` — each release includes an ad-hoc-signed
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new
@@ -2441,6 +2478,13 @@ Everything stays local. No third-party telemetry SaaS.
   loguru-based. `FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
   independently of the console's `LOG_LEVEL` (default `DEBUG`, unchanged); the
   error log stays ERROR-only, so raising it never hides crashes.
+- **Export diagnostics** `[v3.31.0]` — the desktop **Help → Export
+  Diagnostics…** item, also in the Windows/Linux tray, saves an
+  `OpenAgentd Diagnostics <time>` folder to Downloads and shows it in the file
+  manager. The folder holds the desktop and backend logs, plus an `about.txt`
+  with the version and OS. Values that look like API keys, tokens and
+  passwords are replaced with `[REDACTED]`. This is best-effort, so check the
+  files before sharing them.
 - **Persistent reply/tool timing in UI** `[v1.21.0]` — assistant footers show
   full user-turn wall-clock duration; tool rows show individual execution time.
   Durations stay after a reload.

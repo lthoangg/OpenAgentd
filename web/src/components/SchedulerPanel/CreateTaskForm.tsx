@@ -9,7 +9,8 @@ import { useCreateScheduledTaskMutation } from '@/queries'
 import { FIELD_CLASS, FIELD_ERROR, FIELD_HINT, FIELD_LABEL, slugify } from './utils'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
-import { createTaskDefaults, toCreatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
+import { createTaskDefaults, toCreatePayload } from './taskForm'
+import { useTaskFieldErrors } from './useTaskFieldErrors'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -36,8 +37,6 @@ export function CreateTaskForm({
   const headerClass = useSchedulerPaneHeaderClass()
   const footerSafeArea = useSchedulerFooterSafeArea()
   const [error, setError] = useState<string | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
-  const validationSummary = Object.values(fieldErrors)[0]
 
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const currentSessionTitle = useAgentStore((state) => state.sessionTitle)
@@ -49,6 +48,8 @@ export function CreateTaskForm({
     onSubmit: () => {},
   })
   const values = useStore(form.store, (state) => state.values)
+  const { formRef, fieldErrors, validateForSubmit, resetErrors } = useTaskFieldErrors(values, true)
+  const validationSummary = Object.values(fieldErrors)[0]
   const isSessionCompatible =
     !!currentSessionId &&
     values.workspace === activeSessionWorkspace
@@ -56,16 +57,14 @@ export function CreateTaskForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setFieldErrors({})
     const submitValues = form.state.values
-    const errors = validateTaskValues(submitValues)
-    if (Object.keys(errors).length) { setFieldErrors(errors); return }
+    if (!validateForSubmit(submitValues)) return
     const payload = toCreatePayload(submitValues, localTz, currentSessionId)
 
     createMutation.mutate(payload, {
       onSuccess: () => {
         form.reset()
-        setFieldErrors({})
+        resetErrors()
         onSuccess()
       },
       onError: (err) => {
@@ -96,7 +95,7 @@ export function CreateTaskForm({
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} onKeyDown={advanceFocusOnEnter} className="flex min-h-0 flex-1 flex-col">
+      <form ref={formRef} onSubmit={handleSubmit} onKeyDown={advanceFocusOnEnter} className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-8 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
           <PanelSection title="Task" contentClassName="space-y-5">
             {/* Title */}
@@ -304,7 +303,8 @@ export function CreateTaskForm({
                 <label htmlFor="task-max-runs" className={FIELD_LABEL}>Max runs (optional)</label>
                 <Input
                   id="task-max-runs"
-                  enterKeyHint="next"
+                  // The last field: Enter moves to the Create button (formNavigation).
+                  enterKeyHint="done"
                   type="number"
                   inputMode="numeric"
                   min="1"

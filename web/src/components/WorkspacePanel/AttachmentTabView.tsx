@@ -18,7 +18,7 @@ function ImageView({ item }: { item: FileLightboxItem }) {
   if (error) return <div className={FAILED}>Failed to load image</div>
   return (
     <div className="flex h-full items-center justify-center overflow-auto p-4">
-      <img src={item.src} alt={item.name} onError={() => setError(true)} className="max-h-full max-w-full rounded-sm object-contain" />
+      <img src={item.src} alt={item.name} decoding="async" onError={() => setError(true)} className="max-h-full max-w-full rounded-sm object-contain" />
     </div>
   )
 }

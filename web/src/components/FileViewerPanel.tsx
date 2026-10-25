@@ -540,7 +540,7 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
         className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
         aria-label={`Open ${file.name} preview in lightbox`}
       >
-        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
+        <img src={url} alt={file.name} decoding="async" className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
       </button>
       <FileLightbox
         items={[{ type: 'image', src: url, name: file.name }]}

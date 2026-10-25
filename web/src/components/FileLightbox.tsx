@@ -174,6 +174,7 @@ export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
             src={item.src}
             alt={item.name}
             draggable={false}
+            decoding="async"
             onError={() => setError(true)}
             className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-(--motion-instant)"
             style={{ willChange: 'transform' }}

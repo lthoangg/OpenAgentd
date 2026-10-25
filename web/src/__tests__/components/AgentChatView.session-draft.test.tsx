@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { forwardRef, useEffect, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
@@ -212,5 +212,19 @@ describe('AgentChatView session drafts', () => {
 
     rerender(<AgentChatView sessionId="session-a" workspace="/repo/project" />)
     expect(setValueMock).toHaveBeenLastCalledWith('draft for a')
+  })
+
+  // The mocked lead agent has no model: nothing could run yet.
+  it('puts the model setup card on the draft screen instead of the banner', () => {
+    render(<AgentChatView workspace="/repo/needs-model" />)
+    expect(screen.getByTestId('model-setup-card')).toBeTruthy()
+    expect(screen.queryByText('Connect a model provider to start chatting')).toBeNull()
+  })
+
+  it('keeps the setup banner in an open session', () => {
+    useAgentStore.setState({ sessionId: 'session-needs-model' })
+    render(<AgentChatView sessionId="session-needs-model" workspace="/repo/needs-model" />)
+    expect(screen.getByText('Connect a model provider to start chatting')).toBeTruthy()
+    expect(screen.queryByTestId('model-setup-card')).toBeNull()
   })
 })

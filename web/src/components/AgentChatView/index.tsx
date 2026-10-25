@@ -24,11 +24,13 @@ import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { NewSessionScreen } from '../NewSession/NewSessionScreen'
+import { ModelSetupCard } from '../NewSession/ModelSetupCard'
 import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useProvidersQuery } from '@/queries'
+import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
@@ -379,9 +381,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     })
   }, [sessionIdState, clearPlan, pushToast])
   const providersQ = useProvidersQuery()
-  const hasConfiguredModelProvider = providersQ.data?.providers.some(
-    (provider) => provider.kind !== 'local' && provider.is_configured,
-  ) ?? true
 
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = workspace
@@ -390,6 +389,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasWorkspace)
   const leadAgent = agentRegistryData?.agents?.[0]
   const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
+  // Can a message run? A real model whose provider is connected. Unknown
+  // while either list loads, so no setup prompt flashes on a working setup.
+  const modelReady = modelReadiness(
+    providersQ.data?.providers,
+    agentRegistryData ? (sessionModel || leadAgent?.model || null) : undefined,
+  )
+  const needsModelSetup = modelReady.status === 'needs-model' || modelReady.status === 'needs-provider'
 
   // When the session overrides the agent's model (e.g. user switches from
   // model A to model B mid-session), the trigger threshold must reflect the
@@ -664,7 +670,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       disabled={isSessionLoading}
       placeholder={
         // While a turn runs the composer shows its own queue/stop hint.
-        isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+        isDraft && needsModelSetup
+          ? 'Connect a model to start chatting'
+          : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
@@ -780,12 +788,15 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </div>
             </div>
           )}
-        <ProviderSetupNotice
-          setupMessage={setupRequired?.message ?? null}
-          hasConfiguredProvider={hasConfiguredModelProvider}
-          onOpenProviders={() => openSettings('providers')}
-          onDismiss={dismissSetupRequired}
-        />
+        {/* The draft screen carries its own setup card instead. */}
+        {!isDraft && (
+          <ProviderSetupNotice
+            setupMessage={setupRequired?.message ?? null}
+            hasConfiguredProvider={!needsModelSetup}
+            onOpenProviders={() => openSettings('providers')}
+            onDismiss={dismissSetupRequired}
+          />
+        )}
         {isSessionLoading && !chatOnScreen ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
@@ -830,6 +841,14 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             isChat={isChatWorkspace}
             chatWorkspace={chatWorkspace}
             composer={composerInline ? composerElement : null}
+            setup={(modelReady.status === 'needs-model' || modelReady.status === 'needs-provider') && providersQ.data ? (
+              <ModelSetupCard
+                key={modelReady.status === 'needs-provider' ? modelReady.provider.id : 'needs-model'}
+                readiness={modelReady}
+                providers={providersQ.data.providers}
+                onOpenProviders={() => openSettings('providers')}
+              />
+            ) : null}
             isMobile={isMobile}
             onSelectWorkspace={handleSelectDraftWorkspace}
             onOpenFolder={handleOpenWorkspaceDialog}

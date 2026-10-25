@@ -1798,6 +1798,26 @@ agnostic by design.
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
+- **Connect a model from the first screen** `[v3.31.0]` — until a message
+  could run (the lead agent has no model yet, or its provider is not
+  connected), the new-session screen shows a setup card instead of the
+  "Connect a model provider" banner. It has quick picks for Anthropic,
+  OpenAI, Gemini, OpenRouter, ChatGPT and GitHub Copilot. Pasting a key and
+  choosing **Connect** checks the key and saves it in one step, and
+  subscriptions sign in through the usual dialog. A provider that already
+  works (a saved key, a key exported in the server's environment, or a running
+  Ollama) is offered with a one-click **Use**. **More providers…** opens
+  Settings → Providers. Open sessions keep the banner, which now follows the
+  same rule, so it no longer hides while sends would fail and no longer shows
+  for a working Ollama setup.
+- **A saved key is enough to chat** `[v3.31.0]` — when the first provider
+  gets a credential (Settings → Providers, the setup card, or `POST
+  /api/settings/providers/{id}/credentials`), agents that have no model yet
+  get that provider's suggested model, read from its live model list:
+  the newest match of a version pattern such as `claude-sonnet-*`. Without a
+  match, the newest tool-calling model is used. Models the user chose are
+  never replaced. `POST /api/settings/default-model` also accepts
+  `{"provider": "<id>"}` to apply the same choice.
 - **Keyless first-run model** `[v1.124.0]` *(deprecated — removed)* — previously
   defaulted new installations to OpenCode Zen free models; removed because
   OpenCode free models only open within OpenCode's own harness. OpenCode Zen

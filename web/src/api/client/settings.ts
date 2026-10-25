@@ -289,6 +289,12 @@ export type ProviderUsageResponse = {
 
 export type ProviderSaveResponse = {
   saved: boolean
+  /**
+   * `<provider>:<model>` the save gave to agents that had no model yet;
+   * `null` when no agent was waiting. Omitted by older backends.
+   */
+  default_model?: string | null
+  agents_updated?: string[]
 }
 
 export type ProviderVisibleModelsResponse = {
@@ -304,6 +310,8 @@ export type ProviderTestResponse = {
 
 export type DefaultModelResponse = {
   agents_updated: string[]
+  /** The model that was applied. Omitted by older backends. */
+  provider_model?: string
 }
 
 export type OAuthLoginEvent = {
@@ -415,11 +423,17 @@ export async function disconnectProvider(
   return res.json()
 }
 
-export async function configureDefaultModel(providerModel: string): Promise<DefaultModelResponse> {
+/**
+ * Set a model on every agent that has none yet: an explicit
+ * `<provider>:<model>`, or `{ provider }` to let the server pick that
+ * provider's suggested model from its live list.
+ */
+export async function configureDefaultModel(target: string | { provider: string }): Promise<DefaultModelResponse> {
+  const body = typeof target === 'string' ? { provider_model: target } : { provider: target.provider }
   const res = await fetch(`${apiBaseUrl()}/settings/default-model`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider_model: providerModel }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/default-model')
   return res.json()
@@ -488,7 +502,7 @@ function credentialsUrl(providerId: string, credentialId?: string): string {
 export async function addProviderCredential(
   providerId: string,
   body: { label?: string; api_key?: string; extra?: Record<string, string> },
-): Promise<StoredCredential> {
+): Promise<StoredCredential & Pick<ProviderSaveResponse, 'default_model' | 'agents_updated'>> {
   const res = await fetch(credentialsUrl(providerId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

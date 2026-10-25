@@ -2102,6 +2102,49 @@ describe('Sidebar workspace trust flow', () => {
       await user.keyboard('{F2}')
       expect(screen.getByLabelText('Session title')).toBeTruthy()
     })
+
+    it('moves between rows with Up/Down and jumps with Home/End', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      const header = screen.getByLabelText('Collapse repository project')
+      header.focus()
+
+      await user.keyboard('{ArrowDown}')
+      expect(document.activeElement).toBe(row('First'))
+      await user.keyboard('{ArrowDown}')
+      expect(document.activeElement).toBe(row('Second'))
+      await user.keyboard('{ArrowUp}')
+      expect(document.activeElement).toBe(row('First'))
+      await user.keyboard('{End}')
+      expect(document.activeElement).toBe(row('Second'))
+      await user.keyboard('{Home}')
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-sidebar-session], [data-sidebar-workspace]'))
+      expect(document.activeElement).toBe(rows[0])
+    })
+
+    it('skips the rows of a folded workspace', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      const header = screen.getByLabelText('Collapse repository project')
+      header.focus()
+      await user.keyboard('{ArrowLeft}')
+
+      await user.keyboard('{ArrowDown}')
+      expect(document.activeElement === row('First') || document.activeElement === row('Second')).toBe(false)
+    })
+
+    it('leaves Up/Down alone in the rename field', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      row('Second').focus()
+      await user.keyboard('{F2}')
+      const input = screen.getByLabelText('Session title')
+      await user.keyboard('{ArrowUp}')
+      expect(document.activeElement).toBe(input)
+    })
   })
 
   it('trims title edits before submitting', async () => {

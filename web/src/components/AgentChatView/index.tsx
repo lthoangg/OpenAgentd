@@ -715,7 +715,26 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     <div
       className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
       {...edgeSwipeHandlers}
+      // Files dropped anywhere in the window (header, sidebar, dock) attach
+      // to the composer, so this opts the whole shell out of the stray-drop
+      // guard (usePreventStrayFileDrop). While the dock covers the chat the
+      // composer is inert, so drops fall back to the guard.
+      data-file-drop-zone={chatCoveredByDock ? undefined : ''}
+      onDragEnter={chatCoveredByDock ? undefined : handleDragEnter}
+      onDragOver={chatCoveredByDock ? undefined : handleDragOver}
+      onDragLeave={chatCoveredByDock ? undefined : handleDragLeave}
+      onDrop={chatCoveredByDock ? undefined : handleDrop}
     >
+      {isDraggingFile && (
+        <div className="pointer-events-none fixed inset-0 z-50 p-4 drag-overlay-enter">
+          <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
+            <FileUp size={24} className="text-(--color-accent) animate-pulse" />
+            <span className="text-sm font-medium text-(--color-text)">
+              Drop files to attach
+            </span>
+          </div>
+        </div>
+      )}
       {/* 36 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
           70 px left inset reserved for the OS traffic-lights. */}
@@ -771,24 +790,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
           inert={chatCoveredByDock}
           aria-hidden={chatCoveredByDock || undefined}
-          // Opts this column out of the global stray-file-drop guard
-          // (usePreventStrayFileDrop) — drops landing here are ours to handle.
+          // The shell above handles the drop; the chat column stays a marked
+          // drop zone so it is never mistaken for a stray drop target.
           data-file-drop-zone
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
         >
-          {isDraggingFile && (
-            <div className="absolute inset-0 z-50 p-4 pointer-events-none drag-overlay-enter">
-              <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
-                <FileUp size={24} className="text-(--color-accent) animate-pulse" />
-                <span className="text-sm font-medium text-(--color-text)">
-                  Drop files to attach
-                </span>
-              </div>
-            </div>
-          )}
         <ConnectionBanner />
         {/* The draft screen carries its own setup card instead. */}
         {!isDraft && (

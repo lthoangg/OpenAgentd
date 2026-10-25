@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { useDebouncedCallback } from '@tanstack/react-pacer'
 import { AlertCircle, Clock, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SearchBar } from '@/components/ui/search-bar'
 import type { ScheduledTaskResponse } from '@/api/types'
@@ -15,6 +16,8 @@ export interface TaskListPaneProps {
   tasks: ScheduledTaskResponse[]
   isLoading: boolean
   isError: boolean
+  /** Refetch after a failed load; shows a Retry under the error. */
+  onRetry?: () => void
   selectedTaskId: string | null
   onSelect: (id: string) => void
   onDeleted: (id: string) => void
@@ -28,6 +31,7 @@ export function TaskListPane({
   tasks,
   isLoading,
   isError,
+  onRetry,
   selectedTaskId,
   onSelect,
   onDeleted,
@@ -74,7 +78,14 @@ export function TaskListPane({
             <p className="text-xs text-(--color-text-muted)">Loading scheduled tasks…</p>
           </div>
         ) : isError ? (
-          <EmptyState fill={false} tone="error" className="px-6 py-12" icon={AlertCircle} title="Failed to load tasks" />
+          <EmptyState
+            fill={false}
+            tone="error"
+            className="px-6 py-12"
+            icon={AlertCircle}
+            title="Failed to load tasks"
+            action={onRetry ? <Button size="sm" onClick={onRetry}>Retry</Button> : undefined}
+          />
         ) : filteredTasks.length === 0 ? (
           <EmptyState
             fill={false}

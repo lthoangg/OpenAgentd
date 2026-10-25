@@ -17,6 +17,7 @@ import { WORKSPACE_DIFF_STALE_MS, workspaceDiffQueryOptions } from '@/queries/wo
 import { collectChangedFiles, collectDiffSections } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { ChangeCounts } from './ChangeCounts'
+import { DockLoadError } from './DockLoadError'
 
 export interface DiffTabViewProps {
   workspace: string
@@ -67,7 +68,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
         {diff.isLoading ? (
           <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading diff…</p>
         ) : diff.isError ? (
-          <p className="px-3 py-4 text-xs text-(--color-error)" role="alert">Failed to load the diff.</p>
+          <DockLoadError message="Failed to load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
         ) : fileDiff ? (
           <DiffPreview diff={fileDiff} />
         ) : (

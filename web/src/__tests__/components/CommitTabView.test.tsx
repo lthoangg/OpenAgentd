@@ -3,7 +3,7 @@
  * small, so a commit with a regenerated lockfile does not mount it.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -45,5 +45,27 @@ describe('CommitTabView — default expansion', () => {
   it('opens nothing by default for a commit touching more than 10 files', () => {
     renderCommit(Array.from({ length: 11 }, (_, i) => [`f${i}.ts`, 2] as [string, number]))
     expect(isOpen('f0.ts')).toBe(false)
+  })
+})
+
+describe('CommitTabView — load failure', () => {
+  const originalFetch = globalThis.fetch
+  afterEach(() => { globalThis.fetch = originalFetch })
+
+  it('keeps the error text and retries the commit diff on Retry', async () => {
+    let fail = true
+    globalThis.fetch = mock(async () => (fail
+      ? new Response('{"detail":"boom"}', { status: 500, headers: { 'Content-Type': 'application/json' } })
+      : new Response(JSON.stringify({ sha: commit.sha, diff: fileDiff('a.ts', 2) }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><CommitTabView workspace="/w" commit={commit} /></QueryClientProvider>)
+
+    expect(await screen.findByText('Failed to load commit changes.')).toBeTruthy()
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => expect(screen.queryByText('Failed to load commit changes.')).toBeNull())
+    expect(screen.getByRole('button', { name: /a\.ts/ })).toBeTruthy()
   })
 })

@@ -6,7 +6,6 @@ import {
   useUpdateAgentMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { ApiValidationError } from '@/api/client'
 import { AgentForm } from '@/components/settings/AgentForm'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
@@ -22,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
+import { errorMessage } from '@/utils/errors'
 
 interface AgentEditorPageProps {
   name?: string
@@ -66,7 +66,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       setDraft(res.content)
       refetch()
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Save failed', description: msg })
     }
@@ -79,7 +79,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       setDeleteOpen(false)
       onBack()
     } catch (err) {
-      push({ tone: 'error', title: 'Failed to delete agent', description: String(err) })
+      push({ tone: 'error', title: 'Failed to delete agent', description: errorMessage(err) })
     }
   }
 
@@ -103,7 +103,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
           {isLoading && <SettingsSkeleton label="Loading agent" />}
-          {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
+          {isError && <p className="text-sm text-(--color-error)">Failed to load: {errorMessage(error)}</p>}
           {data && (
             <AgentForm
               initial={data.content}

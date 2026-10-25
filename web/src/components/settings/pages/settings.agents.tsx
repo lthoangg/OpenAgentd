@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { AgentEditorPage } from './settings.agents.$name'
+import { errorMessage } from '@/utils/errors'
 
 export function AgentsListPage() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
@@ -85,7 +86,7 @@ You are **${cleanName}**, a specialized member agent.
       setCreateOpen(false)
       setSelectedAgent(cleanName)
     } catch (err) {
-      setCreateError(String(err))
+      setCreateError(errorMessage(err))
     }
   }
 

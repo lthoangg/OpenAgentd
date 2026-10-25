@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button, buttonVariants } from '@/components/ui/button'
 import { MarkdownBlock } from '@/utils/markdown'
 import { cn } from '@/lib/utils'
+import { errorMessage } from '@/utils/errors'
 
 interface ReleaseNotesButtonProps {
   version: string
@@ -30,7 +31,7 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
     try {
       setNotes(await fetchReleaseNotes(version))
     } catch (err) {
-      setError(String(err))
+      setError(errorMessage(err))
     }
   }
 

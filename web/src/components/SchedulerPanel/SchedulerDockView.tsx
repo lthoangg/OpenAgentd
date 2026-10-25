@@ -87,6 +87,7 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
                 tasks={tasks}
                 isLoading={tasksQuery.isLoading}
                 isError={tasksQuery.isError}
+                onRetry={() => void refetch()}
                 selectedTaskId={selectedTaskId}
                 onSelect={(id) => {
                   setSelectedTaskId(id)

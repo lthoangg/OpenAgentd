@@ -18,6 +18,7 @@ import { checkForUpdates, downloadUpdate, installUpdate, type UpdateStatus } fro
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
 import { useHealthQuery } from '@/queries'
+import { errorMessage } from '@/utils/errors'
 
 // ── Identity ──────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ function UpdatesSection() {
     try {
       setStatus(await checkForUpdates(false))
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
     } finally {
       setPending(false)
     }
@@ -64,7 +65,7 @@ function UpdatesSection() {
     try {
       setStatus(await downloadUpdate())
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
     } finally {
       setPending(false)
     }
@@ -85,7 +86,7 @@ function UpdatesSection() {
         ),
       ])
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
       setPending(false)
     }
   }

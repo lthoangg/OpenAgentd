@@ -24,6 +24,7 @@ import {
   safeDecodeURIComponent,
 } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
+import { DockLoadError } from './DockLoadError'
 
 /** Larger commits open collapsed so the tab paints without every patch. */
 const AUTO_EXPAND_MAX_FILES = 10
@@ -118,7 +119,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
       {commitDiff.isLoading ? (
         <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading commit changes…</p>
       ) : commitDiff.isError ? (
-        <p className="px-3 py-4 text-xs text-(--color-error)" role="alert">Failed to load commit changes.</p>
+        <DockLoadError message="Failed to load commit changes." onRetry={() => void commitDiff.refetch()} retrying={commitDiff.isFetching} />
       ) : files.length === 0 ? (
         <p className="px-3 py-4 text-xs text-(--color-text-subtle)">No files changed in this commit.</p>
       ) : (

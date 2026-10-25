@@ -11,6 +11,7 @@ import { dragSettle, noticePresence } from '@/lib/motion'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries'
 import { cn } from '@/lib/utils'
+import { errorMessage } from '@/utils/errors'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
@@ -70,7 +71,7 @@ export function UpdateCard() {
       const next = await invokeCheckForUpdates(silent)
       if (!silent || next.status !== 'up_to_date') setStatus(next)
     } catch (error) {
-      if (!silent) setStatus({ status: 'error', message: String(error) })
+      if (!silent) setStatus({ status: 'error', message: errorMessage(error) })
     }
   }, [scheduleNextAutomaticCheck])
 
@@ -87,7 +88,7 @@ export function UpdateCard() {
       const next = await invokeDownloadUpdate()
       setStatus(next)
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
     }
   }, [])
 
@@ -112,7 +113,7 @@ export function UpdateCard() {
         restartTimeout,
       ])
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
     } finally {
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
       restartTimeoutRef.current = undefined

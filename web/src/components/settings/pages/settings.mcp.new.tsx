@@ -2,7 +2,6 @@ import { useState } from 'react'
 
 import { useCreateMcpServerMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { McpServerForm } from '@/components/settings/McpServerForm'
 import {
@@ -12,6 +11,7 @@ import {
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
 import { EDITOR_BODY } from '@/components/settings/tokens'
+import { errorMessage } from '@/utils/errors'
 
 const TEMPLATE: McpServerDraft = {
   ...emptyDraft(),
@@ -62,7 +62,7 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
       push({ tone: 'success', title: `Created MCP server "${draft.name}"`, description: 'Available on next turn.' })
       onCreated(draft.name)
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Create failed', description: msg })
     }

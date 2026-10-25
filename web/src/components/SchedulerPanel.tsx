@@ -157,6 +157,7 @@ export function SchedulerPanel({
               tasks={tasks}
               isLoading={tasksQuery.isLoading}
               isError={tasksQuery.isError}
+              onRetry={() => void refetchTasks()}
               selectedTaskId={selectedTaskId}
               onSelect={handleSelectTask}
               onDeleted={handleTaskDeleted}

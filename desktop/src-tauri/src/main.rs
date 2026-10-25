@@ -49,6 +49,17 @@ pub fn launch_ms() -> u128 {
     LAUNCHED.get_or_init(Instant::now).elapsed().as_millis()
 }
 
+/// Write panics to `desktop.log` as well. Release builds use the Windows GUI
+/// subsystem and are started from Finder or the Start menu, so the default
+/// hook's stderr output goes nowhere. The previous hook still runs.
+fn log_panics() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("panic: {info}");
+        previous(info);
+    }));
+}
+
 /// Shared application state.
 pub struct AppState {
     pub sidecar: Arc<Mutex<Option<Sidecar>>>,
@@ -536,6 +547,7 @@ async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()>
 
 fn main() {
     LAUNCHED.get_or_init(Instant::now);
+    log_panics();
     let state = AppState {
         sidecar: Arc::new(Mutex::new(None)),
         desktop_token: Arc::new(Mutex::new(None)),
@@ -791,6 +803,20 @@ mod tests {
     use crate::servers::{current_server, ServerId};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
+
+    #[test]
+    fn logging_panics_keeps_the_previous_hook() {
+        let previous_ran = Arc::new(AtomicBool::new(false));
+        let flag = previous_ran.clone();
+        std::panic::set_hook(Box::new(move |_| flag.store(true, Ordering::SeqCst)));
+        log_panics();
+
+        let result = std::panic::catch_unwind(|| panic!("boom"));
+        let _ = std::panic::take_hook();
+
+        assert!(result.is_err());
+        assert!(previous_ran.load(Ordering::SeqCst));
+    }
 
     #[test]
     fn backend_start_guard_prevents_concurrent_start_and_resets_on_drop() {

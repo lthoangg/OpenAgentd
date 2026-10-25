@@ -463,7 +463,7 @@ function TextPreview({
       </div>
     )
   }
-  if (loading) return <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
+  if (loading) return <div role="status" aria-label="Loading file" className="oa-fade-in-late flex h-full items-center justify-center"><Loader2 size={16} aria-hidden="true" className="animate-spin text-(--color-text-subtle)" /></div>
   if (error) return <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-muted)">{error.includes('404') ? 'File no longer exists' : `Failed to load: ${error}`}</div>
   if (content === null) return null
   if (markdown !== null) {

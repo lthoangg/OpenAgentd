@@ -99,6 +99,13 @@ describe('PdfDocumentViewer', () => {
     expect(container.querySelector('[role="listitem"]')?.getAttribute('aria-label')).toBe('Page 1 of 100')
   })
 
+  it('waits a beat before showing the loading spinner', async () => {
+    const { PdfDocumentViewer } = await import('@/components/PdfDocumentViewer')
+    const { getByRole } = render(<PdfDocumentViewer src="large.pdf" />)
+
+    expect(getByRole('status').classList.contains('oa-fade-in-late')).toBe(true)
+  })
+
   it('announces an error when the first page render rejects', async () => {
     rejectRender = true
     const { PdfDocumentViewer } = await import('@/components/PdfDocumentViewer')

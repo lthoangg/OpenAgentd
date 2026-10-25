@@ -73,7 +73,7 @@ export function TaskListPane({
 
       <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         {isLoading ? (
-          <div role="status" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+          <div role="status" className="oa-fade-in-late flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
             <Loader2 size={20} className="animate-spin text-(--color-text-muted)" aria-hidden="true" />
             <p className="text-xs text-(--color-text-muted)">Loading scheduled tasks…</p>
           </div>

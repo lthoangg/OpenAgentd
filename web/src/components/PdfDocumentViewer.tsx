@@ -155,7 +155,7 @@ export function PdfDocumentViewer({ src, className }: PdfDocumentViewerProps) {
           )
         })}
       </div>
-      {status === 'loading' && <div role="status" aria-busy="true" className="pointer-events-none absolute inset-0 flex items-center justify-center"><Loader2 size={20} className="animate-spin text-(--color-text-subtle)" /><span className="sr-only">Loading PDF</span></div>}
+      {status === 'loading' && <div role="status" aria-busy="true" className="oa-fade-in-late pointer-events-none absolute inset-0 flex items-center justify-center"><Loader2 size={20} className="animate-spin text-(--color-text-subtle)" /><span className="sr-only">Loading PDF</span></div>}
       {status === 'error' && <div role="alert" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--color-text-muted)"><File size={28} /><p className="text-sm">Couldn't render this PDF</p></div>}
     </div>
   )

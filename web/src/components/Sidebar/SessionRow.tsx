@@ -463,7 +463,7 @@ const SKELETON_TITLE_WIDTHS = ['w-3/4', 'w-1/2', 'w-2/3']
  */
 export function SessionRowsSkeleton({ rows = 3 }: { rows?: number }) {
   return (
-    <div role="status" aria-label="Loading sessions" data-session-skeleton className="space-y-px">
+    <div role="status" aria-label="Loading sessions" data-session-skeleton className="oa-fade-in-late space-y-px">
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} aria-hidden="true" className="flex h-(--spacing-list-row) items-center gap-1.5 px-1.5">
           <span className="flex size-3 shrink-0 items-center justify-center">

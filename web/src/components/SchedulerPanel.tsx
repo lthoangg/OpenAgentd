@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
 import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
 import { TaskListPane } from './SchedulerPanel/TaskListPane'
+import { useSchedulerDraftGuard } from './SchedulerPanel/draftGuard'
 
 interface SchedulerPanelProps {
   open: boolean
@@ -25,6 +26,10 @@ export function SchedulerPanel({
   contextWorkspace = null,
 }: SchedulerPanelProps) {
   const isMobile = useIsMobile()
+  // Everything below that would unmount a Create/Edit form goes through
+  // `guard`; a successful submit (`onSuccess`) does not.
+  const { guard, provide } = useSchedulerDraftGuard()
+  const close = () => guard(onClose)
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
@@ -50,10 +55,10 @@ export function SchedulerPanel({
     useUIStore.getState().focusScheduledTask(null)
   }, [focusTaskId, isMobile, open])
 
-  const handleSelectTask = (id: string) => {
+  const handleSelectTask = (id: string) => guard(() => {
     setSelectedTaskId(id)
     if (isMobile) setMobilePane('detail')
-  }
+  })
 
   const handleCloseDetail = () => {
     setSelectedTaskId(null)
@@ -64,14 +69,14 @@ export function SchedulerPanel({
     if (selectedTaskId === id) handleCloseDetail()
   }
 
-  const handleOpenCreate = () => {
+  const handleOpenCreate = () => guard(() => {
     setSelectedTaskId(null)
     if (isMobile) setMobilePane('create')
-  }
+  })
 
-  const handleBackToList = () => {
+  const handleBackToList = () => guard(() => {
     setMobilePane('list')
-  }
+  })
 
   const showList = !isMobile || mobilePane === 'list'
   const showDetail = !isMobile || mobilePane === 'detail' || mobilePane === 'create'
@@ -79,10 +84,11 @@ export function SchedulerPanel({
   return (
     <AppOverlay
       open={open}
-      onClose={onClose}
+      onClose={close}
       label="Scheduled tasks"
       maxWidth="1100px"
     >
+      {provide(<>
       <OverlayHeader
         title={
           <span className="flex min-w-0 items-center gap-2">
@@ -102,7 +108,7 @@ export function SchedulerPanel({
         }
         icon={<CalendarClock size={14} />}
         subtitle={!isMobile || mobilePane === 'list' ? 'All scheduled tasks' : undefined}
-        onClose={onClose}
+        onClose={close}
         closeLabel="Close scheduler panel"
         leading={
           isMobile && mobilePane !== 'list' && (
@@ -167,7 +173,7 @@ export function SchedulerPanel({
             {selectedTask && (!isMobile || mobilePane === 'detail') ? (
               <TaskDetailView
                 task={selectedTask}
-                onClose={handleCloseDetail}
+                onClose={() => guard(handleCloseDetail)}
                 hostTitled={isMobile}
               />
             ) : (
@@ -181,6 +187,7 @@ export function SchedulerPanel({
           </div>
         )}
       </div>
+      </>)}
     </AppOverlay>
   )
 }

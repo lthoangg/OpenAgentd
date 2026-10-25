@@ -14,6 +14,7 @@ import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { editTaskDefaults, toUpdatePayload } from './taskForm'
 import { useTaskFieldErrors } from './useTaskFieldErrors'
+import { taskValuesChanged, useReportSchedulerDraft } from './draftGuard'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -51,6 +52,7 @@ export function EditTaskForm({
   const form = useForm({ defaultValues: defaults, onSubmit: () => {} })
   const values = useStore(form.store, (state) => state.values)
   const { formRef, fieldErrors, validateForSubmit } = useTaskFieldErrors(values, false)
+  useReportSchedulerDraft(taskValuesChanged(values, defaults))
   const validationSummary = Object.values(fieldErrors)[0]
   const isSessionCompatible = !!currentSessionId && values.workspace === activeSessionWorkspace
 

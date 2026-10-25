@@ -649,6 +649,31 @@ mod cache_tests {
         assert!(same_view(&ok, &ok.clone()));
         assert!(!same_view(&ok, &failed));
     }
+
+    fn capability(json: &str) -> serde_json::Value {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn strings(value: &serde_json::Value) -> Vec<&str> {
+        value.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect()
+    }
+
+    // The popup only reads usage, runs menu actions, and sizes itself. It
+    // must not share the main window's grant, which includes the access-key
+    // store, file saving, backend switching, and the updater.
+    #[test]
+    fn the_popup_gets_only_its_own_commands() {
+        let default = capability(include_str!("../capabilities/default.json"));
+        assert!(!strings(&default["windows"]).contains(&TRAY_POPUP_WINDOW));
+
+        let tray = capability(include_str!("../capabilities/tray.json"));
+        assert_eq!(strings(&tray["windows"]), [TRAY_POPUP_WINDOW]);
+        assert!(tray.get("remote").is_none());
+        assert_eq!(
+            strings(&tray["permissions"]),
+            ["core:event:default", "allow-get-tray-usage-summary", "allow-tray-action", "allow-tray-fit"],
+        );
+    }
 }
 
 #[cfg(all(test, target_os = "macos"))]

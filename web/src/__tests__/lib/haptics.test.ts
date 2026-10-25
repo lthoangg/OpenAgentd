@@ -4,6 +4,8 @@ let platformOs = 'ios'
 let isTauri = true
 let impactShouldReject = false
 const impactCalls: string[] = []
+const selectionCalls: number[] = []
+const notificationCalls: string[] = []
 const vibrateCalls: number[] = []
 
 mock.module('@/hooks/use-platform', () => ({
@@ -14,6 +16,16 @@ mock.module('@/hooks/use-platform', () => ({
 mock.module('@tauri-apps/plugin-haptics', () => ({
   impactFeedback: (style: string) => {
     impactCalls.push(style)
+    if (impactShouldReject) return Promise.reject(new Error('unavailable'))
+    return Promise.resolve(null)
+  },
+  selectionFeedback: () => {
+    selectionCalls.push(1)
+    if (impactShouldReject) return Promise.reject(new Error('unavailable'))
+    return Promise.resolve(null)
+  },
+  notificationFeedback: (type: string) => {
+    notificationCalls.push(type)
     if (impactShouldReject) return Promise.reject(new Error('unavailable'))
     return Promise.resolve(null)
   },
@@ -32,6 +44,8 @@ beforeEach(() => {
   isTauri = true
   impactShouldReject = false
   impactCalls.length = 0
+  selectionCalls.length = 0
+  notificationCalls.length = 0
   vibrateCalls.length = 0
   Object.defineProperty(navigator, 'vibrate', {
     configurable: true,
@@ -147,5 +161,71 @@ describe('haptic (semantic wrapper)', () => {
     await flush()
 
     expect(impactCalls).toEqual(['soft'])
+  })
+})
+
+describe('selectionHapticFeedback', () => {
+  it('uses the native selection tick inside a touch shell', async () => {
+    const { selectionHapticFeedback } = await haptics()
+
+    selectionHapticFeedback()
+    await flush()
+
+    expect(selectionCalls).toEqual([1])
+    expect(vibrateCalls).toEqual([])
+  })
+
+  it('falls back to a short vibration when the plugin fails', async () => {
+    impactShouldReject = true
+    const { selectionHapticFeedback } = await haptics()
+
+    selectionHapticFeedback()
+    await flush()
+
+    expect(vibrateCalls).toEqual([10])
+  })
+
+  it('does nothing on desktop platforms', async () => {
+    platformOs = 'macos'
+    const { selectionHapticFeedback } = await haptics()
+
+    selectionHapticFeedback()
+    await flush()
+
+    expect(selectionCalls).toEqual([])
+  })
+})
+
+describe('outcomeHapticFeedback', () => {
+  it('plays the native success and error patterns inside a touch shell', async () => {
+    const { outcomeHapticFeedback } = await haptics()
+
+    outcomeHapticFeedback('success')
+    outcomeHapticFeedback('error')
+    await flush()
+
+    expect(notificationCalls).toEqual(['success', 'error'])
+    expect(vibrateCalls).toEqual([])
+  })
+
+  it('falls back to a vibration when the plugin fails', async () => {
+    impactShouldReject = true
+    const { outcomeHapticFeedback } = await haptics()
+
+    outcomeHapticFeedback('error')
+    await flush()
+
+    expect(vibrateCalls).toEqual([20])
+  })
+
+  it('does nothing outside the Tauri shell', async () => {
+    isTauri = false
+    const { outcomeHapticFeedback } = await haptics()
+
+    outcomeHapticFeedback('success')
+    await flush()
+
+    expect(notificationCalls).toEqual([])
+    expect(vibrateCalls).toEqual([])
   })
 })

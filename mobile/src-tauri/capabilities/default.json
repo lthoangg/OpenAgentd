@@ -14,6 +14,8 @@
     "notification:default",
     "deep-link:default",
     "haptics:allow-impact-feedback",
+    "haptics:allow-selection-feedback",
+    "haptics:allow-notification-feedback",
     "haptics:allow-vibrate",
     "allow-secure-get-access-key",
     "allow-secure-set-access-key",

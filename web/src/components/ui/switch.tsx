@@ -9,6 +9,7 @@
  *   checked, onCheckedChange, disabled, className
  */
 import { type ComponentPropsWithRef } from 'react'
+import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 
 interface SwitchProps extends Omit<ComponentPropsWithRef<'button'>, 'onChange' | 'onClick'> {
@@ -26,7 +27,11 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
       data-checked={checked || undefined}
       data-disabled={disabled || undefined}
       disabled={disabled}
-      onClick={() => !disabled && onCheckedChange?.(!checked)}
+      onClick={() => {
+        if (disabled) return
+        selectionHapticFeedback()
+        onCheckedChange?.(!checked)
+      }}
       className={cn(
         // Track — pill shape
         'relative inline-flex h-[22px] w-10 shrink-0',

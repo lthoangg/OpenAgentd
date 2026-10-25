@@ -50,6 +50,22 @@ export function mediumHapticFeedback(): void {
   })
 }
 
+/** The system's selection tick — a switch flips, a segment changes. */
+export function selectionHapticFeedback(): void {
+  if (!isTouchShell()) return
+  void import('@tauri-apps/plugin-haptics')
+    .then(({ selectionFeedback }) => selectionFeedback())
+    .catch(() => webVibrate(10))
+}
+
+/** The system's success or error pattern for an action's result. */
+export function outcomeHapticFeedback(outcome: 'success' | 'error'): void {
+  if (!isTouchShell()) return
+  void import('@tauri-apps/plugin-haptics')
+    .then(({ notificationFeedback }) => notificationFeedback(outcome))
+    .catch(() => webVibrate(20))
+}
+
 /**
  * Semantic wrapper for gesture code that thinks in intents rather than
  * impact strengths.

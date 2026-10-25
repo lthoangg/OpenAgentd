@@ -637,6 +637,8 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
         return Ok(json(json!({"saved": false})));
     }
     check_value_names(&id, &values)?;
+    let explicit = credential_id.is_some();
+    let requested = credential_id.clone().unwrap_or_default();
     let target = credential_id.or_else(|| cred_store::current(&id)).or_else(|| cred_store::snapshot().provider(&id).first().map(|c| c.id.clone()));
     let pid = id.clone();
     let names: Vec<String> = values.iter().map(|(k, _)| k.clone()).collect();
@@ -645,6 +647,8 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
             let existing = target.as_deref().and_then(|t| f.find(&pid, t)).map(|c| c.id.clone());
             let c = match existing {
                 Some(eid) => f.find_mut(&pid, &eid).expect("exists"),
+                // A named credential that is gone is not silently recreated.
+                None if explicit => return None,
                 None => {
                     f.provider_mut(&pid).push(cred_store::Credential::new("Default"));
                     f.provider_mut(&pid).last_mut().expect("pushed")
@@ -657,11 +661,12 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
                     c.values.insert(k, val);
                 }
             }
-            c.id.clone()
+            Some(c.id.clone())
         })
     })
     .await
-    .map_err(store_err)?;
+    .map_err(store_err)?
+    .ok_or_else(|| ApiError::not_found(format!("Credential '{requested}' not found for '{id}'.")))?;
     cred_store::clear_cooldown(&id, &cid);
     let _ = rs::clear_provider_cached_models(&id);
     tracing::info!("provider_credentials_saved provider={} credential={} names={:?}", id, cid, names);
@@ -728,12 +733,16 @@ pub fn credential_meta(entry: &Value, c: &cred_store::Credential, in_use: bool) 
     })
 }
 
+/// The credential the provider's next request uses.
+fn in_use_id(provider_id: &str, f: &cred_store::CredentialsFile) -> Option<String> {
+    cred_store::select(provider_id, &f.enabled(provider_id)).map(|c| c.id.clone())
+}
+
 /// Every stored credential of `entry`'s provider, in priority order.
 pub fn credentials_json(entry: &Value) -> Value {
     let id = s(entry, "id");
     let f = cred_store::snapshot();
-    let enabled = f.enabled(id);
-    let in_use = cred_store::current(id).filter(|c| enabled.iter().any(|e| e.id == *c)).or_else(|| enabled.first().map(|c| c.id.clone()));
+    let in_use = in_use_id(id, &f);
     Value::Array(f.provider(id).iter().map(|c| credential_meta(entry, c, in_use.as_deref() == Some(c.id.as_str()))).collect())
 }
 
@@ -816,7 +825,8 @@ async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Byt
         cred_store::clear_cooldown(&id, &cid);
         let _ = rs::clear_provider_cached_models(&id);
     }
-    Ok(json(credential_meta(entry, &c, cred_store::current(&id).as_deref() == Some(cid.as_str()))))
+    let in_use = in_use_id(&id, &cred_store::snapshot());
+    Ok(json(credential_meta(entry, &c, in_use.as_deref() == Some(cid.as_str()))))
 }
 
 async fn delete_credential(AxPath((id, cid)): AxPath<(String, String)>) -> ApiResult<Response> {
@@ -843,7 +853,7 @@ async fn order_credentials(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<
     let pid = id.clone();
     let ok = blocking(move || {
         cred_store::update(|f| {
-            let list = f.provider_mut(&pid);
+            let Some(list) = f.providers.get_mut(&pid) else { return ids.is_empty() };
             let mut have: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
             let mut want: Vec<&str> = ids.iter().map(String::as_str).collect();
             have.sort_unstable();

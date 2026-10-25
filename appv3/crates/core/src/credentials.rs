@@ -143,6 +143,13 @@ impl CredentialsFile {
     pub fn enabled(&self, provider_id: &str) -> Vec<&Credential> {
         self.provider(provider_id).iter().filter(|c| !c.disabled).collect()
     }
+    /// Sign out of every OAuth account of a provider (signed in, or revoked
+    /// and awaiting a reconnect), keeping its pasted keys and tokens.
+    /// Returns how many were removed.
+    pub fn remove_oauth_accounts(&mut self, provider_id: &str) -> usize {
+        let ids: Vec<String> = self.provider(provider_id).iter().filter(|c| c.oauth.is_some() || c.values.is_empty()).map(|c| c.id.clone()).collect();
+        ids.iter().filter(|id| self.remove(provider_id, id).is_some()).count()
+    }
 
     pub fn parse(text: &str) -> Result<Self, CredentialsError> {
         let v = crate::pyyaml::safe_load(text).map_err(|e| CredentialsError::Malformed(e.message))?;
@@ -378,9 +385,10 @@ pub fn clear_current(provider_id: &str) {
     state().lock().unwrap().current.remove(provider_id);
 }
 
-/// Pick the credential to use: the sticky current one while it is ready,
-/// else the first ready one in order, else (all cooling down) the one that
-/// recovers first. `None` only when nothing is enabled.
+/// The credential the next request uses: the sticky current one while it is
+/// ready, else the first ready one in order, else (all cooling down) the one
+/// that recovers first. `None` only when nothing is enabled. Read-only: the
+/// pool makes its pick current once a request goes out on it.
 pub fn select<'a>(provider_id: &str, enabled: &[&'a Credential]) -> Option<&'a Credential> {
     if enabled.is_empty() {
         return None;
@@ -391,18 +399,8 @@ pub fn select<'a>(provider_id: &str, enabled: &[&'a Credential]) -> Option<&'a C
             return Some(c);
         }
     }
-    let pick = enabled.iter().find(|c| ready(c)).copied().unwrap_or_else(|| {
-        *enabled
-            .iter()
-            .min_by(|a, b| {
-                let ua = cooldown(provider_id, &a.id).map(|c| c.until).unwrap_or(0.0);
-                let ub = cooldown(provider_id, &b.id).map(|c| c.until).unwrap_or(0.0);
-                ua.total_cmp(&ub)
-            })
-            .expect("non-empty")
-    });
-    set_current(provider_id, &pick.id);
-    Some(pick)
+    let until = |c: &Credential| cooldown(provider_id, &c.id).map(|c| c.until).unwrap_or(0.0);
+    enabled.iter().find(|c| ready(c)).or_else(|| enabled.iter().min_by(|a, b| until(a).total_cmp(&until(b)))).copied()
 }
 
 /// After `failed_id` failed: the next ready credential after it in order
@@ -602,5 +600,29 @@ mod tests {
         set_cooldown(pid, "a", now_s() + 600.0, "quota");
         set_cooldown(pid, "a", now_s() + 5.0, "rate_limit");
         assert_eq!(cooldown(pid, "a").unwrap().reason, "quota");
+    }
+
+    /// Signing out of a provider's accounts keeps a token pasted beside them.
+    #[test]
+    fn removing_oauth_accounts_keeps_pasted_tokens() {
+        let mut f = CredentialsFile::default();
+        let mut signed_in = Credential::new("me");
+        signed_in.oauth = Some(serde_json::json!({"access_token": "t"}));
+        let revoked = Credential::new("old login");
+        let mut pasted = Credential::new("token");
+        pasted.values.insert("COPILOT_GITHUB_TOKEN".into(), "ghp_x".into());
+        let keep = pasted.id.clone();
+        f.provider_mut("copilot").extend([signed_in, revoked, pasted]);
+
+        assert_eq!(f.remove_oauth_accounts("copilot"), 2);
+        assert_eq!(f.provider("copilot").iter().map(|c| c.id.clone()).collect::<Vec<_>>(), [keep]);
+    }
+
+    #[test]
+    fn select_does_not_move_the_sticky_credential() {
+        let pid = "test-select-read-only";
+        let (a, b) = (cred("a", "1"), cred("b", "2"));
+        assert_eq!(select(pid, &[&a, &b]).unwrap().id, "a");
+        assert_eq!(current(pid), None, "only a request that goes out makes a credential current");
     }
 }

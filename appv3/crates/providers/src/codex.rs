@@ -99,7 +99,10 @@ impl CodexAuth {
         let tokens = match token_request(&[("grant_type", "refresh_token"), ("refresh_token", &source.refresh_token), ("client_id", CLIENT_ID)]).await {
             Ok(t) => t,
             Err(TokenError::Status(st, msg)) => {
-                if st == 400 || st == 401 {
+                // Another process (the CLI beside the server) may have used
+                // and rotated this refresh token first; its save stands.
+                let still_ours = Self::load(slot).is_none_or(|c| c.refresh_token == source.refresh_token);
+                if (st == 400 || st == 401) && still_ours {
                     slot.revoke();
                     crate::oauth::forget_models_if_disconnected("codex");
                 }

@@ -246,6 +246,10 @@ pub fn migrate_legacy(src: &LegacySources) -> Result<Option<ImportReport>, store
         }
     }
     let report = store::update_at(&src.store, |f| {
+        // Another process (the CLI beside the server) migrated first.
+        if !f.providers.is_empty() || !f.secrets.is_empty() {
+            return ImportReport::default();
+        }
         let mut report = fold_dotenv(f, &entries, "Default", &refs);
         for (pid, doc) in oauth_docs {
             let mut c = Credential::new(oauth_account_label(&doc).unwrap_or_else(|| "Account 1".into()));

@@ -624,6 +624,9 @@ async fn provider_credentials_flow(c: &Client, root: &std::path::Path) {
 
     let (st, v) = c.json("POST", base, Some(json!({"extra": {"PATH": "/tmp"}}))).await;
     assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "foreign value names are refused: {v}");
+    let gone = json!({"api_key": "sk-or-test-gone-3333", "credential_id": "cred_gone"});
+    let (st, v) = c.json("PUT", "/api/settings/providers/openrouter", Some(gone)).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "a removed credential is not recreated: {v}");
 
     let (st, _) = c.json("DELETE", &format!("{base}/{b}"), None).await;
     assert_eq!(st, StatusCode::OK);

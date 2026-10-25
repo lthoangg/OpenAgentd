@@ -64,8 +64,8 @@ pub fn build_pooled(name: &str, model: &str, kw: Kwargs) -> ProviderResult<Arc<d
     Ok(Arc::new(pool))
 }
 
-/// credential id → (fingerprint of its stored values, built provider).
-type Members = Mutex<HashMap<String, (String, Arc<dyn LlmProvider>)>>;
+/// credential id → (the stored credential it was built from, built provider).
+type Members = Mutex<HashMap<String, (Credential, Arc<dyn LlmProvider>)>>;
 
 pub struct PooledProvider {
     provider_id: String,
@@ -75,11 +75,6 @@ pub struct PooledProvider {
     /// The first member built; answers the synchronous metadata calls,
     /// which are the same for every credential of a provider and model.
     first: OnceLock<Arc<dyn LlmProvider>>,
-}
-
-fn fingerprint(c: &Credential) -> String {
-    let doc = serde_json::json!({"v": c.values, "o": c.oauth});
-    crate::plugin::sha256_hex(&doc.to_string())
 }
 
 /// An OAuth document whose access token is (about to be) expired.
@@ -92,25 +87,31 @@ fn oauth_expired(c: &Credential) -> bool {
 }
 
 impl PooledProvider {
-    fn build(&self, c: &Credential) -> ProviderResult<Arc<dyn LlmProvider>> {
-        let creds = CredentialStore::for_credential(&self.provider_id, c.values.clone());
-        let slot = TokenSlot::new(&self.provider_id, &c.id);
-        build_member(&self.provider_id, &self.model, self.kw.clone(), &creds, Some(&slot))
+    fn build(provider_id: &str, model: &str, kw: Kwargs, c: &Credential) -> ProviderResult<Arc<dyn LlmProvider>> {
+        let creds = CredentialStore::for_credential(provider_id, c.values.clone());
+        build_member(provider_id, model, kw, &creds, Some(&TokenSlot::new(provider_id, &c.id)))
     }
 
+    /// The member built for `c`, unless its stored values changed since (a
+    /// new key, refreshed tokens) or its access token is about to expire.
     fn cached(&self, c: &Credential) -> Option<Arc<dyn LlmProvider>> {
         if oauth_expired(c) {
             return None;
         }
-        let fp = fingerprint(c);
-        self.members.lock().unwrap().get(&c.id).filter(|(f, _)| *f == fp).map(|(_, p)| p.clone())
+        self.members.lock().unwrap().get(&c.id).filter(|(built_from, _)| built_from.values == c.values && built_from.oauth == c.oauth).map(|(_, p)| p.clone())
     }
 
-    fn remember(&self, c: &Credential, p: Arc<dyn LlmProvider>) {
-        // Re-read: a refresh during the build rewrote the stored tokens.
-        let fresh = store::snapshot().find(&self.provider_id, &c.id).cloned().unwrap_or_else(|| c.clone());
-        self.members.lock().unwrap().insert(c.id.clone(), (fingerprint(&fresh), p.clone()));
-        let _ = self.first.set(p);
+    /// Use a member for the next request: cache a fresh build and make its
+    /// credential the one requests stick to.
+    fn adopt(&self, c: Credential, p: Arc<dyn LlmProvider>, built: bool) -> (String, Arc<dyn LlmProvider>) {
+        if built {
+            // Re-read: a refresh during the build rewrote the stored tokens.
+            let fresh = store::snapshot().find(&self.provider_id, &c.id).cloned().unwrap_or_else(|| c.clone());
+            self.members.lock().unwrap().insert(c.id.clone(), (fresh, p.clone()));
+            let _ = self.first.set(p.clone());
+        }
+        store::set_current(&self.provider_id, &c.id);
+        (c.id, p)
     }
 
     /// Candidates in the order to try: the selected one first, then the
@@ -136,15 +137,10 @@ impl PooledProvider {
         let mut last = None;
         for c in self.candidates()? {
             if let Some(p) = self.cached(&c) {
-                store::set_current(&self.provider_id, &c.id);
-                return Ok((c.id, p));
+                return Ok(self.adopt(c, p, false));
             }
-            match self.build(&c) {
-                Ok(p) => {
-                    self.remember(&c, p.clone());
-                    store::set_current(&self.provider_id, &c.id);
-                    return Ok((c.id, p));
-                }
+            match Self::build(&self.provider_id, &self.model, self.kw.clone(), &c) {
+                Ok(p) => return Ok(self.adopt(c, p, true)),
                 Err(e) => {
                     self.on_build_failure(&c, &e);
                     last = Some(e);
@@ -160,22 +156,12 @@ impl PooledProvider {
         let mut last = None;
         for c in self.candidates()? {
             if let Some(p) = self.cached(&c) {
-                store::set_current(&self.provider_id, &c.id);
-                return Ok((c.id, p));
+                return Ok(self.adopt(c, p, false));
             }
             let (pid, model, kw, cc) = (self.provider_id.clone(), self.model.clone(), self.kw.clone(), c.clone());
-            let built = tokio::task::spawn_blocking(move || {
-                let creds = CredentialStore::for_credential(&pid, cc.values.clone());
-                build_member(&pid, &model, kw, &creds, Some(&TokenSlot::new(&pid, &cc.id)))
-            })
-            .await
-            .map_err(|e| ProviderError::Other(e.to_string()))?;
+            let built = tokio::task::spawn_blocking(move || Self::build(&pid, &model, kw, &cc)).await.map_err(|e| ProviderError::Other(e.to_string()))?;
             match built {
-                Ok(p) => {
-                    self.remember(&c, p.clone());
-                    store::set_current(&self.provider_id, &c.id);
-                    return Ok((c.id, p));
-                }
+                Ok(p) => return Ok(self.adopt(c, p, true)),
                 Err(e) => {
                     self.on_build_failure(&c, &e);
                     last = Some(e);

@@ -33,7 +33,7 @@ pub fn auth_router() -> Router<AppState> {
 }
 
 /// `DELETE /api/auth/{provider}`: sign out one account (`?credential_id=`)
-/// or, without it, every account of the provider.
+/// or, without it, every OAuth account of the provider (pasted tokens stay).
 async fn oauth_disconnect(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axum::extract::RawQuery) -> ApiResult<Response> {
     let plugin = appv3_providers::plugin::find_provider_plugin(&id);
     if crate::providers::find(&id).is_none() && plugin.is_none() {
@@ -45,7 +45,7 @@ async fn oauth_disconnect(AxPath(id): AxPath<String>, axum::extract::RawQuery(q)
         let removed = blocking(move || {
             appv3_core::credentials::update(|f| match &cid {
                 Some(c) => usize::from(f.remove(&pid, c).is_some()),
-                None => f.providers.shift_remove(&pid).map(|l| l.len()).unwrap_or(0),
+                None => f.remove_oauth_accounts(&pid),
             })
         })
         .await

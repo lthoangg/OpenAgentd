@@ -79,6 +79,12 @@ fn posix_rel(p: &Path, base: &Path) -> String {
 
 fn export_config(cfg: &Path, output: &Path, include_secrets: bool) -> Result<Vec<String>> {
     let file = std::fs::File::create(output).with_context(|| format!("create {}", output.display()))?;
+    // An archive holding credentials.yaml is as private as the file itself.
+    #[cfg(unix)]
+    if include_secrets {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600)).with_context(|| format!("restrict {}", output.display()))?;
+    }
     let gz = flate2::write::GzEncoder::new(file, flate2::Compression::new(9));
     let mut tar = tar::Builder::new(gz);
     tar.follow_symlinks(false);

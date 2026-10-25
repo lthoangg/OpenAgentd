@@ -102,7 +102,7 @@ fn logout(provider: &str, account: Option<&str>) -> Result<()> {
     let pid = provider.to_string();
     let removed = store::update(|f| match &target {
         Some(c) => usize::from(f.remove(&pid, &c.id).is_some()),
-        None => f.providers.shift_remove(&pid).map(|l| l.len()).unwrap_or(0),
+        None => f.remove_oauth_accounts(&pid),
     })
     .map_err(|e| anyhow!("{e}"))?;
     if !store::snapshot().enabled(provider).iter().any(|c| c.has_secret()) {

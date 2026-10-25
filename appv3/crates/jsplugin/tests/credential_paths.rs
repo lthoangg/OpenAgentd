@@ -26,7 +26,8 @@ export function remove(c, file) { c.remove(file); return c.readJson(file); }
     let a = plugin.call_blocking(&Target::export(""), "cache", &[store(Some("account-a")), json!("pending.json"), json!(null)], Mode::Value).unwrap().value;
     assert_eq!(a["data"]["value"], "a");
     let legacy = plugin.call_blocking(&Target::export(""), "cache", &[store(None), json!("pending.json"), json!("legacy")], Mode::Value).unwrap().value;
-    assert_eq!(legacy["path"], root.path().join("cache/provider-plugins/demo/pending.json").to_string_lossy().as_ref());
+    let expected = root.path().join("cache").join("provider-plugins").join("demo").join("pending.json");
+    assert_eq!(legacy["path"], expected.to_string_lossy().as_ref());
     for file in ["..", ".", "../token.json", "..\\token.json", "/tmp/token.json", "C:\\token.json"] {
         assert!(plugin.call_blocking(&Target::export(""), "cache", &[store(Some("account-a")), json!(file), json!(null)], Mode::Value).is_err(), "accepted {file:?}");
     }

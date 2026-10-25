@@ -1166,6 +1166,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   interrupt at any time. An account spend cap (such as Anthropic's monthly
   spend limit) is not waited out: the turn fails at once and says to raise
   the limit or switch model `[v3.30.0]`.
+  With several keys or accounts for the provider, a limit first switches to
+  the next one; the wait (for the earliest reset of any of them) and the
+  spend-cap failure apply only once every credential is unavailable `[v3.30.0]`.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
   responses (400/401/403/404/422) are classified into typed errors that carry
   the provider's own explanation instead of a bare status code. 401/403 render
@@ -1822,12 +1825,32 @@ agnostic by design.
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
   on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  With several accounts, each account row has its own **Remove** instead
+  (`DELETE /api/auth/{provider}?credential_id=…`) `[v3.30.0]`.
   A **Hidden** status filter chip lists only hidden providers; they no longer
   count under **Connected** or the header's connected total `[v3.29.0]`.
   A provider that loses its connection (API key deleted, OAuth session revoked or
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
+- **Several keys and accounts per provider, with automatic switching** `[v3.30.0]` —
+  Settings → Providers keeps an ordered list of API keys for each API-key
+  provider (OpenAI, Anthropic, OpenRouter, …) and of OAuth accounts for Codex,
+  GitHub Copilot, and Grok. Each row shows a masked key hint or account name and
+  its state (In use, Ready, Cooling down with a reset countdown, Reconnect
+  required, Disabled), and can be renamed, moved up or down (buttons, not
+  drag-only), disabled, reconnected, or removed without touching the others;
+  OAuth rows open that account's usage. When the credential in use hits a rate
+  limit or quota (429), a spend limit or 402, or is rejected (401/403 after an
+  OAuth refresh), the same turn continues on the next ready credential with the
+  same model, and the transcript notes the switch. Selection is sticky: it stays
+  on the new credential until that one fails. Cooldowns are shared by every
+  session and subagent, and title and summary calls skip cooling credentials.
+  Only when every credential is cooling down does the agent wait for the
+  earliest reset. Keys in one organization often share limits, so extra keys
+  don't always add quota. A key exported in the server's environment pins the
+  provider and shows as a read-only "From environment" row. Plugin providers,
+  Bedrock, and Vertex AI keep a single credential.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or
@@ -2137,7 +2160,9 @@ Four orthogonal ways to add capability.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be
-    referenced instead of written in plain text.
+    referenced instead of written in plain text. Values saved from the MCP
+    form (OAuth client secrets) live under `secrets:` in `credentials.yaml`;
+    an exported environment variable of the same name wins `[v3.30.0]`.
   - **Markdown-rendered tool descriptions in Session Settings** `[v1.96.0]` —
     tool descriptions in the Session Settings tools panel now render as structured
     markdown (bullet lists, inline code, bold/italic, paragraph breaks) instead of
@@ -2255,6 +2280,17 @@ Single-user trust model. The host is trusted. The operator is the user.
   or saved from Settings (including MCP secrets). `printenv` cannot get around
   the `**/.env` read denial. Variables the user exported before starting the
   server still pass through.
+- **`credentials.yaml` secret store** `[v3.30.0]` — every saved API key, OAuth
+  login, and MCP client secret lives in one versioned `credentials.yaml` in the
+  config dir, written atomically under a file lock with owner-only (`0600`)
+  permissions. The server no longer loads secrets into its process environment.
+  On first start, keys from the config dir's `.env` and the old OAuth token
+  files in the cache dir move into it; the originals are kept (`.env` as
+  `.env.migrated`). Provider keys still in a `.env` afterwards are ignored, and
+  `agentd doctor` warns about them. Non-secret settings in `.env` keep loading. A
+  malformed store is an error, never read as empty. Agent file tools and shell
+  commands are denied the store, its lock, and the backup. It is plaintext, so
+  shell tools running as the user could still read it outside those checks.
 
 ---
 
@@ -2456,6 +2492,12 @@ Desktop is primary. CLI / server is the developer path.
   OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
   `agentd auth logout <provider>` deletes the saved login.
   `agentd auth <provider>` still logs in.
+  `agentd auth <provider> --add` signs in another account and
+  `--account <name|id>` reconnects one; `agentd auth logout <provider>
+  --account <name|id>` removes only that account. `agentd credentials list`
+  shows stored keys and accounts without their values, and `agentd credentials
+  import <dotenv>` copies provider keys from a dotenv file such as a project's
+  `.env` `[v3.30.0]`.
 - **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
   (including keys saved in Settings → Providers and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
@@ -2482,7 +2524,9 @@ Desktop is primary. CLI / server is the developer path.
   `.tar.gz` archive. `agentd transfer import <archive>` unpacks it on the target
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
-  channels. Imports resolve every destination inside the config root and reject
+  channels. `credentials.yaml` is left out unless `--include-secrets` is
+  passed and is written owner-only on import; an older archive's `.env` keys
+  are moved into the store on import `[v3.30.0]`. Imports resolve every destination inside the config root and reject
   traversal through pre-existing symlinks `[v1.103.0]`. DB and session
   workspaces are intentionally excluded.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice

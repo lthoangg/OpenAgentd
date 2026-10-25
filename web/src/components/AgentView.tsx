@@ -375,6 +375,9 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
           ? `${String(attempt ?? '?')}/${maxAttempts}`
           : `attempt ${String(attempt ?? '?')}`
         message = `Retrying ${String(model ?? 'model')} (${progress})${errorText}.${delayText}`
+      } else if (status === 'switched_credential') {
+        // A key or account hit its limit; the same turn continues on the next one.
+        message = customMsg || `Switched ${String(model ?? 'model')} to another credential.`
       }
       return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }

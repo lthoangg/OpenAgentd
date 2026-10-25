@@ -16,10 +16,16 @@ export function OAuthLoginDialog({
   provider,
   open,
   onOpenChange,
+  credentialId,
+  accountLabel,
 }: {
   provider: ProviderInfo
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Reconnect this stored account; without it a new account is added. */
+  credentialId?: string
+  /** Display name of the account being reconnected. */
+  accountLabel?: string
 }) {
   const [events, setEvents] = useState<OAuthLoginEvent[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -98,9 +104,17 @@ export function OAuthLoginDialog({
       },
       abort.signal,
       authMode === 'browser' ? 'browser' : undefined,
+      credentialId,
     )
     return () => abort.abort()
-  }, [authMode, open, provider.id, provider.label, queryClient])
+  }, [authMode, credentialId, open, provider.id, provider.label, queryClient])
+
+  const hasAccounts = (provider.stored_credentials?.length ?? 0) > 0
+  const title = credentialId
+    ? `Reconnect ${accountLabel || provider.label}`
+    : hasAccounts
+      ? `Add a ${provider.label} account`
+      : `Connect ${provider.label}`
 
   return (
     <Dialog
@@ -112,8 +126,14 @@ export function OAuthLoginDialog({
     >
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>Connect {provider.label}</DialogTitle>
-          <DialogDescription>Approve the browser prompt. This window will update when the token is saved.</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {credentialId
+              ? 'Sign in with the same account. This window will update when the token is saved.'
+              : hasAccounts
+                ? 'Sign in with another account. It is added after your existing accounts and used when they hit a limit.'
+                : 'Approve the browser prompt. This window will update when the token is saved.'}
+          </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-4">
           <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">

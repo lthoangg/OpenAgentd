@@ -127,7 +127,11 @@ export const queryKeys = {
     multimodal: () => ['settings', 'multimodal'] as const,
     providers: () => ['settings', 'providers'] as const,
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,
-    providerUsage: (providerId: string) => ['settings', 'providers', providerId, 'usage'] as const,
+    /** Without `credentialId`: the credential in use (and, as a prefix, every account's usage). */
+    providerUsage: (providerId: string, credentialId?: string) =>
+      credentialId
+        ? (['settings', 'providers', providerId, 'usage', credentialId] as const)
+        : (['settings', 'providers', providerId, 'usage'] as const),
   },
   memory: {
     tree: () => ['memory', 'tree'] as const,

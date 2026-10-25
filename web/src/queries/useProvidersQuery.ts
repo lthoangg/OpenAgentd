@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  addProviderCredential,
+  deleteProviderCredential,
   disconnectOauthProvider,
+  orderProviderCredentials,
+  updateProviderCredential,
   disconnectProvider,
   getProviderUsage,
   listProviderModels,
@@ -73,10 +77,10 @@ export function useProviderModelsMutation() {
   })
 }
 
-export function useProviderUsageQuery(providerId: string, enabled: boolean, apiKey?: string) {
+export function useProviderUsageQuery(providerId: string, enabled: boolean, apiKey?: string, credentialId?: string) {
   return useQuery({
-    queryKey: queryKeys.settings.providerUsage(providerId),
-    queryFn: () => getProviderUsage(providerId, apiKey),
+    queryKey: queryKeys.settings.providerUsage(providerId, credentialId),
+    queryFn: () => getProviderUsage(providerId, apiKey, credentialId),
     enabled,
     refetchInterval: enabled ? 60_000 : false,
     staleTime: 30_000,
@@ -86,9 +90,9 @@ export function useProviderUsageQuery(providerId: string, enabled: boolean, apiK
 export function useResetProviderUsageMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ providerId }: { providerId: string }) => resetProviderUsage(providerId),
-    onSuccess: (data, { providerId }) => {
-      client.setQueryData(queryKeys.settings.providerUsage(providerId), data)
+    mutationFn: ({ providerId, credentialId }: { providerId: string; credentialId?: string }) => resetProviderUsage(providerId, credentialId),
+    onSuccess: (data, { providerId, credentialId }) => {
+      client.setQueryData(queryKeys.settings.providerUsage(providerId, credentialId), data)
       void client.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(providerId) })
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
     },
@@ -134,10 +138,76 @@ export function useDisconnectProviderMutation() {
 export function useDisconnectOauthProviderMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (providerId: string) => disconnectOauthProvider(providerId),
+    mutationFn: (args: string | { providerId: string; credentialId?: string }) =>
+      typeof args === 'string' ? disconnectOauthProvider(args) : disconnectOauthProvider(args.providerId, args.credentialId),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
       void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },
+  })
+}
+
+/** Every credential change refreshes the provider list (it carries the
+ *  credentials), usage, and the model registry the agents read. */
+function useInvalidateProviderCredentials() {
+  const client = useQueryClient()
+  return (providerId: string) => {
+    void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+    void client.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(providerId) })
+    void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+  }
+}
+
+export function useAddProviderCredentialMutation() {
+  const invalidate = useInvalidateProviderCredentials()
+  return useMutation({
+    mutationFn: ({ providerId, label, apiKey, extra }: { providerId: string; label?: string; apiKey?: string; extra?: Record<string, string> }) =>
+      addProviderCredential(providerId, { label, api_key: apiKey, extra }),
+    onSuccess: (_data, { providerId }) => invalidate(providerId),
+  })
+}
+
+export function useUpdateProviderCredentialMutation() {
+  const invalidate = useInvalidateProviderCredentials()
+  return useMutation({
+    mutationFn: ({ providerId, credentialId, body }: { providerId: string; credentialId: string; body: { label?: string; disabled?: boolean } }) =>
+      updateProviderCredential(providerId, credentialId, body),
+    onSuccess: (_data, { providerId }) => invalidate(providerId),
+  })
+}
+
+export function useDeleteProviderCredentialMutation() {
+  const invalidate = useInvalidateProviderCredentials()
+  return useMutation({
+    mutationFn: ({ providerId, credentialId }: { providerId: string; credentialId: string }) => deleteProviderCredential(providerId, credentialId),
+    onSuccess: (_data, { providerId }) => invalidate(providerId),
+  })
+}
+
+export function useOrderProviderCredentialsMutation() {
+  const client = useQueryClient()
+  const invalidate = useInvalidateProviderCredentials()
+  return useMutation({
+    mutationFn: ({ providerId, ids }: { providerId: string; ids: string[] }) => orderProviderCredentials(providerId, ids),
+    onMutate: async ({ providerId, ids }) => {
+      await client.cancelQueries({ queryKey: queryKeys.settings.providers() })
+      const previous = client.getQueryData<ProvidersListBody>(queryKeys.settings.providers())
+      client.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          providers: current.providers.map((p) => {
+            if (p.id !== providerId || !p.stored_credentials) return p
+            const byId = new Map(p.stored_credentials.map((c) => [c.id, c]))
+            return { ...p, stored_credentials: ids.map((id) => byId.get(id)).filter((c) => c !== undefined) }
+          }),
+        }
+      })
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.settings.providers(), context.previous)
+    },
+    onSettled: (_data, _error, { providerId }) => invalidate(providerId),
   })
 }

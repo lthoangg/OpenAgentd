@@ -82,7 +82,10 @@ if (import.meta.main) {
   // chunk.
   // ⌘L / ⌘⇧L switching, hover intent for pickers, and the shared sidebar row
   // actions reached 2.54 MB / 773.4 kB with a 1.87 MB index chunk (v3.27.0).
-  const limits = { eagerBytes: 2_545_000, eagerGzipBytes: 775_000, largestChunkBytes: 1_878_000 }
+  // Several keys and accounts per provider (the credential list, add-key and
+  // add-account flows, the switched-credential notice, their client calls)
+  // added 16 kB / 4.3 kB gzip: 2.56 MB / 779 kB with a 1.89 MB index chunk.
+  const limits = { eagerBytes: 2_562_000, eagerGzipBytes: 780_000, largestChunkBytes: 1_895_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

@@ -276,4 +276,22 @@ describe("AgentView — provider retry notice", () => {
     render(<AgentView blocks={[]} currentBlocks={[retrying({ max_attempts: 5, error_type: "HTTPStatusError", status_code: 503 })]} isWorking />)
     expect(screen.getByText("Retrying openai:gpt (3/5) after HTTPStatusError 503. Waiting 4.2s.")).toBeTruthy()
   })
+
+  it("says which credential the turn moved to when one hits its limit", () => {
+    const block: ContentBlock = {
+      id: "s1",
+      type: "provider_status",
+      content: "",
+      extra: {
+        status: "switched_credential",
+        model: "openai:gpt",
+        error_type: "HTTPStatusError",
+        status_code: 429,
+        message: "Personal hit its usage limit (resets in 2h). Continuing on Work with the same model.",
+      },
+    }
+    render(<AgentView blocks={[]} currentBlocks={[block]} isWorking />)
+    expect(screen.getByText("Personal hit its usage limit (resets in 2h). Continuing on Work with the same model.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+  })
 })

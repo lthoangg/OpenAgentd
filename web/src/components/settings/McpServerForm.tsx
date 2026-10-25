@@ -212,7 +212,7 @@ export function McpServerForm({
                 error={errors?.oauth}
                 hint={
                   value.oauthEnabled
-                    ? 'Paste app credentials here. They are saved to .env and referenced from mcp.json.'
+                    ? 'Paste app credentials here. They are saved to credentials.yaml and referenced from mcp.json.'
                     : 'Enable for hosted servers like Slack or Notion that require user OAuth.'
                 }
               >

@@ -71,6 +71,10 @@ export {
   useTestProviderMutation,
   useDisconnectProviderMutation,
   useDisconnectOauthProviderMutation,
+  useAddProviderCredentialMutation,
+  useUpdateProviderCredentialMutation,
+  useDeleteProviderCredentialMutation,
+  useOrderProviderCredentialsMutation,
 } from './useProvidersQuery'
 export {
   useSummarizationSettingsQuery,

@@ -286,10 +286,13 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
 
 export function UsagePanel({
   providerId,
+  credentialId,
   limits,
   updatedAt,
 }: {
   providerId?: string
+  /** The account the usage belongs to (a reset redeems on that account). */
+  credentialId?: string
   limits: ProviderUsageLimit[]
   updatedAt?: number
 }) {
@@ -327,7 +330,7 @@ export function UsagePanel({
 
   const handleConfirmReset = () => {
     resetMutation.mutate(
-      { providerId: targetProviderId },
+      { providerId: targetProviderId, credentialId },
       {
         onSuccess: () => {
           setConfirmOpen(false)

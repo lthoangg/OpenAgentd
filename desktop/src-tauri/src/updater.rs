@@ -297,7 +297,12 @@ pub async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String>
 
     let path =
         cached_update_path(&app, &update.version).map_err(|e| format!("Cache update: {e}"))?;
-    std::fs::write(&path, bytes).map_err(|e| format!("Write cached update: {e}"))?;
+    // Tens of MB: write on the blocking pool, not an async worker.
+    let write_path = path.clone();
+    tauri::async_runtime::spawn_blocking(move || std::fs::write(&write_path, bytes))
+        .await
+        .map_err(|e| format!("Write cached update: {e}"))?
+        .map_err(|e| format!("Write cached update: {e}"))?;
     log::info!("updater download cached version={} path={}", update.version, path.display());
     let state: tauri::State<'_, AppState> = app.state();
     *state.update_state.lock().await = Some(CachedUpdateState {
@@ -366,8 +371,11 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
         cached.bytes_path.display()
     );
 
-    let bytes =
-        std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
+    let read_path = cached.bytes_path.clone();
+    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(read_path))
+        .await
+        .map_err(|e| format!("Read cached update: {e}"))?
+        .map_err(|e| format!("Read cached update: {e}"))?;
 
     // `install()` checks the bytes against the published signature
     // (tauri-plugin-updater >= 2.14.0), so they go in exactly as downloaded:

@@ -833,14 +833,21 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette, which also finds it as "compact" or "transcript"). Each turn reads
   as its answer:
   - The thinking, every tool call, and the narration between them fold into
-    one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
-    counted; while the turn runs it names the current step ("Working ·
+    one row such as "6 reads, 3 searches, 4 commands, 2 edits"; while the
+    turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
     transcript.
     Since `[v3.1.0]` the running row also says how long the turn has run,
     counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
-    leaves failures for the finished row to count, and a turn waiting on
-    your answer shows its counts instead of "Working".
+    and a turn waiting on your answer shows its counts instead of "Working".
+    Since `[v3.30.0]` the row no longer counts failures (a failed step still
+    shows red once the row is open), and every built-in tool counts under a
+    named group instead of "other": skills count as reads, MCP tool searches
+    as searches, and there are plan updates (`plan`, `submit_plan`, `todo`,
+    `schedule`), questions, delegations (`team`, `workspace`), preview
+    actions, MCP calls, and generations. "Other" is left for plugin and MCP
+    server tools, and tools saved under a former name count with their
+    current one.
   - An open row stays pinned to the top of the transcript while its steps
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row

@@ -84,7 +84,7 @@ describe('readerSegments — what folds behind the work summary', () => {
 })
 
 describe('summarizeWork', () => {
-  it('counts each kind of step, and failures', () => {
+  it('counts each kind of step', () => {
     const blocks = [
       thinking('t1'),
       tool('r1', 'read'), tool('r2', 'read'),
@@ -92,15 +92,48 @@ describe('summarizeWork', () => {
       tool('f1', 'web_fetch'),
       tool('s1', 'shell', {}, { toolResult: '[Failed — exit code 1]\nnope' }),
       patch('p1', ['*** Update File: a.ts', '@@', '-a', '+b']),
-      tool('d1', 'delegate'),
+      tool('d1', 'team'),
       report('rp1'),
+      tool('x1', 'my_plugin_tool'),
       text('n1'),
     ]
 
     const summary = summarizeWork(blocks)
 
-    expect(summary).toEqual({ reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, reports: 1, other: 1, failed: 1, thought: true })
-    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 report, 1 other')
+    expect(summary).toEqual({
+      reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, plans: 0, questions: 0, delegations: 1,
+      reports: 1, previews: 0, mcpCalls: 0, generations: 0, other: 1, thought: true,
+    })
+    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 delegation, 1 report, 1 other')
+  })
+
+  it('does not count failures; a failed step counts as its kind', () => {
+    const summary = summarizeWork([tool('s1', 'shell', {}, { toolResult: '[Failed — exit code 1]\nnope' })])
+
+    expect(summary).not.toHaveProperty('failed')
+    expect(workSummaryDetail(summary)).toBe('1 command')
+  })
+
+  it('names a group for every built-in tool, leaving "other" to tools it does not know', () => {
+    const blocks = [
+      tool('sk', 'skill'),
+      tool('pl', 'plan'), tool('sp', 'submit_plan'), tool('td', 'todo'), tool('sc', 'schedule'),
+      tool('au', 'ask_user'), tool('al', 'ask_lead'),
+      tool('tm', 'team'), tool('ws', 'workspace'),
+      tool('pv', 'preview'), tool('pv2', 'preview'),
+      tool('ms', 'mcp', { action: 'search', query: 'issues' }), tool('mc', 'mcp', { action: 'call', server: 'github', tool: 'list' }),
+      tool('gi', 'generate_image'), tool('gv', 'generate_video'),
+    ]
+
+    expect(workSummaryDetail(summarizeWork(blocks))).toBe(
+      '1 read, 1 search, 4 plan updates, 2 questions, 2 delegations, 2 preview actions, 1 MCP call, 2 generations',
+    )
+  })
+
+  it('groups a tool saved under its former name with its current one', () => {
+    const blocks = [tool('d1', 'delegate'), tool('t1', 'todo_manage'), tool('s1', 'schedule_task'), tool('w1', 'send_to_workspace')]
+
+    expect(workSummaryDetail(summarizeWork(blocks))).toBe('2 plan updates, 2 delegations')
   })
 
   it('says nothing about steps for a trace that only thought', () => {

@@ -12,7 +12,6 @@
  * tests": how long the turn has run, then the step taking output (or the
  * counts so far). Only "Working" pulses, so the rest stays easy to read. A
  * turn waiting on the user is not working, so its row shows the counts.
- * Failures are counted only once the row stops working ("… · 1 failed").
  * A compaction divider ends the row before it, which then shows its counts;
  * the steps after the divider get a row of their own.
  *
@@ -142,10 +141,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
               {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}
             </>
           ) : (
-            <>
-              <span className="min-w-0 truncate">{detail || (summary.thought ? 'Thought' : 'Worked')}</span>
-              {summary.failed > 0 && <span className="shrink-0 text-(--color-error)">{` · ${summary.failed} failed`}</span>}
-            </>
+            <span className="min-w-0 truncate">{detail || (summary.thought ? 'Thought' : 'Worked')}</span>
           )}
           <ChevronRight
             size={13}

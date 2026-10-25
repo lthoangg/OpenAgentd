@@ -185,15 +185,16 @@ describe('AssistantTurn — reader mode', () => {
     expect(row.textContent).not.toMatch(/failed/)
   })
 
-  it('says a thought-only trace thought, and counts failures', () => {
+  it('does not count failures once the turn ends either; the opened step shows them', () => {
     renderTurn([
       { id: 'think', type: 'thinking', content: 'Hmm.' },
       { id: 'run', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"false"}', toolDone: true, toolResult: '[Failed — exit code 1]' },
       { id: 'answer', type: 'text', content: 'It failed.' },
     ])
-    expect(screen.getByRole('button', { name: /1 command · 1 failed/ })).toBeTruthy()
-    cleanup()
+    expect(screen.getByRole('button', { name: /^1 command$/ })).toBeTruthy()
+  })
 
+  it('says a thought-only trace thought', () => {
     renderTurn([{ id: 'think', type: 'thinking', content: 'Hmm.' }, { id: 'answer', type: 'text', content: 'Hi.' }])
     expect(screen.getByRole('button', { name: /^Thought/ })).toBeTruthy()
   })

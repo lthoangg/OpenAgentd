@@ -107,7 +107,7 @@ describe("AgentView — reader transcript", () => {
       expect(screen.queryByText("Waiting on the explorer.")).toBeNull()
       expect(screen.getAllByRole("button", { name: /copy response/i })).toHaveLength(1)
 
-      await user.click(screen.getByRole("button", { name: /^1 report, 1 other/ }))
+      await user.click(screen.getByRole("button", { name: /^1 delegation, 1 report/ }))
 
       expect(screen.getByText("The bug is in a.ts.")).toBeTruthy()
     })

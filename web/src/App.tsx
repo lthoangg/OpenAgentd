@@ -4,11 +4,18 @@ import { Seal } from '@/components/brand/Logo'
 import { AppBackendDialog, type AppBackendPrefill } from '@/components/AppBackendDialog'
 import { Button } from '@/components/ui/button'
 import { useConnectLink } from '@/hooks/useConnectLink'
+import { useDynamicType } from '@/hooks/use-dynamic-type'
+import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { getBundledBackendLogPath } from '@/lib/app-backend'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
 function App() {
+  // Mounted here, not in the root route, so the loading screen and the
+  // first-run server dialog already get the mobile shell's viewport guards
+  // (fixed layout, keyboard tracking) and the iOS text size.
+  useMobileViewportGuards()
+  useDynamicType()
   const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
   // A scanned `openagentd://connect` link opens the dialog prefilled, in

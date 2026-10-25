@@ -83,6 +83,23 @@ describe('ToolCall team tools display', () => {
     expect(replyDisplay.formattedArgs).toBe('Use JWT')
   })
 
+  it('formats delegate interrupt, stop, and list actions', () => {
+    const interrupt = getToolDisplay('delegate', JSON.stringify({ action: 'interrupt', target: 'explorer#1', task: 'Only the API crate' }))
+    expect(interrupt.headerTitle).toBe('Interrupt explorer#1')
+    expect(interrupt.formattedArgs).toBe('Only the API crate')
+
+    const stop = getToolDisplay('delegate', JSON.stringify({ action: 'stop', target: 'explorer#1' }))
+    expect(stop.headerTitle).toBe('Stop explorer#1')
+    expect(stop.formattedArgs).toBeNull()
+
+    const list = getToolDisplay('delegate', JSON.stringify({ action: 'list' }))
+    expect(list.headerTitle).toBe('Checking subagents')
+    expect(list.formattedArgs).toBeNull()
+
+    const send = getToolDisplay('delegate', JSON.stringify({ action: 'send', target: 'explorer#1', task: 'Use JWT' }))
+    expect(send.headerTitle).toBe('Reply to explorer#1')
+  })
+
   it('formats team_manage for list, wait, and stop actions', () => {
     const listDisplay = getToolDisplay('team_manage', JSON.stringify({ action: 'list' }))
     expect(listDisplay.headerTitle).toBe('Listing team subagents…')

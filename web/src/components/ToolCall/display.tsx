@@ -734,6 +734,18 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const profile = str(parsed, 'profile') || 'subagent'
     const target = str(parsed, 'target')
     const task = str(parsed, 'task')
+    const action = str(parsed, 'action')
+    if (action === 'list') {
+      return { header: 'Checking subagents', headerTitle: 'Checking subagents', formattedArgs: null }
+    }
+    if (target && (action === 'stop' || action === 'interrupt')) {
+      const verb = action === 'stop' ? 'Stop' : 'Interrupt'
+      return {
+        header: <>{verb} <Arg>{target}</Arg></>,
+        headerTitle: `${verb} ${target}`,
+        formattedArgs: action === 'stop' ? null : task,
+      }
+    }
     return {
       header: target ? <>Reply to <Arg>{target}</Arg></> : <>Delegate to <Arg>{profile}</Arg></>,
       headerTitle: target ? `Reply to ${target}` : `Delegate to ${profile}`,

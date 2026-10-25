@@ -153,4 +153,17 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.reject(ex.message ?: "Could not update widgets")
         }
     }
+
+    /**
+     * Send the app to the background, as Back does on a root activity. The
+     * web UI owns Back, so it calls this on its first screen instead of
+     * finishing the activity.
+     */
+    @Command
+    fun moveTaskToBack(invoke: Invoke) {
+        activity.runOnUiThread {
+            activity.moveTaskToBack(true)
+            invoke.resolve()
+        }
+    }
 }

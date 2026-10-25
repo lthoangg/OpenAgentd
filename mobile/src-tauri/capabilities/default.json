@@ -25,6 +25,7 @@
     "allow-save-workspace-file",
     "allow-preview-relay-open",
     "allow-preview-relay-close",
-    "allow-widget-update-snapshot"
+    "allow-widget-update-snapshot",
+    "allow-app-move-to-background"
   ]
 }

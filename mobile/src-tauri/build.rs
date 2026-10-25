@@ -13,6 +13,7 @@ fn main() {
                 "preview_relay_open",
                 "preview_relay_close",
                 "widget_update_snapshot",
+                "app_move_to_background",
             ]),
         ),
     )

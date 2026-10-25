@@ -59,6 +59,15 @@ impl<R: Runtime> AndroidShell<R> {
             .map(|_| ())
             .map_err(|e| format!("Update widgets: {e}"))
     }
+
+    /// Send the app to the background, as Back does on a root activity.
+    /// Blocks on the JNI call; call it off the async runtime.
+    pub fn move_task_to_back(&self) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("moveTaskToBack", ())
+            .map(|_| ())
+            .map_err(|e| format!("Move to background: {e}"))
+    }
 }
 
 pub trait AndroidShellExt<R: Runtime> {

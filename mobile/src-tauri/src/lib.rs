@@ -153,6 +153,25 @@ async fn widget_update_snapshot(
         .map_err(|e| format!("Widget update failed: {e}"))?
 }
 
+/// Android Back on the app's first screen: background the app like a root
+/// activity does instead of finishing it (the web UI owns Back; see
+/// `web/src/lib/back-button.ts`). A no-op on iOS.
+#[tauri::command]
+async fn app_move_to_background(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_openagentd_android::AndroidShellExt;
+        tauri::async_runtime::spawn_blocking(move || app.android_shell().move_task_to_back())
+            .await
+            .map_err(|e| format!("Background task failed: {e}"))?
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Serialize)]
 struct AppBackendStatus {
     base_url: String,
@@ -494,6 +513,7 @@ pub fn run() {
             preview_relay_open,
             preview_relay_close,
             widget_update_snapshot,
+            app_move_to_background,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

@@ -2172,8 +2172,10 @@ Four orthogonal ways to add capability.
     every server's tools (named `<server>_<tool>`) with their full schemas on
     each turn. It gets a single `mcp` tool: `search` finds tools by keywords and
     returns their input schemas, and `call` runs one by server, tool and
-    arguments. Its description lists each server with its tool names (counts
-    only once there are many) or its state. Adding servers no longer grows every
+    arguments. Its description names the enabled servers only `[v3.30.0]`: a
+    server starting, connecting, needing sign-in or failing no longer changes it
+    and breaks the prompt cache (`search` and `call` report a server's state when
+    it matters). Adding servers no longer grows every
     request, server tools can't clash with built-in tool names, and a server
     that finishes starting or reconnects is usable at once. In Plan mode the
     agent can search, and call tools the server marks read-only

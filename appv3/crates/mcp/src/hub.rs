@@ -17,8 +17,6 @@ const DEFAULT_LIMIT: usize = 8;
 const MAX_LIMIT: usize = 20;
 /// Longest tool description a search result carries (characters).
 const RESULT_DESCRIPTION_MAX: usize = 800;
-/// Past this many characters of tool names, the definition lists counts only.
-const NAMES_BUDGET: usize = 1500;
 
 const DESCRIPTION: &str = "Use tools from the user's MCP servers. action='search' finds tools by keywords (or, with an empty query and a server, lists that server's tools) and returns each tool's input_schema. action='call' runs one tool: server, tool (its name as search returned it) and arguments matching its input_schema. Search before calling a tool whose schema you have not seen. In Plan mode only tools marked read_only can be called.";
 
@@ -72,39 +70,28 @@ fn state_note(st: &ServerStatus) -> String {
     }
 }
 
-/// One line per configured server for the tool description: ready servers
-/// with their tool names (counts only once the names grow past the budget),
-/// the others with their state.
+/// The enabled servers, for the tool description. Names only: the
+/// description opens the cached prompt prefix, so it must not change as a
+/// server starts, connects, needs sign-in or fails. `search` and `call`
+/// report a server's state when it matters.
 pub fn describe_servers(statuses: &[ServerStatus]) -> String {
     if statuses.is_empty() {
         return "No MCP servers are configured.".into();
     }
-    let names_len: usize = statuses.iter().filter(|s| s.state == "ready").flat_map(|s| &s.tool_names).map(|n| n.len() + 2).sum();
-    let with_names = names_len <= NAMES_BUDGET;
-    let lines: Vec<String> = statuses
-        .iter()
-        .map(|st| {
-            if st.state != "ready" {
-                return format!("- {} — {}", st.name, state_note(st));
-            }
-            let n = st.tool_names.len();
-            if with_names && n > 0 {
-                let prefix = format!("{}_", st.name);
-                let names: Vec<&str> = st.tool_names.iter().map(|t| t.strip_prefix(&prefix).unwrap_or(t)).collect();
-                format!("- {} ({n} tool{}: {})", st.name, plural(n), names.join(", "))
-            } else {
-                format!("- {} ({n} tool{})", st.name, plural(n))
-            }
-        })
-        .collect();
-    lines.join("\n")
+    let mut names: Vec<&str> = statuses.iter().filter(|s| s.enabled).map(|s| s.name.as_str()).collect();
+    if names.is_empty() {
+        return "No MCP servers are enabled.".into();
+    }
+    names.sort_unstable();
+    names.dedup();
+    format!("Servers: {}. Search with a server and an empty query to list its tools.", names.join(", "))
 }
 
 /// The model-facing definition, with `servers` (see [`describe_servers`]).
 pub fn definition(servers: &str) -> Value {
     json!({"type": "function", "function": {
         "name": MCP_TOOL,
-        "description": format!("{DESCRIPTION}\n\nServers:\n{servers}"),
+        "description": format!("{DESCRIPTION}\n\n{servers}"),
         "parameters": {
             "type": "object",
             "properties": {
@@ -314,13 +301,18 @@ mod tests {
         }
     }
 
+    /// The description sits in the cached tools block: a server starting,
+    /// connecting, needing sign-in or failing must not change it, or every
+    /// session's next call re-sends its whole context.
     #[test]
-    fn describe_lists_tool_names_then_counts() {
-        let s = describe_servers(&[status("docs", "ready", &["search", "fetch"]), status("slack", "auth_required", &[]), status("old", "disabled", &[])]);
-        assert_eq!(s, "- docs (2 tools: search, fetch)\n- slack — needs sign-in: connect it in Settings → MCP\n- old — disabled");
-        let many: Vec<String> = (0..200).map(|i| format!("tool_number_{i}")).collect();
-        let many: Vec<&str> = many.iter().map(String::as_str).collect();
-        assert_eq!(describe_servers(&[status("big", "ready", &many), status("one", "ready", &["x"])]), "- big (200 tools)\n- one (1 tool)");
+    fn the_description_names_enabled_servers_whatever_their_state() {
+        let s = describe_servers(&[status("slack", "auth_required", &[]), status("docs", "ready", &["search", "fetch"]), status("old", "disabled", &[])]);
+        assert_eq!(s, "Servers: docs, slack. Search with a server and an empty query to list its tools.");
+        for (docs, slack) in [("starting", "starting"), ("ready", "ready"), ("error", "auth_required")] {
+            assert_eq!(describe_servers(&[status("docs", docs, &["search"]), status("slack", slack, &["post"])]), s, "{docs}/{slack}");
+        }
+        assert_ne!(describe_servers(&[status("docs", "ready", &[]), status("slack", "disabled", &[])]), s, "disabling a server is a config change");
+        assert_eq!(describe_servers(&[status("old", "disabled", &[])]), "No MCP servers are enabled.");
         assert_eq!(describe_servers(&[]), "No MCP servers are configured.");
     }
 
@@ -380,7 +372,7 @@ mod tests {
                 json!({"name": "delete_page", "description": "Delete a page"}),
             ],
         ));
-        assert!(hub.definition()["function"]["description"].as_str().unwrap().ends_with("Servers:\n- docs (2 tools: lookup, delete_page)"));
+        assert!(hub.definition()["function"]["description"].as_str().unwrap().ends_with("\n\nServers: docs. Search with a server and an empty query to list its tools."));
         assert_eq!(appv3_tools::schema_problems(&hub.definition()), Vec::<String>::new());
 
         let found = run(&hub, false, json!({"action": "search", "query": "look up"})).await.unwrap();

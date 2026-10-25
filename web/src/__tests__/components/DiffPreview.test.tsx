@@ -21,6 +21,8 @@ mock.module('lucide-react', () => ({
   Folder: Icon, FolderOpen: Icon, GitCompare: Icon, Loader2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
+  // FileViewerPanel renders markdown files with the chat renderer.
+  AlertCircle: Icon, FileVideo: Icon, ImageOff: Icon, Maximize2: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
 mock.module('framer-motion', () => ({

@@ -4,6 +4,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
+import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
@@ -490,5 +491,94 @@ describe('Coding workspace two-layer file preview', () => {
 
     // Restore original getSelection
     window.getSelection = originalGetSelection
+  })
+})
+
+describe('Markdown file preview', () => {
+  const markdown: WorkspaceFileInfo = { path: 'docs/README.md', name: 'README.md', size: 120, mtime: 1, mime: 'text/markdown' }
+  const MARKDOWN_SOURCE = '# Project title\n\nSome **bold** text.\n\n![shot](img/a.png)\n'
+  let reads = 0
+
+  beforeEach(() => {
+    reads = 0
+    useFileRevealStore.setState({ request: null })
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/files/read')) {
+        reads += 1
+        return new Response(MARKDOWN_SOURCE)
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+  })
+
+  it('opens a markdown file rendered, without the line gutter', async () => {
+    await renderViewer(markdown)
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Project title' })).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /select line 1/i })).toBeNull()
+    const view = screen.getByRole('radiogroup', { name: 'Markdown view' })
+    expect(view).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Rendered' }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('switches between rendered and source without reloading the file', async () => {
+    const user = userEvent.setup()
+    await renderViewer(markdown)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Project title' })).toBeTruthy())
+
+    await user.click(screen.getByRole('radio', { name: 'Source' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /select line 1/i })).toBeTruthy())
+    expect(screen.queryByRole('heading', { name: 'Project title' })).toBeNull()
+
+    await user.click(screen.getByRole('radio', { name: 'Rendered' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Project title' })).toBeTruthy())
+    expect(reads).toBe(1)
+  })
+
+  it('resolves relative images against the markdown file folder', async () => {
+    await renderViewer(markdown)
+
+    const img = await waitFor(() => screen.getByRole('img', { name: 'shot' }) as HTMLImageElement)
+    expect(img.src).toContain('workspace/files/read')
+    expect(decodeURIComponent(img.src)).toContain('path=docs/img/a.png')
+  })
+
+  it('switches to source and selects the line when a reference reveals it', async () => {
+    await renderViewer(markdown)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Project title' })).toBeTruthy())
+
+    await act(async () => {
+      useFileRevealStore.getState().reveal(markdown.path, 3)
+    })
+
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Source' }).getAttribute('aria-checked')).toBe('true'))
+    await waitFor(() => expect(document.querySelector('[data-line="3"]')?.className).toContain('bg-(--bg-key)'))
+  })
+
+  it('does not run raw HTML from a markdown file', async () => {
+    globalThis.fetch = mock(async () => new Response('# Hi\n\n<script>window.__mdPwned = true</script>\n\n<img src=x onerror="window.__mdPwned = true">\n')) as typeof fetch
+    await renderViewer(markdown)
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Hi' })).toBeTruthy())
+    expect(document.querySelector('script')).toBeNull()
+    expect(document.querySelector('img[onerror]')).toBeNull()
+    expect((window as Window & { __mdPwned?: boolean }).__mdPwned).toBeUndefined()
+  })
+
+  it('shows front matter as a code block, not as a heading', async () => {
+    globalThis.fetch = mock(async () => new Response('---\nname: demo\n---\n# Body\n')) as typeof fetch
+    await renderViewer(markdown)
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Body' })).toBeTruthy())
+    expect(screen.queryByRole('heading', { name: 'name: demo' })).toBeNull()
+    expect(document.body.textContent).toContain('name: demo')
+  })
+
+  it('offers no markdown view switch for other text files', async () => {
+    await renderViewer(readme)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /select line 1/i })).toBeTruthy())
+    expect(screen.queryByRole('radiogroup', { name: 'Markdown view' })).toBeNull()
   })
 })

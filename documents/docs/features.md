@@ -1552,6 +1552,11 @@ agent against it.
   highlighting, which now runs off the main thread, finishes `[v3.14.0]`.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.
+  Markdown files (`.md`, `.markdown`) open rendered like a chat answer, with
+  tables, highlighted code, diagrams, maths and images relative to the file;
+  front matter shows as a YAML block. A **Rendered / Source** switch in the
+  file tab header returns to the line-numbered source, and a `path:line`
+  reference opens the source at that line `[v3.31.0]`.
 - **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including

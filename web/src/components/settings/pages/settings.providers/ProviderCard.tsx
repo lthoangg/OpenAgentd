@@ -6,26 +6,30 @@ import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
-import { queryKeys, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
+import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { DAEMON_BASE_URL, providerKindLabel } from './providerUtils'
+import { DAEMON_BASE_URL, providerKindLabel, supportsMultipleCredentials } from './providerUtils'
 import { UsagePanel } from './UsagePanel'
 import { ModelsPanel } from './ModelsPanel'
 import { OAuthLoginDialog } from './OAuthLoginDialog'
+import { CredentialList } from './CredentialList'
 
 export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const [apiKey, setApiKey] = useState('')
+  const [keyLabel, setKeyLabel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [cloudValues, setCloudValues] = useState<Record<string, string>>({})
   const [verifiedKey, setVerifiedKey] = useState('')
   const [verifiedCloudSignature, setVerifiedCloudSignature] = useState('')
   const [hasReachabilityFailure, setHasReachabilityFailure] = useState(false)
-  const [oauthOpen, setOauthOpen] = useState(false)
+  // `null`: closed. `{}`: connect or add an account. `{credentialId}`: reconnect it.
+  const [oauthTarget, setOauthTarget] = useState<{ credentialId?: string; label?: string } | null>(null)
   const [modelsExpanded, setModelsExpanded] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
   const modelsMutation = useProviderModelsMutation()
   const saveMutation = useSaveProviderMutation()
+  const addCredentialMutation = useAddProviderCredentialMutation()
   const saveVisibleModelsMutation = useSaveProviderVisibleModelsMutation()
   const disconnectMutation = useDisconnectProviderMutation()
   const disconnectOauthMutation = useDisconnectOauthProviderMutation()
@@ -35,6 +39,15 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const trimmedKey = apiKey.trim()
   const trimmedBaseUrl = baseUrl.trim()
   const primaryCredential = provider.credentials[0]
+  // Several keys / accounts are managed as a list only for providers the
+  // backend marks as multi-credential (poolable built-ins and plugins that
+  // opt in); everything else keeps the single-credential form. Credentials
+  // already stored for a provider without the capability are left untouched.
+  const storedCredentials = provider.stored_credentials ?? []
+  const multiCredential = supportsMultipleCredentials(provider)
+  const hasCredentialList = multiCredential && (storedCredentials.length > 0 || Boolean(provider.env_pinned))
+  const hasStoredKeys = multiCredential && provider.kind === 'api_key' && storedCredentials.length > 0
+  const hasStoredAccounts = multiCredential && provider.kind === 'oauth' && storedCredentials.length > 0
   const cloudExtra = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {}
     for (const credential of provider.credentials) {
@@ -161,6 +174,19 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         provider.kind === 'cloud_creds'
           ? cloudExtra
           : daemon !== undefined ? { [daemon.var]: trimmedBaseUrl } : undefined
+      if (hasStoredKeys) {
+        await addCredentialMutation.mutateAsync({
+          providerId: provider.id,
+          label: keyLabel.trim() || undefined,
+          apiKey: trimmedKey,
+          extra: daemon !== undefined && trimmedBaseUrl ? { [daemon.var]: trimmedBaseUrl } : undefined,
+        })
+        setApiKey('')
+        setKeyLabel('')
+        setVerifiedKey('')
+        push({ tone: 'success', title: 'Key added', description: `${provider.label} tries it after your other keys.` })
+        return
+      }
       await saveMutation.mutateAsync({
         providerId: provider.id,
         body: { api_key: provider.kind === 'cloud_creds' ? '' : trimmedKey, extra: extraForSave },
@@ -176,7 +202,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     } catch (err) {
       push({
         tone: 'error',
-        title: 'Could not save provider',
+        title: hasStoredKeys ? 'Could not add key' : 'Could not save provider',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -213,7 +239,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   const handleOauthDisconnect = async () => {
     try {
-      await disconnectOauthMutation.mutateAsync(provider.id)
+      await disconnectOauthMutation.mutateAsync({ providerId: provider.id })
       push({
         tone: 'success',
         title: 'OAuth account disconnected',
@@ -296,7 +322,25 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       {/* ── API-key controls ─────────────────────────────────────────── */}
       {provider.kind === 'api_key' && (
         <div className="space-y-2 pt-1">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+          {hasCredentialList && <CredentialList provider={provider} />}
+          {hasStoredKeys && (
+            <p className="pt-1 text-xs font-medium text-(--color-text)">Add another key</p>
+          )}
+          <div
+            className={`grid grid-cols-2 gap-2 sm:items-center ${hasStoredKeys ? 'sm:grid-cols-[minmax(120px,0.5fr)_minmax(200px,1fr)_auto_auto]' : 'sm:grid-cols-[minmax(220px,1fr)_auto_auto]'}`}
+          >
+            {hasStoredKeys && (
+              <label className="col-span-2 min-w-0 sm:col-span-1">
+                <span className="sr-only">Name for the new key</span>
+                <Input
+                  value={keyLabel}
+                  onChange={(event) => setKeyLabel(event.target.value)}
+                  placeholder="Name (e.g. Work)"
+                  autoComplete="off"
+                  className="h-9 text-xs"
+                />
+              </label>
+            )}
             <label className="col-span-2 min-w-0 sm:col-span-1">
               <span className="sr-only">{primaryCredential?.label || provider.env_var}</span>
               <Input
@@ -306,7 +350,11 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                   setApiKey(event.target.value)
                   setVerifiedKey('')
                 }}
-                placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
+                placeholder={
+                  hasStoredKeys
+                    ? 'Paste another API key'
+                    : primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')
+                }
                 autoComplete="off"
                 className="h-9 font-mono text-xs"
               />
@@ -327,10 +375,10 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               size="sm"
               className="w-full sm:w-auto"
               onClick={handleSave}
-              disabled={!canSave || saveMutation.isPending}
+              disabled={!canSave || saveMutation.isPending || addCredentialMutation.isPending}
             >
-              {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              Save
+              {(saveMutation.isPending || addCredentialMutation.isPending) && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              {hasStoredKeys ? 'Add key' : 'Save'}
             </Button>
           </div>
           {daemon && (
@@ -349,7 +397,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           )}
           {hasCandidateKey && !hasVerifiedKey && (
             <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
-              Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before saving.
+              Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before {hasStoredKeys ? 'adding it' : 'saving'}.
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
@@ -357,7 +405,12 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               Free models are available without an API key. Add a key to use paid models.
             </p>
           )}
-          {!hasCandidateKey && provider.is_configured && (
+          {!hasCandidateKey && hasStoredKeys && storedCredentials.length === 1 && !provider.env_pinned && (
+            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+              Add a second key to keep working when this one hits a rate limit or quota.
+            </p>
+          )}
+          {!hasCandidateKey && provider.is_configured && !hasStoredKeys && !provider.env_pinned && (
             <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
               Key saved. Type a new one above only if you want to replace it.
             </p>
@@ -367,7 +420,16 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
       {/* ── OAuth providers ──────────────────────────────────────────── */}
       {provider.kind === 'oauth' && (
-        <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:items-center sm:justify-end">
+        <div className="space-y-2 pt-1">
+        {hasCredentialList && (
+          <CredentialList
+            provider={provider}
+            onReconnect={(credentialId) =>
+              setOauthTarget({ credentialId, label: storedCredentials.find((c) => c.id === credentialId)?.label })
+            }
+          />
+        )}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
           <Button
             type="button"
             size="sm"
@@ -379,13 +441,18 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
             List models
           </Button>
-          {hasSavedCredentials ? (
+          {hasStoredAccounts ? (
+            <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => setOauthTarget({})}>
+              <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
+              Add account
+            </Button>
+          ) : hasSavedCredentials ? (
             <>
               <Button
                 type="button"
                 size="sm"
                 className="w-full sm:w-auto"
-                onClick={() => setOauthOpen(true)}
+                onClick={() => setOauthTarget({})}
               >
                 <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
                 Reconnect
@@ -409,12 +476,13 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               className="w-full sm:w-auto"
-              onClick={() => setOauthOpen(true)}
+              onClick={() => setOauthTarget({})}
             >
               <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
               Connect
             </Button>
           )}
+        </div>
         </div>
       )}
 
@@ -567,8 +635,16 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           savingVisibleModels={saveVisibleModelsMutation.isPending}
         />
       )}
-      {provider.kind === 'oauth' && oauthOpen && (
-        <OAuthLoginDialog provider={provider} open={oauthOpen} onOpenChange={setOauthOpen} />
+      {provider.kind === 'oauth' && oauthTarget && (
+        <OAuthLoginDialog
+          provider={provider}
+          open
+          onOpenChange={(open) => {
+            if (!open) setOauthTarget(null)
+          }}
+          credentialId={multiCredential ? oauthTarget.credentialId : undefined}
+          accountLabel={oauthTarget.label}
+        />
       )}
       </div>
     </SectionCard>

@@ -1,4 +1,4 @@
-//! `todo_manage` — port of `builtin/todo.py` (file store `.todos.json`).
+//! `todo` — port of `builtin/todo.py` (file store `.todos.json`).
 
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -168,7 +168,7 @@ pub fn apply(path: &Path, actions: &[Value]) -> Result<String, ToolError> {
     let mut errs = vec![];
     let parsed: Vec<Action> = actions.iter().enumerate().filter_map(|(i, a)| parse_action(a, i, &mut errs)).collect();
     if !errs.is_empty() {
-        return Err(ToolError::Argument(format!("Invalid arguments for tool 'todo_manage': {}", errs.join("; "))));
+        return Err(ToolError::Argument(format!("Invalid arguments for tool 'todo': {}", errs.join("; "))));
     }
     let mut store = load_store(path);
     if !store["items"].is_array() {
@@ -238,7 +238,7 @@ pub fn normalize_actions(args: &Value) -> Result<Vec<Value>, ToolError> {
     let mut v = match args.get("actions") {
         Some(a) => a.clone(),
         None if args.get("action").is_some() => json!([args]),
-        None => return Err(ToolError::Argument("Invalid arguments for tool 'todo_manage': actions: Field required".into())),
+        None => return Err(ToolError::Argument("Invalid arguments for tool 'todo': actions: Field required".into())),
     };
     if let Value::String(s) = &v {
         if let Ok(p) = serde_json::from_str::<Value>(s.trim()) {
@@ -250,7 +250,7 @@ pub fn normalize_actions(args: &Value) -> Result<Vec<Value>, ToolError> {
     }
     match v {
         Value::Array(a) => Ok(a),
-        _ => Err(ToolError::Argument("Invalid arguments for tool 'todo_manage': actions: Input should be a valid list".into())),
+        _ => Err(ToolError::Argument("Invalid arguments for tool 'todo': actions: Input should be a valid list".into())),
     }
 }
 
@@ -259,7 +259,7 @@ pub struct TodoTool;
 #[async_trait]
 impl Tool for TodoTool {
     fn name(&self) -> &str {
-        "todo_manage"
+        "todo"
     }
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
         let actions = normalize_actions(&args)?;

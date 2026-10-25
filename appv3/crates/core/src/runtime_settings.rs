@@ -64,7 +64,7 @@ impl SummarizationSettings {
     }
 }
 
-/// `workspace_messages` — the lead's `send_to_workspace` tool (v3 only).
+/// `workspace_messages` — the lead's `workspace` tool (v3 only).
 /// Written only when it differs from the default, so files stay unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -154,7 +154,7 @@ pub fn save_runtime_settings(cfg: &RuntimeSettings) -> Result<()> {
     save_runtime_settings_to(cfg, &settings().runtime_settings_path())
 }
 
-/// Whether lead agents get `send_to_workspace` (default on; unreadable
+/// Whether lead agents get `workspace` (default on; unreadable
 /// settings fall back to the default).
 pub fn workspace_messages_enabled() -> bool {
     load_runtime_settings().map(|c| c.workspace_messages.enabled).unwrap_or(true)

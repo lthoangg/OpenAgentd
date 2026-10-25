@@ -46,6 +46,17 @@ protocol. Declare `credentials` fields so the user can fill them in Settings →
 Providers. Models are then addressed as `<id>:<model>`. A file that exports
 `provider` is only a provider plugin.
 
+By default a provider plugin has one credential. Set
+`supportsMultipleCredentials: true` to let users add several accounts or keys
+that rotate like the built-in providers; `build(ctx)` then gets
+`ctx.credentialId`. An OAuth plugin's `login(emit, ctx)` and
+`oauthCallback(code, emit, ctx)` receive `ctx.credentials`: `readOAuth()`
+(document or `null`), `writeOAuth(doc, { expected?, label? })` (compare-and-swap;
+`false` means a refresh raced it, it throws if the account was deleted) and
+`removeOAuth(expected?)`. Tokens then live in `credentials.yaml`, not files;
+`tokenPath`/`readJson`/`writeJson` are per-account (plain names only), and
+old token files are not migrated.
+
 Before writing a plugin, read `openagentd.d.ts` in this references directory —
 it types the whole API (`fetch`, `subprocess`, `fs`, `credentialStore`, error
 classes, chat message shapes).

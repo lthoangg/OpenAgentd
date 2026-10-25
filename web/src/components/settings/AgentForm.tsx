@@ -124,10 +124,13 @@ export function AgentForm({
     'team_list',
     'team_wait',
     'team_stop',
+    'schedule',
     'schedule_task',
+    'todo',
     'todo_manage',
     'skill',
     'note',
+    'team',
     'delegate',
   ])
 

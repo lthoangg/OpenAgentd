@@ -9,6 +9,7 @@
 import { createContext, useContext, useMemo, type AnchorHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react'
 
 import { findFileRefs, parseFileHref, parseFileRef, type FileRef } from '@/utils/file-refs'
+import { isLoopbackHost, type PreviewTarget } from '@/api/preview'
 import { openExternalUrl } from '@/lib/open-external'
 import { copyText, useChatMenu } from './ChatContextMenu'
 import type { FileLightboxItem } from './FileLightbox'
@@ -21,6 +22,8 @@ export interface FileRefOpener {
   canOpen: (ref: FileRef) => boolean
   open: (ref: FileRef) => void
   openDiff?: (ref: FileRef & { status?: ChangedFileStatus }) => void
+  /** Opens local web links in Preview; absent when Preview is unavailable. */
+  openPreview?: (target: PreviewTarget) => void
   /** Shows a sent message's attachment in the dock; absent, it opens in the lightbox. */
   openAttachment?: (item: FileLightboxItem) => void
 }
@@ -67,21 +70,35 @@ export function FileRefCode({ children, ...props }: HTMLAttributes<HTMLElement> 
   )
 }
 
-/** Markdown ``a``: a relative target opens the workspace file; the rest open a tab. */
+function localWebUrl(href: string): boolean {
+  try {
+    const url = new URL(href)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && isLoopbackHost(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+/** Markdown ``a``: workspace files and local web URLs open in the dock. */
 export function MarkdownLink({ children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) {
   const opener = useContext(FileRefContext)
   const fileRef = opener && typeof props.href === 'string' ? parseFileHref(props.href) : null
   const href = typeof props.href === 'string' ? props.href : ''
   const opensFile = Boolean(opener && fileRef && opener.canOpen(fileRef))
+  const openInDock = opensFile && opener && fileRef
+    ? () => opener.open(fileRef)
+    : opener?.openPreview && localWebUrl(href)
+      ? () => opener.openPreview?.({ kind: 'url', url: href })
+      : null
   const chatMenu = useChatMenu(`Actions for link ${href}`, () => href
     ? [
-        { label: 'Open link', run: () => (opensFile && opener && fileRef ? opener.open(fileRef) : void openExternalUrl(href)) },
+        { label: 'Open link', run: () => (openInDock ? openInDock() : void openExternalUrl(href)) },
         { label: 'Copy link', run: () => copyText(href) },
       ]
     : [])
   // The link is the control; a file-named code span inside it stays text.
   const content = <FileRefContext.Provider value={null}>{children}</FileRefContext.Provider>
-  if (!opensFile || !opener || !fileRef) {
+  if (!openInDock) {
     return (
       <a {...props} target="_blank" rel="noopener noreferrer" onContextMenu={chatMenu.onContextMenu} onKeyDown={chatMenu.onKeyDown}>
         {content}
@@ -92,10 +109,10 @@ export function MarkdownLink({ children, ...props }: AnchorHTMLAttributes<HTMLAn
   return (
     <a
       {...props}
-      title={props.title ?? refTitle(fileRef)}
+      title={props.title ?? (opensFile && fileRef ? refTitle(fileRef) : 'Open in Preview')}
       onClick={(event) => {
         event.preventDefault()
-        opener.open(fileRef)
+        openInDock()
       }}
       onContextMenu={chatMenu.onContextMenu}
       onKeyDown={chatMenu.onKeyDown}

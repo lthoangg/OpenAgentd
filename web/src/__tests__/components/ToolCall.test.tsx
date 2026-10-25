@@ -103,6 +103,20 @@ describe("ToolCall — header", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — shell display", () => {
+  it("pins its header while the details are open, so a long result closes from anywhere", () => {
+    const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
+    render(<ToolCall name="shell" args={args} done result={"[Succeeded]\nok"} />)
+    const toggle = screen.getByRole("button", { name: "Expand shell details" })
+    const header = toggle.parentElement as HTMLElement
+    expect(header.className).not.toContain("sticky")
+
+    fireEvent.click(toggle)
+    expect(header.className).toContain("sticky")
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse shell details" }))
+    expect(header.className).not.toContain("sticky")
+  })
+
   it("replaces tool name with plain description when present", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)

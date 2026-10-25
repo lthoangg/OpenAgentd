@@ -11,6 +11,23 @@ export function providerKindLabel(kind: ProviderInfo['kind']): string {
   return 'Cloud credentials'
 }
 
+/** Built-in OAuth providers with per-account usage; the fallback for backends that omit `supports_credential_usage`. */
+const BUILTIN_CREDENTIAL_USAGE = new Set(['codex', 'copilot', 'grok'])
+
+/**
+ * Whether the card manages several keys/accounts as a list. The backend flag
+ * wins; without it (older backend) every API-key and OAuth provider did.
+ */
+export function supportsMultipleCredentials(provider: ProviderInfo): boolean {
+  if (provider.kind !== 'api_key' && provider.kind !== 'oauth') return false
+  return provider.supports_multiple_credentials ?? true
+}
+
+/** Whether usage can be shown per stored credential (backend flag, else the built-in set). */
+export function supportsCredentialUsage(provider: ProviderInfo): boolean {
+  return provider.supports_credential_usage ?? (provider.kind === 'oauth' && BUILTIN_CREDENTIAL_USAGE.has(provider.id))
+}
+
 export function formatTokenPrice(usdPerMillion: number): string {
   if (usdPerMillion === 0) return '$0'
   if (Number.isInteger(usdPerMillion)) {

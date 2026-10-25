@@ -336,7 +336,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     if (targetWorkspace) saveLastWorkspace(targetWorkspace)
     navigate({ to: '/$sessionId', params: { sessionId: targetSessionId } })
   }, [navigate])
-  // The ``send_to_workspace`` tool card asks for the same switch by event,
+  // The ``workspace`` tool card asks for the same switch by event,
   // which keeps ToolCall free of the router.
   useEffect(() => {
     const onOpen = (event: Event) => {
@@ -619,10 +619,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
         open: (ref) => void handleFileRefOpen(ref),
         openDiff: (ref) => void handleDiffOpen(ref),
+        ...(previewsAvailable() ? { openPreview: handleOpenPreview } : {}),
         // Phones keep the full-screen lightbox, with pinch-zoom and swipe.
         ...(dockViewsEnabled ? { openAttachment: handleOpenAttachment } : {}),
       }
-    : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, workspace])
+    : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, handleOpenPreview, workspace])
 
   // One composer element: inside the new-session screen while that is
   // centered, else docked/floating at the bottom of the chat column.

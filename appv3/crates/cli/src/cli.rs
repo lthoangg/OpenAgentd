@@ -30,6 +30,9 @@ pub enum Command {
     Run(RunArgs),
     /// Log in to or out of OAuth model providers
     Auth(AuthArgs),
+    /// List stored provider credentials or import keys from a dotenv file
+    #[command(subcommand)]
+    Credentials(CredentialsCmd),
     /// Check the configuration and report problems
     Doctor,
     /// Remove old sessions and generated files (dry run by default)
@@ -168,6 +171,12 @@ pub struct AuthArgs {
     /// Use the headless device-code flow (codex)
     #[arg(long)]
     pub device: bool,
+    /// Add another account instead of reconnecting the one in use
+    #[arg(long, conflicts_with = "account")]
+    pub add: bool,
+    /// Reconnect this account (label or credential id)
+    #[arg(long, value_name = "ACCOUNT")]
+    pub account: Option<String>,
     /// Same as `auth list`
     #[arg(long, hide = true)]
     pub list: bool,
@@ -177,10 +186,29 @@ pub struct AuthArgs {
 pub enum AuthCmd {
     /// Show which providers are logged in
     List,
-    /// Remove a provider's saved login
+    /// Remove a provider's saved logins (all accounts unless --account)
     Logout {
         #[arg(value_parser = oauth_providers())]
         provider: String,
+        /// Only this account (label or credential id)
+        #[arg(long, value_name = "ACCOUNT")]
+        account: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CredentialsCmd {
+    /// Show stored credentials per provider (labels and masked keys only)
+    List,
+    /// Import provider keys and secrets referenced by mcp.json from a dotenv file
+    ///
+    /// The file is left unchanged. Keys already stored identically are skipped.
+    Import {
+        /// Path of the dotenv file (e.g. a project's .env)
+        path: PathBuf,
+        /// Label for the imported credentials
+        #[arg(long, default_value = "Imported")]
+        label: String,
     },
 }
 
@@ -204,8 +232,8 @@ pub struct CleanupArgs {
 pub enum TransferCmd {
     /// Pack agents, skills, commands, plugins, and config into a .tar.gz
     ///
-    /// API keys in .env and the server access key are redacted unless
-    /// --include-secrets is given.
+    /// credentials.yaml (API keys, OAuth logins) and the server access key
+    /// are left out or redacted unless --include-secrets is given.
     Export(ExportArgs),
     /// Unpack an export archive into the config directory
     ///
@@ -375,7 +403,10 @@ mod tests {
         let a = auth(&["auth", "copilot", "--device"]);
         assert_eq!((a.provider.as_deref(), a.device, a.action.is_none()), (Some("copilot"), true, true));
         assert!(matches!(auth(&["auth", "list"]).action, Some(AuthCmd::List)));
-        assert!(matches!(auth(&["auth", "logout", "codex"]).action, Some(AuthCmd::Logout { ref provider }) if provider == "codex"));
+        assert!(matches!(auth(&["auth", "logout", "codex"]).action, Some(AuthCmd::Logout { ref provider, account: None }) if provider == "codex"));
+        assert!(matches!(auth(&["auth", "logout", "codex", "--account", "Work"]).action, Some(AuthCmd::Logout { ref account, .. }) if account.as_deref() == Some("Work")));
+        let add = auth(&["auth", "codex", "--add"]);
+        assert!(add.add && add.provider.as_deref() == Some("codex"));
         assert!(auth(&["auth", "--list"]).list);
         let bare = auth(&["auth"]);
         assert!(bare.action.is_none() && bare.provider.is_none());

@@ -1,7 +1,7 @@
 //! A lead that delegates during its turn stays busy until its subagents
 //! report, and each subagent's turn streams live under its own session id.
 //!
-//! The lead's turn usually ends seconds after `delegate`, while its members
+//! The lead's turn usually ends seconds after `team`, while its members
 //! still work for minutes. The active-sessions list (sidebar "Needs you",
 //! badge counts, the notch island) must keep listing the lead with
 //! `background_work` for that whole time. The manager is process-wide, so
@@ -61,7 +61,7 @@ async fn a_lead_that_delegated_mid_turn_stays_busy_until_its_subagent_reports() 
     let build_args = serde_json::json!({ "command": build }).to_string();
     let delegate_args = serde_json::json!({ "profile": "worker", "task": "run the build" }).to_string();
     // The lead delegates, ends its turn, then reads the member's report.
-    let lead_mock = Arc::new(MockProvider::new(vec![MockProvider::tool_call("call_d", "delegate", &delegate_args), MockProvider::text("delegated"), MockProvider::text("thanks")]));
+    let lead_mock = Arc::new(MockProvider::new(vec![MockProvider::tool_call("call_d", "team", &delegate_args), MockProvider::text("delegated"), MockProvider::text("thanks")]));
     // The member's build blocks until the test releases it.
     let worker_mock = Arc::new(MockProvider::new(vec![MockProvider::tool_call("call_w", "shell", &build_args), MockProvider::text("build finished")]));
     let (lead_p, worker_p): (Arc<dyn LlmProvider>, Arc<dyn LlmProvider>) = (lead_mock.clone(), worker_mock.clone());

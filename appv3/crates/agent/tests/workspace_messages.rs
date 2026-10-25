@@ -144,7 +144,7 @@ async fn send_reply_retry_and_guards() {
     );
     assert_eq!(from["session_title"], "Orders service");
     assert!(from["replied_at"].is_string(), "{from}");
-    assert!(tool_names(&mock, 0).contains(&"send_to_workspace".to_string()), "leads get the tool");
+    assert!(tool_names(&mock, 0).contains(&"workspace".to_string()), "leads get the tool");
     {
         let calls = mock.calls.lock().unwrap();
         let seen = format!("{:?}", calls[0].0);
@@ -231,5 +231,5 @@ async fn send_reply_retry_and_guards() {
     s.handle_continue(&infra_sid, Some(&infra_ws), None, None).await.unwrap();
     wait_turn(&infra_ws, &infra_sid).await;
     let names = tool_names(&mock, calls_before);
-    assert!(!names.is_empty() && !names.contains(&"send_to_workspace".to_string()), "{names:?}");
+    assert!(!names.is_empty() && !names.contains(&"workspace".to_string()), "{names:?}");
 }

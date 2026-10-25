@@ -122,6 +122,9 @@ pub async fn shutdown() {
     scheduler::scheduler().stop();
     appv3_agent::snapshot::stop_maintenance();
     manager::stop().await;
+    // A lead's Stop only signals its members; their last saves must land
+    // before the database closes.
+    appv3_agent::subagents::stop_all_members(std::time::Duration::from_secs(5)).await;
     appv3_mcp::mcp_manager().stop().await;
     appv3_tools::lsp::lsp_manager().stop().await;
     appv3_core::otel::stop_retention();

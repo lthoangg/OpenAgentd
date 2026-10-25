@@ -2383,6 +2383,70 @@ describe("loadSession", () => {
     expect(useAgentStore.getState()._pendingMessages[0].attachments).toEqual(attachments)
   })
 
+  // A member's report (or another workspace's reply) is queued for the lead,
+  // not written by the user: it is no steer to show, edit, or call off.
+  it("leaves queued agent reports out of the pending queue and keeps a workspace prompt's sender", async () => {
+    mockSessionHistory.mockImplementationOnce(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({ id: "report", role: "user", content: "[Report from explorer#1]: done", kind: "queued", extra: { queue_status: "queued", from_agent: "explorer#1" } }),
+            makeMessageResponse({ id: "routed", role: "user", content: "old format", kind: "queued", extra: { queue_status: "queued", routing: { from_agents: ["worker"] } } }),
+            makeMessageResponse({ id: "prompt", role: "user", content: "please look", kind: "queued", extra: { queue_status: "queued", sent_from: { workspace_name: "api", workspace: "/api", session_id: "s-api" } } }),
+            makeMessageResponse({ id: "steer", role: "user", content: "my steer", kind: "queued", extra: { queue_status: "queued" } }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useAgentStore.getState().loadSession("sess-1")
+
+    const pending = useAgentStore.getState()._pendingMessages
+    expect(pending.map((msg) => msg.id)).toEqual(["prompt", "steer"])
+    expect(pending[0].sentFromWorkspace).toBe("api")
+  })
+
+  it("shows a queued report the lead reads as that agent's report, not as the user's message", async () => {
+    mockSessionHistory.mockImplementationOnce(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          running: true,
+          messages: [
+            makeMessageResponse({ id: "report", role: "user", content: "[Report from explorer#1]: done", kind: "queued", extra: { queue_status: "queued", from_agent: "explorer#1" } }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    await useAgentStore.getState().loadSession("sess-1")
+
+    useAgentStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["report"],
+      messages: [{ id: "report", content: "[Report from explorer#1]: done", extra: { from_agent: "explorer#1" } }],
+    })
+
+    const block = useAgentStore.getState().agentStreams.lead.currentBlocks.find((b) => b.id === "report")
+    expect(block?.extra?.from_agent).toBe("explorer#1")
+  })
+
   it("clears currentBlocks for lead after loading", async () => {
     useAgentStore.setState({
       agentStreams: {

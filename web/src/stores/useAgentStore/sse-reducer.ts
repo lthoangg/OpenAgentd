@@ -23,6 +23,7 @@ import {
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, AgentError, AgentStore } from './types'
+import { canonicalToolName } from '@/utils/tool-names'
 import type { ContentBlock, PendingQuestion, QuestionItem, SSEEventType } from '@/api/types'
 
 type Setter = (fn: (draft: AgentStore) => void) => void
@@ -380,10 +381,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             if (sid) events.push({ kind: 'workspace_files', sessionId: sid })
           }
         }
-        if (SCHEDULER_MUTATING_TOOLS.has(toolName)) {
+        const tool = canonicalToolName(toolName)
+        if (SCHEDULER_MUTATING_TOOLS.has(tool)) {
           events.push({ kind: 'scheduler' })
         }
-        if (TODO_MUTATING_TOOLS.has(toolName)) {
+        if (TODO_MUTATING_TOOLS.has(tool)) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'todos', sessionId: sid })
         }
@@ -391,7 +393,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'plan', sessionId: sid })
         }
-        if (toolName === 'delegate' || toolName.startsWith('team_')) {
+        if (tool === 'team' || tool.startsWith('team_')) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'subagents', sessionId: sid })
         }

@@ -2,7 +2,6 @@
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -396,43 +395,19 @@ fn env_ref_re() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)").unwrap())
 }
 
-fn dotenv_snapshot() -> HashMap<String, String> {
-    let path = appv3_core::settings().config_dir.join(".env");
-    let mut out = HashMap::new();
-    let Ok(text) = std::fs::read_to_string(path) else { return out };
-    for line in text.lines() {
-        let t = line.trim();
-        if t.is_empty() || t.starts_with('#') {
-            continue;
-        }
-        let t = t.strip_prefix("export ").unwrap_or(t);
-        let Some((k, v)) = t.split_once('=') else { continue };
-        let mut v = v.trim().to_string();
-        if v.len() >= 2 && ((v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\''))) {
-            let dq = v.starts_with('"');
-            v = v[1..v.len() - 1].to_string();
-            if dq {
-                v = v.replace("\\\"", "\"").replace("\\\\", "\\");
-            }
-        }
-        out.insert(k.trim().to_string(), v);
-    }
-    out
-}
-
-/// `resolve_secret_refs` — expand `$VAR` / `${VAR}` from env, then `.env`.
+/// `resolve_secret_refs` — expand `$VAR` / `${VAR}` from the environment,
+/// then `credentials.yaml` (named secrets, then provider values).
 pub fn resolve_secret_refs(value: &str) -> String {
     if !env_ref_re().is_match(value) {
         return value.to_string();
     }
-    let snap = OnceLock::new();
     env_ref_re()
         .replace_all(value, |c: &regex::Captures| {
             let name = c.get(1).or_else(|| c.get(2)).unwrap().as_str();
             if let Ok(v) = std::env::var(name) {
                 return v;
             }
-            snap.get_or_init(dotenv_snapshot).get(name).cloned().unwrap_or_else(|| c[0].to_string())
+            appv3_core::credentials::stored(None, name).unwrap_or_else(|| c[0].to_string())
         })
         .into_owned()
 }

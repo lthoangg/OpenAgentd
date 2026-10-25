@@ -89,6 +89,8 @@ pub struct RetryStream<'a> {
     /// network is back (or the caller stops the stream).
     network_budget: Option<i64>,
     quota_waits: i64,
+    /// Credential switches so far (multi-credential providers).
+    switches: i64,
     emitted: bool,
     done: bool,
 }
@@ -122,6 +124,7 @@ impl<'a> RetryStream<'a> {
             network_attempt: 0,
             network_budget: Some(MAX_NETWORK_ATTEMPTS),
             quota_waits: 0,
+            switches: 0,
             emitted: false,
             done: false,
         }
@@ -185,10 +188,42 @@ impl<'a> RetryStream<'a> {
         }
     }
 
+    /// A quota, rate-limit or auth failure on a provider with several
+    /// credentials: move to the next ready one and retry at once (the same
+    /// model; nothing was emitted by the failed request). `true` when it
+    /// switched.
+    async fn try_switch_credential(&mut self, err: &ProviderError) -> bool {
+        if self.switches >= MAX_CREDENTIAL_SWITCHES {
+            return false;
+        }
+        let Some((reason, cooldown)) = credential_cooldown(err) else { return false };
+        let pid = self.provider.provider_name().unwrap_or("").to_string();
+        let from = appv3_providers::pool::credential_label(&pid, err);
+        let Some(to) = self.provider.rotate_credential(err, reason, cooldown) else { return false };
+        self.switches += 1;
+        let status = err.status().unwrap_or(0);
+        let from = from.unwrap_or_else(|| "The credential in use".into());
+        let msg = format!("{from} {}. Continuing on {to} with the same model.", switch_reason_text(reason, cooldown));
+        tracing::warn!("llm_provider_credential_switched model={} status={} reason={} switch={}", self.label, status, reason, self.switches);
+        self.notify_retry(ProviderStatus {
+            status: "switched_credential".into(),
+            model: Some(self.label.clone()),
+            error_type: Some("HTTPStatusError".into()),
+            status_code: Some(status as i64),
+            message: Some(msg),
+            ..Default::default()
+        })
+        .await;
+        true
+    }
+
     /// Handle one failed attempt. `Ok(Continue)` retries, `Ok(Stop)` ends the
     /// stream (interrupted), `Err` raises.
     async fn on_error(&mut self, err: ProviderError) -> Result<Next, ModelError> {
         self.current = None;
+        if self.try_switch_credential(&err).await {
+            return Ok(Next::Continue);
+        }
         match &err {
             ProviderError::Http { status, body, .. } => {
                 let status = *status;
@@ -198,7 +233,21 @@ impl<'a> RetryStream<'a> {
                 }
                 let retry_after;
                 if status == 429 {
-                    let reset = parse_retry_after(&err);
+                    if is_spend_limit_429(status, body) {
+                        tracing::warn!("llm_provider_spend_limit model={} body={}", self.label, crate::util::head_chars(body, 300));
+                        return Err(AgentError::RateLimit(format!(
+                            "{} reached the account's spend limit. Raise the limit in the provider's console, or switch to another model.",
+                            self.label
+                        ))
+                        .into());
+                    }
+                    let mut reset = parse_retry_after(&err);
+                    // Every credential is cooling down: wait for the first
+                    // one to recover, not necessarily the one that failed.
+                    if let Some(next) = self.provider.credential_recovery_secs() {
+                        let next = next.ceil().max(1.0) as i64;
+                        reset = if reset > 0 { reset.min(next) } else { next };
+                    }
                     if reset as f64 > MAX_DELAY {
                         if reset > MAX_QUOTA_WAIT_SECONDS {
                             return Err(AgentError::RateLimit(format!(
@@ -213,6 +262,7 @@ impl<'a> RetryStream<'a> {
                         }
                         self.quota_waits += 1;
                         let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
+                        tracing::warn!("llm_provider_quota_wait model={} status={} wait={:.0}s quota_wait={}/{}", self.label, status, wait, self.quota_waits, MAX_QUOTA_WAITS);
                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
                         let msg = format!(
                             "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
@@ -703,6 +753,116 @@ mod tests {
         MockTurn::Error(ProviderError::Network("SSE stream ended before terminal \"message_stop\" frame".into()))
     }
 
+    /// A provider with two credentials: "a" is out of quota for an hour,
+    /// "b" answers. It switches when asked to, or (`recovers_after`) by
+    /// itself once enough time has passed.
+    struct TwoKeys {
+        on_b: Mutex<bool>,
+        can_rotate: bool,
+        recovers_after: Option<Duration>,
+        started: Instant,
+        ok: MockProvider,
+        calls: Mutex<Vec<&'static str>>,
+        kw: Kwargs,
+    }
+
+    impl TwoKeys {
+        fn new(can_rotate: bool, recovers_after: Option<Duration>) -> Self {
+            TwoKeys {
+                on_b: Mutex::new(false),
+                can_rotate,
+                recovers_after,
+                started: Instant::now(),
+                ok: MockProvider::new(vec![MockProvider::text("from work")]),
+                calls: Mutex::default(),
+                kw: Kwargs::new(),
+            }
+        }
+        fn serving_b(&self) -> bool {
+            *self.on_b.lock().unwrap() || self.recovers_after.is_some_and(|d| self.started.elapsed() >= d)
+        }
+    }
+
+    #[async_trait]
+    impl LlmProvider for TwoKeys {
+        fn model(&self) -> &str {
+            "m"
+        }
+        fn provider_name(&self) -> Option<&str> {
+            Some("pool-test")
+        }
+        fn base_kwargs(&self) -> &Kwargs {
+            &self.kw
+        }
+        async fn chat(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<AssistantMessage> {
+            unreachable!()
+        }
+        async fn stream(&self, m: &[ChatMessage], t: Option<&[ToolSpec]>, k: &Kwargs) -> appv3_providers::ProviderResult<ChunkStream> {
+            if self.serving_b() {
+                self.calls.lock().unwrap().push("b");
+                return self.ok.stream(m, t, k).await;
+            }
+            self.calls.lock().unwrap().push("a");
+            let body = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}"#;
+            Err(ProviderError::http(
+                429,
+                "https://example.test/v1/chat",
+                body.into(),
+                vec![("retry-after".into(), "3600".into()), (appv3_providers::pool::CREDENTIAL_HEADER.into(), "a".into())],
+            ))
+        }
+        fn rotate_credential(&self, err: &ProviderError, _reason: &str, _cooldown: f64) -> Option<String> {
+            if !self.can_rotate || err.header(appv3_providers::pool::CREDENTIAL_HEADER) != Some("a") {
+                return None;
+            }
+            *self.on_b.lock().unwrap() = true;
+            Some("Work".into())
+        }
+        fn credential_recovery_secs(&self) -> Option<f64> {
+            self.recovers_after.map(|d| d.saturating_sub(self.started.elapsed()).as_secs_f64())
+        }
+    }
+
+    /// Quota on one credential moves the same call to the next credential
+    /// at once, with a transcript note, instead of waiting out the reset.
+    #[tokio::test(start_paused = true)]
+    async fn a_quota_429_switches_to_the_next_credential_without_waiting() {
+        let provider = Arc::new(TwoKeys::new(true, None));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider.clone(), "codex:gpt-5.4", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        let started = Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "from work");
+        assert!(started.elapsed() < Duration::from_secs(1), "waited {:?}", started.elapsed());
+        assert_eq!(*provider.calls.lock().unwrap(), ["a", "b"]);
+        let statuses = log.0.lock().unwrap();
+        assert_eq!(statuses.len(), 1, "{statuses:?}");
+        assert_eq!(statuses[0].status, "switched_credential");
+        let msg = statuses[0].message.as_deref().unwrap();
+        assert!(msg.contains("usage limit") && msg.contains("Continuing on Work with the same model"), "{msg}");
+    }
+
+    /// With every credential cooling down, the wait is for the first one to
+    /// recover (30 s), not the reset of the one that just failed (1 h).
+    #[tokio::test(start_paused = true)]
+    async fn with_every_credential_cooling_it_waits_for_the_first_to_recover() {
+        let provider = Arc::new(TwoKeys::new(false, Some(Duration::from_secs(30))));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider.clone(), "codex:gpt-5.4", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        let started = Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "from work");
+        let waited = started.elapsed().as_secs_f64();
+        assert!((30.0..40.0).contains(&waited), "waited {waited}s");
+        assert!(log.0.lock().unwrap().iter().all(|s| s.status != "waiting_quota"));
+    }
+
     async fn drain(rs: &mut RetryStream<'_>) -> Result<String, ModelError> {
         let mut text = String::new();
         while let Some(item) = rs.next().await? {
@@ -777,6 +937,30 @@ mod tests {
         let statuses = log.0.lock().unwrap();
         assert_eq!(statuses.len() as i64, MAX_NETWORK_ATTEMPTS);
         assert_eq!(statuses.last().unwrap().status, "exhausted");
+    }
+
+    /// An account's spend cap does not lift on its own within the quota
+    /// wait, whatever reset time the response carries: in production a turn
+    /// parked on Anthropic's monthly cap for 79 minutes. It fails at once and
+    /// says what to do.
+    #[tokio::test(start_paused = true)]
+    async fn a_spend_limit_429_fails_at_once_with_what_to_do() {
+        let body = r#"{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account's monthly spend limit. Please try again later."}}"#;
+        let spend_limit = MockTurn::Error(ProviderError::http(429, "https://api.anthropic.com/v1/messages", body.into(), vec![("retry-after".into(), "3600".into())]));
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(vec![spend_limit, MockProvider::text("too late")]));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "claude:claude-opus", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None).retry_network_indefinitely();
+
+        let started = tokio::time::Instant::now();
+        let err = drain(&mut rs).await.unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(1), "waited {:?}", started.elapsed());
+        let ModelError::Agent(AgentError::RateLimit(message)) = err else { panic!("{err:?}") };
+        assert!(message.contains("spend limit"), "{message}");
+        assert!(message.contains("claude:claude-opus"), "{message}");
+        assert!(log.0.lock().unwrap().iter().all(|s| s.status != "waiting_quota"), "it waited for a quota reset");
     }
 
     /// Answers after `latency`, then streams each chunk after its delay.

@@ -11,17 +11,21 @@
  *      authoritative artefact of what got compacted into; surfacing it
  *      lets the user audit what the LLM will see going forward.
  *      It is collapsed by default: the label becomes a toggle so a long
- *      summary does not fill the transcript.
+ *      summary does not fill the transcript. Open, the divider pins to the
+ *      top of the transcript while the summary scrolls under it, and a
+ *      Collapse row ends the summary (``useStickyFold``, as the reader
+ *      fold does).
  *
  * While ``state === 'compacting'`` the body streams in via SSE
  * ``summarization_content`` deltas (see useAgentStore reducer). The
  * divider re-renders on every delta, so once expanded the user sees the
  * summary being written in real time.
  */
-import { useId, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { useId } from 'react'
+import { ChevronRight, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible } from '@/components/ui/collapsible'
+import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { MarkdownBlock } from '@/utils/markdown'
 
 interface CompactionDividerProps {
@@ -41,7 +45,7 @@ interface CompactionDividerProps {
 }
 
 export function CompactionDivider({ state, error, summary, sessionId, isStreaming }: CompactionDividerProps) {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, close, anchorRef } = useStickyFold()
   const bodyId = useId()
   // Default: streaming is active whenever the block is still in the compacting state.
   const effectiveIsStreaming = isStreaming ?? state === 'compacting'
@@ -60,6 +64,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
   const trimmed = summary?.trim() ?? ''
   const showBody = trimmed.length > 0 && !error
   const content = effectiveIsStreaming ? (summary ?? '') : trimmed
+  const pinned = showBody && open
 
   const labelContent = (
     <>
@@ -72,12 +77,13 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
 
   return (
     <div role="region" aria-label={label} className="my-4 space-y-3">
-      <div className="flex items-center gap-3">
+      <div className={cn('flex items-center gap-3', pinned && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
         {showBody ? (
           <button
+            ref={anchorRef}
             type="button"
-            onClick={() => setOpen((value) => !value)}
+            onClick={(event) => (open ? close(event.currentTarget) : setOpen(true))}
             aria-expanded={open}
             aria-controls={bodyId}
             className={cn(
@@ -98,13 +104,26 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
       </div>
 
-      <Collapsible open={showBody && open}>
+      <Collapsible open={pinned}>
         {/* Rendered as plain assistant-style prose (no card chrome): same look
             as a regular assistant text block, just dimmed via --color-text-2
             to signal it is a derived/system artefact rather than a fresh reply. */}
         <div id={bodyId} className="text-sm text-(--color-text-2)">
           <MarkdownBlock content={content} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
         </div>
+        <button
+          type="button"
+          onClick={(event) => {
+            close(event.currentTarget)
+            // This button goes with the summary; keep focus on the divider.
+            anchorRef.current?.focus({ preventScroll: true })
+          }}
+          aria-controls={bodyId}
+          className="mt-1 inline-flex items-center gap-1.5 py-1 font-mono text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        >
+          <ChevronUp size={13} aria-hidden className="shrink-0" />
+          <span>Collapse</span>
+        </button>
       </Collapsible>
     </div>
   )

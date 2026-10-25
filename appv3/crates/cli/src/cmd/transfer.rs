@@ -8,7 +8,9 @@ use std::path::{Component, Path, PathBuf};
 
 const ARCHIVE_ROOT: &str = "openagentd-export";
 const TREE_DIRS: &[&str] = &["agents", "skills", "commands", "plugins"];
-const ROOT_FILES: &[&str] = &["mcp.json", "settings.yaml", "server.yaml", "multimodal.yaml", ".env"];
+const ROOT_FILES: &[&str] = &["mcp.json", "settings.yaml", "server.yaml", "multimodal.yaml", ".env", appv3_core::credentials::FILE_NAME];
+/// Root files holding secrets: written owner-only on import.
+const SECRET_FILES: &[&str] = &[".env", appv3_core::credentials::FILE_NAME];
 
 /// A leading `~` as the home directory.
 fn expanduser(p: &Path) -> PathBuf {
@@ -77,6 +79,12 @@ fn posix_rel(p: &Path, base: &Path) -> String {
 
 fn export_config(cfg: &Path, output: &Path, include_secrets: bool) -> Result<Vec<String>> {
     let file = std::fs::File::create(output).with_context(|| format!("create {}", output.display()))?;
+    // An archive holding credentials.yaml is as private as the file itself.
+    #[cfg(unix)]
+    if include_secrets {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600)).with_context(|| format!("restrict {}", output.display()))?;
+    }
     let gz = flate2::write::GzEncoder::new(file, flate2::Compression::new(9));
     let mut tar = tar::Builder::new(gz);
     tar.follow_symlinks(false);
@@ -104,6 +112,11 @@ fn export_config(cfg: &Path, output: &Path, include_secrets: bool) -> Result<Vec
             continue;
         }
         let arc = format!("{ARCHIVE_ROOT}/{f}");
+        // The credential store is all secrets; without --include-secrets it
+        // stays home (a blanked copy would import as broken credentials).
+        if *f == appv3_core::credentials::FILE_NAME && !include_secrets {
+            continue;
+        }
         if (*f == ".env" || *f == "server.yaml") && !include_secrets {
             let raw = read_text(&src)?;
             let red = if *f == ".env" { redact_env(&raw) } else { redact_server_settings(&raw)? };
@@ -136,7 +149,11 @@ pub fn export(a: &ExportArgs) -> Result<()> {
     };
     if a.include_secrets {
         println!();
-        println!("  {}  {} is set — API and server access keys will be stored in plaintext inside the archive.", yellow("⚠"), bold("--include-secrets"));
+        println!(
+            "  {}  {} is set — credentials.yaml (API keys, OAuth logins) and the server access key will be stored in plaintext inside the archive.",
+            yellow("⚠"),
+            bold("--include-secrets")
+        );
         println!("     {}", dim("Only use this over a trusted, encrypted channel (e.g. local disk → SCP → remote)."));
         println!();
     }
@@ -144,8 +161,11 @@ pub fn export(a: &ExportArgs) -> Result<()> {
     let packed = export_config(&cfg, &output, a.include_secrets)?;
     println!("  {}  Archive: {}", green("✓"), bold(&output.display().to_string()));
     println!("  {} {} file(s):", dim("Packed"), packed.len());
+    if !a.include_secrets && cfg.join(appv3_core::credentials::FILE_NAME).is_file() {
+        println!("    {} {}", dim("  ·"), dim("credentials.yaml left out (pass --include-secrets to pack it)"));
+    }
     for f in &packed {
-        let sensitive = matches!(f.as_str(), ".env" | "server.yaml");
+        let sensitive = matches!(f.as_str(), ".env" | "server.yaml" | "credentials.yaml");
         let marker = if sensitive { yellow("  •") } else { cyan("  •") };
         let suffix = if sensitive && !a.include_secrets { dim("  (secrets redacted)") } else { String::new() };
         println!("    {marker} {f}{suffix}");
@@ -218,7 +238,15 @@ fn import_config(archive: &Path, cfg: &Path, force: bool) -> Result<(Vec<String>
         if let Some(p) = target.parent() {
             std::fs::create_dir_all(p).with_context(|| format!("create {}", p.display()))?;
         }
-        std::fs::write(&target, &m.data).with_context(|| format!("write {}", target.display()))?;
+        if SECRET_FILES.contains(&rel.as_str()) {
+            let text = String::from_utf8(m.data).with_context(|| format!("{rel} is not UTF-8"))?;
+            if rel == appv3_core::credentials::FILE_NAME {
+                appv3_core::credentials::CredentialsFile::parse(&text).map_err(|e| anyhow!("{e}"))?;
+            }
+            appv3_core::secret_files::write_secret_file(&target, &text).with_context(|| format!("write {}", target.display()))?;
+        } else {
+            std::fs::write(&target, &m.data).with_context(|| format!("write {}", target.display()))?;
+        }
         written.push(rel);
     }
     Ok((written, skipped))
@@ -232,6 +260,21 @@ pub fn import(a: &ImportArgs) -> Result<()> {
     println!("  {}  Config dir: {}", dim("→"), cfg.display());
     println!();
     let (mut written, mut skipped) = import_config(&archive, &cfg, a.force)?;
+    // A legacy archive carries provider keys in its dotenv file: move them
+    // into the credential store, as the first server start would.
+    if written.iter().any(|f| f == ".env") {
+        let src = appv3_providers::credentials_migration::LegacySources {
+            dotenv: cfg.join(".env"),
+            cache_dir: appv3_core::settings().cache_dir.clone(),
+            mcp_json: cfg.join("mcp.json"),
+            store: cfg.join(appv3_core::credentials::FILE_NAME),
+        };
+        let r = appv3_providers::credentials_migration::absorb_dotenv(&src, "Imported").map_err(|e| anyhow!("{e}"))?;
+        if !r.is_empty() {
+            let names: Vec<String> = r.providers.iter().map(|(p, _)| p.clone()).chain(r.secrets.iter().cloned()).collect();
+            println!("  {}  Moved keys from the archive's .env into credentials.yaml: {}", green("✓"), names.join(", "));
+        }
+    }
     if !written.is_empty() {
         println!("  {}  Wrote {} file(s):", green("✓"), written.len());
         written.sort();

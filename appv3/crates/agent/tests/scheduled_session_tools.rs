@@ -107,7 +107,7 @@ fn task(name: &str, ws: &str, session_id: &str) -> TaskCreate {
     }
 }
 
-const LEAD_TOOLS: [&str; 5] = ["ask_user", "delegate", "plan", "submit_plan", "preview"];
+const LEAD_TOOLS: [&str; 5] = ["ask_user", "team", "plan", "submit_plan", "preview"];
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn scheduled_runs_keep_every_tool_and_refuse_the_ones_that_wait_on_a_person() {

@@ -20,6 +20,7 @@
  */
 import type { ContentBlock } from '@/api/types'
 import { isAgentReport } from '@/utils/turns'
+import { canonicalToolName } from '@/utils/tool-names'
 
 import { patchFileStats } from '../ToolCall/diffUtils'
 import { isFailedResult } from '../ToolCall/toolResultStatus'
@@ -75,16 +76,25 @@ export interface WorkSummary {
   fetches: number
   commands: number
   edits: number
+  plans: number
+  questions: number
+  delegations: number
   reports: number
+  previews: number
+  mcpCalls: number
+  generations: number
+  /** Tools no group knows, e.g. a plugin's or an MCP server's own. */
   other: number
-  failed: number
   thought: boolean
 }
 
-type StepKind = Exclude<keyof WorkSummary, 'failed' | 'thought'>
+type StepKind = Exclude<keyof WorkSummary, 'thought'>
 
+/** Each tool's group, by its current name; ``bg`` and ``recall`` are gone but old transcripts hold them. */
 const STEP_KIND: Record<string, StepKind> = {
   read: 'reads',
+  // Loading a skill reads its instructions.
+  skill: 'reads',
   grep: 'searches',
   glob: 'searches',
   lsp: 'searches',
@@ -94,23 +104,53 @@ const STEP_KIND: Record<string, StepKind> = {
   shell: 'commands',
   bg: 'commands',
   patch: 'edits',
+  plan: 'plans',
+  submit_plan: 'plans',
+  todo: 'plans',
+  schedule: 'plans',
+  ask_user: 'questions',
+  ask_lead: 'questions',
+  team: 'delegations',
+  workspace: 'delegations',
+  preview: 'previews',
+  mcp: 'mcpCalls',
+  generate_image: 'generations',
+  generate_video: 'generations',
+}
+
+/** The MCP hub's ``action`` ("search" or "call"); null while its arguments still stream. */
+function mcpAction(args: string | undefined): unknown {
+  try {
+    return (JSON.parse(args ?? '') as { action?: unknown } | null)?.action ?? null
+  } catch {
+    return null
+  }
+}
+
+function stepKind(block: ContentBlock): StepKind {
+  const name = canonicalToolName(block.toolName ?? '')
+  // The MCP hub both finds tools and calls them.
+  if (name === 'mcp' && mcpAction(block.toolArgs) === 'search') return 'searches'
+  return Object.hasOwn(STEP_KIND, name) ? STEP_KIND[name] : 'other'
 }
 
 export function summarizeWork(blocks: readonly ContentBlock[]): WorkSummary {
-  const summary: WorkSummary = { reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, reports: 0, other: 0, failed: 0, thought: false }
+  const summary: WorkSummary = {
+    reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, plans: 0, questions: 0, delegations: 0,
+    reports: 0, previews: 0, mcpCalls: 0, generations: 0, other: 0, thought: false,
+  }
   for (const block of blocks) {
     if (block.type === 'thinking' && block.content.trim()) summary.thought = true
     if (isAgentReport(block)) summary.reports += 1
     if (block.type !== 'tool') continue
-    summary[STEP_KIND[block.toolName ?? ''] ?? 'other'] += 1
-    if (block.toolDone && isFailedResult(block.toolResult)) summary.failed += 1
+    summary[stepKind(block)] += 1
   }
   return summary
 }
 
 const count = (n: number, one: string, many = `${one}s`) => (n ? `${n} ${n === 1 ? one : many}` : '')
 
-/** e.g. "6 reads, 3 searches, 4 commands, 2 edits"; empty when nothing ran. */
+/** e.g. "6 reads, 3 searches, 4 commands, 2 edits, 1 plan update"; empty when nothing ran. */
 export function workSummaryDetail(summary: WorkSummary): string {
   return [
     count(summary.reads, 'read'),
@@ -118,7 +158,13 @@ export function workSummaryDetail(summary: WorkSummary): string {
     count(summary.fetches, 'fetch', 'fetches'),
     count(summary.commands, 'command'),
     count(summary.edits, 'edit'),
+    count(summary.plans, 'plan update'),
+    count(summary.questions, 'question'),
+    count(summary.delegations, 'delegation'),
     count(summary.reports, 'report'),
+    count(summary.previews, 'preview action'),
+    count(summary.mcpCalls, 'MCP call'),
+    count(summary.generations, 'generation'),
     summary.other ? `${summary.other} other` : '',
   ].filter(Boolean).join(', ')
 }

@@ -50,7 +50,7 @@ pub const PLAN_EDIT_NOTE_KEY: &str = "plan_edit_note";
 /// records progress against the plan instead of a second, lossy copy.
 pub const PLAN_SUMMARY_RULE: &str = "A `<session_plan>` note keeps this session's plan file verbatim next to this summary. Do not restate its steps: refer to them by number or title when recording progress, and record any user-requested changes to the plan. Under Open Work From the User, list only items the plan does not cover.";
 
-const CARRY_GUIDANCE: &str = "This is the session's latest plan, restated verbatim after context compaction; the summary records progress. The plan outranks the summary on scope and step order, and the task board records step status. In Code mode, continue from the first unfinished step; in Plan mode, revise it with the `plan` tool and resubmit it with `submit_plan`. If the user has since redirected the work, follow the user. Change the plan with the `plan` tool only when the user changes its scope; track progress with `todo_manage`.";
+const CARRY_GUIDANCE: &str = "This is the session's latest plan, restated verbatim after context compaction; the summary records progress. The plan outranks the summary on scope and step order, and the task board records step status. In Code mode, continue from the first unfinished step; in Plan mode, revise it with the `plan` tool and resubmit it with `submit_plan`. If the user has since redirected the work, follow the user. Change the plan with the `plan` tool only when the user changes its scope; track progress with `todo`.";
 
 /// Every read-modify-write of a plan and its state holds this, so parallel
 /// `plan` calls and the HTTP routes never lose an update. Held only for the
@@ -512,7 +512,7 @@ pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, subm
     text.push_str(&match decision {
         ReviewDecision::Approve => {
             let switched = if in_plan_mode { " The session is now in Code mode with full tool access." } else { "" };
-            format!("The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step and track progress with `todo_manage`.")
+            format!("The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step and track progress with `todo`.")
         }
         ReviewDecision::Changes(Some(feedback)) => {
             let still = if in_plan_mode { "You are still in Plan mode. " } else { "" };

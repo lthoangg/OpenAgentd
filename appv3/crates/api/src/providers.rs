@@ -4,8 +4,7 @@
 //! builtin catalog plus native provider plugins.
 
 use appv3_core::runtime_settings::{self as rs, ProviderUiSettings};
-use appv3_core::settings;
-pub use appv3_providers::creds::{dotenv_values, CredentialStore};
+pub use appv3_providers::creds::CredentialStore;
 use appv3_providers::plugin::find_provider_plugin;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -27,53 +26,101 @@ pub fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(|x| x.as_str()).unwrap_or("")
 }
 
+/// Whether the provider keeps several stored credentials (builtins and
+/// plugins that opted in with `supportsMultipleCredentials`).
+pub fn supports_multiple_credentials(id: &str) -> bool {
+    appv3_providers::pool::is_poolable(id)
+}
+
+/// A plugin that keeps the single-credential contract (it never opted in):
+/// extra accounts and credential-specific OAuth/usage calls are refused.
+pub fn is_legacy_plugin(id: &str) -> bool {
+    !supports_multiple_credentials(id) && find_provider_plugin(id).is_some()
+}
+
+/// A plugin that opted in to multiple credentials (its OAuth reads and
+/// writes need an account-scoped store).
+pub fn is_optin_plugin(id: &str) -> bool {
+    find_provider_plugin(id).is_some_and(|p| p.info().supports_multiple_credentials)
+}
+
+/// Whether usage can be read for one named credential.
+pub fn supports_credential_usage(id: &str) -> bool {
+    matches!(id, "openrouter" | "deepseek" | "codex" | "copilot" | "grok") || find_provider_plugin(id).is_some_and(|p| p.info().supports_multiple_credentials && p.has_usage())
+}
+
+/// Whether one stored credential of a multi-credential plugin is usable:
+/// the plugin's own `isConfigured` on that account's scoped store, else its
+/// OAuth document or required fields. Never reads legacy token files.
+fn plugin_credential_configured(plugin: &dyn appv3_providers::plugin::ProviderPlugin, c: &appv3_core::credentials::Credential) -> bool {
+    let info = plugin.info();
+    let store = CredentialStore::for_account(&info.id, &c.id);
+    if let Some(ok) = plugin.is_configured(&store) {
+        return ok;
+    }
+    if c.oauth.is_some() {
+        return true;
+    }
+    let required: Vec<_> = info.credentials.iter().filter(|f| f.required).collect();
+    if required.is_empty() {
+        return info.credentials.iter().any(|f| !store.get(&f.name).is_empty());
+    }
+    required.iter().all(|f| !store.get(&f.name).is_empty())
+}
+
+fn plugin_legacy_configured(plugin: &dyn appv3_providers::plugin::ProviderPlugin, store: &CredentialStore) -> bool {
+    if let Some(ok) = plugin.is_configured(store) {
+        return ok;
+    }
+    plugin.info().credentials.iter().filter(|f| f.required).all(|f| !store.get(&f.name).is_empty())
+}
+
 /// `provider_is_configured(entry)` — static, no network.
 pub fn provider_is_configured(entry: &Value) -> bool {
     let kind = s(entry, "kind");
     let id = s(entry, "id");
     if let Some(plugin) = find_provider_plugin(id) {
-        let store = CredentialStore::for_provider(id, HashMap::new());
-        if let Some(ok) = plugin.is_configured(&store) {
-            return ok;
+        if plugin.info().supports_multiple_credentials {
+            let f = appv3_core::credentials::snapshot();
+            let enabled = f.enabled(id);
+            if enabled.iter().any(|c| plugin_credential_configured(&*plugin, c)) {
+                return true;
+            }
+            // An OAuth plugin is only as connected as its stored accounts. A
+            // key plugin can also be configured by an exported variable (a
+            // deployment pin), alone or beside stored rows. That check sees
+            // the environment only, never a stored account's values.
+            let env_only = CredentialStore::for_credential(id, Default::default());
+            return plugin.info().kind != "oauth" && (enabled.is_empty() || appv3_providers::pool::env_pinned(id)) && plugin_legacy_configured(&*plugin, &env_only);
         }
-        return plugin.info().credentials.iter().filter(|f| f.required).all(|f| !store.get(&f.name).is_empty());
+        return plugin_legacy_configured(&*plugin, &CredentialStore::for_provider(id, HashMap::new()));
     }
     let env = |n: &str| appv3_core::env::os_environ(n).filter(|v| !v.is_empty()).is_some();
+    let st = CredentialStore::for_provider(id, HashMap::new());
     match kind {
         "local" => true,
         "oauth" => {
-            if id == "copilot" && ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_COPILOT_TOKEN"].iter().any(|n| env(n)) {
+            if id == "copilot" && appv3_providers::copilot::env_github_token().is_some() {
                 return true;
             }
-            let file = match id {
-                "codex" => "codex_oauth.json",
-                "copilot" => "copilot_oauth.json",
-                "grok" => "grok_oauth.json",
-                _ => return false,
-            };
-            settings().cache_dir.join(file).is_file()
+            appv3_providers::oauth::is_builtin(id) && appv3_core::credentials::snapshot().enabled(id).iter().any(|c| c.has_secret())
         }
         "cloud_creds" => {
             if id == "bedrock" {
-                let st = CredentialStore::new(HashMap::new());
-                return env("AWS_BEARER_TOKEN_BEDROCK")
-                    || !st.get("AWS_BEARER_TOKEN_BEDROCK").is_empty()
-                    || env("AWS_BEDROCK_PROFILE")
-                    || !st.get("AWS_BEDROCK_PROFILE").is_empty()
-                    || env("AWS_PROFILE");
+                return !st.get("AWS_BEARER_TOKEN_BEDROCK").is_empty() || !st.get("AWS_BEDROCK_PROFILE").is_empty() || env("AWS_PROFILE");
             }
-            entry.get("env_vars").and_then(|v| v.as_array()).map(|a| a.iter().all(|n| env(n.as_str().unwrap_or("")))).unwrap_or(true)
+            entry.get("env_vars").and_then(|v| v.as_array()).map(|a| a.iter().all(|n| !st.get(n.as_str().unwrap_or("")).is_empty())).unwrap_or(true)
         }
         _ => {
             let var = s(entry, "env_var");
-            !var.is_empty() && !CredentialStore::new(HashMap::new()).get(var).is_empty()
+            !var.is_empty() && !st.get(var).is_empty()
         }
     }
 }
 
 /// `_provider_saved_overrides(entry)`.
 pub fn saved_overrides(entry: &Value) -> HashMap<String, String> {
-    let st = CredentialStore::new(HashMap::new());
+    let st = CredentialStore::for_provider(s(entry, "id"), HashMap::new());
     let mut names: Vec<String> = vec![];
     if !s(entry, "env_var").is_empty() {
         names.push(s(entry, "env_var").into());
@@ -146,11 +193,37 @@ pub fn filter_opencode_models_for_access(provider: &str, models: &[String], has_
     models.iter().filter(|m| model_is_accessible(provider, m, true)).cloned().collect()
 }
 
-fn resolve(overrides: &HashMap<String, String>, name: &str, default: &str) -> String {
+/// `pinned` reads one named credential: a name it lacks falls back to the
+/// exported environment, never to the credential in use (that would send
+/// this account's key to another account's endpoint).
+fn resolve(overrides: &HashMap<String, String>, name: &str, default: &str, pinned: bool) -> String {
     if let Some(v) = overrides.get(name) {
         return v.clone();
     }
-    std::env::var(name).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| default.to_string())
+    if pinned {
+        return appv3_core::credentials::env_override(name).unwrap_or_else(|| default.to_string());
+    }
+    let owner = appv3_providers::credentials_migration::owner_of(name);
+    Some(appv3_core::credentials::lookup(owner.as_deref(), name)).filter(|v| !v.is_empty()).unwrap_or_else(|| default.to_string())
+}
+
+/// The non-empty values of one stored credential; `None` when it is gone.
+pub fn stored_credential_values(provider_id: &str, credential_id: &str) -> Option<HashMap<String, String>> {
+    let f = appv3_core::credentials::snapshot();
+    let c = f.find(provider_id, credential_id)?;
+    Some(c.values.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| (k.clone(), v.clone())).collect())
+}
+
+/// The store of one account of a multi-credential plugin: that row only,
+/// plus `typed` values being tried before they are saved. A row that is gone
+/// reads empty; it never falls back to the credential in use.
+pub fn scoped_store(provider_id: &str, credential_id: &str, typed: &HashMap<String, String>) -> CredentialStore {
+    if typed.is_empty() {
+        return CredentialStore::for_account(provider_id, credential_id);
+    }
+    let mut values = stored_credential_values(provider_id, credential_id).unwrap_or_default();
+    values.extend(typed.iter().map(|(k, v)| (k.clone(), v.clone())));
+    CredentialStore::for_credential_id(provider_id, credential_id, values.into_iter().collect())
 }
 
 async fn get_json(url: &str, headers: &[(&str, String)]) -> anyhow::Result<Value> {
@@ -181,17 +254,36 @@ async fn openai_compatible_models(base_url: &str, token: &str) -> anyhow::Result
 
 /// `discover_provider_models(entry, overrides=...)` — `[]` on failure.
 pub async fn discover_provider_models(entry: &Value, overrides: &HashMap<String, String>) -> Vec<String> {
+    discover_provider_models_for(entry, overrides, None).await
+}
+
+/// [`discover_provider_models`] for one stored credential when
+/// `credential_id` is given: that row's values plus `overrides` (values
+/// being tried), never the credential in use. `[]` when the row is gone.
+pub async fn discover_provider_models_for(entry: &Value, overrides: &HashMap<String, String>, credential_id: Option<&str>) -> Vec<String> {
     let id = s(entry, "id");
+    let pinned = credential_id.is_some();
+    let merged;
+    let typed = overrides;
+    let overrides = match credential_id {
+        Some(cid) => {
+            let Some(mut row) = stored_credential_values(id, cid) else { return vec![] };
+            row.extend(overrides.iter().map(|(k, v)| (k.clone(), v.clone())));
+            merged = row;
+            &merged
+        }
+        None => overrides,
+    };
     let res: anyhow::Result<Vec<String>> = async {
         if id == "openai" {
-            return openai_compatible_models("https://api.openai.com/v1", &resolve(overrides, "OPENAI_API_KEY", "")).await;
+            return openai_compatible_models("https://api.openai.com/v1", &resolve(overrides, "OPENAI_API_KEY", "", pinned)).await;
         }
         if let Some(spec) = appv3_providers::factory::compat_spec(id) {
             let base = match spec.base_url_env_var {
-                Some(var) => resolve(overrides, var, spec.base_url),
+                Some(var) => resolve(overrides, var, spec.base_url, pinned),
                 None => spec.base_url.to_string(),
             };
-            let mut key = resolve(overrides, spec.env_var, "");
+            let mut key = resolve(overrides, spec.env_var, "", pinned);
             if key.is_empty() {
                 key = spec.default_api_key.to_string();
             }
@@ -199,9 +291,9 @@ pub async fn discover_provider_models(entry: &Value, overrides: &HashMap<String,
             return Ok(filter_opencode_models_for_access(id, &models, !key.is_empty()));
         }
         match id {
-            "zai" => openai_compatible_models("https://api.z.ai/api/paas/v4", &resolve(overrides, "ZAI_API_KEY", "")).await,
+            "zai" => openai_compatible_models("https://api.z.ai/api/paas/v4", &resolve(overrides, "ZAI_API_KEY", "", pinned)).await,
             "googlegenai" => {
-                let key = resolve(overrides, "GOOGLE_API_KEY", "");
+                let key = resolve(overrides, "GOOGLE_API_KEY", "", pinned);
                 if key.is_empty() {
                     return Ok(vec![]);
                 }
@@ -218,11 +310,11 @@ pub async fn discover_provider_models(entry: &Value, overrides: &HashMap<String,
                 Ok(out)
             }
             "anthropic" => {
-                let key = resolve(overrides, "ANTHROPIC_API_KEY", "");
+                let key = resolve(overrides, "ANTHROPIC_API_KEY", "", pinned);
                 if key.is_empty() {
                     return Ok(vec![]);
                 }
-                let base = resolve(overrides, "ANTHROPIC_BASE_URL", "https://api.anthropic.com");
+                let base = resolve(overrides, "ANTHROPIC_BASE_URL", "https://api.anthropic.com", pinned);
                 let v = get_json(&format!("{}/v1/models", base.trim_end_matches('/')), &[("x-api-key", key), ("anthropic-version", "2023-06-01".into())]).await?;
                 Ok(ids_from_data(&v, "data"))
             }
@@ -232,7 +324,17 @@ pub async fn discover_provider_models(entry: &Value, overrides: &HashMap<String,
             "bedrock" => appv3_providers::bedrock::discover_models(overrides).await.map_err(|e| anyhow::anyhow!(e)),
             _ => match find_provider_plugin(id) {
                 Some(p) if p.has_discover_models() => {
-                    let store = CredentialStore::for_provider(id, overrides.clone());
+                    let store = match credential_id {
+                        Some(cid) if p.info().supports_multiple_credentials => scoped_store(id, cid, typed),
+                        // No account named: an opted-in plugin reads the
+                        // account in use, scoped (its OAuth needs a row). It
+                        // reads provider-wide only when no account exists.
+                        None if p.info().supports_multiple_credentials => match appv3_providers::pool::active_credential(id) {
+                            Some(c) => scoped_store(id, &c.id, typed),
+                            None => CredentialStore::for_provider(id, overrides.clone()),
+                        },
+                        _ => CredentialStore::for_provider(id, overrides.clone()),
+                    };
                     p.discover_models(&store).await.map_err(|e| anyhow::anyhow!(e))
                 }
                 _ => Ok(vec![]),
@@ -256,7 +358,7 @@ pub fn daemon_base_url(id: &str) -> String {
         "cliproxy" => ("CLIPROXY_BASE_URL", "http://localhost:8317/v1"),
         _ => return String::new(),
     };
-    std::env::var(var).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| default.into())
+    Some(appv3_core::credentials::lookup(Some(id), var)).filter(|v| !v.is_empty()).unwrap_or_else(|| default.into())
 }
 
 fn reach_cache() -> &'static std::sync::Mutex<HashMap<String, (std::time::Instant, bool)>> {

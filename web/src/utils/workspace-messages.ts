@@ -1,5 +1,5 @@
 /**
- * Cross-workspace messages (`send_to_workspace`). A request lands in the
+ * Cross-workspace messages (the `workspace` tool). A request lands in the
  * target session as a user row with ``extra.sent_from``; the answer comes
  * back to the sender as an agent report with ``extra.reply_from``.
  */
@@ -71,13 +71,13 @@ export interface SentSession {
 }
 
 /**
- * Matches the ``send_to_workspace`` success text (``tools/send_to_workspace.rs``):
+ * Matches the ``workspace`` tool's success text (``tools/workspace.rs``):
  * ``Sent to '<name>' (<path>) — new session <id> started.`` and its
  * delivered / queued variants. Errors start with ``Error:`` and do not match.
  */
 const SENT_RE = /^Sent to '(.+?)' \((.+)\) — (?:new session|delivered to session|queued in busy session) ([0-9a-fA-F-]{36})\b/
 
-/** The session a successful ``send_to_workspace`` call reached, if any. */
+/** The session a successful ``workspace`` call reached, if any. */
 export function parseSendResult(result: string | undefined | null): SentSession | null {
   const m = result ? SENT_RE.exec(result.trim()) : null
   return m ? { workspaceName: m[1], workspace: m[2], sessionId: m[3] } : null

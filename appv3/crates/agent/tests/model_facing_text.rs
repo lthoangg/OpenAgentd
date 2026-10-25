@@ -137,13 +137,17 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// facts given inside a request.
 /// Lowered by 16 once the canonical temp root (`/private` on macOS) was left
 /// out, so the count is the same on every OS.
-const LEAD_ALWAYS_ON_CHARS: usize = 36_476;
+/// Raised by 358 for `delegate`'s `action` (interrupt, stop, list) and the
+/// line telling the lead that a failed or stalled subagent says why.
+/// Lowered by 35 when `todo_manage`, `schedule_task` and `delegate` became
+/// `todo`, `schedule` and `team`.
+const LEAD_ALWAYS_ON_CHARS: usize = 36_799;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {
     let registry = default_tool_registry();
     let mut names = prompts::coding_tools();
-    names.extend(["skill", "todo_manage", "schedule_task"].map(String::from));
+    names.extend(["skill", "todo", "schedule"].map(String::from));
     let (system, mut tools) = first_call_with("budget", false, names.iter().map(|n| registry[n].clone()).collect()).await;
     // Leave out what differs by machine: the temp root and the shell's OS line.
     // The prompt shows the root canonicalized (`/private/var/...` on macOS, the

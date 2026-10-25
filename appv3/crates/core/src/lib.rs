@@ -1,6 +1,7 @@
 //! Core configuration, paths, auth policy, path locking, and error primitives.
 
 pub mod auth;
+pub mod credentials;
 pub mod env;
 pub mod error;
 pub mod home;

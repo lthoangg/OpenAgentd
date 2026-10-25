@@ -47,7 +47,8 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    const bubble = container.querySelector("div[class*='min-w-0'][class*='max-w-full'][class*='overflow-hidden']")
+    // ``overflow-clip``, not ``hidden``: a clipping scroller would stop the collapse button pinning.
+    const bubble = container.querySelector("div[class*='min-w-0'][class*='max-w-full'][class*='overflow-clip']")
     const text = container.querySelector("p[class*='overflow-wrap:anywhere']")
     expect(bubble).toBeTruthy()
     expect(text).toBeTruthy()
@@ -537,10 +538,40 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    const tooltipWrapper = container.querySelector("span[class*='absolute'][class*='top-1.5'][class*='right-1.5']")
-    expect(tooltipWrapper).toBeTruthy()
+    const rail = container.querySelector("div[class*='absolute'][class*='top-1.5'][class*='right-1.5']")
+    expect(rail?.querySelector("button[aria-expanded]")).toBeTruthy()
     const text = container.querySelector("p[class*='pr-6']")
     expect(text).toBeTruthy()
+  })
+
+  it("keeps the collapse button in view while scrolling through an expanded message", async () => {
+    const user = userEvent.setup()
+    const longContent = Array.from({ length: 60 }, (_, i) => `line${i + 1}`).join("\n")
+    render(<AgentView blocks={[{ id: "1", type: "user", content: longContent }]} currentBlocks={[]} isWorking={false} />)
+
+    const toggle = screen.getByRole("button", { name: "Expand" })
+    await user.click(toggle)
+
+    // The button rides a rail as tall as the bubble, pinned to the top of the view.
+    const rail = toggle.closest("div[class*='absolute']") as HTMLElement
+    expect(rail.className).toContain("bottom-1.5")
+    expect(toggle.closest("div[class*='sticky']")).toBeTruthy()
+  })
+
+  it("pins an expanded subagent report's header with a minimize button", async () => {
+    const user = userEvent.setup()
+    const longReport = "Found:\n" + Array.from({ length: 8 }, (_, i) => `- Item ${i + 1}`).join("\n")
+    render(<AgentView blocks={[{ id: "r1", type: "user", content: longReport, extra: { from_agent: "explorer#1" } }]} currentBlocks={[]} isWorking={false} />)
+    const header = screen.getByText("Subagent report").parentElement as HTMLElement
+    expect(header.className).not.toContain("sticky")
+    expect(screen.queryByRole("button", { name: "Minimize report" })).toBeNull()
+
+    await user.click(screen.getByRole("button", { name: /Show full report/i }))
+
+    expect(header.className).toContain("sticky")
+    await user.click(screen.getByRole("button", { name: "Minimize report" }))
+    expect(screen.getByRole("button", { name: /Show full report/i })).toBeTruthy()
+    expect(header.className).not.toContain("sticky")
   })
 
   it("renders incoming subagent message with handle badge and left-aligned container", () => {
@@ -593,7 +624,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")).toBeNull()
 
     // Toggle button now says "Minimize"
-    const minimizeBtn = screen.getByRole("button", { name: /Minimize/i })
+    const minimizeBtn = screen.getByRole("button", { name: "Minimize" })
     expect(minimizeBtn).toBeTruthy()
     expect(minimizeBtn.getAttribute("aria-expanded")).toBe("true")
 

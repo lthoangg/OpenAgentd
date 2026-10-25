@@ -150,36 +150,19 @@ fn oauth_env_key(name: &str, field: &str) -> String {
     format!("{}_MCP_{field}", if p.is_empty() { "MCP".to_string() } else { p })
 }
 
-fn quote_env(v: &str) -> String {
-    format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
+/// Store MCP client secrets as named secrets in `credentials.yaml`;
+/// `mcp.json` keeps only the `${NAME}` references.
 fn save_env_values(values: &[(String, String)]) -> std::io::Result<()> {
     if values.is_empty() {
         return Ok(());
     }
-    let path = appv3_core::settings().config_dir.join(".env");
-    let lines: Vec<String> = std::fs::read_to_string(&path).map(|t| t.lines().map(String::from).collect()).unwrap_or_default();
-    let mut seen = vec![];
-    let mut next = vec![];
-    for line in lines {
-        let key = if line.contains('=') && !line.trim_start().starts_with('#') { line.split('=').next().unwrap_or("").trim().to_string() } else { String::new() };
-        match values.iter().find(|(k, _)| *k == key) {
-            Some((k, v)) => {
-                next.push(format!("{k}={}", quote_env(v)));
-                seen.push(k.clone());
-            }
-            None => next.push(line),
+    let values = values.to_vec();
+    appv3_core::credentials::update(move |f| {
+        for (k, v) in values {
+            f.secrets.insert(k, v);
         }
-    }
-    for (k, v) in values {
-        if !seen.contains(k) {
-            next.push(format!("{k}={}", quote_env(v)));
-        }
-        appv3_core::env::mark_server_set(k);
-        std::env::set_var(k, v);
-    }
-    appv3_core::secret_files::write_secret_file(&path, &(next.join("\n") + "\n"))
+    })?;
+    Ok(())
 }
 
 /// `_store_oauth_secrets`.

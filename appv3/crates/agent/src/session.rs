@@ -80,16 +80,16 @@ fn forget_provider_credentials(model_id: Option<&str>) {
     let Some((pid, _)) = split_provider_model(model_id) else {
         return;
     };
-    let _ = appv3_core::runtime_settings::forget_provider_models(&pid);
-    let cache = &settings().cache_dir;
-    let file = match pid.as_str() {
-        "codex" => Some(cache.join("codex_oauth.json")),
-        "copilot" => Some(cache.join("copilot_oauth.json")),
-        "grok" => Some(cache.join("grok_oauth.json")),
-        _ => None,
-    };
-    if let Some(f) = file {
-        let _ = std::fs::remove_file(f);
+    // A provider with one OAuth account loses that login (it shows as
+    // needing a reconnect). With several, the failed one was already put on
+    // cooldown and the others may still work.
+    let f = appv3_core::credentials::snapshot();
+    let enabled = f.enabled(&pid);
+    if appv3_providers::oauth::is_builtin(&pid) && enabled.len() == 1 {
+        appv3_providers::oauth::TokenSlot::new(&pid, &enabled[0].id).revoke();
+        let _ = appv3_core::runtime_settings::forget_provider_models(&pid);
+    } else if enabled.len() <= 1 {
+        let _ = appv3_core::runtime_settings::forget_provider_models(&pid);
     }
 }
 
@@ -110,6 +110,13 @@ fn provider_error_to_agent(e: ProviderError) -> AgentError {
 /// Options for one `_run_turn`.
 #[derive(Default, Clone)]
 pub struct TurnOptions {
+    /// This turn starts a new run (a message the user or a schedule sent, a
+    /// Continue, a `/compact`), so it picks up agent config edited since the
+    /// last one. Every other turn continues the current run (a queued steer
+    /// or member report, an answered question, idle compaction) and keeps the
+    /// agent it started with: switching the default model in Settings must
+    /// not switch a session that is still running.
+    pub starts_run: bool,
     pub force_compaction: bool,
     /// A background compaction started by the idle timer (see
     /// [`crate::idle_compaction`]); it sends no desktop notification.
@@ -183,6 +190,9 @@ pub struct AgentSession {
     question_suspended: Mutex<Option<Value>>,
     lead_suspended: Mutex<Option<Value>>,
     last_error: Mutex<Option<String>>,
+    /// The last failed turn's `format_agent_error` (message, title, code,
+    /// category), which a member's failure report hands to its lead.
+    last_error_info: Mutex<Option<Value>>,
     pending_interaction_mode: Mutex<Option<String>>,
     /// `<openagentd_memory>` as of this session's first turn. Frozen so the
     /// system prompt stays byte-identical across turns (prefix caching);
@@ -235,6 +245,7 @@ impl AgentSession {
             question_suspended: Mutex::new(None),
             lead_suspended: Mutex::new(None),
             last_error: Mutex::new(None),
+            last_error_info: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),
             memory_snapshot: Mutex::new(None),
             idle_timer: Mutex::new(None),
@@ -316,7 +327,7 @@ impl AgentSession {
             injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.to_string() }));
         }
         if is_lead && appv3_core::runtime_settings::workspace_messages_enabled() {
-            injected.push(Arc::new(crate::tools::send_to_workspace::SendToWorkspaceTool::new(sid.to_string(), self.pool.clone())));
+            injected.push(Arc::new(crate::tools::workspace::WorkspaceTool::new(sid.to_string(), self.pool.clone())));
         }
         injected
     }
@@ -345,6 +356,9 @@ impl AgentSession {
     }
     pub fn last_error(&self) -> Option<String> {
         self.last_error.lock().unwrap().clone()
+    }
+    pub fn last_error_info(&self) -> Option<Value> {
+        self.last_error_info.lock().unwrap().clone()
     }
     pub fn lead_suspended(&self) -> Option<Value> {
         self.lead_suspended.lock().unwrap().clone()
@@ -812,12 +826,14 @@ impl AgentSession {
         *self.lead_suspended.lock().unwrap() = None;
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions { unattended: m.origin == "scheduler", ..Default::default() });
+        self.spawn_turn(TurnOptions { starts_run: true, unattended: m.origin == "scheduler", ..Default::default() });
         Ok((sid, db::codec::api_uuid(&persisted.id)))
     }
 
     pub async fn handle_stop(&self) -> bool {
-        if !self.is_busy() {
+        // A turn task still running is stopped even if the state already
+        // reads idle, or nothing could ever reach it.
+        if !self.is_busy() && self.active_task_done() {
             return false;
         }
         self.cancel.set();
@@ -847,7 +863,7 @@ impl AgentSession {
         self.set_state("working");
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions { runtime_model: model, runtime_thinking_level: thinking_level, ..Default::default() });
+        self.spawn_turn(TurnOptions { starts_run: true, runtime_model: model, runtime_thinking_level: thinking_level, ..Default::default() });
         Ok((session_id.to_string(), uuid::Uuid::new_v4().to_string()))
     }
 
@@ -860,7 +876,7 @@ impl AgentSession {
         self.set_state("working");
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions { force_compaction: true, ..Default::default() });
+        self.spawn_turn(TurnOptions { starts_run: true, force_compaction: true, ..Default::default() });
         Ok(session_id.to_string())
     }
 
@@ -972,7 +988,8 @@ impl AgentSession {
                 }
             }
             Some(lead) => {
-                crate::subagents::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set()).await;
+                let error = if status == "error" { self.last_error_info() } else { None };
+                crate::subagents::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set(), error.as_ref()).await;
             }
         }
         let mut payload = json!({"session_id": session_id, "status": status});
@@ -1079,7 +1096,7 @@ impl AgentSession {
             }
         }
         self.detect_config_drift();
-        if self.config_dirty.load(Ordering::SeqCst) {
+        if opts.starts_run && self.config_dirty.load(Ordering::SeqCst) {
             self.refresh_agent_from_disk();
         }
 
@@ -1126,6 +1143,7 @@ impl AgentSession {
                 self.set_state("error");
                 let info = format_agent_error(&e, Some(&self.name()));
                 *self.last_error.lock().unwrap() = info["message"].as_str().map(String::from);
+                *self.last_error_info.lock().unwrap() = Some(info.clone());
                 let mut data = Map::new();
                 for k in ["message", "title", "code", "category"] {
                     data.insert(k.into(), info[k].clone());
@@ -1242,10 +1260,14 @@ impl AgentSession {
             if let Some(t) = build_title_generation_hook(provider_for_hooks.clone(), self.pool.clone()) {
                 hooks.push(Arc::new(t));
             }
+        } else if let Some(lead) = &self.parent_session_id {
+            hooks.push(Arc::new(crate::subagents::MemberStallHook::new(lead, &name, self.pool.clone())));
         }
         hooks.push(Arc::new(WorkspaceInstructionsHook::new(Some(&workspace), agent_mode == "coding")));
         hooks.extend(self.test_hooks.lock().unwrap().iter().cloned());
-        let checkpointer = Checkpointer::new(self.pool.clone(), Some(sid.clone()), Some(name.clone()));
+        let checkpointer = Checkpointer::new(self.pool.clone(), Some(sid.clone()), Some(name.clone()))
+            .stop_when_session_gone(self.cancel.clone())
+            .stop_when_session_gone(self.hard_cancel.clone());
         checkpointer.mark_loaded(&history);
         hooks.push(Arc::new(ToolResultOffloadHook::default()));
         if is_lead {

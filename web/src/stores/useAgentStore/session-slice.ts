@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
 import { takePrefetchedHistory } from '@/lib/session-prefetch'
-import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
+import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages, userMessageSender } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
 import { sentFrom } from '@/utils/workspace-messages'
@@ -73,9 +73,15 @@ function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, re
   }
 }
 
+/**
+ * Queued rows the user can steer with, as pending messages. A member's report
+ * or another workspace's reply (``from_agent``) is queued for the lead too,
+ * but it is no steer: shown as one, Stop called it off — deleting the report
+ * and pasting it into the composer. It appears as a report once read.
+ */
 function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[]) {
   return messages
-    .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued'))
+    .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') && !userMessageSender(msg))
     .map((msg) => ({
       id: msg.id,
       sessionId,

@@ -2,7 +2,9 @@
 
 use crate::anthropic::{AnthropicProvider, ANTHROPIC_API_BASE};
 use crate::catalog::SUPPORTED_PROVIDERS;
+use crate::creds::CredentialStore;
 use crate::google::{GoogleGenAiProvider, API_BASE_URL as GOOGLE_BASE};
+use crate::oauth::TokenSlot;
 use crate::openai::{CompletionsDialect, OpenAiProvider, API_BASE_URL as OPENAI_BASE};
 use crate::registry::{get_model_cost, get_model_limits, get_model_transport};
 use crate::types::*;
@@ -76,17 +78,14 @@ pub fn compat_spec(id: &str) -> Option<&'static CompatSpec> {
     COMPAT_SPECS.iter().find(|s| s.provider_id == id)
 }
 
-fn env(name: &str) -> String {
-    std::env::var(name).unwrap_or_default()
-}
-
-/// v2 `require_api_key`.
-pub fn require_api_key(env_var: &str, label: &str) -> ProviderResult<String> {
-    let v = env(env_var);
+/// v2 `require_api_key`, reading `creds` (overrides → exported env →
+/// `credentials.yaml`).
+pub fn require_api_key(creds: &CredentialStore, env_var: &str, label: &str) -> ProviderResult<String> {
+    let v = creds.get(env_var);
     if !v.is_empty() {
         return Ok(v);
     }
-    Err(ProviderError::Unconfigured(format!("{label} API key is required. Set {env_var} in your .env file.")))
+    Err(ProviderError::Unconfigured(format!("{label} API key is required. Add one in Settings → Providers, or export {env_var}.")))
 }
 
 pub const UNCONFIGURED_TOKEN: &str = "__PROVIDER_MODEL__";
@@ -99,8 +98,41 @@ fn named<P: LlmProvider + 'static>(p: P) -> Arc<dyn LlmProvider> {
     Arc::new(p)
 }
 
-/// Build a provider for `"<provider>:<model>"`.
+/// Build a provider for `"<provider>:<model>"` with the stored credentials.
 pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let (name, model) = parse_model_str(model_str)?;
+    crate::pool::build_pooled(name, model, model_kwargs)
+}
+
+/// Build with explicit candidate values (validating credentials before they
+/// are saved): `overrides` win over the exported env and the store.
+pub fn build_provider_with_overrides(model_str: Option<&str>, model_kwargs: Kwargs, overrides: std::collections::HashMap<String, String>) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let (name, model) = parse_model_str(model_str)?;
+    if crate::plugin::find_provider_plugin(name).is_some_and(|p| p.info().supports_multiple_credentials) {
+        if let Some(c) = crate::pool::active_credential(name) {
+            return build_member(name, model, model_kwargs, &CredentialStore::for_account(name, &c.id).with_overrides(overrides), None);
+        }
+    }
+    build_member(name, model, model_kwargs, &CredentialStore::for_provider(name, overrides), None)
+}
+
+/// Explicit tests of an account must not fall back to another account's values.
+pub fn build_provider_for_credential(
+    model_str: Option<&str>,
+    model_kwargs: Kwargs,
+    credential_id: &str,
+    overrides: std::collections::HashMap<String, String>,
+) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let (name, model) = parse_model_str(model_str)?;
+    if appv3_core::credentials::snapshot().find(name, credential_id).is_none() {
+        return Err(ProviderError::Invalid(format!("Credential '{credential_id}' not found for '{name}'.")));
+    }
+    let creds = CredentialStore::for_account(name, credential_id).with_overrides(overrides);
+    build_member(name, model, model_kwargs, &creds, Some(&TokenSlot::new(name, credential_id)))
+}
+
+/// Split and validate `"<provider>:<model>"`.
+pub fn parse_model_str(model_str: Option<&str>) -> ProviderResult<(&str, &str)> {
     let model_str = model_str.unwrap_or("");
     if model_str.is_empty() {
         return Err(ProviderError::Invalid(
@@ -113,11 +145,18 @@ pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> Provider
     let Some((name, model)) = model_str.split_once(':') else {
         return Err(ProviderError::Invalid(format!("Invalid model format '{model_str}'. Expected 'provider:model' (e.g. 'zai:glm-5-turbo', 'googlegenai:gemini-3.1-flash').")));
     };
+    Ok((name, model))
+}
+
+/// Build one concrete provider: API keys and settings come from `creds`,
+/// an OAuth provider's tokens from `slot` (the account in use when `None`).
+pub fn build_member(name: &str, model: &str, model_kwargs: Kwargs, creds: &CredentialStore, slot: Option<&TokenSlot>) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let env = |n: &str| creds.get(n);
     let kw = model_kwargs;
     let pname = Some(name.to_string());
     match name {
         "openai" => {
-            let key = require_api_key("OPENAI_API_KEY", "OpenAI")?;
+            let key = require_api_key(creds, "OPENAI_API_KEY", "OpenAI")?;
             let mut p = OpenAiProvider::new(&key, model, OPENAI_BASE, kw, CompletionsDialect::OpenAi, true)?;
             p.provider_name = pname;
             Ok(named(p))
@@ -130,7 +169,7 @@ pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> Provider
                 key = configured;
             }
             if spec.default_api_key.is_empty() {
-                key = require_api_key(spec.env_var, spec.label)?;
+                key = require_api_key(creds, spec.env_var, spec.label)?;
             }
             let base_url = spec.base_url_env_var.map(env).filter(|s| !s.is_empty()).unwrap_or_else(|| spec.base_url.to_string());
             match name {
@@ -159,20 +198,20 @@ pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> Provider
             }
         }
         "anthropic" => {
-            let key = require_api_key("ANTHROPIC_API_KEY", "Anthropic")?;
+            let key = require_api_key(creds, "ANTHROPIC_API_KEY", "Anthropic")?;
             let base = Some(env("ANTHROPIC_BASE_URL")).filter(|s| !s.is_empty()).unwrap_or_else(|| ANTHROPIC_API_BASE.into());
             let mut p = AnthropicProvider::new(&key, model, &base, kw)?;
             p.provider_name = pname;
             Ok(named(p))
         }
         "googlegenai" => {
-            let key = require_api_key("GOOGLE_API_KEY", "Google")?;
+            let key = require_api_key(creds, "GOOGLE_API_KEY", "Google")?;
             let mut p = GoogleGenAiProvider::new(&key, model, GOOGLE_BASE, kw)?;
             p.provider_name = pname;
             Ok(named(p))
         }
         "vertexai" => {
-            let key = require_api_key("VERTEXAI_API_KEY", "Vertex AI")?;
+            let key = require_api_key(creds, "VERTEXAI_API_KEY", "Vertex AI")?;
             let project = Some(env("GOOGLE_CLOUD_PROJECT")).filter(|s| !s.is_empty());
             let location = Some(env("GOOGLE_CLOUD_LOCATION")).filter(|s| !s.is_empty()).unwrap_or_else(|| "global".into());
             let mut p = GoogleGenAiProvider::vertex(&key, model, project.as_deref(), &location, kw)?;
@@ -181,23 +220,21 @@ pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> Provider
         }
         // OAuth / cloud-credential providers name themselves in their builders;
         // `_with_provider_name` then overwrites with the registry name.
-        "copilot" => crate::copilot::build(model, kw),
-        "codex" => crate::codex::build(model, kw),
-        "grok" => crate::grok::build(model, kw),
-        "bedrock" => crate::bedrock::build(model, kw),
+        "copilot" => match slot {
+            Some(s) => crate::copilot::build_for(model, kw, s),
+            None => crate::copilot::build(model, kw),
+        },
+        "codex" => crate::codex::build_for(model, kw, &slot.cloned().unwrap_or_else(crate::codex::oauth_slot)),
+        "grok" => crate::grok::build_for(model, kw, &slot.cloned().unwrap_or_else(crate::grok::oauth_slot)),
+        "bedrock" => crate::bedrock::build(model, kw, creds),
         "zai" => {
-            let key = require_api_key("ZAI_API_KEY", "ZAI")?;
+            let key = require_api_key(creds, "ZAI_API_KEY", "ZAI")?;
             let mut p = OpenAiProvider::new(&key, model, "https://api.z.ai/api/paas/v4", kw, CompletionsDialect::Zai, true)?;
             p.provider_name = pname;
             Ok(named(p))
         }
         _ => match crate::plugin::find_provider_plugin(name) {
-            Some(plugin) => plugin.build(crate::plugin::BuildContext {
-                provider_id: name.to_string(),
-                model: model.to_string(),
-                model_kwargs: kw,
-                credentials: crate::creds::CredentialStore::for_provider(name, Default::default()),
-            }),
+            Some(plugin) => plugin.build(crate::plugin::BuildContext { provider_id: name.to_string(), model: model.to_string(), model_kwargs: kw, credentials: creds.clone() }),
             None => Err(ProviderError::Unconfigured(format!("Unsupported provider '{name}'. Supported providers: {}", SUPPORTED_PROVIDERS.join(", ")))),
         },
     }
@@ -350,6 +387,12 @@ impl LlmProvider for RetryingProvider {
     }
     async fn stream(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<ChunkStream> {
         self.provider().await?.stream(messages, tools, kwargs).await
+    }
+    fn rotate_credential(&self, err: &ProviderError, reason: &str, cooldown_secs: f64) -> Option<String> {
+        self.built.get()?.rotate_credential(err, reason, cooldown_secs)
+    }
+    fn credential_recovery_secs(&self) -> Option<f64> {
+        self.built.get()?.credential_recovery_secs()
     }
 }
 

@@ -133,9 +133,9 @@ export const FS_MUTATING_TOOLS = new Set([
   'generate_video',
 ])
 
-export const SCHEDULER_MUTATING_TOOLS = new Set(['schedule_task'])
+export const SCHEDULER_MUTATING_TOOLS = new Set(['schedule'])
 
-export const TODO_MUTATING_TOOLS = new Set(['todo_manage'])
+export const TODO_MUTATING_TOOLS = new Set(['todo'])
 
 /** Tools whose completion may have changed the session plan. */
 export const PLAN_MUTATING_TOOLS = new Set(['plan'])

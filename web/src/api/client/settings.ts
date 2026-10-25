@@ -108,7 +108,7 @@ export async function updateTitleGenerationSettings(
 }
 
 export type WorkspaceMessagesSettings = {
-  /** Lead agents get the ``send_to_workspace`` tool. */
+  /** Lead agents get the ``workspace`` tool. */
   enabled: boolean
 }
 
@@ -193,6 +193,43 @@ export type ProviderInfo = {
   supports_fast_mode: boolean
   public_access: boolean
   model_costs?: Record<string, ModelCostInfo>
+  /** Stored keys or OAuth accounts, in the order they are tried. */
+  stored_credentials?: StoredCredential[]
+  /** A key exported in the server's environment overrides the stored ones. */
+  env_pinned?: boolean
+  /**
+   * The provider can hold several keys/accounts (poolable built-ins and
+   * plugins that opt in). Omitted by older backends: treat as the previous
+   * kind-based behaviour.
+   */
+  supports_multiple_credentials?: boolean
+  /** Usage can be read per stored credential. Omitted by older backends. */
+  supports_credential_usage?: boolean
+}
+
+export type StoredCredentialStatus = 'ready' | 'cooling_down' | 'needs_reconnect' | 'disabled'
+
+/** One stored credential of a provider. Never carries a secret value. */
+export type StoredCredential = {
+  id: string
+  label: string
+  disabled: boolean
+  kind: 'api_key' | 'oauth'
+  /** Last characters of the key, e.g. `…3f9a`. */
+  hint: string | null
+  /** Non-secret values saved with it (base URLs, project ids). */
+  settings: Record<string, string>
+  status: StoredCredentialStatus
+  in_use: boolean
+  /** Unix seconds when a cooling-down credential is tried again. */
+  cooldown_until: number | null
+  cooldown_reason: 'rate_limit' | 'quota' | 'spend_limit' | 'auth' | string | null
+}
+
+export type ProviderCredentialsBody = {
+  provider: string
+  credentials: StoredCredential[]
+  env_pinned?: boolean
 }
 
 export type ProvidersListBody = {
@@ -278,6 +315,8 @@ export type OAuthLoginEvent = {
   elapsed_s?: number
   suggested_model?: string
   reason?: string
+  /** Account this login writes to; sent by multi-credential plugins on every progress event. */
+  credential_id?: string
 }
 
 export async function listProviders(): Promise<ProvidersListBody> {
@@ -338,8 +377,8 @@ export async function saveProviderVisibleModels(
   return res.json()
 }
 
-export async function getProviderUsage(providerId: string, apiKey?: string): Promise<ProviderUsageResponse> {
-  const query = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''
+export async function getProviderUsage(providerId: string, credentialId?: string): Promise<ProviderUsageResponse> {
+  const query = credentialId ? `?credential_id=${encodeURIComponent(credentialId)}` : ''
   const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage${query}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
   return res.json()
@@ -350,8 +389,9 @@ export type ProviderDisconnectResponse = {
   is_disconnected: boolean
 }
 
-export async function resetProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
-  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/reset`, {
+export async function resetProviderUsage(providerId: string, credentialId?: string): Promise<ProviderUsageResponse> {
+  const query = credentialId ? `?credential_id=${encodeURIComponent(credentialId)}` : ''
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/reset${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   })
@@ -390,8 +430,13 @@ export function oauthLoginStream(
   callbacks: SSECallbacks & { onOAuthEvent?: (event: OAuthLoginEvent) => void },
   signal?: AbortSignal,
   mode?: 'browser',
+  /** Reconnect this account; without it a new account is added. */
+  credentialId?: string,
 ): void {
-  const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
+  const params = new URLSearchParams()
+  if (mode) params.set('mode', mode)
+  if (credentialId) params.set('credential_id', credentialId)
+  const query = params.toString() ? `?${params.toString()}` : ''
   fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
@@ -407,20 +452,80 @@ export function oauthLoginStream(
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-export async function disconnectOauthProvider(providerId: string): Promise<{ ok: boolean; provider: string }> {
-  const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}`, {
+/** Sign out one account (`credentialId`) or every account of the provider. */
+export async function disconnectOauthProvider(providerId: string, credentialId?: string): Promise<{ ok: boolean; provider: string }> {
+  const query = credentialId ? `?credential_id=${encodeURIComponent(credentialId)}` : ''
+  const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}${query}`, {
     method: 'DELETE',
   })
   if (!res.ok) await parseDetailOrThrow(res, `DELETE /auth/${providerId}`)
   return res.json()
 }
 
-export async function submitOAuthCallback(providerId: string, code: string): Promise<{ ok: boolean; suggested_model?: string }> {
+export async function submitOAuthCallback(
+  providerId: string,
+  code: string,
+  /** Account the login stream reported (or the one being reconnected). */
+  credentialId?: string,
+): Promise<{ ok: boolean; suggested_model?: string }> {
   const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(credentialId ? { code, credential_id: credentialId } : { code }),
   })
   if (!res.ok) await parseDetailOrThrow(res, `POST /auth/${providerId}/callback`)
+  return res.json()
+}
+
+// ── /settings/providers/{id}/credentials ────────────────────────────────────
+
+function credentialsUrl(providerId: string, credentialId?: string): string {
+  const base = `${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/credentials`
+  return credentialId ? `${base}/${encodeURIComponent(credentialId)}` : base
+}
+
+/** Add another key (or set of values) to a provider. */
+export async function addProviderCredential(
+  providerId: string,
+  body: { label?: string; api_key?: string; extra?: Record<string, string> },
+): Promise<StoredCredential> {
+  const res = await fetch(credentialsUrl(providerId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/credentials`)
+  return res.json()
+}
+
+/** Rename, enable/disable, or replace values of one credential. */
+export async function updateProviderCredential(
+  providerId: string,
+  credentialId: string,
+  body: { label?: string; disabled?: boolean; api_key?: string; extra?: Record<string, string> },
+): Promise<StoredCredential> {
+  const res = await fetch(credentialsUrl(providerId, credentialId), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PATCH /settings/providers/${providerId}/credentials/${credentialId}`)
+  return res.json()
+}
+
+export async function deleteProviderCredential(providerId: string, credentialId: string): Promise<{ ok: boolean }> {
+  const res = await fetch(credentialsUrl(providerId, credentialId), { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, `DELETE /settings/providers/${providerId}/credentials/${credentialId}`)
+  return res.json()
+}
+
+/** Set the priority order; `ids` must list every credential once. */
+export async function orderProviderCredentials(providerId: string, ids: string[]): Promise<ProviderCredentialsBody> {
+  const res = await fetch(`${credentialsUrl(providerId)}/order`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /settings/providers/${providerId}/credentials/order`)
   return res.json()
 }

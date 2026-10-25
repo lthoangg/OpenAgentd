@@ -241,9 +241,21 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
         }
         "which" => Ok(which(s(&arg, "name")).map(|p| json!(p.to_string_lossy())).unwrap_or(Value::Null)),
         "tokenPath" => {
-            let dir = appv3_core::settings().cache_dir.join("provider-plugins").join(s(&arg, "provider"));
-            let _ = std::fs::create_dir_all(&dir);
-            Ok(json!(dir.join(s(&arg, "file").replace('/', "_")).to_string_lossy()))
+            let component = |v: &str| !v.is_empty() && v != "." && v != ".." && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'));
+            let provider = s(&arg, "provider");
+            if !component(provider) {
+                return Err(NativeError::error("Invalid provider token directory"));
+            }
+            let mut dir = appv3_core::settings().cache_dir.join("provider-plugins").join(provider);
+            let file = s(&arg, "file");
+            if let Some(id) = arg.get("credentialId").and_then(|c| c.as_str()) {
+                if !component(id) || !component(file) {
+                    return Err(NativeError::error("Account token paths require plain directory and file names"));
+                }
+                dir = dir.join(id);
+            }
+            std::fs::create_dir_all(&dir).map_err(|e| NativeError::error(e.to_string()))?;
+            Ok(json!(dir.join(file.replace('/', "_")).to_string_lossy()))
         }
         "readText" => Ok(std::fs::read_to_string(s(&arg, "path")).map(Value::String).unwrap_or(Value::Null)),
         "writeText" => std::fs::write(s(&arg, "path"), s(&arg, "text")).map(|_| Value::Null).map_err(|e| NativeError::error(e.to_string())),

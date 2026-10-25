@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 /// read-only tools, `patch` writes only plan attachments under
 /// `.agents/plans/<folder>/`, and `preview` only looks (no click, fill or press).
 pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 14] =
-    ["ask_user", "delegate", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "submit_plan", "web_fetch", "web_search"];
+    ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "submit_plan", "team", "web_fetch", "web_search"];
 
 /// `extra.interaction_mode_prompt_version` of the notes written now. Notes
 /// without it are version 1 (the `<proposed_plan>` instructions); version 2
@@ -113,7 +113,7 @@ pub async fn set_mode(pool: &DbPool, sid: &str, mode: &str) -> Result<(db::ChatS
 /// Members persist across delegations and each turn reads the member's own
 /// row, so a mode copied at spawn goes stale when the lead switches: a member
 /// spawned in Code mode could still edit files after the lead entered Plan
-/// mode, where `delegate` stays available. The member gets the same
+/// mode, where `team` stays available. The member gets the same
 /// transition note its lead got.
 pub async fn follow_lead(pool: &DbPool, sid: &str, session: &db::ChatSession) -> Result<&'static str> {
     let own = normalize(&session.interaction_mode);
@@ -170,7 +170,7 @@ mod tests {
         rows.last().and_then(|r| r.content.clone()).unwrap_or_default()
     }
 
-    /// A member has no `plan`, `submit_plan`, `ask_user` or `todo_manage`, so
+    /// A member has no `plan`, `submit_plan`, `ask_user` or `todo`, so
     /// it gets its own notes rather than the lead's instructions for them.
     #[tokio::test]
     async fn subagent_mode_notes_are_written_for_a_subagent() {
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(plan, transition_instruction("plan", true));
         assert_eq!(code, transition_instruction("code", true));
         for note in [&plan, &code] {
-            for lead_only in ["submit_plan", "ask_user", "todo_manage", "`plan` tool"] {
+            for lead_only in ["submit_plan", "ask_user", "`todo`", "`plan` tool"] {
                 assert!(!note.contains(lead_only), "a subagent note names {lead_only}: {note}");
             }
         }
@@ -221,7 +221,7 @@ mod tests {
     }
 
     /// A member spawned in Code mode must not keep write access after the
-    /// lead enters Plan mode (`delegate` stays available in Plan mode).
+    /// lead enters Plan mode (`team` stays available in Plan mode).
     #[tokio::test]
     async fn subagent_enters_plan_mode_with_its_lead() {
         let dir = tempfile::tempdir().unwrap();

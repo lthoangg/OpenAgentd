@@ -10,16 +10,22 @@ import { Input } from '@/components/ui/input'
 import { queryKeys } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose } from './providerUtils'
+import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose, supportsMultipleCredentials } from './providerUtils'
 
 export function OAuthLoginDialog({
   provider,
   open,
   onOpenChange,
+  credentialId,
+  accountLabel,
 }: {
   provider: ProviderInfo
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Reconnect this stored account; without it a new account is added. */
+  credentialId?: string
+  /** Display name of the account being reconnected. */
+  accountLabel?: string
 }) {
   const [events, setEvents] = useState<OAuthLoginEvent[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -29,6 +35,9 @@ export function OAuthLoginDialog({
   const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
   const successHandledRef = useRef(false)
+  // Account the current login stream writes to. The stream reports it on its
+  // events (multi-credential plugins); until then it is the reconnect target.
+  const loginCredentialIdRef = useRef<string | undefined>(credentialId)
   const queryClient = useQueryClient()
   const latest = events.at(-1)
   const deviceEvent = events.find((event) => event.event === 'device_code')
@@ -51,11 +60,15 @@ export function OAuthLoginDialog({
     const abort = new AbortController()
     openedUrlRef.current = null
     successHandledRef.current = false
+    loginCredentialIdRef.current = credentialId
     oauthLoginStream(
       provider.id,
       {
         onEvent: () => undefined,
         onOAuthEvent: (event) => {
+          // A late event of a superseded stream must not touch the new one.
+          if (abort.signal.aborted) return
+          if (event.credential_id) loginCredentialIdRef.current = event.credential_id
           setEvents((current) => [...current, event])
           if (event.verification_uri && openedUrlRef.current !== event.verification_uri) {
             openedUrlRef.current = event.verification_uri
@@ -98,9 +111,17 @@ export function OAuthLoginDialog({
       },
       abort.signal,
       authMode === 'browser' ? 'browser' : undefined,
+      credentialId,
     )
     return () => abort.abort()
-  }, [authMode, open, provider.id, provider.label, queryClient])
+  }, [authMode, credentialId, open, provider.id, provider.label, queryClient])
+
+  const hasAccounts = supportsMultipleCredentials(provider) && (provider.stored_credentials?.length ?? 0) > 0
+  const title = credentialId
+    ? `Reconnect ${accountLabel || provider.label}`
+    : hasAccounts
+      ? `Add a ${provider.label} account`
+      : `Connect ${provider.label}`
 
   return (
     <Dialog
@@ -112,8 +133,14 @@ export function OAuthLoginDialog({
     >
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>Connect {provider.label}</DialogTitle>
-          <DialogDescription>Approve the browser prompt. This window will update when the token is saved.</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {credentialId
+              ? 'Sign in with the same account. This window will update when the token is saved.'
+              : hasAccounts
+                ? 'Sign in with another account. It is added after your existing accounts and used when they hit a limit.'
+                : 'Approve the browser prompt. This window will update when the token is saved.'}
+          </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-4">
           <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">
@@ -186,7 +213,7 @@ export function OAuthLoginDialog({
               onSubmit={(event) => {
                 event.preventDefault()
                 setSubmittingCode(true)
-                submitOAuthCallback(provider.id, code)
+                submitOAuthCallback(provider.id, code, loginCredentialIdRef.current)
                   .then((result) => {
                     setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })

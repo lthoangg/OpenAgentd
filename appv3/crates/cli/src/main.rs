@@ -27,6 +27,7 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
         },
         Command::Run(a) => done(cmd::run::run(&a)),
         Command::Auth(a) => cmd::auth::auth(&a),
+        Command::Credentials(c) => cmd::auth::credentials(&c),
         Command::Doctor => cmd::doctor::doctor(),
         Command::Cleanup(a) => done(cmd::cleanup::cleanup(&a)),
         Command::Transfer(t) => done(match t {

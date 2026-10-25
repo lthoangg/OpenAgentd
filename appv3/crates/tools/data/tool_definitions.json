@@ -123,10 +123,10 @@
       }
     }
   },
-  "schedule_task": {
+  "schedule": {
     "type": "function",
     "function": {
-      "name": "schedule_task",
+      "name": "schedule",
       "description": "Schedule your own future or recurring prompt. For a bounded loop use schedule_type='every', every_seconds=30, session_id='current', and max_runs. Use trigger for an immediate first run, then pause or delete early when done.",
       "parameters": {
         "type": "object",
@@ -272,10 +272,10 @@
       }
     }
   },
-  "todo_manage": {
+  "todo": {
     "type": "function",
     "function": {
-      "name": "todo_manage",
+      "name": "todo",
       "description": "Manage the todo task list for tracking multi-step progress. Actions execute in order.\nUse proactively for complex tasks (3+ steps). Maintain real-time state: keep at most\nONE task 'in_progress' at any time, and mark tasks 'completed' immediately upon\nverification. Actions can be batched.",
       "parameters": {
         "type": "object",
@@ -562,16 +562,28 @@
       }
     }
   },
-  "delegate": {
+  "team": {
     "type": "function",
     "function": {
-      "name": "delegate",
-      "description": "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent will automatically send its deliverable back to you as a message when finished.\n\nAvailable subagent profiles:\n- profile='explorer': Explores the codebase, maps code paths, traces symbols, and gathers architectural facts without mutating files.\n- profile='researcher': Gathers technical context from external web documentation, libraries, APIs, and the local codebase.\n\nTo run tasks concurrently, call delegate multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1').",
+      "name": "team",
+      "description": "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent will automatically send its deliverable back to you as a message when finished.\n\nAvailable subagent profiles:\n- profile='explorer': Explores the codebase, maps code paths, traces symbols, and gathers architectural facts without mutating files.\n- profile='researcher': Gathers technical context from external web documentation, libraries, APIs, and the local codebase.\n\nTo run tasks concurrently, call team multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1').",
       "parameters": {
         "type": "object",
         "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "spawn",
+              "send",
+              "interrupt",
+              "stop",
+              "list"
+            ],
+            "default": null,
+            "description": "Defaults to 'send' with a target, else 'spawn'."
+          },
           "profile": {
-            "description": "Subagent profile name to delegate to (see available profiles in tool description).",
+            "description": "Subagent profile name (see available profiles in tool description). Required to spawn.",
             "type": "string"
           },
           "task": {
@@ -581,20 +593,17 @@
           "target": {
             "type": "string",
             "default": null,
-            "description": "Optional live subagent handle (e.g. 'explorer#1') to send follow-up instructions or answer a question. Omit to spawn a new instance."
+            "description": "Live subagent handle (e.g. 'explorer#1'), required for send, interrupt and stop. Omit to spawn a new instance."
           }
         },
-        "required": [
-          "profile",
-          "task"
-        ]
+        "required": []
       }
     }
   },
-  "send_to_workspace": {
+  "workspace": {
     "type": "function",
     "function": {
-      "name": "send_to_workspace",
+      "name": "workspace",
       "description": "Send a message to an agent session in another workspace that shares a group with this one (a related repo, a worktree of this repo, or Chat, which every workspace can reach). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces you can message under their groups, with each group's brief describing its repos, or one workspace's recent sessions.",
       "parameters": {
         "type": "object",

@@ -3,6 +3,7 @@
 
 use crate::providers::{self as prov, CredentialStore};
 use appv3_core::runtime_settings as rs;
+use appv3_providers::oauth::TokenSlot;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -12,12 +13,15 @@ pub enum UsageError {
     Unsupported(String),
     Credentials(String),
     Unavailable(String),
+    /// The request names a credential the provider cannot scope to (a
+    /// plugin that has not opted in to multiple credentials).
+    Rejected(String),
 }
 
 impl UsageError {
     pub fn msg(&self) -> String {
         match self {
-            UsageError::Unsupported(m) | UsageError::Credentials(m) | UsageError::Unavailable(m) => m.clone(),
+            UsageError::Unsupported(m) | UsageError::Credentials(m) | UsageError::Unavailable(m) | UsageError::Rejected(m) => m.clone(),
         }
     }
 }
@@ -40,11 +44,17 @@ fn limit(limit_id: &str, limit_name: &str, credits: Value, spend: Value, plan_ty
     })
 }
 
-fn resolve_key(given: Option<&str>, var: &str, missing: &str) -> Result<String, UsageError> {
+fn resolve_key(given: Option<&str>, var: &str, missing: &str, credential: Option<(&str, &str)>) -> Result<String, UsageError> {
     if let Some(k) = given.map(str::trim).filter(|k| !k.is_empty()) {
         return Ok(k.to_string());
     }
-    let k = CredentialStore::new(HashMap::new()).get(var);
+    if let Some((pid, cid)) = credential {
+        let f = appv3_core::credentials::snapshot();
+        let Some(c) = f.find(pid, cid) else { return Err(UsageError::Credentials(format!("Credential '{cid}' not found."))) };
+        return c.value(var).map(String::from).ok_or_else(|| UsageError::Credentials(missing.into()));
+    }
+    let owner = appv3_providers::credentials_migration::owner_of(var);
+    let k = CredentialStore::for_provider(owner.as_deref().unwrap_or(""), HashMap::new()).get(var);
     if k.is_empty() {
         return Err(UsageError::Credentials(missing.into()));
     }
@@ -67,8 +77,8 @@ fn fmt_balance(a: f64) -> String {
     }
 }
 
-async fn openrouter_usage(given: Option<&str>) -> Result<Value, UsageError> {
-    let key = resolve_key(given, "OPENROUTER_API_KEY", "OpenRouter API key not configured.")?;
+async fn openrouter_usage(given: Option<&str>, credential_id: Option<&str>) -> Result<Value, UsageError> {
+    let key = resolve_key(given, "OPENROUTER_API_KEY", "OpenRouter API key not configured.", credential_id.map(|c| ("openrouter", c)))?;
     let auth = format!("Bearer {key}");
     let c = client();
     let get = |url: &'static str| c.get(url).header("Authorization", auth.clone()).header("Accept", "application/json").timeout(Duration::from_secs(5)).send();
@@ -176,8 +186,8 @@ fn fmt_currency(amount: &Value, currency: &str) -> String {
     }
 }
 
-async fn deepseek_usage(given: Option<&str>) -> Result<Value, UsageError> {
-    let key = resolve_key(given, "DEEPSEEK_API_KEY", "DeepSeek API key not configured.")?;
+async fn deepseek_usage(given: Option<&str>, credential_id: Option<&str>) -> Result<Value, UsageError> {
+    let key = resolve_key(given, "DEEPSEEK_API_KEY", "DeepSeek API key not configured.", credential_id.map(|c| ("deepseek", c)))?;
     let r = client()
         .get("https://api.deepseek.com/user/balance")
         .header("Authorization", format!("Bearer {key}"))
@@ -225,17 +235,32 @@ async fn deepseek_usage(given: Option<&str>) -> Result<Value, UsageError> {
     Ok(json!({"provider": "deepseek", "limits": [limit("deepseek", "DeepSeek Balance", credits, Value::Null, "Pay-as-you-go")]}))
 }
 
-/// `get_provider_usage`.
-pub async fn get_provider_usage(provider_id: &str, token: Option<&str>) -> Result<Value, UsageError> {
+/// The OAuth account `credential_id` names, else the one in use.
+fn slot(provider_id: &str, credential_id: Option<&str>) -> Result<TokenSlot, UsageError> {
+    match credential_id {
+        Some(cid) => {
+            let s = TokenSlot::new(provider_id, cid);
+            if !s.exists() {
+                return Err(UsageError::Credentials(format!("Credential '{cid}' not found.")));
+            }
+            Ok(s)
+        }
+        None => Ok(TokenSlot::active(provider_id)),
+    }
+}
+
+/// `get_provider_usage` — of one stored credential when `credential_id`
+/// is given, else of the credential in use.
+pub async fn get_provider_usage(provider_id: &str, token: Option<&str>, credential_id: Option<&str>) -> Result<Value, UsageError> {
     match provider_id {
-        "openrouter" => openrouter_usage(token).await,
-        "deepseek" => deepseek_usage(token).await,
-        "codex" => appv3_providers::codex::get_usage().await.map_err(oauth_err),
-        "copilot" => appv3_providers::copilot::get_usage().await.map_err(oauth_err),
-        "grok" => appv3_providers::grok::get_usage().await.map_err(oauth_err),
+        "openrouter" => openrouter_usage(token, credential_id).await,
+        "deepseek" => deepseek_usage(token, credential_id).await,
+        "codex" => appv3_providers::codex::get_usage_for(&slot("codex", credential_id)?).await.map_err(oauth_err),
+        "copilot" => appv3_providers::copilot::get_usage_for(&slot("copilot", credential_id)?).await.map_err(oauth_err),
+        "grok" => appv3_providers::grok::get_usage_for(&slot("grok", credential_id)?).await.map_err(oauth_err),
         id => match appv3_providers::plugin::find_provider_plugin(id) {
             Some(p) if p.has_usage() => {
-                let store = CredentialStore::for_provider(id, HashMap::new());
+                let store = plugin_usage_store(id, p.info().supports_multiple_credentials, credential_id)?;
                 p.get_usage(&store).await.map_err(|e| match e {
                     appv3_providers::plugin::PluginUsageError::Value(m) => UsageError::Credentials(m),
                     appv3_providers::plugin::PluginUsageError::Other(m) => UsageError::Unavailable(m),
@@ -246,10 +271,31 @@ pub async fn get_provider_usage(provider_id: &str, token: Option<&str>) -> Resul
     }
 }
 
+/// The store a plugin's `getUsage` reads. A plugin that opted in to
+/// multiple credentials gets the named account's scoped store, else the
+/// account in use (so its OAuth reads bind to a real row). A legacy plugin
+/// has one credential: naming one is refused, not silently ignored.
+fn plugin_usage_store(id: &str, multiple: bool, credential_id: Option<&str>) -> Result<CredentialStore, UsageError> {
+    match (credential_id, multiple) {
+        (Some(cid), true) => {
+            if appv3_core::credentials::snapshot().find(id, cid).is_none() {
+                return Err(UsageError::Credentials(format!("Credential '{cid}' not found.")));
+            }
+            Ok(CredentialStore::for_account(id, cid))
+        }
+        (Some(_), false) => Err(UsageError::Rejected(format!("Provider '{id}' does not support per-credential usage; it keeps a single credential."))),
+        (None, true) => Ok(match appv3_providers::pool::active_credential(id) {
+            Some(c) => CredentialStore::for_account(id, &c.id),
+            None => CredentialStore::for_provider(id, HashMap::new()),
+        }),
+        (None, false) => Ok(CredentialStore::for_provider(id, HashMap::new())),
+    }
+}
+
 /// `consume_provider_reset` — codex only.
-pub async fn consume_provider_reset(provider_id: &str) -> Result<Value, UsageError> {
+pub async fn consume_provider_reset(provider_id: &str, credential_id: Option<&str>) -> Result<Value, UsageError> {
     if provider_id == "codex" {
-        let res = appv3_providers::codex::consume_reset(None).await.map_err(oauth_err)?;
+        let res = appv3_providers::codex::consume_reset(None, &slot("codex", credential_id)?).await.map_err(oauth_err)?;
         let mut st = state().lock().unwrap();
         st.cache = None;
         st.last_good.remove(provider_id);
@@ -365,7 +411,7 @@ fn last_good(provider: &str, error: &str) -> Option<Value> {
 }
 
 async fn fetch_item(provider: String, label: String, visible: Vec<String>) -> Value {
-    let res = tokio::time::timeout(ITEM_TIMEOUT, get_provider_usage(&provider, None)).await;
+    let res = tokio::time::timeout(ITEM_TIMEOUT, get_provider_usage(&provider, None, None)).await;
     let err = match res {
         Ok(Ok(u)) => {
             let it = item(&provider, &label, "ok", None, filter_visible(u, &visible));

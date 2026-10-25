@@ -433,4 +433,16 @@ pub trait LlmProvider: Send + Sync {
     }
     async fn chat(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<AssistantMessage>;
     async fn stream(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<ChunkStream>;
+    /// After `err` (a failed request of this provider), skip the credential
+    /// that served it for `cooldown_secs` and move to the next ready one.
+    /// Returns that credential's label; `None` when there is no other ready
+    /// credential (or the provider has a single credential).
+    fn rotate_credential(&self, _err: &ProviderError, _reason: &str, _cooldown_secs: f64) -> Option<String> {
+        None
+    }
+    /// Seconds until a cooling credential of a multi-credential provider
+    /// recovers; `None` when one is ready now or the provider is not pooled.
+    fn credential_recovery_secs(&self) -> Option<f64> {
+        None
+    }
 }

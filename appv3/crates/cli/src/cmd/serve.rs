@@ -108,6 +108,7 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
     crate::net::require_loopback_or_auth(&host, has_auth)?;
     appv3_core::env::load_config_env(&appv3_core::settings().config_dir);
     init_logging(daemon);
+    appv3_providers::credentials_migration::migrate_active();
     if let Some(p) = args.parent_pid {
         start_parent_watch(p);
     }

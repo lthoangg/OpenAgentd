@@ -44,6 +44,7 @@ pub struct PluginInfo {
     pub oauth_command: String,
     pub supports_fast_mode: bool,
     pub supports_prompt_cache_key: bool,
+    pub supports_multiple_credentials: bool,
 }
 
 /// `ProviderBuildContext`.
@@ -74,11 +75,17 @@ pub trait ProviderPlugin: Send + Sync {
     async fn login(&self, _sink: OAuthSink) -> Result<(), String> {
         Ok(())
     }
+    async fn login_for(&self, sink: OAuthSink, _store: CredentialStore) -> Result<(), String> {
+        self.login(sink).await
+    }
     fn has_oauth_callback(&self) -> bool {
         false
     }
     async fn oauth_callback(&self, _code: &str, _sink: OAuthSink) -> Result<(), String> {
         Ok(())
+    }
+    async fn oauth_callback_for(&self, code: &str, sink: OAuthSink, _store: CredentialStore) -> Result<(), String> {
+        self.oauth_callback(code, sink).await
     }
     /// `None` when the plugin defines no `is_configured`.
     fn is_configured(&self, _store: &CredentialStore) -> Option<bool> {
@@ -151,6 +158,7 @@ pub fn catalog_entry(p: &PluginInfo) -> Value {
         "model_registry_aliases": aliases,
         "supports_fast_mode": p.supports_fast_mode,
         "supports_prompt_cache_key": p.supports_prompt_cache_key,
+        "supports_multiple_credentials": p.supports_multiple_credentials,
         "credentials": credential_map(&p.credentials),
     })
 }

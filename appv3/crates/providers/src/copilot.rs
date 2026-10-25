@@ -2,14 +2,14 @@
 //! `usage.py`).
 
 use crate::codex::say;
+use crate::oauth::TokenSlot;
 use crate::openai::{shared_client, CompletionsDialect, CopilotModel, Flavor, OpenAiProvider};
 use crate::plugin::*;
 use crate::types::*;
 use appv3_core::env::os_environ;
-use appv3_core::{settings, VERSION};
+use appv3_core::VERSION;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -47,8 +47,9 @@ fn user_agent() -> String {
     format!("opencode/{VERSION}")
 }
 
-pub fn oauth_path() -> PathBuf {
-    settings().cache_dir.join("copilot_oauth.json")
+/// The Copilot account currently serving requests.
+pub fn oauth_slot() -> TokenSlot {
+    TokenSlot::active("copilot")
 }
 
 // ── enterprise URLs ─────────────────────────────────────────────────────────
@@ -100,8 +101,11 @@ pub struct CopilotAuth {
 }
 
 impl CopilotAuth {
-    pub fn load(path: &Path) -> Option<Self> {
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    pub fn load(slot: &TokenSlot) -> Option<Self> {
+        Self::from_doc(&slot.load()?)
+    }
+
+    pub fn from_doc(v: &Value) -> Option<Self> {
         let github_token = v.get("github_token")?.as_str()?.to_string();
         let enterprise_url = match v.get("enterprise_url") {
             None | Some(Value::Null) => None,
@@ -111,23 +115,40 @@ impl CopilotAuth {
         Some(Self { github_token, enterprise_url: normalize_enterprise_url(enterprise_url.as_deref()) })
     }
 
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    pub fn to_doc(&self) -> Value {
         let mut m = Map::new();
         m.insert("github_token".into(), json!(self.github_token));
         m.insert("enterprise_url".into(), json!(normalize_enterprise_url(self.enterprise_url.as_deref())));
-        appv3_core::secret_files::write_secret_file(path, &(appv3_core::pyjson::dumps_indent(&Value::Object(m), 2) + "\n"))
+        Value::Object(m)
+    }
+
+    pub fn save(&self, slot: &mut TokenSlot) -> std::io::Result<()> {
+        slot.save(self.to_doc(), None)
     }
 }
 
-/// `_resolve_github_token(None)` → `(token, api_base)`: env vars, then the
-/// OAuth file.
-pub fn resolve_github_token() -> Option<(String, String)> {
-    if let Some(tok) = TOKEN_ENV.iter().find_map(|n| os_environ(n).filter(|v| !v.is_empty())) {
-        let ent = ["COPILOT_ENTERPRISE_URL", "GH_ENTERPRISE_URL", "GITHUB_ENTERPRISE_URL"].iter().find_map(|n| os_environ(n).filter(|v| !v.is_empty()));
-        return Some((tok, api_base(ent.as_deref())));
+/// A GitHub token exported in the environment pins Copilot to it.
+pub fn env_github_token() -> Option<(String, String)> {
+    let tok = TOKEN_ENV.iter().find_map(|n| os_environ(n).filter(|v| !v.is_empty()))?;
+    let ent = ["COPILOT_ENTERPRISE_URL", "GH_ENTERPRISE_URL", "GITHUB_ENTERPRISE_URL"].iter().find_map(|n| os_environ(n).filter(|v| !v.is_empty()));
+    Some((tok, api_base(ent.as_deref())))
+}
+
+/// `(token, api_base)` of one stored account (a token pasted as a value, or
+/// the device-login document).
+pub fn slot_github_token(slot: &TokenSlot) -> Option<(String, String)> {
+    if let Some(auth) = CopilotAuth::load(slot) {
+        return Some((auth.github_token.clone(), api_base(auth.enterprise_url.as_deref()))).filter(|(t, _)| !t.is_empty());
     }
-    let auth = CopilotAuth::load(&oauth_path())?;
-    Some((auth.github_token.clone(), api_base(auth.enterprise_url.as_deref()))).filter(|(t, _)| !t.is_empty())
+    let c = appv3_core::credentials::snapshot().find(&slot.provider_id, &slot.credential_id).cloned()?;
+    let tok = ["COPILOT_GITHUB_TOKEN", "GITHUB_COPILOT_TOKEN"].iter().find_map(|n| c.value(n).map(String::from))?;
+    Some((tok, api_base(c.value("COPILOT_ENTERPRISE_URL"))))
+}
+
+/// `_resolve_github_token(None)` → `(token, api_base)`: env vars, then the
+/// account in use.
+pub fn resolve_github_token() -> Option<(String, String)> {
+    env_github_token().or_else(|| slot_github_token(&oauth_slot()))
 }
 
 // ── /models catalog ─────────────────────────────────────────────────────────
@@ -243,7 +264,16 @@ fn py_bool(v: &Value) -> bool {
 
 /// `CopilotProvider(model, model_kwargs)`.
 pub fn build(model: &str, model_kwargs: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
-    let Some((token, base)) = resolve_github_token() else {
+    build_with(model, model_kwargs, resolve_github_token())
+}
+
+/// The provider for one stored account.
+pub fn build_for(model: &str, model_kwargs: Kwargs, slot: &TokenSlot) -> ProviderResult<Arc<dyn LlmProvider>> {
+    build_with(model, model_kwargs, slot_github_token(slot))
+}
+
+fn build_with(model: &str, model_kwargs: Kwargs, resolved: Option<(String, String)>) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let Some((token, base)) = resolved else {
         return Err(ProviderError::Invalid("GitHub token not found.  Run:\n  agentd auth copilot\nOr set COPILOT_GITHUB_TOKEN env var.".into()));
     };
     // Only a cache miss needs the network (and the async helper).
@@ -308,15 +338,15 @@ pub fn model_allowed_for_plan(restricted_to: &[String], plan_type: Option<&str>)
     Some(!allowed.is_disjoint(&values))
 }
 
-fn usage_token() -> Option<String> {
-    match CopilotAuth::load(&oauth_path()) {
-        Some(a) => Some(a.github_token).filter(|t| !t.is_empty()),
-        None => TOKEN_ENV.iter().find_map(|n| os_environ(n).filter(|v| !v.is_empty())),
+fn usage_token(slot: &TokenSlot) -> Option<String> {
+    match slot_github_token(slot) {
+        Some((t, _)) => Some(t),
+        None => env_github_token().map(|(t, _)| t),
     }
 }
 
-async fn usage_payload() -> Result<Map<String, Value>, UsageError> {
-    let Some(token) = usage_token() else { return Err(UsageError::Credentials("Copilot OAuth credentials not found.".into())) };
+async fn usage_payload(slot: &TokenSlot) -> Result<Map<String, Value>, UsageError> {
+    let Some(token) = usage_token(slot) else { return Err(UsageError::Credentials("Copilot OAuth credentials not found.".into())) };
     let url = "https://api.github.com/copilot_internal/user";
     let res: Result<Value, String> = async {
         let r = shared_client()
@@ -352,7 +382,7 @@ fn extract_plan_type(p: &Map<String, Value>) -> Option<String> {
 
 /// `model_plan_type()`.
 pub async fn model_plan_type() -> Option<String> {
-    usage_payload().await.ok().as_ref().and_then(extract_plan_type)
+    usage_payload(&oauth_slot()).await.ok().as_ref().and_then(extract_plan_type)
 }
 
 fn as_number(v: Option<&Value>) -> Option<f64> {
@@ -404,9 +434,14 @@ fn usage_limit(name: &str, data: &Value, plan_type: Option<String>, fallback_res
     })
 }
 
-/// `copilot.usage.get_usage()`.
+/// `copilot.usage.get_usage()` for the account in use.
 pub async fn get_usage() -> Result<Value, UsageError> {
-    Ok(usage_from_payload(&usage_payload().await?))
+    get_usage_for(&oauth_slot()).await
+}
+
+/// Usage of one stored account.
+pub async fn get_usage_for(slot: &TokenSlot) -> Result<Value, UsageError> {
+    Ok(usage_from_payload(&usage_payload(slot).await?))
 }
 
 /// The response-parsing half of `get_usage` (pure).
@@ -537,10 +572,11 @@ async fn poll_for_token(device_code: &str, mut interval: u64, expires_in: u64, s
 }
 
 /// `copilot.oauth.login(event_sink=..., enterprise_url=...)`.
-pub async fn login(sink: Option<OAuthSink>, enterprise_url: Option<&str>) -> Result<(), String> {
+/// `slot` is the account to reconnect, or a new one to add.
+pub async fn login(sink: Option<OAuthSink>, enterprise_url: Option<&str>, slot: TokenSlot) -> Result<(), String> {
     let sink = sink.as_ref();
     let cli = sink.is_none();
-    let path = oauth_path();
+    let mut path = slot;
     let enterprise = normalize_enterprise_url(enterprise_url);
     say(sink, "started", "=== GitHub Copilot Device Login ===\n", json!({}));
     if let Some(existing) = CopilotAuth::load(&path) {
@@ -592,12 +628,12 @@ pub async fn login(sink: Option<OAuthSink>, enterprise_url: Option<&str>) -> Res
             json!({"copilot_access_ok": false}),
         );
     }
-    CopilotAuth { github_token: token, enterprise_url: enterprise.clone() }.save(&path).map_err(|e| e.to_string())?;
+    CopilotAuth { github_token: token, enterprise_url: enterprise.clone() }.save(&mut path).map_err(|e| e.to_string())?;
     say(
         sink,
         "success",
         &format!("Saved to {}. Use model: copilot:gpt-4.1", path.display()),
-        json!({"oauth_path": path.display().to_string(), "suggested_model": "copilot:gpt-4.1", "enterprise_url": enterprise}),
+        json!({"credential_id": path.credential_id, "account_label": path.label(), "suggested_model": "copilot:gpt-4.1", "enterprise_url": enterprise}),
     );
     Ok(())
 }

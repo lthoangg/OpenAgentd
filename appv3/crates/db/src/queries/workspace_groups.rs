@@ -1,6 +1,6 @@
 //! `workspace_groups` / `workspace_group_members` — named tags on repository
 //! paths (v3 only, revision 00000025). Workspaces whose repositories share a
-//! group may message each other (`send_to_workspace`); worktrees use their
+//! group may message each other (`workspace`); worktrees use their
 //! source repository's groups, so members are always repository paths.
 
 use crate::codec::{api_dt, api_uuid, db_id, new_id, now_db};

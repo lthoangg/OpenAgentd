@@ -57,7 +57,62 @@ fn header_pairs(v: Option<&Value>) -> Vec<(String, String)> {
 }
 
 fn credentials_arg(c: &CredentialStore) -> Value {
-    json!({"$oadCredentials": {"providerId": c.provider_id, "overrides": c.overrides()}})
+    json!({"$oadCredentials": {"providerId": c.provider_id, "credentialId": c.credential_id, "overrides": c.overrides(), "pinned": c.pinned_values()}})
+}
+
+fn credentials_from_arg(a: &Value) -> CredentialStore {
+    let values = |key: &str| a.get(key).and_then(|o| o.as_object()).map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect());
+    let provider = a.get("provider").and_then(|p| p.as_str()).unwrap_or("");
+    let id = a.get("credentialId").and_then(|c| c.as_str());
+    let overrides = values("overrides").unwrap_or_default();
+    let mut store = match a.get("pinned").and_then(|p| p.as_object()) {
+        Some(values) => {
+            CredentialStore::for_credential(provider, values.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).with_overrides(overrides)
+        }
+        None => match id {
+            Some(id) => CredentialStore::for_account(provider, id).with_overrides(overrides),
+            None => CredentialStore::for_provider(provider, overrides),
+        },
+    };
+    store.credential_id = id.map(String::from);
+    store
+}
+
+fn oauth_document(a: Value) -> Result<Value, String> {
+    use appv3_core::credentials as store;
+    let provider = a.get("provider").and_then(|p| p.as_str()).ok_or("OAuth storage requires a provider")?;
+    let id = a.get("credentialId").and_then(|p| p.as_str()).ok_or("OAuth storage requires a scoped credential")?;
+    let action = a.get("action").and_then(|p| p.as_str()).unwrap_or("read");
+    if action == "read" {
+        let f = store::load().map_err(|e| e.to_string())?;
+        return f.find(provider, id).map(|c| c.oauth.clone().unwrap_or(Value::Null)).ok_or_else(|| "OAuth account no longer exists".into());
+    }
+    if !matches!(action, "write" | "remove") {
+        return Err("Unknown OAuth storage operation".into());
+    }
+    let document = a.get("document").cloned().unwrap_or(Value::Null);
+    if action == "write" && !document.as_object().is_some_and(|o| !o.is_empty()) {
+        return Err("OAuth tokens must be a nonempty object; use removeOAuth() to revoke an account".into());
+    }
+    let changed = store::update(|f| {
+        let c = f.find_mut(provider, id)?;
+        if let Some(expected) = a.get("expected") {
+            if c.oauth.as_ref().unwrap_or(&Value::Null) != expected {
+                return Some(false);
+            }
+        }
+        c.oauth = (action == "write").then_some(document);
+        if let Some(label) = a.get("label").and_then(|l| l.as_str()).map(str::trim).filter(|l| !l.is_empty()) {
+            c.label = label.to_string();
+        }
+        Some(true)
+    })
+    .map_err(|e| e.to_string())?
+    .ok_or("OAuth account no longer exists")?;
+    if changed && action == "write" {
+        store::clear_cooldown(provider, id);
+    }
+    Ok(json!(changed))
 }
 
 /// Natives the `openagentd` module forwards to this crate.
@@ -68,12 +123,11 @@ pub fn register_natives() {
         register_native(
             "creds.get",
             Arc::new(|a: Value| {
-                let overrides =
-                    a.get("overrides").and_then(|o| o.as_object()).map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
-                let store = CredentialStore::for_provider(a.get("provider").and_then(|p| p.as_str()).unwrap_or(""), overrides);
+                let store = credentials_from_arg(&a);
                 Ok(json!(store.get(a.get("name").and_then(|n| n.as_str()).unwrap_or(""))))
             }),
         );
+        register_native("creds.oauth", Arc::new(oauth_document));
         register_native(
             "gemini.convertMessages",
             Arc::new(|a: Value| {
@@ -128,6 +182,7 @@ fn info_from_json(p: &Value) -> PluginInfo {
         oauth_command: str_field(p, "oauthCommand"),
         supports_fast_mode: bool_field(p, "supportsFastMode", false),
         supports_prompt_cache_key: bool_field(p, "supportsPromptCacheKey", false),
+        supports_multiple_credentials: bool_field(p, "supportsMultipleCredentials", false),
     }
 }
 
@@ -174,7 +229,7 @@ impl JsProviderPlugin {
         self.js.call(&Self::target(), method, args, Mode::Value).await.map(|r| r.value)
     }
 
-    async fn oauth_step(&self, method: &str, first: Option<Value>, sink: OAuthSink) -> Result<(), String> {
+    async fn oauth_step(&self, method: &str, first: Option<Value>, sink: OAuthSink, store: Option<CredentialStore>) -> Result<(), String> {
         let cb = Callback::new(Arc::new(move |args: Vec<Value>| {
             let event = args.first().and_then(|e| e.as_str()).unwrap_or("").to_string();
             let data = args.get(1).cloned().filter(|d| !d.is_null()).unwrap_or_else(|| json!({}));
@@ -183,6 +238,9 @@ impl JsProviderPlugin {
         }));
         let mut args: Vec<Value> = first.into_iter().collect();
         args.push(cb.marker());
+        if let Some(store) = store {
+            args.push(json!({"providerId": store.provider_id, "credentialId": store.credential_id, "credentials": credentials_arg(&store)}));
+        }
         self.call(method, &args).await.map(|_| ()).map_err(|e| e.message)
     }
 }
@@ -197,7 +255,7 @@ impl ProviderPlugin for JsProviderPlugin {
     }
 
     fn build(&self, ctx: BuildContext) -> ProviderResult<Arc<dyn LlmProvider>> {
-        let arg = json!({"providerId": ctx.provider_id, "model": ctx.model, "modelKwargs": ctx.model_kwargs, "credentials": credentials_arg(&ctx.credentials)});
+        let arg = json!({"providerId": ctx.provider_id, "credentialId": ctx.credentials.credential_id, "model": ctx.model, "modelKwargs": ctx.model_kwargs, "credentials": credentials_arg(&ctx.credentials)});
         let r = self.js.call_blocking(&Self::target(), "build", &[arg], Mode::Keep).map_err(provider_error)?;
         Ok(Arc::new(JsProvider::new(self.js.clone(), &self.info.id, r, ctx)?))
     }
@@ -207,7 +265,11 @@ impl ProviderPlugin for JsProviderPlugin {
     }
 
     async fn login(&self, sink: OAuthSink) -> Result<(), String> {
-        self.oauth_step("login", None, sink).await
+        self.oauth_step("login", None, sink, None).await
+    }
+
+    async fn login_for(&self, sink: OAuthSink, store: CredentialStore) -> Result<(), String> {
+        self.oauth_step("login", None, sink, Some(store)).await
     }
 
     fn has_oauth_callback(&self) -> bool {
@@ -215,7 +277,11 @@ impl ProviderPlugin for JsProviderPlugin {
     }
 
     async fn oauth_callback(&self, code: &str, sink: OAuthSink) -> Result<(), String> {
-        self.oauth_step("oauthCallback", Some(json!(code)), sink).await
+        self.oauth_step("oauthCallback", Some(json!(code)), sink, None).await
+    }
+
+    async fn oauth_callback_for(&self, code: &str, sink: OAuthSink, store: CredentialStore) -> Result<(), String> {
+        self.oauth_step("oauthCallback", Some(json!(code)), sink, Some(store)).await
     }
 
     fn is_configured(&self, store: &CredentialStore) -> Option<bool> {

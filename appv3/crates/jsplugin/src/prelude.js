@@ -260,13 +260,18 @@
   function credentials(c) {
     const id = c.providerId;
     const overrides = c.overrides || {};
+    const scope = { provider: id, credentialId: c.credentialId, overrides, pinned: c.pinned };
     const store = {
       providerId: id,
+      credentialId: c.credentialId ?? null,
       get(name, dflt = "") {
-        const v = native("creds.get", { provider: id, overrides, name: String(name) });
+        const v = native("creds.get", { ...scope, name: String(name) });
         return v ? v : dflt;
       },
-      tokenPath: (file) => sync("tokenPath", { provider: id, file: String(file) }),
+      readOAuth: () => native("creds.oauth", { ...scope, action: "read" }),
+      writeOAuth: (document, options = {}) => native("creds.oauth", { ...scope, action: "write", document, ...options }),
+      removeOAuth: (...expected) => native("creds.oauth", { ...scope, action: "remove", ...(expected.length ? { expected: expected[0] } : {}) }),
+      tokenPath: (file) => sync("tokenPath", { provider: id, credentialId: c.credentialId, file: String(file) }),
       readJson(file) {
         const t = sync("readText", { path: store.tokenPath(file) });
         if (t == null) return {};

@@ -131,6 +131,29 @@ describe('CompactionDivider — collapse', () => {
       unmount()
     }
   })
+
+  it('pins the open divider to the top of the transcript while the summary scrolls under it', () => {
+    render(<CompactionDivider state="compacted" summary="Long summary" />)
+    const toggle = screen.getByRole('button', { name: /Session compacted/ })
+    const header = toggle.parentElement as HTMLElement
+    expect(header.className).not.toContain('sticky')
+
+    fireEvent.click(toggle)
+
+    expect(header.className).toContain('sticky')
+  })
+
+  it('closes from a Collapse row at the end of the summary, handing focus back to the divider', () => {
+    render(<CompactionDivider state="compacted" summary="Long summary" />)
+    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
+    const toggle = screen.getByRole('button', { name: /Session compacted/ })
+    fireEvent.click(toggle)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(toggle)
+  })
 })
 
 // ---------------------------------------------------------------------------

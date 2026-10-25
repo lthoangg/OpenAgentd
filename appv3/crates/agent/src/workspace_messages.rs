@@ -1,5 +1,5 @@
 //! Cross-workspace messages (v3 only): a lead sends a user prompt to a
-//! session in another registered workspace (`send_to_workspace`) and, when
+//! session in another registered workspace (`workspace`) and, when
 //! it asks for one, gets that session's final answer back as a report.
 //!
 //! The request row in the target carries `extra.sent_from`; the reply link

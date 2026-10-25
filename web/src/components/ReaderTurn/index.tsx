@@ -6,25 +6,26 @@
  * card), so the fold reads as one more step. Opened, the steps render as
  * they do in the detailed transcript, on a hairline. A long fold stays easy
  * to close: the open row pins to the top of the transcript while its steps
- * scroll under it, and a Collapse row ends the steps.
+ * scroll under it (``useStickyFold``), and a Collapse row ends the steps. An
+ * opened step pins its own header just below the row.
  *
  * While the agent works, the row reads "Working · 1m 12s · Shell: Run web
  * tests": how long the turn has run, then the step taking output (or the
  * counts so far). Only "Working" pulses, so the rest stays easy to read. A
  * turn waiting on the user is not working, so its row shows the counts.
- * Failures are counted only once the row stops working ("… · 1 failed").
  * A compaction divider ends the row before it, which then shows its counts;
  * the steps after the divider get a row of their own.
  *
  * The file list starts closed behind its "N files changed" header, so a turn
- * that touched many files still ends on its answer.
+ * that touched many files still ends on its answer; open, the header pins.
  */
-import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronUp } from 'lucide-react'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { Collapsible } from '@/components/ui/collapsible'
+import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { FileRefContext } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { formatToolLabel, subscribeLiveClock } from '../ToolCall'
@@ -67,17 +68,10 @@ function useLiveNow(active: boolean): number {
   return now
 }
 
-/** The nearest ancestor that scrolls vertically, i.e. the transcript. */
-function scrollContainer(el: HTMLElement): HTMLElement | null {
-  for (let node = el.parentElement; node; node = node.parentElement) {
-    const { overflowY } = getComputedStyle(node)
-    if (overflowY === 'auto' || overflowY === 'scroll') return node
-  }
-  return null
-}
-
 /** Both of the fold's controls; each adds its own text tone. */
 const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40'
+/** The row's height (``ROW_CLASS``: one ``text-xs`` line plus ``py-1``, or ``min-h-9`` on touch), so an opened step pins below it. */
+const BELOW_ROW = '[--fold-top:1.5rem] pointer-coarse:[--fold-top:2.25rem]'
 
 export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children }: {
   /** The folded blocks. */
@@ -90,12 +84,8 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
   currentStep?: ContentBlock | null
   children: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, close, anchorRef: rowRef } = useStickyFold()
   const bodyId = useId()
-  const rowRef = useRef<HTMLButtonElement>(null)
-  // Where the row should sit in the view once the fold closes: where the
-  // control the reader pressed was, so closing never scrolls them elsewhere.
-  const closeAtRef = useRef<number | null>(null)
   const summary = useMemo(() => summarizeWork(blocks), [blocks])
   const detail = workSummaryDetail(summary)
   const now = useLiveNow(live)
@@ -103,30 +93,11 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
   // Memoized so the clock's tick does not re-parse the step's arguments.
   const doing = useMemo(() => (currentStep ? stepLabel(currentStep) : detail), [currentStep, detail])
 
-  const close = (control: HTMLElement) => {
-    closeAtRef.current = control.getBoundingClientRect().top
-    setOpen(false)
-  }
-
-  // Closing drops everything the steps took up, so the reader would land far
-  // below the row; scroll it back to where they pressed, before paint.
-  useLayoutEffect(() => {
-    const top = closeAtRef.current
-    closeAtRef.current = null
-    const row = rowRef.current
-    if (open || top === null || !row) return
-    const transcript = scrollContainer(row)
-    const shift = row.getBoundingClientRect().top - top
-    if (transcript && shift !== 0) transcript.scrollTop += shift
-  }, [open])
-
   return (
     <div className="my-2 min-w-0">
       {/* Open, the row stays pinned while the steps scroll under it, so it can
-          close them from anywhere. The page fill hides what passes beneath;
-          z-11 clears in-block controls (code copy buttons are z-10) and stays
-          under the composer and the overlaid dock (z-20). */}
-      <div className={cn('flex', open && 'sticky top-0 z-11 bg-(--bg-page)')}>
+          close them from anywhere. */}
+      <div className={cn('flex', open && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
         <button
           ref={rowRef}
           type="button"
@@ -142,10 +113,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
               {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}
             </>
           ) : (
-            <>
-              <span className="min-w-0 truncate">{detail || (summary.thought ? 'Thought' : 'Worked')}</span>
-              {summary.failed > 0 && <span className="shrink-0 text-(--color-error)">{` · ${summary.failed} failed`}</span>}
-            </>
+            <span className="min-w-0 truncate">{detail || (summary.thought ? 'Thought' : 'Worked')}</span>
           )}
           <ChevronRight
             size={13}
@@ -155,7 +123,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
         </button>
       </div>
       {open && (
-        <div id={bodyId} className="ml-1 min-w-0 border-l border-(--color-border) pl-3">
+        <div id={bodyId} className={cn('ml-1 min-w-0 border-l border-(--color-border) pl-3', BELOW_ROW)}>
           {children}
           <button
             type="button"
@@ -179,7 +147,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
 /** The files a finished turn edited; each opens its git diff in the review dock. */
 export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] }) {
   const opener = useContext(FileRefContext)
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, close, anchorRef } = useStickyFold()
   const listId = useId()
   if (files.length === 0) return null
   const additions = files.reduce((sum, file) => sum + file.additions, 0)
@@ -188,13 +156,15 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
   const hoverClass = 'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-key:bg-(--bg-key)/60 focus-visible:outline-none'
 
   return (
-    <section aria-label="Files changed this turn" className="my-2 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+    // ``overflow-clip``, not ``hidden``: a clipping scroller would stop the open header pinning.
+    <section aria-label="Files changed this turn" className="my-2 overflow-clip rounded-sm border border-(--color-border) bg-(--bg-card)">
       <button
+        ref={anchorRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={(event) => (open ? close(event.currentTarget) : setOpen(true))}
         aria-expanded={open}
         aria-controls={listId}
-        className={cn('flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-text-2) pointer-coarse:min-h-9', hoverClass)}
+        className={cn('flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-text-2) pointer-coarse:min-h-9', open && cn(PINNED_HEADER, 'bg-(--bg-card)'), hoverClass)}
       >
         <ChevronRight
           size={12}

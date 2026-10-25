@@ -20,8 +20,12 @@ fn provider_key_vars() -> Vec<(String, String)> {
         .collect()
 }
 
-fn env_set(k: &str) -> bool {
-    std::env::var(k).is_ok_and(|v| !v.is_empty())
+/// Where a provider's key comes from: the exported environment or the store.
+fn key_source(provider: &str, var: &str) -> Option<&'static str> {
+    if appv3_core::credentials::env_override(var).is_some() {
+        return Some("environment");
+    }
+    appv3_core::credentials::stored(Some(provider), var).map(|_| "credentials.yaml")
 }
 
 fn md_files(dir: &Path) -> Vec<PathBuf> {
@@ -46,16 +50,20 @@ fn read_lead_provider(agents_dir: &Path) -> Option<String> {
     Some(provider.trim().to_string()).filter(|p| !p.is_empty())
 }
 
-/// Whether the builtin OAuth provider `p` has a login (or copilot a token env var).
-fn oauth_logged_in(p: &str, token_file: &Path) -> bool {
-    token_file.is_file() || (p == "copilot" && appv3_providers::copilot::TOKEN_ENV.iter().any(|k| env_set(k)))
+/// Accounts of the builtin OAuth provider `p` that hold a login (copilot
+/// also counts an exported GitHub token).
+fn oauth_accounts(p: &str) -> usize {
+    let stored = appv3_core::credentials::snapshot().enabled(p).iter().filter(|c| c.has_secret()).count();
+    stored + usize::from(p == "copilot" && appv3_providers::copilot::env_github_token().is_some())
 }
 
 pub fn doctor() -> Result<ExitCode> {
-    // Provider keys saved in Settings → Providers live in the config `.env`.
+    // Non-secret settings may still come from a dotenv file; provider keys
+    // live in credentials.yaml.
     appv3_core::env::init_env();
     let s = appv3_core::settings();
     appv3_core::env::load_config_env(&s.config_dir);
+    crate::cmd::auth::migrate_first();
 
     println!();
     println!("  {}  {}", bold(&cyan("agentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));
@@ -63,26 +71,47 @@ pub fn doctor() -> Result<ExitCode> {
     let mut checks = Checks::default();
 
     // Provider credentials.
+    match appv3_core::credentials::load() {
+        Ok(f) => {
+            let n: usize = f.providers.values().map(Vec::len).sum();
+            if n > 0 || appv3_core::credentials::path().exists() {
+                checks.ok(&format!("Credentials: {}  ({n} stored)", tilde(&appv3_core::credentials::path())));
+            }
+        }
+        Err(e) => checks.fail(&format!("{e}")),
+    }
+    let ignored = appv3_providers::credentials_migration::ignored_dotenv_credentials();
+    if !ignored.is_empty() {
+        checks.warn(&format!("Ignored provider keys from a .env file: {}", ignored.join(", ")));
+        println!("     {}", dim("Add them in Settings → Providers, or run `agentd credentials import <file>`"));
+    }
     let key_vars = provider_key_vars();
     let lead = read_lead_provider(&s.agents_dir);
-    let found: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).chain(["VERTEXAI_API_KEY"]).filter(|k| env_set(k)).collect();
-    let lead_oauth = lead.as_deref().and_then(|p| appv3_providers::oauth::oauth_path(p).map(|f| (p, f)));
-    let lead_keyless = lead.as_deref().is_some_and(|p| KEYLESS_PROVIDERS.contains(&p));
-    for k in &found {
-        checks.ok(&format!("API key: {k}"));
+    let mut found: Vec<&str> = vec![];
+    for (id, var) in key_vars.iter().map(|(p, v)| (p.as_str(), v.as_str())).chain([("vertexai", "VERTEXAI_API_KEY")]) {
+        if let Some(src) = key_source(id, var) {
+            let n = appv3_core::credentials::snapshot().enabled(id).len();
+            let more = if src == "credentials.yaml" && n > 1 { format!(", {n} keys") } else { String::new() };
+            checks.ok(&format!("API key: {var}  ({src}{more})"));
+            found.push(var);
+        }
     }
+    let lead_oauth = lead.as_deref().filter(|p| appv3_providers::oauth::is_builtin(p));
+    let lead_keyless = lead.as_deref().is_some_and(|p| KEYLESS_PROVIDERS.contains(&p));
     if found.is_empty() && lead_oauth.is_none() && !lead_keyless {
         if lead.is_none() {
             checks.warn("No agents configured — cannot verify provider credentials");
         } else {
             checks.fail("No LLM provider API key configured");
             let names: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).collect();
-            println!("     {}", dim(&format!("Set one of: {}", names.join(", "))));
+            println!("     {}", dim(&format!("Add one in Settings → Providers, or export one of: {}", names.join(", "))));
         }
     }
-    if let Some((p, token_file)) = lead_oauth {
-        if oauth_logged_in(p, &token_file) {
-            checks.ok(&format!("Lead agent provider '{p}' is logged in"));
+    if let Some(p) = lead_oauth {
+        let n = oauth_accounts(p);
+        if n > 0 {
+            let more = if n > 1 { format!(" ({n} accounts)") } else { String::new() };
+            checks.ok(&format!("Lead agent provider '{p}' is logged in{more}"));
         } else {
             checks.fail(&format!("Lead agent provider '{p}' is not logged in — run `agentd auth {p}`"));
         }

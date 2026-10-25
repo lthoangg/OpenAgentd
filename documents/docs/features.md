@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-24
+updated: 2026-10-25
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.29.0 · October 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.29.0)
+**Latest release:** v3.30.0 · October 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.30.0)
 
 ---
 
@@ -833,18 +833,32 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette, which also finds it as "compact" or "transcript"). Each turn reads
   as its answer:
   - The thinking, every tool call, and the narration between them fold into
-    one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
-    counted; while the turn runs it names the current step ("Working ·
+    one row such as "6 reads, 3 searches, 4 commands, 2 edits"; while the
+    turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
     transcript.
     Since `[v3.1.0]` the running row also says how long the turn has run,
     counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
-    leaves failures for the finished row to count, and a turn waiting on
-    your answer shows its counts instead of "Working".
+    and a turn waiting on your answer shows its counts instead of "Working".
+    Since `[v3.30.0]` the row no longer counts failures (a failed step still
+    shows red once the row is open), and every built-in tool counts under a
+    named group instead of "other": skills count as reads, MCP tool searches
+    as searches, and there are plan updates (`plan`, `submit_plan`, `todo`,
+    `schedule`), questions, delegations (`team`, `workspace`), preview
+    actions, MCP calls, and generations. "Other" is left for plugin and MCP
+    server tools, and tools saved under a former name count with their
+    current one.
   - An open row stays pinned to the top of the transcript while its steps
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row
     where you pressed it.
+    Since `[v3.30.0]` the rest of the transcript works the same way: an
+    opened tool call pins its header (inside an open row, just below it), an
+    opened compaction summary pins its divider and ends in a **Collapse**
+    row, an expanded long prompt keeps its collapse button in view, an
+    expanded subagent report pins its header with a minimize button, and the
+    open "N files changed" list pins its header. Each closes where you
+    pressed it. This applies in the detailed transcript too.
   - A question waiting on the user, interactive MCP apps, errors, and
     compaction dividers stay in place; once answered or closed, a question
     folds in with the rest of the work.
@@ -880,7 +894,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     the composer: unread steers, then held messages `[v3.4.0]`. A steer the
     agent read first stays in the transcript. A steer with files sent from
     another window stays with the agent and goes out ahead of the next
-    message.
+    message. Reports from members, and messages from another workspace's
+    agent, are never handed back: a member's report waiting for a busy lead
+    stays out of the queue and appears as "Report from …" once the lead
+    reads it or the turn is stopped `[v3.30.0]`.
   - Limits: held messages live only in this window and are lost on reload.
     A steer sent late still goes out before an earlier held message. Steers
     read together run with the model and thinking level of the last one
@@ -1017,6 +1034,21 @@ executes tools, manages its task list, and inspects workspace repositories.
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
   A lead stays loaded while its subagents work, so a job longer than 30 minutes
   still reports back instead of being cancelled when the idle lead was unloaded `[v3.24.0]`.
+- **Lead control over its subagents** `[v3.30.0]` — `team` takes an `action`:
+  `interrupt` cuts one subagent's current step short and starts it on a new task at
+  once, `stop` ends one subagent's work without a report (a later task resumes it with
+  its context), and `list` shows each subagent's status. Calls without an `action`
+  spawn or send as before; a follow-up sent to a busy subagent now says it waits for
+  the subagent's current work. A subagent that fails tells the lead the real reason
+  (e.g. "Provider Authentication Failed: …") and whether retrying can help, instead
+  of "Subagent turn failed with error." One that can't reach its model (out of quota,
+  or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
+  Stopped subagents show as `stopped` rather than `error`.
+- **Shorter tool names** `[v3.30.0]` — `schedule_task`, `send_to_workspace`,
+  `delegate` and `todo_manage` are now `schedule`, `workspace`, `team` and `todo`,
+  with the same arguments. A session from before the rename that calls a former
+  name is told the new one ("Did you mean 'team'?"); agent files that list a
+  former name are left as they are; old transcripts render as before.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or
@@ -1152,7 +1184,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0, updated v2.22.0, v2.23.0]` — when an
+- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0, updated v2.22.0, v2.23.0, v3.30.0]` — when an
   OAuth provider (such as Codex, GitHub Copilot, or Grok) or any configured
   model hits rate-limiting or quota exhaustion with a known reset window
   (detected via headers, JSON metadata, body text phrasing, or live usage API
@@ -1163,7 +1195,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   the window resets. Stale quota-wait banners are cleared when turns resume,
   when later transcript activity supersedes the wait state, or when a reopened
   session is no longer actively waiting. The user can manually stop or
-  interrupt at any time.
+  interrupt at any time. An account spend cap (such as Anthropic's monthly
+  spend limit) is not waited out: the turn fails at once and says to raise
+  the limit or switch model `[v3.30.0]`.
+  With several keys or accounts for the provider, a limit first switches to
+  the next one; the wait (for the earliest reset of any of them) and the
+  spend-cap failure apply only once every credential is unavailable `[v3.30.0]`.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
   responses (400/401/403/404/422) are classified into typed errors that carry
   the provider's own explanation instead of a bare status code. 401/403 render
@@ -1201,6 +1238,10 @@ executes tools, manages its task list, and inspects workspace repositories.
   field is never committed `[v1.125.0]`. To fall back to the agent's default,
   pick it from the model list like any other model — the dedicated
   `Use agent default` reset button was removed `[v1.126.1]`.
+  Changing the agent's default model, thinking level, prompt or tools in
+  Settings while a session runs no longer switches that run: member reports,
+  queued steers and answered questions continue on the config the run started
+  with, and the edit applies from the user's next message `[v3.30.0]`.
 - **Coding agent profile** `[since v1.0, updated v2.1.0]` — `agents/code.md` is the
  root profile tuned for workspace-aware coding sessions.
 - **Built-in first-party agent profile** `[v1.23.0, v1.118.0, v2.14.0]` — the default `code`
@@ -1333,6 +1374,10 @@ agent against it.
     workspace. From a dev-server tab the file opens in its own Preview tab; a
     path that is not a workspace file shows an error in place (start with `/`
     for a page on the dev server). The "Nothing is running" page says so.
+    Local HTTP(S) links in workspace chat responses open in Preview instead
+    of a browser tab, including `localhost`, `127.x.x.x`, and `::1` targets
+    `[v3.29.0]`. The link menu's **Open link** does the same; public web links
+    and clients without Preview keep their existing browser behavior.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move
@@ -1816,12 +1861,36 @@ agnostic by design.
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
   on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  With several accounts, each account row has its own **Remove** instead
+  (`DELETE /api/auth/{provider}?credential_id=…`) `[v3.30.0]`.
   A **Hidden** status filter chip lists only hidden providers; they no longer
   count under **Connected** or the header's connected total `[v3.29.0]`.
   A provider that loses its connection (API key deleted, OAuth session revoked or
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
+- **Several keys and accounts per provider, with automatic switching** `[v3.30.0]` —
+  Settings → Providers keeps an ordered list of API keys for each API-key
+  provider (OpenAI, Anthropic, OpenRouter, …) and of OAuth accounts for Codex,
+  GitHub Copilot, and Grok. Each row shows a masked key hint or account name and
+  its state (In use, Ready, Cooling down with a reset countdown, Reconnect
+  required, Disabled), and can be renamed, moved up or down (buttons, not
+  drag-only), disabled, reconnected, or removed without touching the others;
+  OAuth rows open that account's usage. When the credential in use hits a rate
+  limit or quota (429), a spend limit or 402, or is rejected (401/403 after an
+  OAuth refresh), the same turn continues on the next ready credential with the
+  same model, and the transcript notes the switch. Selection is sticky: it stays
+  on the new credential until that one fails. Reordering the list switches to
+  the new first ready credential at once. Cooldowns are shared by every
+  session and subagent, and title and summary calls skip cooling credentials.
+  Only when every credential is cooling down does the agent wait for the
+  earliest reset. Keys in one organization often share limits, so extra keys
+  don't always add quota. A key exported in the server's environment pins the
+  provider and shows as a read-only "From environment" row. Bedrock and
+  Vertex AI keep a single credential. Provider plugins keep one too, unless
+  they opt in with `supportsMultipleCredentials: true`; they then get the same
+  account list, switching, and cooldowns, with per-account OAuth tokens kept in
+  `credentials.yaml` `[v3.30.0]`.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or
@@ -1868,10 +1937,10 @@ MCP.
 | Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`; read-only in Plan mode `[v2.17.0]`) |
 | Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
-| Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
-| Tasks | `todo_manage` |
-| Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
-| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Workspaces can turn it off) `[v3.9.0]` |
+| Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]` |
+| Tasks | `todo` (`todo_manage` before v3.30.0) |
+| Team orchestration | `team` (lead agent; `delegate` before v3.30.0) `[v2.16.0]` |
+| Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
@@ -2122,8 +2191,10 @@ Four orthogonal ways to add capability.
     every server's tools (named `<server>_<tool>`) with their full schemas on
     each turn. It gets a single `mcp` tool: `search` finds tools by keywords and
     returns their input schemas, and `call` runs one by server, tool and
-    arguments. Its description lists each server with its tool names (counts
-    only once there are many) or its state. Adding servers no longer grows every
+    arguments. Its description names the enabled servers only `[v3.30.0]`: a
+    server starting, connecting, needing sign-in or failing no longer changes it
+    and breaks the prompt cache (`search` and `call` report a server's state when
+    it matters). Adding servers no longer grows every
     request, server tools can't clash with built-in tool names, and a server
     that finishes starting or reconnects is usable at once. In Plan mode the
     agent can search, and call tools the server marks read-only
@@ -2131,7 +2202,9 @@ Four orthogonal ways to add capability.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be
-    referenced instead of written in plain text.
+    referenced instead of written in plain text. Values saved from the MCP
+    form (OAuth client secrets) live under `secrets:` in `credentials.yaml`;
+    an exported environment variable of the same name wins `[v3.30.0]`.
   - **Markdown-rendered tool descriptions in Session Settings** `[v1.96.0]` —
     tool descriptions in the Session Settings tools panel now render as structured
     markdown (bullet lists, inline code, bold/italic, paragraph breaks) instead of
@@ -2249,6 +2322,17 @@ Single-user trust model. The host is trusted. The operator is the user.
   or saved from Settings (including MCP secrets). `printenv` cannot get around
   the `**/.env` read denial. Variables the user exported before starting the
   server still pass through.
+- **`credentials.yaml` secret store** `[v3.30.0]` — every saved API key, OAuth
+  login, and MCP client secret lives in one versioned `credentials.yaml` in the
+  config dir, written atomically under a file lock with owner-only (`0600`)
+  permissions. The server no longer loads secrets into its process environment.
+  On first start, keys from the config dir's `.env` and the old OAuth token
+  files in the cache dir move into it; the originals are kept (`.env` as
+  `.env.migrated`). Provider keys still in a `.env` afterwards are ignored, and
+  `agentd doctor` warns about them. Non-secret settings in `.env` keep loading. A
+  malformed store is an error, never read as empty. Agent file tools and shell
+  commands are denied the store, its lock, and the backup. It is plaintext, so
+  shell tools running as the user could still read it outside those checks.
 
 ---
 
@@ -2450,6 +2534,12 @@ Desktop is primary. CLI / server is the developer path.
   OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
   `agentd auth logout <provider>` deletes the saved login.
   `agentd auth <provider>` still logs in.
+  `agentd auth <provider> --add` signs in another account and
+  `--account <name|id>` reconnects one; `agentd auth logout <provider>
+  --account <name|id>` removes only that account. `agentd credentials list`
+  shows stored keys and accounts without their values, and `agentd credentials
+  import <dotenv>` copies provider keys from a dotenv file such as a project's
+  `.env` `[v3.30.0]`.
 - **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
   (including keys saved in Settings → Providers and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
@@ -2476,7 +2566,9 @@ Desktop is primary. CLI / server is the developer path.
   `.tar.gz` archive. `agentd transfer import <archive>` unpacks it on the target
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
-  channels. Imports resolve every destination inside the config root and reject
+  channels. `credentials.yaml` is left out unless `--include-secrets` is
+  passed and is written owner-only on import; an older archive's `.env` keys
+  are moved into the store on import `[v3.30.0]`. Imports resolve every destination inside the config root and reject
   traversal through pre-existing symlinks `[v1.103.0]`. DB and session
   workspaces are intentionally excluded.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice

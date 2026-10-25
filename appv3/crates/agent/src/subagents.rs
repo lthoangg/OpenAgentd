@@ -1,22 +1,30 @@
 //! Subagent coordination — port of `app/services/subagent_service.py`
-//! (the paths reachable from `delegate`, session callbacks and the API).
+//! (the paths reachable from `team`, session callbacks and the API).
 
 use crate::agent::Agent;
 use crate::broadcaster;
-use crate::events::Envelope;
+use crate::events::{Envelope, ProviderStatus};
+use crate::hooks::{AgentState, Hook, RunContext};
 use crate::loader::{self, ProviderFactory, DEFAULT_NEW_USER_MODEL};
 use crate::session::{AgentSession, UserMessage};
 use crate::stream_store::store;
 use appv3_core::settings::settings;
 use appv3_db::{self as db, DbPool};
-use appv3_providers::Kwargs;
+use appv3_providers::{AssistantMessage, Kwargs};
 use appv3_tools::ToolRef;
+use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 pub const MAX_CONCURRENT_MEMBERS: usize = 20;
 pub const MAX_SUBAGENT_OUTPUT_CHARS: usize = 32_000;
+/// A member that has failed to reach its model for this long tells its lead
+/// once, so the lead can go on without it instead of waiting in silence.
+pub const STALL_NOTICE_AFTER: Duration = Duration::from_secs(120);
+/// How long `interrupt` waits for the member's current step to wind down.
+const INTERRUPT_SETTLE: Duration = Duration::from_secs(15);
 
 #[derive(Debug, thiserror::Error)]
 pub enum SubagentError {
@@ -44,6 +52,31 @@ pub struct SubagentInstance {
     pub question_delivered: bool,
     pub result_delivered: bool,
     pub pending_tool_call_id: Option<String>,
+    /// Why the member can't reach its model right now (it keeps retrying).
+    pub stall: Option<String>,
+    /// When its current work started (spawn, or the last message sent to it).
+    pub working_since: Option<std::time::Instant>,
+}
+
+impl SubagentInstance {
+    pub fn new(handle: &str, profile: &str, lead: &str, session_id: &str, session: Arc<AgentSession>, status: &str) -> Self {
+        Self {
+            handle: handle.into(),
+            profile_name: profile.into(),
+            lead_session_id: lead.into(),
+            session_id: session_id.into(),
+            session,
+            status: status.into(),
+            last_result: None,
+            pending_lead_question: None,
+            last_error: None,
+            question_delivered: false,
+            result_delivered: false,
+            pending_tool_call_id: None,
+            stall: None,
+            working_since: (status == "working").then(std::time::Instant::now),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -211,7 +244,7 @@ fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();
     for n in allowed {
-        if matches!(n.as_str(), "ask_user" | "delegate" | "schedule_task") {
+        if matches!(n.as_str(), "ask_user" | "team" | "schedule") {
             continue;
         }
         if !matches!(n.as_str(), "read" | "glob" | "grep" | "patch" | "shell" | "web_search" | "web_fetch") {
@@ -320,23 +353,7 @@ pub async fn spawn_subagent(
     .map_err(err)?;
     {
         let mut r = reg().lock().unwrap();
-        r.live.entry(lead.to_string()).or_default().insert(
-            handle.clone(),
-            SubagentInstance {
-                handle: handle.clone(),
-                profile_name: profile.to_string(),
-                lead_session_id: lead.to_string(),
-                session_id: child_sid.clone(),
-                session: child.clone(),
-                status: "working".into(),
-                last_result: None,
-                pending_lead_question: None,
-                last_error: None,
-                question_delivered: false,
-                result_delivered: false,
-                pending_tool_call_id: None,
-            },
-        );
+        r.live.entry(lead.to_string()).or_default().insert(handle.clone(), SubagentInstance::new(&handle, profile, lead, &child_sid, child.clone(), "working"));
         let order = r.order.entry(lead.to_string()).or_default();
         if !order.contains(&handle) {
             order.push(handle.clone());
@@ -375,6 +392,9 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
         i.status = "working".into();
         i.question_delivered = false;
         i.result_delivered = false;
+        i.last_error = None;
+        i.stall = None;
+        i.working_since = Some(std::time::Instant::now());
         if waiting {
             i.pending_lead_question = None;
         }
@@ -387,13 +407,227 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
             db::insert_raw_tool_message(pool, &child_sid, &format!("Lead answered: {message}"), &t, "ask_lead").await.map_err(|e| SubagentError::General(e.to_string()))?;
         }
         inst_session.resume_after_question_answer().await;
-    } else if let Err(e) =
-        inst_session.handle_user_message(UserMessage { content: format!("[Lead]: {message}"), session_id: child_sid.clone(), origin: "agent".into(), ..Default::default() }).await
-    {
+        return Ok(json!({"status": "sent", "member_id": handle, "message": format!("Message delivered to '{handle}' in background.")}));
+    }
+    let content = format!("[Lead]: {message}");
+    let _g = inst_session.user_message_lock.lock().await;
+    // A member still working reads the follow-up when its turn ends. Starting
+    // a turn beside it left one of the two running unseen: the session read
+    // idle once the other ended, so Stop and deleting the lead skipped it.
+    let queued = inst_session.has_active_user_turn();
+    if queued {
+        db::save_queued_user_message(pool, &child_sid, &content, None).await.map_err(|e| SubagentError::General(e.to_string()))?;
+        // The turn may have ended between the check and the save.
+        if !inst_session.has_active_user_turn() {
+            inst_session.activate_queued_user_messages(&child_sid).await;
+        }
+    } else if let Err(e) = inst_session.handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), ..Default::default() }).await {
         mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
         return Err(SubagentError::General(e.to_string()));
     }
-    Ok(json!({"status": "sent", "member_id": handle, "message": format!("Message delivered to '{handle}' in background.")}))
+    Ok(json!({"status": "sent", "member_id": handle, "queued": queued, "message": format!("Message delivered to '{handle}' in background.")}))
+}
+
+/// Stop one member's turn. It sends no report, and keeps its conversation:
+/// the next message sent to it resumes with full context.
+pub async fn stop_subagent(lead: &str, member_id: &str) -> Result<Value, SubagentError> {
+    let handle = resolve_instance(lead, member_id)?;
+    let (session, child, status) = with_instance(lead, &handle, |i| (i.session.clone(), i.session_id.clone(), i.status.clone()))
+        .ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
+    let ran = session.handle_stop().await;
+    let active = ran || status == "working" || status == "waiting_lead";
+    if !ran && status == "waiting_lead" {
+        // Its turn stayed open while it waited on `ask_lead`; nothing else
+        // will close it now, so clients would keep showing it running.
+        store().push_event(&child, &Envelope::from_parts("done", json!({})), true);
+        store().mark_done(&child);
+        broadcaster::publish("session_turn_completed", json!({"session_id": child, "status": "stopped", "parent_session_id": lead}));
+    }
+    with_instance(lead, &handle, |i| {
+        if active {
+            i.status = "stopped".into();
+        }
+        i.stall = None;
+        i.working_since = None;
+        i.pending_lead_question = None;
+    });
+    if active {
+        publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "stopped"}));
+    }
+    tracing::info!("subagent_stopped lead={} handle={} was_running={}", lead, handle, active);
+    Ok(json!({"status": if active { "stopped" } else { status.as_str() }, "member_id": handle, "was_running": active}))
+}
+
+/// Cut a member's current step short and start it on `message` at once. The
+/// interrupted turn sends no report; the new message's turn does. A member
+/// waiting on `ask_lead` takes `message` as the answer.
+pub async fn interrupt_subagent(lead: &str, member_id: &str, message: &str, pool: &DbPool) -> Result<Value, SubagentError> {
+    let handle = resolve_instance(lead, member_id)?;
+    let (session, waiting) =
+        with_instance(lead, &handle, |i| (i.session.clone(), i.status == "waiting_lead")).ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
+    if waiting {
+        return send_subagent_message(lead, &handle, message, pool).await;
+    }
+    let ran = session.handle_stop().await;
+    if !session.wait_for_stop(INTERRUPT_SETTLE).await {
+        return Err(SubagentError::General(format!("'{handle}' is still winding down its interrupted step. Try again in a moment.")));
+    }
+    let mut out = send_subagent_message(lead, &handle, message, pool).await?;
+    out["interrupted"] = json!(ran);
+    tracing::info!("subagent_interrupted lead={} handle={} was_running={}", lead, handle, ran);
+    Ok(out)
+}
+
+/// Whether running the failed turn again could succeed, from its error code.
+fn retry_may_help(code: &str) -> Option<bool> {
+    match code {
+        "provider_rate_limit" | "provider_connection_failed" | "agent_execution_failed" => Some(true),
+        "provider_auth_failed" | "agent_not_configured" | "model_refusal" | "provider_request_failed" => Some(false),
+        _ => None,
+    }
+}
+
+/// What the lead reads when a member's turn fails: the reason, and what it
+/// can do next. `error` is the turn's `format_agent_error`; `fallback` the
+/// reason recorded without one (a turn that was refused before it ran).
+pub fn failure_report(handle: &str, error: Option<&Value>, fallback: Option<&str>) -> String {
+    let text = |k: &str| error.and_then(|e| e.get(k)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let message = text("message").or(fallback.map(str::trim).filter(|s| !s.is_empty())).unwrap_or("its turn failed with an unknown error");
+    let reason = match text("title") {
+        Some(t) => format!("{t}: {}", message.trim_end_matches('.')),
+        None => message.trim_end_matches('.').to_string(),
+    };
+    let next = match text("code").and_then(retry_may_help) {
+        Some(true) => format!("Retrying may help: team(target='{handle}', task='continue'). Or give the task to another profile, or do it yourself."),
+        Some(false) => "Retrying won't help until its model or provider is fixed. Give the task to another profile, or do it yourself.".to_string(),
+        None => format!("Retry it with team(target='{handle}', task='continue'), give the task to another profile, or do it yourself."),
+    };
+    format!("{handle} failed: {reason}. Its work so far is kept in its session. {next}")
+}
+
+/// Tracks one member turn's failed model calls, and says when its lead
+/// should hear about it: once per stall, at its first quota wait or once
+/// retries have gone on for [`STALL_NOTICE_AFTER`].
+#[derive(Default)]
+pub struct StallWatch {
+    since: Option<tokio::time::Instant>,
+    notified: bool,
+}
+
+impl StallWatch {
+    /// A retry was announced; `Some(reason)` when the lead should be told now.
+    pub fn on_retry(&mut self, info: &ProviderStatus, now: tokio::time::Instant) -> Option<String> {
+        let model = info.model.as_deref().filter(|m| !m.is_empty()).unwrap_or("its model");
+        let reason = match info.status.as_str() {
+            "waiting_quota" => {
+                let wait = info.delay_seconds.map(crate::retry::format_duration).unwrap_or_else(|| "a while".into());
+                format!("{model} is out of quota, and it is waiting {wait} for the reset")
+            }
+            "retrying" => {
+                let since = *self.since.get_or_insert(now);
+                if now.duration_since(since) < STALL_NOTICE_AFTER {
+                    return None;
+                }
+                let cause = match (info.status_code, info.error_type.as_deref()) {
+                    (Some(c), _) => format!("HTTP {c}"),
+                    (None, Some(t)) if !t.is_empty() => t.to_string(),
+                    _ => "no response".into(),
+                };
+                let mins = now.duration_since(since).as_secs().div_ceil(60);
+                format!("it has not reached {model} for {mins} min ({cause})")
+            }
+            _ => return None,
+        };
+        self.since.get_or_insert(now);
+        if std::mem::replace(&mut self.notified, true) {
+            return None;
+        }
+        Some(reason)
+    }
+
+    /// A model call went through: any stall is over. `true` when one was on.
+    pub fn on_progress(&mut self) -> bool {
+        self.notified = false;
+        self.since.take().is_some()
+    }
+}
+
+/// The notice a stalled member sends its lead.
+pub fn stall_notice(handle: &str, reason: &str) -> String {
+    format!(
+        "{handle} is stalled: {reason}. It keeps trying on its own, and its report will follow if it recovers. To go on without it, stop it with team(action='stop', target='{handle}')."
+    )
+}
+
+/// Watches a member's model calls and tells its lead when it stalls.
+pub struct MemberStallHook {
+    pub lead: String,
+    pub handle: String,
+    pub pool: DbPool,
+    watch: Mutex<StallWatch>,
+}
+
+impl MemberStallHook {
+    pub fn new(lead: &str, handle: &str, pool: DbPool) -> Self {
+        Self { lead: lead.into(), handle: handle.into(), pool, watch: Mutex::default() }
+    }
+}
+
+#[async_trait]
+impl Hook for MemberStallHook {
+    async fn on_provider_retry(&self, _ctx: &RunContext, info: &ProviderStatus) {
+        let now = tokio::time::Instant::now();
+        let Some(reason) = self.watch.lock().unwrap().on_retry(info, now) else { return };
+        with_instance(&self.lead, &self.handle, |i| i.stall = Some(reason.clone()));
+        tracing::warn!("subagent_stalled lead={} handle={} reason={}", self.lead, self.handle, reason);
+        if let Err(e) = deliver_message_to_lead(&self.lead, &self.handle, &stall_notice(&self.handle, &reason), &self.pool).await {
+            tracing::warn!("Failed to deliver subagent stall notice to lead: {}", e);
+        }
+    }
+
+    async fn after_model(&self, _ctx: &RunContext, _state: &mut AgentState, _resp: &mut AssistantMessage) {
+        if self.watch.lock().unwrap().on_progress() {
+            with_instance(&self.lead, &self.handle, |i| i.stall = None);
+        }
+    }
+}
+
+/// One line per member the lead can address, for `team(action='list')`.
+pub fn describe_subagents(lead: &str) -> String {
+    let r = reg().lock().unwrap();
+    let Some(live) = r.live.get(lead).filter(|m| !m.is_empty()) else {
+        return "No subagents yet.".into();
+    };
+    let order = r.order.get(lead).cloned().unwrap_or_default();
+    let handles = order.iter().filter(|h| live.contains_key(*h)).chain(live.keys().filter(|h| !order.contains(h)));
+    let lines: Vec<String> = handles
+        .filter_map(|h| live.get(h))
+        .map(|i| {
+            let state = match i.status.as_str() {
+                "working" => {
+                    let since = i.working_since.map(|t| format!(" for {}", crate::retry::format_duration(t.elapsed().as_secs_f64()))).unwrap_or_default();
+                    match &i.stall {
+                        Some(s) => format!("working{since}, stalled: {s}"),
+                        None => format!("working{since}"),
+                    }
+                }
+                "waiting_lead" => {
+                    let q = i.pending_lead_question.as_ref().and_then(|q| q.get("question")).and_then(Value::as_str).unwrap_or("");
+                    if q.is_empty() {
+                        "waiting for your answer".to_string()
+                    } else {
+                        format!("waiting for your answer: {q}")
+                    }
+                }
+                "error" => format!("failed: {}", i.last_error.as_deref().filter(|e| !e.is_empty()).unwrap_or("unknown error")),
+                "stopped" => "stopped (send it a task to resume)".to_string(),
+                "completed" => "done (report delivered)".to_string(),
+                other => other.to_string(),
+            };
+            format!("- {}: {state}", i.handle)
+        })
+        .collect();
+    lines.join("\n")
 }
 
 /// `deliver_message_to_lead`.
@@ -430,11 +664,28 @@ pub async fn deliver_agent_message(lead: &str, content: &str, extra: serde_json:
 }
 
 /// `on_subagent_turn_completed`.
+///
+/// `error` is the failed turn's `format_agent_error`, so the lead learns
+/// why its member failed, not just that it did.
 #[allow(clippy::too_many_arguments)]
-pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, workspace: &str, handle: &str, pool: &DbPool, cancelled: bool) {
-    let st = if status == "completed" { "completed" } else { "error" };
+pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, workspace: &str, handle: &str, pool: &DbPool, cancelled: bool, error: Option<&Value>) {
+    // A stopped turn reports nothing; the member keeps its conversation.
+    let st = if cancelled {
+        "stopped"
+    } else if status == "completed" {
+        "completed"
+    } else {
+        "error"
+    };
     let inst = find_by_session(lead, child, |i| {
         i.status = st.into();
+        i.stall = None;
+        i.working_since = None;
+        if st == "error" {
+            if let Some(m) = error.and_then(|e| e.get("message")).and_then(Value::as_str).filter(|m| !m.is_empty()) {
+                i.last_error = Some(m.to_string());
+            }
+        }
         i.clone()
     });
     let effective_handle = match &inst {
@@ -445,11 +696,6 @@ pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, w
     publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": effective_handle, "status": st, "workspace": workspace}));
     if cancelled {
         return;
-    }
-    if let Some(i) = &inst {
-        if i.status == "stopped" || i.status == "cancelled" || i.last_error.as_deref() == Some("Stopped by lead") {
-            return;
-        }
     }
     let output = if status == "completed" {
         // Read this turn's answer from the newest assistant row. `last_result`
@@ -463,9 +709,8 @@ pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, w
         });
         out
     } else {
-        let e = inst.as_ref().and_then(|i| i.last_error.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "Subagent turn failed with error.".into());
         find_by_session(lead, child, |i| i.result_delivered = true);
-        format!("Subagent '{effective_handle}' encountered an error: {e}")
+        failure_report(&effective_handle, error, inst.as_ref().and_then(|i| i.last_error.as_deref()))
     };
     let deliverable = prune_subagent_output(&output, child, MAX_SUBAGENT_OUTPUT_CHARS);
     if let Err(e) = deliver_message_to_lead(lead, &effective_handle, &deliverable, pool).await {
@@ -489,7 +734,7 @@ pub async fn on_subagent_question_asked(lead: &str, child: &str, data: &Value, p
     let q = data.get("question").map(crate::pystr::py_str).unwrap_or_default();
     let opts: Vec<String> = data.get("options").and_then(|o| o.as_array()).map(|a| a.iter().map(crate::pystr::py_str).collect()).unwrap_or_default();
     let opts_text = if opts.is_empty() { String::new() } else { format!(" (Options: {})", opts.join(", ")) };
-    let content = format!("Question from {handle}: {q}{opts_text}\nTo reply, call delegate(profile='{profile}', target='{handle}', task='<your answer>').");
+    let content = format!("Question from {handle}: {q}{opts_text}\nTo reply, call team(profile='{profile}', target='{handle}', task='<your answer>').");
     if let Err(e) = deliver_message_to_lead(lead, &handle, &content, pool).await {
         tracing::warn!("Failed to deliver subagent question to lead: {}", e);
     }
@@ -541,12 +786,34 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
 pub async fn stop_all_subagents(lead: &str) {
     let insts: Vec<SubagentInstance> = reg().lock().unwrap().live.get(lead).map(|m| m.values().cloned().collect()).unwrap_or_default();
     for i in &insts {
-        if i.status != "completed" && i.status != "error" {
-            i.session.handle_stop().await;
-        }
-        with_instance(lead, &i.handle, |x| x.status = "error".into());
+        // The session, not the registry status, knows whether a turn runs:
+        // a status set by an earlier stop must not shield a turn still going.
+        i.session.handle_stop().await;
+        with_instance(lead, &i.handle, |x| {
+            if x.status == "working" || x.status == "waiting_lead" {
+                x.status = "stopped".into();
+            }
+            x.stall = None;
+            x.working_since = None;
+        });
     }
     tracing::info!("stopped_all_subagents lead_session_id={}", lead);
+}
+
+/// Stop every member of every lead and wait, up to `limit`, for their turns
+/// to end. Server shutdown runs it before closing the database, so a stopped
+/// turn's last save still lands.
+pub async fn stop_all_members(limit: std::time::Duration) {
+    let sessions: Vec<Arc<AgentSession>> = reg().lock().unwrap().live.values().flat_map(|m| m.values().map(|i| i.session.clone())).collect();
+    for s in &sessions {
+        s.handle_stop().await;
+    }
+    let waits = sessions.iter().map(|s| s.wait_for_stop(limit));
+    let settled = futures::future::join_all(waits).await;
+    let pending = settled.iter().filter(|done| !**done).count();
+    if pending > 0 {
+        tracing::warn!("subagents_stop_timeout pending={}", pending);
+    }
 }
 
 /// `remove_subagent`.
@@ -610,6 +877,130 @@ mod tests {
         assert_eq!(resolve_instance("L", "nobody").unwrap_err().to_string(), "Member 'nobody' not found. Live instances: None.");
     }
 
+    /// The lead used to read "Subagent turn failed with error." whatever the
+    /// cause, so it could not tell a retry from a dead end.
+    #[test]
+    fn a_failure_report_names_the_reason_and_whether_retrying_helps() {
+        let rate = json!({"message": "The configured LLM provider is rate-limited or quota-exhausted.", "title": "Rate Limit Exceeded", "code": "provider_rate_limit"});
+        assert_eq!(
+            failure_report("explorer#1", Some(&rate), None),
+            "explorer#1 failed: Rate Limit Exceeded: The configured LLM provider is rate-limited or quota-exhausted. Its work so far is kept in its session. \
+             Retrying may help: team(target='explorer#1', task='continue'). Or give the task to another profile, or do it yourself."
+        );
+
+        let auth =
+            json!({"message": "mock:worker rejected the request — authentication failed (HTTP 401).", "title": "Provider Authentication Failed", "code": "provider_auth_failed"});
+        let text = failure_report("worker#2", Some(&auth), None);
+        assert!(text.starts_with("worker#2 failed: Provider Authentication Failed: mock:worker rejected the request"), "{text}");
+        assert!(text.contains("Retrying won't help until its model or provider is fixed."), "{text}");
+
+        // A turn refused before it ran has only the recorded reason.
+        let refused = failure_report("worker#3", None, Some("A question is pending."));
+        assert_eq!(
+            refused,
+            "worker#3 failed: A question is pending. Its work so far is kept in its session. Retry it with team(target='worker#3', task='continue'), give the task to another profile, or do it yourself."
+        );
+        assert!(failure_report("worker#4", None, None).contains("worker#4 failed: its turn failed with an unknown error."));
+    }
+
+    fn retry(status: &str, code: Option<i64>, error_type: Option<&str>) -> ProviderStatus {
+        ProviderStatus { status: status.into(), model: Some("mock:worker".into()), status_code: code, error_type: error_type.map(String::from), ..Default::default() }
+    }
+
+    #[test]
+    fn a_member_that_keeps_failing_to_reach_its_model_alerts_its_lead_once() {
+        let start = tokio::time::Instant::now();
+        let mut w = StallWatch::default();
+        assert_eq!(w.on_retry(&retry("retrying", None, Some("ConnectError")), start), None, "one failed call is not a stall");
+        assert_eq!(w.on_retry(&retry("retrying", None, Some("ConnectError")), start + Duration::from_secs(60)), None);
+        let notice = w.on_retry(&retry("retrying", None, Some("ConnectError")), start + STALL_NOTICE_AFTER);
+        assert_eq!(notice.as_deref(), Some("it has not reached mock:worker for 2 min (ConnectError)"));
+        assert_eq!(w.on_retry(&retry("retrying", None, Some("ConnectError")), start + Duration::from_secs(600)), None, "only once per stall");
+        assert_eq!(w.on_retry(&retry("switched_credential", Some(429), None), start + Duration::from_secs(601)), None);
+
+        // It recovers, then stalls again: that is a new stall.
+        assert!(w.on_progress());
+        assert!(!w.on_progress(), "no stall left to clear");
+        let later = start + Duration::from_secs(1000);
+        assert_eq!(w.on_retry(&retry("retrying", Some(503), None), later), None);
+        assert_eq!(w.on_retry(&retry("retrying", Some(503), None), later + STALL_NOTICE_AFTER).as_deref(), Some("it has not reached mock:worker for 2 min (HTTP 503)"));
+    }
+
+    #[test]
+    fn a_quota_wait_alerts_the_lead_at_once() {
+        let mut w = StallWatch::default();
+        let wait = ProviderStatus { delay_seconds: Some(3602.0), ..retry("waiting_quota", Some(429), None) };
+        let now = tokio::time::Instant::now();
+        assert_eq!(w.on_retry(&wait, now).as_deref(), Some("mock:worker is out of quota, and it is waiting 1h 00m for the reset"));
+        assert_eq!(w.on_retry(&wait, now + Duration::from_secs(3700)), None);
+        assert_eq!(
+            stall_notice("worker#1", "mock:worker is out of quota, and it is waiting 1h 00m for the reset"),
+            "worker#1 is stalled: mock:worker is out of quota, and it is waiting 1h 00m for the reset. It keeps trying on its own, and its report will follow if it recovers. \
+             To go on without it, stop it with team(action='stop', target='worker#1')."
+        );
+    }
+
+    /// A member waiting on `ask_lead` keeps its turn open; stopping it must
+    /// close that turn, or every client keeps showing it running.
+    #[tokio::test]
+    async fn stopping_a_member_that_waits_on_its_lead_ends_its_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead = "lead-stop-waiting";
+        let child = uuid::Uuid::now_v7().to_string();
+        let agent = Agent::new(provider.clone(), "explorer#1", "", vec![], None);
+        let session = AgentSession::new(agent, Some(child.clone()), None, pool.clone(), factory, Some(lead.into()));
+        let mut inst = SubagentInstance::new("explorer#1", "explorer", lead, &child, session, "waiting_lead");
+        inst.pending_lead_question = Some(json!({"question": "Which branch?"}));
+        reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
+        store().init_turn(&child, true);
+        assert!(store().is_running(&child));
+
+        let out = stop_subagent(lead, "explorer#1").await.unwrap();
+
+        assert_eq!(out["status"], json!("stopped"));
+        assert!(!store().is_running(&child), "the waiting member's turn was left open");
+        assert!(!subagents_waiting_on_lead().contains(&db::codec::api_uuid(&child)));
+        assert_eq!(describe_subagents(lead), "- explorer#1: stopped (send it a task to resume)");
+    }
+
+    #[tokio::test]
+    async fn the_list_shows_each_members_state_in_spawn_order() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead = "lead-list";
+        assert_eq!(describe_subagents(lead), "No subagents yet.");
+        let add = |handle: &str, status: &str, edit: &dyn Fn(&mut SubagentInstance)| {
+            let agent = Agent::new(provider.clone(), handle, "", vec![], None);
+            let session = AgentSession::new(agent, Some(format!("{handle}-sid")), None, pool.clone(), factory.clone(), Some(lead.into()));
+            let mut inst = SubagentInstance::new(handle, "explorer", lead, &format!("{handle}-sid"), session, status);
+            edit(&mut inst);
+            let mut r = reg().lock().unwrap();
+            r.live.entry(lead.into()).or_default().insert(handle.into(), inst);
+            r.order.entry(lead.into()).or_default().push(handle.into());
+        };
+        add("explorer#2", "working", &|i| i.stall = Some("it has not reached m for 2 min (HTTP 503)".into()));
+        add("explorer#10", "waiting_lead", &|i| i.pending_lead_question = Some(json!({"question": "Which branch?"})));
+        add("explorer#3", "error", &|i| i.last_error = Some("Rate limited.".into()));
+        add("explorer#4", "stopped", &|_| {});
+        add("explorer#5", "completed", &|_| {});
+
+        assert_eq!(
+            describe_subagents(lead),
+            "- explorer#2: working for 0s, stalled: it has not reached m for 2 min (HTTP 503)\n\
+             - explorer#10: waiting for your answer: Which branch?\n\
+             - explorer#3: failed: Rate limited.\n\
+             - explorer#4: stopped (send it a task to resume)\n\
+             - explorer#5: done (report delivered)"
+        );
+    }
+
     /// A member is told the limit the lead's copy is actually cut at, and
     /// that it works from the task alone; nothing else told it either.
     #[test]
@@ -648,6 +1039,8 @@ mod tests {
                 question_delivered: false,
                 result_delivered: false,
                 pending_tool_call_id: None,
+                stall: None,
+                working_since: None,
             };
             reg().lock().unwrap().live.entry(lead.into()).or_default().insert(handle.into(), inst);
         };
@@ -701,6 +1094,8 @@ mod tests {
             question_delivered: false,
             result_delivered: false,
             pending_tool_call_id: None,
+            stall: None,
+            working_since: None,
         };
         reg().lock().unwrap().live.entry(lead.clone()).or_default().insert("worker#1".into(), inst);
 
@@ -742,6 +1137,8 @@ mod tests {
             question_delivered: false,
             result_delivered: false,
             pending_tool_call_id: None,
+            stall: None,
+            working_since: None,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("worker#1".into(), inst);
 
@@ -776,22 +1173,24 @@ mod tests {
             question_delivered: false,
             result_delivered: false,
             pending_tool_call_id: None,
+            stall: None,
+            working_since: None,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         let reported = || find_by_session(lead, &child_sid, |i| i.last_result.clone()).flatten();
 
         db::save_message(&pool, &child_sid, db::NewMessage::assistant(Some("first report".into()))).await.unwrap();
-        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false, None).await;
         assert_eq!(reported().as_deref(), Some("first report"));
 
         // The lead sends a follow-up and the subagent answers it in a new turn.
         db::save_message(&pool, &child_sid, db::NewMessage::assistant(Some("second report".into()))).await.unwrap();
-        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false, None).await;
         assert_eq!(reported().as_deref(), Some("second report"));
 
         // A turn that ends without text says so instead of re-sending an old report.
         db::save_message(&pool, &child_sid, db::NewMessage::assistant(None)).await.unwrap();
-        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false, None).await;
         assert_eq!(reported().as_deref(), Some("Subagent 'explorer#1' completed task with no text output."));
     }
 
@@ -820,6 +1219,8 @@ mod tests {
             question_delivered: false,
             result_delivered: false,
             pending_tool_call_id: None,
+            stall: None,
+            working_since: None,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         assert!(subagents_waiting_on_lead().contains(&child_sid));

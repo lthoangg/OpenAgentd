@@ -27,10 +27,10 @@ tell the user to switch it in the model picker.
 ## Tools
 
 - **`code.md`** always has `glob`, `grep`, `patch`, `read`, `shell`,
-  `web_fetch`, `web_search`, plus the auto-injected `skill`, `todo_manage`,
-  `schedule_task`, `ask_user`, `delegate`, `plan`, `submit_plan`,
-  `send_to_workspace`, `preview` (project workspaces) and `mcp` (when MCP
-  servers are configured). Never list these. `send_to_workspace` (messaging
+  `web_fetch`, `web_search`, plus the auto-injected `skill`, `todo`,
+  `schedule`, `ask_user`, `team`, `plan`, `submit_plan`,
+  `workspace`, `preview` (project workspaces) and `mcp` (when MCP
+  servers are configured). Never list these. `workspace` (messaging
   sessions in other workspaces) is turned off globally with
   `workspace_messages: {enabled: false}` in `settings.yaml` (Settings →
   Automation), not through `tools:`. `tools:` adds extras — today `generate_image` and
@@ -60,7 +60,7 @@ tell the user to switch it in the model picker.
 | Change | Takes effect |
 |--------|-------------|
 | `code.md` edited | Next turn. An invalid edit keeps the previous config and logs `agent_config_refresh_failed`. |
-| Member file added or edited | Next `delegate` call — no restart. |
+| Member file added or edited | Next `team` call — no restart. |
 | `code.md` deleted | Recreated with defaults on the next startup. |
 
 ## Failure modes

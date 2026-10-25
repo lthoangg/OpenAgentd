@@ -185,15 +185,16 @@ describe('AssistantTurn — reader mode', () => {
     expect(row.textContent).not.toMatch(/failed/)
   })
 
-  it('says a thought-only trace thought, and counts failures', () => {
+  it('does not count failures once the turn ends either; the opened step shows them', () => {
     renderTurn([
       { id: 'think', type: 'thinking', content: 'Hmm.' },
       { id: 'run', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"false"}', toolDone: true, toolResult: '[Failed — exit code 1]' },
       { id: 'answer', type: 'text', content: 'It failed.' },
     ])
-    expect(screen.getByRole('button', { name: /1 command · 1 failed/ })).toBeTruthy()
-    cleanup()
+    expect(screen.getByRole('button', { name: /^1 command$/ })).toBeTruthy()
+  })
 
+  it('says a thought-only trace thought', () => {
     renderTurn([{ id: 'think', type: 'thinking', content: 'Hmm.' }, { id: 'answer', type: 'text', content: 'Hi.' }])
     expect(screen.getByRole('button', { name: /^Thought/ })).toBeTruthy()
   })
@@ -276,7 +277,26 @@ describe('AssistantTurn — reader mode, closing a long fold', () => {
     fireEvent.click(workRow())
 
     expect(header.className).toContain('sticky')
-    expect(header.className).toContain('top-0')
+    expect(header.className).toContain('top-(--fold-top,0px)')
+  })
+
+  it('pins an opened step just below the row, not over it', () => {
+    renderTurn(finished)
+    fireEvent.click(workRow())
+
+    const body = document.getElementById(workRow().getAttribute('aria-controls') ?? '') as HTMLElement
+    expect(body.className).toContain('[--fold-top:1.5rem]')
+  })
+
+  it('pins the open file list header so it can close from anywhere in a long list', () => {
+    renderTurn(finished, { opener: { canOpen: () => true, open: () => {}, openDiff: () => {} } })
+    const files = screen.getByRole('button', { name: /1 file changed/ })
+    expect(files.className).not.toContain('sticky')
+
+    fireEvent.click(files)
+
+    expect(files.className).toContain('sticky')
+    expect(files.closest('section')?.className).not.toContain('overflow-hidden')
   })
 
   it('closes from the end of the steps too, handing focus back to the row', () => {

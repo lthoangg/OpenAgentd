@@ -6,6 +6,7 @@
 use crate::history::to_new_message;
 use crate::hooks::{AgentState, RunContext};
 use crate::stream_store::store;
+use crate::util::Event;
 use anyhow::Result;
 use appv3_db::{self as db, DbPool, SEQ_STEP};
 use appv3_providers::ChatMessage;
@@ -19,6 +20,8 @@ pub struct Checkpointer {
     agent_name: Option<String>,
     flushed_pinned: Mutex<HashMap<String, bool>>,
     seeded_tokens: Mutex<i64>,
+    /// Set when a save finds the session row gone (see [`Self::stop_when_session_gone`]).
+    stop_on_missing_session: Vec<Event>,
 }
 
 /// `_last_prompt_tokens_from_history`.
@@ -38,7 +41,14 @@ fn last_prompt_tokens(history: &[ChatMessage]) -> i64 {
 
 impl Checkpointer {
     pub fn new(pool: DbPool, stream_session_id: Option<String>, agent_name: Option<String>) -> Self {
-        Self { pool, stream_session_id, agent_name, flushed_pinned: Mutex::new(HashMap::new()), seeded_tokens: Mutex::new(0) }
+        Self { pool, stream_session_id, agent_name, flushed_pinned: Mutex::new(HashMap::new()), seeded_tokens: Mutex::new(0), stop_on_missing_session: vec![] }
+    }
+
+    /// Set `stop` when a save finds the session deleted, so the run ends
+    /// instead of working on with nowhere to save.
+    pub fn stop_when_session_gone(mut self, stop: Event) -> Self {
+        self.stop_on_missing_session.push(stop);
+        self
     }
 
     pub fn mark_loaded(&self, messages: &[ChatMessage]) {
@@ -76,8 +86,21 @@ impl Checkpointer {
             return;
         }
         if let Err(e) = self.sync_inner(ctx, state).await {
+            if !self.stop_on_missing_session.is_empty() && self.session_deleted(ctx).await {
+                tracing::warn!("checkpointer_session_gone_stopping_run session_id={:?} error={}", ctx.session_id, e);
+                for ev in &self.stop_on_missing_session {
+                    ev.set();
+                }
+                return;
+            }
             tracing::error!("checkpointer_sync_failed session_id={:?} error={}", ctx.session_id, e);
         }
+    }
+
+    /// Whether the run's session row is gone (deleted while the run went on).
+    async fn session_deleted(&self, ctx: &RunContext) -> bool {
+        let Some(sid) = &ctx.session_id else { return false };
+        matches!(db::get_session(&self.pool, sid).await, Ok(None))
     }
 
     async fn sync_inner(&self, ctx: &RunContext, state: &mut AgentState) -> Result<()> {
@@ -182,5 +205,48 @@ impl Checkpointer {
             store().commit_agent_content(ss, agent);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::Event;
+
+    fn ctx(sid: &str) -> RunContext {
+        RunContext { session_id: Some(sid.to_string()), run_id: "run".into(), agent_name: "worker#1".into(), workspace: None }
+    }
+
+    /// A run whose session was deleted can never save again: in production
+    /// one woke from a long provider wait, ran shell commands for the
+    /// deleted session, and failed every save. The first failed save ends it.
+    #[tokio::test]
+    async fn a_save_into_a_deleted_session_stops_the_run() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let gone = uuid::Uuid::now_v7().to_string();
+        let stop = Event::new();
+        let cp = Checkpointer::new(pool, None, None).stop_when_session_gone(stop.clone());
+        let mut state = AgentState::new(vec![ChatMessage::assistant("still working")], String::new());
+
+        cp.sync(&ctx(&gone), &mut state).await;
+
+        assert!(stop.is_set(), "the run was left running against a deleted session");
+    }
+
+    #[tokio::test]
+    async fn a_save_into_a_live_session_leaves_the_run_alone() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let row = db::create_session(&pool, db::NewSession { workspace: "/tmp".into(), ..Default::default() }).await.unwrap();
+        let sid = db::codec::api_uuid(&row.id);
+        let stop = Event::new();
+        let cp = Checkpointer::new(pool, None, None).stop_when_session_gone(stop.clone());
+        let mut state = AgentState::new(vec![ChatMessage::assistant("working")], String::new());
+
+        cp.sync(&ctx(&sid), &mut state).await;
+
+        assert!(!stop.is_set());
+        assert!(state.messages[0].meta().db_id.is_some(), "the message was not saved");
     }
 }

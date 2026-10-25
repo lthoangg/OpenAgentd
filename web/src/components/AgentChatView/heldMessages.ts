@@ -39,8 +39,10 @@ export function returnToComposer(composer: InputComposerHandle | null, held: Ret
  * A queued steer this browser can hand back whole. Cancelling deletes its
  * uploads on the server, so one whose files were sent from another device
  * (or before a reload) stays queued and goes out with the next message.
+ * A prompt another workspace's agent sent is not the user's to take back.
  */
 function canCallOff(message: PendingMessage): boolean {
+  if (message.sentFromWorkspace) return false
   return !message.attachments?.length || Boolean(message.files?.length)
 }
 

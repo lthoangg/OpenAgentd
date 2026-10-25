@@ -191,7 +191,7 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
 }
 
 /** The agent a user-role row came from, if an agent (not the user) sent it. */
-function userMessageSender(msg: MessageResponse): string | undefined {
+export function userMessageSender(msg: MessageResponse): string | undefined {
   // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats
   const rawExtra = msg.extra as { routing?: { from_agent?: string; from_agents?: string[] }; from_agent?: string; from_agents?: string[] } | null
   return rawExtra?.from_agent ?? rawExtra?.routing?.from_agent ?? rawExtra?.from_agents?.[0] ?? rawExtra?.routing?.from_agents?.[0]

@@ -880,7 +880,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     the composer: unread steers, then held messages `[v3.4.0]`. A steer the
     agent read first stays in the transcript. A steer with files sent from
     another window stays with the agent and goes out ahead of the next
-    message.
+    message. Reports from members, and messages from another workspace's
+    agent, are never handed back: a member's report waiting for a busy lead
+    stays out of the queue and appears as "Report from …" once the lead
+    reads it or the turn is stopped `[v3.30.0]`.
   - Limits: held messages live only in this window and are lost on reload.
     A steer sent late still goes out before an earlier held message. Steers
     read together run with the model and thinking level of the last one

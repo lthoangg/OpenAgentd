@@ -269,6 +269,28 @@ describe('stopTurn', () => {
     expect(held()).toEqual([])
   })
 
+  // A prompt another workspace's agent sent is not the user's to take back:
+  // cancelling it would delete that agent's request and paste it into the
+  // composer as if the user had written it.
+  it('leaves a message another workspace sent queued when stopping', async () => {
+    const removePendingMessage = mock(async () => 'cancelled' as const)
+    const stopAgent = mock(async () => {})
+    useAgentStore.setState({
+      stopAgent,
+      removePendingMessage,
+      _pendingMessages: [
+        { id: 'q-ws', sessionId: 's1', content: 'please look', submittedAt: 1, sentFromWorkspace: 'api' },
+        { id: 'q-mine', sessionId: 's1', content: 'my steer', submittedAt: 2 },
+      ],
+    })
+    const composer = fakeComposer()
+
+    await stopTurn(composer.ref.current)
+
+    expect(removePendingMessage.mock.calls.map((call) => (call as unknown[])[0])).toEqual(['q-mine'])
+    expect(composer.appended).toEqual([{ text: 'my steer', paragraph: true }])
+  })
+
   it('leaves a steer the agent read during the stop where it is', async () => {
     const removePendingMessage = mock(async () => 'sent' as const)
     const stopAgent = mock(async () => {})

@@ -986,6 +986,32 @@ describe('queued messages mid-turn injection and reconciliation', () => {
     expect(pending.some((m) => m.id === 'pm-2')).toBe(true)
   })
 
+  it('does not adopt a queued agent report from a delta as a steer', async () => {
+    await seedLoadedSession()
+
+    useAgentStore.setState((state) => {
+      state._syncedThrough = 'msg-watermark-1'
+      state._pendingMessages = []
+      return state
+    })
+
+    mockSessionHistorySince.mockImplementation(() => Promise.resolve({
+      truncated: false,
+      lead: {
+        agent_name: 'lead',
+        running: true,
+        messages: [
+          { id: 'report', role: 'user', kind: 'queued', content: '[Report from explorer#1]: done', extra: { queue_status: 'queued', from_agent: 'explorer#1' } },
+        ],
+      },
+      members: [],
+    }))
+
+    await useAgentStore.getState().reconcileTurnTail('lead-sess')
+
+    expect(useAgentStore.getState()._pendingMessages).toEqual([])
+  })
+
   it('keeps a queued steer whose text an earlier, confirmed message also used', async () => {
     await seedLoadedSession()
 

@@ -494,6 +494,14 @@ pub fn run() {
     // the access-key commands rely on (keyring has no Android backend).
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_openagentd_android::init());
+    // iOS kills WKWebView's content process under memory pressure (often
+    // while the app is in the background), which leaves a blank page until
+    // the app is force-quit. Reload instead: drafts and the last route are
+    // restored from storage, and the event stream reconnects on load.
+    #[cfg(target_os = "ios")]
+    let builder = builder.on_web_content_process_terminate(|webview| {
+        let _ = webview.reload();
+    });
     builder
         .manage(MobileBackendState::default())
         .manage(PreviewRelays::default())

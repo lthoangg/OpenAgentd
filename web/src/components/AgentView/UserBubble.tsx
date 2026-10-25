@@ -15,6 +15,7 @@ import { copyText, useChatMenu } from '../ChatContextMenu'
 import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { useImageBox } from '@/lib/image-size'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
@@ -317,8 +318,10 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const [reportExpanded, setReportExpanded] = useState(false)
+  // Long text, opened, keeps its collapse control in view and closes in place.
+  const { open: expanded, setOpen: setExpanded, close: closeText, anchorRef: toggleRef } = useStickyFold()
+  const report = useStickyFold<HTMLDivElement>()
+  const reportExpanded = report.open
   const textRef = useRef<HTMLParagraphElement>(null)
   // Height before an expand/collapse, so the layout effect can animate from it.
   const toggleFromHeight = useRef<number | null>(null)
@@ -348,10 +351,12 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const isSubagentLongReport = content.length > 240 || lines.length > 5
   const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
 
-  const toggleExpanded = () => {
+  const toggleExpanded = (control: HTMLElement) => {
     toggleFromHeight.current = textRef.current?.getBoundingClientRect().height ?? null
-    setExpanded((v) => !v)
+    if (expanded) closeText(control)
+    else setExpanded(true)
   }
+  const toggleReport = (control: HTMLElement) => (reportExpanded ? report.close(control) : report.setOpen(true))
 
   // Glide between the folded and full height instead of jumping.
   useLayoutEffect(() => {
@@ -400,7 +405,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       >
         {chatMenu.menu}
         <div className="flex max-w-full flex-col items-start gap-1.5 md:max-w-[85%]">
-          <div className="flex items-center gap-1.5 px-0.5 text-xs text-(--color-text-muted)">
+          {/* Opened, a long report's header pins while the report scrolls under it. */}
+          <div
+            ref={report.anchorRef}
+            className={cn('flex items-center gap-1.5 px-0.5 text-xs text-(--color-text-muted)', reportExpanded && cn(PINNED_HEADER, 'self-stretch bg-(--bg-page)'))}
+          >
             {sender}
             <span className="text-[11px] text-(--color-text-subtle)">{reply ? replyLabel(reply) : 'Subagent report'}</span>
             {timestamp && (
@@ -415,6 +424,17 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             >
               {copied ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
             </button>
+            {reportExpanded && (
+              <button
+                type="button"
+                onClick={(event) => report.close(event.currentTarget)}
+                className="flex h-4 w-4 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none pointer-coarse:h-9 pointer-coarse:w-9"
+                title="Minimize report"
+                aria-label="Minimize report"
+              >
+                <ChevronUp size={12} aria-hidden="true" />
+              </button>
+            )}
           </div>
           <div
             className={cn(
@@ -430,7 +450,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           {isSubagentLongReport && (
             <button
               type="button"
-              onClick={() => setReportExpanded((v) => !v)}
+              onClick={(event) => toggleReport(event.currentTarget)}
               aria-expanded={reportExpanded}
               className="mt-0.5 flex items-center gap-1 text-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-none"
             >
@@ -469,26 +489,33 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
          )}
 
           {/* No shadow: the bubble is a tonal step above the page, not a
-              floating layer (see DESIGN.md — Elevation & Depth). */}
+              floating layer (see DESIGN.md — Elevation & Depth). It clips
+              rather than hides overflow, so the collapse button can pin. */}
           {text && (
-          <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) selectable-text">
-           {/* Expand / collapse button — top-right inside bubble */}
+          <div className="relative min-w-0 max-w-full overflow-clip rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) selectable-text">
+           {/* Expand / collapse button — top-right inside the bubble, on a rail
+               as tall as the bubble so an expanded message keeps it in view. */}
            {needsCollapse && (
-             <Tooltip className="absolute top-1.5 right-1.5 z-10">
-               <TooltipTrigger
-                 render={
-                   <button
-                     onClick={toggleExpanded}
-                     aria-expanded={expanded}
-                     aria-label={expanded ? 'Collapse' : 'Expand'}
-                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
-                   >
-                     {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                   </button>
-                 }
-               />
-               <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
-             </Tooltip>
+             <div className="pointer-events-none absolute top-1.5 right-1.5 bottom-1.5 z-10">
+               <div className="pointer-events-auto sticky top-1.5">
+                 <Tooltip>
+                   <TooltipTrigger
+                     render={
+                       <button
+                         ref={toggleRef}
+                         onClick={(event) => toggleExpanded(event.currentTarget)}
+                         aria-expanded={expanded}
+                         aria-label={expanded ? 'Collapse' : 'Expand'}
+                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
+                       >
+                         {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                       </button>
+                     }
+                   />
+                   <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
+                 </Tooltip>
+               </div>
+             </div>
            )}
            <p
              ref={textRef}

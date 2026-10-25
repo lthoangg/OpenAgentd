@@ -852,6 +852,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row
     where you pressed it.
+    Since `[v3.30.0]` the rest of the transcript works the same way: an
+    opened tool call pins its header (inside an open row, just below it), an
+    opened compaction summary pins its divider and ends in a **Collapse**
+    row, an expanded long prompt keeps its collapse button in view, an
+    expanded subagent report pins its header with a minimize button, and the
+    open "N files changed" list pins its header. Each closes where you
+    pressed it. This applies in the detailed transcript too.
   - A question waiting on the user, interactive MCP apps, errors, and
     compaction dividers stay in place; once answered or closed, a question
     folds in with the rest of the work.

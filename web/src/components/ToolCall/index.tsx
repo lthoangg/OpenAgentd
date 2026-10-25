@@ -30,6 +30,8 @@ import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { PINNED_HEADER, useCloseInPlace } from '@/hooks/useStickyFold'
+import { cn } from '@/lib/utils'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
@@ -363,6 +365,14 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const [showedLiveOutput, setShowedLiveOutput] = useState(autoOpen)
   if (autoOpen && !showedLiveOutput) setShowedLiveOutput(true)
   const expanded = manualExpanded ?? (autoOpen || (showedLiveOutput && isCurrentStep))
+  // Open, the header pins while long details scroll under it (inside a reader
+  // fold, just below the fold's row); closing leaves it where it was pressed.
+  const pinned = expanded && hasDetails
+  const { anchorRef: headerRef, markClose } = useCloseInPlace(pinned)
+  const collapse = (control: HTMLElement) => {
+    markClose(control)
+    setManualExpanded(false)
+  }
   // Only an open row shows these, and reopening a long run mounts hundreds of
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
@@ -394,89 +404,96 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   return (
     <div className={animatesIn ? 'tool-row-enter my-2' : 'my-2'}>
       {/* Header row — separate from the details container so collapsed tools stay lightweight. */}
-      <button
-        type="button"
-        onClick={() => hasDetails && setManualExpanded(!expanded)}
-        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 ${
-          hasDetails
-            ? 'cursor-pointer text-(--color-text) hover:text-(--color-text)'
-            : 'cursor-default'
-        }`}
-        aria-expanded={expanded}
-        aria-label={
-          hasDetails
-            ? expanded
-              ? `Collapse ${displayName} details`
-              : `Expand ${displayName} details`
-            : `${displayName} (no details)`
-        }
-      >
-        {/* Header content: tool-specific summary or fallback to tool name.
-            Mono+600 per pencil dqwZw. */}
-        <span className={headerClassName} title={title}>
-          <span className="font-semibold">{toolLabel}</span>
-          {visibleHeader && (
-            <>
-              <span>: </span>
-              <span title={headerTitle ?? undefined}>{visibleHeader}</span>
-            </>
-          )}
-          {diffStats && (
-            <span className="ml-2 inline-flex items-center gap-1 font-semibold select-none">
-              {diffStats.additions > 0 && (
-                <span className="text-(--color-diff-add-text)">+{diffStats.additions}</span>
-              )}
-              {diffStats.deletions > 0 && (
-                <span className="text-(--color-diff-del-text)">-{diffStats.deletions}</span>
-              )}
-            </span>
-          )}
-        </span>
+      <div className={cn(pinned && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
+        <button
+          ref={headerRef}
+          type="button"
+          onClick={(event) => {
+            if (!hasDetails) return
+            if (expanded) collapse(event.currentTarget)
+            else setManualExpanded(true)
+          }}
+          className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 ${
+            hasDetails
+              ? 'cursor-pointer text-(--color-text) hover:text-(--color-text)'
+              : 'cursor-default'
+          }`}
+          aria-expanded={expanded}
+          aria-label={
+            hasDetails
+              ? expanded
+                ? `Collapse ${displayName} details`
+                : `Expand ${displayName} details`
+              : `${displayName} (no details)`
+          }
+        >
+          {/* Header content: tool-specific summary or fallback to tool name.
+              Mono+600 per pencil dqwZw. */}
+          <span className={headerClassName} title={title}>
+            <span className="font-semibold">{toolLabel}</span>
+            {visibleHeader && (
+              <>
+                <span>: </span>
+                <span title={headerTitle ?? undefined}>{visibleHeader}</span>
+              </>
+            )}
+            {diffStats && (
+              <span className="ml-2 inline-flex items-center gap-1 font-semibold select-none">
+                {diffStats.additions > 0 && (
+                  <span className="text-(--color-diff-add-text)">+{diffStats.additions}</span>
+                )}
+                {diffStats.deletions > 0 && (
+                  <span className="text-(--color-diff-del-text)">-{diffStats.deletions}</span>
+                )}
+              </span>
+            )}
+          </span>
 
-        {elapsedMs !== undefined && (
-          <span className="shrink-0 font-mono text-xs md:text-[11px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
-        )}
+          {elapsedMs !== undefined && (
+            <span className="shrink-0 font-mono text-xs md:text-[11px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
+          )}
 
-        {hasDetails && (
-          <ChevronRight
-            size={13}
-            className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
-            aria-hidden
-          />
+          {hasDetails && (
+            <ChevronRight
+              size={13}
+              className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
+              aria-hidden
+            />
+          )}
+        </button>
+        {previewTarget && (
+          <button
+            type="button"
+            onClick={() => requestOpenPreview(previewTarget)}
+            className={TOOL_CHIP_CLASS}
+          >
+            <Globe size={11} aria-hidden="true" />
+            Open preview
+          </button>
         )}
-      </button>
-      {previewTarget && (
-        <button
-          type="button"
-          onClick={() => requestOpenPreview(previewTarget)}
-          className={TOOL_CHIP_CLASS}
-        >
-          <Globe size={11} aria-hidden="true" />
-          Open preview
-        </button>
-      )}
-      {planLink && (
-        <button
-          type="button"
-          onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}
-          className={TOOL_CHIP_CLASS}
-        >
-          <FileText size={11} aria-hidden="true" />
-          {planLink}
-        </button>
-      )}
-      {imageRead && <ImageViewChip path={imageRead.path} />}
-      {sentSession && (
-        <button
-          type="button"
-          onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
-          title={`Switch to the session in ${sentSession.workspace}`}
-          className="ml-2 inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
-        >
-          <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
-          <span className="truncate">Open in {sentSession.workspaceName}</span>
-        </button>
-      )}
+        {planLink && (
+          <button
+            type="button"
+            onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}
+            className={TOOL_CHIP_CLASS}
+          >
+            <FileText size={11} aria-hidden="true" />
+            {planLink}
+          </button>
+        )}
+        {imageRead && <ImageViewChip path={imageRead.path} />}
+        {sentSession && (
+          <button
+            type="button"
+            onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
+            title={`Switch to the session in ${sentSession.workspace}`}
+            className="ml-2 inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
+          >
+            <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+            <span className="truncate">Open in {sentSession.workspaceName}</span>
+          </button>
+        )}
+      </div>
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}
       <AnimatePresence initial={false}>
@@ -508,7 +525,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   {/* Args section — caption + copy sit above the content. */}
                   {formattedArgs && (
                     <div>
-                      <div onClick={() => setManualExpanded(false)} className="group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
+                      <div onClick={(event) => collapse(event.currentTarget)} className="group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
                         <span className="font-mono label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
@@ -562,7 +579,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
-                      <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
+                      <div onClick={(event) => collapse(event.currentTarget)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
                         <span className="font-mono label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           output
                         </span>
@@ -586,7 +603,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       <ToolResult toolName={name} operation={toolOperation} result={shownResult} />
                     ) : (
                       <div>
-                        <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                        <div onClick={(event) => collapse(event.currentTarget)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
                           <span className="font-mono label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                             result
                           </span>

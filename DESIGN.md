@@ -742,6 +742,17 @@ buttons never shift size between states.
 Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
 width on hover — that causes a 1px layout jump.
 
+**Transcript folds** (`hooks/useStickyFold.ts`): anything in the transcript that
+opens into a long body — the reader work row, the compaction divider, a long
+prompt or subagent report, a tool call's details, the "N files changed" list —
+pins its header (or its collapse control) to the top of the transcript while
+open (`PINNED_HEADER` plus the surface fill), so it can close from anywhere.
+A header inside an open fold pins just below the fold's row (`--fold-top`), not
+over it. Closing leaves the header where the pressed control was, so the view
+never jumps. A long body also ends in a Collapse row when its header is the
+only other way to close it. Clip with `overflow-clip`, not `overflow-hidden`,
+on a box that holds a pinned control: a hidden-overflow box stops it pinning.
+
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
 - **Panel**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
 - **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`, hover/focus `bg-(--bg-key)` and `on-surface`.

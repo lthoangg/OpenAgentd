@@ -431,6 +431,8 @@ async fn list_providers() -> ApiResult<Response> {
             "model_costs": model_costs(id, &cached),
             "stored_credentials": credentials_json(entry),
             "env_pinned": appv3_providers::pool::env_pinned(id),
+            "supports_multiple_credentials": prov::supports_multiple_credentials(id),
+            "supports_credential_usage": prov::supports_credential_usage(id),
         }));
     }
     let any = out.iter().any(|p| p["is_configured"] == json!(true));
@@ -467,16 +469,28 @@ async fn provider_models(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Re
     let mut b = Body::new(&v)?;
     let token = b.str("api_key", Some(""));
     let extra = b.dict_str("extra");
-    let credential_id = b.opt_str("credential_id");
+    let credential_id = b.opt_str("credential_id").filter(|c| !c.is_empty());
     b.finish(&["api_key", "extra", "credential_id"])?;
     let entry = find_or_404(&id)?;
     if rs::provider_is_disconnected(&id) {
         return Err(ApiError::conflict(format!("Provider '{id}' is disconnected. Reconnect it first.")));
     }
-    let mut overrides = prov::saved_overrides(entry);
-    overrides.extend(credential_overrides(&id, credential_id.as_deref())?);
-    overrides.extend(build_overrides(entry, &token, &extra));
-    let found = prov::filter_agent_model_ids(prov::discover_provider_models(entry, &overrides).await);
+    let typed: std::collections::HashMap<String, String> = build_overrides(entry, &token, &extra).into_iter().collect();
+    let found = match credential_id.as_deref() {
+        // One credential: its own stored values plus what is being tried,
+        // never the values of the credential in use.
+        Some(cid) => {
+            ensure_credential(&id, cid)?;
+            prov::filter_agent_model_ids(prov::discover_provider_models_for(entry, &typed, Some(cid)).await)
+        }
+        None => {
+            // An opted-in plugin's values come from its scoped account (see
+            // `discover_provider_models_for`), not a merge of the active one.
+            let mut overrides = if prov::is_optin_plugin(&id) { Default::default() } else { prov::saved_overrides(entry) };
+            overrides.extend(typed);
+            prov::filter_agent_model_ids(prov::discover_provider_models(entry, &overrides).await)
+        }
+    };
     if !found.is_empty() {
         if token.is_empty() && extra.is_empty() && credential_id.is_none() {
             let _ = rs::set_provider_cached_models(&id, &found);
@@ -499,6 +513,7 @@ async fn provider_usage(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response
         Ok(v) => Ok(json(v)),
         Err(UsageError::Unsupported(_)) => Err(ApiError::not_found(format!("Usage monitoring unsupported for '{id}'."))),
         Err(UsageError::Credentials(m)) => Err(ApiError::not_found(m)),
+        Err(UsageError::Rejected(m)) => Err(ApiError::unprocessable(m)),
         Err(UsageError::Unavailable(_)) => Err(ApiError::new(502, "Provider usage unavailable.")),
     }
 }
@@ -509,6 +524,7 @@ async fn provider_reset(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response
         Ok(v) => Ok(json(v)),
         Err(UsageError::Unsupported(_)) => Err(ApiError::not_found(format!("Rate limit reset unsupported for '{id}'."))),
         Err(UsageError::Credentials(m)) => Err(ApiError::new(401, m)),
+        Err(UsageError::Rejected(m)) => Err(ApiError::unprocessable(m)),
         Err(UsageError::Unavailable(m)) => Err(ApiError::new(502, m)),
     }
 }
@@ -578,8 +594,17 @@ fn store_err(e: impl std::fmt::Display) -> ApiError {
     ApiError::unprocessable(e.to_string())
 }
 
-/// Stored values of one credential (all of the provider's when `None`
-/// names the credential in use), as overrides for discovery and tests.
+/// 404 unless the provider has a stored credential `cid`.
+fn ensure_credential(id: &str, cid: &str) -> ApiResult<()> {
+    cred_store::load().map_err(store_err)?;
+    if prov::stored_credential_values(id, cid).is_none() {
+        return Err(ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")));
+    }
+    Ok(())
+}
+
+/// Stored values of one credential (none when `None` is given), as
+/// overrides for discovery and tests of a single-credential plugin.
 fn credential_overrides(id: &str, credential_id: Option<&str>) -> ApiResult<std::collections::HashMap<String, String>> {
     let Some(cid) = credential_id.filter(|c| !c.is_empty()) else { return Ok(Default::default()) };
     let f = cred_store::load().map_err(store_err)?;
@@ -593,15 +618,30 @@ async fn test_provider(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Resp
     let token = b.str("api_key", Some(""));
     let model = b.str("model", None);
     let extra = b.dict_str("extra");
-    let credential_id = b.opt_str("credential_id");
+    let credential_id = b.opt_str("credential_id").filter(|c| !c.is_empty());
     b.finish(&["api_key", "model", "extra", "credential_id"])?;
     let entry = find_or_404(&id)?;
-    let mut overrides = credential_overrides(&id, credential_id.as_deref())?;
+    // Builtins and opted-in plugins test one account through its own scoped
+    // store; a single-credential plugin keeps the stored-values-as-overrides
+    // behavior.
+    let scoped = credential_id.clone().filter(|_| prov::supports_multiple_credentials(&id));
+    let mut overrides = match &scoped {
+        Some(cid) => {
+            ensure_credential(&id, cid)?;
+            Default::default()
+        }
+        None => credential_overrides(&id, credential_id.as_deref())?,
+    };
     overrides.extend(entry_values(entry, &token, &extra).into_iter().filter(|(_, v)| !v.is_empty()));
     let started = std::time::Instant::now();
     let res: Result<(), String> = async {
         let pm = format!("{id}:{model}");
-        let p = blocking(move || appv3_providers::factory::build_provider_with_overrides(Some(&pm), Default::default(), overrides)).await.map_err(|e| e.to_string())?;
+        let p = blocking(move || match scoped {
+            Some(cid) => appv3_providers::factory::build_provider_for_credential(Some(&pm), Default::default(), &cid, overrides),
+            None => appv3_providers::factory::build_provider_with_overrides(Some(&pm), Default::default(), overrides),
+        })
+        .await
+        .map_err(|e| e.to_string())?;
         let mut kw = appv3_providers::Kwargs::new();
         kw.insert("max_tokens".into(), json!(1));
         p.chat(&[appv3_providers::ChatMessage::user("ping")], None, &kw).await.map_err(|e| e.to_string())?;
@@ -639,12 +679,18 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
     check_value_names(&id, &values)?;
     let explicit = credential_id.is_some();
     let requested = credential_id.clone().unwrap_or_default();
-    let target = credential_id.or_else(|| cred_store::current(&id)).or_else(|| cred_store::snapshot().provider(&id).first().map(|c| c.id.clone()));
+    let current = cred_store::current(&id);
     let pid = id.clone();
     let names: Vec<String> = values.iter().map(|(k, _)| k.clone()).collect();
     let cid = blocking(move || {
         cred_store::update(|f| {
-            let existing = target.as_deref().and_then(|t| f.find(&pid, t)).map(|c| c.id.clone());
+            // The target is resolved against the file as locked here, so a
+            // credential removed since `current` was recorded is not
+            // chosen: the first stored one is updated instead.
+            let existing = match &credential_id {
+                Some(t) => f.find(&pid, t).map(|c| c.id.clone()),
+                None => current.as_deref().and_then(|t| f.find(&pid, t)).or_else(|| f.provider(&pid).first()).map(|c| c.id.clone()),
+            };
             let c = match existing {
                 Some(eid) => f.find_mut(&pid, &eid).expect("exists"),
                 // A named credential that is gone is not silently recreated.
@@ -708,7 +754,9 @@ pub fn credential_meta(entry: &Value, c: &cred_store::Credential, in_use: bool) 
         (None, Some(v)) => json!(mask(v)),
         _ => Value::Null,
     };
-    let needs_reconnect = oauth_kind && c.oauth.is_none() && !c.has_secret();
+    // An opted-in OAuth plugin's values are settings (region, client), not a
+    // connected account: without a token document the row needs a reconnect.
+    let needs_reconnect = oauth_kind && c.oauth.is_none() && (prov::is_optin_plugin(id) || !c.has_secret());
     let status = if c.disabled {
         "disabled"
     } else if needs_reconnect {
@@ -735,7 +783,7 @@ pub fn credential_meta(entry: &Value, c: &cred_store::Credential, in_use: bool) 
 
 /// The credential the provider's next request uses.
 fn in_use_id(provider_id: &str, f: &cred_store::CredentialsFile) -> Option<String> {
-    cred_store::select(provider_id, &f.enabled(provider_id)).map(|c| c.id.clone())
+    cred_store::select(provider_id, &appv3_providers::pool::enabled_credentials(provider_id, f)).map(|c| c.id.clone())
 }
 
 /// Every stored credential of `entry`'s provider, in priority order.
@@ -749,7 +797,13 @@ pub fn credentials_json(entry: &Value) -> Value {
 async fn list_credentials(AxPath(id): AxPath<String>) -> ApiResult<Response> {
     let entry = find_or_404(&id)?;
     cred_store::load().map_err(store_err)?;
-    Ok(json(json!({"provider": id, "credentials": credentials_json(entry), "env_pinned": appv3_providers::pool::env_pinned(&id)})))
+    Ok(json(json!({
+        "provider": id,
+        "credentials": credentials_json(entry),
+        "env_pinned": appv3_providers::pool::env_pinned(&id),
+        "supports_multiple_credentials": prov::supports_multiple_credentials(&id),
+        "supports_credential_usage": prov::supports_credential_usage(&id),
+    })))
 }
 
 async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
@@ -760,6 +814,9 @@ async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
     let extra = b.dict_str("extra");
     b.finish(&["label", "api_key", "extra"])?;
     let entry = find_or_404(&id)?;
+    if prov::is_legacy_plugin(&id) && !cred_store::load().map_err(store_err)?.provider(&id).is_empty() {
+        return Err(ApiError::unprocessable(format!("Provider '{id}' keeps a single credential: update the saved one instead of adding another. Existing credentials are kept.")));
+    }
     if s(entry, "kind") == "oauth" && token.is_empty() && extra.is_empty() {
         return Err(ApiError::unprocessable("OAuth accounts are added by signing in (GET /api/auth/{provider}/login)."));
     }

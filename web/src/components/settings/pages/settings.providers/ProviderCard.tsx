@@ -9,7 +9,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { DAEMON_BASE_URL, providerKindLabel } from './providerUtils'
+import { DAEMON_BASE_URL, providerKindLabel, supportsMultipleCredentials } from './providerUtils'
 import { UsagePanel } from './UsagePanel'
 import { ModelsPanel } from './ModelsPanel'
 import { OAuthLoginDialog } from './OAuthLoginDialog'
@@ -39,12 +39,15 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const trimmedKey = apiKey.trim()
   const trimmedBaseUrl = baseUrl.trim()
   const primaryCredential = provider.credentials[0]
-  // Several keys / accounts are managed as a list for API-key and OAuth
-  // providers; plugin and cloud providers keep the single-credential form.
+  // Several keys / accounts are managed as a list only for providers the
+  // backend marks as multi-credential (poolable built-ins and plugins that
+  // opt in); everything else keeps the single-credential form. Credentials
+  // already stored for a provider without the capability are left untouched.
   const storedCredentials = provider.stored_credentials ?? []
-  const hasCredentialList = (provider.kind === 'api_key' || provider.kind === 'oauth') && (storedCredentials.length > 0 || Boolean(provider.env_pinned))
-  const hasStoredKeys = provider.kind === 'api_key' && storedCredentials.length > 0
-  const hasStoredAccounts = provider.kind === 'oauth' && storedCredentials.length > 0
+  const multiCredential = supportsMultipleCredentials(provider)
+  const hasCredentialList = multiCredential && (storedCredentials.length > 0 || Boolean(provider.env_pinned))
+  const hasStoredKeys = multiCredential && provider.kind === 'api_key' && storedCredentials.length > 0
+  const hasStoredAccounts = multiCredential && provider.kind === 'oauth' && storedCredentials.length > 0
   const cloudExtra = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {}
     for (const credential of provider.credentials) {
@@ -639,7 +642,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           onOpenChange={(open) => {
             if (!open) setOauthTarget(null)
           }}
-          credentialId={oauthTarget.credentialId}
+          credentialId={multiCredential ? oauthTarget.credentialId : undefined}
           accountLabel={oauthTarget.label}
         />
       )}

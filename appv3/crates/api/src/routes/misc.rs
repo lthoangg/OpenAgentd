@@ -32,34 +32,61 @@ pub fn auth_router() -> Router<AppState> {
         .route("/{provider_id}/callback", post(oauth_callback))
 }
 
+/// Sign out stored OAuth accounts: the one `credential_id` names (404 when
+/// it is gone) or, without it, every OAuth account of the provider (pasted
+/// keys stay).
+async fn remove_accounts(id: &str, credential_id: Option<&str>) -> ApiResult<()> {
+    let (pid, cid) = (id.to_string(), credential_id.map(String::from));
+    let removed = blocking(move || {
+        appv3_core::credentials::update(|f| match &cid {
+            Some(c) => usize::from(f.remove(&pid, c).is_some()),
+            None => f.remove_oauth_accounts(&pid),
+        })
+    })
+    .await
+    .map_err(|e| ApiError::unprocessable(e.to_string()))?;
+    if let Some(c) = credential_id {
+        if removed == 0 {
+            return Err(ApiError::not_found(format!("Credential '{c}' not found for '{id}'.")));
+        }
+        appv3_core::credentials::clear_cooldown(id, c);
+    }
+    Ok(())
+}
+
+fn legacy_plugin_refusal(id: &str, what: &str) -> ApiError {
+    ApiError::unprocessable(format!("Provider '{id}' keeps a single credential and does not support {what}."))
+}
+
 /// `DELETE /api/auth/{provider}`: sign out one account (`?credential_id=`)
 /// or, without it, every OAuth account of the provider (pasted tokens stay).
+/// A plugin that has not opted in to multiple credentials has one account:
+/// naming one is refused, and signing out clears its token directory.
 async fn oauth_disconnect(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axum::extract::RawQuery) -> ApiResult<Response> {
     let plugin = appv3_providers::plugin::find_provider_plugin(&id);
     if crate::providers::find(&id).is_none() && plugin.is_none() {
         return Err(ApiError::not_found(format!("Unknown OAuth provider '{id}'.")));
     }
     let credential_id = q.as_deref().map(|q| appv3_providers::plugin::qs_first(&appv3_providers::plugin::parse_qs(q), "credential_id")).filter(|c| !c.is_empty());
-    if appv3_providers::oauth::is_builtin(&id) {
-        let (pid, cid) = (id.clone(), credential_id.clone());
-        let removed = blocking(move || {
-            appv3_core::credentials::update(|f| match &cid {
-                Some(c) => usize::from(f.remove(&pid, c).is_some()),
-                None => f.remove_oauth_accounts(&pid),
-            })
-        })
-        .await
-        .map_err(|e| ApiError::unprocessable(e.to_string()))?;
-        if credential_id.is_some() && removed == 0 {
-            return Err(ApiError::not_found(format!("Credential '{}' not found for '{id}'.", credential_id.unwrap_or_default())));
+    let builtin = appv3_providers::oauth::is_builtin(&id);
+    if builtin {
+        remove_accounts(&id, credential_id.as_deref()).await?;
+    } else if let Some(p) = &plugin {
+        if p.info().supports_multiple_credentials {
+            // Only stored accounts go; token files of a shared legacy
+            // directory are not this plugin's accounts to remove.
+            remove_accounts(&id, credential_id.as_deref()).await?;
+        } else if credential_id.is_some() {
+            return Err(legacy_plugin_refusal(&id, "signing out one credential"));
+        } else {
+            remove_plugin_tokens(&id);
         }
-        if let Some(c) = &credential_id {
-            appv3_core::credentials::clear_cooldown(&id, c);
-        }
-    } else if plugin.is_some() {
-        remove_plugin_tokens(&id);
     }
-    let still_connected = appv3_core::credentials::snapshot().enabled(&id).iter().any(|c| c.has_secret());
+    // A plugin judges for itself whether it is still connected.
+    let still_connected = match (&plugin, builtin, crate::providers::find(&id)) {
+        (Some(_), false, Some(entry)) => crate::providers::provider_is_configured(entry),
+        _ => appv3_core::credentials::snapshot().enabled(&id).iter().any(|c| c.has_secret()),
+    };
     if !still_connected {
         let _ = rs::forget_provider_models(&id);
     }
@@ -86,6 +113,15 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
     }
     let qs = q.as_deref().map(appv3_providers::plugin::parse_qs).unwrap_or_default();
     let browser = id == "codex" && appv3_providers::plugin::qs_first(&qs, "mode") == "browser";
+    let multi = plugin.as_ref().is_some_and(|p| p.info().supports_multiple_credentials);
+    if plugin.is_some() && !multi && !appv3_providers::plugin::qs_first(&qs, "credential_id").is_empty() {
+        return Err(legacy_plugin_refusal(&id, "signing in to one credential"));
+    }
+    // A plugin that opted in signs in to a stored row: the one named, or a
+    // new empty one reserved now, so every token write can require that the
+    // row still exists (a removed account is never recreated).
+    let account: Option<(String, bool)> = if multi { Some(reserve_account(&id, &appv3_providers::plugin::qs_first(&qs, "credential_id")).await?) } else { None };
+    let credential_id = account.as_ref().map(|(c, _)| c.clone());
     // `?credential_id=` reconnects that account; otherwise a new one is added.
     let slot = match appv3_providers::plugin::qs_first(&qs, "credential_id") {
         c if c.is_empty() => appv3_providers::oauth::TokenSlot::new_account(&id),
@@ -102,35 +138,103 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
     let sink: appv3_providers::plugin::OAuthSink = {
         let tx = tx.clone();
         let failed = failed.clone();
-        Arc::new(move |event: &str, data: Value| {
+        let credential_id = credential_id.clone();
+        Arc::new(move |event: &str, mut data: Value| {
             if event == "failed" {
                 failed.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            if let Some(c) = &credential_id {
+                tag_credential(&mut data, c);
             }
             let _ = tx.send(Arc::new(WireEvent { event: event.to_string(), data: appv3_core::pyjson::dumps(&data) }));
         })
     };
+    if credential_id.is_some() {
+        // First event: the client learns which account this sign-in binds
+        // to, so a pasted code can be sent back for it.
+        sink("started", json!({"provider": id}));
+    }
     // v2 runs login() in a worker thread that keeps going if the client
     // disconnects; the spawned task mirrors that.
     tokio::spawn(async move {
-        let res = match plugin {
-            Some(p) => p.login(sink).await,
-            None => appv3_providers::oauth::builtin_login(&id, browser, sink, slot).await,
+        let res = match (plugin, &account) {
+            (Some(p), Some((cid, _))) => p.login_for(sink, appv3_providers::creds::CredentialStore::for_account(&id, cid)).await,
+            (Some(p), None) => p.login(sink).await,
+            (None, _) => appv3_providers::oauth::builtin_login(&id, browser, sink, slot).await,
         };
-        if let Err(e) = res {
+        if let Err(e) = &res {
             tracing::warn!("oauth_login_failed provider={} error={}", id, e);
             if !failed.load(std::sync::atomic::Ordering::SeqCst) {
-                let _ = tx.send(Arc::new(WireEvent { event: "failed".into(), data: appv3_core::pyjson::dumps(&json!({"message": e, "reason": "exception"})) }));
+                let mut data = json!({"message": e, "reason": "exception"});
+                if let Some(c) = &credential_id {
+                    tag_credential(&mut data, c);
+                }
+                let _ = tx.send(Arc::new(WireEvent { event: "failed".into(), data: appv3_core::pyjson::dumps(&data) }));
+            }
+        }
+        // A new account whose sign-in failed holds no tokens: do not leave
+        // an empty row behind. (A pasted-code flow that is still waiting
+        // has not failed; its row stays for the callback.)
+        if let Some((cid, true)) = account {
+            if res.is_err() || failed.load(std::sync::atomic::Ordering::SeqCst) {
+                drop_if_empty(&id, &cid).await;
             }
         }
     });
     Ok(crate::sse::sse_response(tokio_stream::wrappers::UnboundedReceiverStream::new(rx)))
 }
 
+/// Resolve or reserve the account a plugin sign-in binds to: `requested`
+/// when it names an existing row (404 otherwise), else a new empty row.
+/// The flag is whether the row is new.
+async fn reserve_account(id: &str, requested: &str) -> ApiResult<(String, bool)> {
+    let (pid, req) = (id.to_string(), requested.to_string());
+    let reserved = blocking(move || {
+        appv3_core::credentials::update(|f| {
+            if !req.is_empty() {
+                return f.find(&pid, &req).map(|c| (c.id.clone(), false));
+            }
+            let c = appv3_core::credentials::Credential::new(format!("Account {}", f.provider(&pid).len() + 1));
+            let cid = c.id.clone();
+            f.provider_mut(&pid).push(c);
+            Some((cid, true))
+        })
+    })
+    .await
+    .map_err(|e| ApiError::unprocessable(e.to_string()))?;
+    reserved.ok_or_else(|| ApiError::not_found(format!("Credential '{requested}' not found for '{id}'.")))
+}
+
+/// Remove a reserved row that never received anything.
+async fn drop_if_empty(id: &str, credential_id: &str) {
+    let (pid, cid) = (id.to_string(), credential_id.to_string());
+    let _ = blocking(move || {
+        appv3_core::credentials::update(|f| {
+            if f.find(&pid, &cid).is_some_and(|c| !c.has_secret()) {
+                f.remove(&pid, &cid);
+            }
+        })
+    })
+    .await;
+}
+
+/// Name the account on an OAuth progress event.
+fn tag_credential(data: &mut Value, credential_id: &str) {
+    match data {
+        Value::Object(o) => {
+            o.insert("credential_id".into(), json!(credential_id));
+        }
+        Value::Null => *data = json!({"credential_id": credential_id}),
+        other => *other = json!({"data": other.clone(), "credential_id": credential_id}),
+    }
+}
+
 async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
     let code = b.str("code", None);
-    let mut errs = b.into_errs(&["code"]);
+    let credential_id = b.opt_str("credential_id").filter(|c| !c.is_empty());
+    let mut errs = b.into_errs(&["code", "credential_id"]);
     if errs.is_empty() {
         let stripped = crate::routes::library::py_strip(&code);
         let n = stripped.chars().count();
@@ -161,8 +265,27 @@ async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
         let events = events.clone();
         Arc::new(move |e: &str, d: Value| events.lock().unwrap().push((e.to_string(), d)))
     };
+    // A pasted code binds to the account the sign-in started for; there is
+    // no server-wide "pending account". A plugin that has not opted in has
+    // one account and takes no credential id.
+    let mut bound: Option<String> = None;
     let res = match appv3_providers::plugin::find_provider_plugin(&id).filter(|p| p.has_oauth_callback()) {
-        Some(p) => p.oauth_callback(&code, sink).await,
+        Some(p) if p.info().supports_multiple_credentials => {
+            let Some(cid) = credential_id else {
+                return Err(ApiError::unprocessable(format!("credential_id is required: provider '{id}' keeps several credentials.")));
+            };
+            if appv3_core::credentials::snapshot().find(&id, &cid).is_none() {
+                return Err(ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")));
+            }
+            bound = Some(cid.clone());
+            p.oauth_callback_for(&code, sink, appv3_providers::creds::CredentialStore::for_account(&id, &cid)).await
+        }
+        Some(p) => {
+            if credential_id.is_some() {
+                return Err(legacy_plugin_refusal(&id, "a credential-specific OAuth callback"));
+            }
+            p.oauth_callback(&code, sink).await
+        }
         None => match appv3_providers::oauth::builtin_callback(&id, &code, sink).await {
             Some(r) => r,
             None => return Err(ApiError::not_found(format!("OAuth callback unsupported for '{id}'"))),
@@ -183,6 +306,14 @@ async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
         for (k, v) in s {
             body.insert(k.clone(), v.clone());
         }
+    }
+    if let Some(cid) = bound {
+        // The account may have been removed while the plugin worked; it is
+        // never recreated, so say so rather than report a sign-in.
+        if appv3_core::credentials::snapshot().find(&id, &cid).is_none() {
+            return Err(ApiError::conflict(format!("Credential '{cid}' was removed during sign-in.")));
+        }
+        body.insert("credential_id".into(), json!(cid));
     }
     Ok(json(Value::Object(body)))
 }

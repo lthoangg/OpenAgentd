@@ -415,7 +415,9 @@ explicitly.
     becomes `1`). The plugin payloads the harnesses compare are unaffected.
   - The loopback OAuth callback page sends `Server: openagentd` instead of
     `BaseHTTP/0.6 Python/3.x`.
-  - Plugin disconnect removes only that plugin's token dir.
+  - Plugin disconnect removes only that plugin's token dir. A plugin that
+    opts in to several credentials (§5) keeps its tokens in
+    `credentials.yaml` instead, and disconnect is per account.
 - **Documents (`read`, `web_fetch`):** v3 uses the `anydoc` crate that v2's
   `firecrawl-anydoc` wheel wraps, at the same version. Its PDF engine was
   pinned to the wheel's (`pdf-inspector` 1.14.2) for byte-identical output,
@@ -992,6 +994,30 @@ v3 contains no plugin code. It loads plugins at runtime from the same
     which map onto the Rust `ProviderError`, and Python-compatible helpers
     (`pyJsonDumps`, `pyRepr`, `url.parseQuery`, ISO parsing). These keep
     output byte-identical to v2.
+- **Several credentials (v3.30.0, opt-in).** A provider plugin that sets
+  `supportsMultipleCredentials: true` joins the same pooled rotation as the
+  built-in providers. Without it nothing changes: one credential, file
+  tokens, `login(emit)` and `oauthCallback(code, emit)` as before.
+  - *SDK.* `BuildContext.credentialId` and `CredentialStore.credentialId`
+    name the account (`null` in legacy mode). OAuth `login(emit, ctx)` and
+    `oauthCallback(code, emit, ctx)` get an `OAuthContext` with
+    `providerId`, `credentialId` and `credentials`. `ctx.credentials`:
+    `readOAuth()` returns the saved document or `null`;
+    `writeOAuth(doc, { expected?, label? })` is an atomic compare-and-swap
+    that returns `false` when a refresh raced it and throws if the account
+    was deleted; `removeOAuth(expected?)` revokes the tokens and keeps the
+    row.
+  - *Storage.* OAuth tokens live in `credentials.yaml`. `tokenPath`,
+    `readJson` and `writeJson` become per-account (plain names only) for
+    caches and the pending login state. Legacy token files are not migrated.
+  - *Wire.* The providers listing adds `supports_multiple_credentials` and
+    `supports_credential_usage`. The OAuth callback API accepts an optional
+    `credential_id`, required for an opted-in plugin, and login progress
+    events carry `credential_id`. Each login reserves a pending row, so a
+    deleted account cannot be resurrected by a login that finishes late.
+    Per-credential OAuth operations on a legacy plugin are rejected, not
+    ignored; saving a plugin's API key through the single-key route still
+    works.
   - Globals: `fetch`, `Headers`, `Response`, `console`, `setTimeout`,
     `TextEncoder`/`TextDecoder`, `crypto`.
 - **Provider instances** reuse the Rust providers, so streaming I/O stays

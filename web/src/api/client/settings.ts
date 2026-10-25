@@ -197,6 +197,14 @@ export type ProviderInfo = {
   stored_credentials?: StoredCredential[]
   /** A key exported in the server's environment overrides the stored ones. */
   env_pinned?: boolean
+  /**
+   * The provider can hold several keys/accounts (poolable built-ins and
+   * plugins that opt in). Omitted by older backends: treat as the previous
+   * kind-based behaviour.
+   */
+  supports_multiple_credentials?: boolean
+  /** Usage can be read per stored credential. Omitted by older backends. */
+  supports_credential_usage?: boolean
 }
 
 export type StoredCredentialStatus = 'ready' | 'cooling_down' | 'needs_reconnect' | 'disabled'
@@ -307,6 +315,8 @@ export type OAuthLoginEvent = {
   elapsed_s?: number
   suggested_model?: string
   reason?: string
+  /** Account this login writes to; sent by multi-credential plugins on every progress event. */
+  credential_id?: string
 }
 
 export async function listProviders(): Promise<ProvidersListBody> {
@@ -452,11 +462,16 @@ export async function disconnectOauthProvider(providerId: string, credentialId?:
   return res.json()
 }
 
-export async function submitOAuthCallback(providerId: string, code: string): Promise<{ ok: boolean; suggested_model?: string }> {
+export async function submitOAuthCallback(
+  providerId: string,
+  code: string,
+  /** Account the login stream reported (or the one being reconnected). */
+  credentialId?: string,
+): Promise<{ ok: boolean; suggested_model?: string }> {
   const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(credentialId ? { code, credential_id: credentialId } : { code }),
   })
   if (!res.ok) await parseDetailOrThrow(res, `POST /auth/${providerId}/callback`)
   return res.json()

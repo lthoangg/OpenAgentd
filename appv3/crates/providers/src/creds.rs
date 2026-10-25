@@ -6,9 +6,10 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct CredentialStore {
     pub provider_id: String,
+    pub credential_id: Option<String>,
     overrides: HashMap<String, String>,
     /// One specific stored credential's values (a credential pool's pick);
     /// `None` reads whichever credential currently serves the provider.
@@ -21,13 +22,31 @@ impl CredentialStore {
     }
 
     pub fn for_provider(provider_id: &str, overrides: HashMap<String, String>) -> Self {
-        CredentialStore { provider_id: provider_id.to_string(), overrides, pinned: None }
+        CredentialStore { provider_id: provider_id.to_string(), credential_id: None, overrides, pinned: None }
     }
 
     /// Reads `values` (one stored credential) after overrides and the
     /// exported environment.
     pub fn for_credential(provider_id: &str, values: IndexMap<String, String>) -> Self {
-        CredentialStore { provider_id: provider_id.to_string(), overrides: HashMap::new(), pinned: Some(values) }
+        CredentialStore { provider_id: provider_id.to_string(), credential_id: None, overrides: HashMap::new(), pinned: Some(values) }
+    }
+
+    pub fn for_credential_id(provider_id: &str, credential_id: &str, values: IndexMap<String, String>) -> Self {
+        Self { credential_id: Some(credential_id.into()), ..Self::for_credential(provider_id, values) }
+    }
+
+    pub fn for_account(provider_id: &str, credential_id: &str) -> Self {
+        let values = credentials::snapshot().find(provider_id, credential_id).map(|c| c.values.clone()).unwrap_or_default();
+        Self::for_credential_id(provider_id, credential_id, values)
+    }
+
+    pub fn with_overrides(mut self, overrides: HashMap<String, String>) -> Self {
+        self.overrides = overrides;
+        self
+    }
+
+    pub fn pinned_values(&self) -> Option<&IndexMap<String, String>> {
+        self.pinned.as_ref()
     }
 
     /// Explicit overrides (values being validated before they are saved).
@@ -59,5 +78,16 @@ impl CredentialStore {
     /// `token_path(filename)`.
     pub fn token_path(&self, filename: &str) -> PathBuf {
         self.token_dir().join(filename.replace('/', "_"))
+    }
+}
+
+impl std::fmt::Debug for CredentialStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CredentialStore")
+            .field("provider_id", &self.provider_id)
+            .field("credential_id", &self.credential_id)
+            .field("overrides", &self.overrides.keys().collect::<Vec<_>>())
+            .field("pinned", &self.pinned.as_ref().map(|p| p.keys().collect::<Vec<_>>()))
+            .finish()
     }
 }

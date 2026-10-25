@@ -45,11 +45,20 @@ declare module "openagentd" {
     placeholder?: string;
   }
 
-  /** Credentials and per-provider token storage (`{CACHE_DIR}/provider-plugins/<id>/`). */
+  /** Scoped credentials and account caches. Legacy stores retain per-provider cache paths. */
   export interface CredentialStore {
     readonly providerId: string;
+    /** The selected account/key, or null for a legacy/provider-wide store. */
+    readonly credentialId: string | null;
     /** Saved credential / environment value, or `dflt` when unset. */
     get(name: string, dflt?: string): string;
+    /** OAuth operations require an account-scoped store. Missing tokens return null. */
+    readOAuth(): Record<string, Json> | null;
+    /** Atomic write to an existing account. False means `expected` lost a refresh race. */
+    writeOAuth(document: Record<string, Json>, options?: { expected?: Json; label?: string }): boolean;
+    /** Keep the account but revoke its tokens; optionally compare the previous document. */
+    removeOAuth(expected?: Json): boolean;
+    /** Account-scoped cache path; OAuth tokens belong in readOAuth/writeOAuth instead. */
     tokenPath(file: string): string;
     /** Parsed JSON object, or `{}` when missing / invalid. */
     readJson(file: string): Record<string, any>;
@@ -62,8 +71,15 @@ declare module "openagentd" {
 
   export interface BuildContext {
     providerId: string;
+    credentialId: string | null;
     model: string;
     modelKwargs: Record<string, Json>;
+    credentials: CredentialStore;
+  }
+
+  export interface OAuthContext {
+    providerId: string;
+    credentialId: string;
     credentials: CredentialStore;
   }
 
@@ -103,13 +119,15 @@ declare module "openagentd" {
     oauthCommand?: string;
     supportsFastMode?: boolean;
     supportsPromptCacheKey?: boolean;
+    /** Opt in only when instances, login, refresh and caches are isolated per account. */
+    supportsMultipleCredentials?: boolean;
 
     /** Create a provider instance for one model. Throw `ValueError` for missing credentials. */
     build(ctx: BuildContext): ProviderInstance | Promise<ProviderInstance>;
     /** Required for `kind: "oauth"`. May run until the flow finishes (e.g. waiting for a local callback). */
-    login?(emit: OAuthEmit): void | Promise<void>;
+    login?(emit: OAuthEmit, ctx: OAuthContext): void | Promise<void>;
     /** Handles a pasted callback URL / code. */
-    oauthCallback?(code: string, emit: OAuthEmit): void | Promise<void>;
+    oauthCallback?(code: string, emit: OAuthEmit, ctx: OAuthContext): void | Promise<void>;
     isConfigured?(credentials: CredentialStore): boolean;
     discoverModels?(credentials: CredentialStore): string[] | Promise<string[]>;
     /** Throw `ValueError` for a credentials problem. */

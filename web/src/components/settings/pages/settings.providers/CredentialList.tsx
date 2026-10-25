@@ -14,9 +14,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { errorMessage } from '@/utils/errors'
 import { UsagePanel } from './UsagePanel'
-
-/** OAuth providers whose usage the backend can read per account. */
-const PER_ACCOUNT_USAGE = new Set(['codex', 'copilot', 'grok'])
+import { supportsCredentialUsage } from './providerUtils'
 
 const PILL = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium'
 const PILL_MUTED = `${PILL} border-(--color-border) bg-(--bg-key) text-(--color-text-muted)`
@@ -218,7 +216,7 @@ export function CredentialList({
                   Reconnect
                 </Button>
               )}
-              {isOauth && PER_ACCOUNT_USAGE.has(provider.id) && credentials.length > 1 && c.status !== 'needs_reconnect' && (
+              {supportsCredentialUsage(provider) && credentials.length > 1 && c.status !== 'needs_reconnect' && (
                 <Button type="button" size="xs" variant="ghost" aria-expanded={usageOpen === c.id} onClick={() => setUsageOpen(usageOpen === c.id ? null : c.id)}>
                   Usage
                 </Button>

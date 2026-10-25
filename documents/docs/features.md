@@ -1857,8 +1857,11 @@ agnostic by design.
   Only when every credential is cooling down does the agent wait for the
   earliest reset. Keys in one organization often share limits, so extra keys
   don't always add quota. A key exported in the server's environment pins the
-  provider and shows as a read-only "From environment" row. Plugin providers,
-  Bedrock, and Vertex AI keep a single credential.
+  provider and shows as a read-only "From environment" row. Bedrock and
+  Vertex AI keep a single credential. Provider plugins keep one too, unless
+  they opt in with `supportsMultipleCredentials: true`; they then get the same
+  account list, switching, and cooldowns, with per-account OAuth tokens kept in
+  `credentials.yaml` `[v3.30.0]`.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or

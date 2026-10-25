@@ -3,7 +3,7 @@ import {
   cancelQueuedMessage, createAgent, createWorktree, deleteAgent, getAgent,
   listAgentFiles, listMemberProfiles, listSubagents, postAgentChat,
   resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, updateAgent,
-  updateSessionTitle, workspaceMediaUrl,
+  submitOAuthCallback, updateSessionTitle, workspaceMediaUrl,
 } from '@/api/client'
 
 const originalFetch = globalThis.fetch
@@ -43,6 +43,19 @@ describe('resolveApiUrl', () => {
 })
 
 describe('postAgentChat', () => {
+  it('submitOAuthCallback sends credential_id only when an account is given', async () => {
+    const bodies: unknown[] = []
+    globalThis.fetch = mock((_url, init) => {
+      bodies.push(JSON.parse(String((init as RequestInit).body)))
+      return Promise.resolve(new Response(JSON.stringify({ ok: true })))
+    }) as typeof fetch
+
+    await submitOAuthCallback('plug', 'abc')
+    await submitOAuthCallback('plug', 'abc', 'cred_1')
+
+    expect(bodies).toEqual([{ code: 'abc' }, { code: 'abc', credential_id: 'cred_1' }])
+  })
+
   it('uses backend detail for invalid 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'conflict' }), { status: 409 }))) as typeof fetch
 

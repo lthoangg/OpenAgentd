@@ -108,7 +108,27 @@ pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> Provider
 /// are saved): `overrides` win over the exported env and the store.
 pub fn build_provider_with_overrides(model_str: Option<&str>, model_kwargs: Kwargs, overrides: std::collections::HashMap<String, String>) -> ProviderResult<Arc<dyn LlmProvider>> {
     let (name, model) = parse_model_str(model_str)?;
+    if crate::plugin::find_provider_plugin(name).is_some_and(|p| p.info().supports_multiple_credentials) {
+        if let Some(c) = crate::pool::active_credential(name) {
+            return build_member(name, model, model_kwargs, &CredentialStore::for_account(name, &c.id).with_overrides(overrides), None);
+        }
+    }
     build_member(name, model, model_kwargs, &CredentialStore::for_provider(name, overrides), None)
+}
+
+/// Explicit tests of an account must not fall back to another account's values.
+pub fn build_provider_for_credential(
+    model_str: Option<&str>,
+    model_kwargs: Kwargs,
+    credential_id: &str,
+    overrides: std::collections::HashMap<String, String>,
+) -> ProviderResult<Arc<dyn LlmProvider>> {
+    let (name, model) = parse_model_str(model_str)?;
+    if appv3_core::credentials::snapshot().find(name, credential_id).is_none() {
+        return Err(ProviderError::Invalid(format!("Credential '{credential_id}' not found for '{name}'.")));
+    }
+    let creds = CredentialStore::for_account(name, credential_id).with_overrides(overrides);
+    build_member(name, model, model_kwargs, &creds, Some(&TokenSlot::new(name, credential_id)))
 }
 
 /// Split and validate `"<provider>:<model>"`.

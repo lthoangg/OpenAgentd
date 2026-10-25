@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { queryKeys } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose } from './providerUtils'
+import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose, supportsMultipleCredentials } from './providerUtils'
 
 export function OAuthLoginDialog({
   provider,
@@ -35,6 +35,9 @@ export function OAuthLoginDialog({
   const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
   const successHandledRef = useRef(false)
+  // Account the current login stream writes to. The stream reports it on its
+  // events (multi-credential plugins); until then it is the reconnect target.
+  const loginCredentialIdRef = useRef<string | undefined>(credentialId)
   const queryClient = useQueryClient()
   const latest = events.at(-1)
   const deviceEvent = events.find((event) => event.event === 'device_code')
@@ -57,11 +60,15 @@ export function OAuthLoginDialog({
     const abort = new AbortController()
     openedUrlRef.current = null
     successHandledRef.current = false
+    loginCredentialIdRef.current = credentialId
     oauthLoginStream(
       provider.id,
       {
         onEvent: () => undefined,
         onOAuthEvent: (event) => {
+          // A late event of a superseded stream must not touch the new one.
+          if (abort.signal.aborted) return
+          if (event.credential_id) loginCredentialIdRef.current = event.credential_id
           setEvents((current) => [...current, event])
           if (event.verification_uri && openedUrlRef.current !== event.verification_uri) {
             openedUrlRef.current = event.verification_uri
@@ -109,7 +116,7 @@ export function OAuthLoginDialog({
     return () => abort.abort()
   }, [authMode, credentialId, open, provider.id, provider.label, queryClient])
 
-  const hasAccounts = (provider.stored_credentials?.length ?? 0) > 0
+  const hasAccounts = supportsMultipleCredentials(provider) && (provider.stored_credentials?.length ?? 0) > 0
   const title = credentialId
     ? `Reconnect ${accountLabel || provider.label}`
     : hasAccounts
@@ -206,7 +213,7 @@ export function OAuthLoginDialog({
               onSubmit={(event) => {
                 event.preventDefault()
                 setSubmittingCode(true)
-                submitOAuthCallback(provider.id, code)
+                submitOAuthCallback(provider.id, code, loginCredentialIdRef.current)
                   .then((result) => {
                     setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })

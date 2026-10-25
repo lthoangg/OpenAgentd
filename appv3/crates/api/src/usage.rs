@@ -13,12 +13,15 @@ pub enum UsageError {
     Unsupported(String),
     Credentials(String),
     Unavailable(String),
+    /// The request names a credential the provider cannot scope to (a
+    /// plugin that has not opted in to multiple credentials).
+    Rejected(String),
 }
 
 impl UsageError {
     pub fn msg(&self) -> String {
         match self {
-            UsageError::Unsupported(m) | UsageError::Credentials(m) | UsageError::Unavailable(m) => m.clone(),
+            UsageError::Unsupported(m) | UsageError::Credentials(m) | UsageError::Unavailable(m) | UsageError::Rejected(m) => m.clone(),
         }
     }
 }
@@ -257,7 +260,7 @@ pub async fn get_provider_usage(provider_id: &str, token: Option<&str>, credenti
         "grok" => appv3_providers::grok::get_usage_for(&slot("grok", credential_id)?).await.map_err(oauth_err),
         id => match appv3_providers::plugin::find_provider_plugin(id) {
             Some(p) if p.has_usage() => {
-                let store = CredentialStore::for_provider(id, HashMap::new());
+                let store = plugin_usage_store(id, p.info().supports_multiple_credentials, credential_id)?;
                 p.get_usage(&store).await.map_err(|e| match e {
                     appv3_providers::plugin::PluginUsageError::Value(m) => UsageError::Credentials(m),
                     appv3_providers::plugin::PluginUsageError::Other(m) => UsageError::Unavailable(m),
@@ -265,6 +268,27 @@ pub async fn get_provider_usage(provider_id: &str, token: Option<&str>, credenti
             }
             _ => Err(UsageError::Unsupported(id.to_string())),
         },
+    }
+}
+
+/// The store a plugin's `getUsage` reads. A plugin that opted in to
+/// multiple credentials gets the named account's scoped store, else the
+/// account in use (so its OAuth reads bind to a real row). A legacy plugin
+/// has one credential: naming one is refused, not silently ignored.
+fn plugin_usage_store(id: &str, multiple: bool, credential_id: Option<&str>) -> Result<CredentialStore, UsageError> {
+    match (credential_id, multiple) {
+        (Some(cid), true) => {
+            if appv3_core::credentials::snapshot().find(id, cid).is_none() {
+                return Err(UsageError::Credentials(format!("Credential '{cid}' not found.")));
+            }
+            Ok(CredentialStore::for_account(id, cid))
+        }
+        (Some(_), false) => Err(UsageError::Rejected(format!("Provider '{id}' does not support per-credential usage; it keeps a single credential."))),
+        (None, true) => Ok(match appv3_providers::pool::active_credential(id) {
+            Some(c) => CredentialStore::for_account(id, &c.id),
+            None => CredentialStore::for_provider(id, HashMap::new()),
+        }),
+        (None, false) => Ok(CredentialStore::for_provider(id, HashMap::new())),
     }
 }
 

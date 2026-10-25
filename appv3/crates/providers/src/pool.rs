@@ -36,6 +36,11 @@ pub fn env_pin_var(provider_id: &str) -> Option<&'static str> {
 /// Whether an exported variable pins `provider_id` (stored credentials are
 /// then not used).
 pub fn env_pinned(provider_id: &str) -> bool {
+    if !crate::catalog::builtin_providers().iter().any(|e| e["id"] == provider_id) {
+        if let Some(p) = crate::plugin::find_provider_plugin(provider_id) {
+            return p.info().credentials.iter().any(|f| f.secret && store::env_override(&f.name).is_some());
+        }
+    }
     if provider_id == "copilot" {
         return crate::copilot::env_github_token().is_some();
     }
@@ -45,15 +50,30 @@ pub fn env_pinned(provider_id: &str) -> bool {
     env_pin_var(provider_id).is_some_and(|v| store::env_override(v).is_some())
 }
 
-/// Builtin providers draw from the credential pool; plugin providers keep
-/// their own single-credential contract.
+/// Plugins opt in only after their instances and OAuth state are scoped.
 pub fn is_poolable(provider_id: &str) -> bool {
     crate::catalog::builtin_providers().iter().any(|e| e["id"] == provider_id)
+        || crate::plugin::find_provider_plugin(provider_id).is_some_and(|p| p.info().supports_multiple_credentials)
+}
+
+/// Pending sign-ins and revoked plugin accounts remain visible in Settings,
+/// but cannot serve a request or become the account shown as in use.
+pub fn enabled_credentials<'a>(provider_id: &str, f: &'a store::CredentialsFile) -> Vec<&'a Credential> {
+    let mut enabled = f.enabled(provider_id);
+    if crate::plugin::find_provider_plugin(provider_id).is_some_and(|p| p.info().supports_multiple_credentials && p.info().kind == "oauth") {
+        enabled.retain(|c| c.oauth.is_some());
+    }
+    enabled
+}
+
+pub fn active_credential(provider_id: &str) -> Option<Credential> {
+    let f = store::snapshot();
+    store::select(provider_id, &enabled_credentials(provider_id, &f)).cloned()
 }
 
 /// The factory entry for `"<name>:<model>"`.
 pub fn build_pooled(name: &str, model: &str, kw: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
-    let has_stored = !store::snapshot().enabled(name).is_empty();
+    let has_stored = !enabled_credentials(name, &store::snapshot()).is_empty();
     if !is_poolable(name) || env_pinned(name) || !has_stored {
         return build_member(name, model, kw, &CredentialStore::for_provider(name, Default::default()), None);
     }
@@ -88,7 +108,7 @@ fn oauth_expired(c: &Credential) -> bool {
 
 impl PooledProvider {
     fn build(provider_id: &str, model: &str, kw: Kwargs, c: &Credential) -> ProviderResult<Arc<dyn LlmProvider>> {
-        let creds = CredentialStore::for_credential(provider_id, c.values.clone());
+        let creds = CredentialStore::for_credential_id(provider_id, &c.id, c.values.clone());
         build_member(provider_id, model, kw, &creds, Some(&TokenSlot::new(provider_id, &c.id)))
     }
 
@@ -118,7 +138,7 @@ impl PooledProvider {
     /// rest of the ready ones in priority order.
     fn candidates(&self) -> ProviderResult<Vec<Credential>> {
         let f = store::snapshot();
-        let enabled = f.enabled(&self.provider_id);
+        let enabled = enabled_credentials(&self.provider_id, &f);
         let Some(first) = store::select(&self.provider_id, &enabled).cloned() else {
             return Err(ProviderError::Unconfigured(format!("No enabled credential for '{}'. Add or enable one in Settings → Providers.", self.provider_id)));
         };
@@ -129,7 +149,9 @@ impl PooledProvider {
 
     fn on_build_failure(&self, c: &Credential, e: &ProviderError) {
         tracing::warn!("provider_credential_unusable provider={} credential={} error={}", self.provider_id, c.id, e);
-        store::set_cooldown(&self.provider_id, &c.id, store::now_s() + BUILD_FAILURE_COOLDOWN, "auth");
+        if matches!(e, ProviderError::Auth(_) | ProviderError::Unconfigured(_)) || matches!(e.status(), Some(401 | 403)) {
+            store::set_cooldown(&self.provider_id, &c.id, store::now_s() + BUILD_FAILURE_COOLDOWN, "auth");
+        }
     }
 
     /// Synchronous pick (the factory's eager build).
@@ -180,6 +202,9 @@ fn tag(e: ProviderError, credential_id: &str) -> ProviderError {
             headers.push((CREDENTIAL_HEADER.to_string(), credential_id.to_string()));
             ProviderError::Http { status, body, headers, message }
         }
+        ProviderError::Auth(message) => {
+            ProviderError::Http { status: 401, body: String::new(), headers: vec![(CREDENTIAL_HEADER.to_string(), credential_id.to_string())], message }
+        }
         other => other,
     }
 }
@@ -223,7 +248,7 @@ impl LlmProvider for PooledProvider {
         let failed = err.header(CREDENTIAL_HEADER)?.to_string();
         store::set_cooldown(&self.provider_id, &failed, store::now_s() + cooldown_secs.max(1.0), reason);
         let f = store::snapshot();
-        let enabled = f.enabled(&self.provider_id);
+        let enabled = enabled_credentials(&self.provider_id, &f);
         let label = |c: &Credential| if c.label.is_empty() { c.id.clone() } else { c.label.clone() };
         // Another session may already have moved on.
         if let Some(cur) = store::current(&self.provider_id).filter(|c| *c != failed) {
@@ -237,7 +262,7 @@ impl LlmProvider for PooledProvider {
     }
     fn credential_recovery_secs(&self) -> Option<f64> {
         let f = store::snapshot();
-        let enabled = f.enabled(&self.provider_id);
+        let enabled = enabled_credentials(&self.provider_id, &f);
         if enabled.len() < 2 {
             return None;
         }

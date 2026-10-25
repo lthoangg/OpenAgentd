@@ -13,6 +13,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-title",
     "core:window:allow-set-badge-count",
+    "core:window:allow-request-user-attention",
     "core:window:allow-toggle-maximize",
     "core:window:allow-internal-toggle-maximize",
     "core:webview:default",

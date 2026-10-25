@@ -38,6 +38,8 @@
 /* Keyboard focus the user steered, not focus a script handed over quietly
  * (lib/focus/quiet.ts). Use for focus fills: `focus-key:bg-…`. */
 @custom-variant focus-key (&:focus-visible:not([data-quiet-focus]));
+/* OS "reduce transparency": frosted surfaces turn opaque and drop their blur. */
+@custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.

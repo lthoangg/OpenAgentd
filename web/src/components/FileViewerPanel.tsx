@@ -473,7 +473,11 @@ function TextPreview({
         data-scroll-capture="true"
         tabIndex={-1}
       >
-        <MarkdownBlock content={markdown} resolveMediaSrc={resolveMediaSrc} />
+        {/* `oa-reading` (index.css): the Plan tab's column, max-w-3xl and an
+            88ch measure in a maximized dock, so prose never spans the dock. */}
+        <div className="oa-reading mx-auto max-w-3xl">
+          <MarkdownBlock content={markdown} resolveMediaSrc={resolveMediaSrc} />
+        </div>
       </div>
     )
   }

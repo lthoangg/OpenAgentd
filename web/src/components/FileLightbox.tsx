@@ -576,7 +576,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
             type="button"
             aria-label={prevLabel}
             onClick={(e) => { e.stopPropagation(); goPrev() }}
-            className="absolute left-[max(0.75rem,env(safe-area-inset-left,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card)/80 text-(--color-text) backdrop-blur transition-colors hover:bg-(--bg-key) sm:flex"
+            className="absolute left-[max(0.75rem,env(safe-area-inset-left,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card)/80 text-(--color-text) backdrop-blur transition-colors hover:bg-(--bg-key) reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none reduce-transparency:hover:bg-(--bg-key) sm:flex"
           >
             <ChevronLeft size={22} />
           </button>
@@ -584,7 +584,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
             type="button"
             aria-label={nextLabel}
             onClick={(e) => { e.stopPropagation(); goNext() }}
-            className="absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card)/80 text-(--color-text) backdrop-blur transition-colors hover:bg-(--bg-key) sm:flex"
+            className="absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card)/80 text-(--color-text) backdrop-blur transition-colors hover:bg-(--bg-key) reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none reduce-transparency:hover:bg-(--bg-key) sm:flex"
           >
             <ChevronRight size={22} />
           </button>
@@ -646,7 +646,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
           <div className="flex flex-col items-center gap-2">
             {/* Counter pill */}
             <div
-              className="rounded-full border border-(--color-border) bg-(--bg-card)/80 px-3 py-0.5 font-mono text-xs text-(--color-text-muted) backdrop-blur"
+              className="rounded-full border border-(--color-border) bg-(--bg-card)/80 px-3 py-0.5 font-mono text-xs text-(--color-text-muted) backdrop-blur reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none"
               aria-live="polite"
             >
               {current + 1} / {items.length}

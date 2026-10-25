@@ -727,7 +727,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     >
       {isDraggingFile && (
         <div className="pointer-events-none fixed inset-0 z-50 p-4 drag-overlay-enter">
-          <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
+          <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none flex flex-col items-center justify-center gap-2 drag-card-enter">
             <FileUp size={24} className="text-(--color-accent) animate-pulse" />
             <span className="text-sm font-medium text-(--color-text)">
               Drop files to attach

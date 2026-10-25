@@ -239,7 +239,7 @@ fn workspace_message_header(extra: &serde_json::Map<String, Value>) -> Option<St
     let Some(Value::Object(f)) = extra.get("sent_from") else { return None };
     let reply = f.get("reply").is_some_and(crate::util::truthy);
     let tail = if reply {
-        "Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call send_to_workspace to reply."
+        "Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call `workspace` to reply."
     } else {
         "No reply is expected."
     };

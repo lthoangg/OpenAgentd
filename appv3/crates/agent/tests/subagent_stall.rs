@@ -98,7 +98,7 @@ async fn a_member_out_of_quota_alerts_its_lead_and_can_be_stopped_and_resumed() 
     wait_until("the lead to read the stall notice", notified).await;
     let notice = user_texts(&lead_mock).into_iter().find(|t| t.contains("worker#1 is stalled")).unwrap();
     assert!(notice.contains("mock:worker is out of quota, and it is waiting 1h 00m for the reset"), "{notice}");
-    assert!(notice.contains("delegate(action='stop', target='worker#1')"), "{notice}");
+    assert!(notice.contains("team(action='stop', target='worker#1')"), "{notice}");
     assert!(member.is_busy(), "the member keeps waiting for the reset");
     assert!(subagents::has_working_subagents(&sid), "a stalled member still works for its lead");
     let listed = subagents::describe_subagents(&sid);

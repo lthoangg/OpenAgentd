@@ -19,6 +19,7 @@ import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
 import type { FileRef } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
+import { canonicalToolName } from '@/utils/tool-names'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -497,7 +498,7 @@ function ScheduleTaskListResult({ result }: { result: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// todo_manage renderer — structured board-state view
+// todo renderer — structured board-state view
 // ---------------------------------------------------------------------------
 
 interface TodoResultTask {
@@ -536,7 +537,7 @@ interface ParsedTodoList {
   tasks: TodoResultTask[]
 }
 
-/** Parse the todo_manage board-state text into tasks and action outcomes; null when nothing matches. */
+/** Parse the todo board-state text into tasks and action outcomes; null when nothing matches. */
 function parseTodoList(result: string): ParsedTodoList | null {
   const tasks: TodoResultTask[] = []
   const outcomes: string[] = []
@@ -835,8 +836,8 @@ const FILE_READ_TOOLS = new Set(['read'])
 const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
 const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
-const SCHEDULE_TOOLS = new Set(['schedule_task'])
-const TEAM_TOOLS = new Set(['delegate', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
+const SCHEDULE_TOOLS = new Set(['schedule'])
+const TEAM_TOOLS = new Set(['team', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
 
 function TeamToolResult({ result }: { result: string }) {
   const parsed = tryParseJSON(result)
@@ -1057,7 +1058,8 @@ export function LspDiagnosticsView({
   )
 }
 
-function ToolResultInner({ toolName, operation, result, headerAction, onCollapse }: { toolName: string; operation?: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
+function ToolResultInner({ toolName: rawName, operation, result, headerAction, onCollapse }: { toolName: string; operation?: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
+  const toolName = canonicalToolName(rawName)
   if (toolName === 'lsp') {
     return <LspNavigationResult operation={operation} result={result} />
   }
@@ -1079,7 +1081,7 @@ function ToolResultInner({ toolName, operation, result, headerAction, onCollapse
   if (FILE_READ_TOOLS.has(toolName)) {
     return <FileReadResult result={result} />
   }
-  if (toolName === 'todo_manage') {
+  if (toolName === 'todo') {
     return <TodoListResult result={result} />
   }
   if (TEAM_TOOLS.has(toolName)) {

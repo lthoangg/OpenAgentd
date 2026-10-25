@@ -268,7 +268,7 @@ fn or_empty(v: &Option<String>, fallback: &str) -> Option<String> {
 fn effective_config(cfg: &AgentConfig) -> AgentConfig {
     let mut d = cfg.clone();
     if d.role == "lead" {
-        let mut tools: Vec<String> = ["skill", "todo_manage", "schedule_task", "note"].map(String::from).to_vec();
+        let mut tools: Vec<String> = ["skill", "todo", "schedule", "note"].map(String::from).to_vec();
         tools.append(&mut d.tools);
         d.tools = tools;
         if d.name == "code" {
@@ -355,7 +355,7 @@ fn validate_or_restore(rollback_name: Option<&str>, rollback_content: Option<&st
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-const HIDDEN_TOOLS: [&str; 4] = ["skill", "todo_manage", "schedule_task", "note"];
+const HIDDEN_TOOLS: [&str; 4] = ["skill", "todo", "schedule", "note"];
 
 fn settings_err(e: impl std::fmt::Display) -> ApiError {
     ApiError::internal(e)
@@ -685,7 +685,7 @@ mod tests {
     fn effective_lead_tools() {
         let c = parse_content("---\nname: other\ntools: [read, skill]\n---\nx", None).unwrap();
         let e = effective_config(&c);
-        assert_eq!(e.tools, vec!["skill", "todo_manage", "schedule_task", "note", "read"]);
+        assert_eq!(e.tools, vec!["skill", "todo", "schedule", "note", "read"]);
         let dump = e.dump_exclude_none();
         let keys: Vec<&String> = dump.as_object().unwrap().keys().collect();
         assert_eq!(keys, vec!["name", "role", "system_prompt", "tools", "mcp"]);

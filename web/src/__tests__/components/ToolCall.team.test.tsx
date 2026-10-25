@@ -110,4 +110,22 @@ describe('ToolCall team tools display', () => {
     const stopDisplay = getToolDisplay('team_manage', JSON.stringify({ action: 'stop', member_id: 'exp#1' }))
     expect(stopDisplay.headerTitle).toBe('Stopping subagent exp#1')
   })
+
+  /** Old transcripts keep the former names; both render the same card. */
+  it('renders renamed tools the same under their former and current names', () => {
+    const pairs: [string, string, Record<string, unknown>][] = [
+      ['delegate', 'team', { profile: 'explorer', task: 'Scan API files' }],
+      ['delegate', 'team', { action: 'stop', target: 'explorer#1' }],
+      ['send_to_workspace', 'workspace', { workspace: 'infra', message: 'Add a queue', reply: true }],
+      ['schedule_task', 'schedule', { action: 'list' }],
+      ['todo_manage', 'todo', { actions: [{ action: 'create', content: 'Ship it' }] }],
+    ]
+    for (const [former, current, args] of pairs) {
+      const before = getToolDisplay(former, JSON.stringify(args), true)
+      const after = getToolDisplay(current, JSON.stringify(args), true)
+      expect(after.headerTitle).toBe(before.headerTitle)
+      expect(after.formattedArgs).toEqual(before.formattedArgs)
+      expect(after.headerTitle).not.toBeNull()
+    }
+  })
 })

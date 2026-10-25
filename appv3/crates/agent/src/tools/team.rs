@@ -1,4 +1,4 @@
-//! `delegate` (lead) and `ask_lead` / `send_to_lead` (member) — ports of
+//! `team` (lead) and `ask_lead` / `send_to_lead` (member) — ports of
 //! `tools/builtin/team.py` and `member.py`.
 
 use super::invalid_args;
@@ -44,11 +44,11 @@ pub fn delegate_description() -> String {
         format!("\n\nAvailable subagent profiles:\n{}\n\n", bullets.join("\n"))
     };
     format!(
-        "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent's deliverable arrives as a message when it finishes, so don't wait or poll for it.{doc}To run tasks concurrently, call delegate multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1'). action='interrupt' redirects one at once, dropping its current step; action='stop' ends its work without a report (a later task resumes it); action='list' shows their status. A subagent that fails or stalls messages you why: retry it, use another profile, or do it yourself."
+        "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent's deliverable arrives as a message when it finishes, so don't wait or poll for it.{doc}To run tasks concurrently, call team multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1'). action='interrupt' redirects one at once, dropping its current step; action='stop' ends its work without a report (a later task resumes it); action='list' shows their status. A subagent that fails or stalls messages you why: retry it, use another profile, or do it yourself."
     )
 }
 
-/// What a `delegate` call asks for.
+/// What a `team` call asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DelegateAction {
     Spawn,
@@ -58,7 +58,7 @@ pub enum DelegateAction {
     List,
 }
 
-/// A validated `delegate` call.
+/// A validated `team` call.
 #[derive(Debug, PartialEq, Eq)]
 pub struct DelegateCall {
     pub action: DelegateAction,
@@ -78,7 +78,7 @@ fn opt_str(errs: &mut Vec<String>, o: &Map<String, Value>, keys: &[&str]) -> Str
     }
 }
 
-/// Parse and validate `delegate` arguments. Without `action`, a call with a
+/// Parse and validate `team` arguments. Without `action`, a call with a
 /// `target` sends to that subagent and one without spawns a new subagent.
 pub fn parse_delegate(args: &Value) -> Result<DelegateCall, Vec<String>> {
     let o = args.as_object().cloned().unwrap_or_default();
@@ -144,17 +144,17 @@ pub struct DelegateTool {
 #[async_trait]
 impl Tool for DelegateTool {
     fn name(&self) -> &str {
-        "delegate"
+        "team"
     }
     fn definition(&self) -> Value {
-        let mut d = appv3_tools::contract_definition("delegate").unwrap_or_default();
+        let mut d = appv3_tools::contract_definition("team").unwrap_or_default();
         if let Some(x) = d.pointer_mut("/function/description") {
             *x = Value::String(delegate_description());
         }
         d
     }
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
-        let call = parse_delegate(&args).map_err(|errs| invalid_args("delegate", &errs))?;
+        let call = parse_delegate(&args).map_err(|errs| invalid_args("team", &errs))?;
         let DelegateCall { action, profile, target, task } = call;
         let workspace = ctx.workspace.clone().unwrap_or_default();
         let lead = self.lead_session_id.as_str();
@@ -172,7 +172,7 @@ impl Tool for DelegateTool {
     }
 }
 
-/// What the lead reads after a successful `delegate` call.
+/// What the lead reads after a successful `team` call.
 pub fn delegate_result_text(action: DelegateAction, r: &Value, fallback: &str) -> String {
     let mid = r.get("member_id").and_then(|v| v.as_str()).unwrap_or(fallback);
     let flag = |k: &str| r.get(k).and_then(Value::as_bool).unwrap_or(false);

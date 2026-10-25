@@ -39,6 +39,7 @@ import { TOOL_CHIP_CLASS } from './chipStyles'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
+import { canonicalToolName } from '@/utils/tool-names'
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
@@ -46,7 +47,7 @@ const ASK_USER = 'ask_user'
 const SUBMIT_PLAN = 'submit_plan'
 /** Matches ``appv3_agent::tools::plan::PLAN_TOOL``. */
 const PLAN_TOOL = 'plan'
-const SEND_TO_WORKSPACE = 'send_to_workspace'
+const WORKSPACE_TOOL = 'workspace'
 
 interface ToolCallProps {
   name: string
@@ -267,7 +268,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   )
   // The session a workspace message reached, so the user can switch to it.
   const sentSession = useMemo(
-    () => (name === SEND_TO_WORKSPACE && done ? parseSendResult(result) : null),
+    () => (canonicalToolName(name) === WORKSPACE_TOOL && done ? parseSendResult(result) : null),
     [name, done, result],
   )
   // A saved plan opens in the Plan tab.
@@ -284,7 +285,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const shownLiveOutput = done ? rawLiveOutput : clampLiveOutput(rawLiveOutput)
   const hasReadResult = usesReadView
   const isBackgroundProcess = name === 'bg'
-  const isScheduleTaskList = name === 'schedule_task' && shownResult?.startsWith('Scheduled tasks (')
+  const isScheduleTaskList = canonicalToolName(name) === 'schedule' && shownResult?.startsWith('Scheduled tasks (')
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null

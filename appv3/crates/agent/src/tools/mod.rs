@@ -3,8 +3,8 @@
 pub mod ask_user;
 pub mod plan;
 pub mod preview;
-pub mod send_to_workspace;
 pub mod team;
+pub mod workspace;
 
 use crate::broadcaster;
 use crate::notification;

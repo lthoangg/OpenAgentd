@@ -1,5 +1,5 @@
 //! Scheduled task engine — port of `app/scheduler/{scheduler,schemas,utils}.py`
-//! plus the `schedule_task` tool (`tools/builtin/schedule.py`).
+//! plus the `schedule` tool (`tools/builtin/schedule.py`).
 
 pub mod cron;
 
@@ -725,7 +725,7 @@ impl TaskScheduler {
     }
 }
 
-// ── schedule_task tool ───────────────────────────────────────────────────────
+// ── schedule tool ───────────────────────────────────────────────────────────────
 
 /// Python `str(datetime)` for an aware UTC datetime stored in DB form.
 fn py_str_dt(raw: &Option<String>) -> Option<String> {
@@ -811,7 +811,7 @@ pub struct ScheduleTaskTool;
 #[async_trait]
 impl Tool for ScheduleTaskTool {
     fn name(&self) -> &str {
-        "schedule_task"
+        "schedule"
     }
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
         let o: Map<String, Value> = args.as_object().cloned().unwrap_or_default();
@@ -922,7 +922,7 @@ impl Tool for ScheduleTaskTool {
             }
         }
         if !errs.is_empty() {
-            return Err(crate::tools::invalid_args("schedule_task", &errs));
+            return Err(crate::tools::invalid_args("schedule", &errs));
         }
         let ws = ctx.workspace.clone().unwrap_or_default();
         let s = scheduler();

@@ -1,6 +1,6 @@
 /**
  * Workspace groups — the place to set up which workspaces may message each
- * other (`send_to_workspace`). Groups are named tags on repositories with an
+ * other (the `workspace` tool). Groups are named tags on repositories with an
  * optional brief their agents read; workspaces whose repositories share a
  * group may message each other, worktrees use their repository's groups, and
  * Chat reaches every workspace.

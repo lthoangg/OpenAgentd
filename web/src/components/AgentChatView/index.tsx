@@ -336,7 +336,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     if (targetWorkspace) saveLastWorkspace(targetWorkspace)
     navigate({ to: '/$sessionId', params: { sessionId: targetSessionId } })
   }, [navigate])
-  // The ``send_to_workspace`` tool card asks for the same switch by event,
+  // The ``workspace`` tool card asks for the same switch by event,
   // which keeps ToolCall free of the router.
   useEffect(() => {
     const onOpen = (event: Event) => {

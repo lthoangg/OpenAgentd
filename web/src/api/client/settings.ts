@@ -108,7 +108,7 @@ export async function updateTitleGenerationSettings(
 }
 
 export type WorkspaceMessagesSettings = {
-  /** Lead agents get the ``send_to_workspace`` tool. */
+  /** Lead agents get the ``workspace`` tool. */
   enabled: boolean
 }
 

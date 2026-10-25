@@ -1,5 +1,5 @@
 //! Subagent coordination — port of `app/services/subagent_service.py`
-//! (the paths reachable from `delegate`, session callbacks and the API).
+//! (the paths reachable from `team`, session callbacks and the API).
 
 use crate::agent::Agent;
 use crate::broadcaster;
@@ -244,7 +244,7 @@ fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();
     for n in allowed {
-        if matches!(n.as_str(), "ask_user" | "delegate" | "schedule_task") {
+        if matches!(n.as_str(), "ask_user" | "team" | "schedule") {
             continue;
         }
         if !matches!(n.as_str(), "read" | "glob" | "grep" | "patch" | "shell" | "web_search" | "web_fetch") {
@@ -498,9 +498,9 @@ pub fn failure_report(handle: &str, error: Option<&Value>, fallback: Option<&str
         None => message.trim_end_matches('.').to_string(),
     };
     let next = match text("code").and_then(retry_may_help) {
-        Some(true) => format!("Retrying may help: delegate(target='{handle}', task='continue'). Or give the task to another profile, or do it yourself."),
+        Some(true) => format!("Retrying may help: team(target='{handle}', task='continue'). Or give the task to another profile, or do it yourself."),
         Some(false) => "Retrying won't help until its model or provider is fixed. Give the task to another profile, or do it yourself.".to_string(),
-        None => format!("Retry it with delegate(target='{handle}', task='continue'), give the task to another profile, or do it yourself."),
+        None => format!("Retry it with team(target='{handle}', task='continue'), give the task to another profile, or do it yourself."),
     };
     format!("{handle} failed: {reason}. Its work so far is kept in its session. {next}")
 }
@@ -555,7 +555,7 @@ impl StallWatch {
 /// The notice a stalled member sends its lead.
 pub fn stall_notice(handle: &str, reason: &str) -> String {
     format!(
-        "{handle} is stalled: {reason}. It keeps trying on its own, and its report will follow if it recovers. To go on without it, stop it with delegate(action='stop', target='{handle}')."
+        "{handle} is stalled: {reason}. It keeps trying on its own, and its report will follow if it recovers. To go on without it, stop it with team(action='stop', target='{handle}')."
     )
 }
 
@@ -592,7 +592,7 @@ impl Hook for MemberStallHook {
     }
 }
 
-/// One line per member the lead can address, for `delegate(action='list')`.
+/// One line per member the lead can address, for `team(action='list')`.
 pub fn describe_subagents(lead: &str) -> String {
     let r = reg().lock().unwrap();
     let Some(live) = r.live.get(lead).filter(|m| !m.is_empty()) else {
@@ -734,7 +734,7 @@ pub async fn on_subagent_question_asked(lead: &str, child: &str, data: &Value, p
     let q = data.get("question").map(crate::pystr::py_str).unwrap_or_default();
     let opts: Vec<String> = data.get("options").and_then(|o| o.as_array()).map(|a| a.iter().map(crate::pystr::py_str).collect()).unwrap_or_default();
     let opts_text = if opts.is_empty() { String::new() } else { format!(" (Options: {})", opts.join(", ")) };
-    let content = format!("Question from {handle}: {q}{opts_text}\nTo reply, call delegate(profile='{profile}', target='{handle}', task='<your answer>').");
+    let content = format!("Question from {handle}: {q}{opts_text}\nTo reply, call team(profile='{profile}', target='{handle}', task='<your answer>').");
     if let Err(e) = deliver_message_to_lead(lead, &handle, &content, pool).await {
         tracing::warn!("Failed to deliver subagent question to lead: {}", e);
     }
@@ -885,7 +885,7 @@ mod tests {
         assert_eq!(
             failure_report("explorer#1", Some(&rate), None),
             "explorer#1 failed: Rate Limit Exceeded: The configured LLM provider is rate-limited or quota-exhausted. Its work so far is kept in its session. \
-             Retrying may help: delegate(target='explorer#1', task='continue'). Or give the task to another profile, or do it yourself."
+             Retrying may help: team(target='explorer#1', task='continue'). Or give the task to another profile, or do it yourself."
         );
 
         let auth =
@@ -898,7 +898,7 @@ mod tests {
         let refused = failure_report("worker#3", None, Some("A question is pending."));
         assert_eq!(
             refused,
-            "worker#3 failed: A question is pending. Its work so far is kept in its session. Retry it with delegate(target='worker#3', task='continue'), give the task to another profile, or do it yourself."
+            "worker#3 failed: A question is pending. Its work so far is kept in its session. Retry it with team(target='worker#3', task='continue'), give the task to another profile, or do it yourself."
         );
         assert!(failure_report("worker#4", None, None).contains("worker#4 failed: its turn failed with an unknown error."));
     }
@@ -936,7 +936,7 @@ mod tests {
         assert_eq!(
             stall_notice("worker#1", "mock:worker is out of quota, and it is waiting 1h 00m for the reset"),
             "worker#1 is stalled: mock:worker is out of quota, and it is waiting 1h 00m for the reset. It keeps trying on its own, and its report will follow if it recovers. \
-             To go on without it, stop it with delegate(action='stop', target='worker#1')."
+             To go on without it, stop it with team(action='stop', target='worker#1')."
         );
     }
 

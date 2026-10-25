@@ -327,7 +327,7 @@ impl AgentSession {
             injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.to_string() }));
         }
         if is_lead && appv3_core::runtime_settings::workspace_messages_enabled() {
-            injected.push(Arc::new(crate::tools::send_to_workspace::SendToWorkspaceTool::new(sid.to_string(), self.pool.clone())));
+            injected.push(Arc::new(crate::tools::workspace::WorkspaceTool::new(sid.to_string(), self.pool.clone())));
         }
         injected
     }

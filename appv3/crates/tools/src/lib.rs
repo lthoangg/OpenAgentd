@@ -1,7 +1,7 @@
 //! Built-in agent tools.
 //!
 //! Model-facing definitions come from `data/tool_definitions.json`.
-//! Session-bound tools (ask_user, delegate, skill, schedule_task, …) live in
+//! Session-bound tools (ask_user, team, skill, schedule, …) live in
 //! the agent crate and implement the same [`Tool`] trait.
 
 pub mod args;
@@ -217,7 +217,7 @@ pub fn builtin_tool(name: &str) -> Option<ToolRef> {
         "shell" => Arc::new(shell::ShellTool),
         "web_search" => Arc::new(web::WebSearchTool),
         "web_fetch" => Arc::new(web::WebFetchTool),
-        "todo_manage" => Arc::new(todo::TodoTool),
+        "todo" => Arc::new(todo::TodoTool),
         "generate_image" => Arc::new(multimodal::GenerateImageTool),
         "generate_video" => Arc::new(multimodal::GenerateVideoTool),
         _ => return None,
@@ -335,7 +335,8 @@ pub fn py_repr_str(s: &str) -> String {
     out
 }
 
-/// Names models reach for that mean one of ours (other harnesses' names).
+/// Names models reach for that mean one of ours: other harnesses' names,
+/// and our own former names, which older sessions still have in history.
 const TOOL_ALIASES: &[(&str, &str)] = &[
     ("bash", "shell"),
     ("sh", "shell"),
@@ -352,10 +353,13 @@ const TOOL_ALIASES: &[(&str, &str)] = &[
     ("view", "read"),
     ("find", "glob"),
     ("search", "grep"),
-    ("todo", "todo_manage"),
-    ("todos", "todo_manage"),
-    ("todo_write", "todo_manage"),
+    ("todos", "todo"),
+    ("todo_write", "todo"),
     ("load_skill", "skill"),
+    ("todo_manage", "todo"),
+    ("schedule_task", "schedule"),
+    ("send_to_workspace", "workspace"),
+    ("delegate", "team"),
 ];
 
 /// `Tool 'x' not found.`, plus the tool the model most likely meant and the
@@ -492,17 +496,29 @@ mod tests {
     /// model most likely meant and the ones it can call.
     #[tokio::test]
     async fn unknown_tool_error_suggests_the_intended_tool() {
-        let set = named(&["read", "shell", "patch", "todo_manage", "skill"]);
+        let set = named(&["read", "shell", "patch", "todo", "skill"]);
         let d = tempfile::tempdir().unwrap();
         let run = |name: &'static str| {
             let (set, ctx) = (set.clone(), ctx(d.path()));
             async move { execute(&set, &ctx, name, "{}").await.unwrap().text }
         };
-        assert_eq!(run("bash").await, "Error: Tool 'bash' not found. Did you mean 'shell'? Available tools: read, shell, patch, todo_manage, skill.");
-        assert!(run("mcp_Todo_manage").await.contains("Did you mean 'todo_manage'?"));
+        assert_eq!(run("bash").await, "Error: Tool 'bash' not found. Did you mean 'shell'? Available tools: read, shell, patch, todo, skill.");
+        assert!(run("mcp_Todo_manage").await.contains("Did you mean 'todo'?"));
         assert!(run("Read").await.contains("Did you mean 'read'?"));
         assert!(run("load_skill").await.contains("Did you mean 'skill'?"));
-        assert_eq!(run("teleport").await, "Error: Tool 'teleport' not found. Available tools: read, shell, patch, todo_manage, skill.");
+        assert_eq!(run("teleport").await, "Error: Tool 'teleport' not found. Available tools: read, shell, patch, todo, skill.");
+    }
+
+    /// A session from before the renames calls the old names from its
+    /// history; the error points it to the new one.
+    #[tokio::test]
+    async fn a_former_tool_name_points_to_its_new_name() {
+        let set = named(&["todo", "schedule", "workspace", "team"]);
+        let d = tempfile::tempdir().unwrap();
+        for (old, new) in [("todo_manage", "todo"), ("schedule_task", "schedule"), ("send_to_workspace", "workspace"), ("delegate", "team")] {
+            let text = execute(&set, &ctx(d.path()), old, "{}").await.unwrap().text;
+            assert_eq!(text, format!("Error: Tool '{old}' not found. Did you mean '{new}'? Available tools: todo, schedule, workspace, team."));
+        }
     }
 
     /// `/DESIGN.md` is a machine path; when only the workspace's `DESIGN.md`

@@ -97,7 +97,7 @@ export function FormFields({
     return levels && levels.length > 0 ? levels : FALLBACK_THINKING_LEVELS
   }, [currentModelOptions, fm.model])
 
-  const implicitToolNames = new Set(['skill', 'todo_manage', 'schedule_task', 'note', 'plan', 'submit_plan'])
+  const implicitToolNames = new Set(['skill', 'todo', 'schedule', 'note', 'plan', 'submit_plan', 'todo_manage', 'schedule_task'])
 
   // For the lead agent (code), core tools and implicit tools are built in.
   // For member agents, only the tools explicitly granted in frontmatter are active.

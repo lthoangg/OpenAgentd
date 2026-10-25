@@ -1,6 +1,6 @@
 /**
  * Workspace groups: named tags on repositories that decide which workspaces
- * may message each other (`send_to_workspace`). Groups and each
+ * may message each other (the `workspace` tool). Groups and each
  * repository's tags ride on the workspace tree (`GET /agent/workspace/tree`),
  * so reading them adds no request and every mutation refreshes that query.
  */

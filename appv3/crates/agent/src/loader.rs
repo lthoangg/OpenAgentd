@@ -426,19 +426,23 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user", "plan", "submit_plan", "send_to_workspace", "mcp"];
+const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo", "schedule", "lsp", "ask_user", "plan", "submit_plan", "workspace", "mcp"];
+/// Former names of injected tools. Agent files written before the renames
+/// still list them; they are skipped like the injected tools, never pruned
+/// from the user's file.
+const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate"];
 
 /// `_default_tool_registry` (built-ins by name). MCP tools are reached
 /// through the `mcp` tool, which `build_agent` adds.
 pub fn default_tool_registry() -> HashMap<String, ToolRef> {
     let mut reg: HashMap<String, ToolRef> = HashMap::new();
-    for n in ["web_search", "web_fetch", "read", "grep", "glob", "patch", "shell", "todo_manage"] {
+    for n in ["web_search", "web_fetch", "read", "grep", "glob", "patch", "shell", "todo"] {
         if let Some(t) = appv3_tools::builtin_tool(n) {
             reg.insert(n.into(), t);
         }
     }
     reg.insert("skill".into(), Arc::new(crate::skills::SkillTool));
-    reg.insert("schedule_task".into(), Arc::new(crate::scheduler::ScheduleTaskTool));
+    reg.insert("schedule".into(), Arc::new(crate::scheduler::ScheduleTaskTool));
     for n in ["generate_image", "generate_video"] {
         if let Some(t) = appv3_tools::builtin_tool(n) {
             reg.insert(n.into(), t);
@@ -499,7 +503,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
         }
     }
     let pick = |n: &str| -> ToolRef { registry.get(n).cloned().unwrap_or_else(|| default_tool_registry()[n].clone()) };
-    let mut tools: Vec<ToolRef> = vec![pick("skill"), pick("todo_manage"), pick("schedule_task")];
+    let mut tools: Vec<ToolRef> = vec![pick("skill"), pick("todo"), pick("schedule")];
     let mut seen: std::collections::HashSet<String> = tools.iter().map(|t| t.name().to_string()).collect();
     let mut dedup = vec![];
     for t in &cfg.tools {
@@ -510,7 +514,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
     cfg.tools = dedup;
     let mut unknown_tools: Vec<String> = vec![];
     for name in &cfg.tools {
-        if CONTEXT_INJECTED_TOOLS.contains(&name.as_str()) {
+        if CONTEXT_INJECTED_TOOLS.contains(&name.as_str()) || FORMER_TOOL_NAMES.contains(&name.as_str()) {
             continue;
         }
         let Some(t) = registry.get(name) else {
@@ -630,6 +634,29 @@ mod tests {
         assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level.as_deref(), Some("high"));
         std::fs::write(&p, "---\nname: code\nmodel: openai:gpt-5\n---\n\nHi\n").unwrap();
         assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level, None);
+    }
+
+    /// An agent file written before the renames lists the former names. They
+    /// are ignored, not pruned: the file is the user's, and the tools they
+    /// named are given to every lead under their new names anyway.
+    #[test]
+    fn former_tool_names_in_an_agent_file_are_left_alone() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("code.md");
+        let factory: ProviderFactory = Arc::new(|_, _| Ok(Arc::new(appv3_providers::mock::MockProvider::new(vec![])) as Arc<dyn LlmProvider>));
+        let text = "---\nname: code\nmodel: openai:gpt-5\ntools:\n- read\n- todo_manage\n- schedule_task\n- send_to_workspace\n- delegate\n---\n\nHi\n";
+        std::fs::write(&p, text).unwrap();
+
+        let agent = rebuild_agent_from_disk(&p, &factory).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), text, "the agent file was rewritten");
+        let names: Vec<String> = agent.tools.names();
+        for want in ["read", "todo", "schedule"] {
+            assert!(names.iter().any(|n| n == want), "{want} missing from {names:?}");
+        }
+        for gone in ["todo_manage", "schedule_task", "send_to_workspace", "delegate"] {
+            assert!(!names.iter().any(|n| n == gone), "{gone} in {names:?}");
+        }
     }
 
     #[test]

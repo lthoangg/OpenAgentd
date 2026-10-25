@@ -19,6 +19,7 @@ import type { ToolDisplay } from './types'
 import { parsePatchText } from './diffUtils'
 import { pathBasename } from '@/utils/workspace'
 import { parsePartialJSON } from './displayText'
+import { canonicalToolName } from '@/utils/tool-names'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -171,7 +172,8 @@ const HIDE_ARGS_TOOLS = new Set([
  * ``done`` only matters to tools whose header reads differently once the call
  * finished (``plan``: "Writing plan…" → "Wrote plan").
  */
-export function getToolDisplay(name: string, args: string | undefined, done = false): ToolDisplay {
+export function getToolDisplay(rawName: string, args: string | undefined, done = false): ToolDisplay {
+  const name = canonicalToolName(rawName)
   if (!args) {
     // recall with no args — conversational header, no args section
     if (name === 'recall') {
@@ -509,8 +511,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── todo_manage: action summary in header, simplified action list ─
-  if (name === 'todo_manage') {
+  // ── todo: action summary in header, simplified action list ────────
+  if (name === 'todo') {
     const actions = actionList(parsed)
     const first = actions[0]
     const firstAction = first ? str(first, 'action') : null
@@ -568,8 +570,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return { header: 'Managing todos…', headerTitle: 'Managing todos…', formattedArgs: null }
   }
 
-  // ── schedule_task: action summary in header, prompt/schedule as args ─
-  if (name === 'schedule_task') {
+  // ── schedule: action summary in header, prompt/schedule as args ───
+  if (name === 'schedule') {
     const action = str(parsed, 'action')
     const taskName = str(parsed, 'name')
     const taskId = str(parsed, 'task_id')
@@ -730,7 +732,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   }
 
   // ── Team and Subagent coordination tools ─────────────────────────
-  if (name === 'delegate') {
+  if (name === 'team') {
     const profile = str(parsed, 'profile') || 'subagent'
     const target = str(parsed, 'target')
     const task = str(parsed, 'task')
@@ -753,8 +755,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── send_to_workspace: another workspace's agent session ─────────
-  if (name === 'send_to_workspace') {
+  // ── workspace: another workspace's agent session ──────────────────
+  if (name === 'workspace') {
     const workspace = str(parsed, 'workspace')
     const label = workspace ? trunc(pathBasename(workspace) || workspace) : null
     if (str(parsed, 'action') === 'list') {

@@ -1020,7 +1020,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
   A lead stays loaded while its subagents work, so a job longer than 30 minutes
   still reports back instead of being cancelled when the idle lead was unloaded `[v3.24.0]`.
-- **Lead control over its subagents** `[v3.30.0]` — `delegate` takes an `action`:
+- **Lead control over its subagents** `[v3.30.0]` — `team` takes an `action`:
   `interrupt` cuts one subagent's current step short and starts it on a new task at
   once, `stop` ends one subagent's work without a report (a later task resumes it with
   its context), and `list` shows each subagent's status. Calls without an `action`
@@ -1030,6 +1030,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   of "Subagent turn failed with error." One that can't reach its model (out of quota,
   or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
   Stopped subagents show as `stopped` rather than `error`.
+- **Shorter tool names** `[v3.30.0]` — `schedule_task`, `send_to_workspace`,
+  `delegate` and `todo_manage` are now `schedule`, `workspace`, `team` and `todo`,
+  with the same arguments. A session from before the rename that calls a former
+  name is told the new one ("Did you mean 'team'?"); agent files that list a
+  former name are left as they are; old transcripts render as before.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or
@@ -1918,10 +1923,10 @@ MCP.
 | Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`; read-only in Plan mode `[v2.17.0]`) |
 | Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
-| Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
-| Tasks | `todo_manage` |
-| Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
-| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Workspaces can turn it off) `[v3.9.0]` |
+| Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]` |
+| Tasks | `todo` (`todo_manage` before v3.30.0) |
+| Team orchestration | `team` (lead agent; `delegate` before v3.30.0) `[v2.16.0]` |
+| Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |

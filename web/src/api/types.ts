@@ -73,7 +73,7 @@ export interface CodingWorkspaceTreeRepository {
 
 /**
  * A workspace group: a named tag on repositories. Workspaces whose
- * repositories share a group may message each other (`send_to_workspace`);
+ * repositories share a group may message each other (`workspace` tool);
  * the brief tells their agents what each repository is for.
  */
 export interface WorkspaceGroup {

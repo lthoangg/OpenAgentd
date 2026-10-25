@@ -37,14 +37,17 @@ describe('send_to_workspace result', () => {
     expect(parseSendResult(undefined)).toBeNull()
   })
 
-  it('offers a switch to the target session once the send succeeded', () => {
+  it('offers a switch to the target session once the send succeeded, under either tool name', () => {
     const requests: unknown[] = []
     const listener = (e: Event) => requests.push((e as CustomEvent).detail)
     window.addEventListener(OPEN_SESSION_EVENT, listener)
     try {
-      render(<ToolCall name="send_to_workspace" args={ARGS} done result={`Sent to 'infra' (/r/infra) — new session ${SID} started.`} />)
-      fireEvent.click(screen.getByRole('button', { name: 'Open in infra' }))
-      expect(requests).toEqual([{ sessionId: SID, workspace: '/r/infra' }])
+      for (const name of ['workspace', 'send_to_workspace']) {
+        render(<ToolCall name={name} args={ARGS} done result={`Sent to 'infra' (/r/infra) — new session ${SID} started.`} />)
+        fireEvent.click(screen.getByRole('button', { name: 'Open in infra' }))
+        cleanup()
+      }
+      expect(requests).toEqual([{ sessionId: SID, workspace: '/r/infra' }, { sessionId: SID, workspace: '/r/infra' }])
     } finally {
       window.removeEventListener(OPEN_SESSION_EVENT, listener)
     }

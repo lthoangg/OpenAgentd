@@ -6,6 +6,7 @@ package app.openagentd.shell
 import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
+import android.content.res.Configuration
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
 import androidx.core.content.FileProvider
@@ -49,9 +50,21 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
 
     private val secrets by lazy { KeystoreSecretStore(activity.applicationContext) }
 
+    /** The boot page's paper tone (web/index.html) for an appearance. */
+    private fun paper(dark: Boolean): Int =
+        if (dark) 0xFF15110D.toInt() else 0xFFFAF6EC.toInt()
+
+    private fun systemIsDark(): Boolean =
+        (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+
     override fun load(webView: WebView) {
         super.load(webView)
         webViewLoaded = true
+        // Tauri applies the config's single (light) backgroundColor right
+        // after this hook. Repaint once it has, so a dark launch shows dark
+        // paper, not light, until the page paints.
+        webView.post { webView.setBackgroundColor(paper(systemIsDark())) }
     }
 
     override fun onDestroy() {

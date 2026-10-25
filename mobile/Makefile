@@ -131,6 +131,7 @@ ios-clean: ## Remove generated iOS/Xcode state (keeps gen/android)
 
 android-init: ## Initialize Tauri Android (Gradle) project files
 	cd src-tauri && cargo tauri android init --skip-targets-install
+	./scripts/patch-android-theme.sh
 	$(MAKE) android-icons
 
 # The shared icon script writes the launcher icons (adaptive foreground on a
@@ -141,10 +142,12 @@ android-icons: ## Generate OpenAgentd launcher icons into the Android project
 	cp -R src-tauri/icons/android/. $(ANDROID_RES)/
 
 android-dev: ## Run on a connected Android device/emulator against Vite (`make android-dev [device]`)
+	./scripts/patch-android-theme.sh
 	cd src-tauri && cargo tauri android dev $(ANDROID_DEVICE) --host
 
 android-apk: ## Build the release APK and sign it into dist/ (see scripts/package-apk.sh)
 	@[ -d src-tauri/gen/android ] || $(MAKE) android-init
+	./scripts/patch-android-theme.sh
 	$(MAKE) android-icons
 	cd src-tauri && cargo tauri android build --apk $(foreach t,$(ANDROID_TARGETS),--target $(t))
 	./scripts/package-apk.sh

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseDeepLinkUrl } from '@/hooks/useDeepLinkRouter'
+import { deepLinkParts, parseDeepLinkUrl } from '@/hooks/useDeepLinkRouter'
 
 describe('parseDeepLinkUrl', () => {
   it('leaves connect links to useConnectLink', () => {
@@ -58,6 +58,48 @@ describe('parseDeepLinkUrl', () => {
   it('opens a new session for a link without a session id', () => {
     expect(parseDeepLinkUrl('openagentd://coding')).toEqual({ kind: 'navigate', path: '/' })
     expect(parseDeepLinkUrl('openagentd://session/')).toEqual({ kind: 'navigate', path: '/' })
+  })
+
+  // Home-screen widget links.
+  it('opens a session from a widget row', () => {
+    expect(parseDeepLinkUrl('openagentd://session/01a17359-cd87')).toEqual({ kind: 'navigate', path: '/01a17359-cd87' })
+  })
+
+  it('starts a new session draft, in the named folder when given', () => {
+    expect(parseDeepLinkUrl('openagentd://new')).toEqual({ kind: 'new_session', workspace: null })
+    expect(parseDeepLinkUrl('openagentd-dev://new?workspace=%2FUsers%2Fme%2Frepo')).toEqual({
+      kind: 'new_session',
+      workspace: '/Users/me/repo',
+    })
+    expect(parseDeepLinkUrl('openagentd://new?workspace=%20')).toEqual({ kind: 'new_session', workspace: null })
+  })
+
+  it('opens the scheduler, on one task when given', () => {
+    expect(parseDeepLinkUrl('openagentd://scheduler')).toEqual({ kind: 'open_scheduler', task: null })
+    expect(parseDeepLinkUrl('openagentd://scheduler?task=task-1')).toEqual({ kind: 'open_scheduler', task: 'task-1' })
+  })
+
+  it('rejects widget hosts with extra path segments', () => {
+    expect(parseDeepLinkUrl('openagentd://new/extra')).toEqual({ kind: 'unknown' })
+    expect(parseDeepLinkUrl('openagentd://scheduler/extra')).toEqual({ kind: 'unknown' })
+  })
+})
+
+// The Android System WebView's older Chromium reads `openagentd://scheduler`
+// as host "" and pathname "//scheduler".
+describe('deepLinkParts', () => {
+  it('keeps a host the URL parser found', () => {
+    expect(deepLinkParts({ host: 'session', pathname: '/abc' })).toEqual({ host: 'session', pathname: '/abc' })
+  })
+
+  it('splits the host out of an old-Chromium pathname', () => {
+    expect(deepLinkParts({ host: '', pathname: '//scheduler' })).toEqual({ host: 'scheduler', pathname: '' })
+    expect(deepLinkParts({ host: '', pathname: '//session/abc' })).toEqual({ host: 'session', pathname: '/abc' })
+    expect(deepLinkParts({ host: '', pathname: '//auth/callback' })).toEqual({ host: 'auth', pathname: '/callback' })
+  })
+
+  it('leaves an ordinary empty-host path alone', () => {
+    expect(deepLinkParts({ host: '', pathname: '/x' })).toEqual({ host: '', pathname: '/x' })
   })
 })
 

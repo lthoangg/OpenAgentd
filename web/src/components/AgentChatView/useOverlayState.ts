@@ -439,6 +439,14 @@ export function useOverlayState({
     toggleScheduler()
   }, [closeOtherMobileOverlays, schedulerInDock, toggleScheduler])
 
+  // A deep link (the home-screen scheduled-tasks widget) asked for the
+  // scheduler, possibly before this view mounted. Taken once, so a remount
+  // does not reopen it.
+  const schedulerOpenPending = useUIStore((s) => s.schedulerOpenPending)
+  useEffect(() => {
+    if (schedulerOpenPending && useUIStore.getState().takeSchedulerOpenRequest()) handleOpenScheduler()
+  }, [handleOpenScheduler, schedulerOpenPending])
+
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
     togglePalette()

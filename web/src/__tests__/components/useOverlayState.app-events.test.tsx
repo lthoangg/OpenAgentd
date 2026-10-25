@@ -31,7 +31,14 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 }
 
 beforeEach(() => {
-  useUIStore.setState({ schedulerOpen: false, agentCapabilitiesOpen: false, paletteOpen: false, quickOpenOpen: false })
+  useUIStore.setState({
+    schedulerOpen: false,
+    agentCapabilitiesOpen: false,
+    paletteOpen: false,
+    quickOpenOpen: false,
+    schedulerOpenPending: false,
+    scheduledTaskFocus: null,
+  })
 })
 afterEach(cleanup)
 
@@ -107,5 +114,28 @@ describe('useOverlayState app events', () => {
     dispatchAppEvent(APP_EVENTS.toggleScheduler)
 
     expect(args.toggleScheduler).not.toHaveBeenCalled()
+  })
+
+  // The home-screen widget's deep link can arrive before the chat view mounts.
+  it('opens the scheduler a deep link asked for before it mounted, once', () => {
+    useUIStore.getState().requestSchedulerOpen('task-7')
+
+    const { result } = renderOverlay()
+
+    expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 1 })
+    expect(useUIStore.getState().scheduledTaskFocus).toBe('task-7')
+    expect(useUIStore.getState().schedulerOpenPending).toBe(false)
+
+    cleanup()
+    const again = renderOverlay()
+    expect(again.result.current.dockViewRequest).toBeNull()
+  })
+
+  it('opens the scheduler when a deep link asks while mounted', () => {
+    const { result } = renderOverlay()
+
+    act(() => useUIStore.getState().requestSchedulerOpen(null))
+
+    expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 1 })
   })
 })

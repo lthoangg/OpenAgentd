@@ -38,6 +38,15 @@ interface UIStore {
   /** Task the scheduler should open on next (a sidebar click); taken once. */
   scheduledTaskFocus: string | null
   focusScheduledTask: (taskId: string | null) => void
+  /**
+   * A deep link asked for the scheduler. Kept until the chat view takes it,
+   * because on a cold start the link arrives before that view mounts.
+   */
+  schedulerOpenPending: boolean
+  /** Open the scheduler (on ``taskId`` when set) once the chat view can. */
+  requestSchedulerOpen: (taskId: string | null) => void
+  /** Clear a pending scheduler request; true when there was one. */
+  takeSchedulerOpenRequest: () => boolean
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
@@ -74,6 +83,16 @@ export const useUIStore = create<UIStore>()(
     shortcutsHelpOpen: false,
     scheduledTaskFocus: null,
     focusScheduledTask: (taskId) => set((state) => { state.scheduledTaskFocus = taskId }),
+    schedulerOpenPending: false,
+    requestSchedulerOpen: (taskId) => set((state) => {
+      state.scheduledTaskFocus = taskId
+      state.schedulerOpenPending = true
+    }),
+    takeSchedulerOpenRequest: () => {
+      if (!get().schedulerOpenPending) return false
+      set((state) => { state.schedulerOpenPending = false })
+      return true
+    },
     toggleScheduler: () => {
       set((state) => {
         const nextOpen = !state.schedulerOpen

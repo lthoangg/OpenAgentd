@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
+import { saveLastWorkspace } from '@/utils/workspace'
 
 const getCurrent = mock(() => Promise.resolve([] as string[]))
 const onOpenUrl = mock((_handler: unknown) => Promise.resolve(() => {}))
 const navigate = mock(() => Promise.resolve())
 const invalidateQueries = mock(() => Promise.resolve())
 const pushToast = mock(() => {})
+const startNewSession = mock((..._args: unknown[]) => true)
+const requestSchedulerOpen = mock((..._args: unknown[]) => {})
 let currentWindowLabel = 'main'
 
 mock.module('@tauri-apps/plugin-deep-link', () => ({ getCurrent, onOpenUrl }))
@@ -17,6 +20,10 @@ mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }
 mock.module('@/lib/query-client', () => ({ queryClient: { invalidateQueries } }))
 mock.module('@/stores/useToastStore', () => ({
   useToastStore: { getState: () => ({ push: pushToast }) },
+}))
+mock.module('@/lib/new-session', () => ({ startNewSession }))
+mock.module('@/stores/useUIStore', () => ({
+  useUIStore: { getState: () => ({ requestSchedulerOpen }) },
 }))
 
 function DeepLinkRouter() {
@@ -33,6 +40,9 @@ beforeEach(() => {
   navigate.mockReset()
   invalidateQueries.mockReset()
   pushToast.mockReset()
+  startNewSession.mockClear()
+  requestSchedulerOpen.mockClear()
+  localStorage.clear()
   globalThis.fetch = mock(async () => new Response(null, { status: 200 }))
 })
 
@@ -121,6 +131,43 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
 
     await waitFor(() => expect(onOpenUrl).not.toHaveBeenCalled())
     expect(getCurrent).not.toHaveBeenCalled()
+  })
+
+  it('starts a new session in the folder a widget names', async () => {
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://new?workspace=%2Fsrv%2Frepo']))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => expect(startNewSession).toHaveBeenCalledTimes(1))
+    expect(startNewSession.mock.calls[0][0]).toMatchObject({ workspace: '/srv/repo', navigate })
+  })
+
+  it('starts a new session in the last folder when the link names none', async () => {
+    saveLastWorkspace('/srv/last')
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://new']))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => expect(startNewSession).toHaveBeenCalledTimes(1))
+    expect(startNewSession.mock.calls[0][0]).toMatchObject({ workspace: '/srv/last' })
+  })
+
+  it('opens the app when a new-session link has no folder to start in', async () => {
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://new']))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ href: '/' }))
+    expect(startNewSession).not.toHaveBeenCalled()
+  })
+
+  it('asks the chat view to open the scheduler on the linked task', async () => {
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://scheduler?task=task-7']))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => expect(requestSchedulerOpen).toHaveBeenCalledWith('task-7'))
+    expect(navigate).not.toHaveBeenCalled()
   })
 })
 

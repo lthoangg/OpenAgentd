@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'bun:test'
 
-import { findFileRefs, parseFileHref, parseFileRef, parseMentionRef, resolveWorkspaceRef, workspaceRelativePath } from '@/utils/file-refs'
+import {
+  documentRefCandidates,
+  findFileRefs,
+  parseFileHref,
+  parseFileRef,
+  parseMentionRef,
+  resolveDocumentRef,
+  resolveWorkspaceRef,
+  workspaceRelativePath,
+} from '@/utils/file-refs'
 
 describe('parseMentionRef — an @-mention or design feedback source', () => {
   it('keeps the #L line range of the mention', () => {
@@ -145,5 +154,49 @@ describe('resolveWorkspaceRef — which listed file a reference means', () => {
   it('reports a reference no listed file ends with', () => {
     expect(resolveWorkspaceRef('Missing.tsx', files)).toEqual({ kind: 'missing' })
     expect(resolveWorkspaceRef('ents/Button.tsx', files)).toEqual({ kind: 'missing' })
+  })
+})
+
+describe('resolveDocumentRef — a link in a workspace Markdown file', () => {
+  const listed = new Set(['README.md', 'setup.md', 'docs/README.md', 'docs/guide.md', 'docs/api/index.md', 'src/app.ts'])
+  const isListed = (path: string) => listed.has(path)
+  const resolve = (path: string, truncated = false) =>
+    resolveDocumentRef('docs/README.md', path, '/repo', isListed, truncated)
+
+  it("reads a relative path from the file's folder first", () => {
+    expect(resolve('guide.md')).toEqual({ kind: 'file', path: 'docs/guide.md' })
+    expect(resolve('./api/index.md')).toEqual({ kind: 'file', path: 'docs/api/index.md' })
+    expect(resolve('../setup.md')).toEqual({ kind: 'file', path: 'setup.md' })
+    // The file's own folder wins over a root file of the same name.
+    expect(resolve('README.md')).toEqual({ kind: 'file', path: 'docs/README.md' })
+  })
+
+  it('falls back to the workspace root, for code spans such as src/app.ts', () => {
+    expect(resolve('src/app.ts')).toEqual({ kind: 'file', path: 'src/app.ts' })
+  })
+
+  it('reads a leading slash as the workspace root, and the absolute root path as itself', () => {
+    expect(resolve('/setup.md')).toEqual({ kind: 'file', path: 'setup.md' })
+    expect(resolve('/repo/src/app.ts')).toEqual({ kind: 'file', path: 'src/app.ts' })
+  })
+
+  it('reports a path inside the workspace that no listed file has', () => {
+    expect(resolve('missing.md')).toEqual({ kind: 'missing' })
+  })
+
+  it("opens the folder-relative path when the listing was cut short", () => {
+    expect(resolve('missing.md', true)).toEqual({ kind: 'file', path: 'docs/missing.md' })
+  })
+
+  it('refuses paths outside the workspace', () => {
+    expect(resolve('../../outside.md')).toBeNull()
+    expect(resolve('~/notes.md')).toBeNull()
+    expect(documentRefCandidates('docs/README.md', '../../outside.md', '/repo')).toEqual([])
+  })
+
+  it('lists the folder-relative candidate before the root one, without duplicates', () => {
+    expect(documentRefCandidates('docs/README.md', 'src/app.ts', '/repo')).toEqual(['docs/src/app.ts', 'src/app.ts'])
+    expect(documentRefCandidates('README.md', 'src/app.ts', '/repo')).toEqual(['src/app.ts'])
+    expect(documentRefCandidates('docs/README.md', '../setup.md', '/repo')).toEqual(['setup.md'])
   })
 })

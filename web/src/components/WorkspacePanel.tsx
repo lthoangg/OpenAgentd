@@ -449,6 +449,7 @@ export function WorkspacePanel({
     const file = filesByPath.get(path) ?? { path, name: basename(path), size: 0, mtime: 0, mime: 'text/plain' }
     openFileTab(file)
   }, [filesByPath, openFileTab])
+  const isListedFile = useCallback((path: string) => filesByPath.has(path), [filesByPath])
 
   const openCommitTabBySha = (sha: string) => {
     const commit = commits.find((item) => item.sha === sha)
@@ -727,6 +728,9 @@ export function WorkspacePanel({
               file={resolveFileTabInfo(activeTab.file, filesByPath.get(activeTab.file.path), changedPaths.get(activeTab.file.path))}
               onAddComment={onAddComment}
               onOpenPreview={canPreview && !chatWorkspace ? openFilePreview : undefined}
+              onOpenFile={openChangedFile}
+              isListed={isListedFile}
+              listingTruncated={files.data?.truncated === true}
             />
           ) : activeTab?.type === 'diff' ? (
             <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />

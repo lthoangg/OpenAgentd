@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Download, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
 import { FilePreviewContent, CopyButton, canCopyFileContents, isMarkdownFile, type MarkdownView } from '../FileViewerPanel'
+import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
+import { useToastStore } from '@/stores/useToastStore'
+import { documentRefCandidates, resolveDocumentRef } from '@/utils/file-refs'
 import { formatBytes } from '@/utils/format'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
@@ -16,6 +19,12 @@ interface FilePreviewSubPanelProps {
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   /** Shown for HTML files: open the file in a web preview tab. */
   onOpenPreview?: (path: string) => void
+  /** Open a workspace-relative path as a file tab; enables file links in rendered markdown. */
+  onOpenFile?: (path: string) => void
+  /** Whether the workspace listing has ``path``; links to unlisted files report them missing. */
+  isListed?: (path: string) => boolean
+  /** The listing was cut short, so an unlisted file may still exist. */
+  listingTruncated?: boolean
 }
 
 const HTML_FILE = /\.html?$/i
@@ -25,12 +34,49 @@ const MARKDOWN_VIEW_OPTIONS: readonly SegmentedOption<MarkdownView>[] = [
   { value: 'source', label: 'Source' },
 ]
 
+/**
+ * How links in a rendered markdown file open workspace files: read from the
+ * file's folder, then the root; HTML in Preview, the rest as file tabs.
+ */
+function documentFileOpener(
+  workspace: string,
+  fromFile: string,
+  onOpenFile: (path: string) => void,
+  onOpenPreview: ((path: string) => void) | undefined,
+  isListed: (path: string) => boolean,
+  truncated: boolean,
+): FileRefOpener {
+  return {
+    workspace,
+    canOpen: (ref) => documentRefCandidates(fromFile, ref.path, workspace).length > 0,
+    open: (ref) => {
+      const match = resolveDocumentRef(fromFile, ref.path, workspace, isListed, truncated)
+      if (!match) return
+      if (match.kind === 'missing') {
+        useToastStore.getState().push({ tone: 'info', title: 'File not found', description: `No file in this workspace matches ${ref.path}.` })
+        return
+      }
+      if (HTML_FILE.test(match.path) && onOpenPreview) {
+        onOpenPreview(match.path)
+        return
+      }
+      onOpenFile(match.path)
+      if (ref.line) useFileRevealStore.getState().reveal(match.path, ref.line, ref.endLine)
+    },
+  }
+}
+
+const ALWAYS_LISTED = () => true
+
 /** A file tab: one 32px toolbar (path, size, actions) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
   file,
   onAddComment,
   onOpenPreview,
+  onOpenFile,
+  isListed = ALWAYS_LISTED,
+  listingTruncated = false,
 }: FilePreviewSubPanelProps) {
   const deleted = file.deleted === true
   const downloadLabel = deleted ? 'File deleted from workspace' : 'Download file'
@@ -44,6 +90,10 @@ export function FilePreviewSubPanel({
     markdownView = 'source'
     setView({ path: file.path, value: 'source' })
   }
+  const fileOpener = useMemo(
+    () => (onOpenFile ? documentFileOpener(workspace, file.path, onOpenFile, onOpenPreview, isListed, listingTruncated) : null),
+    [workspace, file.path, onOpenFile, onOpenPreview, isListed, listingTruncated],
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -107,7 +157,9 @@ export function FilePreviewSubPanel({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <FilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} markdownView={markdownView} />
+        <FileRefContext.Provider value={fileOpener}>
+          <FilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} markdownView={markdownView} />
+        </FileRefContext.Provider>
       </div>
     </div>
   )

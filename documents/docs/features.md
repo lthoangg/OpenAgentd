@@ -1685,6 +1685,10 @@ agent against it.
   front matter shows as a YAML block. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
+  Links and file-named code spans in a rendered Markdown file open the
+  workspace file in a new tab, at the line when one is given; paths read from
+  the file's folder, then the workspace root. HTML files open in Preview, and
+  a missing file shows a "File not found" notice `[v3.32.0]`.
 - **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including

@@ -117,9 +117,7 @@ bun run build                            # production build
 
 ### Database migrations
 
-Migrations run automatically when the server starts — no manual step needed. In a source checkout, `make run` and `make dev` default to the project-local `.openagentd/dev/` paths.
-
-Use `APP_ENV=production` only when you intentionally want to target the installed production database.
+Migrations run automatically when the server starts — no manual step needed. In a source checkout, `make run` and `make dev` always use the project-local `.openagentd/dev/` paths, even when the shell has `APP_ENV=production` (a shell the installed app started does). Dev-only settings go in `.openagentd/dev/config/.env`; the server no longer reads the `.env` at the repository root.
 
 ---
 

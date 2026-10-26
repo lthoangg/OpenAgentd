@@ -6,10 +6,11 @@
 # Default target
 all: help
 
-# `server serve` defaults to production paths; keep source checkouts on the
-# project-local development data unless APP_ENV is set explicitly.
+# `server serve` defaults to production paths. Always pin source checkouts to the
+# project-local development data: an inherited APP_ENV=production (for example
+# from a shell the installed app spawned) would otherwise migrate the real database.
 run: ## Start the API server only (v3 Rust backend, no frontend; :8000)
-	APP_ENV=$${APP_ENV:-development} cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000
+	APP_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000
 
 run-v3: run ## Alias for run
 
@@ -17,7 +18,7 @@ run3: run
 
 dev: kill-dev-ports ## Start the v3 backend (:8000) and frontend (Vite :5173) together
 	@trap 'kill 0' INT TERM EXIT; \
-	(APP_ENV=$${APP_ENV:-development} cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000 2>&1 | sed 's/^/[api] /') & \
+	(APP_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000 2>&1 | sed 's/^/[api] /') & \
 	(while ! nc -z 127.0.0.1 8000 2>/dev/null; do sleep 0.1; done; cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
 	wait
 

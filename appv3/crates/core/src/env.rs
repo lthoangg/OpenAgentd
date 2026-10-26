@@ -12,6 +12,28 @@ fn server_set() -> &'static Mutex<BTreeSet<String>> {
     S.get_or_init(Default::default)
 }
 
+fn notices() -> &'static Mutex<Vec<String>> {
+    static N: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    N.get_or_init(Default::default)
+}
+
+fn notice(text: String) {
+    let mut n = notices().lock().unwrap();
+    if !n.contains(&text) {
+        n.push(text);
+    }
+}
+
+/// `.env` files and keys the server skipped, for the log and `agentd doctor`
+/// (both start after the files are read).
+pub fn env_notices() -> Vec<String> {
+    notices().lock().unwrap().clone()
+}
+
+/// Keys a `.env` file may not set: the mode picks the config dir the file
+/// lives in, so only the real environment can choose it.
+const ENV_ONLY_KEYS: [&str; 1] = ["APP_ENV"];
+
 /// Record that the server itself put `key` into its environment (a `.env`
 /// value, or a provider/MCP secret saved through the API). Such values are
 /// server configuration, not part of the user's environment, so commands
@@ -21,11 +43,17 @@ pub fn mark_server_set(key: &str) {
 }
 
 /// Variables no shell or terminal child may inherit: the server's auth
-/// variables plus every key from [`mark_server_set`]. Variables the user
-/// exported before starting the server are not listed and pass through.
+/// variables, every key from [`mark_server_set`], and the server's own mode
+/// and `OPENAGENTD_*` variables. Its launcher sets those, and a child would
+/// otherwise carry the installed app's `production` mode and paths into the
+/// user's projects and into development builds started from the agent's
+/// shell. Other variables the user exported before starting the server pass
+/// through.
 pub fn child_env_blocklist() -> Vec<String> {
     let mut keys: Vec<String> = crate::auth::CHILD_ENV_SECRETS.iter().map(|k| k.to_string()).collect();
     keys.extend(server_set().lock().unwrap().iter().cloned());
+    keys.extend(ENV_ONLY_KEYS.iter().map(|k| k.to_string()));
+    keys.extend(std::env::vars_os().filter_map(|(k, _)| k.into_string().ok()).filter(|k| k.starts_with("OPENAGENTD_")));
     keys
 }
 
@@ -65,6 +93,10 @@ pub fn load_env_file(path: &Path) {
                 if (val.starts_with('"') && val.ends_with('"')) || (val.starts_with('\'') && val.ends_with('\'')) {
                     val = &val[1..val.len() - 1];
                 }
+                if ENV_ONLY_KEYS.contains(&key) {
+                    notice(format!("{key} in {} is ignored; set it in the environment", path.display()));
+                    continue;
+                }
                 if std::env::var(key).is_err() {
                     std::env::set_var(key, val);
                     injected().lock().unwrap().insert(key.to_string(), val.to_string());
@@ -75,16 +107,34 @@ pub fn load_env_file(path: &Path) {
     }
 }
 
-/// Load `.env` files with v2 (pydantic-settings) precedence:
-/// real environment > `~/.config/openagentd/.env` > project `.env`.
+/// Load the active config dir's `.env` (the real environment wins). It is
+/// read before the settings are built so it can still set paths such as
+/// `OPENAGENTD_DATA_DIR`.
 ///
-/// `load_env_file` never overwrites an existing variable, so the
-/// higher-priority file is loaded first.
+/// Earlier versions also read `.env` from the working directory and always
+/// `~/.config/openagentd/.env`. Neither is read now: a project's `.env`
+/// names that project's database and ports (`DATABASE_URL`, `API_PORT`),
+/// and the installed app's file must not configure a development server.
+/// Skipped files are reported through [`env_notices`].
 pub fn init_env() {
+    let config_env = crate::settings::config_dir_from_env(&crate::settings::app_env_from_env()).join(".env");
+    load_env_file(&config_env);
+    let mut skipped = vec![std::env::current_dir().unwrap_or_default().join(".env")];
     if let Some(home) = crate::home::home_dir_opt() {
-        load_env_file(&home.join(".config").join("openagentd").join(".env"));
+        skipped.push(home.join(".config").join("openagentd").join(".env"));
     }
-    load_env_file(Path::new(".env"));
+    for path in skipped {
+        if path.is_file() && !same_file(&path, &config_env) {
+            notice(format!("{} is not read; only the config dir's .env ({}) is", path.display(), config_env.display()));
+        }
+    }
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (dunce::canonicalize(a), dunce::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// Load the active config dir's `.env` (non-secret settings; provider keys

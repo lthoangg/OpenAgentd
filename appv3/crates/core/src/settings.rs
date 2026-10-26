@@ -72,10 +72,22 @@ fn abs(p: &str) -> PathBuf {
     }
 }
 
+/// The mode, from the real environment only. Call before any `.env` file
+/// is loaded: the mode picks the config dir whose `.env` is read, so a file
+/// cannot pick the mode.
+pub fn app_env_from_env() -> String {
+    env_str("APP_ENV").unwrap_or_else(|| "development".into())
+}
+
+/// The config dir for `app_env`: `OPENAGENTD_CONFIG_DIR`, or the mode's default.
+pub fn config_dir_from_env(app_env: &str) -> PathBuf {
+    env_str("OPENAGENTD_CONFIG_DIR").map(|p| abs(&p)).unwrap_or_else(|| default_dirs(app_env).2)
+}
+
 impl Settings {
     /// Build from the current process environment (call [`crate::env::init_env`] first).
     pub fn from_env() -> Self {
-        let app_env = env_str("APP_ENV").unwrap_or_else(|| "development".into());
+        let app_env = app_env_from_env();
         let (d_data, d_ws, d_cfg, d_state, d_cache) = default_dirs(&app_env);
         let data_dir = env_str("OPENAGENTD_DATA_DIR").map(|p| abs(&p)).unwrap_or(d_data);
         let config_dir = env_str("OPENAGENTD_CONFIG_DIR").map(|p| abs(&p)).unwrap_or(d_cfg);

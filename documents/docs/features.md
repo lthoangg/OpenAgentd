@@ -2475,7 +2475,10 @@ Single-user trust model. The host is trusted. The operator is the user.
   token, provider API keys, and every other value it loaded from a `.env` file
   or saved from Settings (including MCP secrets). `printenv` cannot get around
   the `**/.env` read denial. Variables the user exported before starting the
-  server still pass through.
+  server still pass through, except the server's own `APP_ENV` and
+  `OPENAGENTD_*` variables `[v3.32.0]`: a project reading `APP_ENV` no longer
+  sees the app's `production`, and a development build started from the
+  agent's shell no longer opens the installed app's database.
 - **`credentials.yaml` secret store** `[v3.30.0]` — every saved API key, OAuth
   login, and MCP client secret lives in one versioned `credentials.yaml` in the
   config dir, written atomically under a file lock with owner-only (`0600`)
@@ -2484,6 +2487,10 @@ Single-user trust model. The host is trusted. The operator is the user.
   files in the cache dir move into it; the originals are kept (`.env` as
   `.env.migrated`). Provider keys still in a `.env` afterwards are ignored, and
   `agentd doctor` warns about them. Non-secret settings in `.env` keep loading. A
+  server reads only its config dir's `.env` `[v3.32.0]`: not the `.env` of the
+  directory it starts in (a project's `DATABASE_URL` or `API_PORT` no longer
+  reach it), not the installed app's file when it runs in development, and a
+  `.env` cannot set `APP_ENV`; the log and `agentd doctor` name skipped files. A
   malformed store is an error, never read as empty. Agent file tools and shell
   commands are denied the store, its lock, and the backup. It is plaintext, so
   shell tools running as the user could still read it outside those checks.

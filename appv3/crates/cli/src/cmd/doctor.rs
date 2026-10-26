@@ -85,6 +85,9 @@ pub fn doctor() -> Result<ExitCode> {
         checks.warn(&format!("Ignored provider keys from a .env file: {}", ignored.join(", ")));
         println!("     {}", dim("Add them in Settings → Providers, or run `agentd credentials import <file>`"));
     }
+    for n in appv3_core::env::env_notices() {
+        checks.warn(&n);
+    }
     let key_vars = provider_key_vars();
     let lead = read_lead_provider(&s.agents_dir);
     let mut found: Vec<&str> = vec![];

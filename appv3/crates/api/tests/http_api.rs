@@ -770,6 +770,36 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     assert_eq!((v["goal"]["status"].clone(), v["goal"]["pause_reason"].clone()), (json!("paused"), json!("restart")), "{v}");
     let (st, _) = c.json("DELETE", &goal_uri, None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
+
+    // Running the approved plan as a goal, later: `POST /goal` takes the plan's
+    // Done when and a turn limit, and refuses what a review would refuse.
+    for bad in [json!({"max_turns": 0}), json!({"max_turns": "many"})] {
+        let (st, v) = c.json("POST", &goal_uri, Some(bad.clone())).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
+    }
+    let (st, v) = c.json("POST", &goal_uri, Some(json!({"max_turns": 3}))).await;
+    assert_eq!(st, StatusCode::CREATED, "{v}");
+    assert_eq!((v["status"].clone(), v["objective"].clone(), v["max_turns"].clone()), (json!("active"), json!("the tests pass"), json!(3)), "{v}");
+    let g = wait_goal(c, &sid, |g| g["status"] == "paused").await;
+    assert_eq!(g["pause_reason"], "no_progress", "the started goal takes turns on its own: {g}");
+    let (st, v) = c.json("POST", &goal_uri, None).await;
+    assert_eq!(st, StatusCode::CONFLICT, "a live goal is not replaced: {v}");
+    let (st, _) = c.json("DELETE", &goal_uri, None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    // An edit since approval needs a new review.
+    let revision = plan::sync(&dir).unwrap().revision;
+    plan::save_user(&dir, "# Tests\n\n## Approach\n1. Fix them\n2. Again\n\n**Done when:** the tests pass", revision).unwrap();
+    let (st, v) = c.json("POST", &goal_uri, None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert!(v["detail"].as_str().unwrap_or_default().contains("Approve the plan"), "{v}");
+    // No plan at all, and no session.
+    let bare = appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() };
+    let bare_sid = appv3_db::codec::api_uuid(&appv3_db::create_session(pool, bare).await.unwrap().id);
+    let (st, v) = c.json("POST", &format!("/api/agent/sessions/{bare_sid}/goal"), None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert!(v["detail"].as_str().unwrap_or_default().contains("no plan"), "{v}");
+    let (st, _) = c.json("POST", &format!("/api/agent/sessions/{}/goal", uuid::Uuid::now_v7()), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
 }
 
 /// A first message can start its session in Plan mode (the new-session

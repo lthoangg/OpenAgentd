@@ -351,6 +351,57 @@ run from the terminal (the native Rust binary since v3.0.0).
     file is kept). The Tasks tab and popover show a Plan row with its
     revision, **Open** and **Clear**, which stops using the plan in the
     session and leaves the file in place.
+    Since `[v3.32.0]` the plan reads **Done** once its goal is achieved or,
+    without a goal, once every task is finished, and approving a plan asks
+    the agent for one task per milestone, named after it.
+  - **Keep going until done** `[v3.32.0]` — the plan review footer has a
+    **Keep going until done** checkbox and, beside it, the turns for this
+    plan (prefilled from Settings). Approving with it ticked starts a goal
+    whose objective is the plan's **Done when**, and the agent keeps working
+    turn after turn without a "continue" from you. The checkbox is disabled
+    while the plan has no Done when. Each goal turn names the plan file and
+    the next unfinished task. It stops when a separate completion check
+    confirms the agent's `update_goal` claim from evidence shown in the
+    conversation, when the agent reports a blocker, or at a limit: 50 turns by
+    default, two turns in a row without tool calls, three rejected claims in a
+    row, or an optional token budget (uncached input plus output). A rejected
+    claim's reason goes back to the agent. The check also reads the task board,
+    where unfinished tasks need a stated reason, and the runtime's own log of
+    the commands the goal ran, with their exit codes, and the files it changed,
+    so a claim cannot cite a run that failed, never happened, or came before
+    later edits. Claiming again with nothing run since a rejection is turned
+    down without another check. A check that fails to give a verdict neither
+    accepts nor rejects the claim, so the agent can claim again; three such
+    failures in a row pause the goal. Goal turns run unattended by default: the
+    agent decides instead of asking and notes each choice, and a plan it
+    submits is saved without opening a review. **Settings → Goals** sets
+    whether Keep going starts ticked, the turn limit, a default token budget,
+    and allows questions during a goal. The check runs on the session's own
+    model, so it reuses the conversation's prompt cache. A **Goal** tab in the
+    review dock (the drawer on phones) shows what the session is doing now
+    (running a turn and the next task, waiting for your answer, for plan
+    approval, for Code mode, for subagents, or for your queued messages), the
+    objective, the plan with its status and task progress, turns, tokens and
+    time, the last check, and Pause, Resume, and Clear. Its title follows the
+    goal ("Goal 7/50", "Goal paused"). **Cmd+K → Goal** and the dock's **+**
+    menu open it, and **Cmd+K** also pauses, resumes and clears the goal. The
+    Tasks tab and the task popover show a Goal row above the Plan row. Stop
+    pauses the goal, Plan mode and running subagents make it wait, and a goal
+    running when the app quit comes back paused. Approving another plan with
+    Keep going replaces the goal. A scheduled task that runs in the goal's
+    session skips each run that comes due while the goal works (the scheduler
+    skips busy sessions) and fires again at its next scheduled time. Undoing a
+    goal turn keeps the goal; undoing back past the approval ends it. The
+    transcript marks each goal turn and each claim's verdict; each turn's
+    divider says why the goal went on (no claim yet, the check said not yet,
+    the check gave no verdict, or you resumed it), with the check's full reason
+    on hover or tap. An achieved goal shows in blue. The sidebar marks sessions
+    with a live goal, one notification ("Goal achieved", "Goal blocked", or
+    "Goal paused") arrives when the goal ends, and on macOS the notch shows a
+    running goal's progress ("Goal 7/50") and the same outcome. In the Reader
+    transcript the goal's outcome (achieved, blocked, or paused by rejections
+    or failed checks) stays visible, and claims the agent worked past fold
+    into the turn's row as "goal checks". One goal per top-level session.
   - **A new plan for new work** `[v3.32.0]` — when you move on to work the
     current plan does not cover (for example after it was implemented), the
     agent starts a fresh plan instead of overwriting the old one. The old
@@ -661,7 +712,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
-  `/redo`, `/redo-all`, `/btw`, `/goal`, plus user-defined commands. Commands are contextually
+  `/redo`, `/redo-all`, `/btw`, plus user-defined commands. Commands are contextually
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
@@ -674,47 +725,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     without a workspace they open in a panel above the composer, where you step back
     through earlier ones and Close only hides the panel. Show them again with a bare
     `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
-  - **`/goal`** `[v3.32.0]` — `/goal <what done looks like>` (for example `/goal web
-    tests pass and tsc is clean`) keeps the agent working turn after turn without a
-    "continue" from you. It stops when a separate completion check confirms the
-    agent's `update_goal` claim from evidence shown in the conversation, when the
-    agent reports a blocker, or at a limit: 50 turns by default, two turns in a row
-    without tool calls, three rejected claims in a row, or an optional token budget
-    (uncached input plus output). A rejected claim's reason goes back to the agent.
-    The check also reads the runtime's own log of the commands the goal ran, with
-    their exit codes, and the files it changed, so a claim cannot cite a run that
-    failed, never happened, or came before later edits. Claiming again with
-    nothing run since a rejection is turned down without another check.
-    A check that fails to give a verdict neither accepts nor rejects the claim, so
-    the agent can claim again; three such failures in a row pause the goal. Goal
-    turns run unattended by default: the agent decides instead of asking and notes
-    each choice, and a plan it submits is saved without opening a review.
-    **Settings → Goals** sets the turn limit, a default token budget
-    for new goals, and allows questions during a goal. The check runs on the
-    session's own model, so it reuses the conversation's prompt cache. A **Goal**
-    tab in the review dock (the drawer on phones) shows the objective, turns,
-    tokens and time, the last check, what the session is doing now (running a
-    turn, waiting for your answer, for Code mode, for subagents, or for your
-    queued messages), and Pause, Resume, and Clear. Its title follows the goal
-    ("Goal 7/50", "Goal paused"), and setting a goal opens it on desktop. A bare
-    `/goal`, **Cmd+K → Goal**, and the dock's **+** menu open it;
-    `/goal pause|resume|clear` and **Cmd+K** control the goal. Stop pauses the
-    goal, Plan mode and running subagents make it wait, and a goal running when the
-    app quit comes back paused. A scheduled task that runs in the goal's session
-    skips each run that comes due while the goal works (the scheduler skips busy
-    sessions) and fires again at its next scheduled time. Undoing a goal turn
-    keeps the goal; undoing its objective, or cancelling the objective while it is
-    still queued, ends the goal and gives the text back as `/goal …`. The
-    transcript marks each goal turn and each claim's verdict; each turn's divider
-    says why the goal went on (no claim yet, the check said not yet, the check gave
-    no verdict, or you resumed it), with the check's full reason on hover or tap.
-    An achieved goal shows in blue. The sidebar marks sessions with a live goal,
-    one notification ("Goal achieved", "Goal blocked", or "Goal paused") arrives
-    when the goal ends, and on macOS the notch shows a running goal's progress
-    ("Goal 7/50") and the same outcome. In the Reader
-    transcript the goal's outcome (achieved, blocked, or paused by rejections or
-    failed checks) stays visible, and claims the agent worked past fold into the
-    turn's row as "goal checks". One goal per top-level session.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
@@ -2111,7 +2121,7 @@ MCP.
 | Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
-| Session goal | `update_goal` (lead agent; claims a `/goal` complete or blocked) `[v3.32.0]` |
+| Session goal | `update_goal` (lead agent; claims the goal of a plan approved with Keep going complete or blocked) `[v3.32.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
 | Utility | `skill` |
 

@@ -6,7 +6,7 @@
  * as with /undo followed by a send.
  */
 import type { MessageAttachment } from '@/api/types'
-import { isGoalObjectiveBlock, restoredPromptText } from '@/lib/goal'
+import { restoredPromptText } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { attachmentToFile } from './helpers'
@@ -27,8 +27,6 @@ export async function retryLatestPrompt(workspace: string): Promise<boolean> {
   const prompt = await store.revertToMessage(latest.id, { restoreDraft: false })
   if (!prompt) return false
 
-  // Undoing a goal's objective ends that goal; sending it again sets it again.
-  const goal = isGoalObjectiveBlock(prompt) ? {} : undefined
   const attachments = uploadedAttachments(prompt.attachments)
   const files = (await Promise.all(attachments.map(attachmentToFile))).filter((file): file is File => file !== null)
   const mentions = Array.isArray(prompt.extra?.mentions) ? prompt.extra.mentions as string[] : undefined
@@ -39,7 +37,6 @@ export async function retryLatestPrompt(workspace: string): Promise<boolean> {
     thinkingLevel: current.sessionThinkingLevel || null,
     fastMode: current.sessionFastMode,
     mentions,
-    ...(goal ? { goal } : {}),
   })
   // The prompt is already rewound; a failed resend must not lose it.
   if (!delivered) current.setPendingDraft({ content: restoredPromptText(prompt.content, prompt.extra) ?? '', attachments })

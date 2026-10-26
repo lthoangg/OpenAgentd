@@ -512,29 +512,6 @@ describe("sendMessage: queue behaviour", () => {
     expect(useAgentStore.getState()._pendingMessages.map((m) => m.id)).toEqual(["q-2"])
   })
 
-  it("queues a /goal objective as one, and splices it in with the server's goal mark", async () => {
-    mockPostAgentChat.mockImplementationOnce(() =>
-      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "q-goal" }),
-    )
-    useAgentStore.setState({
-      sessionId: "session-a",
-      leadName: "lead",
-      agentStreams: { lead: makeStream({ status: "working" as const }) },
-    })
-
-    await useAgentStore.getState().sendMessage("tests pass", undefined, { workspace: "/repo/a", goal: {} })
-    expect(useAgentStore.getState()._pendingMessages[0]).toMatchObject({ id: "q-goal", goal: true })
-
-    useAgentStore.getState()._handleSSEEvent("queued_turn_start", {
-      agent: "lead",
-      message_ids: ["q-goal"],
-      messages: [{ id: "q-goal", content: "tests pass", extra: { goal: { id: "g1" } } }],
-    })
-
-    const spliced = useAgentStore.getState().agentStreams.lead.currentBlocks.find((b) => b.id === "q-goal")
-    expect(spliced?.extra?.goal).toEqual({ id: "g1" })
-  })
-
   it("persists queued messages through the backend when lead is working", async () => {
     mockPostAgentChat.mockImplementationOnce(() =>
       Promise.resolve({ status: "queued", session_id: "session-a", message_id: "pm-a" }),
@@ -3515,12 +3492,12 @@ describe("loadOlderUntilPrompt", () => {
     expect(useAgentStore.getState().hasMore).toBe(false)
   })
 
-  it("passes a goal's own turns and stops at the objective the user wrote", async () => {
+  it("passes a goal's own turns and stops at the prompt the user wrote", async () => {
     seed()
     const goalTurn = { goal_turn: { id: "g1", turn: 2, max_turns: 50, why: "unclaimed" } }
     const pages: Record<string, ReturnType<typeof page>> = {
       c0: page([makeMessageResponse({ id: "turn2", role: "user", content: "<goal_reminder turn=\"2\">", extra: goalTurn })], "c1"),
-      c1: page([makeMessageResponse({ id: "objective", role: "user", content: "tests pass", extra: { goal: { id: "g1" } } })], "c2"),
+      c1: page([makeMessageResponse({ id: "prompt", role: "user", content: "tests pass" })], "c2"),
     }
     mockSessionHistory.mockImplementation((_id: string, cursor: string) => Promise.resolve(pages[cursor]))
 

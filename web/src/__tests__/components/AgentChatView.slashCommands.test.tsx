@@ -45,6 +45,13 @@ describe('BASE_SLASH_COMMANDS', () => {
     expect(redoAll?.description).toBe('Restore all undone messages back to the live tip')
   })
 
+  it('does not offer /goal: a goal starts from a plan review, not a command', () => {
+    expect(BASE_SLASH_COMMANDS.map((c) => c.id)).not.toContain('goal')
+    expect(parseBuiltInSlashCommand('/goal')).toBeNull()
+    const everything = filterBaseSlashCommands({ isAgentWorking: true, revertedCount: 1, hasVisibleMessages: true, hasLiveMessages: true, hasWorkspace: true })
+    expect(everything.map((c) => c.id)).not.toContain('goal')
+  })
+
   it('inserts /btw for a question instead of running it', () => {
     const btw = BASE_SLASH_COMMANDS.find((c) => c.id === 'btw')
     expect(btw).toMatchObject({ keepInputOpen: true, insertText: 'btw' })
@@ -52,24 +59,24 @@ describe('BASE_SLASH_COMMANDS', () => {
 })
 
 describe('filterBaseSlashCommands', () => {
-  it('shows only /goal and /new on an empty idle session', () => {
+  it('shows only /new on an empty idle session', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: false,
       revertedCount: 0,
       hasVisibleMessages: false,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['goal', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['new'])
   })
 
-  it('shows /btw, /goal, /compact, /undo, /new on a session with messages', () => {
+  it('shows /btw, /compact, /undo, /new on a session with messages', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: false,
       revertedCount: 0,
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'goal', 'compact', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new'])
   })
 
   it('shows /redo and /redo-all when revertedCount > 0', () => {
@@ -81,7 +88,6 @@ describe('filterBaseSlashCommands', () => {
     })
     expect(commands.map((c) => c.id)).toEqual([
       'btw',
-      'goal',
       'compact',
       'undo',
       'redo',
@@ -90,14 +96,14 @@ describe('filterBaseSlashCommands', () => {
     ])
   })
 
-  it('shows /stop, /btw, /goal and /new when team is actively working', () => {
+  it('shows /stop, /btw and /new when team is actively working', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: true,
       revertedCount: 2,
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'goal', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'new'])
   })
 
   it('shows /btw during a new session’s first turn, before any block is finalized', () => {
@@ -107,7 +113,7 @@ describe('filterBaseSlashCommands', () => {
       hasLiveMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'goal', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'new'])
   })
 
   it('shows /init in coding mode with a workspace attached', () => {
@@ -117,7 +123,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: true,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'goal', 'compact', 'undo', 'new', 'init'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new', 'init'])
   })
 
   it('does not show /init in coding mode without a workspace', () => {
@@ -127,7 +133,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'goal', 'compact', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new'])
   })
 })
 
@@ -187,14 +193,7 @@ describe('useSlashCommands', () => {
     )
 
     const ids = result.current.slashCommands.map((c) => c.id)
-    expect(ids).toEqual(['btw', 'goal', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
-  })
-
-  it('a bare /goal shows the goal status', async () => {
-    const onShowGoal = mock(() => {})
-    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession, onShowGoal }))
-    await act(async () => { result.current.handleSlashCommand('goal') })
-    expect(onShowGoal).toHaveBeenCalledTimes(1)
+    expect(ids).toEqual(['btw', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
   })
 
   const undone = (content: string, extra: Record<string, unknown> | null): AgentCommandResponse => ({
@@ -205,11 +204,11 @@ describe('useSlashCommands', () => {
     },
   })
 
-  it('/undo gives a goal objective back as its /goal command', async () => {
-    undo.mockImplementation(async () => undone('tests pass', { goal: { id: 'g1' } }))
+  it('/undo gives the undone prompt back as it was written', async () => {
+    undo.mockImplementation(async () => undone('tests pass', null))
     const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
     await act(async () => { result.current.handleSlashCommand('undo') })
-    expect(inputRef.current.setValue).toHaveBeenCalledWith('/goal tests pass')
+    expect(inputRef.current.setValue).toHaveBeenCalledWith('tests pass')
   })
 
   it('/undo of a goal turn leaves the composer alone: its text is a hidden reminder', async () => {

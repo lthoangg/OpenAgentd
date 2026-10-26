@@ -428,7 +428,7 @@ describe('AssistantTurn — reader mode, submit_plan', () => {
   })
 })
 
-describe('AssistantTurn — reader mode, /goal', () => {
+describe('AssistantTurn — reader mode, goal', () => {
   const read = finished[1]
   const achieved: ContentBlock = {
     id: 'claim', type: 'tool', content: '', toolName: 'update_goal', toolArgs: '{"status":"complete","evidence":"bun test: 0 failures"}',

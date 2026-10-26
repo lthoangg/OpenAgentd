@@ -3,7 +3,7 @@ import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
-import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
+import type { SessionGoal, SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
 /** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
@@ -24,10 +24,14 @@ interface AgentChatPanelsProps {
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
+  /** The session's goal; it heads the task popover. */
+  goal?: SessionGoal | null
   plan?: SessionPlan | null
   onClearPlan?: () => void
   /** Open the plan in the dock's Plan tab; unset without a workspace. */
   onOpenPlan?: () => void
+  /** Open the goal in the dock's Goal tab; unset without a workspace. */
+  onOpenGoal?: () => void
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
@@ -57,9 +61,11 @@ export function AgentChatPanels({
   showTodos,
   onShowTodosChange,
   todos,
+  goal = null,
   plan,
   onClearPlan,
   onOpenPlan,
+  onOpenGoal,
   schedulerOpen,
   onCloseScheduler,
   showPalette,
@@ -92,9 +98,11 @@ export function AgentChatPanels({
         open={showTodos}
         onOpenChange={onShowTodosChange}
         todos={todos}
+        goal={goal}
         plan={plan}
         onClearPlan={onClearPlan}
         onOpenPlan={onOpenPlan}
+        onOpenGoal={onOpenGoal}
       />
       {schedulerOpened && (
         <SchedulerPanel

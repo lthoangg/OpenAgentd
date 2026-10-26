@@ -1,4 +1,4 @@
-/** Settings → Goals: the `/goal` turn limit, token budget, and the questions opt-in. */
+/** Settings → Goals: Keep going by default, the turn limit, token budget, and the questions opt-in. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -19,7 +19,7 @@ import { GoalsSettingsPage } from '@/components/settings/pages/settings.goals'
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
 
-const GOALS = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: false }
+const GOALS = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: false, keep_going_default: false }
 
 function handlers() {
   return [http.get('http://localhost/api/settings/goals', () => HttpResponse.json(GOALS))]
@@ -67,7 +67,27 @@ describe('GoalsSettingsPage', () => {
     fireEvent.change(screen.getByLabelText('Turns per goal'), { target: { value: '20' } })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(bodies).toEqual([{ max_turns: 20, token_budget: null, allow_questions: true }]))
+    await waitFor(() => expect(bodies).toEqual([{ max_turns: 20, token_budget: null, allow_questions: true, keep_going_default: false }]))
+  })
+
+  it('saves Keep going after approval by default', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      ...handlers(),
+      http.put('http://localhost/api/settings/goals', async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json({ ...GOALS, ...(body as object) })
+      }),
+    )
+    renderPage()
+
+    const keepGoing = await screen.findByRole('switch', { name: /keep going after approval by default/i })
+    await waitFor(() => expect(keepGoing.getAttribute('aria-checked')).toBe('false'))
+    fireEvent.click(keepGoing)
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(bodies).toEqual([{ max_turns: 50, token_budget: null, allow_questions: false, keep_going_default: true }]))
   })
 
   it('sets a default token budget, and empties it to remove the budget', async () => {

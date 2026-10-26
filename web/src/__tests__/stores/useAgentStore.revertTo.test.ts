@@ -115,16 +115,6 @@ describe('revertToMessage', () => {
     expect(await useAgentStore.getState().revertToMessage('missing')).toBeNull()
     expect(postAgentCommand).not.toHaveBeenCalled()
   })
-
-  it('gives a goal objective back as its /goal command, so sending it sets the goal again', async () => {
-    useAgentStore.setState((state) => {
-      state.agentStreams.lead.blocks[4] = user('m3', 'tests pass', { extra: { goal: { id: 'g1' } } })
-    })
-
-    await useAgentStore.getState().revertToMessage('m3')
-
-    expect(useAgentStore.getState().pendingDraft).toEqual({ content: '/goal tests pass', attachments: [] })
-  })
 })
 
 describe('undoAgent', () => {
@@ -140,13 +130,5 @@ describe('undoAgent', () => {
     await useAgentStore.getState().undoAgent()
 
     expect(useAgentStore.getState().pendingDraft).toBeNull()
-  })
-
-  it('gives an undone goal objective back as its /goal command', async () => {
-    postAgentCommand.mockImplementation(async () => undoResponse('m3', 'tests pass', { goal: { id: 'g1' } }))
-
-    await useAgentStore.getState().undoAgent()
-
-    expect(useAgentStore.getState().pendingDraft).toEqual({ content: '/goal tests pass', attachments: [] })
   })
 })

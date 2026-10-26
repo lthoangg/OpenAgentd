@@ -30,7 +30,7 @@ import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
-import { goalSubmit, MAX_GOAL_OBJECTIVE_CHARS, type GoalAction } from '@/lib/goal'
+import type { GoalAction } from '@/lib/goal'
 import { useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -66,7 +66,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { BtwPanel } from '../BtwPanel'
-import { GoalReplaceDialog } from './GoalReplaceDialog'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -76,7 +75,6 @@ import type {
   AgentCapabilities as AgentCapabilitiesType,
   ContentBlock,
   MessageAttachment,
-  SessionGoal,
 } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { AgentChatHeader } from './AgentChatHeader'
@@ -90,19 +88,11 @@ import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, deliverGoalFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
+import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
-
-/** A `/goal` waiting on the replace confirmation. */
-interface GoalDraft {
-  objective: string
-  files?: File[]
-  mentions?: string[]
-  replaces: SessionGoal
-}
 
 const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
 /** Stable selector: the shell only needs to know when the split stops fitting. */
@@ -395,13 +385,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     })
   }, [sessionIdState, clearPlan, pushToast])
 
-  // ── /goal ──────────────────────────────────────────────────────────────────
+  // ── Session goal ───────────────────────────────────────────────────────────
   const { data: goalData } = useSessionGoalQuery(sessionIdState)
   const goal = goalData?.goal ?? null
-  // The goal lives in the dock's Goal tab: `/goal`, the palette and the
-  // dock's "+" menu open it.
+  // The goal lives in the dock's Goal tab: the palette and the dock's "+"
+  // menu open it.
   const showGoal = handleOpenGoal
-  const [goalDraft, setGoalDraft] = useState<GoalDraft | null>(null)
   const { mutate: mutateGoal } = useGoalActionMutation()
   const handleGoalAction = useCallback((action: GoalAction) => {
     if (!sessionIdState) return
@@ -410,61 +399,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: err instanceof Error ? err.message : String(err) }),
     })
   }, [sessionIdState, mutateGoal, pushToast])
-  const sendGoal = useCallback((draft: Omit<GoalDraft, 'replaces'>) => {
-    if (!workspace) return
-    void deliverGoalFromComposer(workspace, inputRef.current, draft)
-    // Desktop shows the new goal's progress beside the chat; phones keep
-    // the chat on screen (the transcript marks the goal).
-    if (dockViewsEnabled) handleOpenGoal()
-  }, [workspace, dockViewsEnabled, handleOpenGoal])
   const paletteGoal = useMemo(
     () => (workspace ? { status: goal?.status ?? null, onShow: showGoal, onAction: handleGoalAction } : undefined),
     [workspace, goal?.status, showGoal, handleGoalAction],
   )
-
-  // ``/goal …`` from the composer. Returns false when ``content`` is not one.
-  // The composer clears itself right after submit, so a refused draft is put
-  // back on the next task.
-  const handleGoalSubmit = useCallback((content: string, files?: File[], mentions?: string[]): boolean => {
-    const action = goalSubmit(content, sessionIdState, goal)
-    switch (action.kind) {
-      case 'not-goal':
-        return false
-      case 'no-session':
-      case 'no-goal':
-        pushToast({ tone: 'info', title: 'No goal yet', description: 'Set one with /goal and what done looks like, e.g. /goal web tests pass and tsc is clean.' })
-        break
-      case 'show':
-        showGoal()
-        break
-      case 'action':
-        handleGoalAction(action.action)
-        break
-      case 'too-long':
-        pushToast({ tone: 'error', title: 'That goal is too long', description: `Keep the objective to ${MAX_GOAL_OBJECTIVE_CHARS.toLocaleString('en-US')} characters; put details in a follow-up message.` })
-        setTimeout(() => {
-          inputRef.current?.setValue(content)
-          if (files?.length) inputRef.current?.setFiles(files)
-        }, 0)
-        break
-      case 'set':
-        if (action.replaces) setGoalDraft({ objective: action.objective, files, mentions, replaces: action.replaces })
-        else sendGoal({ objective: action.objective, files, mentions })
-        break
-    }
-    return true
-  }, [sessionIdState, goal, pushToast, handleGoalAction, sendGoal, showGoal])
-  const confirmGoalReplace = useCallback(() => {
-    if (goalDraft) sendGoal(goalDraft)
-    setGoalDraft(null)
-  }, [goalDraft, sendGoal])
-  const cancelGoalReplace = useCallback(() => {
-    if (goalDraft) {
-      inputRef.current?.setValue(`/goal ${goalDraft.objective}`)
-      if (goalDraft.files?.length) inputRef.current?.setFiles(goalDraft.files)
-    }
-    setGoalDraft(null)
-  }, [goalDraft])
   const providersQ = useProvidersQuery()
 
   // Lead capabilities — used to drive composer affordances (slash menu).
@@ -598,7 +536,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     hasVisibleMessages: leadHasVisibleBlocks,
     hasLiveMessages: leadHasLiveBlocks,
     onOpenSideQuestions: handleOpenSideQuestions,
-    onShowGoal: showGoal,
   })
 
   useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
@@ -732,7 +669,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onSubmit={async (content, files, mentions, delivery) => {
         if (!workspace) return
         if (handleBtwSubmit(content, files)) return
-        if (handleGoalSubmit(content, files, mentions)) return
         if (!files || files.length === 0) {
           const builtInCmd = parseBuiltInSlashCommand(content)
           if (builtInCmd) {
@@ -1085,9 +1021,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
+        goal={goal}
         plan={plan}
         onClearPlan={handleClearPlan}
         onOpenPlan={workspace ? handleOpenPlan : undefined}
+        onOpenGoal={workspace ? handleOpenGoal : undefined}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}
@@ -1102,7 +1040,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onClosePalette={closePalette}
         onCloseQuickOpen={closeQuickOpen}
       />
-      <GoalReplaceDialog current={goalDraft?.replaces ?? null} onConfirm={confirmGoalReplace} onCancel={cancelGoalReplace} />
     </div>
   )
 }

@@ -1,8 +1,9 @@
 /**
- * GoalTabView — the session's `/goal` as a review-dock tab (the dock drawer
- * on phones): what the session is doing for the goal right now, the
- * objective, how far it has got against its limits, what the last check
- * found or why it paused, and Pause, Resume and Clear.
+ * GoalTabView — the session's goal as a review-dock tab (the dock drawer on
+ * phones): what the session is doing for the goal right now, the objective
+ * (the approved plan's Done when), the plan it runs and how far its tasks
+ * have got, how far the goal has got against its limits, what the last
+ * check found or why it paused, and Pause, Resume and Clear.
  *
  * "Now" reads the session as well as the goal: a running turn, an open
  * question, Plan mode, queued messages and working subagents all decide
@@ -12,7 +13,7 @@
  * orange while it waits on the user, red when blocked, neutral when paused.
  */
 import { CircleCheck, Target } from 'lucide-react'
-import type { SessionGoal } from '@/api/types'
+import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -28,11 +29,14 @@ import {
   type GoalSessionState,
   type GoalTone,
 } from '@/lib/goal'
+import { PLAN_STATUS_LABEL, nextTask, planStatus, type PlanStatus } from '@/lib/plan'
 import { cn } from '@/lib/utils'
 import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { planTitle } from '../ActivePlanSection'
+import { summarizeTodos } from '../TaskChecklist'
 import { DockLoadError } from './DockLoadError'
 
 const NOW_CLASS: Record<GoalTone, string> = {
@@ -43,7 +47,13 @@ const NOW_CLASS: Record<GoalTone, string> = {
   blocked: 'border-(--color-error)/30 bg-(--color-error-subtle) text-(--color-error)',
 }
 
-const NO_GOAL_BODY = 'Type /goal and what done looks like, for example /goal web tests pass and tsc is clean. The agent keeps working, turn after turn, until a check confirms it.'
+const NO_GOAL_BODY = 'Approve a plan with Keep going until done and the agent works through it turn after turn until a check confirms its Done when.'
+
+const PLAN_PILL_CLASS: Partial<Record<PlanStatus, string>> = {
+  approved: 'bg-(--accent-green-soft) text-(--accent-green-text)',
+  done: 'bg-(--accent-green-soft) text-(--accent-green-text)',
+  review: 'bg-(--accent-orange-soft) text-(--accent-orange-text)',
+}
 
 /** The ring: filled and pulsing while the goal works, hollow while it waits or stopped. */
 function GoalRing({ tone }: { tone: GoalTone }) {
@@ -95,14 +105,71 @@ function goalNote(goal: SessionGoal): { title: string; text: string; detail: str
   return null
 }
 
+/** The plan the goal runs: title, revision, status, and how far its tasks have got. */
+function GoalPlanSection({ plan, status, todos, onOpenPlan }: {
+  plan: SessionPlan
+  status: PlanStatus
+  todos: TodoItem[]
+  onOpenPlan?: () => void
+}) {
+  const summary = summarizeTodos(todos)
+  const title = planTitle(plan.content) ?? 'Session plan'
+  return (
+    <section aria-label="Plan" className="flex flex-col gap-1.5" data-goal-plan={status}>
+      <h3 className="label-caps text-(--color-text-muted)">Plan</h3>
+      <div className="flex flex-col gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-(--color-text)" title={title}>
+            {title}
+            {plan.revision !== undefined && <span className="ml-1.5 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>}
+          </span>
+          <span className={cn('shrink-0 rounded-full px-2 py-px text-[11px] font-medium', PLAN_PILL_CLASS[status] ?? 'bg-(--bg-key) text-(--color-text-2)')}>
+            {PLAN_STATUS_LABEL[status]}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-muted)">
+            {summary.total > 0 ? `Tasks ${summary.finished}/${summary.total}` : 'No tasks yet'}
+          </span>
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-(--bg-key)" aria-hidden="true">
+            <span className="block h-full rounded-full bg-(--accent-blue)" style={{ width: `${summary.progressPct}%` }} />
+          </span>
+          {onOpenPlan && (
+            <Button type="button" size="xs" variant="ghost" onClick={onOpenPlan}>
+              Open plan
+            </Button>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** The plan section's inputs: the plan and its task board, and how to open it. */
+export interface GoalPlanContext {
+  plan: SessionPlan
+  todos: TodoItem[]
+  /** Whether the plan's review is open. */
+  reviewing: boolean
+  onOpenPlan?: () => void
+}
+
 /** The tab body for one goal, given what the session is doing. */
-export function GoalStatusPanel({ goal, session, busy, onAction }: {
+export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
   goal: SessionGoal
   session: GoalSessionState
   busy: boolean
   onAction: (action: GoalAction) => void
+  /** The session plan, shown under the objective. */
+  plan?: GoalPlanContext | null
 }) {
-  const now = goalNow(goal, session)
+  const baseNow = goalNow(goal, session)
+  const next = plan ? nextTask(plan.todos) : null
+  // While the goal works with nothing else to say, the Now line names the
+  // task its turns point at, as the turn reminders do.
+  const now = baseNow && baseNow.tone === 'active' && !baseNow.note && next
+    ? { ...baseNow, note: `Next task: ${next.content}` }
+    : baseNow
   const turns = goalTurnNumber(goal, session.running)
   const tokens = goal.token_budget
     ? `${formatGoalTokens(goal.tokens_used)} / ${formatGoalTokens(goal.token_budget)}`
@@ -117,6 +184,14 @@ export function GoalStatusPanel({ goal, session, busy, onAction }: {
           <InlineCodeText text={goal.objective} />
         </p>
       </section>
+      {plan && (
+        <GoalPlanSection
+          plan={plan.plan}
+          status={planStatus(plan.plan, plan.reviewing, { todos: plan.todos, goal })}
+          todos={plan.todos}
+          onOpenPlan={plan.onOpenPlan}
+        />
+      )}
       <div className="flex flex-col gap-1.5">
         <StatRow label="Turns" value={`${turns} / ${goal.max_turns}`} fraction={turns / goal.max_turns} />
         <StatRow label="Tokens" value={tokens} fraction={goal.token_budget ? goal.tokens_used / goal.token_budget : undefined} />
@@ -153,18 +228,29 @@ export function GoalStatusPanel({ goal, session, busy, onAction }: {
 function useGoalSessionState(sessionId: string | null, goal: SessionGoal | null): GoalSessionState {
   const running = useAgentStore((s) => s.isAgentWorking)
   const waitingForUser = useAgentStore((s) => Boolean(s.pendingQuestion) && s.pendingQuestion?.kind !== 'plan_review')
+  const planReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
   const planMode = useAgentStore((s) => (s.sessionPendingInteractionMode ?? s.sessionInteractionMode) === 'plan')
-  const queuedMessages = useAgentStore((s) => s._pendingMessages.filter((m) => !m.goal).length)
+  const queuedMessages = useAgentStore((s) => s._pendingMessages.length)
   // Only an active goal between turns waits on subagents.
   const { data: subagents } = useSessionSubagentsQuery(sessionId, goal?.status === 'active' && !running)
   const subagentsRunning = (subagents?.live_members ?? subagents?.subagents ?? []).filter((sub) => sub.status === 'working').length
-  return { running, waitingForUser, planMode, queuedMessages, subagentsRunning }
+  return { running, waitingForUser, planReview, planMode, queuedMessages, subagentsRunning }
 }
 
-export function GoalTabView({ sessionId }: { sessionId: string | null }) {
+export interface GoalTabViewProps {
+  sessionId: string | null
+  /** The session plan; its section sits under the objective. */
+  plan?: SessionPlan | null
+  todos?: TodoItem[]
+  /** Open the plan in the Plan tab. */
+  onOpenPlan?: () => void
+}
+
+export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: GoalTabViewProps) {
   const { data, isLoading, isError, isFetching, refetch } = useSessionGoalQuery(sessionId)
   const goal = data?.goal && data.goal.status !== 'cleared' ? data.goal : null
   const session = useGoalSessionState(sessionId, goal)
+  const reviewing = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
   const mutation = useGoalActionMutation()
   const pushToast = useToastStore((s) => s.push)
 
@@ -190,7 +276,13 @@ export function GoalTabView({ sessionId }: { sessionId: string | null }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div className="mx-auto max-w-xl px-4 py-4 pb-safe">
-            <GoalStatusPanel goal={goal} session={session} busy={mutation.isPending} onAction={runAction} />
+            <GoalStatusPanel
+              goal={goal}
+              session={session}
+              busy={mutation.isPending}
+              onAction={runAction}
+              plan={plan ? { plan, todos, reviewing, onOpenPlan } : null}
+            />
           </div>
         </div>
       )}

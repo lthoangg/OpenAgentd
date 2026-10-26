@@ -156,7 +156,7 @@ export interface UseOverlayStateResult {
    * with a workspace, else the panel above the composer. Never hides them.
    */
   handleOpenSideQuestions: (sessionId: string) => void
-  /** Show the session's `/goal`: the dock's Goal tab (the drawer on phones). */
+  /** Show the session goal: the dock's Goal tab (the drawer on phones). */
   handleOpenGoal: () => void
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void

@@ -6,7 +6,6 @@ import type {
   QuestionItem,
   AgentCommandResponse,
   SessionInteractionMode,
-  GoalRequest,
 } from '@/api/types'
 import type { OrphanToolResult } from '@/utils/messages'
 
@@ -29,8 +28,6 @@ export interface PendingMessage {
   files?: File[]
   /** Workspace whose agent sent it (``extra.sent_from``), when not the user. */
   sentFromWorkspace?: string
-  /** The objective of a `/goal` (``extra.goal``): cancelling it ends the goal. */
-  goal?: boolean
 }
 
 export type CacheInvalidation =
@@ -239,8 +236,6 @@ export interface SendMessageOptions {
   thinkingLevel?: string | null
   fastMode?: boolean
   mentions?: string[]
-  /** Send the message as the objective of a `/goal`. */
-  goal?: GoalRequest
 }
 
 export interface AgentStoreActions {

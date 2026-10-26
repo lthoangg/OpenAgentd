@@ -21,13 +21,6 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
     keepInputOpen: true,
     insertText: 'btw',
   },
-  {
-    id: 'goal',
-    label: 'Goal',
-    description: 'Keep working until a goal is verifiably done (pause, resume, clear)',
-    keepInputOpen: true,
-    insertText: 'goal',
-  },
   { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
   { id: 'redo', label: 'Redo', description: 'Redo the next undone message' },
@@ -174,9 +167,6 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
         return revertedCount > 0 && !isWorking
       case 'init':
         return inWorkspace
-      case 'goal':
-        // Sets a goal on any session, a new one included; also opens its status.
-        return true
       case 'new':
         return true
       default:

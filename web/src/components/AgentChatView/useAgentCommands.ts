@@ -65,7 +65,7 @@ interface UseAgentCommandsArgs {
   goal?: UseAgentCommandsGoal
 }
 
-/** Palette entries for the session's `/goal`: its tab always, actions while it is live. */
+/** Palette entries for the session goal: its tab always, actions while it is live. */
 function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
   if (!goal) return []
   const keywords = 'goal objective loop continue autonomous'

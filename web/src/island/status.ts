@@ -7,7 +7,7 @@
 export type SessionState = 'running' | 'needs_input' | 'done' | 'failed'
 
 /**
- * A session's `/goal`: how far it has got while it works, and on a finished
+ * A session's goal: how far it has got while it works, and on a finished
  * row what became of it (as the turn's notification says).
  */
 export type IslandGoal =

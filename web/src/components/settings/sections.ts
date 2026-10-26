@@ -95,7 +95,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: 'mcp', label: 'MCP servers', description: 'External tools over Model Context Protocol', icon: Plug, group: 'build' },
   { id: 'plugins', label: 'Plugins', description: 'Plugins the backend loaded', icon: Puzzle, group: 'build', capability: 'api.plugins' },
   { id: 'workspaces', label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'build' },
-  { id: 'goals', label: 'Goals', description: 'Turn limit and questions for /goal', icon: Target, group: 'build' },
+  { id: 'goals', label: 'Goals', description: 'Keep going after a plan is approved: default, limits, questions', icon: Target, group: 'build' },
   // Models
   { id: 'providers', label: 'Providers', description: 'API keys and model accounts', icon: KeyRound, group: 'models' },
   { id: 'titles', label: 'Chat titles', description: 'Name sessions automatically', icon: Heading, group: 'models' },

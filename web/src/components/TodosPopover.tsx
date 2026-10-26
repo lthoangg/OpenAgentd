@@ -10,22 +10,26 @@ import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
-import type { SessionPlan, TodoItem } from '@/api/types'
-import { ActivePlanSection } from './ActivePlanSection'
+import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { TaskChecklist, TaskProgressBar, summarizeTodos } from './TaskChecklist'
+import { WorkSummary } from './WorkSummary'
 
 interface TodosPopoverProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   todos: TodoItem[]
+  /** The session's goal; its row sits above the plan row. */
+  goal?: SessionGoal | null
   /** The session's saved plan; its row sits under the header. */
   plan?: SessionPlan | null
   onClearPlan?: () => void
   /** Open the plan in the dock's Plan tab (sessions with a workspace). */
   onOpenPlan?: () => void
+  /** Open the goal in the dock's Goal tab (sessions with a workspace). */
+  onOpenGoal?: () => void
 }
 
-export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPlan, onOpenPlan }: TodosPopoverProps) {
+export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = null, onClearPlan, onOpenPlan, onOpenGoal }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.instant * 1000)
   useKeyLayer(open, { kind: 'transient', onClose: () => onOpenChange(false) })
@@ -78,13 +82,14 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
             </span>
           )}
         </div>
-        {plan && onClearPlan && (
-          <ActivePlanSection
-            plan={plan}
-            onClear={onClearPlan}
-            onOpen={onOpenPlan ? () => { onOpenChange(false); onOpenPlan() } : undefined}
-          />
-        )}
+        <WorkSummary
+          goal={goal}
+          plan={plan}
+          todos={todos}
+          onClearPlan={onClearPlan}
+          onOpenPlan={onOpenPlan ? () => { onOpenChange(false); onOpenPlan() } : undefined}
+          onOpenGoal={onOpenGoal ? () => { onOpenChange(false); onOpenGoal() } : undefined}
+        />
         {summary.total > 0 && <TaskProgressBar summary={summary} />}
         {summary.total === 0 ? (
           <div role="status" className="flex flex-col items-center gap-1 px-3 py-5 text-center">

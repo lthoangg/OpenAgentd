@@ -4,10 +4,10 @@
  * The dock is an editor-style strip of file previews, full-height diffs,
  * commit views, web previews, and terminals. It starts empty, on a launcher.
  * Git, the agent task list, the scheduler, the session plan, `/btw` side
- * questions, and the session's `/goal` are singleton tabs opened on demand:
+ * questions, and the session goal are singleton tabs opened on demand:
  * Git from the status-bar branch or ⌘⇧G, Tasks with ⌘T, Schedule from its
  * command, the plan from the Tasks view, a plan review, or the transcript,
- * side questions from `/btw`, the goal from `/goal` or the palette.
+ * side questions from `/btw`, the goal from the palette.
  * Tab ids are stable per target so re-opening a file, diff, or commit
  * focuses the existing tab instead of stacking duplicates.
  */

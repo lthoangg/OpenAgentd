@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { PlanTabView, planStatus } from '@/components/WorkspacePanel/PlanTabView'
+import { PlanTabView } from '@/components/WorkspacePanel/PlanTabView'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -57,11 +57,13 @@ interface FetchCall {
 
 let calls: FetchCall[] = []
 let putStatus = 200
+let goalSettings: Record<string, unknown> = {}
 const markTurnResuming = mock(() => {})
 
 beforeEach(() => {
   calls = []
   putStatus = 200
+  goalSettings = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: true, keep_going_default: false }
   markTurnResuming.mockClear()
   clearQuestionDrafts()
   clearPlanReviewDrafts()
@@ -73,6 +75,8 @@ beforeEach(() => {
     const method = init?.method ?? 'GET'
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (url.includes('/answer')) return new Response(JSON.stringify({ status: 'answered', resumed: true }))
+    if (url.includes('/settings/goals')) return new Response(JSON.stringify(goalSettings))
+    if (url.includes('/goal')) return new Response(JSON.stringify({ goal: null }))
     if (method === 'PUT' && url.includes('/plan')) {
       if (putStatus !== 200) {
         return new Response(JSON.stringify({ detail: 'The plan changed since you opened it.' }), { status: putStatus })
@@ -135,15 +139,6 @@ function comment(container: HTMLElement, passage: string, text: string) {
 function answerCalls() {
   return calls.filter((call) => call.url.includes('/question/q-1/answer'))
 }
-
-describe('planStatus', () => {
-  it('reads approved, changed since approval, and draft from the revisions', () => {
-    expect(planStatus({ ...PLAN, approved_revision: 2 }, false)).toBe('approved')
-    expect(planStatus({ ...PLAN, approved_revision: 1 }, false)).toBe('changed')
-    expect(planStatus(PLAN, false)).toBe('draft')
-    expect(planStatus({ ...PLAN, approved_revision: 2 }, true)).toBe('review')
-  })
-})
 
 describe('PlanTabView', () => {
   it('explains where the plan comes from when there is none', () => {
@@ -368,6 +363,75 @@ describe('PlanTabView', () => {
     useAgentStore.setState({ pendingQuestion: REVIEW })
     renderTab({ onClearPlan })
     expect((screen.getByRole('button', { name: 'Clear plan' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('reads Done once every task on the board is finished', () => {
+    renderTab({
+      plan: { ...PLAN, approved_revision: 2 },
+      todos: [
+        { task_id: 't1', content: 'Write the migration', status: 'completed' },
+        { task_id: 't2', content: 'Wire the endpoint', status: 'cancelled' },
+      ],
+    })
+    expect(screen.getByText('Done')).toBeTruthy()
+  })
+})
+
+describe('PlanTabView — Keep going until done', () => {
+  const WITH_DONE_WHEN: SessionPlan = { ...PLAN, done_when: 'The endpoint answers and its tests pass.' }
+
+  function keepGoingBox() {
+    return screen.getByRole('checkbox', { name: 'Keep going until done' }) as HTMLInputElement
+  }
+
+  it('is disabled with a hint when the plan has no Done when', () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    renderTab()
+    expect(keepGoingBox().hasAttribute('disabled')).toBe(true)
+    expect(document.querySelector('[data-keep-going]')?.getAttribute('title')).toBe('Add a Done when to the plan to keep going')
+  })
+
+  it('starts ticked when Settings say so, with the default turns, and approves with them', async () => {
+    goalSettings = { ...goalSettings, keep_going_default: true, max_turns: 30 }
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    renderTab({ plan: WITH_DONE_WHEN })
+    await waitFor(() => expect(keepGoingBox().checked).toBe(true))
+    expect((screen.getByLabelText('Turns for this goal') as HTMLInputElement).value).toBe('30')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(answerCalls()).toHaveLength(1))
+    expect(answerCalls()[0]?.body).toEqual({ answers: [['Approve']], keep_going: {} })
+  })
+
+  it('starts unticked by default, and plain Approve starts no goal', async () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    renderTab({ plan: WITH_DONE_WHEN })
+    await waitFor(() => expect(calls.some((call) => call.url.includes('/settings/goals'))).toBe(true))
+    expect(keepGoingBox().checked).toBe(false)
+    expect(screen.queryByLabelText('Turns for this goal')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(answerCalls()).toHaveLength(1))
+    expect(answerCalls()[0]?.body).toEqual({ answers: [['Approve']] })
+  })
+
+  it('sends turns changed right before Approve', async () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    renderTab({ plan: WITH_DONE_WHEN })
+    fireEvent.click(keepGoingBox())
+    fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    await waitFor(() => expect(answerCalls()).toHaveLength(1))
+    expect(answerCalls()[0]?.body).toEqual({ answers: [['Approve']], keep_going: { max_turns: 20 } })
+  })
+
+  it('blocks Approve on turns out of range', () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    renderTab({ plan: WITH_DONE_WHEN })
+    fireEvent.click(keepGoingBox())
+    fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '0' } })
+    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
 

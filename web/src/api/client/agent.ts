@@ -45,7 +45,6 @@ import type {
   SubagentsResponse,
   SideQuestionEvent,
   SideQuestionListResponse,
-  GoalRequest,
   SessionGoal,
   SessionGoalResponse,
 } from '../types'
@@ -62,8 +61,6 @@ export async function postAgentChat(
   mentions?: string[],
   /** Mode a session started by this message begins in; ignored by an existing session. */
   interactionMode?: SessionInteractionMode,
-  /** Send ``message`` as the objective of a `/goal` (v3). */
-  goal?: GoalRequest,
 ): Promise<AgentChatResponse> {
   const formData = new FormData()
   if (message) {
@@ -90,11 +87,6 @@ export async function postAgentChat(
   }
   if (interactionMode) {
     formData.append('interaction_mode', interactionMode)
-  }
-  if (goal) {
-    formData.append('goal', 'true')
-    if (goal.max_turns !== undefined) formData.append('goal_max_turns', String(goal.max_turns))
-    if (goal.token_budget !== undefined) formData.append('goal_token_budget', String(goal.token_budget))
   }
   if (files && files.length > 0) {
     for (const file of files) {
@@ -648,19 +640,26 @@ export async function getPendingQuestion(
  * ``answers`` is index-matched to the questions that were asked; an empty entry
  * skips that question. A ``resumed: false`` response means the answer was saved
  * but the turn did not restart — the caller should surface that rather than
- * assume the agent is working.
+ * assume the agent is working. ``options.keepGoing`` (a plan review's
+ * approval): also start a goal that runs the plan until its Done when is
+ * proven, with ``maxTurns`` turns (the Settings default when left out).
  */
 export async function answerQuestion(
   sessionId: string,
   questionId: string,
   answers: string[][],
+  options?: { keepGoing?: { maxTurns?: number } },
 ): Promise<QuestionResolveResult> {
+  const keepGoing = options?.keepGoing
+  const body = keepGoing
+    ? { answers, keep_going: keepGoing.maxTurns === undefined ? {} : { max_turns: keepGoing.maxTurns } }
+    : { answers }
   const res = await fetch(
     `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/answer`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify(body),
     },
   )
   if (!res.ok) await parseDetailOrThrow(res, 'answerQuestion')
@@ -767,21 +766,21 @@ export async function getSessionGoal(sessionId: string): Promise<SessionGoalResp
   return res.json()
 }
 
-/** `/goal pause`: the running turn finishes; no new goal turn starts. */
+/** Pause the goal: the running turn finishes; no new goal turn starts. */
 export async function pauseSessionGoal(sessionId: string): Promise<SessionGoal> {
   const res = await fetch(goalUrl(sessionId, 'pause'), { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, 'pauseSessionGoal')
   return res.json()
 }
 
-/** `/goal resume`: the goal continues, starting a turn when the session is idle. */
+/** Resume the goal: it continues, starting a turn when the session is idle. */
 export async function resumeSessionGoal(sessionId: string): Promise<SessionGoal> {
   const res = await fetch(goalUrl(sessionId, 'resume'), { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, 'resumeSessionGoal')
   return res.json()
 }
 
-/** `/goal clear`: end the goal. */
+/** Clear the goal: end it. */
 export async function clearSessionGoal(sessionId: string): Promise<void> {
   const res = await fetch(goalUrl(sessionId), { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, 'clearSessionGoal')

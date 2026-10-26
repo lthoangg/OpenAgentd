@@ -4,13 +4,10 @@ import {
   formatGoalDuration,
   formatGoalTokens,
   goalNow,
-  goalSubmit,
   goalTabTitle,
   goalTurnInfo,
   goalTurnReason,
-  isGoalObjectiveBlock,
   parseGoalClaim,
-  parseGoalCommand,
   restoredPromptText,
 } from '@/lib/goal'
 
@@ -36,53 +33,6 @@ function makeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
 }
 
 const IDLE = { running: false, waitingForUser: false, planMode: false, queuedMessages: 0, subagentsRunning: 0 }
-
-describe('parseGoalCommand', () => {
-  it('reads the status, the three actions, and an objective', () => {
-    expect(parseGoalCommand('/goal')).toEqual({ kind: 'status' })
-    expect(parseGoalCommand('  /goal status ')).toEqual({ kind: 'status' })
-    expect(parseGoalCommand('/goal Pause')).toEqual({ kind: 'action', action: 'pause' })
-    expect(parseGoalCommand('/goal resume')).toEqual({ kind: 'action', action: 'resume' })
-    expect(parseGoalCommand('/goal clear')).toEqual({ kind: 'action', action: 'clear' })
-    expect(parseGoalCommand('/goal web tests pass\nand tsc is clean')).toEqual({ kind: 'set', objective: 'web tests pass\nand tsc is clean' })
-  })
-
-  it('treats a sentence that starts with an action word as an objective', () => {
-    expect(parseGoalCommand('/goal clear the lint warnings')).toEqual({ kind: 'set', objective: 'clear the lint warnings' })
-  })
-
-  it('ignores other text and other commands', () => {
-    expect(parseGoalCommand('set a goal')).toBeNull()
-    expect(parseGoalCommand('/goals')).toBeNull()
-    expect(parseGoalCommand('/btw goal?')).toBeNull()
-  })
-})
-
-describe('goalSubmit', () => {
-  it('asks before replacing a live goal, and starts a new one otherwise', () => {
-    const live = makeGoal()
-    expect(goalSubmit('/goal ship it', 's1', live)).toEqual({ kind: 'set', objective: 'ship it', replaces: live })
-    expect(goalSubmit('/goal ship it', 's1', makeGoal({ status: 'achieved' }))).toEqual({ kind: 'set', objective: 'ship it', replaces: null })
-    expect(goalSubmit('/goal ship it', null, undefined)).toEqual({ kind: 'set', objective: 'ship it', replaces: null })
-  })
-
-  it('acts on a live goal only', () => {
-    expect(goalSubmit('/goal pause', 's1', makeGoal())).toEqual({ kind: 'action', action: 'pause' })
-    expect(goalSubmit('/goal pause', 's1', makeGoal({ status: 'cleared' }))).toEqual({ kind: 'no-goal' })
-    expect(goalSubmit('/goal resume', null, null)).toEqual({ kind: 'no-session' })
-  })
-
-  it('shows the Goal tab for a bare /goal, with or without a goal', () => {
-    expect(goalSubmit('/goal', 's1', makeGoal({ status: 'achieved' }))).toEqual({ kind: 'show' })
-    expect(goalSubmit('/goal', 's1', null)).toEqual({ kind: 'show' })
-    expect(goalSubmit('/goal status', null, null)).toEqual({ kind: 'show' })
-  })
-
-  it('refuses an objective over the length limit', () => {
-    expect(goalSubmit(`/goal ${'x'.repeat(4001)}`, 's1', null)).toEqual({ kind: 'too-long' })
-    expect(goalSubmit('hello', 's1', null)).toEqual({ kind: 'not-goal' })
-  })
-})
 
 describe('goalTabTitle', () => {
   it('counts the running turn while the goal works', () => {
@@ -135,14 +85,11 @@ describe('formatting', () => {
 })
 
 describe('transcript markers', () => {
-  it('tells a goal continuation and an objective apart from a prompt', () => {
+  it('tells a goal continuation apart from a prompt', () => {
     const cont: ContentBlock = { id: 'u2', type: 'user', content: '<goal_reminder …>', extra: { goal_turn: { id: 'g1', turn: 3, max_turns: 50 } } }
-    const objective: ContentBlock = { id: 'u1', type: 'user', content: 'ship it', extra: { goal: { id: 'g1' } } }
     const prompt: ContentBlock = { id: 'u3', type: 'user', content: 'hello' }
     expect(goalTurnInfo(cont)).toEqual({ turn: 3, maxTurns: 50, why: null, check: null })
     expect(goalTurnInfo(prompt)).toBeNull()
-    expect(isGoalObjectiveBlock(objective)).toBe(true)
-    expect(isGoalObjectiveBlock(prompt)).toBe(false)
   })
 
   it('reads why the goal went on, with the rejecting check in its own words', () => {
@@ -165,8 +112,8 @@ describe('transcript markers', () => {
     expect(goalTurnReason(old)).toEqual({ short: null, text: 'The last turn ended before the goal was met, so the goal went on.' })
   })
 
-  it('gives back a goal objective as its /goal command, and a goal turn as nothing', () => {
-    expect(restoredPromptText('tests pass', { goal: { id: 'g1' } })).toBe('/goal tests pass')
+  it('gives a prompt back as written, and a goal turn as nothing', () => {
+    expect(restoredPromptText('tests pass', { mentions: ['a.ts'] })).toBe('tests pass')
     expect(restoredPromptText('<goal_reminder …>', { goal_turn: { id: 'g1', turn: 2 } })).toBeNull()
     expect(restoredPromptText('hello', null)).toBe('hello')
   })

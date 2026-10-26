@@ -94,9 +94,10 @@ export function useQuestionResolver(question: PendingQuestion | null) {
   return {
     submitting,
     error,
-    answer: (answers: string[][]) => {
+    /** ``options.keepGoing``: a plan approval that also starts a goal (see ``answerQuestion``). */
+    answer: (answers: string[][], options?: { keepGoing?: { maxTurns?: number } }) => {
       if (!question || !sessionId) return
-      void resolve(question.id, () => answerQuestion(sessionId, question.id, answers), 'Could not send the answer.', true, answers, null)
+      void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), 'Could not send the answer.', true, answers, null)
     },
     dismiss: () => {
       if (!question || !sessionId) return

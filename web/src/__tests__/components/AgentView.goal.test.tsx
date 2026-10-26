@@ -1,7 +1,7 @@
 /**
- * `/goal` in the transcript: the objective carries a badge, a turn the goal
- * started on its own reads as a divider (not a prompt the user wrote) that
- * says why the goal went on, and prompt navigation skips it.
+ * A goal in the transcript: a turn the goal started on its own reads as a
+ * divider (not a prompt the user wrote) that says why the goal went on, and
+ * prompt navigation skips it.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -28,7 +28,7 @@ afterEach(() => {
 const REMINDER = '<goal_reminder turn="2" max_turns="50" tokens_used="1200">\nContinue working toward the session goal.\n</goal_reminder>'
 
 const BLOCKS: ContentBlock[] = [
-  { id: 'u1', type: 'user', content: 'web tests pass', extra: { goal: { id: 'g1' } } },
+  { id: 'u1', type: 'user', content: 'web tests pass' },
   { id: 'a1', type: 'text', content: 'Fixed the reducer.' },
   { id: 'u2', type: 'user', content: REMINDER, extra: { goal_turn: { id: 'g1', turn: 2, max_turns: 50, why: 'unclaimed', tokens_used: 1200 } } },
   { id: 'a2', type: 'text', content: 'Ran the suite.' },
@@ -42,10 +42,9 @@ const REJECTED: ContentBlock = {
 }
 
 describe('AgentView — goal markers', () => {
-  it('badges the objective and shows a continuation as a divider that says why', () => {
-    const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+  it('shows a continuation as a divider that says why', () => {
+    render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
 
-    expect(container.querySelector('[data-goal-objective]')?.textContent).toContain('Goal set')
     const divider = screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' })
     expect(divider.textContent).toBe('Goal · turn 2 of 50 · not done yet')
     // The hidden reminder is never shown as the user's words.
@@ -97,9 +96,8 @@ describe('AgentView — goal markers', () => {
       },
       { id: 'a2', type: 'text', content: 'All green.' },
     ]
-    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    expect(container.querySelector('[data-goal-objective]')).not.toBeNull()
     expect(screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' }).textContent).toBe('Goal · turn 2 of 50 · not done yet')
     expect(screen.getByRole('region', { name: 'Goal achieved' }).textContent).toContain('The run shows 0 failures.')
     expect(screen.getByRole('button', { name: /^1 command/ }).getAttribute('aria-expanded')).toBe('false')

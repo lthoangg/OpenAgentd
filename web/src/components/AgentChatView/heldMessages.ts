@@ -6,13 +6,12 @@
  */
 import { useEffect, useRef, type RefObject } from 'react'
 import { haptic } from '@/lib/haptics'
-import type { GoalRequest } from '@/api/types'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
 import { useHeldMessagesStore, type HeldMessage } from '@/stores/useHeldMessagesStore'
 import type { InputComposerHandle, SendDelivery } from '../InputComposer'
 
 /** Send with the session's current model settings, as the composer does. */
-function sendFromComposer(workspace: string, content: string, files?: File[], mentions?: string[], goal?: GoalRequest) {
+function sendFromComposer(workspace: string, content: string, files?: File[], mentions?: string[]) {
   const current = useAgentStore.getState()
   return current.sendMessage(content, files, {
     workspace,
@@ -20,7 +19,6 @@ function sendFromComposer(workspace: string, content: string, files?: File[], me
     thinkingLevel: current.sessionThinkingLevel || null,
     fastMode: current.sessionFastMode,
     mentions,
-    ...(goal ? { goal } : {}),
   })
 }
 
@@ -106,21 +104,6 @@ export async function deliverFromComposer(
   // draft and attachments back instead of vanishing behind an error banner.
   if (!delivered) composer?.restoreLastSubmission()
   returnToComposer(composer, calledOff)
-}
-
-/**
- * Send a `/goal` objective. A running turn reads it like a steer (the server
- * queues it); the goal's own turns follow that turn.
- */
-export async function deliverGoalFromComposer(
-  workspace: string,
-  composer: InputComposerHandle | null,
-  message: { objective: string; files?: File[]; mentions?: string[] },
-): Promise<boolean> {
-  haptic('tick')
-  const delivered = await sendFromComposer(workspace, message.objective, message.files, message.mentions, {})
-  if (!delivered) composer?.restoreLastSubmission()
-  return delivered
 }
 
 /** Sends held messages one turn at a time as the session goes idle. */

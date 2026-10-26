@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
 import { cn } from '@/lib/utils'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import type { SessionPlan } from '@/api/types'
@@ -21,10 +22,24 @@ export interface ActivePlanSectionProps {
   /** Open the plan in the Plan tab. Without it, View opens a read-only document. */
   onOpen?: () => void
   clearing?: boolean
+  /** Where the plan stands; without it, read from the plan alone. */
+  status?: PlanStatus
   className?: string
 }
 
-export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, className }: ActivePlanSectionProps) {
+const STATUS_CLASS: Partial<Record<PlanStatus, string>> = {
+  approved: 'text-(--accent-green-text)',
+  done: 'text-(--accent-green-text)',
+  review: 'text-(--accent-orange-text)',
+}
+
+/** The plan's `# ` title, if it has one. */
+export function planTitle(content: string): string | null {
+  const line = content.split('\n').find((l) => /^#\s+\S/.test(l))
+  return line ? line.replace(/^#\s+/, '').trim() : null
+}
+
+export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, status, className }: ActivePlanSectionProps) {
   const [doc, setDoc] = useState<FileLightboxItem | null>(null)
   const urlRef = useRef<string | null>(null)
   const releaseUrl = useCallback(() => {
@@ -42,18 +57,21 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, cla
     releaseUrl()
     setDoc(null)
   }
-  const approved = plan.approved_revision !== null && plan.approved_revision !== undefined && plan.approved_revision === plan.revision
+  const shown = status ?? planStatus(plan, false)
+  const statusClass = STATUS_CLASS[shown]
+  const title = planTitle(plan.content)
 
   return (
-    <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)}>
+    <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)} data-plan-status={shown}>
       <FileText size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
       <span className="text-xs font-medium text-(--color-text)">Plan</span>
+      {title && <span className="min-w-0 truncate text-xs text-(--color-text-2)" title={title}>{title}</span>}
       {plan.revision !== undefined && (
-        <span className="font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
+        <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
       )}
-      {approved && <span className="text-[11px] font-medium text-(--accent-green-text)">Approved</span>}
+      {statusClass && <span className={cn('shrink-0 text-[11px] font-medium', statusClass)}>{PLAN_STATUS_LABEL[shown]}</span>}
       <span
-        className="font-mono text-[11px] tabular-nums text-(--color-text-subtle)"
+        className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)"
         title={`Updated ${formatRelativeDate(plan.updated_at)}`}
       >
         {formatCompactRelative(plan.updated_at)}

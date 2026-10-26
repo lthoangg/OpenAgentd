@@ -107,7 +107,7 @@ export const queryKeys = {
   },
   todos: (sessionId: string) => ['todos', sessionId] as const,
   plan: (sessionId: string) => ['plan', sessionId] as const,
-  /** A session's newest `/goal` (``session_goal`` events write it in place). */
+  /** A session's newest goal (``session_goal`` events write it in place). */
   goal: (sessionId: string) => ['goal', sessionId] as const,
   /** Every session's goal: the prefix a resync refetches. */
   goals: () => ['goal'] as const,

@@ -94,28 +94,15 @@ describe('retryLatestPrompt', () => {
     expect(await retryLatestPrompt('/repo')).toBe(true)
     const args = postAgentChat.mock.calls[0]
     expect(args[0]).toBe('rename @src/a.ts')
-    expect(args[10]).toBeUndefined()
   })
 
-  it('sets the goal again when the prompt to retry is its objective', async () => {
-    const objective: ContentBlock = { id: 'o1', type: 'user', content: 'tests pass', extra: { goal: { id: 'goal-1' } } }
-    const goalTurn: ContentBlock = { id: 'g1', type: 'user', content: '<goal_reminder turn="2"/>', extra: { goal_turn: { id: 'goal-1', turn: 2, max_turns: 50 } } }
-    useAgentStore.setState((state) => { state.agentStreams.lead.blocks.push(objective, { id: 'a3', type: 'text', content: 'one' }, goalTurn, { id: 'a4', type: 'text', content: 'two' }) })
-    postAgentCommand.mockImplementation(async () => undone('o1', 'tests pass'))
-
-    expect(await retryLatestPrompt('/repo')).toBe(true)
-    const args = postAgentChat.mock.calls[0]
-    expect(args[0]).toBe('tests pass')
-    expect(args[10]).toEqual({})
-  })
-
-  it('hands a failed goal resend back as a /goal command', async () => {
-    const objective: ContentBlock = { id: 'o1', type: 'user', content: 'tests pass', extra: { goal: { id: 'goal-1' } } }
-    useAgentStore.setState((state) => { state.agentStreams.lead.blocks.push(objective) })
+  it('hands a failed resend back to the composer as it was written', async () => {
+    const earlier: ContentBlock = { id: 'o1', type: 'user', content: 'tests pass' }
+    useAgentStore.setState((state) => { state.agentStreams.lead.blocks.push(earlier) })
     postAgentCommand.mockImplementation(async () => undone('o1', 'tests pass'))
     postAgentChat.mockImplementation(async () => { throw new Error('offline') })
 
     expect(await retryLatestPrompt('/repo')).toBe(false)
-    expect(useAgentStore.getState().pendingDraft).toEqual({ content: '/goal tests pass', attachments: [] })
+    expect(useAgentStore.getState().pendingDraft).toEqual({ content: 'tests pass', attachments: [] })
   })
 })

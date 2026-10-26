@@ -511,11 +511,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           )
           const queuedIds = new Set(queuedById.keys())
           const eventById = new Map(eventMessages.map((msg) => [msg.id, msg]))
-          // The server's row carries what the bubble shows (``extra.goal``
-          // for a `/goal` objective); a message tracked only locally keeps
-          // what this client knew of it.
+          // The server's row carries what the bubble shows.
           const extraOf = (msg: (typeof queued)[number]): Record<string, unknown> | undefined => (
-            eventById.get(msg.id)?.extra ?? (msg.goal ? { goal: {} } : undefined)
+            eventById.get(msg.id)?.extra
           )
           // `message_ids` is the single authoritative order (it is built
           // server-side from the same query, in the same order, as

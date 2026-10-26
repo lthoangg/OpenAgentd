@@ -2,14 +2,12 @@ import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { GoalSetBadge } from '@/components/GoalSetBadge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { designFeedbackPlainText } from '@/lib/design-feedback'
-import { restoredPromptText } from '@/lib/goal'
 import { confirmedIdSet } from '@/utils/blocks'
 
 const QUEUED_COLLAPSE_LINES = 10
@@ -83,12 +81,10 @@ function QueuedMessageContent({ content: raw, attachments }: { content: string; 
   )
 }
 
-function QueuedBubble({ content, attachments, label, goal = false, onEdit }: {
+function QueuedBubble({ content, attachments, label, onEdit }: {
   content: string
   attachments?: MessageAttachment[]
   label: string
-  /** The objective of a `/goal` waiting for the turn. */
-  goal?: boolean
   onEdit: () => void | Promise<void>
 }) {
   // A steer's edit waits for the server's cancel; a second click meanwhile
@@ -106,7 +102,6 @@ function QueuedBubble({ content, attachments, label, goal = false, onEdit }: {
   return (
     <div className="group flex justify-end">
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
-        {goal && <span className="pr-9 md:pr-8"><GoalSetBadge /></span>}
         <div className="flex max-w-full items-start gap-2">
           <QueuedMessageContent content={content} attachments={attachments} />
           <Tooltip>
@@ -183,14 +178,12 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
           key={msg.id}
           content={msg.content}
           attachments={msg.attachments}
-          goal={msg.goal}
           // The backend hands it to the agent before its next model call, or
           // ahead of the next message once the turn has failed.
           label={`${msg.sentFromWorkspace ? `From ${msg.sentFromWorkspace} · ` : ''}${turnFailed ? 'Sends with your next message' : 'Read before the next step'}`}
           onEdit={async () => {
             const outcome = await removePendingMessage(msg.id)
-            // Cancelling an objective ends its goal: editing gives back the `/goal` that sets it again.
-            if (outcome === 'cancelled') restoreDraft(restoredPromptText(msg.content, msg.goal ? { goal: {} } : null) ?? msg.content, msg.files)
+            if (outcome === 'cancelled') restoreDraft(msg.content, msg.files)
             else if (outcome === 'sent') {
               useToastStore.getState().push({
                 tone: 'info',

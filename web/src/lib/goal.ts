@@ -1,14 +1,12 @@
 /**
- * `/goal` helpers: the command parser, the Goal tab's title and status, the
- * transcript's goal markers, and the `update_goal` card's outcome. Pure, so
- * the rules stay testable without rendering.
+ * Session goal helpers: the Goal tab's title and status, the transcript's
+ * goal markers, and the `update_goal` card's outcome. Pure, so the rules
+ * stay testable without rendering.
  */
 import type { ContentBlock, GoalPauseReason, SessionGoal } from '@/api/types'
 
 /** Matches ``appv3_agent::tools::goal::UPDATE_GOAL_TOOL``. */
 export const UPDATE_GOAL_TOOL = 'update_goal'
-/** Matches ``appv3_agent::goal::MAX_OBJECTIVE_CHARS``. */
-export const MAX_GOAL_OBJECTIVE_CHARS = 4000
 
 export function isSessionGoal(value: unknown): value is SessionGoal {
   if (!value || typeof value !== 'object') return false
@@ -25,52 +23,9 @@ export function isLiveGoal(goal: SessionGoal | null | undefined): goal is Sessio
   return goal?.status === 'active' || goal?.status === 'paused'
 }
 
-// ── /goal command ─────────────────────────────────────────────────────────────
+// ── Goal actions ──────────────────────────────────────────────────────────────
 
 export type GoalAction = 'pause' | 'resume' | 'clear'
-
-export type GoalCommand =
-  | { kind: 'status' }
-  | { kind: 'action'; action: GoalAction }
-  | { kind: 'set'; objective: string }
-
-/** ``/goal``, ``/goal status|pause|resume|clear``, or ``/goal <objective>``; ``null`` for anything else. */
-export function parseGoalCommand(content: string): GoalCommand | null {
-  const match = /^\s*\/goal(?:\s+([\s\S]*))?$/i.exec(content)
-  if (!match) return null
-  const rest = (match[1] ?? '').trim()
-  const word = rest.toLowerCase()
-  if (!rest || word === 'status') return { kind: 'status' }
-  if (word === 'pause' || word === 'resume' || word === 'clear') return { kind: 'action', action: word }
-  return { kind: 'set', objective: rest }
-}
-
-export type GoalSubmit =
-  | { kind: 'not-goal' }
-  /** Status or an action in a draft that has no session yet. */
-  | { kind: 'no-session' }
-  /** Status or an action with no live goal to act on. */
-  | { kind: 'no-goal' }
-  | { kind: 'show' }
-  | { kind: 'action'; action: GoalAction }
-  | { kind: 'too-long' }
-  /** ``replaces`` is the live goal the new one would clear (confirm first). */
-  | { kind: 'set'; objective: string; replaces: SessionGoal | null }
-
-/** What submitting ``content`` from the composer means for ``/goal``. */
-export function goalSubmit(content: string, sessionId: string | null, goal: SessionGoal | null | undefined): GoalSubmit {
-  const command = parseGoalCommand(content)
-  if (!command) return { kind: 'not-goal' }
-  if (command.kind === 'set') {
-    if (command.objective.length > MAX_GOAL_OBJECTIVE_CHARS) return { kind: 'too-long' }
-    return { kind: 'set', objective: command.objective, replaces: sessionId && isLiveGoal(goal) ? goal : null }
-  }
-  // The Goal tab shows the goal, or how to set one.
-  if (command.kind === 'status') return { kind: 'show' }
-  if (!sessionId) return { kind: 'no-session' }
-  if (!isLiveGoal(goal)) return { kind: 'no-goal' }
-  return { kind: 'action', action: command.action }
-}
 
 // ── Goal tab ──────────────────────────────────────────────────────────────────
 
@@ -143,6 +98,8 @@ export interface GoalSessionState {
   running: boolean
   /** The agent asked the user something (``ask_user``) and waits for the answer. */
   waitingForUser: boolean
+  /** A plan review is open: the goal waits for the user to approve or redirect the plan. */
+  planReview?: boolean
   /** The session is in Plan mode, or switches to it after this turn. */
   planMode: boolean
   /** Messages the user queued behind the running turn. */
@@ -177,6 +134,7 @@ export function goalNow(goal: SessionGoal | null | undefined, s: GoalSessionStat
     ? `${plural(s.queuedMessages, 'queued message')} ${s.queuedMessages === 1 ? 'runs' : 'run'} before the goal's next turn.`
     : null
   if (s.waitingForUser) return { tone: 'wait', text: 'Waiting for your answer', note: 'The agent asked you something. The goal goes on once you answer.' }
+  if (s.planReview) return { tone: 'wait', text: 'Waiting for plan approval', note: 'The goal goes on once you review the plan.' }
   if (s.running) return { tone: 'active', text: `Working on turn ${goalTurnNumber(goal, true)} of ${goal.max_turns}`, note: queued }
   if (s.planMode) return { tone: 'wait', text: 'Waiting for Code mode', note: 'The goal starts its next turn when the session switches to Code mode.' }
   if (s.subagentsRunning > 0) {
@@ -261,20 +219,13 @@ export function isGoalTurnBlock(block: ContentBlock): boolean {
   return goalTurnInfo(block) !== null
 }
 
-/** The message that set a goal (``extra.goal``). */
-export function isGoalObjectiveBlock(block: ContentBlock): boolean {
-  return block.type === 'user' && Boolean(block.extra?.goal) && typeof block.extra?.goal === 'object'
-}
-
 /**
  * The composer text that gives a taken-back prompt back to the user (undo,
- * edit, a failed retry): a goal's objective as its ``/goal`` command, so
- * sending it sets the goal again, and ``null`` for a goal's own turn, which
- * is a hidden reminder the user never wrote.
+ * edit, a failed retry): the content, or ``null`` for a goal's own turn,
+ * which is a hidden reminder the user never wrote.
  */
 export function restoredPromptText(content: string, extra: Record<string, unknown> | null | undefined): string | null {
   if (extra?.goal_turn) return null
-  if (extra?.goal && typeof extra.goal === 'object') return `/goal ${content}`
   return content
 }
 

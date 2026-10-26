@@ -16,7 +16,7 @@
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
  * An ``ask_user`` or plan review card stays out only while it waits on the
- * user; once answered or closed it is one more step of the work. A ``/goal``
+ * user; once answered or closed it is one more step of the work. A goal
  * claim stays out when it is the goal's outcome (checking, achieved, blocked,
  * or paused); a rejected claim the agent keeps working past folds.
  */
@@ -89,7 +89,7 @@ export interface WorkSummary {
   previews: number
   mcpCalls: number
   generations: number
-  /** ``/goal`` completion claims the check did not accept. */
+  /** Goal completion claims the check did not accept. */
   checks: number
   /** Tools no group knows, e.g. a plugin's or an MCP server's own. */
   other: number

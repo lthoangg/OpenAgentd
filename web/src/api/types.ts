@@ -258,7 +258,7 @@ export interface SessionResponse {
   background_work?: boolean
   /** When the session was pinned in the sidebar (v3); absent when unpinned. */
   pinned_at?: string | null
-  /** The session's live `/goal` (v3); absent without one. */
+  /** The session's live goal (v3); absent without one. */
   goal_status?: 'active' | 'paused' | null
 }
 
@@ -741,6 +741,8 @@ export interface SessionPlan {
   path?: string
   /** Workspace-relative path, for a plan kept in the project workspace. */
   workspace_path?: string | null
+  /** The plan's Done when: what a goal started from it must prove (``null`` without one). */
+  done_when?: string | null
 }
 
 export interface SessionPlanResponse {
@@ -762,7 +764,7 @@ export type GoalPauseReason =
   | 'error'
   | 'restart'
 
-/** A `/goal`: an objective the session keeps taking turns toward (v3). */
+/** A goal: an objective the session keeps taking turns toward (v3). */
 export interface SessionGoal {
   id: string
   session_id: string
@@ -787,12 +789,6 @@ export interface SessionGoal {
 export interface SessionGoalResponse {
   /** The newest goal, ended ones included; clients hide a cleared one. */
   goal: SessionGoal | null
-}
-
-/** Optional limits sent with a `/goal` objective. */
-export interface GoalRequest {
-  max_turns?: number
-  token_budget?: number
 }
 
 export interface AgentChatResponse {

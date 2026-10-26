@@ -66,8 +66,6 @@ function appendOptimisticUserBlock(
       ...(args.options?.mentions && args.options.mentions.length > 0
         ? { mentions: args.options.mentions }
         : {}),
-      // The objective of a `/goal`: the server row carries the goal's id.
-      ...(args.options?.goal ? { goal: {} } : {}),
     },
   })
 }
@@ -98,7 +96,6 @@ function makePendingMessage(
   content: string,
   submittedAt: number,
   files?: File[],
-  goal?: boolean,
 ): PendingMessage {
   const attachments = queuedAttachmentMetas(files)
   return {
@@ -107,7 +104,6 @@ function makePendingMessage(
     content,
     submittedAt,
     ...(attachments && attachments.length > 0 ? { attachments, files } : {}),
-    ...(goal ? { goal: true } : {}),
   }
 }
 
@@ -156,7 +152,6 @@ export const createPendingSlice: StateCreator<
           options?.fastMode ?? get().sessionFastMode,
           options?.mentions,
           newSessionInteractionMode(get()),
-          options?.goal,
         )
         if (result.status !== 'queued') {
           // The lead had already gone idle by the time the POST landed, so
@@ -206,7 +201,6 @@ export const createPendingSlice: StateCreator<
                 content,
                 Date.now(),
                 files,
-                Boolean(options?.goal),
               ),
             )
           }
@@ -262,7 +256,6 @@ export const createPendingSlice: StateCreator<
         options?.fastMode ?? get().sessionFastMode,
         options?.mentions,
         newSessionInteractionMode(get()),
-        options?.goal,
       )
       set((draft) => {
         draft.sessionId = result.session_id
@@ -297,7 +290,7 @@ export const createPendingSlice: StateCreator<
           const alreadySpliced = isSpliced(draft, msgId)
           if (!alreadySpliced) {
             draft._pendingMessages.push(
-              makePendingMessage(result.message_id, result.session_id, content, submittedAt, files, Boolean(options?.goal)),
+              makePendingMessage(result.message_id, result.session_id, content, submittedAt, files),
             )
           }
           return

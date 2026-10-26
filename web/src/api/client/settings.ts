@@ -131,13 +131,15 @@ export async function updateWorkspaceMessagesSettings(
 }
 
 export type GoalSettings = {
-  /** Turns a new goal may run (1-1000). */
+  /** Turns a new goal may run (1-1000); the plan review can change it per plan. */
   max_turns: number
   default_max_turns: number
   /** Tokens a new goal may spend (uncached input plus output); ``null`` is no budget. */
   token_budget: number | null
   /** Goal turns may ask the user questions; off runs them unattended. */
   allow_questions: boolean
+  /** The plan review starts with "Keep going until done" ticked. */
+  keep_going_default: boolean
 }
 
 /**
@@ -148,6 +150,7 @@ export type GoalSettingsUpdate = {
   max_turns?: number | null
   token_budget?: number | null
   allow_questions?: boolean
+  keep_going_default?: boolean
 }
 
 export async function getGoalSettings(): Promise<GoalSettings> {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { TodosPopover } from '@/components/TodosPopover'
-import type { TodoItem } from '@/api/types'
+import type { SessionGoal, TodoItem } from '@/api/types'
 
 afterEach(cleanup)
 
@@ -61,6 +61,30 @@ describe('TodosPopover', () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(onOpenPlan).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the goal above the plan, and opens the Goal tab from it', () => {
+    const plan = { content: '# Ship it\n\n## Done when\n\nIt ships.', updated_at: new Date().toISOString(), revision: 1, approved_revision: 1, done_when: 'It ships.' }
+    const goal: SessionGoal = {
+      id: 'g1', session_id: 's1', objective: 'It ships.', status: 'active', pause_reason: null, detail: null,
+      max_turns: 50, token_budget: null, turns_used: 2, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
+      created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:00:00Z', ended_at: null,
+    }
+    const onOpenChange = mock(() => {})
+    const onOpenGoal = mock(() => {})
+    render(
+      <TodosPopover open onOpenChange={onOpenChange} todos={TODOS} goal={goal} plan={plan} onClearPlan={() => {}} onOpenGoal={onOpenGoal} />,
+    )
+
+    const summary = document.querySelector('[data-work-summary]')!
+    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('Goal')
+    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('It ships.')
+    // The plan row reads Approved while its goal still runs, even with tasks left.
+    expect(summary.querySelector('[data-plan-status]')?.getAttribute('data-plan-status')).toBe('approved')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open goal' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onOpenGoal).toHaveBeenCalledTimes(1)
   })
 
   it('renders a flat checklist sorted in_progress → pending → completed → cancelled', () => {

@@ -743,11 +743,20 @@ export function WorkspacePanel({
             // and a hidden terminal detaches so the idle reaper can close it.
             open ? <TerminalSubPanel key={activeTab.termId} termId={activeTab.termId} workspace={workspace} /> : null
           ) : activeTab?.type === 'tasks' ? (
-            <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} onOpenPlan={() => openTab(PLAN_TAB)} />
+            <TasksTabView
+              todos={todos}
+              sessionId={sessionId}
+              plan={plan}
+              onClearPlan={onClearPlan}
+              onOpenPlan={() => openTab(PLAN_TAB)}
+              goal={goal}
+              onOpenGoal={openGoal}
+            />
           ) : activeTab?.type === 'plan' ? (
             <PlanTabView
               plan={plan}
               sessionId={sessionId}
+              todos={todos}
               onClearPlan={onClearPlan}
               onOpenFile={openChangedFile}
               onOpenPreview={canPreview ? openFilePreview : undefined}
@@ -756,7 +765,7 @@ export function WorkspacePanel({
           ) : activeTab?.type === 'btw' ? (
             <SideQuestionsTabView sessionId={sessionId} active={open} />
           ) : activeTab?.type === 'goal' ? (
-            <GoalTabView sessionId={sessionId} />
+            <GoalTabView sessionId={sessionId} plan={plan} todos={todos} onOpenPlan={plan ? () => openTab(PLAN_TAB) : undefined} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : activeTab?.type === 'preview' ? (

@@ -1,7 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { GoalSetBadge } from '@/components/GoalSetBadge'
 import { MarkdownBlock } from '@/utils/markdown'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
@@ -299,7 +298,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession, goal = false }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
@@ -316,8 +315,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   /** This report answers a message sent to another workspace. */
   replyFrom?: ReplyFrom | null
   onOpenSession?: OpenSessionHandler
-  /** This prompt set a `/goal`; its text is the objective. */
-  goal?: boolean
 }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -486,7 +483,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       {chatMenu.menu}
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
          {sentFrom && <SentFromChip source={sentFrom} onOpenSession={onOpenSession} />}
-         {goal && <GoalSetBadge />}
          {/* Attachments */}
          {visibleAttachments.length > 0 && (
            <AttachmentStrip attachments={visibleAttachments} />

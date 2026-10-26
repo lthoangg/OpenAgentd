@@ -1599,9 +1599,11 @@ agent against it.
   session exists: the first message starts the session in the picked mode, and
   switching the draft's folder keeps it `[v3.20.0]`.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
-  delegated subagents render an expandable accordion of child sessions that defaults to
-  expanded while a child is running, waiting on the lead, or selected, and collapses to a
-  count pill with an activity dot so background work stays visible. Individual child rows
+  delegated subagents render an expandable accordion of child sessions behind a
+  count pill with an activity dot, so background work stays visible. Since
+  `[v3.32.0]` the accordion starts collapsed and opens on its own only while a
+  child is selected; it used to open whenever the lead was selected or a child
+  was running or waiting on the lead. Individual child rows
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.

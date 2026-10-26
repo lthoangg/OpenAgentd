@@ -78,6 +78,7 @@ describe('SessionRow actions', () => {
     render(row(onContext))
 
     expect(screen.queryByLabelText('Delete subagent session explorer#1')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
     fireEvent.click(screen.getByLabelText('More actions for subagent explorer#1'))
     const [session] = onContext.mock.calls[0] as unknown as [SessionResponse]
     expect(session).toMatchObject({ id: 'child', parent_session_id: 'lead' })

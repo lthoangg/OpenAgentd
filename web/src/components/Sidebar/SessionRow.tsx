@@ -120,12 +120,10 @@ function SessionRowView({
   const hasWorkingSubagent = subagents.some((sub) => sub.status === 'working')
   const hasActiveWork = hasWaitingSubagent || hasWorkingSubagent
 
+  // Subagents start folded behind the count pill (its dot still shows
+  // activity); only an open subagent forces its lead's list open.
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
-  const isExpanded =
-    isChildActive ||
-    (expandedOverride !== null
-      ? expandedOverride
-      : (isCurrent || hasActiveWork))
+  const isExpanded = isChildActive || (expandedOverride ?? false)
   const subagentToggleLabel = `${isExpanded ? 'Collapse' : 'Expand'} ${subagents.length} subagents`
 
   // Keyboard shortcuts for the hover-revealed row actions.

@@ -94,8 +94,10 @@ describe('WorkspaceSessionList — subagent sessions', () => {
       </QueryClientProvider>
     )
 
-    // Both parent and subagent handle should be visible
+    // Subagents start collapsed, even under the open session.
     expect(screen.getByText('Implement feature X')).toBeTruthy()
+    expect(screen.queryByText('Audit authentication routes')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
     expect(screen.getByText('explorer#1')).toBeTruthy()
     expect(screen.getByText('Audit authentication routes')).toBeTruthy()
 
@@ -163,9 +165,9 @@ describe('WorkspaceSessionList — subagent sessions', () => {
       </QueryClientProvider>
     )
 
-    // Initially expanded because it is currentSessionId
-    expect(screen.getByText('Trace AST nodes')).toBeTruthy()
-    const toggleBtn = screen.getByLabelText('Collapse 1 subagents')
+    // Collapsed by default, even though it is currentSessionId
+    expect(screen.queryByText('Trace AST nodes')).toBeNull()
+    const toggleBtn = screen.getByLabelText('Expand 1 subagents')
     expect(toggleBtn).toBeTruthy()
     // The pill is its own control beside the title, not nested in the row
     // button, and there is no chevron gutter before the title.
@@ -173,14 +175,73 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     expect(screen.getByText('Refactor parser').closest('button')?.contains(toggleBtn)).toBe(false)
     expect(toggleBtn.textContent).toContain('1')
 
-    // Collapse
+    // Expand
     fireEvent.click(toggleBtn)
+    expect(screen.getByText('Trace AST nodes')).toBeTruthy()
+
+    // Collapse again
+    fireEvent.click(screen.getByLabelText('Collapse 1 subagents'))
     expect(screen.queryByText('Trace AST nodes')).toBeNull()
     expect(screen.getByLabelText('Expand 1 subagents')).toBeTruthy()
+  })
 
-    // Expand again
-    fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
-    expect(screen.getByText('Trace AST nodes')).toBeTruthy()
+  it('expands the lead when one of its subagents is the open session', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    const parentSession: SessionResponse = {
+      id: 'parent-open-child',
+      title: 'Port the router',
+      workspace: '/test/workspace',
+      interaction_mode: 'code',
+      created_at: new Date().toISOString(),
+      updated_at: null,
+      agent_name: 'code',
+    }
+
+    queryClient.setQueryData(
+      queryKeys.session.sessions.workspace('/test/workspace', 'activity'),
+      {
+        pages: [{ data: [parentSession], has_more: false, next_cursor: null }],
+        pageParams: [null],
+      }
+    )
+
+    queryClient.setQueryData(
+      queryKeys.session.subagents('parent-open-child'),
+      {
+        available_profiles: [{ name: 'explorer' }],
+        live_members: [
+          {
+            session_id: 'sub-open-1',
+            member_id: 'explorer#1',
+            profile: 'explorer',
+            title: 'explorer#1: Read the routes',
+            status: 'completed',
+            created_at: new Date().toISOString(),
+            has_pending_question: false,
+          },
+        ],
+      }
+    )
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/test/workspace"
+          currentSessionId="sub-open-1"
+          onSessionSelect={() => {}}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByText('Read the routes')).toBeTruthy()
+    expect(screen.getByLabelText('Collapse 1 subagents').getAttribute('aria-expanded')).toBe('true')
   })
 
   it('opens the row actions for a subagent from its More button', async () => {
@@ -240,6 +301,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
       </QueryClientProvider>
     )
 
+    fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
     const subMore = screen.getByLabelText('More actions for subagent explorer#1')
     // Row actions and the subagent pill grow on touch (DESIGN.md touch parity).
     expect(subMore.className).toContain('pointer-coarse:size-9')

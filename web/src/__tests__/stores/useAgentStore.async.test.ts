@@ -3515,6 +3515,19 @@ describe("loadOlderUntilPrompt", () => {
     expect(useAgentStore.getState().hasMore).toBe(false)
   })
 
+  it("passes a goal's own turns and stops at the objective the user wrote", async () => {
+    seed()
+    const goalTurn = { goal_turn: { id: "g1", turn: 2, max_turns: 50, why: "unclaimed" } }
+    const pages: Record<string, ReturnType<typeof page>> = {
+      c0: page([makeMessageResponse({ id: "turn2", role: "user", content: "<goal_reminder turn=\"2\">", extra: goalTurn })], "c1"),
+      c1: page([makeMessageResponse({ id: "objective", role: "user", content: "tests pass", extra: { goal: { id: "g1" } } })], "c2"),
+    }
+    mockSessionHistory.mockImplementation((_id: string, cursor: string) => Promise.resolve(pages[cursor]))
+
+    expect(await useAgentStore.getState().loadOlderUntilPrompt()).toBe(true)
+    expect(mockSessionHistory.mock.calls.map((call: unknown[]) => call[1])).toEqual(["c0", "c1"])
+  })
+
   it("drops the pages when the session changes while they load", async () => {
     seed()
     mockSessionHistory.mockImplementation(async () => {

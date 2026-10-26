@@ -455,6 +455,23 @@ async fn first_history_page_reaches_past_a_staged_undo() {
     assert_eq!(page.rows.len(), 1 + 150 + 1 + 20);
 }
 
+/// A `/goal` turn starts from a hidden reminder, not a prompt the user wrote:
+/// a long goal run pins its objective.
+#[tokio::test]
+async fn first_history_page_pins_a_goals_objective_not_its_turns() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let objective = save_message(&pool, &s.id, from_agent("tests pass", serde_json::json!({"goal": {"id": "g1"}}))).await.unwrap();
+    save_steps(&pool, &s.id, FIRST_PAGE_MAX as usize).await;
+    let reminder = serde_json::json!({"goal_turn": {"id": "g1", "turn": 2, "max_turns": 50, "why": "unclaimed"}});
+    save_message(&pool, &s.id, from_agent("<goal_reminder turn=\"2\">", reminder)).await.unwrap();
+    save_steps(&pool, &s.id, 20).await;
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows.len(), FIRST_PAGE_MAX as usize);
+    assert_eq!(page.latest_prompt.map(|p| p.id), Some(objective.id));
+}
+
 #[tokio::test]
 async fn pending_question_round_trip() {
     let (_d, pool) = fresh().await;

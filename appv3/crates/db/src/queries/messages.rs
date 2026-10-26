@@ -331,13 +331,15 @@ async fn history_page_of(pool: &DbPool, session_id: &str, before: Option<(i64, O
 }
 
 /// A prompt the user wrote: a user chat row that no agent or workspace sent.
-/// Matches the web's `isPromptMessage`; queued rows and summaries have their
-/// own kinds.
+/// A `/goal` turn's hidden reminder (`goal_turn`) is the runtime's, not the
+/// user's. Matches the web's `isPromptMessage`; queued rows and summaries
+/// have their own kinds.
 const PROMPT: &str = "role = 'user' AND kind = 'chat' \
                       AND json_extract(extra, '$.from_agent') IS NULL \
                       AND json_extract(extra, '$.routing.from_agent') IS NULL \
                       AND json_extract(extra, '$.from_agents[0]') IS NULL \
-                      AND json_extract(extra, '$.routing.from_agents[0]') IS NULL";
+                      AND json_extract(extra, '$.routing.from_agents[0]') IS NULL \
+                      AND json_extract(extra, '$.goal_turn') IS NULL";
 
 /// The lead's newest history page. See [`first_history_page`].
 pub struct FirstHistoryPage {

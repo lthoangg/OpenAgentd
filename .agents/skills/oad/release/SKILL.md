@@ -71,6 +71,21 @@ gh pr create --base main --title "<title>" --body "<bullets>"
   "Update backend, web, desktop, mobile, and lockfile versions to <version>."
 - Watch checks in this session (`gh pr checks <n> --watch`); version-check runs on
   version files. Do not schedule background follow-ups.
+- **Build the mobile apps while CI runs.** CI only runs `cargo check` for mobile, so it
+  never links the iOS or Android binaries; a link error (it happened in v3.31.0) shows up
+  only in a real build. Treat these local builds as part of CI, and start them right after
+  `gh pr create`, on the PR branch, in the background:
+
+  ```bash
+  DRY_RUN=1 make -C mobile ios-release                 # archive + package IPA, no upload
+  source ~/.android/openagentd-release-env.sh          # JAVA_HOME, keystore, Keychain password
+  DRY_RUN=1 make -C mobile android-release             # build + sign APK, no upload
+  ```
+
+  `DRY_RUN=1` runs the whole build and the checks, but uploads nothing, and it works
+  before the tag exists. Run them one after the other (both touch `mobile/src-tauri`).
+  If either fails, fix it on the PR branch before merging. Do not merge on a build
+  that only CI has checked.
 - Read review comments (`gh pr view <n> --comments`), fix valid ones on the branch,
   answer false positives with a one-line reason, and re-check CI after each push.
 - Merge: `gh pr merge <n> --merge --delete-branch` (keep history; `--squash` only for a
@@ -140,6 +155,11 @@ git checkout main
   release. Re-running is safe (`--clobber`; the feed replaces the same version).
 - If the iOS build cannot run, say so in the release report; the rest of the
   release does not depend on it.
+- If the build broke only after tagging, fix it on `main` and ship the IPA with
+  `ALLOW_AFTER_TAG=1 make -C mobile ios-release` from that commit. Leave the tag
+  alone: the CLI, desktop and Homebrew assets are already published from it, so moving
+  it breaks them. The IPA descends from the tag plus the fix; add one line to the
+  release notes saying the iOS build includes `<short-sha>`.
 
 Afterwards, confirm the notes survived and the IPA is attached
 (`gh release view v<version> --repo lthoangg/openagentd`), and that

@@ -665,7 +665,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     without a workspace they open in a panel above the composer, where you step back
     through earlier ones and Close only hides the panel. Show them again with a bare
     `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
-  - **`/goal`** `[v3.29.0]` — `/goal <what done looks like>` (for example `/goal web
+  - **`/goal`** `[v3.32.0]` — `/goal <what done looks like>` (for example `/goal web
     tests pass and tsc is clean`) keeps the agent working turn after turn without a
     "continue" from you. It stops when a separate completion check confirms the
     agent's `update_goal` claim from evidence shown in the conversation, when the
@@ -679,7 +679,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     A check that fails to give a verdict neither accepts nor rejects the claim, so
     the agent can claim again; three such failures in a row pause the goal. Goal
     turns run unattended by default: the agent decides instead of asking and notes
-    each choice. **Settings → Goals** sets the turn limit, a default token budget
+    each choice, and a plan it submits is saved without opening a review.
+    **Settings → Goals** sets the turn limit, a default token budget
     for new goals, and allows questions during a goal. The check runs on the
     session's own model, so it reuses the conversation's prompt cache. A **Goal**
     tab in the review dock (the drawer on phones) shows the objective, turns,
@@ -2095,6 +2096,7 @@ MCP.
 | Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
+| Session goal | `update_goal` (lead agent; claims a `/goal` complete or blocked) `[v3.32.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
 | Utility | `skill` |
 

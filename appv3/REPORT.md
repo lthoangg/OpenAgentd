@@ -230,7 +230,7 @@ explicitly.
     by a restart is stored as `stopped` the next time the thread is listed.
   - Each ask records a `side_question` client span with the session id
     and usage (lengths only, no text).
-- **`/goal` (v3.29.0, v3 only).** A durable objective a top-level session
+- **`/goal` (v3.32.0, v3 only).** A durable objective a top-level session
   keeps taking turns toward until a completion check confirms it, the agent
   reports a blocker, or a limit pauses it (`agent/src/goal.rs`,
   `agent/src/tools/goal.rs`). Formats:
@@ -319,8 +319,9 @@ explicitly.
     rejected claim` and repeats the last reason.
   - *Unattended turns:* unless `goals.allow_questions` is on, goal turns
     carry the unattended run metadata, as scheduled turns do, with a goal
-    reason, so `ask_user` and `submit_plan` return the
-    `goal_unattended_refusal` text instead of waiting.
+    reason: `ask_user` returns the `goal_unattended_refusal` text instead of
+    waiting, and `plan` with `submit: true` saves without opening a review and
+    leads with `goal_unattended_submit`.
   - *Events and sessions:* the global stream gains `session_goal
     {session_id, goal}` (`sse_events.json`), sent on every goal change,
     ended goals included. `SessionResponse` gains `goal_status`

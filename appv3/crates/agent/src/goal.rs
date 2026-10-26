@@ -1451,7 +1451,7 @@ mod tests {
     fn the_note_states_the_objective_and_the_question_rule() {
         let off = note_text("  ship the export  ", false);
         assert!(off.contains("<objective>\nship the export\n</objective>"));
-        assert!(off.contains("`ask_user` and `submit_plan` are unavailable"));
+        assert!(off.contains("`ask_user` and plan review (`plan` with `submit: true`) are unavailable"));
         assert!(note_text("x", true).contains("ask with `ask_user` only when you are truly blocked"));
     }
 

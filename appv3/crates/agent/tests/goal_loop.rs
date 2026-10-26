@@ -465,6 +465,23 @@ async fn goal_turns_refuse_questions_by_default() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn goal_turns_save_a_submitted_plan_without_a_review() {
+    let submit = r##"{"action": "write", "content": "# Fix it\n\nSteps.", "submit": true}"##;
+    let turns = vec![MockProvider::tool_call("p", "plan", submit), MockProvider::text("Planned and carried on.")];
+    let h = harness("unattended-plan", turns, Arc::default()).await;
+    h.start_goal("fix it", 1).await;
+    h.finish().await;
+
+    let rows = appv3_db::llm_window_rows(&h.pool, &h.sid, false).await.unwrap();
+    let result = rows.iter().find(|r| r.role == "tool").and_then(|r| r.content.clone()).unwrap();
+    assert!(result.contains("this turn works on the session goal and nobody is watching"), "{result}");
+    assert!(!result.contains("scheduled task"), "{result}");
+    assert!(result.contains("revision 1"), "the plan is still saved: {result}");
+    assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none(), "no review opens");
+    assert_eq!(h.goal().await.pause_reason.as_deref(), Some(goal::reason::TURN_LIMIT));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stop_pauses_the_goal() {
     let started = Arc::new(AtomicBool::new(false));
     let h = harness("stop", vec![MockProvider::tool_call("a", "slow", "{}")], started.clone()).await;

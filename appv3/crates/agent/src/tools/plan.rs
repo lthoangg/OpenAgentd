@@ -70,8 +70,17 @@ fn take_held_submit(ctx: &ToolContext) -> Option<String> {
     reason
 }
 
-fn unattended(ctx: &ToolContext) -> bool {
-    ctx.metadata.lock().unwrap().get(crate::agent::UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false)
+/// Why a submission in a turn nobody watches saves without a review, if this
+/// turn is one: a scheduled task's, or a `/goal` turn's own wording.
+fn unattended_submit(ctx: &ToolContext) -> Option<String> {
+    let meta = ctx.metadata.lock().unwrap();
+    if !meta.get(crate::agent::UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    if meta.get(crate::agent::UNATTENDED_REASON_META).and_then(Value::as_str) == Some(crate::agent::UNATTENDED_GOAL) {
+        return Some(crate::prompts::s("goal_unattended_submit").to_string());
+    }
+    Some(UNATTENDED_SUBMIT.to_string())
 }
 
 /// A JSON value models sometimes send as a string holding JSON.
@@ -190,7 +199,7 @@ impl Tool for PlanTool {
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
         let call = parse_call(&args).map_err(|e| invalid_args(PLAN_TOOL, &e))?;
         // A held-back review still saves; the reason leads the result.
-        let held = if call.submit { take_held_submit(ctx).or_else(|| unattended(ctx).then(|| UNATTENDED_SUBMIT.to_string())) } else { None };
+        let held = if call.submit { take_held_submit(ctx).or_else(|| unattended_submit(ctx)) } else { None };
         let dir = denied::session_artifacts_dir(Some(&self.session_id));
         let saved = match &call.change {
             Some(change) => {

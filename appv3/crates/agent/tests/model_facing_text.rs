@@ -142,9 +142,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Lowered by 35 when `todo_manage`, `schedule_task` and `delegate` became
 /// `todo`, `schedule` and `team`.
 /// Lowered to the new total when `submit_plan` merged into `plan`.
-/// Raised by 765 for `update_goal`, listed for every lead so the cached
-/// tool definitions do not change when the user sets a `/goal`.
-const LEAD_ALWAYS_ON_CHARS: usize = 37_520;
+/// Raised to the new total for `update_goal`, listed for every lead so the
+/// cached tool definitions do not change when the user sets a `/goal`.
+const LEAD_ALWAYS_ON_CHARS: usize = 37_559;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

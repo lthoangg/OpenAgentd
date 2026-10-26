@@ -97,7 +97,7 @@ pub struct GoalSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_budget: Option<i64>,
     /// Let the agent ask the user questions during a goal. Off: goal turns
-    /// run unattended, so `ask_user` and `submit_plan` refuse.
+    /// run unattended: `ask_user` refuses, and `plan` saves without a review.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub allow_questions: bool,
 }

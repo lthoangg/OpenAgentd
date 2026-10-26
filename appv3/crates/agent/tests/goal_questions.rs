@@ -1,4 +1,4 @@
-//! `/goal` with `goals.allow_questions` on: a goal turn may ask the user,
+//! A goal with `goals.allow_questions` on: a goal turn may ask the user,
 //! and the goal waits for the answer instead of refusing the question or
 //! starting another turn. Its own binary: the setting is process-wide.
 
@@ -39,19 +39,11 @@ async fn with_questions_on_a_goal_waits_for_the_answer() {
     let agent = Agent::new(provider, "code", "You are a test agent.", vec![], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
     let sid = uuid::Uuid::now_v7().to_string();
+    let id = uuid::Uuid::parse_str(&sid).unwrap();
+    appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(id), workspace: ws.display().to_string(), ..Default::default() }).await.unwrap();
 
-    let m = session.begin_goal(&sid, "fix it", Some(5), None).await.unwrap();
-    session
-        .handle_user_message(UserMessage {
-            content: "fix it".into(),
-            session_id: sid.clone(),
-            origin: "user".into(),
-            extra: Some(m.extra),
-            context_notes: m.context_notes,
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+    session.start_goal_from_plan(&sid, "fix it", Some(5)).await.unwrap();
+    session.handle_user_message(UserMessage { content: "fix it".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         while session.state() != "waiting_input" {
             tokio::time::sleep(Duration::from_millis(10)).await;

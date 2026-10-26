@@ -1,5 +1,5 @@
-//! `session_goals` — `/goal` objectives a session keeps working toward
-//! across turns (v3 only, revision 00000028).
+//! `session_goals` — goals a session keeps working toward across turns (an
+//! approved plan run to its Done when) (v3 only, revision 00000028).
 //!
 //! Clustered on `(session_id, id)` with UUIDv7 ids, so a session's goals
 //! are one time-ordered range. At most one goal per session is live
@@ -192,6 +192,19 @@ pub async fn unreleased_goal_notes(pool: &DbPool, session_id: &str) -> Result<Ve
     )
     .bind(db_id(session_id))
     .fetch_all(pool)
+    .await?)
+}
+
+/// Where `goal_id`'s rules note sits in the session (its `seq`): the goal's
+/// work follows it.
+pub async fn goal_note_seq(pool: &DbPool, session_id: &str, goal_id: &str) -> Result<Option<i64>> {
+    Ok(sqlx::query_scalar(
+        "SELECT MIN(seq) FROM session_messages WHERE session_id = ? AND kind = 'note' \
+         AND json_extract(extra, '$.goal_note') = 1 AND json_extract(extra, '$.goal_id') = ?",
+    )
+    .bind(db_id(session_id))
+    .bind(api_uuid(goal_id))
+    .fetch_one(pool)
     .await?)
 }
 

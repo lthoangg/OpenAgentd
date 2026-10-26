@@ -558,7 +558,7 @@
     "type": "function",
     "function": {
       "name": "update_goal",
-      "description": "Report on the goal the user set with /goal (fails without one). 'complete': output in this conversation proves every requirement; list it. A separate check reviews the claim; if it rejects it, keep working on what it names. 'blocked': the same blocker stopped you for 3 turns in a row and you need the user.",
+      "description": "Report on the goal of the approved plan (fails without one). 'complete': output in this conversation proves every requirement; list it. A separate check reviews the claim; if it rejects it, keep working on what it names. 'blocked': the same blocker stopped you for 3 turns in a row and you need the user.",
       "parameters": {
         "type": "object",
         "properties": {

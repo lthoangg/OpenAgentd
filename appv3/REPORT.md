@@ -230,10 +230,12 @@ explicitly.
     by a restart is stored as `stopped` the next time the thread is listed.
   - Each ask records a `side_question` client span with the session id
     and usage (lengths only, no text).
-- **`/goal` (v3.32.0, v3 only).** A durable objective a top-level session
-  keeps taking turns toward until a completion check confirms it, the agent
-  reports a blocker, or a limit pauses it (`agent/src/goal.rs`,
-  `agent/src/tools/goal.rs`). Formats:
+- **Goals: Keep going until done (v3.32.0, v3 only).** Approving a plan
+  with Keep going starts a durable objective, the plan's Done when, that a
+  top-level session keeps taking turns toward until a completion check
+  confirms it, the agent reports a blocker, or a limit pauses it
+  (`agent/src/goal.rs`, `agent/src/tools/goal.rs`). There is no `/goal`
+  command and no goal field on `POST /api/agent/chat`. Formats:
   - *Table:* revision **00000028** adds `session_goals`, `WITHOUT ROWID` and
     clustered on `(session_id, id)` with uuid7 ids: `objective` (≤ 4,000
     chars), `status` (`active|paused|achieved|cleared`), `pause_reason`
@@ -244,16 +246,24 @@ explicitly.
     index `uq_session_goals_live` allows one active or paused goal per
     session. No foreign key; session delete removes the rows in its
     transaction.
-  - *Setting a goal:* `POST /api/agent/chat` takes form fields `goal=true`,
-    `goal_max_turns` (1–1000) and `goal_token_budget` (> 0); without them
-    the goal takes `goals.max_turns` and `goals.token_budget`. The message is
-    the objective; `goal` with `interrupt` is a 422, as is an empty or
-    too-long objective. A new goal clears a live one. The objective row
-    carries `extra.goal {id}`, and the rules go in a pinned, hidden
-    `kind='note'` row with `extra.goal_note`, kept out of compaction while
-    the goal is live. Once it ends the note is unpinned and a
-    `<goal_ended>` note (`extra.goal_ended`) follows, both between turns
-    only.
+  - *Starting a goal:* the plan review answer
+    (`POST /api/agent/{sid}/question/{qid}/answer`) takes
+    `keep_going` beside `answers`: `true`, `{}` or `{"max_turns": n}`
+    (1–1000; omitted takes `goals.max_turns`). Request changes ignores it.
+    With Approve the plan needs a non-empty Done when (`plan::done_when`
+    reads a `**Done when:**` paragraph or a `Done when` heading section,
+    capped at 4,000 chars; the plan JSON exposes it as `done_when`); a
+    plan without one, or turns out of range, is a 422 that leaves the
+    review open. After approval
+    `AgentSession::start_goal_from_plan` clears a live goal, creates the
+    goal with the token budget from `goals.token_budget`, and saves its
+    rules in a pinned, hidden `kind='note'` row with `extra.goal_note` and
+    `extra.goal_id`, kept out of compaction while the goal is live; when no
+    turn resumed, it starts one. The approval result asks for one `todo`
+    task per plan milestone and, with Keep going, adds the goal rules.
+    Once the goal ends the note is unpinned and a `<goal_ended>` note
+    (`extra.goal_ended`) follows, both between turns only. The goal's part
+    of the history starts at its rules note.
   - *Routes* (`api/src/routes/agent/goal.rs`): `GET
     /api/agent/sessions/{sid}/goal` returns `{goal}` (the newest goal of
     any status, or `null`); `POST …/goal/pause` and `…/goal/resume` return
@@ -263,13 +273,13 @@ explicitly.
     session is idle; while a stopped turn is still ending it is a 422.
     Pause and clear delete a queued `goal_turn` row. Member sessions are
     404.
-  - *Taking the objective back:* `/undo` of the objective row (or
-    `DELETE /api/agent/sessions/{sid}/queued-messages/{mid}` of it while
-    it is still queued) clears its goal, since the rules note goes with
-    that message; undoing a `goal_turn` row keeps the goal.
+  - *Undo:* undoing a message before the goal's rules note (back past the
+    approval) clears the goal, since the note goes with it; undoing a
+    `goal_turn` row keeps the goal.
   - *Continuation:* when a goal turn ends normally, `run_turn` accounts it
     and queues a user row with `extra.goal_turn {id, turn, max_turns, why,
-    check?}` holding a `<goal_reminder>`. `why` says why the
+    check?}` holding a `<goal_reminder>`, which names the plan file and the
+    next unfinished task (in progress, else first pending). `why` says why the
     goal went on, for the transcript's turn divider: `unclaimed` (the last
     turn ended without a claim), `rejected` (the last check said not yet;
     `check` is its reason), `check_failed` (the last check gave no
@@ -295,15 +305,17 @@ explicitly.
     and a hidden `<goal_check>` user message asking for JSON `{met,
     reason}`, so the turn's prompt cache covers all but the new tail. The
     message also carries a `<runtime_log>`: the runtime's own record,
-    from the goal's part of the history (after its objective message), of
+    from the goal's part of the history (after its rules note), of
     each `shell` command with its outcome (`succeeded`, `failed, exit code
     N`, `timed out`, `started in the background`, `no result yet`) and each
     applied `patch` with its files, the last 40 steps, then the files
-    changed after the last command that ran to an end. The check is told
-    to trust the log over the claimed evidence. The objective, evidence
-    and log go in with their `<goal_check>`, `<objective>`,
-    `<claimed_evidence>` and `<runtime_log>` tags defused, so none can
-    close its block.
+    changed after the last command that ran to an end, and a
+    `<task_board>` with the session's tasks; unfinished tasks count as
+    unproven unless the claim explains them. The check is told
+    to trust the log over the claimed evidence. The objective, evidence,
+    log and board go in with their `<goal_check>`, `<objective>`,
+    `<claimed_evidence>`, `<runtime_log>` and `<task_board>` tags defused,
+    so none can close its block.
     `tool_choice` stays unset, which keeps Anthropic's message
     cache valid; a tool call in the reply is dropped. A reply without a
     verdict is asked once more; a second miss, or a check that cannot run,
@@ -337,15 +349,18 @@ explicitly.
     check's spend therefore counts in the Telemetry totals, per session,
     and as its own step in `cache_by_step`.
   - *Settings:* `settings.yaml` gains `goals: {max_turns, token_budget,
-    allow_questions}`, each written only when it differs from the default
-    (50, no budget, `false`). `GET/PUT /api/settings/goals` returns them plus
+    allow_questions, keep_going_default}`, each written only when it differs
+    from the default (50, no budget, `false`, `false`);
+    `keep_going_default` ticks Keep going in the review footer.
+    `GET/PUT /api/settings/goals` returns them plus
     `default_max_turns`; PUT keeps omitted keys, resets `max_turns` and
     removes `token_budget` with `null`, and returns 422 for a `max_turns`
     outside 1–1000, a `token_budget` below 1, or an unknown key.
 
   Tests: `agent/tests/goal_loop.rs`, `agent/tests/goal_questions.rs`, unit tests in `agent/src/goal.rs`,
-  `db/src/queries/goals.rs` and `db/tests/queries.rs`, `goal_flow` in
-  `api/tests/http_api.rs`. v2 has no equivalent.
+  `agent/src/plan.rs`, `db/src/queries/goals.rs` and `db/tests/queries.rs`,
+  `agent/tests/plan_review.rs`, `goal_flow` in `api/tests/http_api.rs`.
+  v2 has no equivalent.
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,

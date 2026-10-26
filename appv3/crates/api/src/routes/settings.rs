@@ -290,6 +290,7 @@ fn goals_json(g: &rs::GoalSettings) -> Value {
         "default_max_turns": rs::DEFAULT_GOAL_MAX_TURNS,
         "token_budget": g.token_budget(),
         "allow_questions": g.allow_questions,
+        "keep_going_default": g.keep_going_default,
     })
 }
 
@@ -307,7 +308,8 @@ async fn put_goals(raw: Bytes) -> ApiResult<Response> {
     let max_turns = if has("max_turns") { Some(b.opt_int("max_turns")) } else { None };
     let token_budget = if has("token_budget") { Some(b.opt_int("token_budget")) } else { None };
     let allow_questions = if has("allow_questions") { Some(b.bool("allow_questions", Some(false))) } else { None };
-    b.finish(&["max_turns", "token_budget", "allow_questions"])?;
+    let keep_going_default = if has("keep_going_default") { Some(b.bool("keep_going_default", Some(false))) } else { None };
+    b.finish(&["max_turns", "token_budget", "allow_questions", "keep_going_default"])?;
     if matches!(max_turns, Some(Some(n)) if !(1..=rs::MAX_GOAL_MAX_TURNS).contains(&n)) {
         return Err(ApiError::unprocessable(format!("max_turns must be an integer from 1 to {} or null", rs::MAX_GOAL_MAX_TURNS)));
     }
@@ -323,6 +325,9 @@ async fn put_goals(raw: Bytes) -> ApiResult<Response> {
     }
     if let Some(on) = allow_questions {
         cfg.goals.allow_questions = on;
+    }
+    if let Some(on) = keep_going_default {
+        cfg.goals.keep_going_default = on;
     }
     rs::save_runtime_settings(&cfg).map_err(internal)?;
     Ok(json(goals_json(&cfg.goals)))

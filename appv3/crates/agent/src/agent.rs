@@ -33,7 +33,7 @@ pub const SUBMIT_MERGED: &str = "Merged into your later plan submission in this 
 /// and `plan` saves without opening a review.
 pub const UNATTENDED_META: &str = "unattended";
 /// Turn metadata key beside [`UNATTENDED_META`]: why nobody is there.
-/// `"goal"` is a `/goal` turn; absent is a scheduled task.
+/// `"goal"` is a goal turn; absent is a scheduled task.
 pub const UNATTENDED_REASON_META: &str = "unattended_reason";
 pub const UNATTENDED_GOAL: &str = "goal";
 

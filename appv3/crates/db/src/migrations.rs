@@ -62,7 +62,7 @@ pub const ALEMBIC_HEAD: &str = "00000028";
 ///   mark stays only where the id's version digit (character 13) is `5`.
 /// - 00000027: `chat_sessions.title_locked`, set when the user renames a
 ///   session, so retitling after compaction keeps the name they chose.
-/// - 00000028: `session_goals` (`/goal`), clustered `WITHOUT ROWID` on
+/// - 00000028: `session_goals` (session goals), clustered `WITHOUT ROWID` on
 ///   `(session_id, id)` with UUIDv7 ids like `side_questions`, so a
 ///   session's goals are one time-ordered range. The partial unique index
 ///   allows one live (active or paused) goal per session.

@@ -35,7 +35,7 @@ pub const TOOLS_SHA_ATTR: &str = "openagentd.request.tools_sha";
 /// `messages@N` for the first changed message). Absent when the previous
 /// request is an unchanged prefix, which is what a prompt cache needs.
 pub const PREFIX_CHANGE_ATTR: &str = "openagentd.request.prefix_change";
-/// `agent_run` and `goal_check` span attribute (v3 addition): the `/goal`
+/// `agent_run` and `goal_check` span attribute (v3 addition): the session goal
 /// a goal turn or completion check works for (API id).
 pub const GOAL_ID_ATTR: &str = "openagentd.goal.id";
 /// `agent_run` span attribute (v3 addition): which of its goal's turns the
@@ -469,7 +469,7 @@ mod tests {
         assert!(span.has_attr("gen_ai.usage.input_tokens"));
     }
 
-    /// A `/goal` turn's run span names its goal and turn, so one goal's
+    /// A goal turn's run span names its goal and turn, so one goal's
     /// spend can be found in telemetry.
     #[tokio::test]
     async fn a_goal_turn_run_span_names_its_goal() {

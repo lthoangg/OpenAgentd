@@ -1,6 +1,6 @@
-//! `/api/agent/sessions/{sid}/goal` — a session's `/goal` (v3 only). A goal
-//! is set by sending its objective through `POST /chat` with `goal=true`;
-//! these routes read, pause, resume, and clear it.
+//! `/api/agent/sessions/{sid}/goal` — a session's goal (v3 only). A goal
+//! starts when the user approves a plan review with `keep_going`
+//! (`questions.rs`); these routes read, pause, resume, and clear it.
 
 use super::helpers::{goal_err, resolve_agent_for_existing_session};
 use crate::error::{ApiError, ApiResult};

@@ -81,7 +81,7 @@ async fn harness(name: &str, mode: &str, ws: Option<PathBuf>, turns: Vec<MockTur
     let p: Arc<dyn LlmProvider> = provider.clone();
     let p2 = p.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
-    let agent = Agent::new(p, "code", "You are a test agent.", vec![Arc::new(UserEdit)], Some("mock:mock".into()));
+    let agent = Agent::new(p, "code", "You are a test agent.", vec![Arc::new(UserEdit), Arc::new(appv3_tools::todo::TodoTool)], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
     let id = uuid::Uuid::now_v7();
     let new = appv3_db::NewSession { id: Some(id), workspace: ws.display().to_string(), interaction_mode: Some(mode.into()), ..Default::default() };
@@ -103,10 +103,31 @@ impl Harness {
     /// Answer the open plan review the way the answer route does.
     async fn review(&self, decision: ReviewDecision, answer: &str) {
         let row = appv3_db::get_pending_question(&self.pool, &self.sid).await.unwrap().expect("an open review");
-        let outcome = plan::resolve_review(&self.pool, &self.sid, &row, &decision, &json!([[answer]])).await.unwrap().expect("review was open");
+        let outcome = plan::resolve_review(&self.pool, &self.sid, &row, &decision, &json!([[answer]]), false).await.unwrap().expect("review was open");
         assert_eq!(outcome.approved, decision == ReviewDecision::Approve);
         self.session.resume_after_question_answer().await;
         self.settle().await;
+    }
+
+    /// Approve with "Keep going until done" the way the answer route does:
+    /// close the review, start the goal from the plan's Done when, resume.
+    async fn approve_and_keep_going(&self, max_turns: i64) {
+        let row = appv3_db::get_pending_question(&self.pool, &self.sid).await.unwrap().expect("an open review");
+        let objective = plan::done_when(&plan::sync(&self.data_dir()).unwrap().content).expect("a Done when");
+        plan::resolve_review(&self.pool, &self.sid, &row, &ReviewDecision::Approve, &json!([["Approve"]]), true).await.unwrap().expect("review was open");
+        self.session.start_goal_from_plan(&self.sid, &objective, Some(max_turns)).await.unwrap();
+        self.session.resume_after_question_answer().await;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                self.settle().await;
+                if !appv3_db::has_queued_user_messages(&self.pool, &self.sid).await.unwrap() && !self.session.is_busy() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the goal's turns settle");
     }
 
     /// The messages the provider was sent on call `i`.
@@ -310,6 +331,51 @@ async fn different_work_after_approval_starts_a_new_plan() {
     assert_eq!(doc.workspace_path(), Some(format!(".agents/plans/feature-b-{}.md", h.id8())));
     assert_eq!((doc.content.as_str(), doc.revision, doc.approved_revision), ("# Feature B\n1. b", 1, None));
     assert_eq!(std::fs::read_to_string(h.ws.join(&a)).unwrap(), "# Feature A\n1. a\n", "the approved plan is kept");
+}
+
+/// "Keep going until done": the approval starts a goal from the plan's Done
+/// when, the resumed turn is its first, and the next turn is pointed at the
+/// plan and the next unfinished task.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn approving_with_keep_going_runs_the_plan_as_a_goal() {
+    let content = "# Ship it\n\n## Approach\n1. Build\n2. Test\n\n**Done when:** `bun test` passes.";
+    let tasks = json!({"actions": [{"action": "create", "content": "Build", "status": "completed"}, {"action": "create", "content": "Test"}]}).to_string();
+    let h = harness(
+        "keep_going",
+        "plan",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &json!({"action": "write", "content": content, "submit": true}).to_string()),
+            MockProvider::tool_call("t1", "todo", &tasks),
+            MockProvider::text("Built it."),
+            MockProvider::tool_call("t2", "todo", r#"{"actions": [{"action": "read"}]}"#),
+            MockProvider::text("Testing next."),
+        ],
+    )
+    .await;
+    h.send("Plan the release.").await;
+    assert_eq!(h.session.state(), "waiting_input");
+
+    h.approve_and_keep_going(2).await;
+    assert_eq!(h.mode().await, "code");
+    let g = appv3_db::latest_session_goal(&h.pool, &h.sid).await.unwrap().expect("a goal");
+    assert_eq!(g.objective, "`bun test` passes.");
+    assert_eq!((g.max_turns, g.turns_used, g.pause_reason.as_deref()), (2, 2, Some("turn_limit")), "the resumed turn was the goal's first: {g:?}");
+
+    // The approval says the goal runs the plan, after the rules note, and
+    // the plan call keeps its result.
+    let resumed = h.request(1);
+    let rules = resumed.iter().position(|m| m.content().is_some_and(|c| c.contains("<objective>\n`bun test` passes.\n</objective>"))).expect("the rules reach the model");
+    let result = resumed.iter().position(|m| matches!(m, ChatMessage::Tool { tool_call_id, .. } if tool_call_id == "c1")).expect("the plan call keeps its result");
+    assert!(result < rules, "the rules follow the approved call's result");
+    let approval = h.last_tool_result(1);
+    assert!(approval.contains("one `todo` task per milestone") && approval.contains("keep going until done"), "{approval}");
+
+    // The next goal turn names the plan file and the next unfinished task.
+    let rows = appv3_db::llm_window_rows(&h.pool, &h.sid, false).await.unwrap();
+    let reminder = rows.iter().find(|r| r.extra_json().is_some_and(|e| e.get("goal_turn").is_some())).and_then(|r| r.content.clone()).expect("a goal reminder");
+    assert!(reminder.contains(&format!("Follow the plan in `.agents/plans/ship-it-{}.md`.", h.id8())), "{reminder}");
+    assert!(reminder.contains("Next task on the board: Test"), "{reminder}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

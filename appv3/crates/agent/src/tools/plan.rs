@@ -73,7 +73,7 @@ fn take_held_submit(ctx: &ToolContext) -> Option<String> {
 }
 
 /// Why a submission in a turn nobody watches saves without a review, if this
-/// turn is one: a scheduled task's, or a `/goal` turn's own wording.
+/// turn is one: a scheduled task's, or a goal turn's own wording.
 fn unattended_submit(ctx: &ToolContext) -> Option<String> {
     let meta = ctx.metadata.lock().unwrap();
     if !meta.get(crate::agent::UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false) {

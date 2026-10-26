@@ -15,7 +15,7 @@ async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
     (dir, pool)
 }
 
-/// Deleting a session tree takes its `/btw` side questions and `/goal`
+/// Deleting a session tree takes its `/btw` side questions and goal
 /// goals with it.
 #[tokio::test]
 async fn deleting_a_session_removes_its_side_questions() {
@@ -455,7 +455,7 @@ async fn first_history_page_reaches_past_a_staged_undo() {
     assert_eq!(page.rows.len(), 1 + 150 + 1 + 20);
 }
 
-/// A `/goal` turn starts from a hidden reminder, not a prompt the user wrote:
+/// A goal turn starts from a hidden reminder, not a prompt the user wrote:
 /// a long goal run pins its objective.
 #[tokio::test]
 async fn first_history_page_pins_a_goals_objective_not_its_turns() {

@@ -1,6 +1,6 @@
 //! `questions.py`, `todos.py`, `permissions.py`, and the v3 session plan.
 
-use super::helpers::get_or_start;
+use super::helpers::{get_or_start, goal_err, resolve_agent_for_existing_session};
 use crate::error::{loc, verr, ApiError, ApiResult};
 use crate::util::*;
 use crate::AppState;
@@ -161,7 +161,8 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
     let answers = parse_answers(&b)?;
     let row = open_question(&st.pool, &sid, &qid).await?;
     if row.kind().as_deref() == Some(plan::PLAN_REVIEW_KIND) {
-        return answer_plan_review(&st.pool, &sid, &qid, &row, &answers).await;
+        let keep_going = parse_keep_going(&b)?;
+        return answer_plan_review(&st.pool, &sid, &qid, &row, &answers, keep_going).await;
     }
     validate_answers(&row.questions(), &answers, MAX_ANSWER_CHARS)?;
     let av = json!(answers);
@@ -177,12 +178,39 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
     Ok(json(json!({"status": "ok", "resumed": resumed})))
 }
 
+/// A plan review answer's `keep_going`: absent, `null` or `false` for none;
+/// `true` or `{}` for a goal with the default turn limit; `{"max_turns": n}`
+/// for one with `n` turns. `Some(max_turns)` asks for a goal.
+fn parse_keep_going(b: &Value) -> ApiResult<Option<Option<i64>>> {
+    let bad = |msg: &str, v: &Value| ApiError::validation(vec![verr("value_error", &loc(&["body", "keep_going"]), msg, v.clone())]);
+    match b.get("keep_going") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => Ok(None),
+        Some(Value::Bool(true)) => Ok(Some(None)),
+        Some(Value::Object(o)) => match o.get("max_turns") {
+            None | Some(Value::Null) => Ok(Some(None)),
+            Some(n) => n.as_i64().map(|n| Some(Some(n))).ok_or_else(|| bad("max_turns should be a valid integer", n)),
+        },
+        Some(v) => Err(bad("keep_going should be a boolean or an object", v)),
+    }
+}
+
 /// Close a plan review. Approval switches a Plan-mode session to Code mode
 /// before the turn resumes, so the resumed turn implements with full tool
-/// access.
-async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::PendingQuestion, answers: &[Vec<String>]) -> ApiResult<Response> {
+/// access. `keep_going` (an approval only): also start a goal that runs the
+/// plan to its Done when, so the resumed turn is the goal's first.
+async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::PendingQuestion, answers: &[Vec<String>], keep_going: Option<Option<i64>>) -> ApiResult<Response> {
     validate_answers(&row.questions(), answers, plan::PLAN_REVIEW_MAX_ANSWER_CHARS)?;
     let decision = plan::review_decision(answers).map_err(ApiError::unprocessable)?;
+    // Checked before the review closes, so a refused goal leaves it open.
+    let goal = match keep_going.filter(|_| decision == ReviewDecision::Approve) {
+        Some(max_turns) => {
+            let dir = appv3_tools::denied::session_artifacts_dir(Some(sid));
+            let objective = plan::sync(&dir).and_then(|d| plan::done_when(&d.content)).unwrap_or_default();
+            appv3_agent::goal::validate(&objective, max_turns).map_err(goal_err)?;
+            Some((objective, max_turns))
+        }
+        None => None,
+    };
     let live = manager::find_live_session_serving_session(sid);
     if decision == ReviewDecision::Approve && db::get_session(pool, sid).await?.is_some_and(|s| s.interaction_mode == "plan") {
         // A toggle queued during the review would undo the approval's switch
@@ -193,18 +221,31 @@ async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::Pendi
         }
     }
     let av = json!(answers);
-    let Some(outcome) = plan::resolve_review(pool, sid, row, &decision, &av).await? else {
+    let Some(outcome) = plan::resolve_review(pool, sid, row, &decision, &av, goal.is_some()).await? else {
         return Err(ApiError::conflict("Question already resolved."));
     };
     store().push_event(sid, &events::question_answered(qid, sid, &av), true);
     if outcome.mode_changed {
         store().push_event(sid, &events::interaction_mode(&live.as_ref().map(|a| a.name()).unwrap_or_default(), "code"), true);
     }
+    let goal_agent = match &goal {
+        Some((objective, max_turns)) => {
+            let agent = resolve_agent_for_existing_session(pool, sid).await?;
+            agent.start_goal_from_plan(sid, objective, *max_turns).await.map_err(goal_err)?;
+            Some(agent)
+        }
+        None => None,
+    };
     let resumed = resume_agent(pool, sid).await;
     if !resumed {
         end_turn(sid);
+        // No turn to resume (the server restarted during the review): the
+        // goal starts its first turn on its own.
+        if let Some(agent) = &goal_agent {
+            agent.kick_goal(sid, false).await;
+        }
     }
-    tracing::info!("plan_review_answered session_id={} question_id={} approved={} resumed={}", sid, qid, outcome.approved, resumed);
+    tracing::info!("plan_review_answered session_id={} question_id={} approved={} keep_going={} resumed={}", sid, qid, outcome.approved, goal.is_some(), resumed);
     Ok(json(json!({"status": "ok", "resumed": resumed})))
 }
 
@@ -256,6 +297,7 @@ fn plan_json(doc: &PlanDoc) -> Value {
         "approved_revision": doc.approved_revision,
         "path": doc.path.display().to_string(),
         "workspace_path": doc.workspace_path(),
+        "done_when": plan::done_when(&doc.content),
     })
 }
 

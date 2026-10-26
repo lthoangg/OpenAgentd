@@ -1,4 +1,4 @@
-//! `update_goal` — the lead reports on its `/goal` ([`crate::goal`]).
+//! `update_goal` — the lead reports on its session goal ([`crate::goal`]).
 //!
 //! Listed for every lead session, goal or not, so the tool definitions (part
 //! of the cached prompt prefix) stay the same; it fails without a goal.

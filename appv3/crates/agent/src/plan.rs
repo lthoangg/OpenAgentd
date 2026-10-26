@@ -557,8 +557,9 @@ pub fn review_decision(answers: &[Vec<String>]) -> Result<ReviewDecision, String
 }
 
 /// The submitting `plan` call's result a review answer writes. `doc` is the plan
-/// now; when the user edited it, the text carries their version.
-pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, submitted_revision: u64, in_plan_mode: bool) -> String {
+/// now; when the user edited it, the text carries their version. `keep_going`:
+/// the approval also started a goal that runs the plan.
+pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, submitted_revision: u64, in_plan_mode: bool, keep_going: bool) -> String {
     let n = doc.map(|d| d.revision).unwrap_or(submitted_revision);
     let path = doc.map(PlanDoc::display_path).unwrap_or_else(|| "the session plan".into());
     let mut text = String::new();
@@ -568,7 +569,10 @@ pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, subm
     text.push_str(&match decision {
         ReviewDecision::Approve => {
             let switched = if in_plan_mode { " The session is now in Code mode with full tool access." } else { "" };
-            format!("The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step and track progress with `todo`.")
+            let goal = if keep_going { KEEP_GOING_NOTE } else { "" };
+            format!(
+                "The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step. Start by creating one `todo` task per milestone, named after it, and keep the board current.{goal}"
+            )
         }
         ReviewDecision::Changes(Some(feedback)) => {
             let still = if in_plan_mode { "You are still in Plan mode. " } else { "" };
@@ -583,6 +587,43 @@ pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, subm
     text
 }
 
+/// Appended to an approval that started a goal.
+const KEEP_GOING_NOTE: &str = " The user chose to keep going until done: a session goal now runs this plan (see `<session_goal>`), so turns continue on their own. When output in this conversation proves the plan's Done when, call `update_goal` with status \"complete\".";
+
+/// The plan's finish line: the `**Done when:**` paragraph, or the body of a
+/// `Done when` heading, trimmed and capped at the goal objective's length.
+/// `None` when the plan has none (it then cannot start a goal).
+pub fn done_when(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let is_label = |l: &str| {
+        let t = l.trim_start().to_ascii_lowercase();
+        t.starts_with("**done when:**") || t.starts_with("**done when**:")
+    };
+    let heading_level = |l: &str| {
+        let t = l.trim_start();
+        let n = t.chars().take_while(|c| *c == '#').count();
+        (n > 0 && t[n..].starts_with(' ')).then_some(n)
+    };
+    let is_done_heading = |l: &str| heading_level(l).is_some_and(|n| l.trim_start()[n..].trim().trim_end_matches(':').trim().eq_ignore_ascii_case("done when"));
+    let mut body: Vec<&str> = Vec::new();
+    if let Some(i) = lines.iter().position(|l| is_done_heading(l)) {
+        let level = heading_level(lines[i]).unwrap_or(1);
+        body.extend(lines[i + 1..].iter().take_while(|l| heading_level(l).is_none_or(|n| n > level)));
+    } else if let Some(i) = lines.iter().position(|l| is_label(l)) {
+        let first = lines[i].trim_start();
+        let rest = first.find(":**").or_else(|| first.find("**:")).map_or("", |at| &first[at + 3..]);
+        body.push(rest);
+        // The paragraph and any list under it, up to a blank line, heading or next label.
+        body.extend(lines[i + 1..].iter().take_while(|l| !l.trim().is_empty() && heading_level(l).is_none() && !l.trim_start().starts_with("**")));
+    }
+    let text = body.join("\n").trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    let max = crate::goal::MAX_OBJECTIVE_CHARS;
+    Some(if text.chars().count() > max { format!("{}…", crate::util::head_chars(&text, max - 1).trim_end()) } else { text })
+}
+
 pub struct ReviewOutcome {
     pub approved: bool,
     /// Approval switched the session to Code mode (it was not already).
@@ -592,12 +633,22 @@ pub struct ReviewOutcome {
 /// Close an open plan review with the user's decision. On approval the
 /// session switches to Code mode and the plan is marked approved. `None`
 /// when the review was already closed (lost race); do not resume then.
-pub async fn resolve_review(pool: &DbPool, session_id: &str, question: &PendingQuestion, decision: &ReviewDecision, answers: &Value) -> anyhow::Result<Option<ReviewOutcome>> {
+/// `keep_going`: the caller starts a goal for the approved plan
+/// ([`crate::session::AgentSession::start_goal_from_plan`]) before resuming.
+pub async fn resolve_review(
+    pool: &DbPool,
+    session_id: &str,
+    question: &PendingQuestion,
+    decision: &ReviewDecision,
+    answers: &Value,
+    keep_going: bool,
+) -> anyhow::Result<Option<ReviewOutcome>> {
     let dir = denied::session_artifacts_dir(Some(session_id));
     let doc = sync(&dir);
     let session = db::get_session(pool, session_id).await?.ok_or_else(|| anyhow::anyhow!("Session not found."))?;
     let in_plan = session.interaction_mode == "plan";
-    let text = review_result_text(decision, doc.as_ref(), question.plan_revision().unwrap_or(0), in_plan);
+    let keep_going = keep_going && *decision == ReviewDecision::Approve;
+    let text = review_result_text(decision, doc.as_ref(), question.plan_revision().unwrap_or(0), in_plan, keep_going);
     if db::resolve_pending_question_with(pool, &question.id, "answered", Some(answers), Some(&text)).await?.is_none() {
         return Ok(None);
     }
@@ -895,24 +946,45 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("## Plan")).unwrap();
         let doc = sync(d.path()).unwrap();
-        let approved = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, true);
+        let approved = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, true, false);
         assert!(approved.starts_with("The user approved plan revision 1. The session is now in Code mode"), "{approved}");
-        let approved_code = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false);
+        assert!(approved.contains("one `todo` task per milestone"), "{approved}");
+        assert!(!approved.contains("update_goal"), "{approved}");
+        let approved_code = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false, false);
         assert!(approved_code.starts_with("The user approved plan revision 1. Implement the plan in"), "{approved_code}");
         assert!(!approved_code.contains("The session is now in Code mode"));
+        let kept_going = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false, true);
+        assert!(kept_going.ends_with(KEEP_GOING_NOTE), "{kept_going}");
 
-        let changes = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, true);
+        let changes = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, true, false);
         assert!(changes.contains("revision 1:\n\nSplit step 2\n\nYou are still in Plan mode."), "{changes}");
-        let changes_code = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, false);
+        let changes_code = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, false, false);
         assert!(changes_code.contains("revision 1:\n\nSplit step 2\n\nAddress every point,"), "{changes_code}");
         assert!(!changes_code.contains("You are still in Plan mode."));
 
-        assert!(review_result_text(&ReviewDecision::Changes(None), Some(&doc), 1, true).contains("without saying what to change"));
+        assert!(review_result_text(&ReviewDecision::Changes(None), Some(&doc), 1, true, false).contains("without saying what to change"));
 
         save_user(d.path(), "## Plan\n1. user step", 1).unwrap();
-        let edited = review_result_text(&ReviewDecision::Approve, sync(d.path()).as_ref(), 1, true);
+        let edited = review_result_text(&ReviewDecision::Approve, sync(d.path()).as_ref(), 1, true, false);
         assert!(edited.starts_with("The user edited the plan during review; this is revision 2"), "{edited}");
         assert!(edited.contains("<plan>\n## Plan\n1. user step\n</plan>\n\nThe user approved plan revision 2."));
+    }
+
+    #[test]
+    fn done_when_reads_the_label_paragraph_or_the_section() {
+        let label = "# Ship\n\n**Outcome:** x\n\n**Done when:** export works;\n- tests pass\n- tsc clean\n\n## Appendix\nfiles";
+        assert_eq!(done_when(label).as_deref(), Some("export works;\n- tests pass\n- tsc clean"));
+        let section = "# Ship\n\n## Done when\n\n- a\n- b\n\n### Checks\n`make x`\n\n## Appendix\nfiles";
+        assert_eq!(done_when(section).as_deref(), Some("- a\n- b\n\n### Checks\n`make x`"), "subsections belong to it");
+        assert_eq!(done_when("# P\n\n## Done when:\n- a").as_deref(), Some("- a"));
+        assert_eq!(done_when("# P\n**Done When**: it works").as_deref(), Some("it works"));
+        assert_eq!(done_when("# P\n\n**Done when:** a\n**Appendix:** b").as_deref(), Some("a"));
+        assert_eq!(done_when("# P\n\n## Approach\n1. a"), None);
+        assert_eq!(done_when("# P\n\n## Done when\n\n## Appendix"), None, "an empty section is none");
+        let long = format!("# P\n**Done when:** {}", "x".repeat(crate::goal::MAX_OBJECTIVE_CHARS + 10));
+        let capped = done_when(&long).unwrap();
+        assert_eq!(capped.chars().count(), crate::goal::MAX_OBJECTIVE_CHARS);
+        assert!(capped.ends_with('…'));
     }
 
     #[test]

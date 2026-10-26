@@ -331,7 +331,7 @@ async fn history_page_of(pool: &DbPool, session_id: &str, before: Option<(i64, O
 }
 
 /// A prompt the user wrote: a user chat row that no agent or workspace sent.
-/// A `/goal` turn's hidden reminder (`goal_turn`) is the runtime's, not the
+/// A goal turn's hidden reminder (`goal_turn`) is the runtime's, not the
 /// user's. Matches the web's `isPromptMessage`; queued rows and summaries
 /// have their own kinds.
 const PROMPT: &str = "role = 'user' AND kind = 'chat' \

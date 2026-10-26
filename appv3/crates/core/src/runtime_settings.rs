@@ -82,10 +82,11 @@ impl WorkspaceMessagesSettings {
     }
 }
 
-/// `goals` — `/goal` limits and whether goal turns may ask questions (v3
-/// only). Written only when it differs from the default, so files stay
-/// unchanged. The completion check always runs on the session's own model,
-/// so it reuses the turn's prompt cache.
+/// `goals` — limits of the goal an approved plan runs ("Keep going until
+/// done"), whether goal turns may ask questions, and whether the review
+/// starts with Keep going ticked (v3 only). Written only when it differs
+/// from the default, so files stay unchanged. The completion check always
+/// runs on the session's own model, so it reuses the turn's prompt cache.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GoalSettings {
@@ -100,6 +101,9 @@ pub struct GoalSettings {
     /// run unattended: `ask_user` refuses, and `plan` saves without a review.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub allow_questions: bool,
+    /// The plan review starts with "Keep going until done" ticked.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub keep_going_default: bool,
 }
 
 pub const DEFAULT_GOAL_MAX_TURNS: i64 = 50;
@@ -205,7 +209,7 @@ pub fn workspace_messages_enabled() -> bool {
     load_runtime_settings().map(|c| c.workspace_messages.enabled).unwrap_or(true)
 }
 
-/// `/goal` settings (defaults when the file is unreadable).
+/// Goal settings (defaults when the file is unreadable).
 pub fn goal_settings() -> GoalSettings {
     load_runtime_settings().map(|c| c.goals).unwrap_or_default()
 }
@@ -651,14 +655,14 @@ mod tests {
         assert!(!to_pyyaml(&cfg).unwrap().contains("goals"));
         assert_eq!(cfg.goals.max_turns(), DEFAULT_GOAL_MAX_TURNS);
         assert!(!cfg.goals.allow_questions);
-        cfg.goals = GoalSettings { max_turns: Some(20), token_budget: Some(500_000), allow_questions: true };
+        cfg.goals = GoalSettings { max_turns: Some(20), token_budget: Some(500_000), allow_questions: true, keep_going_default: true };
         let text = to_pyyaml(&cfg).unwrap();
-        assert!(text.ends_with("goals:\n  max_turns: 20\n  token_budget: 500000\n  allow_questions: true\n"), "{text}");
+        assert!(text.ends_with("goals:\n  max_turns: 20\n  token_budget: 500000\n  allow_questions: true\n  keep_going_default: true\n"), "{text}");
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("settings.yaml");
         std::fs::write(&p, &text).unwrap();
         let back = load_runtime_settings_from(&p).unwrap().goals;
-        assert_eq!((back.max_turns(), back.token_budget(), back.allow_questions), (20, Some(500_000), true));
+        assert_eq!((back.max_turns(), back.token_budget(), back.allow_questions, back.keep_going_default), (20, Some(500_000), true, true));
     }
 
     #[test]

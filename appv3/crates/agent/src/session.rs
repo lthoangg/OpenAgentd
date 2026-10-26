@@ -149,9 +149,6 @@ pub struct UserMessage {
     pub origin: String,
     /// Extra keys stored on the message row (e.g. `sent_from`).
     pub extra: Option<Map<String, Value>>,
-    /// Hidden context notes saved right after the message, pinned, each
-    /// `(text, extra)` (e.g. a `/goal`'s rules).
-    pub context_notes: Vec<(String, Map<String, Value>)>,
 }
 
 /// The provider a turn of this session calls (see
@@ -211,7 +208,7 @@ pub struct AgentSession {
     /// System prompt and tools of the lead's last model call, which `/btw`
     /// side questions reuse so they hit the same prompt cache.
     request_frame: crate::side_question::FrameSlot,
-    /// The `/goal` turn running now, if any (see [`crate::goal`]).
+    /// The goal turn running now, if any (see [`crate::goal`]).
     goal_turn: Mutex<Option<crate::goal::GoalTurn>>,
     /// Held across each read-modify-write of the session's goal row: a
     /// turn's accounting, Stop, the API and `update_goal` all write it.
@@ -847,13 +844,6 @@ impl AgentSession {
             note.pinned = Some(true);
             db::save_message(&self.pool, &sid, note).await?;
         }
-        for (text, note_extra) in &m.context_notes {
-            let mut e = note_extra.clone();
-            e.insert("hidden_from_user".into(), json!(true));
-            let note = NewMessage { kind: Some("note".into()), pinned: Some(true), extra: Some(e), ..NewMessage::user(text.clone()) };
-            db::save_message(&self.pool, &sid, note).await?;
-        }
-
         store().init_turn(&sid, true);
         self.set_state("working");
         *self.question_suspended.lock().unwrap() = None;
@@ -1008,7 +998,7 @@ impl AgentSession {
 
     /// `idle_compaction` marks a background compaction turn on the event, so
     /// clients do not flag the session as having something new to read.
-    /// `goal_id`: the turn worked on that `/goal`, so its notification names
+    /// `goal_id`: the turn worked on that goal, so its notification names
     /// what became of the goal.
     async fn close_turn(&self, session_id: &str, status: &str, notify: bool, idle_compaction: bool, goal_id: Option<&str>) {
         store().push_event(session_id, &events::done(Some(json!({"session_id": session_id}))), true);
@@ -1226,7 +1216,7 @@ impl AgentSession {
         // A background compaction was not asked for, so it never notifies.
         let notify = !opts.idle_compaction;
         let mut completed = false;
-        // Account a `/goal` turn and queue the goal's next one before queued
+        // Account a goal turn and queue the goal's next one before queued
         // messages start, so the continuation runs as the next turn.
         let goal_turn = self.goal_turn.lock().unwrap().take();
         let goal_id = goal_turn.as_ref().map(|t| t.goal_id.clone());
@@ -1313,7 +1303,7 @@ impl AgentSession {
             self.resolve_runtime_provider(&agent, runtime_model.as_deref(), runtime_thinking.as_deref()).map_err(provider_error_to_agent)?;
         let provider_for_hooks = runtime_provider.clone().unwrap_or_else(|| agent.provider.clone());
         let is_lead = self.parent_session_id.is_none();
-        // A lead turn in Code mode while a `/goal` is active works on it.
+        // A lead turn in Code mode while a goal is active works on it.
         let goal = if opts.force_compaction || opts.idle_compaction { None } else { self.goal_for_turn(&sid, &interaction).await };
 
         let ws_path = session_workspace_dir(&sid, Some(&workspace));

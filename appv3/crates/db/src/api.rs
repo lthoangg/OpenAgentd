@@ -22,7 +22,7 @@ pub struct SessionOverlay {
     pub completion_tokens: Option<i64>,
     pub agent_name: Option<String>,
     pub subagents: Vec<Value>,
-    /// The session's live `/goal` status (`active` or `paused`), if any.
+    /// The session's live goal status (`active` or `paused`), if any.
     pub goal_status: Option<String>,
     /// The live goal's `(turns_used, max_turns)`, if any.
     pub goal_turns: Option<(i64, i64)>,

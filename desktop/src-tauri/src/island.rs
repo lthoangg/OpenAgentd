@@ -43,7 +43,7 @@
 //! followed (its last window closed) drops out without reporting anything.
 //! Clicking a row opens it in a window on its server.
 //!
-//! A session working toward a `/goal` shows how far it has got (the list's
+//! A session working toward a goal shows how far it has got (the list's
 //! `goal_turns_used` / `goal_max_turns`), and when its last turn ends the row
 //! says what became of the goal, from the `goal` the finishing turn's
 //! `desktop_notification` carries, so the notch and the notification agree.
@@ -187,12 +187,12 @@ pub struct IslandSession {
     /// The server the session lives on.
     #[serde(skip)]
     pub server_id: Option<ServerId>,
-    /// The session's `/goal`: its progress while it runs, what became of it
+    /// The session's goal: its progress while it runs, what became of it
     /// once its last turn ended.
     pub goal: Option<IslandGoal>,
 }
 
-/// A session's `/goal`, as the island shows it.
+/// A session's goal, as the island shows it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum IslandGoal {
@@ -318,7 +318,7 @@ pub struct SessionRow {
     pub background_work: bool,
     #[serde(default)]
     pub parent_session_id: Option<String>,
-    /// The live `/goal`'s status and progress; missing without one, or from
+    /// The live goal's status and progress; missing without one, or from
     /// older backends.
     #[serde(default)]
     pub goal_status: Option<String>,

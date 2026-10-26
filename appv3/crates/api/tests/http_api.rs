@@ -657,67 +657,81 @@ async fn wait_goal(c: &Client, sid: &str, done: impl Fn(&Value) -> bool) -> Valu
     panic!("goal never reached the expected state: {last}");
 }
 
-/// `/goal` (v3 only): settings, setting a goal through `POST /chat`, the
-/// loop pausing on no progress, resume, pause, clear, and a restart.
+/// Session goals (v3 only): settings, starting a goal by approving a plan
+/// review with `keep_going`, the loop pausing on no progress, resume, pause,
+/// clear, and a restart.
 async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
+    use appv3_agent::plan::{self, PlanChange, PlanTarget};
     let uri = "/api/settings/goals";
     let (st, v) = c.json("GET", uri, None).await;
-    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 50, "default_max_turns": 50, "token_budget": null, "allow_questions": false})));
+    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 50, "default_max_turns": 50, "token_budget": null, "allow_questions": false, "keep_going_default": false})));
     // The check always runs on the session's own model, so there is no model to set.
     for bad in [
         json!({"max_turns": 0}),
         json!({"max_turns": 1001}),
         json!({"token_budget": 0}),
         json!({"token_budget": "lots"}),
+        json!({"keep_going_default": [true]}),
         json!({"check_model": "openai:gpt-5"}),
         json!({"nope": 1}),
     ] {
         let (st, v) = c.json("PUT", uri, Some(bad.clone())).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
     }
-    let (st, v) = c.json("PUT", uri, Some(json!({"max_turns": 7, "token_budget": 2_000_000, "allow_questions": true}))).await;
-    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 7, "default_max_turns": 50, "token_budget": 2_000_000, "allow_questions": true})));
+    let (st, v) = c.json("PUT", uri, Some(json!({"max_turns": 7, "token_budget": 2_000_000, "allow_questions": true, "keep_going_default": true}))).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 7, "default_max_turns": 50, "token_budget": 2_000_000, "allow_questions": true, "keep_going_default": true})));
     // Omitted fields keep their values; null restores the default.
-    let (_, v) = c.json("PUT", uri, Some(json!({"max_turns": null}))).await;
-    assert_eq!((v["max_turns"].clone(), v["token_budget"].clone(), v["allow_questions"].clone()), (json!(50), json!(2_000_000), json!(true)));
-    // A new goal takes the default budget.
-    let budget_ws = root.join("goal-budget-ws");
-    std::fs::create_dir_all(&budget_ws).unwrap();
-    let (st, v) = c.form("/api/agent/chat", &[("message", "stay in budget"), ("workspace", &budget_ws.display().to_string()), ("goal", "true"), ("goal_max_turns", "1")]).await;
-    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
-    let g = wait_goal(c, v["session_id"].as_str().unwrap(), |g| g["status"] == "paused").await;
-    assert_eq!(g["token_budget"], 2_000_000, "{g}");
-    let (st, v) = c.json("PUT", uri, Some(json!({"token_budget": null, "allow_questions": false}))).await;
-    assert_eq!(v["token_budget"], Value::Null, "{v}");
-    assert_eq!(st, StatusCode::OK);
+    let (_, v) = c.json("PUT", uri, Some(json!({"max_turns": null, "allow_questions": false}))).await;
+    assert_eq!(
+        (v["max_turns"].clone(), v["token_budget"].clone(), v["allow_questions"].clone(), v["keep_going_default"].clone()),
+        (json!(50), json!(2_000_000), json!(false), json!(true))
+    );
 
+    // A Plan-mode session with a plan under review.
     let ws = root.join("goal-ws");
     std::fs::create_dir_all(&ws).unwrap();
-    let wss = ws.display().to_string();
-    for bad in [vec![("goal", "true"), ("goal_max_turns", "0")], vec![("goal", "true"), ("goal_max_turns", "many")], vec![("goal", "true"), ("goal_token_budget", "-5")]] {
-        let mut form = vec![("message", "ship it"), ("workspace", wss.as_str())];
-        form.extend(bad.iter().copied());
-        let (st, v) = c.form("/api/agent/chat", &form).await;
-        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad:?}: {v}");
+    let new = appv3_db::NewSession { workspace: ws.display().to_string(), interaction_mode: Some("plan".into()), ..Default::default() };
+    let sid = appv3_db::codec::api_uuid(&appv3_db::create_session(pool, new).await.unwrap().id);
+    let dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
+    let target = || PlanTarget::Workspace { root: &ws, session_id: &sid, denied: None };
+    plan::save_agent(&dir, target(), PlanChange::Write("# Tests\n\n## Approach\n1. Fix them")).unwrap();
+    let qid = open_review(pool, &sid, "call-goal-1", 1, true).await;
+    let answer_uri = format!("/api/agent/{sid}/question/{qid}/answer");
+
+    // Keeping going needs a Done when, and a sane turn count; the review stays open.
+    let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Approve"]], "keep_going": true}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert!(v["detail"].as_str().unwrap_or_default().contains("no Done when"), "{v}");
+    plan::save_agent(&dir, target(), PlanChange::Write("# Tests\n\n## Approach\n1. Fix them\n\n**Done when:** the tests pass")).unwrap();
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{sid}/plan"), None).await;
+    assert_eq!(v["plan"]["done_when"], "the tests pass", "{v}");
+    for bad in [json!("yes"), json!({"max_turns": 0}), json!({"max_turns": "many"})] {
+        let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Approve"]], "keep_going": bad}))).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
     }
+    assert!(appv3_db::get_pending_question(pool, &sid).await.unwrap().is_some(), "a refused answer leaves the review open");
 
     // The mock replies without tool calls, so the goal pauses after two quiet turns.
-    let (st, v) = c.form("/api/agent/chat", &[("message", "make the tests pass"), ("workspace", &wss), ("goal", "true"), ("goal_max_turns", "6")]).await;
-    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
-    let sid = v["session_id"].as_str().unwrap().to_string();
+    let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Approve"]], "keep_going": {"max_turns": 6}}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
     let g = wait_goal(c, &sid, |g| g["status"] == "paused").await;
     assert_eq!((g["pause_reason"].clone(), g["turns_used"].clone(), g["max_turns"].clone()), (json!("no_progress"), json!(2), json!(6)), "{g}");
-    assert_eq!(g["objective"], "make the tests pass");
+    assert_eq!(g["objective"], "the tests pass");
+    assert_eq!(g["token_budget"], 2_000_000, "the budget comes from Settings: {g}");
     assert!(g["tokens_used"].as_i64().unwrap() > 0, "{g}");
+    let result = tool_result(pool, &sid, "call-goal-1").await;
+    assert!(result.contains("keep going until done"), "{result}");
+    let (st, v) = c.json("PUT", uri, Some(json!({"token_budget": null, "keep_going_default": false}))).await;
+    assert_eq!((st, v["token_budget"].clone(), v["keep_going_default"].clone()), (StatusCode::OK, Value::Null, json!(false)), "{v}");
 
     let (_, v) = c.json("GET", &format!("/api/agent/{sid}/history"), None).await;
     let msgs = v["lead"]["messages"].as_array().unwrap();
-    let first = msgs.iter().find(|m| m["content"] == "make the tests pass").expect("objective message");
-    assert_eq!(first["extra"]["goal"]["id"], g["id"], "{first}");
     let cont = msgs.iter().find(|m| m["extra"]["goal_turn"].is_object()).expect("continuation message");
     assert_eq!(cont["extra"]["goal_turn"]["turn"], 2, "{cont}");
     assert_eq!(cont["extra"]["goal_turn"]["why"], "unclaimed", "the divider says why the goal went on: {cont}");
-    assert!(cont["content"].as_str().unwrap().starts_with("<goal_reminder turn=\"2\" max_turns=\"6\""), "{cont}");
+    let text = cont["content"].as_str().unwrap();
+    assert!(text.starts_with("<goal_reminder turn=\"2\" max_turns=\"6\""), "{cont}");
+    assert!(text.contains("Follow the plan in `.agents/plans/tests-"), "the reminder points at the plan: {cont}");
 
     let (_, v) = c.json("GET", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!((v["goal_status"].clone(), v["goal_turns_used"].clone(), v["goal_max_turns"].clone()), (json!("paused"), json!(2), json!(6)), "{v}");
@@ -756,15 +770,6 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     assert_eq!((v["goal"]["status"].clone(), v["goal"]["pause_reason"].clone()), (json!("paused"), json!("restart")), "{v}");
     let (st, _) = c.json("DELETE", &goal_uri, None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
-
-    // Cancelling a goal's queued objective ends the goal: its rules went with it.
-    let g = appv3_db::insert_session_goal(pool, &sid, "queued objective", 5, None).await.unwrap();
-    let (extra, _) = appv3_agent::goal::message_extras(&g);
-    let queued = appv3_db::save_queued_user_message(pool, &sid, "queued objective", Some(extra)).await.unwrap();
-    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}/queued-messages/{}", appv3_db::codec::api_uuid(&queued.id)), None).await;
-    assert_eq!(st, StatusCode::NO_CONTENT);
-    let (_, v) = c.json("GET", &goal_uri, None).await;
-    assert_eq!(v["goal"]["status"], "cleared", "{v}");
 }
 
 /// A first message can start its session in Plan mode (the new-session

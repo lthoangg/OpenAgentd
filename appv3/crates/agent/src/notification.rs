@@ -30,7 +30,7 @@ pub fn body(text: &str) -> Option<String> {
     Some(format!("{head}…"))
 }
 
-/// What became of a `/goal` whose last turn just ended (`achieved`,
+/// What became of a goal whose last turn just ended (`achieved`,
 /// `blocked` or `paused`), from the goal's `status` and `pause_reason`;
 /// `None` while it still runs (or was cleared), so the turn's own status is
 /// used. It goes on the notification as `goal`, for clients that mark it

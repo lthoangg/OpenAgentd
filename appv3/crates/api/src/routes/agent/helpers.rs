@@ -119,11 +119,6 @@ pub struct QueueArgs<'a> {
     pub thinking_level: Option<String>,
     pub thinking_level_provided: bool,
     pub fast: bool,
-    /// Extra keys stored on the queued row (a `/goal` objective's `goal`).
-    pub extra: Option<Map<String, Value>>,
-    /// Hidden notes that move right after the message when it is released,
-    /// each `(text, extra)` (a `/goal`'s rules).
-    pub context_notes: Vec<(String, Map<String, Value>)>,
 }
 
 /// `persist_queued_user_message` → queued message id.
@@ -133,7 +128,7 @@ pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> Api
         metas = appv3_agent::service::validate_and_persist_attachments(a.attachments, Some(a.session_id), a.workspace).await.map_err(|e| ApiError::new(e.status, e.message))?.1;
     }
     let agent_model = a.agent.model_id();
-    let mut extra = a.extra.clone().unwrap_or_default();
+    let mut extra = Map::new();
     let eff = a.model.clone().filter(|m| !m.is_empty()).unwrap_or_else(|| agent_model.clone());
     if !eff.is_empty() {
         extra.insert("model".into(), json!(eff));
@@ -179,12 +174,6 @@ pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> Api
         e.insert("attachment_for_message_id".into(), json!(qid));
         e.insert("mention_context".into(), json!(true));
         db::save_message(pool, a.session_id, NewMessage { extra: Some(e), ..NewMessage::user(block.clone()) }).await?;
-    }
-    for (text, note_extra) in &a.context_notes {
-        let mut e = note_extra.clone();
-        e.insert("hidden_from_user".into(), json!(true));
-        e.insert("attachment_for_message_id".into(), json!(qid));
-        db::save_message(pool, a.session_id, NewMessage { kind: Some("note".into()), extra: Some(e), ..NewMessage::user(text.clone()) }).await?;
     }
     tracing::info!("agent_chat_queued session_id={} message_id={} attachments={}", a.session_id, qid, metas.len());
     Ok(qid)

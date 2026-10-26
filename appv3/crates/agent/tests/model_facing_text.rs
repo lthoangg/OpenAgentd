@@ -143,7 +143,7 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// `todo`, `schedule` and `team`.
 /// Lowered to the new total when `submit_plan` merged into `plan`.
 /// Raised to the new total for `update_goal`, listed for every lead so the
-/// cached tool definitions do not change when the user sets a `/goal`.
+/// cached tool definitions do not change when a goal starts.
 /// Raised by 189 for `plan`'s `new` action, which starts a fresh plan for
 /// different work instead of overwriting the current one.
 const LEAD_ALWAYS_ON_CHARS: usize = 37_748;

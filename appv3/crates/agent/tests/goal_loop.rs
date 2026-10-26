@@ -1,4 +1,5 @@
-//! `/goal`: a lead session keeps taking turns toward its goal until the
+//! Session goals: once the user approves a plan with "Keep going until
+//! done", the lead keeps taking turns toward the plan's Done when until the
 //! completion check confirms it, a limit pauses it, or the user stops it.
 
 use appv3_agent::goal;
@@ -92,32 +93,6 @@ impl appv3_agent::hooks::Hook for HangsOnCancel {
     }
 }
 
-const QUEUED_OBJECTIVE: &str = "ship the export";
-
-/// Sets a goal while the turn runs, the way the chat route does for a busy
-/// session (`persist_queued_user_message`): the goal, the queued objective,
-/// and its rules note attached to that message.
-struct QueueGoal {
-    pool: appv3_db::DbPool,
-    sid: String,
-}
-
-#[async_trait]
-impl Tool for QueueGoal {
-    fn name(&self) -> &str {
-        "queue_goal"
-    }
-    async fn run(&self, _ctx: &ToolContext, _args: Value) -> ToolResult {
-        let g = appv3_db::insert_session_goal(&self.pool, &self.sid, QUEUED_OBJECTIVE, 1, None).await.unwrap();
-        let (extra, mut note) = goal::message_extras(&g);
-        let queued = appv3_db::save_queued_user_message(&self.pool, &self.sid, QUEUED_OBJECTIVE, Some(extra)).await.unwrap();
-        note.insert("attachment_for_message_id".into(), json!(appv3_db::codec::api_uuid(&queued.id)));
-        let row = appv3_db::NewMessage { kind: Some("note".into()), extra: Some(note), ..appv3_db::NewMessage::user(goal::note_text(QUEUED_OBJECTIVE, false)) };
-        appv3_db::save_message(&self.pool, &self.sid, row).await.unwrap();
-        Ok(ToolOutput::text("queued"))
-    }
-}
-
 struct Harness {
     pool: appv3_db::DbPool,
     session: Arc<AgentSession>,
@@ -135,29 +110,32 @@ async fn harness(name: &str, turns: Vec<appv3_providers::mock::MockTurn>, slow: 
     let p2 = provider.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
     let sid = uuid::Uuid::now_v7().to_string();
-    let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Work), Arc::new(Shell), Arc::new(Slow(slow)), Arc::new(QueueGoal { pool: pool.clone(), sid: sid.clone() })];
+    let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Work), Arc::new(Shell), Arc::new(Slow(slow))];
     let agent = Agent::new(provider, name, "You are a test agent.", tools, Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
     Harness { pool, session, mock, sid }
 }
 
 impl Harness {
-    /// Set a goal the way the chat route does: begin it, then send the
-    /// objective with its rules note.
+    /// The session row, made once.
+    async fn ensure_session(&self) {
+        if appv3_db::get_session(&self.pool, &self.sid).await.unwrap().is_none() {
+            let id = uuid::Uuid::parse_str(&self.sid).unwrap();
+            appv3_db::create_session(&self.pool, appv3_db::NewSession { id: Some(id), workspace: self.session.workspace(), ..Default::default() }).await.unwrap();
+        }
+    }
+
+    /// Start a goal the way approving a plan with "Keep going" does, then
+    /// send `objective` as the message whose turn is the goal's first.
     async fn start_goal(&self, objective: &str, max_turns: i64) -> SessionGoal {
-        let m = self.session.begin_goal(&self.sid, objective, Some(max_turns), None).await.unwrap();
-        self.session
-            .handle_user_message(UserMessage {
-                content: objective.into(),
-                session_id: self.sid.clone(),
-                origin: "user".into(),
-                extra: Some(m.extra),
-                context_notes: m.context_notes,
-                ..Default::default()
-            })
-            .await
-            .unwrap();
+        self.ensure_session().await;
+        self.session.start_goal_from_plan(&self.sid, objective, Some(max_turns)).await.unwrap();
+        self.send(objective).await;
         appv3_db::latest_session_goal(&self.pool, &self.sid).await.unwrap().expect("goal stored")
+    }
+
+    async fn send(&self, text: &str) {
+        self.session.handle_user_message(UserMessage { content: text.into(), session_id: self.sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     }
 
     async fn finish(&self) {
@@ -557,9 +535,8 @@ async fn resume_waits_for_a_stopped_turn_to_end() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pausing_or_clearing_drops_a_queued_continuation() {
     let h = harness("drop-reminder", vec![], Arc::default()).await;
-    let id = uuid::Uuid::parse_str(&h.sid).unwrap();
-    appv3_db::create_session(&h.pool, appv3_db::NewSession { id: Some(id), workspace: h.session.workspace(), ..Default::default() }).await.unwrap();
-    let g = h.session.start_goal(&h.sid, "make it work", Some(5), None).await.unwrap();
+    h.ensure_session().await;
+    let g = h.session.start_goal(&h.sid, "make it work", Some(5)).await.unwrap();
     let Value::Object(reminder) = json!({"goal_turn": {"id": appv3_db::codec::api_uuid(&g.id), "turn": 2, "max_turns": 5}}) else { unreachable!() };
 
     appv3_db::save_queued_user_message(&h.pool, &h.sid, "<goal_reminder>", Some(reminder.clone())).await.unwrap();
@@ -576,8 +553,7 @@ async fn pausing_or_clearing_drops_a_queued_continuation() {
 async fn a_goal_waits_in_plan_mode_and_starts_in_code_mode() {
     let turns = vec![MockProvider::text("Here is a plan."), MockProvider::tool_call("a", "work", "{}"), MockProvider::text("Built it.")];
     let h = harness("plan-mode", turns, Arc::default()).await;
-    let id = uuid::Uuid::parse_str(&h.sid).unwrap();
-    appv3_db::create_session(&h.pool, appv3_db::NewSession { id: Some(id), workspace: h.session.workspace(), ..Default::default() }).await.unwrap();
+    h.ensure_session().await;
     appv3_db::update_session(&h.pool, &h.sid, appv3_db::SessionUpdate { interaction_mode: Some("plan".into()), ..Default::default() }).await.unwrap();
     h.start_goal("build it", 1).await;
     h.finish().await;
@@ -628,24 +604,39 @@ async fn clearing_an_idle_goal_releases_its_rules() {
     assert!(h.session.clear_goal(&h.sid).await.unwrap().is_none());
 }
 
-/// Undo takes back one turn at a time: a goal turn's undo keeps the goal,
-/// and taking back its objective ends it, since its rules go with that
-/// message.
+/// Undo takes back one turn at a time: undoing a goal turn keeps the goal,
+/// and taking back the message from before the goal started (whose turn
+/// the approval ended) ends it, since its rules go with it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn undo_ends_a_goal_only_with_its_objective() {
-    let turns = vec![MockProvider::tool_call("a", "work", "{}"), MockProvider::text("One."), MockProvider::tool_call("b", "work", "{}"), MockProvider::text("Two.")];
+async fn undo_ends_a_goal_only_when_it_takes_back_the_approval() {
+    let turns = vec![
+        MockProvider::text("Here is the plan."),
+        MockProvider::tool_call("a", "work", "{}"),
+        MockProvider::text("One."),
+        MockProvider::tool_call("b", "work", "{}"),
+        MockProvider::text("Two."),
+    ];
     let h = harness("undo-goal", turns, Arc::default()).await;
-    h.start_goal("make it work", 2).await;
+    h.ensure_session().await;
+    h.send("plan it").await;
     h.finish().await;
+    // The approval: the goal and its rules, then its first turn.
+    h.session.start_goal_from_plan(&h.sid, "make it work", Some(2)).await.unwrap();
+    assert!(h.session.kick_goal(&h.sid, false).await);
+    h.finish().await;
+    assert_eq!(h.goal().await.turns_used, 2);
     let undo = || appv3_agent::revert::undo_session_messages(h.pool.clone(), h.sid.clone());
 
-    let shift = undo().await.unwrap();
-    assert!(shift.target.as_ref().is_some_and(|t| t.extra_json().is_some_and(|e| e.get("goal_turn").is_some())), "the last goal turn goes first");
-    assert_eq!(h.goal().await.status, "paused");
+    for turn in [2, 1] {
+        let shift = undo().await.unwrap();
+        let undone = shift.target.as_ref().and_then(|t| t.extra_json()).and_then(|e| e.pointer("/goal_turn/turn").and_then(Value::as_i64));
+        assert_eq!(undone, Some(turn), "goal turns go first");
+        assert_eq!(h.goal().await.status, "paused");
+    }
 
     let shift = undo().await.unwrap();
-    assert_eq!(shift.target.and_then(|t| t.content).as_deref(), Some("make it work"));
-    assert_eq!(h.goal().await.status, "cleared", "the objective took its goal with it");
+    assert_eq!(shift.target.and_then(|t| t.content).as_deref(), Some("plan it"));
+    assert_eq!(h.goal().await.status, "cleared", "taking back the approval takes its goal with it");
 }
 
 /// Compaction summarizes the goal's turns but keeps its rules: the next
@@ -673,58 +664,4 @@ async fn compaction_keeps_the_goal_rules() {
     assert!(read.contains("Summary: three steps of work are done."), "the turn reads the summary: {read}");
     assert!(read.contains("<session_goal>") && read.contains("<objective>\nmake it work\n</objective>"), "the rules survive compaction: {read}");
     assert!(h.notes(goal::GOAL_NOTE_KEY).await[0].pinned);
-}
-
-/// A goal set while a turn runs is queued like a steer: the running turn
-/// reads the objective with its rules, and the goal's turns follow it.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_goal_set_during_a_turn_reads_its_rules_and_runs_after_it() {
-    let turns = vec![MockProvider::tool_call("a", "queue_goal", "{}"), MockProvider::text("Noted."), MockProvider::tool_call("b", "work", "{}"), MockProvider::text("Shipped.")];
-    let h = harness("queued-goal", turns, Arc::default()).await;
-    h.session.handle_user_message(UserMessage { content: "look around".into(), session_id: h.sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
-    h.finish().await;
-
-    let g = h.goal().await;
-    assert_eq!((g.status.as_str(), g.pause_reason.as_deref(), g.turns_used), ("paused", Some(goal::reason::TURN_LIMIT), 1), "{g:?}");
-    assert_eq!(h.calls(), 4);
-
-    // The steer brought the rules to the model, right after the objective.
-    let read: String = {
-        let calls = h.mock.calls.lock().unwrap();
-        calls[1].0.iter().filter(|m| m.role() == "user").filter_map(|m| m.content().map(String::from)).collect::<Vec<_>>().join("\n\n")
-    };
-    let objective = read.find(QUEUED_OBJECTIVE).unwrap_or_else(|| panic!("objective not read: {read}"));
-    let rules = read.find("<session_goal>").unwrap_or_else(|| panic!("rules not read: {read}"));
-    assert!(objective < rules, "rules read before the objective: {read}");
-    assert!(h.notes(goal::GOAL_NOTE_KEY).await[0].pinned, "the rules stay pinned while the goal is live");
-
-    let users = h.user_rows().await;
-    assert_eq!(users.iter().map(|u| u.0.as_str()).take(2).collect::<Vec<_>>(), ["look around", QUEUED_OBJECTIVE]);
-    assert_eq!(users.iter().map(|u| u.1).collect::<Vec<_>>(), [None, None, Some(1)]);
-}
-
-/// Cancelling the queued objective of a goal set mid-turn takes back its
-/// rules note too (attached to that message), so the goal must end with it,
-/// as an undo of the objective ends it. Another queued message does not.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn cancelling_a_queued_objective_ends_its_goal() {
-    let h = harness("cancel-queued", vec![], Arc::default()).await;
-    let id = uuid::Uuid::parse_str(&h.sid).unwrap();
-    appv3_db::create_session(&h.pool, appv3_db::NewSession { id: Some(id), workspace: h.session.workspace(), ..Default::default() }).await.unwrap();
-    let g = h.session.start_goal(&h.sid, QUEUED_OBJECTIVE, Some(5), None).await.unwrap();
-    let (extra, _) = goal::message_extras(&g);
-    let steer = appv3_db::save_queued_user_message(&h.pool, &h.sid, "and the docs", None).await.unwrap();
-    let objective = appv3_db::save_queued_user_message(&h.pool, &h.sid, QUEUED_OBJECTIVE, Some(extra)).await.unwrap();
-
-    assert!(h.session.clear_cancelled_goal(&h.sid, &steer).await.unwrap().is_none());
-    assert_eq!(h.goal().await.status, "active");
-
-    let cleared = h.session.clear_cancelled_goal(&h.sid, &objective).await.unwrap().expect("its goal ends");
-    assert_eq!((cleared.id.as_str(), cleared.status.as_str()), (g.id.as_str(), "cleared"));
-
-    // A newer goal is not the cancelled objective's: it stays.
-    let newer = h.session.start_goal(&h.sid, "something else", Some(5), None).await.unwrap();
-    assert!(h.session.clear_cancelled_goal(&h.sid, &objective).await.unwrap().is_none());
-    assert_eq!(h.goal().await.id, newer.id);
-    assert_eq!(h.goal().await.status, "active");
 }

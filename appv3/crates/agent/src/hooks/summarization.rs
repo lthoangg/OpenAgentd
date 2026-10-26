@@ -52,10 +52,10 @@ const SUMMARY_HANDOFF_NOTE: &str =
     "This summary replaces the earlier conversation; it is not a new message from the user. If the latest request is unfinished, continue from its next steps.";
 /// Ends the summary request when the user wrote nothing after the earlier note.
 const NO_NEW_PROMPT_RULE: &str = "The user has sent no new message since the earlier handoff note: keep its latest user request unchanged and update only its status.";
-/// Names the user-role messages above that the user did not write. The
-/// summariser otherwise quoted a Code-mode note or a goal reminder as the
-/// user's latest request.
-const RUNTIME_NOTES_RULE: &str = "Some user-role messages above come from the runtime or other agents, not the user: notes in tags such as `<interaction_mode>`, `<goal_reminder>`, `<goal_ended>`, `<plan_updated>` or `<session_plan>`, and messages headed `[name]:` or `[Message from …]`. Never quote or record them as the user's words.";
+/// Follows the `runtime_notes` prompt, which names the user-role messages
+/// the user did not write. The summariser otherwise quoted a Code-mode note
+/// or a goal reminder as the user's latest request.
+const RUNTIME_NOTES_RULE: &str = "Never quote or record them as the user's words.";
 /// Longest latest request repeated in the summary request; the full text is
 /// in the conversation above it.
 const MAX_LATEST_PROMPT_CHARS: usize = 4_000;
@@ -97,15 +97,16 @@ fn latest_prompt(messages: &[ChatMessage], ids: &[usize]) -> LatestPrompt {
 
 /// The part of the summary request that says which message the user wrote.
 fn latest_prompt_hint(latest: &LatestPrompt) -> String {
+    let notes = format!("{} {RUNTIME_NOTES_RULE}", prompts::s("runtime_notes"));
     match latest {
         LatestPrompt::Wrote(text) => {
             let head = crate::util::head_chars(text, MAX_LATEST_PROMPT_CHARS);
             let cut = if head.len() < text.len() { "\n[…cut; the full message is in the conversation above]" } else { "" };
             let quoted = crate::goal::fence(head, &["latest_user_message"]);
-            format!("{RUNTIME_NOTES_RULE}\nThe user's most recent message, which is their latest request:\n<latest_user_message>\n{quoted}{cut}\n</latest_user_message>")
+            format!("{notes}\nThe user's most recent message, which is their latest request:\n<latest_user_message>\n{quoted}{cut}\n</latest_user_message>")
         }
-        LatestPrompt::NoneSinceSummary => format!("{RUNTIME_NOTES_RULE}\n{NO_NEW_PROMPT_RULE}"),
-        LatestPrompt::Unknown => RUNTIME_NOTES_RULE.to_string(),
+        LatestPrompt::NoneSinceSummary => format!("{notes}\n{NO_NEW_PROMPT_RULE}"),
+        LatestPrompt::Unknown => notes,
     }
 }
 

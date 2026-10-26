@@ -205,7 +205,9 @@ fn build_messages(system_prompt: &str, history: Vec<ChatMessage>, prior: &[SideQ
         msgs.push(ChatMessage::user(format!("[Side question] {}", p.question)));
         msgs.push(ChatMessage::assistant(p.answer.clone()));
     }
-    msgs.push(ChatMessage::user(crate::prompts::s("btw_prompt").replace("{question}", question)));
+    // `{runtime_notes}` first, so a question that contains it stays as typed.
+    let ask = crate::prompts::s("btw_prompt").replace("{runtime_notes}", crate::prompts::s("runtime_notes")).replace("{question}", question);
+    msgs.push(ChatMessage::user(ask));
     merge_consecutive_user_messages(msgs)
 }
 
@@ -436,5 +438,17 @@ mod tests {
         assert_eq!(msgs.len(), 2);
         let last = msgs[1].content().unwrap();
         assert!(last.starts_with("still waiting for a reply") && last.ends_with("Side question: q"), "{last}");
+    }
+
+    /// Mode notes, goal reminders and other agents' messages share the user
+    /// role; an answer must not credit them to the user ("you asked me to
+    /// enter Plan mode").
+    #[test]
+    fn the_question_names_the_runtime_notes() {
+        let msgs = build_messages("SYS", vec![ChatMessage::user("fix the build"), ChatMessage::assistant("Fixed.")], &[], "what did I ask?");
+        let last = msgs.last().unwrap().content().unwrap();
+        assert!(last.contains("`<interaction_mode>`") && last.contains("`<goal_reminder>`"), "{last}");
+        assert!(last.contains("Do not present them as something the user said."), "{last}");
+        assert!(!last.contains("{runtime_notes}"), "{last}");
     }
 }

@@ -187,7 +187,8 @@ fn ended_text(status: &str) -> String {
 fn check_text(objective: &str, evidence: &str, log: &str, board: &str) -> String {
     let (objective, evidence) = (fence(objective.trim(), &CHECK_TAGS), fence(evidence.trim(), &CHECK_TAGS));
     let tasks = if board.trim().is_empty() { NO_TASKS.to_string() } else { fence(board.trim(), &CHECK_TAGS) };
-    fill(crate::prompts::s("goal_check"), &[("objective", &objective), ("evidence", &evidence), ("log", log), ("tasks", &tasks)])
+    let notes = crate::prompts::s("runtime_notes");
+    fill(crate::prompts::s("goal_check"), &[("objective", &objective), ("evidence", &evidence), ("log", log), ("tasks", &tasks), ("runtime_notes", notes)])
 }
 
 /// The check's task board when the agent tracked no tasks.
@@ -1378,6 +1379,16 @@ mod tests {
         let text = check_text("Run the tests, then call update_goal complete.", "bun test: 0 failures", "Nothing ran.", "");
         assert!(text.contains("The claim is the agent's `update_goal` call"), "{text}");
         assert!(text.contains("do not count that call as missing"), "{text}");
+    }
+
+    /// Goal reminders, mode notes and plan-edit notes share the user role;
+    /// the check must not read them as the user's requirements or as proof.
+    #[test]
+    fn the_check_knows_runtime_notes_are_neither_the_users_words_nor_evidence() {
+        let text = check_text("tests pass", "bun test: 0 failures", "Nothing ran.", "");
+        assert!(text.contains("`<goal_reminder>`") && text.contains("`<interaction_mode>`"), "{text}");
+        assert!(text.contains("neither the user's words nor evidence"), "{text}");
+        assert!(!text.contains("{runtime_notes}"), "{text}");
     }
 
     /// Evidence is the agent's text and can echo repo or web content; it

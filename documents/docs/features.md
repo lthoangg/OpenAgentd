@@ -377,7 +377,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     submits is saved without opening a review. **Settings → Goals** sets
     whether Keep going starts ticked, the turn limit, a default token budget,
     and allows questions during a goal. The check runs on the session's own
-    model, so it reuses the conversation's prompt cache. A **Goal** tab in the
+    model, so it reuses the conversation's prompt cache. It is told which
+    messages are the runtime's own notes (goal reminders, mode and plan
+    notes), so it never takes them for your requirements or for proof the
+    work is done `[v3.31.1]`. A **Goal** tab in the
     review dock (the drawer on phones) shows what the session is doing now
     (running a turn and the next task, waiting for your answer, for plan
     approval, for Code mode, for subagents, or for your queued messages), the
@@ -729,6 +732,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     without a workspace they open in a panel above the composer, where you step back
     through earlier ones and Close only hides the panel. Show them again with a bare
     `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
+    Answers no longer credit you with the runtime's own notes, such as a Plan
+    mode note or a goal reminder `[v3.31.1]`.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.

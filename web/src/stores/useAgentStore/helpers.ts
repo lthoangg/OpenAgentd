@@ -2,6 +2,54 @@ import type { ContentBlock, PendingQuestion } from '@/api/types'
 import { isGoalTurnBlock } from '@/lib/goal'
 import type { AgentStream, CacheInvalidation, ResolvedQuestion } from './types'
 
+/** Kinds whose live id (``generateBlockId``) differs from the server row's. */
+const ADOPTABLE_KINDS = new Set<ContentBlock['type']>(['thinking', 'text'])
+
+function isLiveId(id: string): boolean {
+  return id.startsWith('block-')
+}
+
+/**
+ * The server's copy of a turn the client just streamed, with the live ids
+ * back on its thinking and text blocks.
+ *
+ * The transcript keys a turn and its step folds by their first block's id.
+ * Live blocks have client ids and the server rows derive theirs from the
+ * message id, so swapping one for the other at the end of a turn remounted
+ * the finished turn: folds the reader opened closed again, and the shrink
+ * pulled them off what they were reading. These ids are display-only (edit
+ * and revert act on user and tool rows, whose ids already match).
+ *
+ * Pairs blocks of the same kind from the end and stops at the first pair
+ * whose text differs, so an id is never lent to a different answer.
+ * ``inUse`` holds ids that stay elsewhere (``currentBlocks``), never lent.
+ * Returns ``next`` itself when nothing changes.
+ */
+export function adoptLiveBlockIds(
+  previous: readonly ContentBlock[],
+  next: readonly ContentBlock[],
+  inUse: ReadonlySet<string> = new Set(),
+): readonly ContentBlock[] {
+  if (!previous.some((b) => ADOPTABLE_KINDS.has(b.type) && isLiveId(b.id))) return next
+  const nextIds = new Set(next.map((b) => b.id))
+  const previousIds = new Set(previous.map((b) => b.id))
+  let result: ContentBlock[] | null = null
+  for (const kind of ADOPTABLE_KINDS) {
+    const live = previous.filter((b) => b.type === kind && isLiveId(b.id) && !nextIds.has(b.id) && !inUse.has(b.id))
+    const fresh: number[] = []
+    next.forEach((b, i) => {
+      if (b.type === kind && !isLiveId(b.id) && !previousIds.has(b.id)) fresh.push(i)
+    })
+    for (let l = live.length - 1, f = fresh.length - 1; l >= 0 && f >= 0; l--, f--) {
+      const target = next[fresh[f]]
+      if ((live[l].content ?? '').trim() !== (target.content ?? '').trim()) break
+      result ??= [...next]
+      result[fresh[f]] = { ...target, id: live[l].id }
+    }
+  }
+  return result ?? next
+}
+
 /**
  * Close the open question and record how it ended.
  *

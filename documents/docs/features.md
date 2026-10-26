@@ -848,6 +848,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Scroll position per session** `[v3.5.0]` — leave a session scrolled up and
   come back to it, and the transcript opens where you were reading; a session
   you left at the bottom keeps following new output. Kept while the app runs.
+  Since `[v3.33.0]` a turn that finishes while you are scrolled up leaves the
+  view where it is: the finished turn is no longer rebuilt (step lists you
+  opened stay open), and only your own scroll to the bottom resumes following.
 - **Calm session switches** `[v3.28.0]` — opening another session no longer
   flashes a blank or loading screen:
   - The chat you are leaving stays on screen, slightly dimmed, until the next

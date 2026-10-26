@@ -369,17 +369,19 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const startComment = (from: PlanSelection | null = selection) => {
     if (!from) return
     const next = { quote: from.text, anchor: from, text: '' }
+    window.getSelection()?.removeAllRanges()
+    clearSelection()
+    setHeldSelection(null)
     if (mobile) {
       // Render the docked composer and focus it inside this tap: iOS raises
       // the keyboard only for focus that happens within a user gesture.
+      // Focus last: WebKit keeps the box's caret in the page selection, so
+      // clearing the selection after focusing would drop focus again.
       flushSync(() => changeComposer(next))
       commentInputRef.current?.focus()
     } else {
       changeComposer(next)
     }
-    window.getSelection()?.removeAllRanges()
-    clearSelection()
-    setHeldSelection(null)
   }
 
   const clearMobileSelection = () => {

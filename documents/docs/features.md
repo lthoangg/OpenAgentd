@@ -707,6 +707,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     conversation is compacted, so the title follows what the session is
     working on now. Titles you renamed yourself and scheduled-task sessions
     keep their names.
+    The new title comes from the summary's goal and your own latest message,
+    not from runtime notes the summary may have quoted `[v3.31.1]`. A session
+    another workspace's agent started is titled from its request, without the
+    routing header in front of it `[v3.31.1]`.
 - **Mode-scoped recent-session lists** `[v1.66.1]` — session sidebars now fetch
   their own coding session pages instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
@@ -1892,6 +1896,10 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   out rules that stay in context anyway, and never copy secrets. The agent
   reads the summary marked as a summary of earlier context, not as a new
   message from you, so it carries on after compacting mid-turn `[v3.24.0]`.
+  The latest request a summary quotes is always a message you wrote, never
+  a Plan/Code mode note, a plan approval, a goal reminder, or another
+  agent's message; with nothing new from you since the last summary, it keeps
+  the request that summary recorded `[v3.31.1]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at

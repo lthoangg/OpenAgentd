@@ -21,6 +21,11 @@ const MAX_SUMMARY_CHARS: usize = 1500;
 /// The coding-summary sections a title is made from. The rest (constraints,
 /// progress, files) is detail that pulls a title away from the goal.
 const TITLE_SECTIONS: [&str; 2] = ["Goal", "Latest User Request"];
+/// Cap on the head of a prose (chat) summary sent next to the user's own
+/// latest request, so the request still fits in [`MAX_SUMMARY_CHARS`].
+const PROSE_GOAL_CHARS: usize = 800;
+/// Cap on the user's latest request in a summary retitle.
+const LATEST_PROMPT_CHARS: usize = 500;
 /// Room for a 50-character title in any script: Vietnamese or CJK titles
 /// take one token or more per character, so 20 tokens cut them mid-word.
 const TITLE_MAX_TOKENS: u32 = 64;
@@ -59,14 +64,14 @@ impl TitleSource {
     }
 }
 
-/// The [`TITLE_SECTIONS`] of a coding summary, headings included, in summary
-/// order; `None` when the summary has none of them.
-fn summary_title_sections(summary: &str) -> Option<String> {
+/// The `sections` of a coding summary, headings included, in summary order;
+/// `None` when the summary has none of them.
+fn summary_sections(summary: &str, sections: &[&str]) -> Option<String> {
     let mut keep = false;
     let mut out: Vec<&str> = Vec::new();
     for line in summary.lines() {
         if let Some(heading) = line.strip_prefix("## ") {
-            keep = TITLE_SECTIONS.contains(&heading.trim());
+            keep = sections.contains(&heading.trim());
         }
         if keep {
             out.push(line);
@@ -74,6 +79,24 @@ fn summary_title_sections(summary: &str) -> Option<String> {
     }
     let text = out.join("\n").trim().to_string();
     (!text.is_empty()).then_some(text)
+}
+
+/// The [`TITLE_SECTIONS`] of a coding summary; see [`summary_sections`].
+fn summary_title_sections(summary: &str) -> Option<String> {
+    summary_sections(summary, &TITLE_SECTIONS)
+}
+
+/// What a summary retitle sends. With the newest message the user wrote,
+/// that message stands in for the summary's own quote of it, which a
+/// summariser could take from a runtime note (a Code-mode note, a goal
+/// reminder) instead.
+fn summary_title_input(summary: &str, latest_prompt: Option<&str>) -> String {
+    let Some(prompt) = latest_prompt.map(str::trim).filter(|p| !p.is_empty()) else {
+        return summary_title_sections(summary).unwrap_or_else(|| summary.to_string());
+    };
+    let goal = summary_sections(summary, &["Goal"]).unwrap_or_else(|| crate::util::head_chars(summary.trim(), PROSE_GOAL_CHARS).to_string());
+    let quoted = crate::util::head_chars(prompt, LATEST_PROMPT_CHARS).lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n");
+    format!("{goal}\n\n## Latest User Request\n{quoted}")
 }
 
 /// Why automatic titling must leave `session` alone, if it must. A title the
@@ -139,8 +162,9 @@ pub async fn generate_and_save_title(session_id: String, user_message: String, p
 
 /// Retitle a session from its compaction summary; never fails. Leaves a title
 /// the user typed, a scheduled-task session and a subagent session alone.
-pub async fn retitle_from_summary(session_id: String, summary: String, provider: Arc<dyn LlmProvider>, pool: DbPool) {
-    let input = summary_title_sections(&summary).unwrap_or(summary);
+/// `latest_prompt` is the newest message the user wrote that the summary covered.
+pub async fn retitle_from_summary(session_id: String, summary: String, latest_prompt: Option<String>, provider: Arc<dyn LlmProvider>, pool: DbPool) {
+    let input = summary_title_input(&summary, latest_prompt.as_deref());
     generate_title(TitleSource::Summary, session_id, input, provider, pool).await
 }
 
@@ -334,8 +358,8 @@ pub fn build_title_generation_hook(default_provider: Arc<dyn LlmProvider>, pool:
 pub fn build_summary_retitle(default_provider: Arc<dyn LlmProvider>, pool: DbPool) -> Option<super::summarization::OnSummary> {
     let cfg = enabled_title_settings().filter(|c| c.update_after_compaction)?;
     let provider = resolve_title_provider(default_provider, &cfg)?;
-    Some(Arc::new(move |session_id: &str, summary: &str| {
-        otel::spawn(retitle_from_summary(session_id.to_string(), summary.to_string(), provider.clone(), pool.clone()));
+    Some(Arc::new(move |session_id: &str, summary: &str, latest_prompt: Option<&str>| {
+        otel::spawn(retitle_from_summary(session_id.to_string(), summary.to_string(), latest_prompt.map(String::from), provider.clone(), pool.clone()));
     }))
 }
 
@@ -355,20 +379,10 @@ impl Hook for TitleGenerationHook {
         if state.messages.iter().any(|m| matches!(m, ChatMessage::Assistant(_))) {
             return;
         }
-        let mut user_text = None;
-        for m in state.messages.iter().rev() {
-            if let ChatMessage::User { content: Some(c), meta, .. } = m {
-                if c.is_empty() {
-                    continue;
-                }
-                if meta.extra.as_ref().and_then(|e| e.get("hidden_from_user")).map(crate::util::truthy).unwrap_or(false) {
-                    continue;
-                }
-                user_text = Some(c.clone());
-                break;
-            }
-        }
-        let Some(text) = user_text else { return };
+        // What the user wrote: not a runtime note, and without the
+        // model-only header of a request from another workspace.
+        let user_text = state.messages.iter().rev().filter(|m| crate::history::is_user_prompt(m)).find_map(|m| crate::history::prompt_text(m).filter(|t| !t.is_empty()));
+        let Some(text) = user_text.map(String::from) else { return };
         if text.starts_with("[Scheduled Task:") || should_skip(&text) {
             return;
         }
@@ -438,7 +452,7 @@ mod tests {
 
         let auto = session(&pool, "Fix login", Default::default()).await;
         let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Billing CSV export")]));
-        retitle_from_summary(auto.clone(), summary.into(), provider.clone(), pool.clone()).await;
+        retitle_from_summary(auto.clone(), summary.into(), None, provider.clone(), pool.clone()).await;
         assert_eq!(title_of(&pool, &auto).await.as_deref(), Some("Billing CSV export"));
         let request = provider.calls.lock().unwrap()[0].0.last().unwrap().content().unwrap().to_string();
         assert!(request.starts_with("Conversation summary to title") && request.contains("## Latest User Request"), "{request}");
@@ -449,9 +463,52 @@ mod tests {
         for upd in [appv3_db::SessionUpdate::user_title("My name"), appv3_db::SessionUpdate { scheduled_task_name: Some(Some("nightly".into())), ..Default::default() }] {
             let id = session(&pool, "My name", upd).await;
             let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Billing CSV export")]));
-            retitle_from_summary(id.clone(), summary.into(), provider.clone(), pool.clone()).await;
+            retitle_from_summary(id.clone(), summary.into(), None, provider.clone(), pool.clone()).await;
             assert_eq!(title_of(&pool, &id).await.as_deref(), Some("My name"));
             assert!(provider.calls.lock().unwrap().is_empty());
         }
+    }
+
+    /// Summaries quoted a Code-mode note or a plan approval as the latest
+    /// request, and sessions were retitled after it ("… Session Plan r9").
+    #[test]
+    fn a_summary_retitle_uses_what_the_user_wrote_not_the_summary_quote() {
+        let summary = "## Goal\n- Ship the billing export\n\n## Latest User Request\n> (Plan approved; Code mode) Implement the plan in `.agents/plans/x.md`\n- Status: in progress\n\n## Progress\n- started";
+        let input = summary_title_input(summary, Some("add a CSV export\nand test it"));
+        assert_eq!(input, "## Goal\n- Ship the billing export\n\n## Latest User Request\n> add a CSV export\n> and test it");
+        // A prose (chat) summary keeps its head as the goal.
+        assert_eq!(summary_title_input("The user plans a trip to Hue.", Some("book the train")), "The user plans a trip to Hue.\n\n## Latest User Request\n> book the train");
+        // Without a message from the user the summary's sections are used.
+        assert_eq!(summary_title_input(summary, None), summary_title_sections(summary).unwrap());
+    }
+
+    /// A session started by another workspace's agent is titled from the
+    /// request, not from the ~200-character routing header before it.
+    #[tokio::test]
+    async fn the_first_title_leaves_out_runtime_notes_and_routing_headers() {
+        use appv3_providers::mock::MockProvider;
+        let dir = tempfile::tempdir().unwrap();
+        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Site update for v3.30")]));
+        let hook = TitleGenerationHook { provider: provider.clone(), pool, wait_timeout: 1.0, task: Mutex::new(None) };
+
+        let mut sent = ChatMessage::user("Update the site for the v3.30 release.");
+        let mut extra = serde_json::Map::new();
+        extra.insert("sent_from".into(), json!({"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": true}));
+        sent.meta_mut().extra = Some(extra);
+        let mut note = ChatMessage::user("<interaction_mode>\n## Plan mode\n</interaction_mode>");
+        let mut extra = serde_json::Map::new();
+        extra.insert("hidden_from_user".into(), json!(true));
+        note.meta_mut().extra = Some(extra);
+        note.meta_mut().kind = "note".into();
+        let messages = crate::history::apply_llm_content_overrides(vec![sent, note]);
+        let mut state = AgentState::new(messages, String::new());
+        let ctx = RunContext { session_id: Some(uuid::Uuid::now_v7().to_string()), run_id: "run".into(), agent_name: "lead".into(), workspace: None };
+
+        hook.before_agent(&ctx, &mut state).await;
+        let task = hook.task.lock().unwrap().take().expect("titling started");
+        task.await.unwrap();
+        let request = provider.calls.lock().unwrap()[0].0.last().unwrap().content().unwrap().to_string();
+        assert!(request.contains("<message>\nUpdate the site for the v3.30 release.\n</message>"), "{request}");
     }
 }

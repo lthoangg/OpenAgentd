@@ -224,7 +224,7 @@ const REMINDER_TAGS: [&str; 1] = ["goal_reminder"];
 /// `text` with every `<tag` / `</tag` of `tags` (any case) defused to
 /// `‹tag`, so inserted text (an objective, evidence, a check's reason)
 /// cannot end its block and pose as the instructions around it.
-fn fence(text: &str, tags: &[&str]) -> String {
+pub(crate) fn fence(text: &str, tags: &[&str]) -> String {
     let lower = text.to_ascii_lowercase();
     let mut out = String::with_capacity(text.len());
     let mut last = 0;

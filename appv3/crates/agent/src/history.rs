@@ -253,6 +253,40 @@ fn workspace_message_header(extra: &serde_json::Map<String, Value>) -> Option<St
     ))
 }
 
+/// Whether `m` is a prompt the user wrote, as opposed to a user-role message
+/// the runtime or another agent added: a hidden note (Plan/Code mode, plan
+/// edits, goal rules, a cut-off notice), a goal turn's reminder, an
+/// @-mention's context, or a subagent's or workspace reply. A request from
+/// another workspace's agent counts: it is what that session was started
+/// for. Matches the database's `PROMPT` and the web's `isPromptMessage`.
+pub fn is_user_prompt(m: &ChatMessage) -> bool {
+    let ChatMessage::User { meta, .. } = m else { return false };
+    if meta.kind != db::kind::CHAT {
+        return false;
+    }
+    let Some(extra) = meta.extra.as_ref() else { return true };
+    let set = |k: &str| extra.get(k).is_some_and(|v| !v.is_null());
+    let agent = |v: Option<&Value>| v.and_then(Value::as_str).is_some_and(|s| !s.is_empty() && s != "user");
+    let routing = extra.get("routing");
+    let truthy = |k: &str| extra.get(k).map(crate::util::truthy).unwrap_or(false);
+    !(truthy("hidden_from_user")
+        || set("goal_turn")
+        || set("attachment_for_message_id")
+        || agent(extra.get("from_agent"))
+        || agent(routing.and_then(|r| r.get("from_agent")))
+        || extra.get("from_agents").and_then(|a| a.get(0)).is_some()
+        || routing.and_then(|r| r.get("from_agents")).and_then(|a| a.get(0)).is_some())
+}
+
+/// The text of a user message without the model-only header
+/// [`apply_llm_content_overrides`] put before it.
+pub fn prompt_text(m: &ChatMessage) -> Option<&str> {
+    let ChatMessage::User { content: Some(c), meta, .. } = m else { return None };
+    let Some(extra) = meta.extra.as_ref() else { return Some(c) };
+    let header = workspace_message_header(extra).or_else(|| extra.get("from_agent").and_then(Value::as_str).filter(|f| !f.is_empty() && *f != "user").map(|f| format!("[{f}]:")));
+    Some(header.and_then(|h| c.strip_prefix(h.as_str())).and_then(|rest| rest.strip_prefix('\n')).unwrap_or(c))
+}
+
 /// `get_messages_for_llm`.
 pub async fn get_messages_for_llm(pool: &DbPool, session_id: &str) -> Result<Vec<ChatMessage>> {
     let rows = db::llm_window_rows(pool, session_id, true).await?;
@@ -441,5 +475,46 @@ mod tests {
         let c = user_with(json!({"from_agent": "infra", "reply_from": {"session_id": "s2", "workspace": "/r/infra", "workspace_name": "infra", "status": "error"}}));
         assert!(c.starts_with("[Status update from"), "{c}");
         assert_eq!(user_with(json!({"from_agent": "explorer#1"})), "[explorer#1]:\ndo it");
+    }
+
+    fn user_msg(kind: &str, extra: Value) -> ChatMessage {
+        let mut m = ChatMessage::user("do it");
+        let meta = m.meta_mut();
+        meta.kind = kind.into();
+        meta.extra = extra.as_object().cloned();
+        m
+    }
+
+    /// Notes and other agents' messages travel in the user role; only what
+    /// the user (or a requesting workspace) wrote is their prompt.
+    #[test]
+    fn only_messages_the_user_wrote_are_prompts() {
+        assert!(is_user_prompt(&ChatMessage::user("do it")));
+        assert!(is_user_prompt(&user_msg("chat", json!({"from_agent": "user", "model": "x"}))));
+        assert!(is_user_prompt(&user_msg("chat", json!({"sent_from": {"workspace": "/r/app"}}))), "a workspace request starts its session");
+        for (kind, extra) in [
+            ("note", json!({"hidden_from_user": true, "interaction_mode_prompt": true})),
+            ("chat", json!({"hidden_from_user": true})),
+            ("chat", json!({"goal_turn": {"turn": 2}})),
+            ("chat", json!({"hidden_from_user": true, "attachment_for_message_id": "m1", "mention_context": true})),
+            ("chat", json!({"from_agent": "explorer#1"})),
+            ("chat", json!({"from_agent": "infra", "reply_from": {"status": "completed"}})),
+            ("chat", json!({"routing": {"from_agent": "worker"}})),
+            ("chat", json!({"from_agents": ["worker"]})),
+            ("summary", json!({})),
+        ] {
+            assert!(!is_user_prompt(&user_msg(kind, extra.clone())), "{kind} {extra}");
+        }
+        assert!(!is_user_prompt(&ChatMessage::assistant("do it")));
+    }
+
+    #[test]
+    fn prompt_text_drops_the_model_only_header() {
+        let sent = apply_llm_content_overrides(vec![user_msg("chat", json!({"sent_from": {"session_id": "s1", "workspace": "/r/app", "workspace_name": "app"}}))]);
+        assert!(sent[0].content().unwrap().starts_with("[Message from"));
+        assert_eq!(prompt_text(&sent[0]), Some("do it"));
+        let reply = apply_llm_content_overrides(vec![user_msg("chat", json!({"from_agent": "explorer#1"}))]);
+        assert_eq!(prompt_text(&reply[0]), Some("do it"));
+        assert_eq!(prompt_text(&ChatMessage::user("[note]: kept")), Some("[note]: kept"));
     }
 }

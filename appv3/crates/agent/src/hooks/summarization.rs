@@ -50,6 +50,64 @@ pub const DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY: usize = 4;
 /// bare `## Goal…` user message reads like a new request.
 const SUMMARY_HANDOFF_NOTE: &str =
     "This summary replaces the earlier conversation; it is not a new message from the user. If the latest request is unfinished, continue from its next steps.";
+/// Ends the summary request when the user wrote nothing after the earlier note.
+const NO_NEW_PROMPT_RULE: &str = "The user has sent no new message since the earlier handoff note: keep its latest user request unchanged and update only its status.";
+/// Names the user-role messages above that the user did not write. The
+/// summariser otherwise quoted a Code-mode note or a goal reminder as the
+/// user's latest request.
+const RUNTIME_NOTES_RULE: &str = "Some user-role messages above come from the runtime or other agents, not the user: notes in tags such as `<interaction_mode>`, `<goal_reminder>`, `<goal_ended>`, `<plan_updated>` or `<session_plan>`, and messages headed `[name]:` or `[Message from …]`. Never quote or record them as the user's words.";
+/// Longest latest request repeated in the summary request; the full text is
+/// in the conversation above it.
+const MAX_LATEST_PROMPT_CHARS: usize = 4_000;
+
+/// What the summariser is told about the user's latest request.
+enum LatestPrompt {
+    /// The newest message the user wrote, header removed.
+    Wrote(String),
+    /// A prior summary is newer than any message the user wrote.
+    NoneSinceSummary,
+    /// Neither: nothing to point at.
+    Unknown,
+}
+
+impl LatestPrompt {
+    fn text(&self) -> Option<&str> {
+        match self {
+            Self::Wrote(t) => Some(t),
+            _ => None,
+        }
+    }
+}
+
+/// The newest message the user wrote among `ids`.
+fn latest_prompt(messages: &[ChatMessage], ids: &[usize]) -> LatestPrompt {
+    for &i in ids.iter().rev() {
+        let m = &messages[i];
+        if m.meta().is_summary() {
+            return LatestPrompt::NoneSinceSummary;
+        }
+        if crate::history::is_user_prompt(m) {
+            if let Some(text) = crate::history::prompt_text(m).map(str::trim).filter(|t| !t.is_empty()) {
+                return LatestPrompt::Wrote(text.to_string());
+            }
+        }
+    }
+    LatestPrompt::Unknown
+}
+
+/// The part of the summary request that says which message the user wrote.
+fn latest_prompt_hint(latest: &LatestPrompt) -> String {
+    match latest {
+        LatestPrompt::Wrote(text) => {
+            let head = crate::util::head_chars(text, MAX_LATEST_PROMPT_CHARS);
+            let cut = if head.len() < text.len() { "\n[…cut; the full message is in the conversation above]" } else { "" };
+            let quoted = crate::goal::fence(head, &["latest_user_message"]);
+            format!("{RUNTIME_NOTES_RULE}\nThe user's most recent message, which is their latest request:\n<latest_user_message>\n{quoted}{cut}\n</latest_user_message>")
+        }
+        LatestPrompt::NoneSinceSummary => format!("{RUNTIME_NOTES_RULE}\n{NO_NEW_PROMPT_RULE}"),
+        LatestPrompt::Unknown => RUNTIME_NOTES_RULE.to_string(),
+    }
+}
 
 /// `m` as the model reads it: a summary is framed as a handoff note. Applied
 /// on every request (never stored), so the prompt-cache prefix stays stable
@@ -190,8 +248,9 @@ fn cached_custom_threshold(path: &Path) -> Option<i64> {
 }
 
 /// Called with `(session_id, summary)` after each successful compaction of a
-/// session; see [`crate::hooks::title::build_summary_retitle`].
-pub type OnSummary = Arc<dyn Fn(&str, &str) + Send + Sync>;
+/// session, and the newest message the user wrote that it covered (`None`
+/// when it covered none); see [`crate::hooks::title::build_summary_retitle`].
+pub type OnSummary = Arc<dyn Fn(&str, &str, Option<&str>) + Send + Sync>;
 
 pub struct SummarizationHook {
     provider: Arc<dyn LlmProvider>,
@@ -611,7 +670,10 @@ impl SummarizationHook {
         // request shares that turn's prompt-cache prefix.
         prefix.extend(to_summarise.iter().filter(|&&i| !extra_truthy(&state.messages[i], plan::SESSION_PLAN_KEY)).map(|&i| for_model(&state.messages[i])));
         let mut msgs = merge_consecutive_user_messages(prefix);
-        let mut request = format!("{request_line}\n\n{}", self.summary_prompt);
+        // The hint goes in the final instruction, never into the
+        // conversation above it, which shares the main turn's prompt cache.
+        let latest = latest_prompt(&state.messages, &to_summarise);
+        let mut request = format!("{request_line}\n\n{}\n\n{}", self.summary_prompt, latest_prompt_hint(&latest));
         if plan_note.is_some() {
             request.push_str("\n\n");
             request.push_str(plan::PLAN_SUMMARY_RULE);
@@ -718,7 +780,7 @@ impl SummarizationHook {
             }
             self.emit_end(ctx, &text, false, forced);
             if let Some(f) = &self.on_summary {
-                f(sid, &text);
+                f(sid, &text, latest.text());
             }
         }
         tracing::info!("summarization_complete session_id={:?} summarised={}", ctx.session_id, to_summarise.len());
@@ -1138,6 +1200,82 @@ mod tests {
         assert!(plan::PLAN_SUMMARY_RULE.contains("Open Work From the User"));
     }
 
+    /// The summariser's final instruction: the only message the hint may change.
+    fn summary_instruction(provider: &MockProvider, call: usize) -> String {
+        summariser_request(provider, call).last().unwrap().content().unwrap().to_string()
+    }
+
+    /// After a plan approval the newest user-role message is the Code-mode
+    /// note, and summaries quoted it (or the approval) as the user's latest
+    /// request; a retitle then named the session after it.
+    #[tokio::test]
+    async fn the_summariser_is_told_which_message_the_user_wrote() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let hook = hook_with(provider.clone(), 0);
+        compact_with(
+            &hook,
+            vec![ChatMessage::user("Plan the login fix."), ChatMessage::assistant("Plan submitted."), mode_note("code"), ChatMessage::assistant("Implementing step 1.")],
+        )
+        .await;
+
+        let instruction = summary_instruction(&provider, 0);
+        assert!(instruction.contains("<latest_user_message>\nPlan the login fix.\n</latest_user_message>"), "{instruction}");
+        assert!(instruction.contains("`<interaction_mode>`"), "the runtime notes are named: {instruction}");
+        // The hint rides on the final instruction only, so the conversation
+        // before it still matches the main turn's prompt-cache prefix.
+        let request = summariser_request(&provider, 0);
+        assert!(!request[..request.len() - 1].iter().any(|m| m.content().is_some_and(|c| c.contains("latest_user_message"))));
+    }
+
+    #[tokio::test]
+    async fn a_goal_reminder_is_not_the_latest_request() {
+        let mut reminder = ChatMessage::user("<goal_reminder turn=\"2\">\nKeep working.\n</goal_reminder>");
+        let mut extra = Map::new();
+        extra.insert("goal_turn".into(), json!({"turn": 2}));
+        reminder.meta_mut().extra = Some(extra);
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        compact_with(
+            &hook_with(provider.clone(), 0),
+            vec![ChatMessage::user("Make the tests pass."), ChatMessage::assistant("Ran tests."), reminder, ChatMessage::assistant("Fixed one.")],
+        )
+        .await;
+
+        let instruction = summary_instruction(&provider, 0);
+        assert!(instruction.contains("<latest_user_message>\nMake the tests pass.\n</latest_user_message>"), "{instruction}");
+    }
+
+    /// With no new message since the earlier note, the newest user-role
+    /// message is a runtime note; the request the note recorded stands.
+    #[tokio::test]
+    async fn no_new_prompt_since_the_prior_summary_keeps_its_request() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary one."), MockProvider::text("Summary two.")]));
+        let hook = hook_with(provider.clone(), 0);
+        let mut state = compact_with(&hook, vec![ChatMessage::user("Fix the login bug."), ChatMessage::assistant("Reading auth.rs.")]).await;
+        state.messages.push(mode_note("code"));
+        state.messages.push(ChatMessage::assistant("Editing auth.rs."));
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await);
+
+        let instruction = summary_instruction(&provider, 1);
+        assert!(!instruction.contains("<latest_user_message>"), "{instruction}");
+        assert!(instruction.contains(NO_NEW_PROMPT_RULE), "{instruction}");
+    }
+
+    /// A message from another workspace's agent is the request of a session
+    /// it started; its model-only routing header is not part of it.
+    #[tokio::test]
+    async fn a_workspace_request_is_quoted_without_its_routing_header() {
+        let mut sent = ChatMessage::user("Update the site for v3.30.");
+        let mut extra = Map::new();
+        extra.insert("sent_from".into(), json!({"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": true}));
+        sent.meta_mut().extra = Some(extra);
+        let sent = crate::history::apply_llm_content_overrides(vec![sent]).remove(0);
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        compact_with(&hook_with(provider.clone(), 0), vec![sent, ChatMessage::assistant("Updating.")]).await;
+
+        let instruction = summary_instruction(&provider, 0);
+        assert!(instruction.contains("<latest_user_message>\nUpdate the site for v3.30.\n</latest_user_message>"), "{instruction}");
+    }
+
     /// An assistant reply carrying the usage its model call reported.
     fn reply_with_usage(content: &str, prompt_tokens: i64) -> ChatMessage {
         let mut m = ChatMessage::assistant(content);
@@ -1189,21 +1327,22 @@ mod tests {
     }
 
     /// The retitle callback gets the session and its summary only when a
-    /// summary was written.
+    /// summary was written, with the newest message the user wrote.
     #[tokio::test]
     async fn on_summary_runs_only_after_a_successful_summary() {
-        let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
-        let record = |seen: &Arc<Mutex<Vec<(String, String)>>>| -> OnSummary {
+        type Seen = Arc<Mutex<Vec<(String, String, Option<String>)>>>;
+        let seen: Seen = Arc::default();
+        let record = |seen: &Seen| -> OnSummary {
             let seen = seen.clone();
-            Arc::new(move |sid: &str, text: &str| seen.lock().unwrap().push((sid.into(), text.into())))
+            Arc::new(move |sid: &str, text: &str, prompt: Option<&str>| seen.lock().unwrap().push((sid.into(), text.into(), prompt.map(String::from))))
         };
         let ctx = RunContext { session_id: Some("s-retitle".into()), ..ctx() };
-        let history = || vec![ChatMessage::user("Fix the login page."), ChatMessage::assistant("Done.")];
+        let history = || vec![ChatMessage::user("Fix the login page."), ChatMessage::assistant("Done."), mode_note("code")];
 
         let hook = hook_with(Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")])), 0).with_on_summary(record(&seen));
         let mut state = AgentState::new(history(), String::new());
         assert!(hook.summarise(&ctx, &mut state, "sys").await);
-        assert_eq!(*seen.lock().unwrap(), vec![("s-retitle".to_string(), "Summary.".to_string())]);
+        assert_eq!(*seen.lock().unwrap(), vec![("s-retitle".to_string(), "Summary.".to_string(), Some("Fix the login page.".to_string()))]);
 
         // An empty summary writes nothing and calls nothing.
         let hook = hook_with(Arc::new(MockProvider::new(vec![MockProvider::text("")])), 0).with_on_summary(record(&seen));

@@ -645,6 +645,21 @@ pub fn message_extras(goal: &SessionGoal) -> (Map<String, Value>, Map<String, Va
     (message, note)
 }
 
+/// What a goal's objective message carries (see [`AgentSession::begin_goal`]).
+#[derive(Debug, Default)]
+pub struct GoalMessage {
+    /// The objective message's `extra` (`{"goal": {"id"}}`).
+    pub extra: Map<String, Value>,
+    /// The pinned rules note, `(text, extra)`.
+    pub context_notes: Vec<(String, Map<String, Value>)>,
+}
+
+/// Whether `session_id` has an active goal (one that takes turns now, or
+/// waits only for Code mode, queued messages or subagents).
+pub async fn has_active_goal(pool: &DbPool, session_id: &str) -> Result<bool> {
+    Ok(db::live_session_goal(pool, session_id).await?.is_some_and(|g| g.is_active()))
+}
+
 /// Release the rules note of every goal that is no longer live: unpin it and
 /// let compaction summarize it, then add a `<goal_ended>` note. Only call
 /// between turns: it appends rows. Returns how many goals it released.
@@ -765,6 +780,44 @@ impl AgentSession {
         tracing::info!("goal_started session_id={} goal_id={} max_turns={} token_budget={:?}", session_id, goal.id, goal.max_turns, goal.token_budget);
         publish(session_id, Some(&goal));
         Ok(goal)
+    }
+
+    /// `/goal <objective>` sent as a chat message: store the goal and return
+    /// what its objective message carries, the `extra` and the pinned rules
+    /// note (`UserMessage.extra` / `context_notes`). Call holding
+    /// `user_message_lock`, before the message is sent or queued, so the turn
+    /// it starts is a goal turn. When sending fails, call [`Self::abandon_goal`].
+    pub async fn begin_goal(&self, session_id: &str, objective: &str, max_turns: Option<i64>, token_budget: Option<i64>) -> Result<GoalMessage, GoalError> {
+        let goal = self.start_goal(session_id, objective, max_turns, token_budget).await?;
+        // A goal this one replaced leaves its rules note; release it ahead of
+        // the new one's. A running turn releases it when it ends.
+        if !self.has_active_user_turn() {
+            if let Err(e) = release_ended_notes(&self.pool, session_id).await {
+                tracing::warn!("goal_note_release_failed session_id={} error={}", session_id, e);
+            }
+        }
+        let (extra, note) = message_extras(&goal);
+        let text = note_text(objective, rs::goal_settings().allow_questions);
+        Ok(GoalMessage { extra, context_notes: vec![(text, note)] })
+    }
+
+    /// The objective of a goal from [`Self::begin_goal`] could not be sent:
+    /// the goal must not stay active. Call without `user_message_lock`
+    /// (clearing may release the goal's notes).
+    pub async fn abandon_goal(&self, session_id: &str) {
+        if let Err(e) = self.clear_goal(session_id).await {
+            tracing::warn!("goal_abandon_failed session_id={} error={}", session_id, e);
+        }
+    }
+
+    /// The session switched to Code mode: an active goal that waited in Plan
+    /// mode starts its next turn (in the background; a running turn
+    /// continues the goal itself when it ends).
+    pub fn goal_after_code_mode(self: &Arc<Self>, session_id: &str) {
+        let (session, sid) = (self.clone(), session_id.to_string());
+        tokio::spawn(async move {
+            session.kick_goal(&sid, false).await;
+        });
     }
 
     /// The active goal a lead turn starting now in `interaction` mode works

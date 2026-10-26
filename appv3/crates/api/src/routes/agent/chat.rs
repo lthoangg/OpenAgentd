@@ -122,14 +122,6 @@ fn form_int(form: &RawForm, k: &str, errs: &mut Vec<Value>) -> Option<i64> {
     }
 }
 
-/// A `/goal` whose objective could not be sent must not stay active. Call
-/// without `user_message_lock`: clearing may release the goal's notes.
-async fn abandon_goal(agent: &appv3_agent::session::AgentSession, sid: &str) {
-    if let Err(e) = agent.clear_goal(sid).await {
-        tracing::warn!("goal_abandon_failed session_id={} error={}", sid, e);
-    }
-}
-
 async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Response> {
     let form = read_form(req).await?;
     let mut errs = vec![];
@@ -269,17 +261,8 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     }
     // The goal is stored first, so the turn its objective starts is a goal turn.
     let (goal_extra, goal_notes) = if goal {
-        let g = agent.start_goal(&sid, &message, goal_max_turns, goal_token_budget).await.map_err(goal_err)?;
-        // A goal this one replaced leaves its rules note; release it ahead
-        // of the new one's. A running turn releases it when it ends.
-        if !agent.has_active_user_turn() {
-            if let Err(e) = appv3_agent::goal::release_ended_notes(&st.pool, &sid).await {
-                tracing::warn!("goal_note_release_failed session_id={} error={}", sid, e);
-            }
-        }
-        let (extra, note) = appv3_agent::goal::message_extras(&g);
-        let text = appv3_agent::goal::note_text(&message, appv3_core::runtime_settings::goal_settings().allow_questions);
-        (Some(extra), vec![(text, note)])
+        let g = agent.begin_goal(&sid, &message, goal_max_turns, goal_token_budget).await.map_err(goal_err)?;
+        (Some(g.extra), g.context_notes)
     } else {
         (None, vec![])
     };
@@ -309,7 +292,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
             Err(e) => {
                 drop(_guard);
                 if goal {
-                    abandon_goal(&agent, &sid).await;
+                    agent.abandon_goal(&sid).await;
                 }
                 return Err(e);
             }
@@ -341,7 +324,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let sent = appv3_agent::service::dispatch_user_message(&agent, d).await;
     if sent.is_err() && goal {
         drop(_guard);
-        abandon_goal(&agent, &sid).await;
+        agent.abandon_goal(&sid).await;
     }
     match sent {
         Ok((sid, n, mid)) => {
@@ -986,12 +969,8 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
     if let Some(m) = &mode {
         row = appv3_agent::interaction_mode::set_mode(&st.pool, &sid, m).await?.0;
         // A goal waits in Plan mode; switching to Code starts its next turn.
-        if m == "code" && db::live_session_goal(&st.pool, &sid).await?.is_some_and(|g| g.is_active()) {
-            let agent = resolve_agent_for_existing_session(&st.pool, &sid).await?;
-            let sid = sid.clone();
-            tokio::spawn(async move {
-                agent.kick_goal(&sid, false).await;
-            });
+        if m == "code" && appv3_agent::goal::has_active_goal(&st.pool, &sid).await? {
+            resolve_agent_for_existing_session(&st.pool, &sid).await?.goal_after_code_mode(&sid);
         }
     }
     Ok(json(Value::Object(session_response(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))

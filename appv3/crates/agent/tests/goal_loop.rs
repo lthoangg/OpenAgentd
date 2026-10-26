@@ -142,23 +142,22 @@ async fn harness(name: &str, turns: Vec<appv3_providers::mock::MockTurn>, slow: 
 }
 
 impl Harness {
-    /// Set a goal the way the chat route does: store it, then send the
+    /// Set a goal the way the chat route does: begin it, then send the
     /// objective with its rules note.
     async fn start_goal(&self, objective: &str, max_turns: i64) -> SessionGoal {
-        let g = self.session.start_goal(&self.sid, objective, Some(max_turns), None).await.unwrap();
-        let (extra, note) = goal::message_extras(&g);
+        let m = self.session.begin_goal(&self.sid, objective, Some(max_turns), None).await.unwrap();
         self.session
             .handle_user_message(UserMessage {
                 content: objective.into(),
                 session_id: self.sid.clone(),
                 origin: "user".into(),
-                extra: Some(extra),
-                context_notes: vec![(goal::note_text(objective, false), note)],
+                extra: Some(m.extra),
+                context_notes: m.context_notes,
                 ..Default::default()
             })
             .await
             .unwrap();
-        g
+        appv3_db::latest_session_goal(&self.pool, &self.sid).await.unwrap().expect("goal stored")
     }
 
     async fn finish(&self) {

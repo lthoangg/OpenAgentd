@@ -2,7 +2,6 @@
 //! and the goal waits for the answer instead of refusing the question or
 //! starting another turn. Its own binary: the setting is process-wide.
 
-use appv3_agent::goal;
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::{AgentSession, UserMessage};
 use appv3_agent::Agent;
@@ -41,15 +40,14 @@ async fn with_questions_on_a_goal_waits_for_the_answer() {
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
     let sid = uuid::Uuid::now_v7().to_string();
 
-    let g = session.start_goal(&sid, "fix it", Some(5), None).await.unwrap();
-    let (extra, note) = goal::message_extras(&g);
+    let m = session.begin_goal(&sid, "fix it", Some(5), None).await.unwrap();
     session
         .handle_user_message(UserMessage {
             content: "fix it".into(),
             session_id: sid.clone(),
             origin: "user".into(),
-            extra: Some(extra),
-            context_notes: vec![(goal::note_text("fix it", true), note)],
+            extra: Some(m.extra),
+            context_notes: m.context_notes,
             ..Default::default()
         })
         .await

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { clearSessionGoal, getSessionGoal, pauseSessionGoal, resumeSessionGoal } from '@/api/client'
 import type { SessionGoal, SessionGoalResponse } from '@/api/types'
+import type { GoalAction } from '@/lib/goal'
 import { patchSessionGoalStatus } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from './keys'
 
@@ -16,8 +17,6 @@ export function useSessionGoalQuery(sessionId: string | null | undefined) {
     staleTime: 30_000,
   })
 }
-
-export type GoalAction = 'pause' | 'resume' | 'clear'
 
 /** Pause, resume, or clear a session's goal; the answer updates the cache at once. */
 export function useGoalActionMutation() {

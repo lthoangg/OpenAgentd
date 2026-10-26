@@ -146,4 +146,22 @@ describe('GoalTabView', () => {
     renderTab(null, null)
     expect(screen.getByRole('heading', { name: 'No goal' })).toBeTruthy()
   })
+
+  it('offers Retry when the goal fails to load, instead of saying there is none', async () => {
+    let fail = true
+    globalThis.fetch = mock(async () => (
+      fail ? new Response('down', { status: 500 }) : Response.json({ goal: makeGoal() })
+    )) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(queryKeys.session.subagents('s1'), { available_profiles: [], live_members: [] })
+    const user = userEvent.setup()
+    render(<QueryClientProvider client={client}><GoalTabView sessionId="s1" /></QueryClientProvider>)
+
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'No goal' })).toBeNull()
+
+    fail = false
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(now()?.dataset.goalNow).toBe('active'))
+  })
 })

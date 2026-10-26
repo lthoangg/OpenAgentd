@@ -33,6 +33,7 @@ import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSession
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { DockLoadError } from './DockLoadError'
 
 const NOW_CLASS: Record<GoalTone, string> = {
   active: 'border-(--accent-blue)/35 bg-(--accent-blue-soft) text-(--accent-blue-text)',
@@ -161,7 +162,7 @@ function useGoalSessionState(sessionId: string | null, goal: SessionGoal | null)
 }
 
 export function GoalTabView({ sessionId }: { sessionId: string | null }) {
-  const { data, isLoading } = useSessionGoalQuery(sessionId)
+  const { data, isLoading, isError, isFetching, refetch } = useSessionGoalQuery(sessionId)
   const goal = data?.goal && data.goal.status !== 'cleared' ? data.goal : null
   const session = useGoalSessionState(sessionId, goal)
   const mutation = useGoalActionMutation()
@@ -180,7 +181,9 @@ export function GoalTabView({ sessionId }: { sessionId: string | null }) {
         <span className="text-xs font-medium text-(--color-text)">Goal</span>
         <span className="truncate text-[11px] text-(--color-text-subtle)">Turns run on their own until a check confirms it</span>
       </div>
-      {!sessionId || (!goal && !isLoading) ? (
+      {sessionId && !data && isError ? (
+        <DockLoadError message="Failed to load the goal." onRetry={() => void refetch()} retrying={isFetching} />
+      ) : !sessionId || (!goal && !isLoading) ? (
         <EmptyState icon={Target} title="No goal" body={NO_GOAL_BODY} />
       ) : !goal ? (
         <p className="px-4 py-3 text-xs text-(--color-text-subtle)">Loading the goal…</p>

@@ -37,6 +37,10 @@ export function SessionModeToggle({
       {MODES.map((item) => {
         const active = mode === item.value
         const queued = active && pending
+        // aria-disabled, not disabled: a press on a native disabled button
+        // reaches no handler, so focus (and the phone keyboard) would leave
+        // the composer.
+        const inert = disabled || active
         return (
           <button
             key={item.value}
@@ -44,10 +48,14 @@ export function SessionModeToggle({
             aria-label={queued ? `${item.label} mode (applies after the current turn)` : `${item.label} mode`}
             aria-pressed={active}
             title={queued ? 'Applies when the current turn finishes' : undefined}
-            disabled={disabled || active}
-            onClick={() => onChange(item.value)}
+            aria-disabled={inert || undefined}
+            onClick={() => {
+              if (!inert) onChange(item.value)
+            }}
             className={cn(
               segmentedItemClass({ active, size: 'composer', dimDisabled: !active }),
+              inert && 'cursor-default',
+              inert && !active && 'cursor-not-allowed opacity-50',
               queued && 'italic opacity-70',
             )}
           >

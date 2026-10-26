@@ -32,4 +32,26 @@ describe('SessionModeToggle', () => {
     const active = screen.getByRole('button', { name: 'Plan mode' })
     expect(active.getAttribute('title')).toBeNull()
   })
+
+  test('keeps the chosen mode pressable but inert, so a press never steals focus', () => {
+    const onChange = mock(() => {})
+    render(<SessionModeToggle mode="code" onChange={onChange} />)
+
+    const active = screen.getByRole('button', { name: 'Code mode' }) as HTMLButtonElement
+    expect(active.disabled).toBe(false)
+    expect(active.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(active)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  test('ignores clicks on every segment while disabled', () => {
+    const onChange = mock(() => {})
+    render(<SessionModeToggle mode="code" disabled onChange={onChange} />)
+
+    const other = screen.getByRole('button', { name: 'Plan mode' }) as HTMLButtonElement
+    expect(other.disabled).toBe(false)
+    expect(other.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(other)
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

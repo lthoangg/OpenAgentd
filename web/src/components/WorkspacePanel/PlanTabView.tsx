@@ -290,6 +290,13 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   useEffect(() => {
     if (!compactFooter) setShowComments(false)
   }, [compactFooter])
+  // Focus in the turns field keeps its row mounted: unmounting a focused input
+  // closes the keyboard that just opened for it.
+  const [turnsFocused, setTurnsFocused] = useState(false)
+  const showKeepGoing = !compactFooter || turnsFocused
+  useEffect(() => {
+    if (!compactFooter) setTurnsFocused(false)
+  }, [compactFooter])
 
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -663,7 +670,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             <p role="alert" className="text-[11px] text-(--color-error)">{resolver.error}</p>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
-            {!compactFooter && (
+            {showKeepGoing && (
               <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-(--color-text)" title={keepGoingTitle} data-keep-going={keepGoing ? 'on' : 'off'}>
                 <label className={cn('flex items-center gap-1.5', !canKeepGoing && 'text-(--color-text-subtle)')}>
                   <Checkbox
@@ -686,6 +693,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                       aria-invalid={badTurns ? true : undefined}
                       value={turnsText}
                       onChange={(event) => setTurnsDraft(event.target.value)}
+                      onFocus={() => setTurnsFocused(true)}
+                      onBlur={() => setTurnsFocused(false)}
                       className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-[11px] text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 aria-invalid:border-(--color-error)"
                     />
                     turns
@@ -710,7 +719,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                 />
               </button>
             ) : (
-              footerHint && (!compactFooter || tooLong) && (
+              footerHint && (!compactFooter || tooLong || turnsFocused) && (
                 <span className={cn('text-[11px] text-(--color-text-subtle)', compactFooter && 'mr-auto')}>{footerHint}</span>
               )
             )}

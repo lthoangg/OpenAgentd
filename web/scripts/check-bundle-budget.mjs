@@ -91,9 +91,9 @@ if (import.meta.main) {
   // banner, scheduler draft guard, sidebar row keys, window-wide drops, retry
   // states) added 7.6 kB / 2.4 kB gzip.
   // `/goal` (the Goal dock tab, the claim cards, the goal turn divider, the
-  // replace dialog and Settings → Goals) adds about 40 kB / 12 kB gzip, all in
-  // the index chunk.
-  const limits = { eagerBytes: 2_630_000, eagerGzipBytes: 803_000, largestChunkBytes: 1_955_000 }
+  // replace dialog and Settings → Goals), all in the index chunk, reached
+  // 2.627 MB / 800.9 kB with a 1.955 MB index chunk (v3.32.0).
+  const limits = { eagerBytes: 2_630_000, eagerGzipBytes: 803_000, largestChunkBytes: 1_958_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

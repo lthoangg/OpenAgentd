@@ -318,8 +318,7 @@ impl AgentSession {
                 provider_factory: self.provider_factory.clone(),
             }));
             // Sessions without a user workspace keep the plan in the data dir.
-            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
-            injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
+            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty(), pool: self.pool.clone() }));
             if agent_mode == "coding" && !workspace.is_empty() {
                 injected.push(Arc::new(crate::tools::preview::PreviewTool));
             }

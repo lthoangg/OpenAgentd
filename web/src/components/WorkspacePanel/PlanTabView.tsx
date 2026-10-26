@@ -2,8 +2,8 @@
  * PlanTabView — the session plan as a review-dock tab (full-screen sheet on
  * mobile).
  *
- * The lead writes the plan with the ``plan`` tool and submits it with
- * ``submit_plan``; while that review is open the footer offers Approve and
+ * The lead writes the plan with the ``plan`` tool and submits it with the
+ * same tool (``submit: true``); while that review is open the footer offers Approve and
  * Request changes. Selecting plan text offers Comment: each comment stays
  * anchored to its passage (highlighted in the plan, listed in the footer) and
  * Request changes sends them all, with any overall feedback, as one answer.

@@ -840,6 +840,17 @@ describe("ToolCall — plan display", () => {
     rerender(<ToolCall name="plan" args={args} done result="Error: The plan is empty." />)
     expect(screen.queryByRole("button", { name: "View plan" })).toBeNull()
   })
+
+  it("shows a plan call with submit as the review card, like the former submit_plan", () => {
+    const args = JSON.stringify({ action: "write", content: "# Ship it", submit: true, summary: "First draft." })
+    const { rerender } = render(<ToolCall name="plan" args={args} done result="The user approved plan revision 1." />)
+    expect(screen.getByText("Plan review")).toBeTruthy()
+    expect(screen.getByText("Approved")).toBeTruthy()
+    expect(screen.getByText("First draft.")).toBeTruthy()
+
+    rerender(<ToolCall name="submit_plan" args="{}" done result="The user approved plan revision 1." />)
+    expect(screen.getByText("Plan review")).toBeTruthy()
+  })
 })
 
 describe("ToolCall — schedule_task display", () => {

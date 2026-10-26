@@ -1,4 +1,4 @@
-//! The session plan end to end: the `plan` tool writes it, `submit_plan`
+//! The session plan end to end: the `plan` tool writes it, `submit: true`
 //! pauses the turn for review, and the answer resumes the same turn.
 
 use appv3_agent::agent::{SUBMIT_DEFERRED, SUBMIT_MERGED};
@@ -140,6 +140,9 @@ fn write(content: &str) -> String {
     json!({"action": "write", "content": content}).to_string()
 }
 
+/// Submit the current plan without changing it.
+const SUBMIT: &str = r#"{"submit": true}"#;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn submit_pauses_and_approval_resumes_in_code_mode() {
     let h = harness(
@@ -148,7 +151,7 @@ async fn submit_pauses_and_approval_resumes_in_code_mode() {
         None,
         vec![
             MockProvider::tool_call("c1", "plan", &write("# Fix the bug\n1. Patch it")),
-            MockProvider::tool_call("c2", "submit_plan", r#"{"summary": "Ready."}"#),
+            MockProvider::tool_call("c2", "plan", r#"{"submit": true, "summary": "Ready."}"#),
             MockProvider::text("Implementing step 1."),
         ],
     )
@@ -164,7 +167,7 @@ async fn submit_pauses_and_approval_resumes_in_code_mode() {
     let attachments = rel.trim_end_matches(".md");
     assert_eq!(
         h.last_tool_result(1),
-        format!("Plan saved as revision 1 (2 lines) at {rel}. Put its mockups and diagrams in {attachments}/ (write them with patch) and link them by that path. Call submit_plan when it is ready for review.")
+        format!("Plan saved as revision 1 (2 lines) at {rel}. Put its mockups and diagrams in {attachments}/ (write them with patch) and link them by that path. Call plan with submit: true when it is ready for review.")
     );
     let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
     assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
@@ -189,15 +192,15 @@ async fn change_request_resumes_in_plan_mode_with_feedback() {
         None,
         vec![
             // The plan is written before the submission in the same response.
-            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "submit_plan", "{}"), ("c3", "submit_plan", "{}")]),
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "plan", SUBMIT), ("c3", "plan", SUBMIT)]),
             MockProvider::text("Revising."),
         ],
     )
     .await;
     h.send("Plan it.").await;
     assert_eq!(h.session.state(), "waiting_input");
-    assert_eq!(h.stored_result("c3").await, SUBMIT_MERGED);
-    assert_eq!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap().tool_call_id, "c2");
+    assert_eq!(h.stored_result("c2").await, SUBMIT_MERGED);
+    assert_eq!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap().tool_call_id, "c3", "the last submission opens the review");
 
     h.review(ReviewDecision::Changes(Some("Drop step 2.".into())), "Drop step 2.").await;
     assert_eq!(h.mode().await, "plan");
@@ -208,10 +211,10 @@ async fn change_request_resumes_in_plan_mode_with_feedback() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn submit_needs_a_plan() {
-    let h = harness("code", "code", None, vec![MockProvider::tool_call("c1", "submit_plan", "{}"), MockProvider::text("OK.")]).await;
+    let h = harness("code", "code", None, vec![MockProvider::tool_call("c1", "plan", SUBMIT), MockProvider::text("OK.")]).await;
     h.send("Submit.").await;
     assert_eq!(h.session.state(), "idle");
-    assert_eq!(h.last_tool_result(1), "Error: There is no plan to submit. Write it with the plan tool first.");
+    assert_eq!(h.last_tool_result(1), "Error: There is no plan to submit. Write it first (action \"write\").");
     assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
 }
 
@@ -227,7 +230,7 @@ async fn a_mode_switch_during_review_applies_to_the_next_message() {
         "plan",
         None,
         vec![
-            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a")), ("c2", "submit_plan", "{}")]),
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a")), ("c2", "plan", SUBMIT)]),
             MockProvider::tool_call("c3", "user_edit", &edit),
             MockProvider::text("Done."),
         ],
@@ -254,7 +257,7 @@ async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
         "code",
         None,
         vec![
-            MockProvider::tool_calls(&[("c1", "plan", &write("# Fix the bug\n1. Patch it")), ("c2", "submit_plan", r#"{"summary": "Ready."}"#)]),
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Fix the bug\n1. Patch it")), ("c2", "plan", r#"{"submit": true, "summary": "Ready."}"#)]),
             MockProvider::text("Implementing step 1."),
         ],
     )
@@ -283,7 +286,7 @@ async fn change_request_in_code_mode_resumes_in_code_mode_with_feedback() {
         "changes_code",
         "code",
         None,
-        vec![MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "submit_plan", "{}")]), MockProvider::text("Revising in code mode.")],
+        vec![MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "plan", SUBMIT)]), MockProvider::text("Revising in code mode.")],
     )
     .await;
     h.send("Plan it.").await;
@@ -304,7 +307,7 @@ async fn ask_user_in_the_same_response_defers_submit() {
         "defer",
         "plan",
         None,
-        vec![MockProvider::tool_call("c1", "plan", &write("# Plan")), MockProvider::tool_calls(&[("c2", "submit_plan", "{}"), ("c3", "ask_user", &ask)])],
+        vec![MockProvider::tool_call("c1", "plan", &write("# Plan")), MockProvider::tool_calls(&[("c2", "plan", SUBMIT), ("c3", "ask_user", &ask)])],
     )
     .await;
     h.send("Plan it.").await;
@@ -312,6 +315,77 @@ async fn ask_user_in_the_same_response_defers_submit() {
     let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
     assert_eq!((row.tool_call_id.as_str(), row.kind()), ("c3", None), "the question is asked first");
     assert_eq!(h.stored_result("c2").await, SUBMIT_DEFERRED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn one_call_writes_and_submits() {
+    let call = json!({"action": "write", "content": "# Ship it\n1. a", "submit": true, "summary": "First draft."}).to_string();
+    let h = harness("write_and_submit", "plan", None, vec![MockProvider::tool_call("c1", "plan", &call), MockProvider::text("Implementing.")]).await;
+    h.send("Plan it.").await;
+
+    assert_eq!(h.session.state(), "waiting_input");
+    let rel = format!(".agents/plans/ship-it-{}.md", h.id8());
+    assert_eq!(std::fs::read_to_string(h.ws.join(&rel)).unwrap(), "# Ship it\n1. a\n");
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.tool_call_id.as_str(), row.plan_revision()), ("c1", Some(1)));
+    assert_eq!(row.questions()[0]["question"], "Review plan revision 1. First draft.");
+
+    h.review(ReviewDecision::Approve, "Approve").await;
+    assert_eq!(h.mode().await, "code");
+    assert!(h.last_tool_result(1).starts_with("The user approved plan revision 1."));
+}
+
+/// Before the merge, a refused `plan` write and a `submit_plan` in the same
+/// response still put the stale revision up for review.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_write_opens_no_review() {
+    let call = json!({"action": "write", "content": "# P\n1. mine", "submit": true}).to_string();
+    let h = harness(
+        "refused_submit",
+        // Code mode, so the stand-in for the user's editor may run.
+        "code",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &write("# P\n1. a")),
+            MockProvider::tool_call("c2", "user_edit", &json!({"content": "# P\n1. a (user)"}).to_string()),
+            MockProvider::tool_call("c3", "plan", &call),
+            MockProvider::text("I'll merge their edit."),
+        ],
+    )
+    .await;
+    h.send("Plan.").await;
+
+    assert!(h.last_tool_result(3).starts_with("Error: The user edited the plan since you last saw it"), "{}", h.last_tool_result(3));
+    assert_eq!(h.session.state(), "idle");
+    assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_deferred_submission_still_saves() {
+    let ask = json!({"questions": [{"question": "Which database?", "header": "DB"}]}).to_string();
+    let call = json!({"action": "write", "content": "# Plan\n1. a", "submit": true}).to_string();
+    let h = harness("defer_saves", "plan", None, vec![MockProvider::tool_calls(&[("c1", "plan", &call), ("c2", "ask_user", &ask)])]).await;
+    h.send("Plan it.").await;
+
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.tool_call_id.as_str(), row.kind()), ("c2", None));
+    assert_eq!(plan::sync(&h.data_dir()).unwrap().content, "# Plan\n1. a");
+    let result = h.stored_result("c1").await;
+    assert!(result.starts_with(&format!("{SUBMIT_DEFERRED}\nPlan saved as revision 1 ")), "{result}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn merged_submissions_save_in_order_and_the_last_opens_the_review() {
+    let first = json!({"action": "write", "content": "# Plan\n1. a", "submit": true}).to_string();
+    let second = json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. b"}], "submit": true}).to_string();
+    let h = harness("merge_saves", "plan", None, vec![MockProvider::tool_calls(&[("c1", "plan", &first), ("c2", "plan", &second)])]).await;
+    h.send("Plan it.").await;
+
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.tool_call_id.as_str(), row.plan_revision()), ("c2", Some(2)));
+    assert_eq!(plan::sync(&h.data_dir()).unwrap().content, "# Plan\n1. b");
+    let result = h.stored_result("c1").await;
+    assert!(result.starts_with(&format!("{SUBMIT_MERGED}\nPlan saved as revision 1 ")), "{result}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

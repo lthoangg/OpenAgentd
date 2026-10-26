@@ -413,4 +413,17 @@ describe('AssistantTurn — reader mode, submit_plan', () => {
 
     expect(rendered('submit')).toBeNull()
   })
+
+  it('keeps a plan call with submit waiting for review out of the fold', () => {
+    useAgentStore.setState({
+      sessionId: 's-1',
+      pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] },
+      resolvedQuestions: {},
+    })
+    const planSubmit: ContentBlock = { ...submit(PLACEHOLDER), toolName: 'plan', toolArgs: '{"action":"write","content":"# P","submit":true}' }
+
+    renderTurn([read, planSubmit])
+
+    expect(rendered('submit')).not.toBeNull()
+  })
 })

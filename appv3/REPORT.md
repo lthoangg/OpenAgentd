@@ -652,11 +652,15 @@ explicitly.
 - **Session plan and plan review** (`agent/src/plan.rs`,
   `agent/src/tools/plan.rs`; tested there, in `agent/tests/plan_review.rs`,
   the summarization hook and `api/tests/http_api.rs`). v2 has none of this.
-  - **Tools.** The lead gets two session-injected tools, defined in
+  - **Tools.** The lead gets one session-injected tool, defined in
     `crates/tools/data/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
-    exact-match replacements; works in both modes) and `submit_plan`
-    (works in both modes; in Code mode its description limits it to when
-    the user asks for a review). Agent files cannot claim either name. The
+    exact-match replacements, and/or `submit: true` with an optional
+    `summary`; works in both modes, and in Code mode its description limits
+    submitting to when the user asks for a review). A call that both saves
+    and submits opens no review when the save fails. Until v3.32.0 the review
+    was a separate `submit_plan` tool; the name stays reserved, agent files
+    listing it are skipped like other former names, a call to it is told to
+    use `plan`, and the web still renders its old cards. Agent files cannot claim either name. The
     `<proposed_plan>` tag is no longer captured, detected or acted on; old
     transcripts still render it as a read-only card.
   - **Where the plan lives.** In a project (`coding`) workspace the first
@@ -684,7 +688,7 @@ explicitly.
     moved on). `DELETE` returns 409 while a review is open and otherwise
     detaches: it removes the state file and any data-folder `plan.md` but
     keeps a workspace plan file.
-  - **Review.** `submit_plan` opens a `pending_questions` row whose payload
+  - **Review.** `plan` with `submit: true` opens a `pending_questions` row whose payload
     adds `kind: "plan_review"` and `plan_revision` (extra JSON keys, no
     schema change), and `question_asked` plus the pending-question response
     carry both fields. The answer route takes one string of at most 8,000
@@ -705,7 +709,8 @@ explicitly.
     that missed the live frame (a reattach, a feed that went quiet) otherwise
     showed the agent waiting with no card.
   - **Mode notes.** The Plan-mode note is versioned (`version 3` since
-    v3.21.0: reviewer-shaped plans with an Appendix and visuals); a session
+    v3.21.0: reviewer-shaped plans with an Appendix and visuals; `version 4`
+    since v3.32.0: submit with `plan` and `submit: true`); a session
     whose last Plan-mode note is older gets the new instructions once, and a
     version-1 note also gets a line saying they replace the `<proposed_plan>`
     ones.

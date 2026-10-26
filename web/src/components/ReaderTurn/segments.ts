@@ -15,12 +15,12 @@
  *
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
- * An ``ask_user`` or ``submit_plan`` card stays out only while it waits on the
+ * An ``ask_user`` or plan review card stays out only while it waits on the
  * user; once answered or closed it is one more step of the work.
  */
 import type { ContentBlock } from '@/api/types'
 import { isAgentReport } from '@/utils/turns'
-import { canonicalToolName } from '@/utils/tool-names'
+import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
 
 import { patchFileStats } from '../ToolCall/diffUtils'
 import { isFailedResult } from '../ToolCall/toolResultStatus'
@@ -31,17 +31,19 @@ export type ReaderSegment =
   | { kind: 'work'; indices: number[] }
   | { kind: 'block'; index: number }
 
-/** Whether an ``ask_user`` / ``submit_plan`` block's card still waits on the user. */
+/** Whether an ``ask_user`` / plan review block's card still waits on the user. */
 export type AwaitsUser = (block: ContentBlock) => boolean
 
-/** Tools that pause the turn on the user; see ``useQuestionAwaitsUser``. */
-const USER_GATED_TOOLS = new Set(['ask_user', 'submit_plan'])
+/** Calls that pause the turn on the user; see ``useQuestionAwaitsUser``. */
+function isUserGated(block: ContentBlock): boolean {
+  return block.toolName === 'ask_user' || isPlanSubmission(block.toolName, block.toolArgs)
+}
 
 function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   if (block.type === 'thinking') return true
   if (isAgentReport(block)) return true
   if (block.type !== 'tool') return false
-  if (USER_GATED_TOOLS.has(block.toolName ?? '')) return !awaitsUser(block)
+  if (isUserGated(block)) return !awaitsUser(block)
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 

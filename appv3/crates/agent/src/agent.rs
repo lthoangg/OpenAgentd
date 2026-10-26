@@ -23,17 +23,23 @@ pub const MAX_CONCURRENT_TOOLS: usize = 10;
 const CANCELLED_OUTPUT_MAX_BYTES: usize = 16_384;
 pub const ASK_USER: &str = "ask_user";
 pub const ASK_LEAD: &str = "ask_lead";
-pub const SUBMIT_PLAN: &str = crate::tools::plan::SUBMIT_PLAN_TOOL;
+pub const PLAN: &str = crate::tools::plan::PLAN_TOOL;
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
-pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call submit_plan again after they answer.";
-pub const SUBMIT_MERGED: &str = "Merged into your other submit_plan call.";
+pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call plan with submit: true after they answer.";
+pub const SUBMIT_MERGED: &str = "Merged into your later plan submission in this response.";
 /// Turn metadata key: a scheduled task started this turn, so nobody is there
-/// to answer `ask_user` or review `submit_plan`. Both stay listed (the tool
-/// definitions are part of the cached prompt prefix) and refuse when called.
+/// to answer `ask_user` or review a plan. Both tools stay listed (the tool
+/// definitions are part of the cached prompt prefix): `ask_user` refuses,
+/// and `plan` saves without opening a review.
 pub const UNATTENDED_META: &str = "unattended";
 
-fn waits_on_a_person(tool: &str) -> bool {
-    matches!(tool, ASK_USER | SUBMIT_PLAN)
+/// A `plan` call that also submits the plan for review.
+fn submits_plan(call: &ToolCall) -> bool {
+    call.function.name == PLAN && crate::tools::plan::submits(&call.function.arguments)
+}
+
+fn waits_on_a_person(call: &ToolCall) -> bool {
+    call.function.name == ASK_USER || submits_plan(call)
 }
 
 fn unattended_refusal(tool: &str) -> String {
@@ -47,7 +53,7 @@ pub const TRUNCATED_REPLY_NOTICE: &str =
     "Error: Your response was cut off because you exceeded the maximum output token limit (max_tokens). Please continue your response from where you left off.";
 
 /// Tool names only the session injects; an agent config cannot claim them.
-const RESERVED_TOOLS: [&str; 4] = [ASK_USER, ASK_LEAD, crate::tools::plan::PLAN_TOOL, SUBMIT_PLAN];
+const RESERVED_TOOLS: [&str; 4] = [ASK_USER, ASK_LEAD, PLAN, crate::tools::plan::LEGACY_SUBMIT_PLAN_TOOL];
 
 #[derive(Clone)]
 pub struct Agent {
@@ -347,7 +353,8 @@ impl Agent {
             let mode = mode.clone();
             async move {
                 match mode {
-                    _ if unattended && waits_on_a_person(&call.function.name) => Ok((unattended_refusal(&call.function.name), (None, None))),
+                    // `plan` handles its own unattended submit (it still saves).
+                    _ if unattended && call.function.name == ASK_USER => Ok((unattended_refusal(&call.function.name), (None, None))),
                     Some(m) if !tool_allowed_in_mode(&m, &call.function.name) => Ok((format!("Error: Tool '{}' is unavailable in Plan mode.", call.function.name), (None, None))),
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
@@ -673,11 +680,11 @@ impl Agent {
             // ── _dispatch_tools ──
             tracing::info!("tool_dispatch agent={} count={}", self.name, tc_list.len());
             // Calls that pause the turn run last, one at a time. In a turn
-            // nobody is watching, `ask_user` and `submit_plan` only refuse,
-            // so they run with the rest.
+            // nobody is watching, `ask_user` refuses and a submitting `plan`
+            // only saves, so they run with the rest.
             let unattended = state.metadata.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
             let (pausing_calls, other_calls): (Vec<ToolCall>, Vec<ToolCall>) =
-                tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && waits_on_a_person(&tc.function.name)));
+                tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && waits_on_a_person(tc)));
             let meta = state.metadata.clone();
             let mut base_ctx = base_ctx.clone();
             if tc_list.iter().any(|tc| tc.function.name == "skill") {
@@ -756,9 +763,10 @@ impl Agent {
             } else {
                 // ── _dispatch_question ──
                 // A question wins over a plan submission: the answer may
-                // change the plan, so the submission waits for it.
-                let (submit_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(|tc| tc.function.name == SUBMIT_PLAN);
-                let primary = if let Some(first) = ask_calls.first() {
+                // change the plan, so the submission waits for it. Of several
+                // submissions the last opens the review.
+                let (submit_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(submits_plan);
+                let (held, held_reason, primary) = if let Some(first) = ask_calls.first() {
                     let mut primary = first.clone();
                     let dups = &ask_calls[1..];
                     if !dups.is_empty() {
@@ -767,16 +775,21 @@ impl Agent {
                             state.messages.push(tool_msg(tc, ASK_MERGED_INTO_PRIMARY));
                         }
                     }
-                    for tc in &submit_calls {
-                        state.messages.push(tool_msg(tc, SUBMIT_DEFERRED));
-                    }
-                    primary
+                    (submit_calls, SUBMIT_DEFERRED, primary)
                 } else {
-                    for tc in &submit_calls[1..] {
-                        state.messages.push(tool_msg(tc, SUBMIT_MERGED));
-                    }
-                    submit_calls[0].clone()
+                    let mut submits = submit_calls;
+                    let last = submits.pop().expect("a pausing call");
+                    (submits, SUBMIT_MERGED, last)
                 };
+                // A held-back submission still saves its change, in order.
+                for tc in &held {
+                    crate::tools::plan::hold_submit(&meta, &tc.id, held_reason);
+                    let text = match self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, tc, &sem, None).await {
+                        Ok(r) => r.text,
+                        Err(_) => held_reason.to_string(),
+                    };
+                    state.messages.push(tool_msg(tc, &text));
+                }
                 Self::sync(opts.checkpointer, &ctx, &mut state).await;
                 match self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem, None).await {
                     Err(Suspension::Question { question_id, session_id }) => {

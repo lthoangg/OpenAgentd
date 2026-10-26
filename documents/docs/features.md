@@ -314,8 +314,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and writes a plan for you to review, while the runtime
   blocks changes to project files and permits read-only inspection and testing via shell.
-  The agent writes its plan with the `plan` tool and submits it with
-  `submit_plan` (in either Plan or Code mode), which pauses the turn for review in the **Plan** tab of the
+  The agent writes its plan with the `plan` tool and submits it with the same
+  tool (`submit: true`, in either Plan or Code mode; one call can save and
+  submit, and a save that fails submits nothing — it was a separate
+  `submit_plan` tool before `[v3.32.0]`), which pauses the turn for review in the **Plan** tab of the
   review dock (full screen on mobile; it opens by itself on desktop). The tab
   shows the rendered plan and its status, and offers **Approve** and
   **Request changes**. Select plan text and choose **Comment** to attach a

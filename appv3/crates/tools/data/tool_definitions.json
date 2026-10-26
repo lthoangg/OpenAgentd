@@ -494,17 +494,18 @@
     "type": "function",
     "function": {
       "name": "plan",
-      "description": "Write or edit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.agents/plans/`). Draft and revise it in Plan mode, then call submit_plan. In Code mode, change it only when the user changes the plan's scope, and call submit_plan only when the user asks to review it. The user may edit it too; you are shown their changes.",
+      "description": "Write, edit, or submit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.agents/plans/`). Draft and revise it in Plan mode, then submit it with `submit: true`, alone or on the final write or edit. Submitting pauses your turn until the user answers: on approval you implement the plan (switching to Code mode); otherwise you address their feedback and submit again. Never submit in the same response as a question to the user. In Code mode, change the plan only when the user changes its scope, and submit only when the user asks for a review. The user may edit it too; you are shown their changes.",
       "parameters": {
         "type": "object",
         "properties": {
           "action": {
-            "description": "'write' replaces the whole plan with `content`; 'edit' applies `edits` to the current plan.",
+            "description": "'write' replaces the whole plan with `content`; 'edit' applies `edits` to the current plan. Omit to submit it unchanged.",
             "enum": [
               "write",
               "edit"
             ],
-            "type": "string"
+            "type": "string",
+            "default": null
           },
           "content": {
             "description": "The full plan in Markdown, starting with a `# ` title (required for 'write').",
@@ -535,24 +536,14 @@
             "minItems": 1,
             "type": "array",
             "default": null
-          }
-        },
-        "required": [
-          "action"
-        ]
-      }
-    }
-  },
-  "submit_plan": {
-    "type": "function",
-    "function": {
-      "name": "submit_plan",
-      "description": "Submit the session plan for the user's review. Save it with the plan tool first. In Code mode, call it only when the user asks to review the plan. Your turn pauses until the user answers: on approval you implement the plan (switching to Code mode if in Plan mode); otherwise you get their feedback to address before submitting again. Do not ask the user a question in the same response.",
-      "parameters": {
-        "type": "object",
-        "properties": {
+          },
+          "submit": {
+            "description": "Submit the plan for review after saving any change; a failed change submits nothing.",
+            "type": "boolean",
+            "default": false
+          },
           "summary": {
-            "description": "Optional one-line note for the reviewer, e.g. what changed since the last revision.",
+            "description": "With `submit`: optional one-line note for the reviewer, e.g. what changed since the last revision.",
             "maxLength": 600,
             "type": "string",
             "default": null

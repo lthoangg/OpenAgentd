@@ -806,7 +806,7 @@ export interface PendingQuestionResponse {
   tool_call_id: string
   questions: QuestionItem[]
   created_at: string
-  /** ``plan_review`` for a ``submit_plan`` review; absent for ``ask_user``. */
+  /** ``plan_review`` for a plan review (``plan`` with ``submit: true``); absent for ``ask_user``. */
   kind?: string | null
   plan_revision?: number | null
 }
@@ -821,7 +821,7 @@ export interface PendingQuestion {
   sessionId: string
   toolCallId: string
   questions: QuestionItem[]
-  /** ``plan_review`` when the lead waits on a plan review (``submit_plan``). */
+  /** ``plan_review`` when the lead waits on a plan review (``plan`` with ``submit: true``). */
   kind?: 'plan_review'
   /** The plan revision the review was opened for. */
   planRevision?: number

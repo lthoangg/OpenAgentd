@@ -41,12 +41,10 @@ import { TOOL_CHIP_CLASS } from './chipStyles'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
-import { canonicalToolName } from '@/utils/tool-names'
+import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
-/** Matches ``appv3_agent::agent::SUBMIT_PLAN``. */
-const SUBMIT_PLAN = 'submit_plan'
 /** Matches ``appv3_agent::tools::plan::PLAN_TOOL``. */
 const PLAN_TOOL = 'plan'
 const WORKSPACE_TOOL = 'workspace'
@@ -396,8 +394,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   if (name === ASK_USER) {
     return <AskUser toolCallId={toolCallId} args={args} result={result} />
   }
-  // ``submit_plan`` is reviewed in the Plan tab; its card records the outcome.
-  if (name === SUBMIT_PLAN) {
+  // A plan submission is reviewed in the Plan tab; its card records the outcome.
+  if (isPlanSubmission(name, args)) {
     return <PlanReviewCard toolCallId={toolCallId} args={args} result={result} done={done} />
   }
 

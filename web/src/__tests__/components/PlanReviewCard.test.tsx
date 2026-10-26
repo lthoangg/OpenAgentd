@@ -160,13 +160,25 @@ describe('PlanReviewCard', () => {
     render(
       <PlanReviewCard
         toolCallId="call-1"
-        result="Not submitted: this response also asks the user a question. Call submit_plan again after they answer."
+        result={'Not submitted: this response also asks the user a question. Call plan with submit: true after they answer.\nPlan saved as revision 1 (2 lines) at .agents/plans/p.md.'}
         done
       />,
     )
 
     expect(screen.getByText('Not submitted — the agent asked a question first')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('shows a submit a scheduled run saved without a review', () => {
+    render(
+      <PlanReviewCard
+        toolCallId="call-1"
+        result={'Not submitted for review: a scheduled task started this turn, so nobody is there to review it. Decide on your own and explain your choices in your final reply.\nPlan saved as revision 1 (1 line) at .agents/plans/p.md.'}
+        done
+      />,
+    )
+
+    expect(screen.getByText('Not submitted — a scheduled task started this turn')).toBeTruthy()
   })
 
   it('shows a failed submit', () => {
@@ -202,13 +214,16 @@ describe('planReviewFromResult', () => {
     expect(planReviewFromResult(result)).toEqual({ kind: 'approved' })
   })
 
-  it('reads a change request in code mode', () => {
+  it('reads a change request in code mode, before and after the tools merged', () => {
     const result =
       'The user requested changes to plan revision 2:\n\nDrop step 2.\n\nAddress every point, update the plan with the `plan` tool, then call `submit_plan` again.'
     expect(planReviewFromResult(result)).toEqual({
       kind: 'changes',
       feedback: 'Drop step 2.',
     })
+    const merged =
+      'The user requested changes to plan revision 2:\n\nDrop step 2.\n\nAddress every point, update the plan with the `plan` tool, then submit it again with `submit: true`.'
+    expect(planReviewFromResult(merged)).toEqual({ kind: 'changes', feedback: 'Drop step 2.' })
   })
 
   it('reads a change request without feedback', () => {
@@ -221,6 +236,9 @@ describe('planReviewFromResult', () => {
   it('reads dismissed, merged and expired closings', () => {
     expect(planReviewFromResult('Question(s) being dismissed.')).toEqual({ kind: 'closed', reason: 'dismissed' })
     expect(planReviewFromResult('Merged into your other submit_plan call.')).toEqual({ kind: 'merged' })
+    expect(planReviewFromResult('Merged into your later plan submission in this response.\nPlan saved as revision 1 (1 line) at p.md.')).toEqual({
+      kind: 'merged',
+    })
     expect(planReviewFromResult('This question is no longer relevant and was discarded.')).toEqual({ kind: 'closed', reason: 'expired' })
   })
 })

@@ -19,4 +19,12 @@ fn main() {
         ),
     )
     .expect("failed to build Tauri application");
+
+    // iOS: `widgets.rs` calls `openagentd_widget_write`, which lives in the
+    // Swift bridge compiled into the Xcode app, not in this crate. The
+    // staticlib is linked there, so the symbol resolves; the cdylib is only
+    // for Android and would otherwise fail to link on iOS.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios") {
+        println!("cargo:rustc-cdylib-link-arg=-Wl,-undefined,dynamic_lookup");
+    }
 }

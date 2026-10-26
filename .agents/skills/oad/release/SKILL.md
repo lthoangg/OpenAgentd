@@ -82,8 +82,9 @@ gh pr create --base main --title "<title>" --body "<bullets>"
   DRY_RUN=1 make -C mobile android-release             # build + sign APK, no upload
   ```
 
-  `DRY_RUN=1` runs the whole build and the checks, but uploads nothing, and it works
-  before the tag exists. Run them one after the other (both touch `mobile/src-tauri`).
+  `DRY_RUN=1` runs the whole build and the checks, but uploads nothing. Before the tag
+  exists it skips the tag and release checks with a warning. Run them one after the
+  other (both touch `mobile/src-tauri`).
   If either fails, fix it on the PR branch before merging. Do not merge on a build
   that only CI has checked.
 - Read review comments (`gh pr view <n> --comments`), fix valid ones on the branch,

@@ -8,7 +8,10 @@
 # the IPA matches the published source.
 #
 # DRY_RUN=1 runs every check and writes dist/source.json, but only prints
-# the `gh` upload commands.
+# the `gh` upload commands. Before `release.yml` has created the tag, it
+# skips the tag and release checks with a warning and writes the feed with
+# placeholder notes, so the build can be checked while the version PR's CI
+# runs.
 
 set -euo pipefail
 
@@ -55,17 +58,24 @@ upload() {
 command -v gh >/dev/null 2>&1 || die "GitHub CLI 'gh' is required"
 [ -z "$(git status --porcelain)" ] || die "working tree is not clean"
 git fetch --tags --quiet origin
-tag_commit="$(git rev-parse --verify --quiet "$TAG^{commit}")" || die "tag $TAG does not exist (run release.yml first)"
-if [ "$(git rev-parse HEAD)" != "$tag_commit" ]; then
-  # ALLOW_AFTER_TAG=1: ship a build fix made after tagging. HEAD must still
-  # descend from the tag, and the release notes must say the IPA is newer.
-  if [ "${ALLOW_AFTER_TAG:-0}" = "1" ] && git merge-base --is-ancestor "$tag_commit" HEAD; then
-    echo "publish-ipa: warning: HEAD is ahead of $TAG; the IPA is built from $(git rev-parse --short HEAD)" >&2
-  else
-    die "HEAD is not $TAG; check out the tagged commit and rebuild"
+released=1
+if tag_commit="$(git rev-parse --verify --quiet "$TAG^{commit}")"; then
+  if [ "$(git rev-parse HEAD)" != "$tag_commit" ]; then
+    # ALLOW_AFTER_TAG=1: ship a build fix made after tagging. HEAD must still
+    # descend from the tag, and the release notes must say the IPA is newer.
+    if [ "${ALLOW_AFTER_TAG:-0}" = "1" ] && git merge-base --is-ancestor "$tag_commit" HEAD; then
+      echo "publish-ipa: warning: HEAD is ahead of $TAG; the IPA is built from $(git rev-parse --short HEAD)" >&2
+    else
+      die "HEAD is not $TAG; check out the tagged commit and rebuild"
+    fi
   fi
+  gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || die "GitHub release $TAG does not exist"
+elif [ "$DRY_RUN" = "1" ]; then
+  echo "publish-ipa: warning: tag $TAG does not exist yet; skipping the tag and release checks" >&2
+  released=0
+else
+  die "tag $TAG does not exist (run release.yml first)"
 fi
-gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || die "GitHub release $TAG does not exist"
 [ -f "$IPA" ] && [ -f "$IPA.sha256" ] || die "$IPA or its .sha256 is missing (run 'make ios-ipa')"
 (cd "$DIST_DIR" && shasum -a 256 -c "$IPA_NAME.sha256" >/dev/null) || die "$IPA does not match its .sha256"
 
@@ -76,7 +86,11 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 gh release download "$ROLLING_TAG" --repo "$REPO" --pattern source.json --dir "$work" >/dev/null 2>&1 \
   || echo "publish-ipa: no previous source.json on $ROLLING_TAG; starting a new feed"
-gh release view "$TAG" --repo "$REPO" --json body -q .body > "$work/notes.md"
+if [ "$released" = "1" ]; then
+  gh release view "$TAG" --repo "$REPO" --json body -q .body > "$work/notes.md"
+else
+  echo "Release notes for $TAG (not released yet)." > "$work/notes.md"
+fi
 
 python3 ../scripts/make_sidestore_source.py \
   --ipa "$IPA" \

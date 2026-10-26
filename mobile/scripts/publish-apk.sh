@@ -9,7 +9,9 @@
 # debug-signed upload would strand every user on their next update.
 #
 # DRY_RUN=1 runs every check (a debug signature only warns) and prints the
-# `gh` upload commands instead of running them.
+# `gh` upload commands instead of running them. Before `release.yml` has
+# created the tag, it skips the tag and release checks with a warning, so the
+# build can be checked while the version PR's CI runs.
 
 set -euo pipefail
 
@@ -54,9 +56,14 @@ upload() {
 command -v gh >/dev/null 2>&1 || die "GitHub CLI 'gh' is required"
 [ -z "$(git status --porcelain)" ] || die "working tree is not clean"
 git fetch --tags --quiet origin
-tag_commit="$(git rev-parse --verify --quiet "$TAG^{commit}")" || die "tag $TAG does not exist (run release.yml first)"
-[ "$(git rev-parse HEAD)" = "$tag_commit" ] || die "HEAD is not $TAG; check out the tagged commit and rebuild"
-gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || die "GitHub release $TAG does not exist"
+if tag_commit="$(git rev-parse --verify --quiet "$TAG^{commit}")"; then
+  [ "$(git rev-parse HEAD)" = "$tag_commit" ] || die "HEAD is not $TAG; check out the tagged commit and rebuild"
+  gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || die "GitHub release $TAG does not exist"
+elif [ "$DRY_RUN" = "1" ]; then
+  echo "publish-apk: warning: tag $TAG does not exist yet; skipping the tag and release checks" >&2
+else
+  die "tag $TAG does not exist (run release.yml first)"
+fi
 [ -f "$APK" ] && [ -f "$APK.sha256" ] || die "$APK or its .sha256 is missing (run 'make android-apk')"
 (cd "$DIST_DIR" && shasum -a 256 -c "$APK_NAME.sha256" >/dev/null) || die "$APK does not match its .sha256"
 

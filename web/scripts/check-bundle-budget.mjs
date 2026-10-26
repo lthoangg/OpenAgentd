@@ -93,7 +93,10 @@ if (import.meta.main) {
   // Goals (the Goal dock tab, the claim cards, the goal turn divider, the
   // replace dialog and Settings → Goals), all in the index chunk, reached
   // 2.627 MB / 800.9 kB with a 1.955 MB index chunk (v3.32.0).
-  const limits = { eagerBytes: 2_630_000, eagerGzipBytes: 803_000, largestChunkBytes: 1_958_000 }
+  // Keep going from plan review, workspace file links in Markdown previews,
+  // collapsed subagent lists and per-file Git diffs added 11 kB / 3.5 kB gzip:
+  // 2.638 MB / 804.5 kB with a 1.966 MB index chunk (v3.32.0).
+  const limits = { eagerBytes: 2_641_000, eagerGzipBytes: 807_000, largestChunkBytes: 1_969_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

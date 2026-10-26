@@ -280,6 +280,38 @@ async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
     assert_eq!(plan::sync(&h.data_dir()).unwrap().approved_revision, Some(1));
 }
 
+/// After an approved plan, different work gets its own plan: a `write` over
+/// the approved one is refused once, and `new` keeps it and starts afresh.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn different_work_after_approval_starts_a_new_plan() {
+    let new_b = json!({"action": "new", "content": "# Feature B\n1. b", "submit": true}).to_string();
+    let h = harness(
+        "new_plan",
+        "plan",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &json!({"action": "write", "content": "# Feature A\n1. a", "submit": true}).to_string()),
+            MockProvider::text("Implemented A."),
+            MockProvider::tool_call("c2", "plan", &write("# Feature B\n1. b")),
+            MockProvider::tool_call("c3", "plan", &new_b),
+        ],
+    )
+    .await;
+    h.send("Plan feature A.").await;
+    h.review(ReviewDecision::Approve, "Approve").await;
+    let a = format!(".agents/plans/feature-a-{}.md", h.id8());
+
+    h.send("Now plan feature B.").await;
+    assert!(h.stored_result("c2").await.contains("For different work, use action \"new\""));
+    assert_eq!(h.session.state(), "waiting_input");
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
+    let doc = plan::sync(&h.data_dir()).unwrap();
+    assert_eq!(doc.workspace_path(), Some(format!(".agents/plans/feature-b-{}.md", h.id8())));
+    assert_eq!((doc.content.as_str(), doc.revision, doc.approved_revision), ("# Feature B\n1. b", 1, None));
+    assert_eq!(std::fs::read_to_string(h.ws.join(&a)).unwrap(), "# Feature A\n1. a\n", "the approved plan is kept");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn change_request_in_code_mode_resumes_in_code_mode_with_feedback() {
     let h = harness(

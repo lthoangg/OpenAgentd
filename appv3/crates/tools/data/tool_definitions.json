@@ -494,21 +494,22 @@
     "type": "function",
     "function": {
       "name": "plan",
-      "description": "Write, edit, or submit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.agents/plans/`). Draft and revise it in Plan mode, then submit it with `submit: true`, alone or on the final write or edit. Submitting pauses your turn until the user answers: on approval you implement the plan (switching to Code mode); otherwise you address their feedback and submit again. Never submit in the same response as a question to the user. In Code mode, change the plan only when the user changes its scope, and submit only when the user asks for a review. The user may edit it too; you are shown their changes.",
+      "description": "Write, edit, or submit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.agents/plans/`). Draft and revise it in Plan mode, then submit it with `submit: true`, alone or on the final write or edit. Submitting pauses your turn until the user answers: on approval you implement the plan (switching to Code mode); otherwise you address their feedback and submit again. Never submit in the same response as a question to the user. For work the current plan does not cover, start a fresh plan with `new` instead of overwriting it. In Code mode, change the plan only when the user changes its scope, and submit only when the user asks for a review. The user may edit it too; you are shown their changes.",
       "parameters": {
         "type": "object",
         "properties": {
           "action": {
-            "description": "'write' replaces the whole plan with `content`; 'edit' applies `edits` to the current plan. Omit to submit it unchanged.",
+            "description": "'write' replaces the whole plan with `content`; 'edit' applies `edits` to the current plan; 'new' starts a fresh plan from `content`, keeping the current one's file. Omit to submit it unchanged.",
             "enum": [
               "write",
-              "edit"
+              "edit",
+              "new"
             ],
             "type": "string",
             "default": null
           },
           "content": {
-            "description": "The full plan in Markdown, starting with a `# ` title (required for 'write').",
+            "description": "The full plan in Markdown, starting with a `# ` title (required for 'write' and 'new').",
             "type": "string",
             "default": null
           },

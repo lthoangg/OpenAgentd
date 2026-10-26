@@ -779,8 +779,8 @@ explicitly.
   `agent/src/tools/plan.rs`; tested there, in `agent/tests/plan_review.rs`,
   the summarization hook and `api/tests/http_api.rs`). v2 has none of this.
   - **Tools.** The lead gets one session-injected tool, defined in
-    `crates/tools/data/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
-    exact-match replacements, and/or `submit: true` with an optional
+    `crates/tools/data/tool_definitions.json`: `plan` (`write`, `edit` with 1–20
+    exact-match replacements, or `new`, and/or `submit: true` with an optional
     `summary`; works in both modes, and in Code mode its description limits
     submitting to when the user asks for a review). A call that both saves
     and submits opens no review when the save fails. Until v3.32.0 the review
@@ -808,6 +808,16 @@ explicitly.
     (`extra.plan_edit_note`) with the new plan, and a `write` over unseen
     edits is refused once. A session with only a v2 `plan.md` reads as
     revision 1; its first write in a project workspace moves it.
+  - **New plan** (v3.32.0). `action: "new"` closes the current plan and
+    starts a fresh one from `content`, under the same lock: the state file
+    is removed, a workspace plan file stays where it is, and a data-folder
+    `plan.md` is renamed to the next free `plan-closed-<n>.md`. Completed and
+    cancelled tasks are cleared from the board, so `carry_note` does not take
+    the new plan for a finished one. The new plan is created as a first write
+    (new file name, revision 1, no approval). A `write` over the approved
+    revision is refused once (`write_warned` in the state), naming `new`;
+    `edit` is not guarded. The result reads "Started a new plan … The
+    previous plan stays at …", and the web refreshes the task board on it.
   - **Routes.** `GET /api/agent/sessions/{id}/plan` adds `revision`,
     `approved_revision`, `path` and `workspace_path`. New `PUT` on the same
     path saves the user's edit (`{content, base_revision}`; 409 when the plan

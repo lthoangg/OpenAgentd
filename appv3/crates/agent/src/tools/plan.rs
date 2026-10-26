@@ -1,6 +1,8 @@
 //! `plan` — the lead's session plan and its review gate.
 //!
-//! `action` writes the plan file ([`crate::plan`]) in either mode;
+//! `action` writes the plan file ([`crate::plan`]) in either mode: `write`
+//! and `edit` revise the current plan, `new` closes it (its file stays) and
+//! starts a fresh one for different work;
 //! `submit: true` then opens a plan review, a `pending_questions` row with
 //! `payload.kind = "plan_review"`, and pauses the turn like `ask_user`. The
 //! answer route closes it ([`crate::plan::resolve_review`]). A failed save
@@ -94,6 +96,7 @@ fn unstring(v: &Value) -> Value {
 enum PlanArgs {
     Write(String),
     Edit(Vec<PlanEdit>),
+    New(String),
 }
 
 /// One `plan` call: an optional change, then an optional review.
@@ -127,6 +130,7 @@ fn parse_plan_args(args: &Value) -> Result<PlanArgs, Vec<String>> {
     };
     match args.get("action").and_then(Value::as_str) {
         Some("write") => text(args.get("content"), "content").map(PlanArgs::Write).map_err(|e| vec![e]),
+        Some("new") => text(args.get("content"), "content").map(PlanArgs::New).map_err(|e| vec![e]),
         Some("edit") => {
             let raw = args.get("edits").map(unstring);
             let items = match raw {
@@ -151,7 +155,7 @@ fn parse_plan_args(args: &Value) -> Result<PlanArgs, Vec<String>> {
                 Err(errs)
             }
         }
-        _ => Err(vec!["action: Input should be 'write' or 'edit'".into()]),
+        _ => Err(vec!["action: Input should be 'write', 'edit' or 'new'".into()]),
     }
 }
 
@@ -169,6 +173,7 @@ fn save_plan(dir: &Path, target: PlanTarget, parsed: &PlanArgs, hints: bool) -> 
     let change = match parsed {
         PlanArgs::Write(body) => PlanChange::Write(body),
         PlanArgs::Edit(edits) => PlanChange::Edit(edits),
+        PlanArgs::New(body) => PlanChange::New(body),
     };
     let out = plan::save_agent(dir, target, change)?;
     let doc = &out.doc;
@@ -176,7 +181,14 @@ fn save_plan(dir: &Path, target: PlanTarget, parsed: &PlanArgs, hints: bool) -> 
         return Ok(format!("Plan unchanged (revision {}).", doc.revision));
     }
     let lines = doc.content.lines().count();
-    let mut text = format!("Plan saved as revision {} ({lines} line{}) at {}.", doc.revision, if lines == 1 { "" } else { "s" }, doc.display_path());
+    let plural = if lines == 1 { "" } else { "s" };
+    let mut text = match (parsed, &out.closed) {
+        (PlanArgs::New(_), Some(old)) => {
+            format!("Started a new plan as revision {} ({lines} line{plural}) at {}. The previous plan stays at {old}.", doc.revision, doc.display_path())
+        }
+        (PlanArgs::New(_), None) => format!("Started a new plan as revision {} ({lines} line{plural}) at {}.", doc.revision, doc.display_path()),
+        _ => format!("Plan saved as revision {} ({lines} line{plural}) at {}.", doc.revision, doc.display_path()),
+    };
     if out.included_user_edits {
         text.push_str(" This revision includes the user's edits.");
     }
@@ -298,8 +310,10 @@ mod tests {
         assert_eq!(err(json!({})), vec!["action: Field required unless submit is true"]);
         assert_eq!(err(json!({"submit": false})), vec!["action: Field required unless submit is true"]);
         assert_eq!(err(json!({"submit": 1})), vec!["submit: Input should be a valid boolean"]);
-        assert_eq!(err(json!({"action": "replace"})), vec!["action: Input should be 'write' or 'edit'"]);
+        assert_eq!(err(json!({"action": "replace"})), vec!["action: Input should be 'write', 'edit' or 'new'"]);
         assert_eq!(err(json!({"action": "write"})), vec!["content: Field required"]);
+        assert_eq!(err(json!({"action": "new"})), vec!["content: Field required"]);
+        assert!(matches!(parse_call(&json!({"action": "new", "content": "# B", "submit": true})), Ok(PlanCall { change: Some(PlanArgs::New(_)), submit: true, .. })));
         assert_eq!(err(json!({"action": "write", "submit": true, "summary": 3})), vec!["content: Field required", "summary: Input should be a valid string"]);
         assert_eq!(err(json!({"action": "edit", "edits": []})), vec!["edits: List should have 1 to 20 items, not 0"]);
         assert_eq!(err(json!({"action": "edit", "edits": [{"old": "a"}]})), vec!["edits -> 0 -> new: Field required"]);
@@ -363,6 +377,8 @@ mod tests {
         assert_eq!(edited, "Plan saved as revision 2 (2 lines) at .agents/plans/ship-it-16df61f9.md.");
         let missing = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "zzz", "new": "y"}]})), false).unwrap_err();
         assert_eq!(missing.to_string(), "edits -> 0: old text not found in the plan.");
+        let started = save_plan(&dir, ws(), &args(json!({"action": "new", "content": "# Next thing"})), false).unwrap();
+        assert_eq!(started, "Started a new plan as revision 1 (1 line) at .agents/plans/next-thing-16df61f9.md. The previous plan stays at .agents/plans/ship-it-16df61f9.md.");
     }
 
     #[test]

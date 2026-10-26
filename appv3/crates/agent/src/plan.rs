@@ -50,7 +50,7 @@ pub const PLAN_EDIT_NOTE_KEY: &str = "plan_edit_note";
 /// records progress against the plan instead of a second, lossy copy.
 pub const PLAN_SUMMARY_RULE: &str = "A `<session_plan>` note keeps this session's plan file verbatim next to this summary. Do not restate its steps: refer to them by number or title when recording progress, and record any user-requested changes to the plan. Under Open Work From the User, list only items the plan does not cover.";
 
-const CARRY_GUIDANCE: &str = "This is the session's latest plan, restated verbatim after context compaction; the summary records progress. The plan outranks the summary on scope and step order, and the task board records step status. In Code mode, continue from the first unfinished step; in Plan mode, revise it with the `plan` tool and resubmit it with `submit: true`. If the user has since redirected the work, follow the user. Change the plan with the `plan` tool only when the user changes its scope; track progress with `todo`.";
+const CARRY_GUIDANCE: &str = "This is the session's latest plan, restated verbatim after context compaction; the summary records progress. The plan outranks the summary on scope and step order, and the task board records step status. In Code mode, continue from the first unfinished step; in Plan mode, revise it with the `plan` tool and resubmit it with `submit: true`. If the user has since redirected the work, follow the user; for different work, start a fresh plan with `action: \"new\"`. Change the plan with the `plan` tool only when the user changes its scope; track progress with `todo`.";
 
 /// Every read-modify-write of a plan and its state holds this, so parallel
 /// `plan` calls and the HTTP routes never lose an update. Held only for the
@@ -84,6 +84,10 @@ struct PlanState {
     agent_revision: u64,
     #[serde(default)]
     approved_revision: Option<u64>,
+    /// The approved revision a `write` was refused over once; the next
+    /// `write` replaces it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    write_warned: Option<u64>,
 }
 
 /// The plan as it is now.
@@ -137,6 +141,8 @@ pub enum PlanError {
     EditAmbiguous(usize, usize),
     #[error("The user edited the plan since you last saw it (revision {revision}). Read {path} and apply your change with action \"edit\", or call write again to replace their version.")]
     UnseenEdits { revision: u64, path: String },
+    #[error("The user approved this plan (revision {revision}, {path}). To revise it, use action \"edit\" or call write again. For different work, use action \"new\": it keeps this plan in its file and starts a fresh one.")]
+    ApprovedPlan { revision: u64, path: String },
     #[error("The plan folder resolves outside the workspace.")]
     Escapes,
     #[error("The plan folder is inside a denied path: {0}")]
@@ -164,6 +170,8 @@ pub struct PlanEdit {
 pub enum PlanChange<'a> {
     Write(&'a str),
     Edit(&'a [PlanEdit]),
+    /// Close the current plan (its file is kept) and start a fresh one.
+    New(&'a str),
 }
 
 /// Where a first plan is created.
@@ -180,6 +188,8 @@ pub struct SaveOutcome {
     pub changed: bool,
     /// The saved revision includes user edits the agent had not seen.
     pub included_user_edits: bool,
+    /// Where the plan this change closed was kept (`New` over an existing plan).
+    pub closed: Option<String>,
 }
 
 fn sha(text: &str) -> String {
@@ -204,7 +214,7 @@ fn current(dir: &Path) -> Option<(PlanState, PathBuf)> {
     }
     let path = data_plan_path(dir);
     let text = std::fs::read_to_string(&path).ok()?;
-    Some((PlanState { path: None, root: None, revision: 1, sha256: sha(&text), agent_revision: 1, approved_revision: None }, path))
+    Some((PlanState { revision: 1, sha256: sha(&text), agent_revision: 1, ..Default::default() }, path))
 }
 
 /// Read the plan and fold in any change made outside the plan tools.
@@ -333,13 +343,51 @@ fn new_workspace_file(root: &Path, session_id: &str, denied: Option<&DeniedPaths
     Err(PlanError::Io("No free plan file name.".into()))
 }
 
+/// Stop tracking `doc` so a new plan can start. A workspace file stays where
+/// it is; a data-dir `plan.md` is kept as the next free `plan-closed-<n>.md`.
+/// Finished tasks belonged to the old plan and leave the board, or compaction
+/// would take the new plan for a finished one. Returns where the plan is kept.
+fn close_locked(dir: &Path, doc: &PlanDoc) -> Result<String, PlanError> {
+    let kept = if doc.root.is_none() && doc.path == data_plan_path(dir) {
+        let to = (1u32..).map(|n| dir.join(format!("plan-closed-{n}.md"))).find(|p| std::fs::symlink_metadata(p).is_err()).unwrap_or_else(|| dir.join("plan-closed.md"));
+        std::fs::rename(&doc.path, &to)?;
+        to.display().to_string()
+    } else {
+        doc.display_path()
+    };
+    match std::fs::remove_file(state_path(dir)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let todos = todo::todos_path(dir);
+    let store = todo::load_store(&todos);
+    let finished = store["items"].as_array().is_some_and(|items| items.iter().any(|i| matches!(i["status"].as_str(), Some("completed" | "cancelled"))));
+    if finished {
+        if let Err(e) = todo::apply(&todos, &[json!({"action": "clear", "status": "finished"})]) {
+            tracing::warn!("plan_close_todos_failed dir={} error={}", dir.display(), e);
+        }
+    }
+    tracing::info!("plan_closed dir={} revision={} kept={}", dir.display(), doc.revision, kept);
+    Ok(kept)
+}
+
 /// Save a change the agent made with the `plan` tool.
 ///
 /// A full write over user edits the agent has not seen is refused once (the
-/// refusal counts as showing them); an edit applies on top of them.
+/// refusal counts as showing them); an edit applies on top of them. A full
+/// write over the approved revision is refused once too, so different work
+/// starts a new plan (`New`) instead of overwriting the approved one.
 pub fn save_agent(dir: &Path, target: PlanTarget, change: PlanChange) -> Result<SaveOutcome, PlanError> {
     let _g = lock();
-    let existing = sync_locked(dir);
+    let mut existing = sync_locked(dir);
+    let mut closed = None;
+    if let PlanChange::New(text) = change {
+        checked_body(text)?;
+        if let Some((doc, _)) = existing.take() {
+            closed = Some(close_locked(dir, &doc)?);
+        }
+    }
     let unseen = existing.as_ref().is_some_and(|(d, _)| d.unseen_edits());
     let body = match change {
         PlanChange::Write(text) => {
@@ -348,8 +396,16 @@ pub fn save_agent(dir: &Path, target: PlanTarget, change: PlanChange) -> Result<
                 write_state(dir, &st)?;
                 return Err(PlanError::UnseenEdits { revision: doc.revision, path: doc.display_path() });
             }
-            checked_body(text)?
+            let body = checked_body(text)?;
+            let approved = |(d, s): &(PlanDoc, PlanState)| d.approved_revision == Some(d.revision) && s.write_warned != Some(d.revision) && d.content != body;
+            if let Some((doc, mut st)) = existing.clone().filter(approved) {
+                st.write_warned = Some(doc.revision);
+                write_state(dir, &st)?;
+                return Err(PlanError::ApprovedPlan { revision: doc.revision, path: doc.display_path() });
+            }
+            body
         }
+        PlanChange::New(text) => checked_body(text)?,
         PlanChange::Edit(edits) => {
             let Some((doc, _)) = &existing else { return Err(PlanError::NoPlan) };
             checked_body(&apply_edits(&doc.content, edits)?)?
@@ -392,7 +448,7 @@ pub fn save_agent(dir: &Path, target: PlanTarget, change: PlanChange) -> Result<
     write_state(dir, &st)?;
     let updated_at = std::fs::metadata(&path).and_then(|m| m.modified()).map(DateTime::<Utc>::from).unwrap_or_else(|_| Utc::now());
     let doc = PlanDoc { content: body, path, root: st.root.clone(), updated_at, revision: st.revision, agent_revision: st.agent_revision, approved_revision: st.approved_revision };
-    Ok(SaveOutcome { doc, changed: changed || moved, included_user_edits: unseen })
+    Ok(SaveOutcome { doc, changed: changed || moved, included_user_edits: unseen, closed })
 }
 
 /// Save the user's edit from the Plan panel. `base_revision` is the revision
@@ -736,6 +792,90 @@ mod tests {
         assert!(sync(&dir).is_none());
         assert!(out.doc.path.exists());
         assert!(!detach(&dir).unwrap());
+    }
+
+    #[test]
+    fn new_keeps_the_old_workspace_file_and_starts_at_revision_one() {
+        let d = tempfile::tempdir().unwrap();
+        let (dir, root) = (d.path().join("sid"), d.path().join("ws"));
+        std::fs::create_dir_all(&root).unwrap();
+        let a = save_agent(&dir, workspace(&root), PlanChange::Write("# Feature A\n1. a")).unwrap();
+        save_agent(&dir, workspace(&root), PlanChange::Edit(&[edit("1. a", "1. a done")])).unwrap();
+        mark_approved(&dir, 2);
+
+        let b = save_agent(&dir, workspace(&root), PlanChange::New("# Feature B\n1. b")).unwrap();
+        assert_eq!(b.closed.as_deref(), Some(".agents/plans/feature-a-16df61f9.md"));
+        assert_eq!(b.doc.workspace_path().as_deref(), Some(".agents/plans/feature-b-16df61f9.md"));
+        assert_eq!((b.doc.revision, b.doc.agent_revision, b.doc.approved_revision, b.changed), (1, 1, None, true));
+        assert_eq!(std::fs::read_to_string(&a.doc.path).unwrap(), "# Feature A\n1. a done\n", "the closed plan is untouched");
+        assert_eq!(sync(&dir).unwrap().content, "# Feature B\n1. b");
+
+        let again = save_agent(&dir, workspace(&root), PlanChange::New("# Feature B\n1. b2")).unwrap();
+        assert_eq!(again.doc.workspace_path().as_deref(), Some(".agents/plans/feature-b-16df61f9-2.md"), "a repeated title gets a suffix");
+    }
+
+    #[test]
+    fn new_without_a_plan_writes_the_first_one() {
+        let d = tempfile::tempdir().unwrap();
+        let out = save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# P")).unwrap();
+        assert_eq!((out.closed, out.doc.revision), (None, 1));
+        assert_eq!(save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("  ")).unwrap_err(), PlanError::Empty);
+        assert_eq!(sync(d.path()).unwrap().content, "# P", "an empty new plan closes nothing");
+    }
+
+    #[test]
+    fn new_keeps_a_chat_plan_beside_the_session() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).unwrap();
+        let b = save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# B")).unwrap();
+        let kept = d.path().join("plan-closed-1.md");
+        assert_eq!(b.closed, Some(kept.display().to_string()));
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "# A\n");
+        assert_eq!((b.doc.path.clone(), b.doc.revision), (data_plan_path(d.path()), 1));
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# C")).unwrap();
+        assert_eq!(std::fs::read_to_string(d.path().join("plan-closed-2.md")).unwrap(), "# B\n");
+    }
+
+    #[test]
+    fn new_drops_finished_tasks_only() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).unwrap();
+        let todos = todo::todos_path(d.path());
+        let create = |content: &str, status: &str| json!({"action": "create", "content": content, "status": status});
+        todo::apply(&todos, &[create("done", "completed"), create("dropped", "cancelled"), create("open", "pending")]).unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# B")).unwrap();
+        let items = todo::load_store(&todos)["items"].as_array().cloned().unwrap();
+        assert_eq!(todo::format_items(&items), "[task_3] [pending] open");
+    }
+
+    #[test]
+    fn carry_note_restates_a_new_plan_after_a_finished_one() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A\n1. Build")).unwrap();
+        todo::apply(&todo::todos_path(d.path()), &[json!({"action": "create", "content": "Build", "status": "completed"})]).unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# B\n1. Ship")).unwrap();
+        let note = carry_note(d.path()).unwrap();
+        assert!(note.contains("\n# B\n1. Ship\n</session_plan>"), "{note}");
+        assert!(!note.contains("tasks_finished"));
+    }
+
+    #[test]
+    fn a_write_over_an_approved_plan_is_refused_once() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).unwrap();
+        mark_approved(d.path(), 1);
+        assert!(save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).is_ok(), "an identical write changes nothing");
+        let err = save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# B")).unwrap_err();
+        assert!(matches!(err, PlanError::ApprovedPlan { revision: 1, .. }), "{err:?}");
+        assert!(err.to_string().contains("use action \"new\""));
+        assert_eq!(sync(d.path()).unwrap().content, "# A");
+        let second = save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# B")).unwrap();
+        assert_eq!(second.doc.revision, 2);
+        assert!(save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# C")).is_ok(), "only the approved revision is guarded");
+
+        mark_approved(d.path(), 3);
+        let edited = save_agent(d.path(), PlanTarget::DataDir, PlanChange::Edit(&[edit("C", "D")])).unwrap();
+        assert_eq!(edited.doc.content, "# D", "an edit revises without the guard");
     }
 
     #[test]

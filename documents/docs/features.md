@@ -351,6 +351,15 @@ run from the terminal (the native Rust binary since v3.0.0).
     file is kept). The Tasks tab and popover show a Plan row with its
     revision, **Open** and **Clear**, which stops using the plan in the
     session and leaves the file in place.
+  - **A new plan for new work** `[v3.32.0]` — when you move on to work the
+    current plan does not cover (for example after it was implemented), the
+    agent starts a fresh plan instead of overwriting the old one. The old
+    plan keeps its file unchanged (in a chat session it is kept as
+    `plan-closed-<n>.md` beside the session); the new one gets its own file,
+    starts at revision 1 and is not approved. Finished tasks leave the task
+    list, unfinished ones stay. A full rewrite of an approved plan is refused
+    once, so the agent chooses between revising it and starting a new one.
+    The transcript card reads **Started a new plan**.
   - **Plans written for the reviewer** `[v3.21.0]` — a plan opens with
     what you get (**Outcome**) and the choices to confirm (**Decisions**,
     each with a recommendation), shows the change (**Preview**), and lists

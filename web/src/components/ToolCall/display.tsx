@@ -216,7 +216,7 @@ function diffLines(prefix: '-' | '+', text: string): string[] {
   return text ? text.split('\n').map((line) => `${prefix} ${line}`) : []
 }
 
-// ── plan: write shows the Markdown, edit a -/+ diff of each replacement ──
+// ── plan: write and new show the Markdown, edit a -/+ diff of each replacement ──
 function planDisplay(parsed: Record<string, unknown>, done: boolean): ToolDisplay {
   if (str(parsed, 'action') === 'edit') {
     const edits = planEdits(parsed)
@@ -230,7 +230,8 @@ function planDisplay(parsed: Record<string, unknown>, done: boolean): ToolDispla
         : null,
     }
   }
-  const header = done ? 'Wrote plan' : 'Writing plan…'
+  const fresh = str(parsed, 'action') === 'new'
+  const header = fresh ? (done ? 'Started a new plan' : 'Starting a new plan…') : done ? 'Wrote plan' : 'Writing plan…'
   return { header, headerTitle: header, formattedArgs: typeof parsed.content === 'string' && parsed.content ? parsed.content : null }
 }
 

@@ -819,6 +819,18 @@ describe("ToolCall — plan display", () => {
     expect(getHeader("Plan: Editing plan…")).toBeTruthy()
   })
 
+  it("shows a new plan as its Markdown, and says it started one", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "new", content: "# Next\n\n1. Fresh step" })
+    const { rerender } = render(<ToolCall name="plan" args={args} done={false} />)
+
+    expect(getHeader("Plan: Starting a new plan…")).toBeTruthy()
+    rerender(<ToolCall name="plan" args={args} done result="Started a new plan as revision 1 (3 lines) at plan.md." />)
+    expect(getHeader("Plan: Started a new plan")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: /Expand plan details/ }))
+    expect(screen.getByText(/1\. Fresh step/)).toBeTruthy()
+  })
+
   it("opens a saved plan in the Plan tab, with no link while the call runs", () => {
     const opened: Event[] = []
     const onOpen = (event: Event) => opened.push(event)

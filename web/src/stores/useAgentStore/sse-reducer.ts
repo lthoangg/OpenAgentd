@@ -392,6 +392,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (PLAN_MUTATING_TOOLS.has(toolName)) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'plan', sessionId: sid })
+          // Starting a new plan drops the finished tasks from the board.
+          if (sid && typeof result === 'string' && result.startsWith('Started a new plan')) events.push({ kind: 'todos', sessionId: sid })
         }
         if (tool === 'team' || tool.startsWith('team_')) {
           const sid = get().sessionId

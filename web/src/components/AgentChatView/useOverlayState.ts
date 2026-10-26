@@ -62,6 +62,7 @@ import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib
 import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
+import { useBackHandler } from '@/lib/back-button'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { AttachmentTabRequest, DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
 import type { FileLightboxItem } from '../FileLightbox'
@@ -439,6 +440,14 @@ export function useOverlayState({
     toggleScheduler()
   }, [closeOtherMobileOverlays, schedulerInDock, toggleScheduler])
 
+  // A deep link (the home-screen scheduled-tasks widget) asked for the
+  // scheduler, possibly before this view mounted. Taken once, so a remount
+  // does not reopen it.
+  const schedulerOpenPending = useUIStore((s) => s.schedulerOpenPending)
+  useEffect(() => {
+    if (schedulerOpenPending && useUIStore.getState().takeSchedulerOpenRequest()) handleOpenScheduler()
+  }, [handleOpenScheduler, schedulerOpenPending])
+
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
     togglePalette()
@@ -587,6 +596,10 @@ export function useOverlayState({
     right: { id: workspacePanelOpenForSwipe ? 'workspace-panel' : 'actions', open: openRightDrawer },
     close: closeAllDrawers,
   })
+
+  // Android Back closes an open drawer before it navigates. Drawers are not
+  // keyboard layers, so they register with the Back handler directly.
+  useBackHandler(isMobile && (activeDrawer !== null || fileViewer !== null), closeAllDrawers)
 
   // Live drag offset (px) per drawer, fed to each drawer so it tracks the
   // finger. Each drawer reads only its own id; null when not being dragged.

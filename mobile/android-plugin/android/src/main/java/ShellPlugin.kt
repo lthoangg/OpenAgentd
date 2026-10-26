@@ -6,8 +6,11 @@ package app.openagentd.shell
 import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
+import android.content.res.Configuration
 import android.webkit.MimeTypeMap
+import android.webkit.WebView
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -28,9 +31,67 @@ class SecretArgs {
     var value: String? = null
 }
 
+@InvokeArg
+class WidgetArgs {
+    /** Snapshot JSON, validated by the shell's `widgets.rs`. */
+    lateinit var snapshot: String
+}
+
+@InvokeArg
+class ThemeArgs {
+    /** "light", "dark", or "system", validated by the shell's `theme.rs`. */
+    lateinit var preference: String
+}
+
 @TauriPlugin
 class ShellPlugin(private val activity: Activity) : Plugin(activity) {
+    companion object {
+        /**
+         * Whether the app's webview is up in this process. WidgetLinkActivity
+         * reads it to pick how to hand a widget's deep link to the app.
+         */
+        @Volatile
+        var webViewLoaded = false
+            private set
+    }
+
     private val secrets by lazy { KeystoreSecretStore(activity.applicationContext) }
+    private val themePrefs by lazy {
+        activity.applicationContext.getSharedPreferences("openagentd_theme", Activity.MODE_PRIVATE)
+    }
+    private var webView: WebView? = null
+
+    /** The boot page's paper tone (web/index.html) for an appearance. */
+    private fun paper(dark: Boolean): Int =
+        if (dark) 0xFF15110D.toInt() else 0xFFFAF6EC.toInt()
+
+    private fun systemIsDark(): Boolean =
+        (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+
+    /** The web UI's last theme pick, or the system appearance without one. */
+    private fun isDark(preference: String?): Boolean = when (preference) {
+        "dark" -> true
+        "light" -> false
+        else -> systemIsDark()
+    }
+
+    override fun load(webView: WebView) {
+        super.load(webView)
+        this.webView = webView
+        webViewLoaded = true
+        // Tauri applies the config's single (light) backgroundColor right
+        // after this hook. Repaint once it has, in the theme the page will
+        // paint, so a dark launch shows dark paper until the page does.
+        val dark = isDark(themePrefs.getString("preference", null))
+        webView.post { webView.setBackgroundColor(paper(dark)) }
+    }
+
+    override fun onDestroy() {
+        webViewLoaded = false
+        webView = null
+        super.onDestroy()
+    }
 
     /** Share a file from the app cache directory through the system chooser. */
     @Command
@@ -110,6 +171,58 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.resolve(result)
         } catch (ex: Exception) {
             invoke.reject(ex.message ?: "Credential store unavailable")
+        }
+    }
+
+    /** Save the home-screen widget snapshot and redraw the placed widgets. */
+    @Command
+    fun updateWidgets(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(WidgetArgs::class.java)
+            val context = activity.applicationContext
+            WidgetStore.save(context, args.snapshot)
+            Widgets.refreshAll(context)
+            invoke.resolve()
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Could not update widgets")
+        }
+    }
+
+    /**
+     * Send the app to the background, as Back does on a root activity. The
+     * web UI owns Back, so it calls this on its first screen instead of
+     * finishing the activity.
+     */
+    @Command
+    fun moveTaskToBack(invoke: Invoke) {
+        activity.runOnUiThread {
+            activity.moveTaskToBack(true)
+            invoke.resolve()
+        }
+    }
+
+    /**
+     * Match the status and navigation bar icons and the webview background
+     * to the web UI's theme, not the system's, and remember the pick for the
+     * next launch's background (see [load]).
+     */
+    @Command
+    fun setAppTheme(invoke: Invoke) {
+        val preference = try {
+            invoke.parseArgs(ThemeArgs::class.java).preference
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Invalid theme")
+            return
+        }
+        themePrefs.edit().putString("preference", preference).apply()
+        activity.runOnUiThread {
+            val dark = isDark(preference)
+            WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+            webView?.setBackgroundColor(paper(dark))
+            invoke.resolve()
         }
     }
 }

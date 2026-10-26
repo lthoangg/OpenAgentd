@@ -6,10 +6,23 @@ import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { Button } from '@/components/ui/button'
 import { getPlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { sessionsSpending } from '@/lib/active-sessions'
 import { dragSettle, noticePresence } from '@/lib/motion'
+import { queryClient } from '@/lib/query-client'
+import { queryKeys } from '@/queries'
 import { cn } from '@/lib/utils'
+import { errorMessage } from '@/utils/errors'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+/**
+ * Whether any agent is mid-turn. Restarting stops the built-in backend, which
+ * ends its turns, and drops the stream of any other. Read at click time from
+ * the active-sessions list the sidebar keeps live.
+ */
+function agentsWorking(): boolean {
+  return sessionsSpending(queryClient.getQueryData(queryKeys.session.sessions.active()))
+}
 
 async function listenUpdaterEvents(callbacks: {
   onStatus: (status: UpdateStatus) => void
@@ -32,6 +45,7 @@ export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
   const [minimized, setMinimized] = useState(false)
+  const [busyWarning, setBusyWarning] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const dragControls = useDragControls()
   const reduced = useReducedMotion() ?? false
@@ -57,7 +71,7 @@ export function UpdateCard() {
       const next = await invokeCheckForUpdates(silent)
       if (!silent || next.status !== 'up_to_date') setStatus(next)
     } catch (error) {
-      if (!silent) setStatus({ status: 'error', message: String(error) })
+      if (!silent) setStatus({ status: 'error', message: errorMessage(error) })
     }
   }, [scheduleNextAutomaticCheck])
 
@@ -74,7 +88,7 @@ export function UpdateCard() {
       const next = await invokeDownloadUpdate()
       setStatus(next)
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
     }
   }, [])
 
@@ -99,17 +113,28 @@ export function UpdateCard() {
         restartTimeout,
       ])
     } catch (error) {
-      setStatus({ status: 'error', message: String(error) })
+      setStatus({ status: 'error', message: errorMessage(error) })
     } finally {
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
       restartTimeoutRef.current = undefined
     }
   }, [])
 
+  // Install asks once while agents are working; "Restart anyway" goes on.
+  const requestInstall = useCallback(() => {
+    if (agentsWorking()) {
+      setBusyWarning(true)
+      setMinimized(false)
+      return
+    }
+    void installUpdate()
+  }, [installUpdate])
+
   const handleLater = useCallback(() => {
     const dismissedUntil = Date.now() + CHECK_INTERVAL_MS
     dismissedUntilNextCheckRef.current = true
     scheduleNextAutomaticCheck(dismissedUntil)
+    setBusyWarning(false)
     setStatus({ status: 'idle' })
   }, [scheduleNextAutomaticCheck])
 
@@ -250,7 +275,7 @@ export function UpdateCard() {
               </Button>
             )}
             {status.status === 'downloaded' && (
-              <Button type="button" variant="primary" size="xs" onClick={() => void installUpdate()}>
+              <Button type="button" variant="primary" size="xs" onClick={requestInstall}>
                 Install
               </Button>
             )}
@@ -297,7 +322,11 @@ export function UpdateCard() {
                 </button>
                 <div>
                   <div className="font-medium">{titleForStatus(status)}</div>
-                  <div className="mt-1 text-xs text-(--color-text-muted)">{descriptionForStatus(status)}</div>
+                  <div className="mt-1 text-xs text-(--color-text-muted)">
+                    {busyWarning && status.status === 'downloaded'
+                      ? 'Agents are still working. Restarting now may interrupt their turns.'
+                      : descriptionForStatus(status)}
+                  </div>
                 </div>
               </div>
 
@@ -355,9 +384,15 @@ export function UpdateCard() {
                 </Button>
               ) : null}
               {status.status === 'downloaded' ? (
-                <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>
-                  Install and restart
-                </Button>
+                busyWarning ? (
+                  <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>
+                    Restart anyway
+                  </Button>
+                ) : (
+                  <Button type="button" variant="primary" size="sm" onClick={requestInstall}>
+                    Install and restart
+                  </Button>
+                )
               ) : null}
             </div>
           </div>

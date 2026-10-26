@@ -17,12 +17,18 @@ import { highlightLinesAsync, plainLines, SYNC_HIGHLIGHT_BYTES } from '@/utils/h
 import { TEXT_FILE_EXTENSIONS as TEXT_EXTENSIONS } from '@/utils/file-extensions'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isVideoSrc } from '@/utils/workspace'
+import { MarkdownBlock } from '@/utils/markdown'
 import { PdfThumbnail } from './PdfThumbnail'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'])
+/** Extensions previewed rendered by default (``.mdx`` carries JSX, so it stays source). */
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown'])
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
 const GUTTER_WIDTH_CH = 4
+
+/** How a markdown file is shown: rendered prose, or the line-numbered source. */
+export type MarkdownView = 'rendered' | 'source'
 
 function extOf(name: string): string {
   const i = name.lastIndexOf('.')
@@ -47,6 +53,42 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
   if (!ext || TEXT_EXTENSIONS.has(ext) || file.mime.startsWith('text/') || file.mime === 'application/json') return 'text'
   if (file.size <= MAX_TEXT_PREVIEW_BYTES) return 'text'
   return 'binary'
+}
+
+/** A live markdown file small enough to preview, which can show rendered. */
+export function isMarkdownFile(file: WorkspaceFileInfo): boolean {
+  return MARKDOWN_EXTENSIONS.has(extOf(file.name)) && file.deleted !== true && file.size <= MAX_TEXT_PREVIEW_BYTES
+}
+
+/**
+ * Resolve a relative media path in a workspace markdown file against the
+ * file's folder, as a workspace file URL. ``/x`` is workspace-root relative.
+ */
+function workspaceMediaResolver(workspace: string, filePath: string): (src: string) => string {
+  const folder = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')).split('/') : []
+  return (src) => {
+    let path = src.replace(/[?#].*$/, '')
+    try {
+      path = decodeURIComponent(path)
+    } catch {
+      // Keep the raw path; the server reports it missing.
+    }
+    const parts = path.startsWith('/') ? [] : [...folder]
+    for (const segment of path.split('/')) {
+      if (!segment || segment === '.') continue
+      if (segment === '..') parts.pop()
+      else parts.push(segment)
+    }
+    return codingWorkspaceFileUrl(workspace, parts.join('/'))
+  }
+}
+
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
+
+/** Show leading YAML front matter as a code block instead of a stray rule and heading. */
+function frontmatterAsCode(text: string): string {
+  const match = FRONTMATTER.exec(text)
+  return match ? `\`\`\`yaml\n${match[1]}\n\`\`\`\n${text.slice(match[0].length)}` : text
 }
 
 export function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
@@ -271,12 +313,16 @@ function TextPreview({
   workspace,
   file,
   onAddComment,
+  markdownView = 'source',
 }: {
   workspace: string
   file: WorkspaceFileInfo
   onAddComment?: (path: string, startLine: number, endLine: number) => void
+  /** ``rendered`` shows markdown as prose; the source view keeps line tools. */
+  markdownView?: MarkdownView
 }) {
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
+  const rendered = markdownView === 'rendered'
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(!tooLarge)
@@ -362,30 +408,36 @@ function TextPreview({
   // Highlight the full content, split into per-line HTML strings. Small files
   // highlight synchronously; large ones show plain lines at once and swap in
   // the highlighted ones from a worker (see ``highlight-async.ts``). Both have
-  // the same line count, so selections and reveals are unaffected.
+  // the same line count, so selections and reveals are unaffected. Nothing is
+  // highlighted while markdown shows rendered.
   // Must be above early returns to satisfy Rules of Hooks.
   const ext = extOf(file.name)
   const lang = EXT_TO_LANG[ext]
-  const large = content !== null && content.length > SYNC_HIGHLIGHT_BYTES
+  const source = rendered ? null : content
+  const large = source !== null && source.length > SYNC_HIGHLIGHT_BYTES
   const syncLines = useMemo(
-    () => (content === null ? [] : large ? plainLines(content) : highlightLines(content, lang)),
-    [content, lang, large],
+    () => (source === null ? [] : large ? plainLines(source) : highlightLines(source, lang)),
+    [source, lang, large],
   )
   const [asyncLines, setAsyncLines] = useState<{ content: string; lines: string[] } | null>(null)
   useEffect(() => {
-    if (content === null || !large) return
+    if (source === null || !large) return
     let stale = false
-    void highlightLinesAsync(content, lang).then((lines) => {
-      if (!stale) setAsyncLines({ content, lines })
+    void highlightLinesAsync(source, lang).then((lines) => {
+      if (!stale) setAsyncLines({ content: source, lines })
     })
     return () => {
       stale = true
     }
-  }, [content, lang, large])
-  const highlightedLines = asyncLines && asyncLines.content === content ? asyncLines.lines : syncLines
+  }, [source, lang, large])
+  const highlightedLines = asyncLines && asyncLines.content === source ? asyncLines.lines : syncLines
+
+  const resolveMediaSrc = useMemo(() => workspaceMediaResolver(workspace, file.path), [workspace, file.path])
+  const markdown = useMemo(() => (rendered && content !== null ? frontmatterAsCode(content) : null), [rendered, content])
 
   // A clicked ``path:line`` or ``path:start-end`` selects those lines and
-  // centres them, once loaded.
+  // centres them, once loaded. A rendered markdown file leaves the request
+  // for its source view (the file tab switches to it).
   const revealRequest = useFileRevealStore((s) => (s.request?.path === file.path ? s.request : null))
   useEffect(() => {
     if (!revealRequest || highlightedLines.length === 0) return
@@ -411,9 +463,24 @@ function TextPreview({
       </div>
     )
   }
-  if (loading) return <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
+  if (loading) return <div role="status" aria-label="Loading file" className="oa-fade-in-late flex h-full items-center justify-center"><Loader2 size={16} aria-hidden="true" className="animate-spin text-(--color-text-subtle)" /></div>
   if (error) return <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-muted)">{error.includes('404') ? 'File no longer exists' : `Failed to load: ${error}`}</div>
   if (content === null) return null
+  if (markdown !== null) {
+    return (
+      <div
+        className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y px-4 py-3"
+        data-scroll-capture="true"
+        tabIndex={-1}
+      >
+        {/* `oa-reading` (index.css): the Plan tab's column, max-w-3xl and an
+            88ch measure in a maximized dock, so prose never spans the dock. */}
+        <div className="oa-reading mx-auto max-w-3xl">
+          <MarkdownBlock content={markdown} resolveMediaSrc={resolveMediaSrc} />
+        </div>
+      </div>
+    )
+  }
   const selectedStart = selection ? Math.min(selection.anchor, selection.focus) : null
   const selectedEnd = selection ? Math.max(selection.anchor, selection.focus) : null
   const gutterLine = (target: EventTarget) => {
@@ -477,7 +544,7 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
         className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
         aria-label={`Open ${file.name} preview in lightbox`}
       >
-        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
+        <img src={url} alt={file.name} decoding="async" className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
       </button>
       <FileLightbox
         items={[{ type: 'image', src: url, name: file.name }]}
@@ -789,10 +856,13 @@ export function FilePreviewContent({
   workspace,
   file,
   onAddComment,
+  markdownView,
 }: {
   workspace: string
   file: WorkspaceFileInfo
   onAddComment?: (path: string, startLine: number, endLine: number) => void
+  /** For markdown files (``isMarkdownFile``); others always show source. */
+  markdownView?: MarkdownView
 }) {
   const kind = kindOf(file)
 
@@ -800,7 +870,15 @@ export function FilePreviewContent({
     : kind === 'video' ? <VideoPreview workspace={workspace} file={file} />
     : kind === 'audio' ? <AudioPreview workspace={workspace} file={file} />
     : kind === 'pdf' ? <PdfPreview workspace={workspace} file={file} />
-    : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
+    : kind === 'text' ? (
+      <TextPreview
+        key={file.path}
+        workspace={workspace}
+        file={file}
+        onAddComment={onAddComment}
+        markdownView={isMarkdownFile(file) ? markdownView : 'source'}
+      />
+    )
       : <BinaryPreview workspace={workspace} file={file} />
 }
 

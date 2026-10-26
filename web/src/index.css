@@ -38,6 +38,8 @@
 /* Keyboard focus the user steered, not focus a script handed over quietly
  * (lib/focus/quiet.ts). Use for focus fills: `focus-key:bg-…`. */
 @custom-variant focus-key (&:focus-visible:not([data-quiet-focus]));
+/* OS "reduce transparency": frosted surfaces turn opaque and drop their blur. */
+@custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.
@@ -166,8 +168,29 @@ html:is([data-mobile-shell], [data-shell="desktop"]) :is(
   user-select: text;
 }
 
+/* Mobile app: a long press on chrome (session rows, links, icons) opens the
+ * app's own menu, not iOS's link preview callout. Content keeps the system
+ * callout: links in messages, images (Save Image), code, and text fields. */
+html[data-mobile-shell] body {
+  -webkit-touch-callout: none;
+}
+html[data-mobile-shell] :is(
+  input,
+  textarea,
+  [contenteditable="true"],
+  img,
+  .selectable-text,
+  .oa-prose,
+  .oa-prose *,
+  pre,
+  code,
+  [data-select-container]
+) {
+  -webkit-touch-callout: default;
+}
+
 /* Desktop app: the arrow cursor on controls (links keep the hand), no
- * dragging links or images out of the window, and a muted look while
+ * dragging links, images, or icons out of the window, and a muted look while
  * another app has focus — native windows hide the focus ring and grey out
  * selections then. */
 html[data-shell="desktop"] body {
@@ -176,7 +199,7 @@ html[data-shell="desktop"] body {
 html[data-shell="desktop"] :is(button, [role="button"], [role="tab"], summary, label) {
   cursor: default;
 }
-html[data-shell="desktop"] :is(img, a) {
+html[data-shell="desktop"] :is(img, a, svg) {
   -webkit-user-drag: none;
 }
 html[data-shell="desktop"][data-window-inactive] :focus-visible {
@@ -1075,10 +1098,41 @@ html[data-app-hidden="true"] *::after {
 :where(input, textarea):focus-visible {
   outline: none;
 }
+/* Windows contrast themes (forced colors) repaint every fill as Canvas and
+ * drop box-shadows, which erases Tailwind focus rings and any state shown
+ * only by a fill. Paint those in system colours instead. */
+@media (forced-colors: active) {
+  :focus-visible:not([data-quiet-focus]) {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  [data-slot="switch"] > span {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+  [data-slot="switch"][data-checked] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    border-color: Highlight;
+  }
+  [data-slot="switch"][data-checked] > span {
+    background-color: HighlightText;
+  }
+  [data-slot="segmented-control"] [aria-checked="true"] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+}
 @media (pointer: coarse) {
   [data-slot="button"] {
     min-height: 44px;
     min-width: 44px;
+  }
+  /* Material's minimum touch target is 48dp; 44pt is Apple's. */
+  html[data-mobile-shell="android"] [data-slot="button"] {
+    min-height: 48px;
+    min-width: 48px;
   }
 }
 

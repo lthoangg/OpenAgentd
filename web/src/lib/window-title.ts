@@ -1,5 +1,6 @@
 import { workspaceLabel } from '@/utils/workspace'
 import { getPlatform } from '@/hooks/use-platform'
+import { isDesktopShell } from '@/lib/desktop-shell'
 
 const APP_NAME = 'OpenAgentd'
 
@@ -82,5 +83,21 @@ export async function syncDesktopBadgeCount(count: number): Promise<void> {
   } catch (err) {
     // Windows has no badge API, and a badge is never worth an error.
     console.debug('app badge update failed', err)
+  }
+}
+
+/**
+ * Ask the OS to point at the app once: the Dock icon bounces once on macOS,
+ * the taskbar button flashes on Windows (which has no badge), Linux marks
+ * the window urgent. Only from the desktop app and only while this window
+ * is in the background; in front of the user the change is already visible.
+ */
+export async function requestDesktopAttention(): Promise<void> {
+  if (!isDesktopShell() || document.hasFocus()) return
+  try {
+    const { getCurrentWindow, UserAttentionType } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().requestUserAttention(UserAttentionType.Informational)
+  } catch (err) {
+    console.debug('attention request failed', err)
   }
 }

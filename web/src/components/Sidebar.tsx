@@ -157,6 +157,8 @@ import { DURATIONS_S, EASINGS } from '@/lib/motion'
 const WORKSPACE_TREE_STALE_MS = 30_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
+/** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
+const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
 
 interface SidebarProps {
   currentSessionId?: string
@@ -844,7 +846,9 @@ export function Sidebar({
             animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : DURATIONS_S.base), ease: EASINGS.sheet }}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay) md:hidden"
+            // No `md:hidden`: a landscape phone is wider than md but still
+            // mobile (useIsMobile's height rule); `isMobile` already gates it.
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay)"
             aria-hidden="true"
             onClick={onMobileClose}
           />
@@ -858,9 +862,12 @@ export function Sidebar({
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
+      // The drawer is fixed to the left edge, outside the shell's safe-area
+      // padding: `pl-safe` keeps its rows clear of a landscape cutout while
+      // its width (and so the closed -280px offset) stays the same.
       className={
         isMobile
-          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
+          ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
           : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
       }
     >
@@ -869,9 +876,24 @@ export function Sidebar({
       <div
         className="flex min-h-0 flex-1 flex-col"
         onKeyDown={(event) => {
-          // Left on a session row climbs to its workspace, like a tree.
-          if (event.defaultPrevented || event.key !== 'ArrowLeft' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+          if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
           const target = event.target as HTMLElement
+          // Up/Down/Home/End walk the visible rows like a native source list;
+          // Tab still stops on every row and action (DESIGN.md → Keyboard
+          // focus model). Only from a row, so fields and menus keep their keys.
+          if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && target.matches(SIDEBAR_ROW)) {
+            const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(SIDEBAR_ROW))
+              .filter((el) => !el.closest('[inert], [hidden]'))
+            const index = rows.indexOf(target)
+            const next = event.key === 'Home' ? rows[0]
+              : event.key === 'End' ? rows[rows.length - 1]
+              : rows[index + (event.key === 'ArrowDown' ? 1 : -1)]
+            event.preventDefault()
+            next?.focus()
+            return
+          }
+          // Left on a session row climbs to its workspace, like a tree.
+          if (event.key !== 'ArrowLeft') return
           if (!target.closest('[data-sidebar-session]')) return
           const header = target.closest('[data-sidebar-workspace-group]')?.querySelector<HTMLElement>('[data-sidebar-workspace]')
           if (!header) return

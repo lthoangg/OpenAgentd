@@ -1,5 +1,6 @@
 /**
- * useDragDrop — file drag-and-drop handling for the main chat column.
+ * useDragDrop — file drag-and-drop handling for the app shell (the whole
+ * window around the header, sidebar, chat column and dock).
  *
  * Tracks a drag-enter/leave counter (so nested children entering/leaving
  * don't flicker the overlay) and forwards dropped files to the input bar

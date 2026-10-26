@@ -7,6 +7,7 @@ import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
 
 import { formatChord, type KeyChord } from './chord'
+import { HISTORY_ALT_BACK, HISTORY_ALT_FORWARD, usesAltArrowHistory } from './history-keys'
 
 export interface ShortcutHelpEntry {
   label: string
@@ -28,6 +29,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
   const keys = (label: string, ...chords: KeyChord[]): ShortcutHelpEntry => ({ label, keys: chords.map((chord) => formatChord(chord, os)) })
   const mac = os === 'macos'
   const appOnly = (label: string) => (desktopApp ? label : `${label} (desktop app)`)
+  const altHistory = usesAltArrowHistory(os)
 
   return [
     {
@@ -42,14 +44,16 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('shortcutsHelp', 'Keyboard shortcuts'),
         app('sidebar', 'Toggle sidebar'),
         app('sessionSettings', 'Session settings'),
-        app('historyBack', 'Back'),
-        app('historyForward', 'Forward'),
+        altHistory ? keys('Back', chordOf(APP_SHORTCUTS.historyBack), HISTORY_ALT_BACK) : app('historyBack', 'Back'),
+        altHistory ? keys('Forward', chordOf(APP_SHORTCUTS.historyForward), HISTORY_ALT_FORWARD) : app('historyForward', 'Forward'),
       ],
     },
     {
       title: 'Moving around',
       entries: [
         keys('Next and previous control', { key: 'Tab' }, { key: 'Tab', shift: true }),
+        keys('Previous and next sidebar row', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
+        keys('First and last sidebar row', { key: 'Home' }, { key: 'End' }),
         keys('Collapse and expand a sidebar workspace', { key: 'ArrowLeft' }, { key: 'ArrowRight' }),
         keys('Rename the focused item', { key: 'F2' }),
         keys('Delete the focused item', { key: 'Delete' }, { key: 'Backspace', mod: true }),

@@ -15,6 +15,7 @@ import { CreateTaskForm } from './CreateTaskForm'
 import { TaskDetailView } from './TaskDetailView'
 import { TaskListPane } from './TaskListPane'
 import { SchedulerChromeContext } from './chrome'
+import { useSchedulerDraftGuard } from './draftGuard'
 
 type Pane = 'list' | 'detail' | 'create'
 
@@ -24,6 +25,7 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
   const tasksQuery = useScheduledTasksQuery()
   const { refetch } = tasksQuery
   const focusTaskId = useUIStore((s) => s.scheduledTaskFocus)
+  const { guard, provide } = useSchedulerDraftGuard()
 
   // Same freshness rule as the overlay: opening the view re-reads the list.
   useEffect(() => {
@@ -44,18 +46,20 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
     setSelectedTaskId(null)
     setPane('list')
   }
+  const guardedBackToList = () => guard(backToList)
 
   return (
     <SchedulerChromeContext.Provider value="dock">
+      {provide(
       <div className="@container flex h-full min-h-0 flex-col">
         {pane === 'detail' && selectedTask ? (
-          <TaskDetailView task={selectedTask} onClose={backToList} closeMode="back" />
+          <TaskDetailView task={selectedTask} onClose={guardedBackToList} closeMode="back" />
         ) : pane === 'create' ? (
           <CreateTaskForm
             key={`create-${contextWorkspace ?? ''}`}
             contextWorkspace={contextWorkspace}
             onSuccess={backToList}
-            onBack={backToList}
+            onBack={guardedBackToList}
           />
         ) : (
           <>
@@ -83,6 +87,7 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
                 tasks={tasks}
                 isLoading={tasksQuery.isLoading}
                 isError={tasksQuery.isError}
+                onRetry={() => void refetch()}
                 selectedTaskId={selectedTaskId}
                 onSelect={(id) => {
                   setSelectedTaskId(id)
@@ -97,7 +102,8 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
             </div>
           </>
         )}
-      </div>
+      </div>,
+      )}
     </SchedulerChromeContext.Provider>
   )
 }

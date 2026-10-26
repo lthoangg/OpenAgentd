@@ -12,6 +12,9 @@ use openagentd_shell_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+mod theme;
+mod widgets;
+
 /// Total budget for one workspace download. Mobile talks to a remote
 /// server over whatever network the phone has, so keep this shorter than
 /// the desktop's 300 s.
@@ -138,6 +141,36 @@ async fn preview_relay_open(
 #[tauri::command]
 fn preview_relay_close(relays: tauri::State<'_, PreviewRelays>, preview_id: String) -> bool {
     relays.0.close(RELAY_SCOPE, &preview_id)
+}
+
+/// Save what the home-screen widgets show (see `widgets.rs`).
+#[tauri::command]
+async fn widget_update_snapshot(
+    app: AppHandle,
+    snapshot: widgets::WidgetSnapshot,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || widgets::publish(&app, snapshot))
+        .await
+        .map_err(|e| format!("Widget update failed: {e}"))?
+}
+
+/// Android Back on the app's first screen: background the app like a root
+/// activity does instead of finishing it (the web UI owns Back; see
+/// `web/src/lib/back-button.ts`). A no-op on iOS.
+#[tauri::command]
+async fn app_move_to_background(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_openagentd_android::AndroidShellExt;
+        tauri::async_runtime::spawn_blocking(move || app.android_shell().move_task_to_back())
+            .await
+            .map_err(|e| format!("Background task failed: {e}"))?
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -462,6 +495,14 @@ pub fn run() {
     // the access-key commands rely on (keyring has no Android backend).
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_openagentd_android::init());
+    // iOS kills WKWebView's content process under memory pressure (often
+    // while the app is in the background), which leaves a blank page until
+    // the app is force-quit. Reload instead: drafts and the last route are
+    // restored from storage, and the event stream reconnects on load.
+    #[cfg(target_os = "ios")]
+    let builder = builder.on_web_content_process_terminate(|webview| {
+        let _ = webview.reload();
+    });
     builder
         .manage(MobileBackendState::default())
         .manage(PreviewRelays::default())
@@ -469,6 +510,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_deep_link::init())
+        .setup(|_app| {
+            #[cfg(target_os = "ios")]
+            theme::paint_launch_background(_app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             secure_get_access_key,
             secure_set_access_key,
@@ -480,6 +526,9 @@ pub fn run() {
             save_workspace_file,
             preview_relay_open,
             preview_relay_close,
+            widget_update_snapshot,
+            app_move_to_background,
+            theme::set_app_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

@@ -12,7 +12,9 @@ import type { ScheduledTaskResponse } from '@/api/types'
 import { FIELD_CLASS, FIELD_ERROR, FIELD_HINT, FIELD_LABEL } from './utils'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
-import { editTaskDefaults, toUpdatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
+import { editTaskDefaults, toUpdatePayload } from './taskForm'
+import { useTaskFieldErrors } from './useTaskFieldErrors'
+import { taskValuesChanged, useReportSchedulerDraft } from './draftGuard'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -46,11 +48,12 @@ export function EditTaskForm({
 
   const defaults = editTaskDefaults(task, currentSessionId)
   const [error, setError] = useState<string | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
-  const validationSummary = Object.values(fieldErrors)[0]
   const updateMutation = useUpdateScheduledTaskMutation()
   const form = useForm({ defaultValues: defaults, onSubmit: () => {} })
   const values = useStore(form.store, (state) => state.values)
+  const { formRef, fieldErrors, validateForSubmit } = useTaskFieldErrors(values, false)
+  useReportSchedulerDraft(taskValuesChanged(values, defaults))
+  const validationSummary = Object.values(fieldErrors)[0]
   const isSessionCompatible = !!currentSessionId && values.workspace === activeSessionWorkspace
 
   useEffect(() => {
@@ -60,13 +63,8 @@ export function EditTaskForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setFieldErrors({})
     const submitValues = form.state.values
-    const errors = validateTaskValues(submitValues, false)
-    if (Object.keys(errors).length) {
-      setFieldErrors(errors)
-      return
-    }
+    if (!validateForSubmit(submitValues)) return
     updateMutation.mutate(
       { slug: task.slug, body: toUpdatePayload(submitValues, localTz, currentSessionId) },
       { onSuccess, onError: (err) => setError(err instanceof Error ? err.message : 'Failed to update task') },
@@ -109,7 +107,7 @@ export function EditTaskForm({
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} onKeyDown={advanceFocusOnEnter} className="flex min-h-0 flex-1 flex-col">
+      <form ref={formRef} onSubmit={handleSubmit} onKeyDown={advanceFocusOnEnter} className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-8 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
           <PanelSection title="Task">
             {/* Routing */}
@@ -290,7 +288,8 @@ export function EditTaskForm({
                 <label htmlFor="edit-task-max-runs" className={FIELD_LABEL}>Max runs (optional)</label>
                 <Input
                   id="edit-task-max-runs"
-                  enterKeyHint="next"
+                  // The last field: Enter moves to the Save button (formNavigation).
+                  enterKeyHint="done"
                   type="number"
                   inputMode="numeric"
                   min="1"

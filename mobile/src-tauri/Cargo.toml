@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-mobile"
-version = "3.30.0"
+version = "3.31.0"
 description = "OpenAgentd mobile shell"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -37,7 +37,7 @@ keyring = { version = "3.6.3", default-features = false, features = ["apple-nati
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSArray"] }
-objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIApplication", "UIPopoverPresentationController", "UIViewController", "UIView", "UIWindow", "UIWindowScene"] }
+objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIApplication", "UIInterface", "UIPopoverPresentationController", "UITraitCollection", "UIViewController", "UIView", "UIWindow", "UIWindowScene"] }
 objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
 dispatch2 = "0.3"
 

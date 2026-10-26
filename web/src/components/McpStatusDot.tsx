@@ -20,17 +20,28 @@ const STATE_COLOR: Record<ServerStatus['state'], string> = {
   stopped: 'bg-(--color-text-muted)/40',
 }
 
+/** Plain words for the state; the tooltip and the screen-reader name share it. */
+const STATE_LABEL: Record<ServerStatus['state'], string> = {
+  ready: 'Ready',
+  starting: 'Starting',
+  auth_required: 'Sign-in required',
+  error: 'Failed',
+  stopped: 'Stopped',
+}
+
 export function McpStatusDot({ server }: { server: ServerStatus }) {
   if (server.state === 'error') {
     return (
       <Tooltip>
         <TooltipTrigger
           render={
+            // role="img": an aria-label on a bare span is not announced.
             <span
+              role="img"
               className="flex shrink-0 items-center text-(--color-error)"
-              aria-label={`Error: ${server.error ?? 'unknown'}`}
+              aria-label={`${STATE_LABEL.error}: ${server.error ?? 'unknown error'}`}
             >
-              <AlertCircle size={13} />
+              <AlertCircle size={13} aria-hidden="true" />
             </span>
           }
         />
@@ -43,12 +54,13 @@ export function McpStatusDot({ server }: { server: ServerStatus }) {
       <TooltipTrigger
         render={
           <span
+            role="img"
             className={cn('h-2 w-2 shrink-0 rounded-full', STATE_COLOR[server.state])}
-            aria-label={`State: ${server.state}`}
+            aria-label={STATE_LABEL[server.state]}
           />
         }
       />
-      <TooltipContent>{server.state}</TooltipContent>
+      <TooltipContent>{STATE_LABEL[server.state]}</TooltipContent>
     </Tooltip>
   )
 }

@@ -27,10 +27,15 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   started and stopped by a 2 s supervisor), refetches each one's
   active-session list, merges them, and places the window over the notch
   with AppKit. Its webview has its own capability
-  (`capabilities/island.json`) and, like the tray popup, never gets the
-  backend token (`window::is_overlay_window`).
+  (`capabilities/island.json`, like the tray popup's `capabilities/tray.json`)
+  and, like the tray popup, never gets the backend token
+  (`window::is_overlay_window`).
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
+- `src/diagnostics.rs`: Help → Export Diagnostics: copies the desktop and
+  backend logs into a Downloads folder with `about.txt`. Every line passes
+  through `redact_secrets`, because the backend log records shell commands
+  that can carry the user's keys; new log sources must go through it too.
 - `src/network_access.rs`: the "Network access" switch: saved on/off and
   preferred port, the LAN access key in a user-only file, and
   re-applying it to the sidecar (`/api/desktop/network-access`) after every

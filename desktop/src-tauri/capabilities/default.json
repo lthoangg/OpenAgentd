@@ -1,11 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the main window and the macOS tray popup. IPC is granted to the app origin only (the bundled UI, or devUrl in debug builds).",
+  "description": "Default capability set for the app windows. IPC is granted to the app origin only (the bundled UI, or devUrl in debug builds). The tray popup and the island have their own narrower sets.",
   "windows": [
     "main",
-    "main-*",
-    "tray-popup"
+    "main-*"
   ],
   "local": true,
   "permissions": [
@@ -14,6 +13,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-title",
     "core:window:allow-set-badge-count",
+    "core:window:allow-request-user-attention",
     "core:window:allow-toggle-maximize",
     "core:window:allow-internal-toggle-maximize",
     "core:webview:default",
@@ -30,6 +30,7 @@
     "allow-secure-get-access-key",
     "allow-secure-set-access-key",
     "allow-secure-delete-access-key",
+    "allow-set-window-theme",
     "allow-save-workspace-file",
     "allow-backend-health",
     "allow-backend-logs-path",

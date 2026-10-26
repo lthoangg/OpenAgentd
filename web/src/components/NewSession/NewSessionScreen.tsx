@@ -7,6 +7,9 @@
  * recent folders and this folder's recent sessions. No starter prompts:
  * the composer is the call to action.
  *
+ * ``setup``: until a message could run (no model, or its provider is not
+ * connected), the model setup card sits above the composer.
+ *
  * ``leaving``: the first message was just sent. AgentChatView renders an
  * inert copy over the incoming chat that fades away while the composer
  * glides to the bottom; ``composerPlaceholderHeight`` holds the composer's
@@ -76,6 +79,7 @@ export function NewSessionScreen({
   isChat,
   chatWorkspace,
   composer = null,
+  setup = null,
   isMobile,
   leaving = false,
   composerPlaceholderHeight,
@@ -88,6 +92,8 @@ export function NewSessionScreen({
   chatWorkspace: CodingWorkspaceTreeChat | null
   /** The composer, when it sits in this screen (desktop). */
   composer?: ReactNode
+  /** The model setup card, while no message could run. */
+  setup?: ReactNode
   isMobile: boolean
   /** Fade out as an inert copy (the hand-off into the chat). */
   leaving?: boolean
@@ -178,6 +184,7 @@ export function NewSessionScreen({
               </span>
             )}
           </div>
+          {setup && <div className="mx-auto mt-2 w-full max-w-[640px]">{setup}</div>}
           {/* ``text-left``: the hero is centered, and the composer's
               textarea, chips and menus must not inherit it. */}
           {composer && <div className="mt-2 w-full text-left">{composer}</div>}

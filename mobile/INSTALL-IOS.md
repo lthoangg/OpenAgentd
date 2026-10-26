@@ -62,8 +62,8 @@ existing app and keeps your data.
 
 ## Other sideloading tools
 
-The IPA is ad-hoc signed and has no entitlements, so any tool that re-signs apps
-can install it:
+The IPA is ad-hoc signed. Its only entitlement is the App Group the app shares
+with its home-screen widgets, so any tool that re-signs apps can install it:
 
 - **AltStore Classic**: add the same source URL as in Option A.
 - **Sideloadly**: install from a computer over USB or Wi-Fi.
@@ -81,7 +81,8 @@ sideloading tool is subject to them:
   not open until you refresh it; its data is kept.
 - **At most 3 sideloaded apps at once**, SideStore included.
 - **At most 10 App IDs per 7 days.** Installing and removing apps repeatedly
-  can use them up.
+  can use them up. OpenAgentd uses two: one for the app and one for its
+  home-screen widgets.
 - SideStore may add a suffix to the app's bundle identifier for your account.
   This is expected and does not affect the app.
 
@@ -117,6 +118,26 @@ The server has no built-in TLS. To reach it from outside a trusted network, put
 an HTTPS reverse proxy (or a private network such as a VPN) in front of it, and
 connect to that address instead.
 
+## Home-screen widgets
+
+Touch and hold the Home Screen, tap **Edit → Add Widget**, and search for
+OpenAgentd. There are three:
+
+- **Quick start** (small or medium): start a new session in your last folder.
+  The medium size also continues your last session.
+- **Sessions** (medium): up to three sessions, the ones that need you first,
+  then the ones still working, then recent ones.
+- **Next task** (small): your next scheduled task with a countdown, and
+  whether its last run passed. Tapping it opens the scheduler on that task.
+
+The widgets show what the app knew the last time it was open, with an "as of"
+time. Open the app to refresh them. After 30 minutes, "Needs you" and
+"Working" turn into plain ages, because the session may have moved on. The
+widgets never store the server address or access key.
+
+If SideStore asks whether to keep the app's extensions when you install,
+keep them: the widgets are an app extension.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -125,6 +146,7 @@ connect to that address instead.
 | The app will not open after about a week | It expired. Connect LocalDevVPN and refresh it in SideStore → **My Apps**. |
 | SideStore cannot install or refresh | Connect LocalDevVPN and use Wi-Fi. For pairing-file errors, follow SideStore's [pairing file guide](https://docs.sidestore.io/docs/advanced/pairing-file). |
 | SideStore says the app's permissions do not match | Remove the source, add it again, and retry. If it still fails, [open an issue](https://github.com/lthoangg/openagentd/issues). |
+| The widgets say "Open OpenAgentd to load your sessions" | Open the app once while it is connected to a server. If they still show nothing, the sideloading tool removed the App Group; reinstall with SideStore and keep the app's extensions. |
 | The app cannot reach the server | Check that the phone and the computer are on the same network and the server was started with `--host 0.0.0.0 --key`. Make sure **Settings → Privacy & Security → Local Network → OpenAgentd** is on. |
 | "Unauthorized" when connecting | The access key does not match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |
 

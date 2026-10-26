@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, fireEvent, screen } from '@testing-library/react'
+import { act, cleanup, render, fireEvent, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle } from 'react'
 import type React from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
+import { useLayoutStore } from '@/stores/useLayoutStore'
 
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
@@ -219,5 +220,41 @@ describe('AgentChatView drag-and-drop files', () => {
     const calledFiles = addFilesMock.mock.calls[0][0] as File[]
     expect(calledFiles.length).toBe(1)
     expect(calledFiles[0].name).toBe('hello.txt')
+  })
+
+  it('accepts a drop anywhere in the window, not only on the chat column', () => {
+    const { container, queryByText } = render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
+    // The app shell around the header, sidebar, chat and dock.
+    const shell = container.querySelector<HTMLElement>('.mobile-safe-shell')
+    expect(shell).not.toBeNull()
+    if (!shell) return
+    expect(shell.hasAttribute('data-file-drop-zone')).toBe(true)
+
+    fireEvent.dragEnter(shell, { dataTransfer: { types: ['Files'] } })
+    expect(queryByText('Drop files to attach')).not.toBeNull()
+
+    const file = new File(['hi'], 'notes.md', { type: 'text/markdown' })
+    fireEvent.drop(shell, { dataTransfer: { types: ['Files'], files: [file] } })
+
+    expect(queryByText('Drop files to attach')).toBeNull()
+    expect((addFilesMock.mock.calls[0][0] as File[])[0].name).toBe('notes.md')
+  })
+
+  it('leaves drops to the stray-drop guard while a maximized dock covers the chat', async () => {
+    try {
+      const { container, queryByText } = render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
+      await screen.findByTestId('coding-workspace-panel')
+      // Closing the dock resets maximize, so maximize once it is open.
+      await act(async () => { useLayoutStore.setState({ dockMaximized: true }) })
+
+      const shell = container.querySelector<HTMLElement>('.mobile-safe-shell')
+      if (!shell) throw new Error('shell missing')
+      expect(shell.hasAttribute('data-file-drop-zone')).toBe(false)
+      fireEvent.dragEnter(shell, { dataTransfer: { types: ['Files'] } })
+      expect(queryByText('Drop files to attach')).toBeNull()
+    } finally {
+      act(() => { useLayoutStore.setState({ dockMaximized: false }) })
+    }
   })
 })

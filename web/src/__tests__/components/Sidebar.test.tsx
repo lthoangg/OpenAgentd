@@ -1050,6 +1050,37 @@ describe('Sidebar workspace trust flow', () => {
     expect(backdrop).toBeTruthy()
   })
 
+  it('shows the drawer backdrop on a landscape phone wider than md', async () => {
+    isMobile = true
+
+    const view = await renderSidebarWithProps({ mobileOpen: true })
+    const backdrop = view.container.querySelector('.bg-\\(--color-overlay\\)')
+
+    expect(backdrop?.className.split(' ')).not.toContain('md:hidden')
+  })
+
+  it('keeps the mobile drawer content clear of a left cutout in landscape', async () => {
+    isMobile = true
+
+    const view = await renderSidebarWithProps({ mobileOpen: false })
+    const drawer = view.container.querySelector('aside')
+
+    // Fixed to the left edge, the drawer is outside the shell's safe-area
+    // padding, so it pads its own content past the cutout.
+    expect(drawer?.className.split(' ')).toContain('pl-safe')
+    // Same width and closed offset, so the closed drawer stays off screen.
+    expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
+      x: -280,
+      width: 'min(272px, calc(100vw - 2rem))',
+    })
+  })
+
+  it('leaves the desktop sidebar to the shell safe-area padding', async () => {
+    const view = await renderSidebarWithProps({})
+
+    expect(view.container.querySelector('aside')?.className.split(' ')).not.toContain('pl-safe')
+  })
+
   it('lets the user go back from the trust warning without opening the workspace', async () => {
     const user = userEvent.setup()
     await renderSidebar()
@@ -2101,6 +2132,49 @@ describe('Sidebar workspace trust flow', () => {
       row('Second').focus()
       await user.keyboard('{F2}')
       expect(screen.getByLabelText('Session title')).toBeTruthy()
+    })
+
+    it('moves between rows with Up/Down and jumps with Home/End', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      const header = screen.getByLabelText('Collapse repository project')
+      header.focus()
+
+      await user.keyboard('{ArrowDown}')
+      expect(document.activeElement).toBe(row('First'))
+      await user.keyboard('{ArrowDown}')
+      expect(document.activeElement).toBe(row('Second'))
+      await user.keyboard('{ArrowUp}')
+      expect(document.activeElement).toBe(row('First'))
+      await user.keyboard('{End}')
+      expect(document.activeElement).toBe(row('Second'))
+      await user.keyboard('{Home}')
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-sidebar-session], [data-sidebar-workspace]'))
+      expect(document.activeElement).toBe(rows[0])
+    })
+
+    it('skips the rows of a folded workspace', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      const header = screen.getByLabelText('Collapse repository project')
+      header.focus()
+      await user.keyboard('{ArrowLeft}')
+
+      await user.keyboard('{ArrowDown}')
+      expect(document.activeElement === row('First') || document.activeElement === row('Second')).toBe(false)
+    })
+
+    it('leaves Up/Down alone in the rename field', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      row('Second').focus()
+      await user.keyboard('{F2}')
+      const input = screen.getByLabelText('Session title')
+      await user.keyboard('{ArrowUp}')
+      expect(document.activeElement).toBe(input)
     })
   })
 

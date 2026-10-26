@@ -634,13 +634,19 @@ export function WorkspacePanel({
       onAnimationComplete={settleToggle}
       pinContentWidth
       className={cn(
-        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) md:w-auto md:shadow-none',
+        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
         // Overlay covers the chat column (kept mounted underneath); side mode
-        // is an in-flow sibling that takes its ratio of the center.
-        overlay
-          ? 'md:absolute md:inset-y-0 md:right-0 md:z-20'
-          : 'md:relative md:inset-y-auto md:right-auto md:z-auto md:shrink-0',
-        mobile ? 'mobile-safe-top max-w-none' : 'h-full',
+        // is an in-flow sibling that takes its ratio of the center. Keyed on
+        // `mobile`, not only `md:`: a landscape phone is wider than md but
+        // keeps the full-screen mobile dock, clear of side cutouts.
+        mobile
+          ? 'mobile-safe-top pl-safe pr-safe max-w-none'
+          : cn(
+              'h-full md:w-auto md:shadow-none',
+              overlay
+                ? 'md:absolute md:inset-y-0 md:right-0 md:z-20'
+                : 'md:relative md:inset-y-auto md:right-auto md:z-auto md:shrink-0',
+            ),
         !open && 'pointer-events-none',
         parked && 'invisible',
       )}

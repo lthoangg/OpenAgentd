@@ -8,6 +8,9 @@ integration for the mobile shell.
 
 - `src/lib.rs`: Tauri commands, runtime backend state, the reachability gate,
   iOS share-sheet handling, plugin setup, and mobile-only unit tests.
+- `src/widgets.rs`: the home-screen widget snapshot: its shape (unknown
+  fields refused), limits, and the hand-off to the iOS Swift bridge
+  (`../ios-widget/App/`) or the Android plugin.
 - `../../native/shell-core/`: server config persistence, URL normalization,
   keyring access, and download limits shared with the desktop shell. Change
   those behaviours there, with their tests, not in `lib.rs`.

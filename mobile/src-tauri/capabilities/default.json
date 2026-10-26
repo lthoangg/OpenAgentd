@@ -14,6 +14,8 @@
     "notification:default",
     "deep-link:default",
     "haptics:allow-impact-feedback",
+    "haptics:allow-selection-feedback",
+    "haptics:allow-notification-feedback",
     "haptics:allow-vibrate",
     "allow-secure-get-access-key",
     "allow-secure-set-access-key",
@@ -24,6 +26,9 @@
     "allow-app-remove-backend-server",
     "allow-save-workspace-file",
     "allow-preview-relay-open",
-    "allow-preview-relay-close"
+    "allow-preview-relay-close",
+    "allow-widget-update-snapshot",
+    "allow-app-move-to-background",
+    "allow-set-app-theme"
   ]
 }

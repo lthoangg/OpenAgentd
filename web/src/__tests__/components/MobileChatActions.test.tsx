@@ -9,6 +9,16 @@ import { MobileChatActions } from '@/components/AgentChatView/MobileChatActions'
 afterEach(cleanup)
 
 describe('MobileChatActions', () => {
+  it('stays visible on a landscape phone, wider than md, and clears a right cutout', () => {
+    render(<MobileChatActions open onOpenChange={() => {}} workspace="/repo/app" onScheduler={() => {}} />)
+
+    const drawer = screen.getByRole('dialog', { name: 'Chat actions' })
+    expect(drawer.className.split(' ')).not.toContain('md:hidden')
+    expect(drawer.className.split(' ')).toContain('pr-safe')
+    const backdrop = document.querySelector('.bg-\\(--color-overlay\\)')
+    expect(backdrop?.className.split(' ')).not.toContain('md:hidden')
+  })
+
   it('exposes the terminal action to touch users', () => {
     const onOpenTerminal = mock(() => {})
 

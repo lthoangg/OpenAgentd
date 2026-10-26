@@ -547,6 +547,7 @@ async fn get_agent_registry(q: Qs) -> ApiResult<Response> {
         }
     };
     let Some(agent) = agent else { return Err(ApiError::not_found("No agent configured")) };
+    agent.refresh_config_if_idle();
     let ws = agent.workspace();
     let info = serialize_agent(&agent.agent(), Some(&ws), custom_threshold());
     Ok(json(json!({

@@ -368,10 +368,13 @@ pub fn member_model_is_configured(model: Option<&str>) -> bool {
     matches!(model.map(str::trim), Some(m) if !m.is_empty() && m != DEFAULT_NEW_USER_MODEL)
 }
 
-/// `configure_unconfigured_agent_models`.
-pub fn configure_unconfigured_agent_models(agents_dir: &Path, provider_model: &str) -> Vec<String> {
-    let unconfigured = [DEFAULT_NEW_USER_MODEL, "__PROVIDER_MODEL__", "opencode:big-pickle", "opencode:deepseek-v4-flash-free"];
-    let mut updated = vec![];
+/// Models that mean "not chosen yet": the placeholder and the free OpenCode
+/// models older installs seeded. Only these are ever replaced automatically.
+const UNCONFIGURED_MODELS: [&str; 4] = [DEFAULT_NEW_USER_MODEL, "__PROVIDER_MODEL__", "opencode:big-pickle", "opencode:deepseek-v4-flash-free"];
+
+/// Agent files under `agents_dir` whose model is still unconfigured, with
+/// their text and that model.
+fn unconfigured_agent_files(agents_dir: &Path) -> Vec<(PathBuf, String, String)> {
     let mut files = vec![];
     fn walk(d: &Path, out: &mut Vec<PathBuf>) {
         if let Ok(rd) = std::fs::read_dir(d) {
@@ -387,17 +390,27 @@ pub fn configure_unconfigured_agent_models(agents_dir: &Path, provider_model: &s
     }
     walk(agents_dir, &mut files);
     files.sort();
-    for path in files {
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(cfg) = parse_agent_md(&path) else {
-            continue;
-        };
-        let Some(model) = cfg.model.clone() else {
-            continue;
-        };
-        if !unconfigured.contains(&model.as_str()) || model == provider_model {
+    files
+        .into_iter()
+        .filter_map(|path| {
+            let text = std::fs::read_to_string(&path).ok()?;
+            let model = parse_agent_md(&path).ok()?.model?;
+            UNCONFIGURED_MODELS.contains(&model.as_str()).then_some((path, text, model))
+        })
+        .collect()
+}
+
+/// Whether any agent still waits for a model (see [`UNCONFIGURED_MODELS`]).
+pub fn has_unconfigured_agent_models(agents_dir: &Path) -> bool {
+    !unconfigured_agent_files(agents_dir).is_empty()
+}
+
+/// `configure_unconfigured_agent_models`: set `provider_model` on every agent
+/// that has no model chosen yet. Models the user picked are never touched.
+pub fn configure_unconfigured_agent_models(agents_dir: &Path, provider_model: &str) -> Vec<String> {
+    let mut updated = vec![];
+    for (path, text, model) in unconfigured_agent_files(agents_dir) {
+        if model == provider_model {
             continue;
         }
         let Some((_, _, range)) = split_frontmatter(&text) else {

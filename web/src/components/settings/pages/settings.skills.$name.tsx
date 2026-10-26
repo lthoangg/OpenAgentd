@@ -3,7 +3,6 @@ import { Trash2 } from 'lucide-react'
 
 import { useDeleteSkillMutation, useSkillFileQuery, useUpdateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateSkillDraft } from '@/components/settings/schema'
@@ -20,6 +19,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
+import { errorMessage } from '@/utils/errors'
 
 interface SkillEditorPageProps {
   name: string
@@ -58,7 +58,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       setDraft(res.content)
       refetch()
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Save failed', description: msg })
     }
@@ -70,7 +70,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       push({ tone: 'success', title: `Deleted "${name}"` })
       onBack()
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       push({ tone: 'error', title: 'Delete failed', description: msg })
     }
   }
@@ -94,7 +94,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
           {isLoading && <SettingsSkeleton label="Loading skill" />}
-          {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
+          {isError && <p className="text-sm text-(--color-error)">Failed to load: {errorMessage(error)}</p>}
           {data && (
             <PanelSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">
               <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">

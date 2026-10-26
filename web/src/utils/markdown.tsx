@@ -273,6 +273,11 @@ export function resolveImageSrc(src: string | undefined, sessionId?: string): st
   return withTokenParam(apiUrl(`/agent/${encodeURIComponent(sessionId)}/media/${cleaned}`))
 }
 
+/** A bare path that ``resolveImageSrc`` would anchor to a workspace. */
+function isRelativeMediaSrc(src: string): boolean {
+  return !/^(https?:)?\/\//i.test(src) && !/^(data|blob):/i.test(src) && !src.startsWith('/api/')
+}
+
 // ── MarkdownVideo ─────────────────────────────────────────────────────────────
 
 /** Inline video inside markdown prose.
@@ -629,10 +634,18 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   content,
   sessionId,
   isStreaming = false,
+  resolveMediaSrc,
 }: {
   content: string
   sessionId?: string
   isStreaming?: boolean
+  /**
+   * Resolves a relative image/video ``src`` (e.g. against the folder of a
+   * workspace ``.md`` file). Absolute, ``data:``, ``blob:`` and ``/api/``
+   * sources never reach it. Without it, relative sources resolve against
+   * the session workspace (``resolveImageSrc``).
+   */
+  resolveMediaSrc?: (src: string) => string
 }) {
   const smoothedContent = useSmoothStream(content, isStreaming)
   const displayContent = isStreaming ? smoothedContent : content
@@ -657,23 +670,25 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   return (
     <MarkdownStreamingContext.Provider value={isStreaming}>
       <MarkdownSessionContext.Provider value={sessionId}>
-        {/* `data-streaming` draws the live caret after the last text block (index.css). */}
-        <div className="oa-prose text-sm" data-streaming={isStreaming ? '' : undefined}>
-          {chunks ? (
-            chunks.map((c, index) => (
-              <MarkdownChunkView key={index} doc={c.doc} live={isStreaming && index === chunks.length - 1} />
-            ))
-          ) : (
-            <Markdown
-              extensions={_EXTENSIONS}
-              frontmatter={false}
-              headingIds={false}
-              components={MARKDOWN_COMPONENTS}
-            >
-              {fixedContent}
-            </Markdown>
-          )}
-        </div>
+        <MarkdownMediaContext.Provider value={resolveMediaSrc}>
+          {/* `data-streaming` draws the live caret after the last text block (index.css). */}
+          <div className="oa-prose text-sm" data-streaming={isStreaming ? '' : undefined}>
+            {chunks ? (
+              chunks.map((c, index) => (
+                <MarkdownChunkView key={index} doc={c.doc} live={isStreaming && index === chunks.length - 1} />
+              ))
+            ) : (
+              <Markdown
+                extensions={_EXTENSIONS}
+                frontmatter={false}
+                headingIds={false}
+                components={MARKDOWN_COMPONENTS}
+              >
+                {fixedContent}
+              </Markdown>
+            )}
+          </div>
+        </MarkdownMediaContext.Provider>
       </MarkdownSessionContext.Provider>
     </MarkdownStreamingContext.Provider>
   )
@@ -704,6 +719,7 @@ const MarkdownChunkView = memo(function MarkdownChunkView({ doc, live }: { doc: 
 // needs arrive through these contexts instead.
 const MarkdownStreamingContext = createContext(false)
 const MarkdownSessionContext = createContext<string | undefined>(undefined)
+const MarkdownMediaContext = createContext<((src: string) => string) | undefined>(undefined)
 
 // The renderer hands ``pre`` the fence language on ``data-lang`` and the raw
 // source as the ``<code>`` element's single string child — no highlighter is
@@ -756,10 +772,13 @@ function MarkdownTh({ children, ...props }: React.HTMLAttributes<HTMLTableCellEl
 
 function MarkdownImg({ src, alt, title }: React.ImgHTMLAttributes<HTMLImageElement>) {
   const sessionId = useContext(MarkdownSessionContext)
+  const resolveMedia = useContext(MarkdownMediaContext)
+  const raw = typeof src === 'string' ? src : undefined
+  const resolved = raw && resolveMedia && isRelativeMediaSrc(raw) ? resolveMedia(raw) : resolveImageSrc(raw, sessionId)
   return (
     <MarkdownImage
-      rawSrc={typeof src === 'string' ? src : undefined}
-      src={resolveImageSrc(typeof src === 'string' ? src : undefined, sessionId)}
+      rawSrc={raw}
+      src={resolved}
       alt={alt ?? ''}
       title={typeof title === 'string' ? title : undefined}
     />

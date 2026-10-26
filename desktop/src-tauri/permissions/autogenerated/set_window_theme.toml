@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-window-theme"
+description = "Enables the set_window_theme command without any pre-configured scope."
+commands.allow = ["set_window_theme"]
+
+[[permission]]
+identifier = "deny-set-window-theme"
+description = "Denies the set_window_theme command without any pre-configured scope."
+commands.deny = ["set_window_theme"]

@@ -30,6 +30,8 @@
   <string>OpenAgentd connects to local OpenAgentd servers on your network.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>OpenAgentd uses the microphone for voice input.</string>
+  <key>OAWidgetAppGroup</key>
+  <string>group.$(PRODUCT_BUNDLE_IDENTIFIER)</string>
   <key>NSSpeechRecognitionUsageDescription</key>
   <string>OpenAgentd uses speech recognition to convert your voice input into text.</string>
   <key>UISupportedInterfaceOrientations</key>

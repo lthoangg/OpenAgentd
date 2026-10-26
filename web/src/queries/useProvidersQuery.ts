@@ -20,6 +20,7 @@ import {
   type ProvidersListBody,
 } from '@/api/client'
 import { queryKeys } from './keys'
+import { invalidateModelSetup } from './model-setup'
 
 export function useProvidersQuery() {
   return useQuery({
@@ -34,10 +35,12 @@ export function useSaveProviderMutation() {
   return useMutation({
     mutationFn: ({ providerId, body }: { providerId: string; body: ProviderSaveRequest }) =>
       saveProvider(providerId, body),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
       void client.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(variables.providerId) })
       void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+      // The first provider also gives agents without a model its suggested one.
+      if (data.default_model) void invalidateModelSetup(client)
     },
   })
 }
@@ -156,10 +159,14 @@ function useInvalidateProviderCredentials() {
 
 export function useAddProviderCredentialMutation() {
   const invalidate = useInvalidateProviderCredentials()
+  const client = useQueryClient()
   return useMutation({
     mutationFn: ({ providerId, label, apiKey, extra }: { providerId: string; label?: string; apiKey?: string; extra?: Record<string, string> }) =>
       addProviderCredential(providerId, { label, api_key: apiKey, extra }),
-    onSuccess: (_data, { providerId }) => invalidate(providerId),
+    onSuccess: (data, { providerId }) => {
+      invalidate(providerId)
+      if (data.default_model) void invalidateModelSetup(client)
+    },
   })
 }
 

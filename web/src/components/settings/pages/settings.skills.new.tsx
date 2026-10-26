@@ -2,12 +2,12 @@ import { useState } from 'react'
 
 import { useCreateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { validateSkillDraft } from '@/components/settings/schema'
 import { PanelSection } from '@/components/ui/panel-section'
 import { Textarea } from '@/components/ui/textarea'
 import { EDITOR_BODY } from '@/components/settings/tokens'
+import { errorMessage } from '@/utils/errors'
 
 const TEMPLATE = `---
 name: new-skill
@@ -50,7 +50,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
       push({ tone: 'success', title: `Created skill "${name}"`, description: 'Active on next turn.' })
       onCreated(name)
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Create failed', description: msg })
     }

@@ -85,7 +85,7 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
 
   return createPortal(
     <div
-      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-(--color-overlay) backdrop-blur-xs"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-(--color-overlay) backdrop-blur-xs reduce-transparency:backdrop-blur-none"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

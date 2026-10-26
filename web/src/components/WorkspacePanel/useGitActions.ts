@@ -6,7 +6,7 @@
 import { useState } from 'react'
 
 import { discardCodingWorkspaceFile, revertCodingWorkspaceCommit, undoCodingWorkspaceLastCommit } from '@/api/client'
-import { softHapticFeedback } from '@/lib/haptics'
+import { outcomeHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
@@ -33,10 +33,11 @@ export function useGitActions({ workspace, onCommitChanged, onWorkingTreeChanged
     setGitActionPending(true)
     try {
       await action()
-      softHapticFeedback()
+      outcomeHapticFeedback('success')
       pushToast({ tone: 'success', ...success })
       onCommitChanged()
     } catch (err) {
+      outcomeHapticFeedback('error')
       pushToast({ tone: 'error', title: failureTitle, description: err instanceof Error ? err.message : String(err) })
     } finally {
       setGitActionPending(false)
@@ -60,7 +61,7 @@ export function useGitActions({ workspace, onCommitChanged, onWorkingTreeChanged
     setDiscarding(true)
     try {
       await discardCodingWorkspaceFile(workspace, discardTarget.path, discardTarget.status)
-      softHapticFeedback()
+      outcomeHapticFeedback('success')
       pushToast({
         tone: 'success',
         title: 'Changes discarded',
@@ -69,6 +70,7 @@ export function useGitActions({ workspace, onCommitChanged, onWorkingTreeChanged
       setDiscardTarget(null)
       onWorkingTreeChanged()
     } catch (err) {
+      outcomeHapticFeedback('error')
       pushToast({
         tone: 'error',
         title: 'Failed to discard changes',

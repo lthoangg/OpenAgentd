@@ -17,6 +17,7 @@
  * controls that need other semantics (e.g. a toggle-button group).
  */
 import type { KeyboardEvent, ReactNode } from 'react'
+import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
@@ -139,7 +140,10 @@ export function SegmentedControl<T extends string>({
     const group = event.currentTarget.closest('[role="radiogroup"]')
     const segments = Array.from(group?.querySelectorAll<HTMLButtonElement>('[data-segment-value]') ?? [])
     segments.find((segment) => segment.dataset.segmentValue === target.value)?.focus()
-    if (target.value !== value) onChange(target.value)
+    if (target.value !== value) {
+      selectionHapticFeedback()
+      onChange(target.value)
+    }
   }
 
   return (
@@ -164,7 +168,9 @@ export function SegmentedControl<T extends string>({
             disabled={disabled || option.disabled}
             tabIndex={option.value === tabStop ? 0 : -1}
             onClick={() => {
-              if (!active) onChange(option.value)
+              if (active) return
+              selectionHapticFeedback()
+              onChange(option.value)
             }}
             onKeyDown={(event) => handleKeyDown(event, option.value)}
             className={cn(

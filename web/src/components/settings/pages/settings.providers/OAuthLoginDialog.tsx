@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { queryKeys } from '@/queries'
+import { invalidateModelSetup } from '@/queries/model-setup'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
 import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose, supportsMultipleCredentials } from './providerUtils'
@@ -83,6 +84,8 @@ export function OAuthLoginDialog({
             if (model) {
               void configureDefaultModel(model)
                 .then(() => {
+                  // The agents' model changed on disk only now: refetch after.
+                  void invalidateModelSetup(queryClient)
                   useToastStore.getState().push({
                     tone: 'success',
                     title: 'Provider connected',

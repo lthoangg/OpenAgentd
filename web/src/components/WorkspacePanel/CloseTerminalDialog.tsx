@@ -26,10 +26,12 @@ export function CloseTerminalDialog({ open, title, count = 1, onConfirm, onCance
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
+          {/* No autoFocus on the danger action: the modal focuses Cancel, so
+              a reflex Enter (⌘W, Enter) never stops a running shell. */}
           <Button type="button" variant="default" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" variant="danger" onClick={onConfirm} autoFocus>
+          <Button type="button" variant="danger" onClick={onConfirm}>
             {many ? 'Close terminals' : 'Close terminal'}
           </Button>
         </DialogFooter>

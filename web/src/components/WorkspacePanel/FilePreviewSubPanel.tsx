@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Download, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { FilePreviewContent, CopyButton, canCopyFileContents } from '../FileViewerPanel'
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
+import { FilePreviewContent, CopyButton, canCopyFileContents, isMarkdownFile, type MarkdownView } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
+import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
@@ -17,6 +20,11 @@ interface FilePreviewSubPanelProps {
 
 const HTML_FILE = /\.html?$/i
 
+const MARKDOWN_VIEW_OPTIONS: readonly SegmentedOption<MarkdownView>[] = [
+  { value: 'rendered', label: 'Rendered' },
+  { value: 'source', label: 'Source' },
+]
+
 /** A file tab: one 32px toolbar (path, size, actions) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
@@ -26,6 +34,16 @@ export function FilePreviewSubPanel({
 }: FilePreviewSubPanelProps) {
   const deleted = file.deleted === true
   const downloadLabel = deleted ? 'File deleted from workspace' : 'Download file'
+  const markdown = isMarkdownFile(file)
+  // Markdown opens rendered; each file starts over when the tab shows another.
+  const [view, setView] = useState<{ path: string; value: MarkdownView }>({ path: file.path, value: 'rendered' })
+  let markdownView: MarkdownView = view.path === file.path ? view.value : 'rendered'
+  // A ``path:line`` reference needs line numbers: show the source.
+  const revealing = useFileRevealStore((s) => s.request?.path === file.path)
+  if (markdown && revealing && markdownView !== 'source') {
+    markdownView = 'source'
+    setView({ path: file.path, value: 'source' })
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -42,6 +60,16 @@ export function FilePreviewSubPanel({
           <span className="hidden shrink-0 font-mono text-[11px] text-(--color-text-subtle) md:inline">{formatBytes(file.size)}</span>
         )}
         <div className="flex shrink-0 items-center gap-0.5">
+          {markdown && (
+            <SegmentedControl
+              label="Markdown view"
+              size="sm"
+              value={markdownView}
+              onChange={(value) => setView({ path: file.path, value })}
+              options={MARKDOWN_VIEW_OPTIONS}
+              className="mr-1"
+            />
+          )}
           {onOpenPreview && !deleted && HTML_FILE.test(file.path) && (
             <Tooltip>
               <TooltipTrigger
@@ -79,7 +107,7 @@ export function FilePreviewSubPanel({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <FilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} />
+        <FilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} markdownView={markdownView} />
       </div>
     </div>
   )

@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod diagnostics;
 mod window;
 mod updater;
 mod menu;
@@ -47,6 +48,35 @@ static LAUNCHED: OnceLock<Instant> = OnceLock::new();
 /// slow start spends its time.
 pub fn launch_ms() -> u128 {
     LAUNCHED.get_or_init(Instant::now).elapsed().as_millis()
+}
+
+/// Write panics to `desktop.log` as well. Release builds use the Windows GUI
+/// subsystem and are started from Finder or the Start menu, so the default
+/// hook's stderr output goes nowhere. The previous hook still runs.
+fn log_panics() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("panic: {info}");
+        previous(info);
+    }));
+}
+
+/// WebKitGTK's DMA-BUF renderer draws a blank or white window with the
+/// proprietary NVIDIA driver (common on Wayland). Turn it off there, before
+/// any webview starts, unless the user already chose a value.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn dmabuf_workaround_needed(already_set: bool, nvidia_driver: bool) -> bool {
+    !already_set && nvidia_driver
+}
+
+#[cfg(target_os = "linux")]
+fn apply_linux_webview_workarounds() {
+    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+    if dmabuf_workaround_needed(std::env::var_os(VAR).is_some(), nvidia) {
+        // Still single-threaded: nothing else reads the environment yet.
+        std::env::set_var(VAR, "1");
+    }
 }
 
 /// Shared application state.
@@ -536,6 +566,9 @@ async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()>
 
 fn main() {
     LAUNCHED.get_or_init(Instant::now);
+    log_panics();
+    #[cfg(target_os = "linux")]
+    apply_linux_webview_workarounds();
     let state = AppState {
         sidecar: Arc::new(Mutex::new(None)),
         desktop_token: Arc::new(Mutex::new(None)),
@@ -607,6 +640,7 @@ fn main() {
             commands::secure_get_access_key,
             commands::secure_set_access_key,
             commands::secure_delete_access_key,
+            commands::set_window_theme,
             commands::save_workspace_file,
             commands::backend_health,
             commands::backend_logs_path,
@@ -791,6 +825,27 @@ mod tests {
     use crate::servers::{current_server, ServerId};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
+
+    #[test]
+    fn dmabuf_is_turned_off_only_for_nvidia_and_never_over_a_user_choice() {
+        assert!(dmabuf_workaround_needed(false, true));
+        assert!(!dmabuf_workaround_needed(false, false));
+        assert!(!dmabuf_workaround_needed(true, true));
+    }
+
+    #[test]
+    fn logging_panics_keeps_the_previous_hook() {
+        let previous_ran = Arc::new(AtomicBool::new(false));
+        let flag = previous_ran.clone();
+        std::panic::set_hook(Box::new(move |_| flag.store(true, Ordering::SeqCst)));
+        log_panics();
+
+        let result = std::panic::catch_unwind(|| panic!("boom"));
+        let _ = std::panic::take_hook();
+
+        assert!(result.is_err());
+        assert!(previous_ran.load(Ordering::SeqCst));
+    }
 
     #[test]
     fn backend_start_guard_prevents_concurrent_start_and_resets_on_drop() {

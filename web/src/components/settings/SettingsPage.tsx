@@ -204,7 +204,7 @@ function SaveBar({ draft }: { draft: DraftControls }) {
  */
 export function SettingsSkeleton({ label = 'Loading settings' }: { label?: string }) {
   return (
-    <div className="space-y-8" role="status" aria-label={label}>
+    <div className="oa-fade-in-late space-y-8" role="status" aria-label={label}>
       {[0, 1].map((i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="h-3 w-32" />

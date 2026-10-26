@@ -28,6 +28,7 @@ ios-init: ## Initialize Tauri iOS project files
 	cd src-tauri && cargo tauri ios init
 	mkdir -p src-tauri/gen/apple && cp src-tauri/PrivacyInfo.xcprivacy src-tauri/gen/apple/PrivacyInfo.xcprivacy
 	./scripts/patch-launch-screen.sh
+	./scripts/patch-ios-widget.sh
 	./scripts/patch-xcode-project.sh
 	$(MAKE) ios-icons
 
@@ -71,6 +72,7 @@ ios-web: ## Build bundled Web assets only when their inputs changed
 	fi
 
 ios-dev: ## Run on an iOS simulator/device
+	./scripts/patch-ios-widget.sh
 	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios dev --host
 
@@ -79,6 +81,8 @@ ios-dev-device: ## Run on a named physical iOS device, e.g. `make ios-dev-device
 		echo "Usage: make ios-dev-device <device-name>"; \
 		exit 2; \
 	fi
+	IOS_APP_ID=$(IOS_DEV_IDENTIFIER) ./scripts/patch-ios-widget.sh
+	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios dev --host $(IOS_DEV_APP_CONFIG) "$(IOS_DEVICE)"
 
 ios-install-device: ## Build and install the production iOS app on a device
@@ -87,6 +91,7 @@ ios-install-device: ## Build and install the production iOS app on a device
 		exit 2; \
 	fi
 	$(MAKE) ios-icons
+	./scripts/patch-ios-widget.sh
 	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios build --archive-only
 	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
@@ -97,12 +102,14 @@ ios-install-device-fast: ## Build and install a bundled debug iOS app on a devic
 		exit 2; \
 	fi
 	$(MAKE) ios-icons
+	./scripts/patch-ios-widget.sh
 	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios build --debug --archive-only
 	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
 
 ios-ipa: ## Build the release archive and package a sideloadable IPA into dist/
 	$(MAKE) ios-icons
+	./scripts/patch-ios-widget.sh
 	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios build --archive-only
 	./scripts/package-ipa.sh
@@ -115,6 +122,7 @@ ios-release: ios-ipa ## Build the IPA and upload it plus source.json to the GitH
 
 ios-build: ## Build the iOS app
 	$(MAKE) ios-icons
+	./scripts/patch-ios-widget.sh
 	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios build
 
@@ -123,6 +131,7 @@ ios-clean: ## Remove generated iOS/Xcode state (keeps gen/android)
 
 android-init: ## Initialize Tauri Android (Gradle) project files
 	cd src-tauri && cargo tauri android init --skip-targets-install
+	./scripts/patch-android-theme.sh
 	$(MAKE) android-icons
 
 # The shared icon script writes the launcher icons (adaptive foreground on a
@@ -133,10 +142,12 @@ android-icons: ## Generate OpenAgentd launcher icons into the Android project
 	cp -R src-tauri/icons/android/. $(ANDROID_RES)/
 
 android-dev: ## Run on a connected Android device/emulator against Vite (`make android-dev [device]`)
+	./scripts/patch-android-theme.sh
 	cd src-tauri && cargo tauri android dev $(ANDROID_DEVICE) --host
 
 android-apk: ## Build the release APK and sign it into dist/ (see scripts/package-apk.sh)
 	@[ -d src-tauri/gen/android ] || $(MAKE) android-init
+	./scripts/patch-android-theme.sh
 	$(MAKE) android-icons
 	cd src-tauri && cargo tauri android build --apk $(foreach t,$(ANDROID_TARGETS),--target $(t))
 	./scripts/package-apk.sh

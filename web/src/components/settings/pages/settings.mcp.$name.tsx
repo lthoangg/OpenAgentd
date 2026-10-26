@@ -11,7 +11,6 @@ import {
   useUpdateMcpServerMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { McpServerForm } from '@/components/settings/McpServerForm'
 import {
@@ -35,6 +34,7 @@ import {
 } from '@/components/ui/dialog'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
+import { errorMessage } from '@/utils/errors'
 
 interface McpServerDetailPageProps {
   name: string
@@ -82,7 +82,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       await updateMut.mutateAsync({ name, server: result.body })
       push({ tone: 'success', title: `Saved "${name}"`, description: 'Available on next turn.' })
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Save failed', description: msg })
     }
@@ -94,7 +94,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       push({ tone: 'success', title: `Deleted "${name}"` })
       onBack()
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       push({ tone: 'error', title: 'Delete failed', description: msg })
     }
   }
@@ -104,7 +104,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       await restartMut.mutateAsync(name)
       push({ tone: 'success', title: `Restarted "${name}"` })
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       push({ tone: 'error', title: `Failed to restart "${name}"`, description: msg })
     }
   }
@@ -114,7 +114,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       await connectOAuthMut.mutateAsync(name)
       push({ tone: 'success', title: `Connected OAuth for "${name}"` })
     } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      const msg = errorMessage(err)
       push({ tone: 'error', title: `OAuth connect failed for "${name}"`, description: msg })
     }
   }

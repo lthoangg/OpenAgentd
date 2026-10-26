@@ -33,6 +33,13 @@ struct SharePayload<'a> {
     path: &'a str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WidgetPayload<'a> {
+    /// The snapshot JSON, already validated by the shell.
+    snapshot: &'a str,
+}
+
 impl<R: Runtime> AndroidShell<R> {
     /// Offer `path` (a file inside the app cache directory) to other apps
     /// through the system share chooser. Blocks until the chooser is shown;
@@ -43,6 +50,40 @@ impl<R: Runtime> AndroidShell<R> {
             .map(|_| ())
             .map_err(|e| format!("Share file: {e}"))
     }
+
+    /// Save the home-screen widget snapshot and redraw every placed widget.
+    /// Blocks on the JNI call; call it off the async runtime.
+    pub fn update_widgets(&self, snapshot: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("updateWidgets", WidgetPayload { snapshot })
+            .map(|_| ())
+            .map_err(|e| format!("Update widgets: {e}"))
+    }
+
+    /// Send the app to the background, as Back does on a root activity.
+    /// Blocks on the JNI call; call it off the async runtime.
+    pub fn move_task_to_back(&self) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("moveTaskToBack", ())
+            .map(|_| ())
+            .map_err(|e| format!("Move to background: {e}"))
+    }
+
+    /// Match the status bar and webview background to the web UI's theme
+    /// preference (`"light"`, `"dark"`, or `"system"`) and remember it for
+    /// the next launch. Blocks on the JNI call; call it off the async runtime.
+    pub fn set_app_theme(&self, preference: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("setAppTheme", ThemePayload { preference })
+            .map(|_| ())
+            .map_err(|e| format!("Set app theme: {e}"))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ThemePayload<'a> {
+    preference: &'a str,
 }
 
 pub trait AndroidShellExt<R: Runtime> {

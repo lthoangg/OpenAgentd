@@ -24,11 +24,13 @@ import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { NewSessionScreen } from '../NewSession/NewSessionScreen'
+import { ModelSetupCard } from '../NewSession/ModelSetupCard'
 import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useProvidersQuery } from '@/queries'
+import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
@@ -72,6 +74,7 @@ import type {
   ContentBlock,
   MessageAttachment,
 } from '@/api/types'
+import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -379,9 +382,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     })
   }, [sessionIdState, clearPlan, pushToast])
   const providersQ = useProvidersQuery()
-  const hasConfiguredModelProvider = providersQ.data?.providers.some(
-    (provider) => provider.kind !== 'local' && provider.is_configured,
-  ) ?? true
 
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = workspace
@@ -390,6 +390,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasWorkspace)
   const leadAgent = agentRegistryData?.agents?.[0]
   const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
+  // Can a message run? A real model whose provider is connected. Unknown
+  // while either list loads, so no setup prompt flashes on a working setup.
+  const modelReady = modelReadiness(
+    providersQ.data?.providers,
+    agentRegistryData ? (sessionModel || leadAgent?.model || null) : undefined,
+  )
+  const needsModelSetup = modelReady.status === 'needs-model' || modelReady.status === 'needs-provider'
 
   // When the session overrides the agent's model (e.g. user switches from
   // model A to model B mid-session), the trigger threshold must reflect the
@@ -664,7 +671,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       disabled={isSessionLoading}
       placeholder={
         // While a turn runs the composer shows its own queue/stop hint.
-        isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+        isDraft && needsModelSetup
+          ? 'Connect a model to start chatting'
+          : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
@@ -706,7 +715,26 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     <div
       className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
       {...edgeSwipeHandlers}
+      // Files dropped anywhere in the window (header, sidebar, dock) attach
+      // to the composer, so this opts the whole shell out of the stray-drop
+      // guard (usePreventStrayFileDrop). While the dock covers the chat the
+      // composer is inert, so drops fall back to the guard.
+      data-file-drop-zone={chatCoveredByDock ? undefined : ''}
+      onDragEnter={chatCoveredByDock ? undefined : handleDragEnter}
+      onDragOver={chatCoveredByDock ? undefined : handleDragOver}
+      onDragLeave={chatCoveredByDock ? undefined : handleDragLeave}
+      onDrop={chatCoveredByDock ? undefined : handleDrop}
     >
+      {isDraggingFile && (
+        <div className="pointer-events-none fixed inset-0 z-50 p-4 drag-overlay-enter">
+          <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none flex flex-col items-center justify-center gap-2 drag-card-enter">
+            <FileUp size={24} className="text-(--color-accent) animate-pulse" />
+            <span className="text-sm font-medium text-(--color-text)">
+              Drop files to attach
+            </span>
+          </div>
+        </div>
+      )}
       {/* 36 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
           70 px left inset reserved for the OS traffic-lights. */}
@@ -762,30 +790,20 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
           inert={chatCoveredByDock}
           aria-hidden={chatCoveredByDock || undefined}
-          // Opts this column out of the global stray-file-drop guard
-          // (usePreventStrayFileDrop) — drops landing here are ours to handle.
+          // The shell above handles the drop; the chat column stays a marked
+          // drop zone so it is never mistaken for a stray drop target.
           data-file-drop-zone
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
         >
-          {isDraggingFile && (
-            <div className="absolute inset-0 z-50 p-4 pointer-events-none drag-overlay-enter">
-              <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
-                <FileUp size={24} className="text-(--color-accent) animate-pulse" />
-                <span className="text-sm font-medium text-(--color-text)">
-                  Drop files to attach
-                </span>
-              </div>
-            </div>
-          )}
-        <ProviderSetupNotice
-          setupMessage={setupRequired?.message ?? null}
-          hasConfiguredProvider={hasConfiguredModelProvider}
-          onOpenProviders={() => openSettings('providers')}
-          onDismiss={dismissSetupRequired}
-        />
+        <ConnectionBanner />
+        {/* The draft screen carries its own setup card instead. */}
+        {!isDraft && (
+          <ProviderSetupNotice
+            setupMessage={setupRequired?.message ?? null}
+            hasConfiguredProvider={!needsModelSetup}
+            onOpenProviders={() => openSettings('providers')}
+            onDismiss={dismissSetupRequired}
+          />
+        )}
         {isSessionLoading && !chatOnScreen ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
@@ -830,6 +848,14 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             isChat={isChatWorkspace}
             chatWorkspace={chatWorkspace}
             composer={composerInline ? composerElement : null}
+            setup={(modelReady.status === 'needs-model' || modelReady.status === 'needs-provider') && providersQ.data ? (
+              <ModelSetupCard
+                key={modelReady.status === 'needs-provider' ? modelReady.provider.id : 'needs-model'}
+                readiness={modelReady}
+                providers={providersQ.data.providers}
+                onOpenProviders={() => openSettings('providers')}
+              />
+            ) : null}
             isMobile={isMobile}
             onSelectWorkspace={handleSelectDraftWorkspace}
             onOpenFolder={handleOpenWorkspaceDialog}

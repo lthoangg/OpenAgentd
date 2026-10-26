@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget palette (light). Dark variants in values-night/. -->
+<resources>
+    <color name="openagentd_widget_bg">#FFFBF1</color>
+    <color name="openagentd_widget_border">#E7DCBF</color>
+    <color name="openagentd_widget_text">#1A1714</color>
+    <color name="openagentd_widget_muted">#7A6A54</color>
+    <color name="openagentd_widget_button_bg">#2D241B</color>
+    <color name="openagentd_widget_button_text">#FFFDF7</color>
+    <color name="openagentd_widget_needs_bg">#FFF1D8</color>
+    <color name="openagentd_widget_running_bg">#DCEEFB</color>
+    <color name="openagentd_widget_idle_bg">#F0E9D4</color>
+    <color name="openagentd_widget_failed_bg">#FBE3EC</color>
+</resources>

@@ -716,7 +716,36 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
     cred_store::clear_cooldown(&id, &cid);
     let _ = rs::clear_provider_cached_models(&id);
     tracing::info!("provider_credentials_saved provider={} credential={} names={:?}", id, cid, names);
-    Ok(json(json!({"saved": true, "credential_id": cid})))
+    let (default_model, agents_updated) = configure_default_model_for(&id).await;
+    Ok(json(json!({"saved": true, "credential_id": cid, "default_model": default_model, "agents_updated": agents_updated})))
+}
+
+/// After a provider gains a credential: when agents still wait for a model,
+/// give them the provider's suggested one (`appv3_providers::suggest`), read
+/// from its live model list. Models the user chose are never replaced.
+/// Returns the model set (`None` when nothing changed) and the agents updated.
+async fn configure_default_model_for(id: &str) -> (Option<String>, Vec<String>) {
+    let dir = settings().agents_dir.clone();
+    let waiting = {
+        let dir = dir.clone();
+        blocking(move || appv3_agent::loader::has_unconfigured_agent_models(&dir)).await
+    };
+    if !waiting {
+        return (None, vec![]);
+    }
+    let Some(entry) = prov::find(id) else { return (None, vec![]) };
+    let live = prov::discover_provider_models(entry, &prov::saved_overrides(entry)).await;
+    let Some(pm) = appv3_providers::suggest::suggested_model(id, &live) else {
+        tracing::info!("default_model_not_set provider={} reason=no_models", id);
+        return (None, vec![]);
+    };
+    let model = pm.clone();
+    let updated = blocking(move || appv3_agent::loader::configure_unconfigured_agent_models(&dir, &model)).await;
+    tracing::info!("default_model_set provider_model={} agents={:?}", pm, updated);
+    if updated.is_empty() {
+        return (None, updated);
+    }
+    (Some(pm), updated)
 }
 
 // ── credential list ─────────────────────────────────────────────────────────
@@ -840,7 +869,13 @@ async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
     .map_err(store_err)?;
     let _ = rs::clear_provider_cached_models(&id);
     tracing::info!("provider_credential_added provider={} credential={}", id, c.id);
-    Ok(json_code(201, credential_meta(entry, &c, false)))
+    let mut meta = credential_meta(entry, &c, false);
+    let (default_model, agents_updated) = configure_default_model_for(&id).await;
+    if let Some(o) = meta.as_object_mut() {
+        o.insert("default_model".into(), json!(default_model));
+        o.insert("agents_updated".into(), json!(agents_updated));
+    }
+    Ok(json_code(201, meta))
 }
 
 async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Bytes) -> ApiResult<Response> {
@@ -934,17 +969,33 @@ async fn order_credentials(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<
     Ok(json(json!({"provider": id, "credentials": credentials_json(entry)})))
 }
 
+/// `POST /settings/default-model`: set a model on every agent that has none
+/// yet. Takes `provider_model` (`<provider>:<model>`), or `provider` to use
+/// that provider's suggested model from its live list.
 async fn default_model(raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
-    let pm = b.str("provider_model", None);
-    let pm = crate::routes::library::py_strip(&pm);
-    if b.errs.is_empty() && !pm.contains(':') {
+    let pm = b.opt_str("provider_model").map(|p| crate::routes::library::py_strip(&p));
+    let provider = b.opt_str("provider").map(|p| crate::routes::library::py_strip(&p)).filter(|p| !p.is_empty());
+    if b.errs.is_empty() && pm.is_none() && provider.is_none() {
+        b.value_error("provider_model", "Provide provider_model or provider", Value::Null);
+    }
+    if b.errs.is_empty() && pm.as_deref().is_some_and(|p| !p.contains(':')) {
         let input = v.get("provider_model").cloned().unwrap_or(Value::Null);
         b.value_error("provider_model", "provider_model must use '<provider>:<model>' format", input);
     }
-    b.finish(&["provider_model"])?;
-    let dir = settings().config_dir.join("agents");
-    let updated = blocking(move || appv3_agent::loader::configure_unconfigured_agent_models(&dir, &pm)).await;
-    Ok(json(json!({"agents_updated": updated})))
+    b.finish(&["provider_model", "provider"])?;
+    let pm = match pm {
+        Some(pm) => pm,
+        None => {
+            let id = provider.unwrap_or_default();
+            let entry = find_or_404(&id)?;
+            let live = prov::discover_provider_models(entry, &prov::saved_overrides(entry)).await;
+            appv3_providers::suggest::suggested_model(&id, &live).ok_or_else(|| ApiError::unprocessable(format!("{} lists no models to use.", s(entry, "label"))))?
+        }
+    };
+    let dir = settings().agents_dir.clone();
+    let model = pm.clone();
+    let updated = blocking(move || appv3_agent::loader::configure_unconfigured_agent_models(&dir, &model)).await;
+    Ok(json(json!({"agents_updated": updated, "provider_model": pm})))
 }

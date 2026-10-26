@@ -108,6 +108,8 @@ mock.module('@/hooks/use-platform', () => ({
 // Import component after mocks are set up
 // ---------------------------------------------------------------------------
 import { UpdateCard } from '@/components/UpdateCard'
+import { queryClient } from '@/lib/query-client'
+import { queryKeys } from '@/queries'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -136,7 +138,19 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  queryClient.clear()
 })
+
+/** Seed the active-sessions list the sidebar keeps live. */
+function seedActiveSessions(sessions: Array<{ running: boolean; needs_input?: boolean }>) {
+  queryClient.setQueryData(queryKeys.session.sessions.active(), {
+    pages: [{
+      data: sessions.map((session, index) => ({ id: `s${index}`, workspace: '/w', ...session })),
+      has_more: false,
+    }],
+    pageParams: [null],
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -580,5 +594,48 @@ describe('UpdateCard — listener lifecycle', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(unlistenStatusMock).toHaveBeenCalled()
     expect(unlistenCheckMock).toHaveBeenCalled()
+  })
+})
+
+describe('UpdateCard — restarting while agents work', () => {
+  async function showDownloaded() {
+    render(<UpdateCard />)
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+    return screen.findByRole('button', { name: /install and restart/i })
+  }
+
+  it('warns instead of restarting while a turn is running', async () => {
+    seedActiveSessions([{ running: true }])
+    await userEvent.click(await showDownloaded())
+
+    expect(screen.getByText(/still working/i)).toBeInTheDocument()
+    expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(false)
+  })
+
+  it('restarts anyway once confirmed', async () => {
+    seedActiveSessions([{ running: true }])
+    await userEvent.click(await showDownloaded())
+    await userEvent.click(screen.getByRole('button', { name: /restart anyway/i }))
+
+    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
+  })
+
+  it('restarts right away when sessions only wait on the user', async () => {
+    seedActiveSessions([{ running: true, needs_input: true }])
+    await userEvent.click(await showDownloaded())
+
+    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
+    expect(screen.queryByText(/still working/i)).not.toBeInTheDocument()
+  })
+
+  it('opens the warning from the minimized Install button', async () => {
+    seedActiveSessions([{ running: true }])
+    await showDownloaded()
+    await userEvent.click(screen.getByRole('button', { name: /minimize/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^install$/i }))
+
+    expect(screen.getByText(/still working/i)).toBeInTheDocument()
+    expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(false)
   })
 })

@@ -233,3 +233,29 @@
     /* The logo's dot (the agent) is Signal Blue (components/brand/Logo.tsx). */
     --logo-signal:  var(--accent-blue);
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * Increased contrast (macOS/iOS "Increase contrast", Windows contrast
+ * themes report it too). Muted and subtle text take the secondary text
+ * tone (≥7:1), and every border steps up so component edges reach 3:1
+ * against the page and sidebar. Kept after both themes so it overrides
+ * them at equal specificity. high-contrast.test.ts checks the ratios.
+ * ───────────────────────────────────────────────────────────── */
+@media (prefers-contrast: more) {
+    :root,
+    :root.light {
+        --color-text-muted:    #4B3E32;
+        --color-text-subtle:   #4B3E32;
+        --color-border-subtle: #B8A47E;
+        --color-border:        #8C7A5B;
+        --color-border-strong: #6E604F;
+    }
+
+    :root.dark {
+        --color-text-muted:    #C5B59A;
+        --color-text-subtle:   #C5B59A;
+        --color-border-subtle: #5C4B36;
+        --color-border:        #7A6A54;
+        --color-border-strong: #9C8A72;
+    }
+}

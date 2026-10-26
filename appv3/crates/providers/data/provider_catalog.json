@@ -4,6 +4,9 @@
     "label": "Anthropic Claude",
     "description": "Claude API via Anthropic Messages.",
     "kind": "api_key",
+    "suggested_models": [
+      "claude-sonnet-*"
+    ],
     "env_var": "ANTHROPIC_API_KEY",
     "supports_fast_mode": true,
     "models_dev_provider_id": "anthropic",
@@ -30,6 +33,10 @@
     "label": "Google Gemini",
     "description": "Google AI Studio \u2014 free tier available.",
     "kind": "api_key",
+    "suggested_models": [
+      "gemini-*-flash",
+      "gemini-*-pro"
+    ],
     "env_var": "GOOGLE_API_KEY",
     "supports_fast_mode": true,
     "models_dev_provider_id": "google",
@@ -40,6 +47,10 @@
     "label": "OpenAI",
     "description": "GPT-5.x, GPT-4.1, etc.",
     "kind": "api_key",
+    "suggested_models": [
+      "gpt-*-sol",
+      "gpt-*"
+    ],
     "env_var": "OPENAI_API_KEY",
     "supports_fast_mode": true,
     "docs_url": "https://platform.openai.com/api-keys"
@@ -49,6 +60,10 @@
     "label": "OpenCode Zen",
     "description": "Curated coding models through the OpenCode Zen gateway.",
     "kind": "api_key",
+    "suggested_models": [
+      "claude-sonnet-*",
+      "gpt-*-sol"
+    ],
     "env_var": "OPENCODE_ZEN_API_KEY",
     "models_dev_provider_id": "opencode",
     "docs_url": "https://opencode.ai/docs/zen/"
@@ -58,6 +73,10 @@
     "label": "OpenCode Go",
     "description": "Open coding models through the OpenCode Go subscription.",
     "kind": "api_key",
+    "suggested_models": [
+      "glm-*",
+      "kimi-k*"
+    ],
     "env_var": "OPENCODE_GO_API_KEY",
     "models_dev_provider_id": "opencode-go",
     "docs_url": "https://opencode.ai/docs/go/"
@@ -67,6 +86,10 @@
     "label": "OpenRouter",
     "description": "Many models, free tiers available.",
     "kind": "api_key",
+    "suggested_models": [
+      "anthropic/claude-sonnet-*",
+      "openai/gpt-*-sol"
+    ],
     "env_var": "OPENROUTER_API_KEY",
     "models_dev_provider_id": "openrouter",
     "docs_url": "https://openrouter.ai/keys"
@@ -76,6 +99,9 @@
     "label": "Z.AI / GLM",
     "description": "Z.AI's GLM-5 family.",
     "kind": "api_key",
+    "suggested_models": [
+      "glm-*"
+    ],
     "env_var": "ZAI_API_KEY",
     "models_dev_provider_id": "zai",
     "docs_url": "https://z.ai/manage-apikey/apikey-list"
@@ -94,6 +120,9 @@
     "label": "xAI Grok",
     "description": "xAI's Grok family.",
     "kind": "api_key",
+    "suggested_models": [
+      "grok-*"
+    ],
     "env_var": "XAI_API_KEY",
     "models_dev_provider_id": "xai",
     "docs_url": "https://console.x.ai"
@@ -114,6 +143,11 @@
     "label": "DeepSeek",
     "description": "DeepSeek's direct API.",
     "kind": "api_key",
+    "suggested_models": [
+      "deepseek-v*-pro",
+      "deepseek-v*-flash",
+      "deepseek-flash"
+    ],
     "env_var": "DEEPSEEK_API_KEY",
     "models_dev_provider_id": "deepseek",
     "docs_url": "https://platform.deepseek.com/api_keys"
@@ -147,6 +181,9 @@
     "label": "GitHub Copilot",
     "description": "Use your Copilot subscription \u2014 OAuth, no API key.",
     "kind": "oauth",
+    "suggested_models": [
+      "gpt-4.1"
+    ],
     "env_var": "",
     "models_dev_provider_id": "github-copilot",
     "oauth_command": "agentd auth copilot",

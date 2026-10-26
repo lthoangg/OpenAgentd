@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export function TelemetrySkeleton({ withFilterBar = true }: { withFilterBar?: boolean }) {
   return (
-    <div aria-busy="true" aria-label="Loading telemetry" className="flex min-h-0 flex-1 flex-col">
+    <div aria-busy="true" aria-label="Loading telemetry" className="oa-fade-in-late flex min-h-0 flex-1 flex-col">
       {withFilterBar && (
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) px-3 sm:px-4">
           <Skeleton className="h-6 w-40" />

@@ -6,11 +6,37 @@ import { queryKeys } from '@/queries/keys'
 import { apiBaseUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { useToastStore } from '@/stores/useToastStore'
+import { useUIStore } from '@/stores/useUIStore'
+import { startNewSession } from '@/lib/new-session'
+import { loadLastWorkspace } from '@/utils/workspace'
 
 export type DeepLinkParsed =
   | { kind: 'auth_callback'; provider: string; code: string }
   | { kind: 'navigate'; path: string }
+  /** A new-session draft (home-screen widget); in the last folder when ``workspace`` is null. */
+  | { kind: 'new_session'; workspace: string | null }
+  /** The scheduler, on one task when ``task`` is set (home-screen widget). */
+  | { kind: 'open_scheduler'; task: string | null }
   | { kind: 'unknown' }
+
+function nonEmptyParam(url: URL, name: string): string | null {
+  const value = url.searchParams.get(name)?.trim()
+  return value ? value : null
+}
+
+/**
+ * Host and path of an ``openagentd://host/path`` link. Older Chromium (the
+ * Android System WebView on many phones) parses a custom scheme as an empty
+ * host and a ``//host/path`` pathname, so split that form by hand.
+ */
+export function deepLinkParts(url: Pick<URL, 'host' | 'pathname'>): { host: string; pathname: string } {
+  if (url.host || !url.pathname.startsWith('//')) return { host: url.host, pathname: url.pathname }
+  const rest = url.pathname.slice(2)
+  const slash = rest.indexOf('/')
+  return slash === -1
+    ? { host: rest, pathname: '' }
+    : { host: rest.slice(0, slash), pathname: rest.slice(slash) }
+}
 
 export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
   try {
@@ -19,10 +45,11 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
       return { kind: 'unknown' }
     }
 
-    const host = url.host
-    const pathname = url.pathname.replace(/^\/+/, '')
+    const parts = deepLinkParts(url)
+    const host = parts.host
+    const pathname = parts.pathname.replace(/^\/+/, '')
 
-    if (host === 'auth' && url.pathname === '/callback') {
+    if (host === 'auth' && parts.pathname === '/callback') {
       const provider = url.searchParams.get('provider')?.trim()
       const rawCode = url.searchParams.get('code')
       if (!provider || !rawCode?.trim()) return { kind: 'unknown' }
@@ -35,6 +62,15 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
     if (host === 'cockpit' || host === 'coding' || host === 'session') {
       const target = `/${pathname}`.replace(/\/+$/, '')
       return { kind: 'navigate', path: target || '/' }
+    }
+
+    // `/` reopens the last session, so a widget's "New session" needs its own host.
+    if (host === 'new' && pathname === '') {
+      return { kind: 'new_session', workspace: nonEmptyParam(url, 'workspace') }
+    }
+
+    if (host === 'scheduler' && pathname === '') {
+      return { kind: 'open_scheduler', task: nonEmptyParam(url, 'task') }
     }
 
     return { kind: 'unknown' }
@@ -86,6 +122,12 @@ export function useDeepLinkRouter(): void {
         }
       } else if (parsed.kind === 'navigate') {
         void router.navigate({ href: parsed.path })
+      } else if (parsed.kind === 'new_session') {
+        const workspace = parsed.workspace ?? loadLastWorkspace()?.path ?? null
+        if (workspace) startNewSession({ navigate: router.navigate, workspace })
+        else void router.navigate({ href: '/' })
+      } else if (parsed.kind === 'open_scheduler') {
+        useUIStore.getState().requestSchedulerOpen(parsed.task)
       }
     }
 

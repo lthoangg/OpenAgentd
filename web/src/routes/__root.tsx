@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { Seal } from '@/components/brand/Logo'
@@ -12,8 +12,6 @@ import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
-import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
-import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
 import { isPageReload } from '@/lib/page-reload'
@@ -24,8 +22,20 @@ import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
+import { getPlatform } from '@/hooks/use-platform'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { CAPABILITY, useServerCapability } from '@/queries'
+
+// Home-screen widgets exist only in the phone apps; keep their sync out of
+// the desktop and browser bundle.
+const WidgetSnapshotSync = lazy(() =>
+  import('@/hooks/use-widget-snapshot').then((module) => ({ default: module.WidgetSnapshotSync })),
+)
+
+function widgetsSupported(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
+}
 
 // Only v3 backends can answer the plugin status request the notice makes.
 function PluginNoticeGate() {
@@ -34,8 +44,6 @@ function PluginNoticeGate() {
 }
 
 export function Root() {
-  useMobileViewportGuards()
-  useDynamicType()
   useDesktopCommands()
   useContainerSelectAll()
   usePreventBackspaceNavigation()
@@ -87,6 +95,11 @@ export function Root() {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
+      {widgetsSupported() && (
+        <Suspense fallback={null}>
+          <WidgetSnapshotSync />
+        </Suspense>
+      )}
       <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />

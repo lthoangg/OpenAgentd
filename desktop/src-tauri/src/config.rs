@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -14,10 +15,49 @@ use openagentd_shell_core::backend_config::{
     load_backend_config_from, remove_backend_server_at, save_backend_config_to,
 };
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SavedWindowState {
     pub width: u32,
     pub height: u32,
+    /// Outer position in physical pixels. Older files have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+}
+
+impl SavedWindowState {
+    /// The same size with no position, for a window the OS should place.
+    pub fn size_only(self) -> Self {
+        Self { x: None, y: None, ..self }
+    }
+}
+
+/// A monitor's area in physical pixels.
+#[derive(Clone, Copy, Debug)]
+pub struct ScreenArea {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The saved position, if the window's title bar would be on a screen there:
+/// its top edge inside one, with at least 100 px of it showing. Otherwise
+/// the window opens where the OS puts it (e.g. after a screen was unplugged).
+pub fn restorable_position(state: &SavedWindowState, screens: &[ScreenArea]) -> Option<(i32, i32)> {
+    const TITLE_BAR: i64 = 40;
+    const SHOWING: i64 = 100;
+    let (x, y) = (i64::from(state.x?), i64::from(state.y?));
+    let right = x + i64::from(state.width);
+    screens
+        .iter()
+        .any(|s| {
+            let (sx, sy) = (i64::from(s.x), i64::from(s.y));
+            let overlap = right.min(sx + i64::from(s.width)) - x.max(sx);
+            y >= sy && y + TITLE_BAR <= sy + i64::from(s.height) && overlap >= SHOWING
+        })
+        .then_some((x as i32, y as i32))
 }
 
 #[derive(Clone, Serialize)]
@@ -75,18 +115,20 @@ pub fn rememberable_size(
     if minimized || maximized || width < 760 || height < 560 {
         return None;
     }
-    Some(SavedWindowState { width, height })
+    Some(SavedWindowState { width, height, x: None, y: None })
 }
 
-/// The current size of `window`, if it is one worth remembering.
+/// The current size and position of `window`, if it is one worth remembering.
 pub fn window_size(window: &tauri::WebviewWindow) -> Option<SavedWindowState> {
     let size = window.inner_size().ok()?;
-    rememberable_size(
+    let state = rememberable_size(
         size.width,
         size.height,
         window.is_minimized().unwrap_or(false),
         window.is_maximized().unwrap_or(false),
-    )
+    )?;
+    let position = window.outer_position().ok();
+    Some(SavedWindowState { x: position.map(|p| p.x), y: position.map(|p| p.y), ..state })
 }
 
 pub fn save_window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<()> {
@@ -136,9 +178,87 @@ pub fn save_island_settings(app: &AppHandle, settings: &crate::island::IslandSet
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
+/// Each app window's explicit theme pick (`desktop-window-theme.json`, label
+/// → `"light"` / `"dark"`). The page keeps its preference in webview
+/// storage, which the shell cannot read before the page loads; this copy
+/// lets a new window open with the background its page will paint.
+type WindowThemes = BTreeMap<String, String>;
+
+fn window_themes_from(bytes: Option<&[u8]>) -> WindowThemes {
+    bytes
+        .and_then(|b| serde_json::from_slice(b).ok())
+        .unwrap_or_default()
+}
+
+fn theme_named(name: &str) -> Option<tauri::Theme> {
+    match name {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    }
+}
+
+/// The pick saved for `label`; `None` follows the system.
+fn window_theme_in(themes: &WindowThemes, label: &str) -> Option<tauri::Theme> {
+    themes.get(label).and_then(|name| theme_named(name))
+}
+
+/// `themes` with `label` set to `theme`, or cleared for the system theme.
+fn with_window_theme(mut themes: WindowThemes, label: &str, theme: Option<tauri::Theme>) -> WindowThemes {
+    match theme {
+        Some(tauri::Theme::Dark) => themes.insert(label.to_string(), "dark".into()),
+        Some(_) => themes.insert(label.to_string(), "light".into()),
+        None => themes.remove(label),
+    };
+    themes
+}
+
+fn read_window_themes(app: &AppHandle) -> WindowThemes {
+    let bytes = app_config_file(app, "desktop-window-theme.json")
+        .ok()
+        .and_then(|path| std::fs::read(path).ok());
+    window_themes_from(bytes.as_deref())
+}
+
+pub fn saved_window_theme(app: &AppHandle, label: &str) -> Option<tauri::Theme> {
+    window_theme_in(&read_window_themes(app), label)
+}
+
+pub fn save_window_theme(app: &AppHandle, label: &str, theme: Option<tauri::Theme>) -> Result<()> {
+    let themes = read_window_themes(app);
+    if window_theme_in(&themes, label) == theme {
+        return Ok(());
+    }
+    let path = app_config_file(app, "desktop-window-theme.json")?;
+    let bytes = serde_json::to_vec_pretty(&with_window_theme(themes, label, theme))
+        .context("serialize window themes")?;
+    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_theme_picks_are_kept_per_window_and_cleared_for_system() {
+        let themes = with_window_theme(WindowThemes::new(), "main", Some(tauri::Theme::Dark));
+        let themes = with_window_theme(themes, "main-2", Some(tauri::Theme::Light));
+        assert_eq!(window_theme_in(&themes, "main"), Some(tauri::Theme::Dark));
+        assert_eq!(window_theme_in(&themes, "main-2"), Some(tauri::Theme::Light));
+        assert_eq!(window_theme_in(&themes, "main-3"), None);
+
+        let themes = with_window_theme(themes, "main", None);
+        assert_eq!(window_theme_in(&themes, "main"), None);
+        assert_eq!(window_theme_in(&themes, "main-2"), Some(tauri::Theme::Light));
+    }
+
+    #[test]
+    fn unreadable_window_theme_files_follow_the_system() {
+        assert!(window_themes_from(None).is_empty());
+        assert!(window_themes_from(Some(b"not json")).is_empty());
+        let odd = window_themes_from(Some(br#"{"main": "sepia"}"#));
+        assert_eq!(window_theme_in(&odd, "main"), None);
+    }
 
     #[test]
     fn island_settings_default_per_key_and_read_older_files() {
@@ -164,5 +284,36 @@ mod tests {
         assert!(rememberable_size(1600, 1000, false, true).is_none());
         assert!(rememberable_size(700, 1000, false, false).is_none());
         assert!(rememberable_size(1600, 500, false, false).is_none());
+    }
+
+    #[test]
+    fn window_state_files_without_a_position_still_restore_the_size() {
+        let old: SavedWindowState = serde_json::from_slice(br#"{"width": 1600, "height": 1000}"#).unwrap();
+        assert_eq!((old.width, old.height, old.x, old.y), (1600, 1000, None, None));
+    }
+
+    fn at(x: i32, y: i32) -> SavedWindowState {
+        SavedWindowState { width: 1280, height: 820, x: Some(x), y: Some(y) }
+    }
+
+    const LAPTOP: ScreenArea = ScreenArea { x: 0, y: 0, width: 2880, height: 1800 };
+    const EXTERNAL: ScreenArea = ScreenArea { x: 2880, y: -200, width: 3840, height: 2160 };
+
+    #[test]
+    fn a_window_reopens_where_it_was_on_any_screen() {
+        assert_eq!(restorable_position(&at(100, 80), &[LAPTOP]), Some((100, 80)));
+        assert_eq!(restorable_position(&at(3000, -100), &[LAPTOP, EXTERNAL]), Some((3000, -100)));
+    }
+
+    #[test]
+    fn a_window_whose_title_bar_is_off_screen_opens_at_the_default_place() {
+        // The external screen was unplugged.
+        assert_eq!(restorable_position(&at(3000, -100), &[LAPTOP]), None);
+        // Title bar above the top of the screen, or only a sliver showing.
+        assert_eq!(restorable_position(&at(100, -300), &[LAPTOP]), None);
+        assert_eq!(restorable_position(&at(2850, 80), &[LAPTOP]), None);
+        // No position saved yet.
+        let size_only = SavedWindowState { x: None, y: None, ..at(0, 0) };
+        assert_eq!(restorable_position(&size_only, &[LAPTOP]), None);
     }
 }

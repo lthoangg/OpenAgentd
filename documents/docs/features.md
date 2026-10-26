@@ -133,6 +133,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   selection, and backend-log-path copy actions instead of waiting indefinitely;
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
+- **Switch Server from the command palette** `[v3.32.0]` — run **Switch Server…** in the
+  command palette (⌘K) to list the builtin sidecar and saved servers (current one
+  marked, online/offline shown) and connect with Enter. It reuses the Settings →
+  Connection checks (reachable, access key accepted); a failure shows a toast and
+  keeps the current server. No keyboard shortcut; desktop app only.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
   `/` is a new session and `/{session_id}` a session; old `/coding` and

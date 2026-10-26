@@ -27,16 +27,21 @@ import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { cn } from '@/lib/utils'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
-import { queryClient } from '@/lib/query-client'
-import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
-import { queryKeys } from '@/queries/keys'
-import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, setStoredAccessKey } from '@/api/auth'
+import { getStoredAccessKey, setStoredAccessKey } from '@/api/auth'
+import {
+  connectBundledBackend,
+  connectExternalBackend,
+  connectionFailureMessage,
+  currentBackendOrigin,
+  normalizeServerBaseUrl,
+  refreshBackendQueries,
+  reloadForBackendSwitch,
+  validateServerUrl,
+} from '@/lib/backend-switch'
 import {
   getAppBackendStatus,
   removeAppBackendServer,
   stopBundledAppBackend,
-  switchToExternalAppBackend,
-  switchToBundledAppBackend,
   type SavedAppServer,
   type AppBackendStatus,
 } from '@/lib/app-backend'
@@ -103,47 +108,23 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   }, [active, prefill])
 
   async function connectExternal(nextBaseUrl: string, nextName: string, persist: boolean) {
-    const target = normalizeServerBaseUrl(nextBaseUrl)
-    const validationError = validateServerUrl(target)
-    if (validationError) {
-      setError(validationError)
-      return
-    }
-    const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
     setPending(true)
     setError(null)
-    try {
-      const online = await pingServer(target)
-      setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
-      if (!online) {
-        setError(connectionFailureMessage(target))
-        return
-      }
-      const keyForConnect = accessKey.trim() || await getStoredAccessKey(target) || ''
-      const authorized = await checkServerAuth(target, keyForConnect)
-      if (!authorized) {
-        setError('Server is reachable, but the access key is invalid or missing.')
-        return
-      }
-      if (accessKey.trim()) await setStoredAccessKey(accessKey, target)
-      const next = await switchToExternalAppBackend(target, nextName, persist)
-      await primeStoredAccessKey(next.base_url)
-      delete window.__OAD_TOKEN__
-      setApiBaseUrl(next.base_url)
-      installDesktopAuth()
-      const nextBaseUrl = normalizeServerBaseUrl(next.base_url)
-      const shouldReload = nextBaseUrl !== currentBaseUrl
-      await refreshBackendQueries()
-      setStatus(next)
-      if (shouldReload) {
-        forgetRouteForBackendSwitch()
-        window.location.reload()
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setPending(false)
+    const result = await connectExternalBackend({
+      baseUrl: nextBaseUrl,
+      name: nextName,
+      persist,
+      accessKey,
+      currentBaseUrl: currentBackendOrigin(status),
+      onHealth: (target, online) => setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' })),
+    })
+    setPending(false)
+    if (!result.ok) {
+      setError(result.error)
+      return
     }
+    setStatus(result.status)
+    if (result.reload) reloadForBackendSwitch()
   }
 
   async function testConnection(rawBaseUrl: string = baseUrl, rawAccessKey: string = accessKey) {
@@ -178,12 +159,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   }
 
   async function connectBundled() {
-    const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
-    const next = await runConnectionSwitch(() => switchToBundledAppBackend(), true)
-    if (next?.base_url && normalizeServerBaseUrl(next.base_url) !== currentBaseUrl) {
-      forgetRouteForBackendSwitch()
-      window.location.reload()
+    setPending(true)
+    setError(null)
+    const result = await connectBundledBackend(currentBackendOrigin(status))
+    setPending(false)
+    if (!result.ok) {
+      setError(result.error)
+      return
     }
+    setStatus(result.status)
+    if (result.reload) reloadForBackendSwitch()
   }
 
   async function stopBundled() {
@@ -233,20 +218,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
 
   async function runConnectionSwitch(
     action: () => Promise<void>,
-    applyAuth = false,
   ): Promise<AppBackendStatus | null> {
     setPending(true)
     setError(null)
     try {
       await action()
       const next = await getAppBackendStatus()
-      if (next?.base_url) {
-        setApiBaseUrl(next.base_url)
-        if (applyAuth) {
-          await primeStoredAccessKey(next.base_url)
-          installDesktopAuth()
-        }
-      }
+      if (next?.base_url) setApiBaseUrl(next.base_url)
       await refreshBackendQueries()
       setStatus(next)
       return next
@@ -513,44 +491,6 @@ function Badge({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   )
-}
-
-async function refreshBackendQueries(): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: queryKeys.health() })
-  // ``agents()`` is a prefix of ``agentRegistry(workspace)``, so this covers the
-  // shared /agent/agents entry for every workspace after a backend switch.
-  await queryClient.invalidateQueries({ queryKey: queryKeys.agents() })
-}
-
-function normalizeServerBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, '')
-  return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed
-}
-
-function validateServerUrl(value: string): string | null {
-  if (!value) return 'Enter a server URL first.'
-  let parsed: URL
-  try {
-    parsed = new URL(value)
-  } catch {
-    return 'Enter a full server URL, including http:// or https://.'
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return `Unsupported URL scheme: ${parsed.protocol.replace(/:$/, '')}`
-  }
-  return null
-}
-
-function connectionFailureMessage(baseUrl: string): string {
-  try {
-    const host = new URL(baseUrl).hostname
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
-      return 'Server did not respond to /api/health/live. Make sure OpenAgentd is running locally and the port is correct.'
-    }
-  } catch {
-    // validateServerUrl already handles malformed URLs.
-  }
-  return 'Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.'
 }
 
 function hostnameOf(baseUrl: string): string {

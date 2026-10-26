@@ -24,6 +24,7 @@ import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
 import { usePaletteSwitchCommands } from './usePaletteSwitchCommands'
+import { usePaletteServerCommands } from './usePaletteServerCommands'
 import { switchPagePath } from './paletteSwitchCommands'
 
 export interface UseCommandPaletteArgs {
@@ -126,7 +127,11 @@ export function useCommandPalette({
     handleOpenSideQuestions,
   })
   const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
-  const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])
+  const serverCommands = usePaletteServerCommands()
+  const paletteCommands = useMemo(
+    () => [...agentCommands, ...switchCommands, ...serverCommands],
+    [agentCommands, switchCommands, serverCommands],
+  )
 
   // ── Quick Open workspace file search ───────────────────────────────────────
   //

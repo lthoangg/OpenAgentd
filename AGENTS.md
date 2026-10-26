@@ -54,6 +54,7 @@ From the repository root:
 bun install --cwd web --frozen-lockfile
 make run       # v3 API only on :8000
 make dev       # v3 API + Vite on :5173
+make dev PORT=8001 WEB_PORT=5174   # a second checkout or worktree beside the first
 ```
 
 Source checkouts run in development (debug builds default to it, and

@@ -6,20 +6,26 @@
 # Default target
 all: help
 
+# Dev ports. Set them on the command line (`make dev PORT=8001 WEB_PORT=5174`)
+# to run several checkouts side by side; each keeps its own `.openagentd/dev/`.
+# Plain `=` so an inherited PORT (a common variable) cannot move them.
+PORT = 8000
+WEB_PORT = 5173
+
 # A debug build already runs in development; pinning the mode as well keeps an
 # inherited OPENAGENTD_ENV=production from moving source checkouts onto the
 # installed app's database.
-run: ## Start the API server only (v3 Rust backend, no frontend; :8000)
-	OPENAGENTD_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000
+run: ## Start the API server only (v3 Rust backend, no frontend; :8000, PORT=…)
+	OPENAGENTD_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port $(PORT)
 
 run-v3: run ## Alias for run
 
 run3: run
 
-dev: kill-dev-ports ## Start the v3 backend (:8000) and frontend (Vite :5173) together
+dev: kill-dev-ports ## Start the v3 backend (:8000) and Vite (:5173) together; PORT=… WEB_PORT=… to run more
 	@trap 'kill 0' INT TERM EXIT; \
-	(OPENAGENTD_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000 2>&1 | sed 's/^/[api] /') & \
-	(while ! nc -z 127.0.0.1 8000 2>/dev/null; do sleep 0.1; done; cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
+	(OPENAGENTD_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port $(PORT) 2>&1 | sed 's/^/[api] /') & \
+	(while ! nc -z 127.0.0.1 $(PORT) 2>/dev/null; do sleep 0.1; done; cd web && VITE_API_PROXY_TARGET=http://localhost:$(PORT) bun run dev --port $(WEB_PORT) --strictPort 2>&1 | sed 's/^/[web] /') & \
 	wait
 
 dev-v3: dev ## Alias for dev
@@ -34,9 +40,9 @@ verify-v3: ## Check and test all appv3 Rust crates
 	cargo clippy --manifest-path appv3/Cargo.toml --all-targets -- -D warnings
 	cargo test --manifest-path appv3/Cargo.toml --all-targets
 
-kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
+kill-dev-ports: ## Stop processes listening on this checkout's dev ports (PORT, WEB_PORT)
 	@command -v lsof >/dev/null 2>&1 || { echo "error: 'lsof' not found"; exit 1; }
-	@for port in 8000 5173; do \
+	@for port in $(PORT) $(WEB_PORT); do \
 		pids=$$(lsof -tiTCP:$$port -sTCP:LISTEN); \
 		if [ -n "$$pids" ]; then \
 			echo "stopping processes on port $$port: $$pids"; \

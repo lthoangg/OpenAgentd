@@ -100,6 +100,7 @@ subsystem.
 ```bash
 make run                                 # start server on :8000
 make dev                                 # server + web UI (Vite :5173)
+make dev PORT=8001 WEB_PORT=5174         # another checkout at the same time (own .openagentd/dev/)
 make verify-v3                           # fmt check, clippy -D warnings, tests
 cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
 ```

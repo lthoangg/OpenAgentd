@@ -17,7 +17,7 @@ fn notices() -> &'static Mutex<Vec<String>> {
     N.get_or_init(Default::default)
 }
 
-fn notice(text: String) {
+pub(crate) fn notice(text: String) {
     let mut n = notices().lock().unwrap();
     if !n.contains(&text) {
         n.push(text);
@@ -31,8 +31,9 @@ pub fn env_notices() -> Vec<String> {
 }
 
 /// Keys a `.env` file may not set: the mode picks the config dir the file
-/// lives in, so only the real environment can choose it.
-const ENV_ONLY_KEYS: [&str; 1] = ["APP_ENV"];
+/// lives in, so only the real environment can choose it. `APP_ENV` is also
+/// kept from child processes (see [`child_env_blocklist`]).
+const ENV_ONLY_KEYS: [&str; 2] = [crate::settings::MODE_ENV, "APP_ENV"];
 
 /// Record that the server itself put `key` into its environment (a `.env`
 /// value, or a provider/MCP secret saved through the API). Such values are

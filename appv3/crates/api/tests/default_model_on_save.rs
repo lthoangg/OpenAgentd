@@ -70,7 +70,7 @@ async fn saving_the_first_key_sets_the_suggested_model_on_unconfigured_agents() 
         std::env::set_var(k, r.join(d));
     }
     std::env::set_var("HOME", r.join("home"));
-    std::env::set_var("APP_ENV", "production");
+    std::env::set_var("OPENAGENTD_ENV", "production");
     std::env::set_var("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false");
     std::env::set_var("OPENAGENTD_PLUGINS_DIRS", r.join("plugins"));
     for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "AGENTS_DIR", "KEYONLY_KEY"] {

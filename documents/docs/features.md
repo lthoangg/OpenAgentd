@@ -2490,10 +2490,20 @@ Single-user trust model. The host is trusted. The operator is the user.
   server reads only its config dir's `.env` `[v3.32.0]`: not the `.env` of the
   directory it starts in (a project's `DATABASE_URL` or `API_PORT` no longer
   reach it), not the installed app's file when it runs in development, and a
-  `.env` cannot set `APP_ENV`; the log and `agentd doctor` name skipped files. A
+  `.env` cannot set the mode; the log and `agentd doctor` name skipped files. A
   malformed store is an error, never read as empty. Agent file tools and shell
   commands are denied the store, its lock, and the backup. It is plaintext, so
   shell tools running as the user could still read it outside those checks.
+- **Production and development modes** `[v3.32.0]` — the build picks the mode:
+  the installed app and `agentd` (release builds) run in production with the
+  `~/.local/share/openagentd`-style dirs, and a source checkout's `cargo run`,
+  `make run` and `make dev` (debug builds) run in development under
+  `.openagentd/dev/`, whatever the shell they start from inherited.
+  `OPENAGENTD_ENV=production|development` overrides it, and any other value
+  stops `agentd` with an error. `APP_ENV` still works for this release when it
+  is `production` or `development`, with a note to rename it; other values
+  (another program's `APP_ENV=local`) are ignored instead of moving the data
+  into the current directory.
 
 ---
 

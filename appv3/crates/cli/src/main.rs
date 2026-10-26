@@ -41,10 +41,11 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
 
 fn main() -> ExitCode {
     logging::mark_start();
-    // The installed CLI is a production launcher; `server start` passes this
-    // on to the daemon so both use the same state dir.
-    if std::env::var_os("APP_ENV").is_none() {
-        std::env::set_var("APP_ENV", "production");
+    // The build picks the mode (release: production); an OPENAGENTD_ENV
+    // that names neither mode would otherwise fall back silently.
+    if let Err(e) = appv3_core::settings::mode_from_env() {
+        ui::print_error(&e);
+        return ExitCode::FAILURE;
     }
     let result = match Cli::parse().command {
         // Bare `agentd` is reserved for a future TUI; print help for now.

@@ -20,7 +20,7 @@ fn spawn_server(root: &std::path::Path, desktop_token: Option<&str>) -> (Child, 
     ] {
         cmd.env(k, root.join(d));
     }
-    cmd.env("APP_ENV", "production").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("SNAPSHOT_MAINTENANCE_ENABLED", "false");
+    cmd.env("OPENAGENTD_ENV", "production").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("SNAPSHOT_MAINTENANCE_ENABLED", "false");
     for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_HANDSHAKE_FILE"] {
         cmd.env_remove(k);
     }

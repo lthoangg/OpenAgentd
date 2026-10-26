@@ -62,7 +62,7 @@ For a physical iPhone, expose the dev servers on the LAN first:
 
 ```bash
 cd ../web && bun dev --host 0.0.0.0
-cd .. && OPENAGENTD_ACCESS_KEY=<choose-a-key> APP_ENV=development \
+cd .. && OPENAGENTD_ACCESS_KEY=<choose-a-key> OPENAGENTD_ENV=development \
   cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --host 0.0.0.0 --port 8000
 ```
 

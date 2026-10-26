@@ -147,11 +147,11 @@ impl Sidecar {
             cmd.arg("--generate-token");
         }
 
-        // ``APP_ENV`` defaults to ``production`` (XDG dirs shared with a
-        // terminal ``agentd`` install). Dev-bundled runs can set
-        // ``OPENAGENTD_APP_ENV=development`` and explicit ``OPENAGENTD_*_DIR``
+        // The mode defaults to ``production`` (XDG dirs shared with a
+        // terminal ``agentd`` install). Dev-bundled runs set
+        // ``OPENAGENTD_ENV=development`` and explicit ``OPENAGENTD_*_DIR``
         // roots so local desktop testing does not share production state.
-        let app_env = std::env::var("OPENAGENTD_APP_ENV")
+        let app_env = std::env::var("OPENAGENTD_ENV")
             .unwrap_or_else(|_| "production".to_string());
 
         // Open backend.log up-front and hand it to the child as stderr.
@@ -176,7 +176,7 @@ impl Sidecar {
 
         cmd.arg("--parent-pid")
             .arg(parent_pid.to_string())
-            .env("APP_ENV", app_env)
+            .env("OPENAGENTD_ENV", app_env)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::from(stderr_for_child));

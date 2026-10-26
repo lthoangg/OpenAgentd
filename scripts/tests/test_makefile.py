@@ -17,10 +17,10 @@ def _target_body(name: str) -> str:
 
 
 def test_v3_dev_targets_keep_source_checkout_data_out_of_production():
-    # The source-checkout targets pin development: an APP_ENV=production
-    # inherited from a shell the installed app started must not move them
-    # onto the installed app's database.
+    # The source-checkout targets pin development: an inherited
+    # OPENAGENTD_ENV=production must not move them onto the installed app's
+    # database.
     for name in ("run", "dev"):
         body = _target_body(name)
         assert "server serve" in body
-        assert "APP_ENV=development cargo run" in body, name
+        assert "OPENAGENTD_ENV=development cargo run" in body, name

@@ -53,7 +53,7 @@ cmd_up() {
     # shellcheck disable=SC1090
     [[ -f "$SHOTS_ENV_FILE" ]] && . "$SHOTS_ENV_FILE"
     set +a
-    export APP_ENV=production HOME="$SHOTS_DIR/home" \
+    export OPENAGENTD_ENV=production HOME="$SHOTS_DIR/home" \
       OPENAGENTD_DATA_DIR="$SHOTS_DIR/data" OPENAGENTD_CONFIG_DIR="$SHOTS_DIR/config" \
       OPENAGENTD_STATE_DIR="$SHOTS_DIR/state" OPENAGENTD_CACHE_DIR="$SHOTS_DIR/cache" \
       OPENAGENTD_WORKSPACE_DIR="$SHOTS_DIR/workspace" AGENT_MEMORY_DIR="$SHOTS_DIR/memory"

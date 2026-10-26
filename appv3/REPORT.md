@@ -491,8 +491,8 @@ explicitly.
     the server is stopped or a check fails; `server health` is a hidden
     alias. The LAN check appears only when listening on all interfaces.
   - `server start` daemonises this binary's `server serve --host H --port P`
-    with the binary's directory as cwd, and the child inherits `APP_ENV`
-    (the CLI defaults it to `production`) instead of having it forced. The
+    with the binary's directory as cwd, and passes it this process's mode as
+    `OPENAGENTD_ENV` (a release build defaults to `production`). The
     daemon keeps log records off stderr, since its stderr is appended to
     `app.log` next to the JSON sink. `--wait` exits 1 if the server dies or
     is not ready within 30 s.

@@ -56,7 +56,8 @@ make run       # v3 API only on :8000
 make dev       # v3 API + Vite on :5173
 ```
 
-Source checkouts run with `APP_ENV=development`, so the database, config,
+Source checkouts run in development (debug builds default to it, and
+`make run`/`make dev` pin `OPENAGENTD_ENV=development`), so the database, config,
 logs, and telemetry live under the ignored `.openagentd/dev/` tree, never in
 the user's installed app state.
 

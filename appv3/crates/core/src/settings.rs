@@ -1,8 +1,8 @@
 //! Process settings — port of `app/core/config.py::Settings`.
 //!
-//! Same environment variable names, same defaults, same `.env` precedence
-//! (real env > `~/.config/openagentd/.env` > project `.env`), same derived
-//! XDG roots per `APP_ENV`.
+//! The mode comes from the build (see [`mode_from_env`]) and picks the XDG
+//! roots; the real environment wins over the active config dir's `.env`
+//! (see [`crate::env::init_env`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -72,11 +72,48 @@ fn abs(p: &str) -> PathBuf {
     }
 }
 
-/// The mode, from the real environment only. Call before any `.env` file
-/// is loaded: the mode picks the config dir whose `.env` is read, so a file
-/// cannot pick the mode.
+/// Overrides the mode the build picks (`production` or `development`).
+pub const MODE_ENV: &str = "OPENAGENTD_ENV";
+/// The mode's name before v3.32.0. A generic name other programs use too, so
+/// only `production` and `development` count, and a note asks for the new one.
+const OLD_MODE_ENV: &str = "APP_ENV";
+
+/// The build picks the mode: the installed app (a release build) is
+/// production and `cargo run` (a debug build) is development, whatever the
+/// shell it starts from inherited.
+pub fn build_default_mode() -> &'static str {
+    if cfg!(debug_assertions) {
+        "development"
+    } else {
+        "production"
+    }
+}
+
+fn is_mode(v: &str) -> bool {
+    matches!(v, "production" | "development")
+}
+
+/// The mode from the real environment: `OPENAGENTD_ENV`, else a
+/// `production`/`development` `APP_ENV`, else [`build_default_mode`].
+/// `Err` names an `OPENAGENTD_ENV` that is not a mode; the CLI refuses to
+/// start on it. Read before any `.env` file: the mode picks the config dir
+/// whose `.env` is read, so a file cannot pick it.
+pub fn mode_from_env() -> Result<String, String> {
+    if let Some(v) = env_str(MODE_ENV) {
+        return if is_mode(&v) { Ok(v) } else { Err(format!("{MODE_ENV}={v} is not a mode; use production or development")) };
+    }
+    match env_str(OLD_MODE_ENV) {
+        Some(v) if is_mode(&v) => {
+            crate::env::notice(format!("{OLD_MODE_ENV} is deprecated; set {MODE_ENV}={v} instead"));
+            Ok(v)
+        }
+        _ => Ok(build_default_mode().into()),
+    }
+}
+
+/// [`mode_from_env`], with the build's mode for a value the CLI already refused.
 pub fn app_env_from_env() -> String {
-    env_str("APP_ENV").unwrap_or_else(|| "development".into())
+    mode_from_env().unwrap_or_else(|_| build_default_mode().into())
 }
 
 /// The config dir for `app_env`: `OPENAGENTD_CONFIG_DIR`, or the mode's default.

@@ -77,12 +77,12 @@ dev:
 #
 # The XDG roots are pinned to ``<repo>/.openagentd/dev/...`` so the bundled
 # sidecar shares state (DB, config, workspace) with ``make dev`` at
-# the repo root. Without these overrides ``APP_ENV=development`` would
+# the repo root. Without these overrides ``OPENAGENTD_ENV=development`` would
 # resolve them relative to the sidecar's cwd (``desktop/src-tauri/``).
 dev-bundled:
 	@$(MAKE) sidecar
 	cd src-tauri && \
-		OPENAGENTD_APP_ENV=development \
+		OPENAGENTD_ENV=development \
 		OPENAGENTD_DATA_DIR="$(ROOT)/.openagentd/dev/data" \
 		OPENAGENTD_CONFIG_DIR="$(ROOT)/.openagentd/dev/config" \
 		OPENAGENTD_STATE_DIR="$(ROOT)/.openagentd/dev/state" \

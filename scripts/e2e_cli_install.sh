@@ -41,7 +41,7 @@ cleanup() { [ -n "$SRV" ] && kill "$SRV" 2>/dev/null || true; rm -rf "$SB"; }
 trap cleanup EXIT
 
 # Sandbox HOME and every OpenAgentd directory.
-export HOME="$SB/home" USERPROFILE="$SB/home" LOCALAPPDATA="$SB/localappdata" APP_ENV=production
+export HOME="$SB/home" USERPROFILE="$SB/home" LOCALAPPDATA="$SB/localappdata" OPENAGENTD_ENV=production
 export OPENAGENTD_MODEL_REGISTRY_REFRESH=false OPENAGENTD_HIDE_V2_NOTICE=1
 export OPENAGENTD_DATA_DIR="$SB/oad/data" OPENAGENTD_CONFIG_DIR="$SB/oad/config" OPENAGENTD_STATE_DIR="$SB/oad/state" OPENAGENTD_CACHE_DIR="$SB/oad/cache" OPENAGENTD_WORKSPACE_DIR="$SB/oad/ws"
 export OPENAGENTD_INSTALL_DIR="$SB/install"

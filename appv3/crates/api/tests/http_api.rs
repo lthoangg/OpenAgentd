@@ -27,7 +27,7 @@ fn setup_env(root: &std::path::Path, mock: SocketAddr) {
         std::env::set_var(k, root.join(d));
     }
     std::env::set_var("HOME", root.join("home"));
-    std::env::set_var("APP_ENV", "production");
+    std::env::set_var("OPENAGENTD_ENV", "production");
     std::env::set_var("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false");
     std::env::set_var("SNAPSHOT_MAINTENANCE_ENABLED", "false");
     std::env::set_var("OLLAMA_BASE_URL", format!("http://{mock}/v1"));

@@ -384,14 +384,22 @@ run from the terminal (the native Rust binary since v3.0.0).
     review dock (the drawer on phones) shows what the session is doing now
     (running a turn and the next task, waiting for your answer, for plan
     approval, for Code mode, for subagents, or for your queued messages), the
-    objective, the plan with its status and task progress, turns, tokens and
+    objective, the plan with its status, turns, tokens and
     time, the last check, and Pause, Resume, and Clear. Its title follows the
     goal ("Goal 7/50", "Goal paused"). The dock's **+** menu opens it, and
     **Cmd+K → Goal** does too, listed only while the session has a goal. Since
     `[v3.33.0]` Clear asks for confirmation first, Cmd+K no longer pauses,
     resumes or clears (the Goal tab does), and **Stop & send** leaves the goal
-    active, so your message is its next turn. The Tasks tab and the task
-    popover show a Goal row above the Plan row. The Stop button pauses the
+    active, so your message is its next turn. Also since `[v3.33.0]`, plan,
+    tasks and goal read as one chain: while a goal runs, the header's **Task
+    list** button carries a ring in the goal's colour (blue working, hollow
+    paused, orange waiting on you, red blocked) with the state and next task
+    in its tooltip; the Tasks tab and task popover lead with one status line
+    for the plan and its goal ("Approved · Running", "All tasks done ·
+    checking") with Pause and Resume, and end the checklist with the plan's
+    **Done when** and whether the completion check has confirmed it. An
+    approved plan that has a Done when and no goal can be started as a goal
+    later with **Run as goal** in the Plan tab. The Stop button pauses the
     goal, Plan mode and running subagents make it wait, and a goal running
     when the app quit comes back paused. Approving another plan with
     Keep going replaces the goal. A scheduled task that runs in the goal's

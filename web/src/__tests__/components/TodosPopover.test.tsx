@@ -63,7 +63,7 @@ describe('TodosPopover', () => {
     expect(onOpenPlan).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the goal above the plan, and opens the Goal tab from it', () => {
+  it('folds the goal that runs the plan into one status, and opens the Goal tab from its row', () => {
     const plan = { content: '# Ship it\n\n## Done when\n\nIt ships.', updated_at: new Date().toISOString(), revision: 1, approved_revision: 1, done_when: 'It ships.' }
     const goal: SessionGoal = {
       id: 'g1', session_id: 's1', objective: 'It ships.', status: 'active', pause_reason: null, detail: null,
@@ -72,19 +72,43 @@ describe('TodosPopover', () => {
     }
     const onOpenChange = mock(() => {})
     const onOpenGoal = mock(() => {})
+    const onGoalAction = mock((..._args: unknown[]) => {})
     render(
-      <TodosPopover open onOpenChange={onOpenChange} todos={TODOS} goal={goal} plan={plan} onClearPlan={() => {}} onOpenGoal={onOpenGoal} />,
+      <TodosPopover open onOpenChange={onOpenChange} todos={TODOS} goal={goal} plan={plan} onClearPlan={() => {}} onOpenGoal={onOpenGoal} onGoalAction={onGoalAction} />,
     )
 
     const summary = document.querySelector('[data-work-summary]')!
-    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('Goal')
-    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('It ships.')
-    // The plan row reads Approved while its goal still runs, even with tasks left.
+    // One status, on the plan row; the goal row under it adds the turn.
+    expect(summary.querySelector('[data-plan-status-label]')?.textContent).toBe('Approved · Running')
+    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('Turn 2/50')
+    expect(summary.querySelector('[data-goal-summary]')?.textContent).not.toContain('Working')
     expect(summary.querySelector('[data-plan-status]')?.getAttribute('data-plan-status')).toBe('approved')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    expect(onGoalAction).toHaveBeenCalledWith('pause')
 
     fireEvent.click(screen.getByRole('button', { name: 'Open goal' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(onOpenGoal).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a goal that runs something else on its own status row, and resumes a paused one', () => {
+    const plan = { content: '# Ship it', updated_at: new Date().toISOString(), revision: 1, approved_revision: 1, done_when: 'It ships.' }
+    const goal: SessionGoal = {
+      id: 'g1', session_id: 's1', objective: 'Something else', status: 'paused', pause_reason: 'turn_limit', detail: null,
+      max_turns: 50, token_budget: null, turns_used: 50, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
+      created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:00:00Z', ended_at: null,
+    }
+    const onGoalAction = mock((..._args: unknown[]) => {})
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} goal={goal} plan={plan} onClearPlan={() => {}} onGoalAction={onGoalAction} />)
+
+    const summary = document.querySelector('[data-work-summary]')!
+    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('Paused: turn limit')
+    expect(summary.querySelector('[data-goal-summary]')?.textContent).toContain('Something else')
+    expect(summary.querySelector('[data-plan-status-label]')?.textContent).toBe('Approved')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
+    expect(onGoalAction).toHaveBeenCalledWith('resume')
   })
 
   it('renders a flat checklist sorted in_progress → pending → completed → cancelled', () => {

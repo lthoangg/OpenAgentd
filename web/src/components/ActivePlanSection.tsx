@@ -24,6 +24,10 @@ export interface ActivePlanSectionProps {
   clearing?: boolean
   /** Where the plan stands; without it, read from the plan alone. */
   status?: PlanStatus
+  /** The status as words, when it says more than the plan's own ("Approved · Running"). */
+  statusLabel?: string
+  /** Colour of ``statusLabel``; the plan status's own colour by default. */
+  statusClassName?: string
   className?: string
 }
 
@@ -39,7 +43,7 @@ export function planTitle(content: string): string | null {
   return line ? line.replace(/^#\s+/, '').trim() : null
 }
 
-export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, status, className }: ActivePlanSectionProps) {
+export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, status, statusLabel, statusClassName, className }: ActivePlanSectionProps) {
   const [doc, setDoc] = useState<FileLightboxItem | null>(null)
   const urlRef = useRef<string | null>(null)
   const releaseUrl = useCallback(() => {
@@ -58,7 +62,8 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
     setDoc(null)
   }
   const shown = status ?? planStatus(plan, false)
-  const statusClass = STATUS_CLASS[shown]
+  const statusClass = statusClassName ?? STATUS_CLASS[shown]
+  const statusText = statusLabel ?? PLAN_STATUS_LABEL[shown]
   const title = planTitle(plan.content)
 
   return (
@@ -69,7 +74,7 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
       {plan.revision !== undefined && (
         <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
       )}
-      {statusClass && <span className={cn('shrink-0 text-[11px] font-medium', statusClass)}>{PLAN_STATUS_LABEL[shown]}</span>}
+      {statusClass && <span data-plan-status-label className={cn('shrink-0 text-[11px] font-medium', statusClass)}>{statusText}</span>}
       <span
         className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)"
         title={`Updated ${formatRelativeDate(plan.updated_at)}`}

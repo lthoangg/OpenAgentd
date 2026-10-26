@@ -12,6 +12,8 @@
 import { forwardRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { GoalTone } from '@/lib/goal'
+import { GoalRing } from './goal-ring'
 
 export interface TopbarActionProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -22,6 +24,8 @@ export interface TopbarActionProps
   /** Show a colored dot to signal an active/in-progress state. */
   indicator?: boolean
   indicatorClassName?: string
+  /** A goal's ring, in the colour of its status. */
+  goalTone?: GoalTone
   /** Hide the label on small viewports while keeping it for screen readers. */
   hideLabelOnMobile?: boolean
 }
@@ -34,6 +38,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
       badge,
       indicator,
       indicatorClassName,
+      goalTone,
       hideLabelOnMobile = true,
       className,
       ...rest
@@ -66,6 +71,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
             )}
           />
         )}
+        {goalTone && <GoalRing tone={goalTone} />}
       </button>
     )
   },

@@ -51,7 +51,7 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle, isLiveGoal } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
@@ -477,6 +477,7 @@ export function WorkspacePanel({
   // The Goal tab's title follows the goal ("Goal 7/50", "Goal paused").
   const { data: goalData } = useSessionGoalQuery(sessionId)
   const goal = goalData?.goal ?? null
+  const goalControls = useGoalControls(sessionId)
   const agentWorking = useAgentStore((s) => s.isAgentWorking)
   const goalTitle = goalTabTitle(goal, agentWorking)
   const stripTabs = useMemo(
@@ -758,6 +759,7 @@ export function WorkspacePanel({
               onOpenPlan={() => openTab(PLAN_TAB)}
               goal={goal}
               onOpenGoal={openGoal}
+              onGoalAction={goalControls}
             />
           ) : activeTab?.type === 'plan' ? (
             <PlanTabView

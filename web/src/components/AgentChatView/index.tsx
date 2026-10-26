@@ -29,7 +29,9 @@ import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
-import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { useGoalSessionState } from '@/hooks/useGoalSessionState'
+import { goalHeaderState } from '@/lib/work'
 import { useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -393,6 +395,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     () => (workspace && goal && goal.status !== 'cleared' ? { onShow: handleOpenGoal } : undefined),
     [workspace, goal, handleOpenGoal],
   )
+  // The header's Task list button shows the live goal as a ring and tooltip.
+  const goalSession = useGoalSessionState(sessionIdState, goal)
+  const headerGoalState = useMemo(() => goalHeaderState(goal, goalSession, todosData?.todos ?? []), [goal, goalSession, todosData])
+  const goalControls = useGoalControls(sessionIdState)
   const providersQ = useProvidersQuery()
 
   // Lead capabilities — used to drive composer affordances (slash menu).
@@ -764,6 +770,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           todos={todos}
           onToggleTasks={handleToggleTasks}
           tasksViewActive={dockViewsEnabled ? workspacePanel !== null && dockActiveView === 'tasks' : showTodos}
+          goalState={headerGoalState}
           workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
@@ -1012,6 +1019,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
         goal={goal}
+        onGoalAction={goalControls}
         plan={plan}
         onClearPlan={handleClearPlan}
         onOpenPlan={workspace ? handleOpenPlan : undefined}

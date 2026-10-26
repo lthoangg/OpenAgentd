@@ -19,7 +19,7 @@ import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import type { ContentBlock, PendingQuestion, SessionPlan } from '@/api/types'
+import type { ContentBlock, PendingQuestion, SessionGoal, SessionPlan } from '@/api/types'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',
@@ -28,6 +28,12 @@ const PLAN: SessionPlan = {
   approved_revision: null,
   path: '/repo/project/.agents/plans/ship-it-0000abcd.md',
   workspace_path: '.agents/plans/ship-it-0000abcd.md',
+}
+
+const STARTED_GOAL: SessionGoal = {
+  id: 'g1', session_id: 's-1', objective: 'The endpoint answers and its tests pass.', status: 'active', pause_reason: null, detail: null,
+  max_turns: 50, token_budget: null, turns_used: 0, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
+  created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', ended_at: null,
 }
 
 const REVIEW: PendingQuestion = {
@@ -76,6 +82,7 @@ beforeEach(() => {
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (url.includes('/answer')) return new Response(JSON.stringify({ status: 'answered', resumed: true }))
     if (url.includes('/settings/goals')) return new Response(JSON.stringify(goalSettings))
+    if (method === 'POST' && url.endsWith('/goal')) return new Response(JSON.stringify(STARTED_GOAL), { status: 201 })
     if (url.includes('/goal')) return new Response(JSON.stringify({ goal: null }))
     if (method === 'PUT' && url.includes('/plan')) {
       if (putStatus !== 200) {
@@ -374,6 +381,39 @@ describe('PlanTabView', () => {
       ],
     })
     expect(screen.getByText('Done')).toBeTruthy()
+  })
+})
+
+describe('PlanTabView — Run as goal', () => {
+  const APPROVED: SessionPlan = { ...PLAN, approved_revision: 2, done_when: 'The endpoint answers and its tests pass.' }
+
+  it('starts a goal from an approved plan that has a Done when', async () => {
+    renderTab({ plan: APPROVED })
+    fireEvent.click(await screen.findByRole('button', { name: 'Run as goal' }))
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/goal'))).toBe(true))
+    expect(calls.find((call) => call.method === 'POST' && call.url.endsWith('/goal'))?.body).toEqual({})
+    // Once the goal runs, the button is gone and the status line says so.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull())
+  })
+
+  it('is offered only for an approved plan with a Done when and no review open', () => {
+    renderTab({ plan: { ...APPROVED, done_when: null } })
+    expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
+    cleanup()
+
+    renderTab({ plan: { ...APPROVED, approved_revision: null } })
+    expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
+    cleanup()
+
+    // Edited since approval: it needs a new review first.
+    renderTab({ plan: { ...APPROVED, revision: 3 } })
+    expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
+    cleanup()
+
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    renderTab({ plan: APPROVED })
+    expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
   })
 })
 

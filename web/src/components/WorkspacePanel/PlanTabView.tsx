@@ -38,11 +38,13 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { dismissKeyboard } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
+import { planStatus, type PlanStatus } from '@/lib/plan'
+import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries/keys'
 import { useGoalSettingsQuery } from '@/queries/useGoalSettingsQuery'
-import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { isLiveGoal } from '@/lib/goal'
+import { useSessionGoalQuery, useStartGoalMutation } from '@/queries/useSessionGoalQuery'
 import { useUpdateSessionPlanMutation } from '@/queries/useUpdateSessionPlanMutation'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -183,6 +185,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const resolver = useQuestionResolver(review)
   const { data: goalData } = useSessionGoalQuery(sessionId)
   const { data: goalSettings } = useGoalSettingsQuery()
+  const startGoal = useStartGoalMutation()
   const queryClient = useQueryClient()
   const update = useUpdateSessionPlanMutation()
   const reducedMotion = useReducedMotion() ?? false
@@ -340,7 +343,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   }
 
   const status = planStatus(plan, Boolean(review), { todos, goal: goalData?.goal })
-  const chip = { label: PLAN_STATUS_LABEL[status], className: STATUS_CHIP_CLASS[status] }
+  const chip = { label: workStatusLabel(plan, Boolean(review), { todos, goal: goalData?.goal }), className: STATUS_CHIP_CLASS[status] }
   // A server without plan revisions (v2) has no edit route.
   const canEdit = plan.revision !== undefined && Boolean(sessionId)
   const unsavedEdits = editing && draft !== plan.content
@@ -448,6 +451,16 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     void navigator.clipboard?.writeText(content).then(() => setCopied(true), () => {})
   }
 
+  // An approved plan with a Done when and no goal on it can run as one later,
+  // not only at the moment it is approved.
+  const canRunAsGoal = Boolean(sessionId) && status === 'approved' && Boolean(plan.done_when?.trim()) && !isLiveGoal(goalData?.goal) && !review
+  const runAsGoal = () => {
+    if (!sessionId) return
+    startGoal.mutate({ sessionId }, {
+      onError: (err) => useToastStore.getState().push({ tone: 'error', title: 'Could not start the goal', description: (err as Error).message }),
+    })
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pl-3 pr-1.5">
@@ -465,6 +478,18 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           {formatCompactRelative(plan.updated_at)}
         </span>
         <span className="min-w-0 flex-1" aria-hidden="true" />
+        {canRunAsGoal && (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={runAsGoal}
+            disabled={startGoal.isPending}
+            title={`The agent works through the plan turn after turn until a check confirms its Done when, up to ${defaultTurns} turns (Settings → Goals).`}
+          >
+            Run as goal
+          </Button>
+        )}
         {canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
             <Pencil size={12} aria-hidden="true" />

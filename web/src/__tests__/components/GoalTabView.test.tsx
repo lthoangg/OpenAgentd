@@ -162,7 +162,7 @@ describe('GoalTabView', () => {
     expect(now()?.textContent).toContain('Waiting for plan approval')
   })
 
-  it('shows the plan the goal runs, its task progress, and the next task', async () => {
+  it('shows the plan the goal runs as one line, with its status and a link, and the next task', async () => {
     useAgentStore.setState({ isAgentWorking: true })
     const onOpenPlan = mock(() => {})
     const user = userEvent.setup()
@@ -171,9 +171,9 @@ describe('GoalTabView', () => {
     expect(now()?.textContent).toContain('Next task: Attachments as links')
     const plan = screen.getByRole('region', { name: 'Plan' })
     expect(plan.textContent).toContain('Export sessions as Markdown')
-    expect(plan.textContent).toContain('rev 2')
-    expect(plan.textContent).toContain('Approved')
-    expect(plan.textContent).toContain('Tasks 2/4')
+    expect(plan.textContent).toContain('Approved · Running')
+    // Task progress lives in the Tasks view, not here.
+    expect(plan.textContent).not.toContain('Tasks 2/4')
 
     await user.click(screen.getByRole('button', { name: 'Open plan' }))
     expect(onOpenPlan).toHaveBeenCalledTimes(1)

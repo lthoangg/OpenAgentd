@@ -256,6 +256,20 @@ describe('AgentChatHeader', () => {
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
   })
 
+  it('shows the live goal as a ring on the Task list button, desktop and phone, and nothing without one', () => {
+    const goalState = { tone: 'wait' as const, text: 'Goal · Waiting for your answer' }
+    const { unmount } = renderHeader({ isMobile: false, goalState })
+    expect(screen.getByRole('button', { name: 'Task list' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
+    unmount()
+
+    const phone = renderHeader({ isMobile: true, goalState })
+    expect(screen.getByRole('button', { name: 'Tasks' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
+    phone.unmount()
+
+    renderHeader({ isMobile: false })
+    expect(document.querySelector('[data-goal-ring]')).toBeNull()
+  })
+
   it('disables the desktop Tasks button without a session', () => {
     renderHeader({ isMobile: false, sessionId: null })
     expect(screen.getByRole('button', { name: 'Task list' })).toBeDisabled()

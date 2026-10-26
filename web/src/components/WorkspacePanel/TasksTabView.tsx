@@ -6,8 +6,11 @@
  */
 import { ListTodo } from 'lucide-react'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
+import type { GoalAction } from '@/lib/goal'
 import { cn } from '@/lib/utils'
 import { TaskChecklist, TaskProgressBar, summarizeTodos } from '../TaskChecklist'
+import { DoneWhenRow } from '../DoneWhenRow'
+import { doneWhen as readDoneWhen } from '@/lib/work'
 import { WorkSummary } from '../WorkSummary'
 
 export interface TasksTabViewProps {
@@ -22,10 +25,13 @@ export interface TasksTabViewProps {
   goal?: SessionGoal | null
   /** Open the goal in the Goal tab. */
   onOpenGoal?: () => void
+  /** Pause and Resume from the goal row. */
+  onGoalAction?: (action: Extract<GoalAction, 'pause' | 'resume'>) => void
 }
 
-export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan, goal = null, onOpenGoal }: TasksTabViewProps) {
+export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan, goal = null, onOpenGoal, onGoalAction }: TasksTabViewProps) {
   const summary = summarizeTodos(todos)
+  const doneWhen = readDoneWhen(plan, { todos, goal })
   const planRow = (
     <WorkSummary
       goal={goal}
@@ -34,6 +40,7 @@ export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpe
       onClearPlan={onClearPlan}
       onOpenPlan={onOpenPlan}
       onOpenGoal={onOpenGoal}
+      onGoalAction={onGoalAction}
       className="px-3"
     />
   )
@@ -73,6 +80,7 @@ export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpe
       <TaskProgressBar summary={summary} />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         <TaskChecklist todos={todos} overflow="wrap" className="space-y-px p-1.5" />
+        {doneWhen && <DoneWhenRow doneWhen={doneWhen} />}
       </div>
     </div>
   )

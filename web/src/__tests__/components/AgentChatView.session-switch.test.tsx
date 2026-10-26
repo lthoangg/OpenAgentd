@@ -26,6 +26,7 @@ mock.module('@/queries/useSessionPlanQuery', () => ({
 mock.module('@/queries/useSessionGoalQuery', () => ({
   useSessionGoalQuery: () => ({ data: undefined }),
   useGoalActionMutation: () => ({ mutate: () => {} }),
+  useGoalControls: () => undefined,
 }))
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),

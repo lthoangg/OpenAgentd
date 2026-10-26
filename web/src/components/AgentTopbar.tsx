@@ -19,6 +19,7 @@ import { TopbarAction } from '@/components/ui/topbar-action'
 import { TokenMeter } from '@/components/ui/token-meter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import type { GoalTone } from '@/lib/goal'
 
 export interface AgentTopbarTokens {
   input: number
@@ -45,6 +46,8 @@ export interface AgentTopbarActionDescriptor {
   indicator?: boolean
   /** Override the indicator dot color (e.g. error red). */
   indicatorClassName?: string
+  /** A goal's ring beside the badge, in the colour of its status. */
+  goalTone?: GoalTone
   /** Toggle state for panel toggles; rendered as ``aria-pressed``. */
   pressed?: boolean
   /** Short trailing text such as task progress (``"2/5"``). */
@@ -144,6 +147,7 @@ function AgentTopbarActionButton({
       aria-label={action.ariaLabel ?? action.label ?? action.title}
       indicator={action.indicator}
       indicatorClassName={action.indicatorClassName}
+      goalTone={action.goalTone}
       badge={action.badge}
       aria-pressed={action.pressed}
     />

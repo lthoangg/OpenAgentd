@@ -14,6 +14,7 @@
  */
 import { CircleCheck, Target } from 'lucide-react'
 import { useState } from 'react'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Button } from '@/components/ui/button'
@@ -222,6 +223,7 @@ export interface GoalTabViewProps {
 }
 
 export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: GoalTabViewProps) {
+  const scrollRef = useScrollMemory(sessionId ? `goal:${sessionId}` : null)
   const { data, isLoading, isError, isFetching, refetch } = useSessionGoalQuery(sessionId)
   const goal = data?.goal && data.goal.status !== 'cleared' ? data.goal : null
   const session = useGoalSessionState(sessionId, goal)
@@ -255,7 +257,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
       ) : !goal ? (
         <p className="px-4 py-3 text-xs text-(--color-text-subtle)">Loading the goal…</p>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div className="mx-auto max-w-xl px-4 py-4 pb-safe">
             <GoalStatusPanel
               goal={goal}

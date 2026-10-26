@@ -41,6 +41,7 @@ import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
   DOCK_MIN_WIDTH,
   dockMaxWidth,
@@ -372,6 +373,8 @@ export function WorkspacePanel({
 
   const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
   const subTab = gitState.subTab
+  // Each Git view (changes, commits, tree) keeps its place across tab switches.
+  const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
   const allBranches = gitState.allBranches
   const expandedCommitSha = gitState.expandedCommitSha
   const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
@@ -599,7 +602,7 @@ export function WorkspacePanel({
         />
       )}
       <div
-        ref={commitsScrollRef}
+        ref={rememberReviewScroll}
         id={changes.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
         role={changes.data?.is_git_repo ? 'tabpanel' : undefined}
         aria-labelledby={changes.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}

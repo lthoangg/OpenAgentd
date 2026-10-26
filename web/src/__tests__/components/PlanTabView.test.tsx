@@ -163,6 +163,20 @@ describe('PlanTabView', () => {
     expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
   })
 
+  it('opens where it was left after the dock showed another tab', async () => {
+    const scroller = (root: HTMLElement) => root.querySelector('.overflow-y-auto') as HTMLElement
+    const first = renderTab()
+    act(() => {
+      scroller(first.container).scrollTop = 360
+      scroller(first.container).dispatchEvent(new Event('scroll'))
+    })
+    // Another tab: the dock unmounts the plan view.
+    first.unmount()
+
+    const again = renderTab()
+    await waitFor(() => expect(scroller(again.container).scrollTop).toBe(360))
+  })
+
   it('keeps a reading column that a maximized dock widens without going full width', () => {
     const { container } = renderTab()
     const body = container.querySelector('.mx-auto')!

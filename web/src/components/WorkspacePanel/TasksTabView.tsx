@@ -8,6 +8,7 @@ import { ListTodo } from 'lucide-react'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import type { GoalAction } from '@/lib/goal'
 import { cn } from '@/lib/utils'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { TaskChecklist, TaskProgressBar, summarizeTodos } from '../TaskChecklist'
 import { DoneWhenRow } from '../DoneWhenRow'
 import { doneWhen as readDoneWhen } from '@/lib/work'
@@ -30,6 +31,7 @@ export interface TasksTabViewProps {
 }
 
 export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan, goal = null, onOpenGoal, onGoalAction }: TasksTabViewProps) {
+  const scrollRef = useScrollMemory(sessionId ? `tasks:${sessionId}` : null)
   const summary = summarizeTodos(todos)
   const doneWhen = readDoneWhen(plan, { todos, goal })
   const planRow = (
@@ -78,7 +80,7 @@ export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpe
         </span>
       </div>
       <TaskProgressBar summary={summary} />
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         <TaskChecklist todos={todos} overflow="wrap" className="space-y-px p-1.5" />
         {doneWhen && <DoneWhenRow doneWhen={doneWhen} />}
       </div>

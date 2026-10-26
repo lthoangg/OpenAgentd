@@ -1488,6 +1488,9 @@ agent against it.
     diagrams a wider band, up to 960px, rather than the full width
     `[v3.28.0]`. Tabs close
     with ×, middle-click or `Ctrl/⌘+W`, and focus moves to the neighbouring tab.
+    Since `[v3.33.0]` switching to another tab and back returns the Plan, a
+    file, a diff, a commit, Tasks, Goal, an attachment or a Git view to where
+    you were reading (kept while the app runs).
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.
     - A new dock opens empty, on a launcher with Git, Terminal, Preview and

@@ -35,6 +35,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { dismissKeyboard } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -246,6 +247,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
 
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Switching to another tab unmounts this view; come back to the same place.
+  const rememberScroll = useScrollMemory(sessionId ? `plan:${sessionId}:${plan?.path ?? ''}` : null, scrollRef)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
   const { selection, clear: clearSelection } = usePlanSelection(bodyRef, Boolean(review) && !editing && !composer)
   useCommentHighlights(bodyRef, editing ? [] : [...reviewDraft.comments.map((c) => c.quote), ...(composer ? [composer.quote] : [])])
@@ -545,7 +548,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={rememberScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           {/* `oa-reading` (index.css): a maximized dock widens tables, code
               and diagrams while prose keeps its measure. */}
           <div ref={bodyRef} className="oa-reading relative mx-auto max-w-3xl px-4 py-3">

@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Copy } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,7 @@ export interface CommitTabViewProps {
 }
 
 export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
+  const scrollRef = useScrollMemory(`commit:${workspace}:${commit.sha}`)
   const commitDiff = useQuery({
     ...commitDiffQueryOptions(workspace, commit.sha),
     staleTime: COMMIT_DIFF_STALE_MS,
@@ -82,7 +84,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
   const refs = commit.refs?.split(',').map((ref) => ref.trim()).filter(Boolean) ?? []
 
   return (
-    <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
+    <div ref={scrollRef} className="h-full min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
       <header className="border-b border-(--color-border-subtle) bg-(--bg-page) px-3 py-2.5">
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 text-xs font-medium break-words text-(--color-text)">{subject}</p>

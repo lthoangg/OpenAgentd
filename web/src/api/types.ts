@@ -119,6 +119,25 @@ export interface WorkspaceGitDiffResponse {
   truncated?: boolean
 }
 
+/** One row of ``GET /agent/workspace/git-diff/files``. */
+export interface WorkspaceChangedFile {
+  path: string
+  status: 'A' | 'M' | 'D'
+  /** ``null`` for an untracked file past the server's read budget. */
+  additions: number | null
+  deletions: number | null
+}
+
+/** Every changed path, from git's file lists; complete however big the diff. */
+export interface WorkspaceChangesResponse {
+  workspace: string
+  is_git_repo: boolean
+  files: WorkspaceChangedFile[]
+  /** Changed paths before the 5,000-row cap. */
+  total: number
+  truncated: boolean
+}
+
 export interface WorkspaceStatusResponse {
   workspace: string
   name: string
@@ -616,8 +635,8 @@ export interface AgentCommandResponse {
   /**
    * Present on ``undo`` / ``redo`` responses only. The client uses
    * the union of all three buckets to drive a scoped
-   * ``coding_workspace_paths`` invalidation — splicing the cached git
-   * diff for just these paths instead of refetching the whole repo.
+   * ``coding_workspace_paths`` invalidation — refreshing the diff bodies
+   * of just these paths instead of every one on screen.
    */
   changed_paths?: ChangedPaths
 }

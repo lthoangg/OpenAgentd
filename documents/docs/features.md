@@ -1423,6 +1423,10 @@ agent against it.
   the side drawer. Desktop uses the native folder picker only for the bundled
   sidecar or loopback backends; LAN/external backends use the web folder browser
   so the selected path exists on the backend host.
+  Since `[v3.32.0]` the Git Changes list is complete even when the combined
+  diff is too large: it lists every changed file (up to 5,000), shows 200 rows
+  at a time with **Show more**, and loads each file's diff only when you
+  expand it, so opening Git → Changes on a large change set stays fast.
 - **Git worktree sessions** `[v1.41.0, v1.61.0]` — create an isolated git worktree
   from an existing coding workspace, start a new coding session in that worktree,
   list existing worktrees, edit sidebar titles without renaming git directories,

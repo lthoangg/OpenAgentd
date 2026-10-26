@@ -25,6 +25,7 @@ import type {
   WorkspaceGroupWithMembers,
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
+  WorkspaceChangesResponse,
   WorkspaceStatusResponse,
   WorkspaceGitHistoryResponse,
   WorkspaceCommitDiffResponse,
@@ -373,14 +374,21 @@ export async function getCodingWorkspaceGitDiff(
   signal?: AbortSignal,
 ): Promise<WorkspaceGitDiffResponse> {
   const params = new URLSearchParams({ workspace })
-  // Repeated ``paths`` params translate to FastAPI's
-  // ``Query(list[str])`` — scoped diff response covering just these
-  // entries, used by the SSE cache-invalidation bridge for surgical
-  // splice instead of a whole-repo refresh.
+  // Repeated ``paths`` params scope the diff to those files; the Review dock
+  // asks for one file's body at a time.
   if (paths && paths.length > 0) {
     for (const p of paths) params.append('paths', p)
   }
   return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/git-diff/view?${params}`, 'getCodingWorkspaceGitDiff', signal)
+}
+
+/** Changed paths with status and counts — no diff bodies. */
+export async function getCodingWorkspaceChanges(
+  workspace: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceChangesResponse> {
+  const params = new URLSearchParams({ workspace })
+  return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/git-diff/files?${params}`, 'getCodingWorkspaceChanges', signal)
 }
 
 export async function getCodingWorkspaceStatus(

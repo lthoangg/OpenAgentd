@@ -6,6 +6,7 @@
  * commit-diff query. Both are opened from row actions in the Git review tab.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -84,7 +85,7 @@ beforeEach(() => {
     requestedUrls.push(url)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [appFile] }))
     if (url.includes('/workspace/files/read')) return new Response('const after = 3')
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, diff: DIFF, untracked: [] }))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, { workspace: WORKSPACE, is_git_repo: true, diff: DIFF, untracked: [] })
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE, name: 'project', is_git_repo: true }))
     if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [commit], graph: '', next_cursor: null }))
     if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commit.sha, diff: COMMIT_DIFF }))
@@ -120,8 +121,11 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBeNull()
     expect(screen.getByText('const before = 2')).toBeTruthy()
     expect(screen.getByText('const after = 3')).toBeTruthy()
-    // Same cache entry as the Changes list: no extra diff request.
-    expect(requestedUrls.filter((url) => url.includes('/workspace/git-diff'))).toHaveLength(1)
+    // The list never loads a body; the tab fetches only its own file.
+    expect(requestedUrls.filter((url) => url.includes('/workspace/git-diff/files'))).toHaveLength(1)
+    const bodies = requestedUrls.filter((url) => url.includes('/workspace/git-diff/view'))
+    expect(bodies).toHaveLength(1)
+    expect(new URL(bodies[0], 'http://localhost').searchParams.getAll('paths')).toEqual(['src/app.ts'])
   })
 
   it('re-opening the same diff focuses the existing tab instead of duplicating it', async () => {

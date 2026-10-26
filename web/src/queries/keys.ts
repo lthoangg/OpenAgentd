@@ -59,8 +59,14 @@ export const queryKeys = {
     all: (workspace: string) => ['coding-workspace', workspace] as const,
     files: (workspace: string) =>
       ['coding-workspace-files', workspace] as const,
+    /** Changed paths with status and counts (the Changes list, tree badges). */
+    changes: (workspace: string) =>
+      ['coding-workspace-changes', workspace] as const,
+    /** Prefix of every per-file diff body in ``workspace``. */
     diff: (workspace: string) =>
       ['coding-workspace-diff', workspace] as const,
+    fileDiff: (workspace: string, path: string) =>
+      ['coding-workspace-diff', workspace, path] as const,
     status: (workspace: string) =>
       ['coding-workspace-status', workspace] as const,
     history: (workspace: string, limit: number, allBranches: boolean) =>

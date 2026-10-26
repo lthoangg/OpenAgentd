@@ -1,12 +1,11 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useAgentStore'
-import type { LiveSubagent, SessionPageResponse, SessionResponse, SubagentsResponse, WorkspaceGitDiffResponse } from '@/api/types'
-import { getCodingWorkspaceGitDiff } from '@/api/client'
+import type { LiveSubagent, SessionPageResponse, SessionResponse, SubagentsResponse } from '@/api/types'
 import { queryKeys } from '@/queries'
 
 type BridgeQueryClient = Pick<
   QueryClient,
-  'invalidateQueries' | 'getQueryData' | 'setQueryData' | 'setQueriesData'
+  'invalidateQueries' | 'setQueryData' | 'setQueriesData'
 >
 
 export function applyCacheInvalidations(
@@ -15,13 +14,15 @@ export function applyCacheInvalidations(
 ): void {
   // One drain can carry a burst of tool ends from a single stream flush.
   // Invalidate each key once (a repeat cancels the refetch and sends it
-  // again), and patch each workspace's diff once with every touched path:
-  // two concurrent scoped patches would both merge into the same stale
-  // cached diff, and the one that resolved last would drop the other's file.
+  // again).
+  //
+  // Diffs: the changed-paths list is small and always refetched; a body is
+  // cached per file (``coding.fileDiff``), so a write to known paths only
+  // refreshes those files' bodies, and only the ones on screen (invalidation
+  // refetches active queries alone). ``coding.diff`` is the prefix of every
+  // body in the workspace.
   const keys = new Map<string, readonly unknown[]>()
   const invalidate = (queryKey: readonly unknown[]) => keys.set(JSON.stringify(queryKey), queryKey)
-  const scopedPaths = new Map<string, string[]>()
-  const wholeWorkspace = new Set<string>()
   for (const event of events) {
     switch (event.kind) {
       case 'workspace_files':
@@ -29,18 +30,16 @@ export function applyCacheInvalidations(
         break
       case 'coding_workspace':
         invalidate(queryKeys.coding.files(event.workspace))
+        invalidate(queryKeys.coding.changes(event.workspace))
         invalidate(queryKeys.coding.diff(event.workspace))
         invalidate(queryKeys.coding.status(event.workspace))
-        wholeWorkspace.add(event.workspace)
         break
-      case 'coding_workspace_paths': {
+      case 'coding_workspace_paths':
         invalidate(queryKeys.coding.files(event.workspace))
+        invalidate(queryKeys.coding.changes(event.workspace))
         invalidate(queryKeys.coding.status(event.workspace))
-        const paths = scopedPaths.get(event.workspace) ?? []
-        for (const path of event.paths) if (!paths.includes(path)) paths.push(path)
-        scopedPaths.set(event.workspace, paths)
+        for (const path of event.paths) invalidate(queryKeys.coding.fileDiff(event.workspace, path))
         break
-      }
       case 'scheduler':
         invalidate(queryKeys.scheduler.list())
         break
@@ -66,109 +65,6 @@ export function applyCacheInvalidations(
     }
   }
   for (const queryKey of keys.values()) queryClient.invalidateQueries({ queryKey })
-  for (const [workspace, paths] of scopedPaths) {
-    // A whole-workspace refresh in the same batch already refetches the diff.
-    if (!wholeWorkspace.has(workspace)) queuePatchDiffForPaths(queryClient, workspace, paths)
-  }
-}
-
-// Scoped patches for one workspace run one at a time. Each patch reads the
-// cached diff, awaits a scoped fetch, then writes a merge; two overlapping
-// patches from separate drains (two agents ending tools back to back) both
-// merged into the cache as it was before either wrote, and the later write
-// dropped the earlier one's file.
-const patchChains = new Map<string, Promise<void>>()
-
-function queuePatchDiffForPaths(
-  queryClient: BridgeQueryClient,
-  workspace: string,
-  paths: string[],
-): void {
-  const previous = patchChains.get(workspace) ?? Promise.resolve()
-  const next = previous.then(() => patchDiffForPaths(queryClient, workspace, paths))
-  patchChains.set(workspace, next)
-  void next.finally(() => {
-    if (patchChains.get(workspace) === next) patchChains.delete(workspace)
-  })
-}
-
-async function patchDiffForPaths(
-  queryClient: BridgeQueryClient,
-  workspace: string,
-  paths: string[],
-): Promise<void> {
-  if (paths.length === 0) return
-  const key = queryKeys.coding.diff(workspace)
-  const before = queryClient.getQueryData<WorkspaceGitDiffResponse>(key)
-
-  if (!before || !before.is_git_repo) return
-
-  let scoped: WorkspaceGitDiffResponse
-  try {
-    scoped = await getCodingWorkspaceGitDiff(workspace, paths)
-  } catch {
-    queryClient.invalidateQueries({ queryKey: key })
-    return
-  }
-
-  // Merge into the cache as it is now, not as it was before the fetch: a
-  // whole-diff refetch may have landed while the scoped request was out.
-  queryClient.setQueryData<WorkspaceGitDiffResponse>(key, (current) => {
-    if (!current || !current.is_git_repo) return current
-    return {
-      ...current,
-      diff: mergeScopedDiff(current.diff, scoped.diff, paths),
-      truncated: current.truncated || scoped.truncated,
-      untracked: nextUntracked(current.untracked, scoped.untracked, paths),
-    }
-  })
-}
-
-const DIFF_HEADER_RE = /\ndiff --git a\/(.+?) b\/.+?(?=\ndiff --git |$)/gs
-const FIRST_DIFF_HEADER_RE = /^diff --git a\/(.+?) b\/.+?(?=\ndiff --git |$)/s
-
-export function mergeScopedDiff(
-  existingDiff: string,
-  scopedDiff: string,
-  paths: string[],
-): string {
-  if (!existingDiff) return scopedDiff
-  const pathSet = new Set(paths)
-
-  const kept: string[] = []
-
-  let cursor = 0
-  const firstMatch = FIRST_DIFF_HEADER_RE.exec(existingDiff)
-  if (firstMatch) {
-    const path = firstMatch[1]
-    if (!pathSet.has(path)) kept.push(firstMatch[0])
-    cursor = firstMatch[0].length
-  }
-
-  const rest = existingDiff.slice(cursor)
-  for (const match of rest.matchAll(DIFF_HEADER_RE)) {
-    const path = match[1]
-    if (!pathSet.has(path)) kept.push(match[0])
-  }
-
-  const keptText = kept.join('')
-  const scoped = scopedDiff.startsWith('\n') ? scopedDiff : scopedDiff
-  if (!keptText) return scoped
-  if (!scoped) return keptText
-  return scoped.startsWith('\n') || keptText.endsWith('\n')
-    ? keptText + scoped
-    : keptText + '\n' + scoped
-}
-
-function nextUntracked(
-  cached: string[] | undefined,
-  scoped: string[] | undefined,
-  paths: string[],
-): string[] | undefined {
-  if (!cached && !scoped) return undefined
-  const pathSet = new Set(paths)
-  const carry = (cached ?? []).filter((p) => !pathSet.has(p))
-  return [...carry, ...(scoped ?? [])]
 }
 
 function isInfiniteSessionData(value: unknown): value is InfiniteData<SessionPageResponse> {

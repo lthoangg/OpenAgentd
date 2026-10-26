@@ -4,6 +4,7 @@
  * ⌥⇧←/→ (Alt+Shift on Linux), or Move Left / Move Right in the tab menu.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -55,7 +56,7 @@ beforeEach(() => {
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
     return new Response(null, { status: 404 })
   }) as typeof fetch

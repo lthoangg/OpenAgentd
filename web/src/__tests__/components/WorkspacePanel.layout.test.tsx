@@ -3,6 +3,7 @@
  * resizing into the layout store, and hide.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -55,7 +56,7 @@ beforeEach(() => {
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: false, diff: '' }))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, { workspace: WORKSPACE, is_git_repo: false, diff: '' })
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
     return new Response(null, { status: 404 })
   }) as typeof fetch

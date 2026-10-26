@@ -239,6 +239,7 @@ export async function handleGlobalEvent(
     const workspaces = new Set(names.filter((w): w is string => typeof w === 'string' && w.length > 0))
     for (const workspace of workspaces) {
       queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(workspace) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.changes(workspace) })
       queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
       queryClient.invalidateQueries({ queryKey: queryKeys.coding.status(workspace) })
       if (event.git === true) {

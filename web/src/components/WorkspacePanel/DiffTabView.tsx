@@ -1,11 +1,11 @@
 /**
  * DiffTabView — one working-tree file's diff as a full-height dock tab.
  *
- * Reads the shared whole-workspace diff query (same cache entry as the
- * Changes list), so opening a diff tab never costs a request and follows the
- * agent's writes through the normal invalidation path. The inline peek in the
- * Changes list keeps its capped height; this is the "give it the whole dock"
- * view.
+ * Reads the same per-file diff query as the file's expanded row in the
+ * Changes list, and the shared changed-paths list for its counts, so both
+ * follow the agent's writes through the normal invalidation path. The inline
+ * peek in the Changes list keeps its capped height; this is the "give it the
+ * whole dock" view.
  */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -13,8 +13,8 @@ import { ExternalLink } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
-import { WORKSPACE_DIFF_STALE_MS, workspaceDiffQueryOptions } from '@/queries/workspace-git'
-import { collectChangedFiles, collectDiffSections } from './diff-helpers'
+import { WORKSPACE_DIFF_STALE_MS, workspaceChangesQueryOptions, workspaceFileDiffQueryOptions } from '@/queries/workspace-git'
+import { changedFilesFromResponse, fileDiffBody } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { ChangeCounts } from './ChangeCounts'
 import { DockLoadError } from './DockLoadError'
@@ -26,12 +26,13 @@ export interface DiffTabViewProps {
 }
 
 export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
-  const diff = useQuery({ ...workspaceDiffQueryOptions(workspace), staleTime: WORKSPACE_DIFF_STALE_MS })
+  const changes = useQuery({ ...workspaceChangesQueryOptions(workspace), staleTime: WORKSPACE_DIFF_STALE_MS })
+  const diff = useQuery({ ...workspaceFileDiffQueryOptions(workspace, path), staleTime: WORKSPACE_DIFF_STALE_MS })
   const changed = useMemo(
-    () => collectChangedFiles(diff.data).find((file) => file.path === path) ?? null,
-    [diff.data, path],
+    () => changedFilesFromResponse(changes.data).find((file) => file.path === path) ?? null,
+    [changes.data, path],
   )
-  const fileDiff = useMemo(() => collectDiffSections(diff.data).get(path)?.diff ?? null, [diff.data, path])
+  const fileDiff = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
   const canOpen = onOpenFile && changed?.status !== 'D'
 
   return (
@@ -70,7 +71,14 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
         ) : diff.isError ? (
           <DockLoadError message="Failed to load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
         ) : fileDiff ? (
-          <DiffPreview diff={fileDiff} />
+          <>
+            {diff.data?.truncated && (
+              <p className="border-b border-(--color-border-subtle) bg-(--color-warning)/10 px-3 py-1.5 text-xs text-(--color-warning)">
+                This diff is too large to show in full.
+              </p>
+            )}
+            <DiffPreview diff={fileDiff} />
+          </>
         ) : (
           <p className="px-3 py-4 text-xs text-(--color-text-subtle)">
             {changed ? 'No diff body for this file.' : 'No uncommitted changes in this file.'}

@@ -7,6 +7,7 @@
  * the +N/-N badges shown next to each changed file.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -66,7 +67,7 @@ beforeEach(() => {
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
     if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [], graph: '', next_cursor: null }))
     return new Response(null, { status: 404 })

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -92,7 +93,7 @@ beforeEach(() => {
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
     if (url.includes('/workspace/files/read') && url.includes('.env.example')) return new Response('OPENAGENTD_PORT=4082\n')
     if (url.includes('/workspace/files/read')) return new Response('const value = 1\n// comment\nreturn value')
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
     return new Response(null, { status: 404 })
   }) as typeof fetch
 })
@@ -185,7 +186,7 @@ describe('Coding workspace two-layer file preview', () => {
       const url = String(input)
       if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: listing }))
       if (url.includes('/workspace/files/read')) return new Response('const value = 1')
-      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diff))
+      if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diff)
       return new Response(null, { status: 404 })
     }) as typeof fetch
     const { queryClient } = await renderWorkspacePanel(mock(() => {}), readmePath)
@@ -288,7 +289,7 @@ describe('Coding workspace two-layer file preview', () => {
         return new Response('const payload = `<script>window.__pwned = true</script>`\n<img src=x onerror="window.__pwned = true">')
       }
       if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
-      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+      if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
       return new Response(null, { status: 404 })
     }) as typeof fetch
 

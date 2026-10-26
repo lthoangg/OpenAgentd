@@ -1062,11 +1062,20 @@ explicitly.
   cancelled caller cannot leave a half-written line on stdin. Tests:
   `mcp/src/lib.rs`. v2 waits without a deadline.
 - **ETag on workspace listings (v3 only):** `GET /api/agent/{sid}/files`,
-  `/api/agent/workspace/files/list`, `/api/agent/workspace/status` and
-  `/api/agent/workspace/git-diff/view` send an `ETag` (64-bit hash of the
+  `/api/agent/workspace/files/list`, `/api/agent/workspace/status`,
+  `/api/agent/workspace/git-diff/view` and `/git-diff/files` send an `ETag` (64-bit hash of the
   JSON body) with `Cache-Control: no-cache`, and answer `304` with an empty
   body when `If-None-Match` matches. The body is still computed on every
   request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
+- **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
+  lists every changed path with status and +/− counts from
+  `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000
+  with the uncapped `total`), so the Review dock's list no longer depends on
+  the diff text that `git-diff/view` cuts at 512 K characters. The dock now
+  fetches bodies one file at a time from `git-diff/view?paths=…`, which reads
+  paths literally (`--literal-pathspecs`) and keeps the `untracked` list when
+  the tracked diff is cut. Test: `api/src/routes/agent/files.rs`. v2 has only
+  the whole diff.
 - **`read` tool `outline` removed (v3.14.0):** the `outline` argument and
   `crates/tools/src/outline.rs` are gone and `crates/tools/data/tool_definitions.json`
   no longer lists it, so a call passing `outline` fails as an unknown
@@ -1346,8 +1355,8 @@ lock until someone deletes it. v3 changes three things:
 v2 refreshes the file tree, git status and diff only after the agent's own
 file tools, or on window focus. v3 also watches the workspaces the UI is
 showing (`crates/api/src/watch.rs`). Watching starts on
-`/workspace/files/list`, `/workspace/status`, `/workspace/git-diff/view` and
-`/{sid}/files`. The watcher publishes a debounced
+`/workspace/files/list`, `/workspace/status`, `/workspace/git-diff/view`,
+`/workspace/git-diff/files` and `/{sid}/files`. The watcher publishes a debounced
 `workspace_files_changed` global SSE event (300 ms, at most one per 2 s
 burst), and `use-global-event-stream.ts` invalidates the matching coding and
 session queries. The event carries the resolved path plus every spelling the

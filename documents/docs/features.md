@@ -679,6 +679,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     Disabled), a server that is off is retried every 30 s at most (60 s
     after a rejected key) instead of every 15 s, and rows carry a server
     name only when two or more servers are connected.
+    Also since `[v3.33.0]` the resting pill no longer covers menu bar items:
+    on a notch it grows only a narrow wing left of the notch (the state
+    mark, and a count for several sessions), leaving the status icons right
+    of the notch alone; without a notch it is a small pill with the same
+    mark and count. Hover still opens the full list, with titles and
+    questions.
     Right-click the pill or a session row for a native menu with Open and
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an

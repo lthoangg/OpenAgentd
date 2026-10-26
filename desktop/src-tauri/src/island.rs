@@ -832,6 +832,18 @@ pub fn island_frame(screen: &ScreenInfo, width: f64, height: f64) -> Rect {
     }
 }
 
+/// The pill's frame: [`island_frame`] moved sideways by `shift` (negative is
+/// left), held inside the canvas. The compact pill shifts left so it ends at
+/// the notch's right edge and leaves the status icons beside it uncovered.
+pub fn pill_frame(screen: &ScreenInfo, width: f64, height: f64, shift: f64) -> Rect {
+    let mut pill = island_frame(screen, width, height);
+    let room = ((CANVAS_WIDTH - pill.width) / 2.0).max(0.0);
+    if shift.is_finite() {
+        pill.x += shift.clamp(-room, room).round();
+    }
+    pill
+}
+
 pub fn should_show(settings: &IslandSettings, frontmost: bool, wants_visible: bool) -> bool {
     settings.enabled && wants_visible && (!frontmost || settings.show_when_frontmost)
 }
@@ -862,6 +874,8 @@ struct Shared {
     /// The webview has something to show, with the pill at `size`.
     wants_visible: bool,
     size: (f64, f64),
+    /// How far the pill sits from the canvas centre ([`pill_frame`]).
+    shift: f64,
     /// The canvas and the pill inside it, on screen, while shown.
     canvas: Option<Rect>,
     pill: Option<Rect>,
@@ -899,6 +913,7 @@ fn shared() -> &'static Mutex<Shared> {
             frontmost: false,
             wants_visible: false,
             size: (FALLBACK_PILL_WIDTH, FALLBACK_MENU_BAR_HEIGHT),
+            shift: 0.0,
             canvas: None,
             pill: None,
             pointer: None,
@@ -974,12 +989,12 @@ fn ensure_island(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 /// Show, place, or hide the canvas to match the shared state. Main thread only.
 #[cfg(target_os = "macos")]
 fn apply(app: &AppHandle) {
-    let (show, (width, height)) = {
+    let (show, (width, height), shift) = {
         let s = shared().lock().unwrap();
         if s.menu_open {
             return;
         }
-        (should_show(&s.settings, s.frontmost, s.wants_visible), s.size)
+        (should_show(&s.settings, s.frontmost, s.wants_visible), s.size, s.shift)
     };
     let Some(window) = app.get_webview_window(ISLAND_WINDOW) else {
         return;
@@ -998,7 +1013,7 @@ fn apply(app: &AppHandle) {
         return;
     };
     let canvas = island_frame(&screen, CANVAS_WIDTH, CANVAS_HEIGHT);
-    let pill = island_frame(&screen, width, height);
+    let pill = pill_frame(&screen, width, height, shift);
     let moved = {
         let mut s = shared().lock().unwrap();
         s.pill = Some(pill);
@@ -1474,16 +1489,17 @@ pub fn island_state(app: AppHandle, window: WebviewWindow) -> Result<IslandView,
     Ok(IslandView { status: s.status.clone(), geometry: s.geometry, settings: s.settings })
 }
 
-/// The pill's size (its hit area for clicks and hover), and whether the
-/// island has anything to show.
+/// The pill's size and sideways shift (its hit area for clicks and hover),
+/// and whether the island has anything to show.
 #[tauri::command]
-pub fn island_fit(app: AppHandle, window: WebviewWindow, width: f64, height: f64, visible: bool) {
+pub fn island_fit(app: AppHandle, window: WebviewWindow, width: f64, height: f64, visible: bool, shift: Option<f64>) {
     if window.label() != ISLAND_WINDOW {
         return;
     }
     {
         let mut s = shared().lock().unwrap();
         s.size = fit_size(width, height);
+        s.shift = shift.filter(|value| value.is_finite()).unwrap_or(0.0);
         s.wants_visible = visible;
     }
     schedule_apply(&app);
@@ -2309,6 +2325,22 @@ mod tests {
         assert_eq!(frame, Rect { x: 586.0, y: 944.0, width: 340.0, height: 38.0 });
         let frame = island_frame(&external(), 220.0, 25.0);
         assert_eq!(frame, Rect { x: 1512.0 + 1170.0, y: 1215.0, width: 220.0, height: 25.0 });
+    }
+
+    #[test]
+    fn a_shifted_pill_ends_at_the_notch_and_stays_inside_the_canvas() {
+        // Notch 662..850. The compact pill (notch + 44pt wing + 8pt corner)
+        // ends exactly at the notch's right edge, clear of the status icons.
+        let pill = pill_frame(&notched(), 188.0 + 44.0 + 8.0, 38.0, -26.0);
+        assert_eq!(pill, Rect { x: 610.0, y: 944.0, width: 240.0, height: 38.0 });
+        assert_eq!(pill.x + pill.width, 662.0 + 188.0);
+        // No shift is the centred frame.
+        assert_eq!(pill_frame(&notched(), 340.0, 38.0, 0.0), island_frame(&notched(), 340.0, 38.0));
+        // A shift past the canvas edge, or garbage, is held to the canvas.
+        let canvas = island_frame(&notched(), CANVAS_WIDTH, CANVAS_HEIGHT);
+        let far = pill_frame(&notched(), 400.0, 38.0, -500.0);
+        assert_eq!(far.x, canvas.x);
+        assert_eq!(pill_frame(&notched(), 340.0, 38.0, f64::NAN), island_frame(&notched(), 340.0, 38.0));
     }
 
     #[test]

@@ -34,11 +34,11 @@ def seeded_lead(db):
 
 
 def start(root):
-    env = {k: v for k, v in os.environ.items() if k not in ("OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_HANDSHAKE_FILE")}
+    env = {k: v for k, v in os.environ.items() if k not in ("OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_DATABASE_URL", "OPENAGENTD_HANDSHAKE_FILE")}
     for k, d in [("OPENAGENTD_DATA_DIR", "data"), ("OPENAGENTD_CONFIG_DIR", "config"), ("OPENAGENTD_STATE_DIR", "state"), ("OPENAGENTD_CACHE_DIR", "cache"), ("HOME", "home")]:
         os.makedirs(os.path.join(root, d), exist_ok=True)
         env[k] = os.path.join(root, d)
-    env.update(OPENAGENTD_ENV="production", OPENAGENTD_MODEL_REGISTRY_REFRESH="false", SNAPSHOT_MAINTENANCE_ENABLED="false")
+    env.update(OPENAGENTD_ENV="production", OPENAGENTD_MODEL_REGISTRY_REFRESH="false", OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED="false")
     p = subprocess.Popen([binary, "server", "serve", "--host", "127.0.0.1", "--port", "0", "--handshake"], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     assert p.stdout is not None
     line = p.stdout.readline()

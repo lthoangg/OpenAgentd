@@ -62,7 +62,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Safer local server and backend auto-restart (v3)** `[v3.0.0]` — without an
   access key, the server refuses requests from other websites and from foreign
   `Host` names, so a page open in your browser cannot drive your agent. The
-  desktop, mobile and local dev UIs are unaffected; `CORS_ORIGINS` adds
+  desktop, mobile and local dev UIs are unaffected; `OPENAGENTD_CORS_ORIGINS` adds
   origins and `["*"]` restores the open default. The desktop token and access
   key are removed from the environment of every process the agent starts
   (shell, terminal, git, MCP, plugins). The desktop app restarts a crashed
@@ -158,7 +158,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   Chat is not a repository either, so the pinned row offers no worktree or
   removal actions and the workspace dock has no Git tab; file-level undo is
   off, and `/undo` moves the conversation boundary only. Set
-  `CHAT_WORKSPACE_DIR` to run Chat elsewhere and keep your home directory
+  `OPENAGENTD_CHAT_WORKSPACE_DIR` to run Chat elsewhere and keep your home directory
   usable as a coding workspace.
 - **Connection-ready screen warmup** `[v1.113.3]` — after either the bundled
   sidecar or an external server connects, the app preloads coding data in the
@@ -1728,8 +1728,8 @@ agent against it.
   Snapshot repos borrow the workspace repository's object store, so committed
   content is stored once, and every snapshot is anchored by a ref so background
   repacking never drops a live undo point. A per-session size cap
-  (`SNAPSHOT_MAX_BYTES`, default 256 MiB) drops the oldest snapshots once a repo
-  outgrows it; `SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.18.0]`.
+  (`OPENAGENTD_SNAPSHOT_MAX_BYTES`, default 256 MiB) drops the oldest snapshots once a repo
+  outgrows it; `OPENAGENTD_SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.18.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.
@@ -2167,7 +2167,7 @@ MCP.
   concise typed HTTP/network/conversion failures, and supports distinct Markdown,
   text, HTML-source, and raw-text output modes. Destinations that resolve to
   loopback, private, or link-local addresses are refused unless
-  `WEB_FETCH_ALLOW_PRIVATE_NETWORK=true` is set, which lets the agent reach local
+  `OPENAGENTD_WEB_FETCH_ALLOW_PRIVATE_NETWORK=true` is set, which lets the agent reach local
   dev servers and trusted internal hosts. The check is enforced at connect time
   and the socket is pinned to the validated address, so a DNS answer cannot
   change between validation and connection. Repeated fetches reuse one pooled
@@ -2504,6 +2504,12 @@ Single-user trust model. The host is trusted. The operator is the user.
   is `production` or `development`, with a note to rename it; other values
   (another program's `APP_ENV=local`) are ignored instead of moving the data
   into the current directory.
+  The server's settings variables moved to the `OPENAGENTD_` prefix too
+  (`OPENAGENTD_PORT`, `OPENAGENTD_DATABASE_URL`, `OPENAGENTD_LOG_LEVEL`,
+  `OPENAGENTD_CORS_ORIGINS`, …), so a project's `API_PORT` or `DATABASE_URL`
+  is never read as the app's. The old names still work for this release, and
+  the log and `agentd doctor` name the new one. Standard names of other tools
+  keep theirs (`OTEL_EXPORTER_OTLP_ENDPOINT`, `RUST_LOG`, provider keys).
 
 ---
 
@@ -2545,7 +2551,7 @@ Everything stays local. No third-party telemetry SaaS.
 - **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
   kept for 90 days by default (traces were previously kept for 30), so the
   90-day telemetry range shows full trace history. Older data is removed by a
-  daily sweep; `OTEL_SPAN_RETENTION_DAYS` and `OTEL_METRIC_RETENTION_DAYS`
+  daily sweep; `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
   override the defaults.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
@@ -2572,8 +2578,8 @@ Everything stays local. No third-party telemetry SaaS.
   query execution and lower latency without DuckDB binary dependency weight.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
-  loguru-based. `FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
-  independently of the console's `LOG_LEVEL` (default `DEBUG`, unchanged); the
+  loguru-based. `OPENAGENTD_FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
+  independently of the console's `OPENAGENTD_LOG_LEVEL` (default `DEBUG`, unchanged); the
   error log stays ERROR-only, so raising it never hides crashes.
 - **Export diagnostics** `[v3.31.0]` — the desktop **Help → Export
   Diagnostics…** item, also in the Windows/Linux tray, saves an

@@ -412,7 +412,8 @@ explicitly.
 - **Hardening beyond v2:** deliberate behaviour changes, each covered by
   tests in the named crate:
   - *Origin and Host guard* (`api/src/middleware.rs`, `core/src/auth.rs`).
-    v2 defaults `CORS_ORIGINS` to `["*"]`. In v3, with `CORS_ORIGINS` unset,
+    v2 defaults `CORS_ORIGINS` to `["*"]`. In v3 (where the variable is
+    `OPENAGENTD_CORS_ORIGINS` since v3.32.0), with it unset,
     the Tauri and loopback origins are always allowed. If no access key is
     set (and no `API_ALLOW_INSECURE_LAN`), other origins are refused: a
     preflight gets 400, a request 403, and a WebSocket upgrade the WS
@@ -428,6 +429,15 @@ explicitly.
     terminal, git, MCP servers, plugins. The shell tool's `LEAK_KEYS` is
     that same list; v2's Python/venv entries are dropped because v3 has no
     venv. Diagnostics still reports `desktop_session`.
+  - *Mode, variables and `.env`* (`core/src/settings.rs`, `core/src/env.rs`,
+    v3.32.0). v2 took the mode from `APP_ENV` and read `.env` from the working
+    directory and `~/.config/openagentd/`. v3 lets the build pick the mode
+    (release: production, debug: development), overridable with
+    `OPENAGENTD_ENV`; reads only the active config dir's `.env`, which cannot
+    set the mode; and moves the settings variables to the `OPENAGENTD_`
+    prefix (`settings::RENAMED_ENV`), still reading the old names with a
+    note. The shell tool and terminal drop `APP_ENV` and every
+    `OPENAGENTD_*` variable.
   - *Shutdown.* v2's parent watch sends SIGTERM to its own process. v3 wakes
     the graceful-shutdown path directly, which also works on Windows. SSE
     streams close when shutdown starts, so a server with open streams exits

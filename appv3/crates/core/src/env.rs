@@ -20,6 +20,9 @@ fn notices() -> &'static Mutex<Vec<String>> {
 pub(crate) fn notice(text: String) {
     let mut n = notices().lock().unwrap();
     if !n.contains(&text) {
+        // Before logging starts this goes nowhere; `serve` logs the list
+        // once it does. Settings read later (OTEL, snapshots) log here.
+        tracing::warn!("env_notice {text}");
         n.push(text);
     }
 }

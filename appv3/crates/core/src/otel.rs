@@ -337,7 +337,7 @@ fn resource() -> Value {
 }
 
 pub fn sample_ratio() -> f64 {
-    let raw = std::env::var("OTEL_SPAN_SAMPLE_RATIO").unwrap_or_else(|_| "1.0".into());
+    let raw = crate::settings::env_var("OPENAGENTD_OTEL_SPAN_SAMPLE_RATIO").unwrap_or_else(|| "1.0".into());
     match py_float(&raw) {
         Some(v) if v.is_nan() => 1.0,
         Some(v) => v.clamp(0.0, 1.0),
@@ -346,7 +346,7 @@ pub fn sample_ratio() -> f64 {
 }
 
 fn slow_span_threshold_ns() -> u64 {
-    let raw = std::env::var("OTEL_SLOW_SPAN_MS").unwrap_or_else(|_| "1000".into());
+    let raw = crate::settings::env_var("OPENAGENTD_OTEL_SLOW_SPAN_MS").unwrap_or_else(|| "1000".into());
     match py_float(&raw) {
         Some(v) if v.is_finite() => (v * 1_000_000.0) as i64 as u64,
         _ => 1_000_000_000,
@@ -905,16 +905,16 @@ fn export_metrics() {
 // ── retention ───────────────────────────────────────────────────────────────
 
 fn int_env(name: &str, default: i64, min: i64) -> i64 {
-    match std::env::var(name) {
-        Err(_) => default,
-        Ok(raw) => py_int(&raw).map(|v| v.max(min)).unwrap_or(default),
+    match crate::settings::env_var(name) {
+        None => default,
+        Some(raw) => py_int(&raw).map(|v| v.max(min)).unwrap_or(default),
     }
 }
 
 fn retention_enabled() -> bool {
-    match std::env::var("OTEL_RETENTION_ENABLED") {
-        Err(_) => true,
-        Ok(raw) => ["1", "true", "yes", "on"].contains(&raw.trim().to_lowercase().as_str()),
+    match crate::settings::env_var("OPENAGENTD_OTEL_RETENTION_ENABLED") {
+        None => true,
+        Some(raw) => ["1", "true", "yes", "on"].contains(&raw.trim().to_lowercase().as_str()),
     }
 }
 
@@ -972,11 +972,11 @@ const DEFAULT_SPAN_RETENTION_DAYS: i64 = 90;
 const DEFAULT_METRIC_RETENTION_DAYS: i64 = 90;
 
 fn span_retention_days() -> i64 {
-    int_env("OTEL_SPAN_RETENTION_DAYS", DEFAULT_SPAN_RETENTION_DAYS, 1)
+    int_env("OPENAGENTD_OTEL_SPAN_RETENTION_DAYS", DEFAULT_SPAN_RETENTION_DAYS, 1)
 }
 
 fn metric_retention_days() -> i64 {
-    int_env("OTEL_METRIC_RETENTION_DAYS", DEFAULT_METRIC_RETENTION_DAYS, 1)
+    int_env("OPENAGENTD_OTEL_METRIC_RETENTION_DAYS", DEFAULT_METRIC_RETENTION_DAYS, 1)
 }
 
 /// One retention pass over spans and metrics.
@@ -1017,7 +1017,7 @@ pub fn start_retention() {
     if g.as_ref().map(|t| !t.is_finished()).unwrap_or(false) {
         return;
     }
-    let hours = int_env("OTEL_RETENTION_SWEEP_INTERVAL_HOURS", 24, 1);
+    let hours = int_env("OPENAGENTD_OTEL_RETENTION_SWEEP_INTERVAL_HOURS", 24, 1);
     *g = Some(tokio::spawn(async move {
         loop {
             if let Err(e) = tokio::task::spawn_blocking(|| run_retention_once(None)).await {

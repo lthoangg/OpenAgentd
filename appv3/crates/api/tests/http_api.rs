@@ -29,9 +29,9 @@ fn setup_env(root: &std::path::Path, mock: SocketAddr) {
     std::env::set_var("HOME", root.join("home"));
     std::env::set_var("OPENAGENTD_ENV", "production");
     std::env::set_var("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false");
-    std::env::set_var("SNAPSHOT_MAINTENANCE_ENABLED", "false");
+    std::env::set_var("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
     std::env::set_var("OLLAMA_BASE_URL", format!("http://{mock}/v1"));
-    for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL"] {
+    for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_DATABASE_URL"] {
         std::env::remove_var(k);
     }
     appv3_core::settings::install(appv3_core::settings::Settings::from_env());

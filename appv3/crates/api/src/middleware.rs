@@ -122,7 +122,7 @@ impl Policy {
         key.as_deref().filter(|k| !k.is_empty() && constant_time_eq(presented, k)).map(|_| AuthenticatedBy::NetworkKey)
     }
 
-    /// No access key and no `API_ALLOW_INSECURE_LAN` opt-out: only loopback
+    /// No access key and no `OPENAGENTD_ALLOW_INSECURE_LAN` opt-out: only loopback
     /// callers reach the API and nothing authenticates them, so browser
     /// requests are screened by `Origin`/`Host` instead.
     pub fn trusts_loopback_callers(&self) -> bool {
@@ -298,7 +298,7 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
 /// `max_age=600`). Requests without `Origin` pass through untouched.
 ///
 /// Allowed origins: first-party clients (Tauri webviews, loopback pages),
-/// every entry of `CORS_ORIGINS`, and — when `CORS_ORIGINS` is unset — any
+/// every entry of `OPENAGENTD_CORS_ORIGINS`, and — when it is unset — any
 /// origin if an access key protects the server. Without a key the server
 /// trusts its loopback callers, so a disallowed origin is refused outright:
 /// a "simple" cross-site POST skips the preflight and would otherwise run.
@@ -385,7 +385,7 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
         if is_ws_upgrade(&req) {
             return ws_reject();
         }
-        return detail(StatusCode::FORBIDDEN, "Cross-origin request refused. Protect the server with an access key or add this origin to CORS_ORIGINS.");
+        return detail(StatusCode::FORBIDDEN, "Cross-origin request refused. Protect the server with an access key or add this origin to OPENAGENTD_CORS_ORIGINS.");
     }
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();

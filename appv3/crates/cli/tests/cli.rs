@@ -52,16 +52,20 @@ impl Sandbox {
         ] {
             cmd.env(k, self.path(d));
         }
-        cmd.env("OPENAGENTD_ENV", "production").env("NO_COLOR", "1").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("SNAPSHOT_MAINTENANCE_ENABLED", "false");
+        cmd.env("OPENAGENTD_ENV", "production").env("NO_COLOR", "1").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
         for k in [
             "OPENAGENTD_DESKTOP_TOKEN",
             "OPENAGENTD_ACCESS_KEY",
             "OPENAGENTD_HANDSHAKE_FILE",
             "DATABASE_URL",
+            "OPENAGENTD_DATABASE_URL",
             "AGENTS_DIR",
+            "OPENAGENTD_AGENTS_DIR",
             "SKILLS_DIR",
+            "OPENAGENTD_SKILLS_DIR",
             "RUST_LOG",
             "LOG_LEVEL",
+            "OPENAGENTD_LOG_LEVEL",
             "OPENAI_API_KEY",
         ] {
             cmd.env_remove(k);

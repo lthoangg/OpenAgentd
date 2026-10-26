@@ -50,7 +50,7 @@ pub const PLAN_EDIT_NOTE_KEY: &str = "plan_edit_note";
 /// records progress against the plan instead of a second, lossy copy.
 pub const PLAN_SUMMARY_RULE: &str = "A `<session_plan>` note keeps this session's plan file verbatim next to this summary. Do not restate its steps: refer to them by number or title when recording progress, and record any user-requested changes to the plan. Under Open Work From the User, list only items the plan does not cover.";
 
-const CARRY_GUIDANCE: &str = "This is the session's latest plan, restated verbatim after context compaction; the summary records progress. The plan outranks the summary on scope and step order, and the task board records step status. In Code mode, continue from the first unfinished step; in Plan mode, revise it with the `plan` tool and resubmit it with `submit_plan`. If the user has since redirected the work, follow the user. Change the plan with the `plan` tool only when the user changes its scope; track progress with `todo`.";
+const CARRY_GUIDANCE: &str = "This is the session's latest plan, restated verbatim after context compaction; the summary records progress. The plan outranks the summary on scope and step order, and the task board records step status. In Code mode, continue from the first unfinished step; in Plan mode, revise it with the `plan` tool and resubmit it with `submit: true`. If the user has since redirected the work, follow the user; for different work, start a fresh plan with `action: \"new\"`. Change the plan with the `plan` tool only when the user changes its scope; track progress with `todo`.";
 
 /// Every read-modify-write of a plan and its state holds this, so parallel
 /// `plan` calls and the HTTP routes never lose an update. Held only for the
@@ -84,6 +84,10 @@ struct PlanState {
     agent_revision: u64,
     #[serde(default)]
     approved_revision: Option<u64>,
+    /// The approved revision a `write` was refused over once; the next
+    /// `write` replaces it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    write_warned: Option<u64>,
 }
 
 /// The plan as it is now.
@@ -137,6 +141,8 @@ pub enum PlanError {
     EditAmbiguous(usize, usize),
     #[error("The user edited the plan since you last saw it (revision {revision}). Read {path} and apply your change with action \"edit\", or call write again to replace their version.")]
     UnseenEdits { revision: u64, path: String },
+    #[error("The user approved this plan (revision {revision}, {path}). To revise it, use action \"edit\" or call write again. For different work, use action \"new\": it keeps this plan in its file and starts a fresh one.")]
+    ApprovedPlan { revision: u64, path: String },
     #[error("The plan folder resolves outside the workspace.")]
     Escapes,
     #[error("The plan folder is inside a denied path: {0}")]
@@ -164,6 +170,8 @@ pub struct PlanEdit {
 pub enum PlanChange<'a> {
     Write(&'a str),
     Edit(&'a [PlanEdit]),
+    /// Close the current plan (its file is kept) and start a fresh one.
+    New(&'a str),
 }
 
 /// Where a first plan is created.
@@ -180,6 +188,8 @@ pub struct SaveOutcome {
     pub changed: bool,
     /// The saved revision includes user edits the agent had not seen.
     pub included_user_edits: bool,
+    /// Where the plan this change closed was kept (`New` over an existing plan).
+    pub closed: Option<String>,
 }
 
 fn sha(text: &str) -> String {
@@ -204,7 +214,7 @@ fn current(dir: &Path) -> Option<(PlanState, PathBuf)> {
     }
     let path = data_plan_path(dir);
     let text = std::fs::read_to_string(&path).ok()?;
-    Some((PlanState { path: None, root: None, revision: 1, sha256: sha(&text), agent_revision: 1, approved_revision: None }, path))
+    Some((PlanState { revision: 1, sha256: sha(&text), agent_revision: 1, ..Default::default() }, path))
 }
 
 /// Read the plan and fold in any change made outside the plan tools.
@@ -333,13 +343,51 @@ fn new_workspace_file(root: &Path, session_id: &str, denied: Option<&DeniedPaths
     Err(PlanError::Io("No free plan file name.".into()))
 }
 
+/// Stop tracking `doc` so a new plan can start. A workspace file stays where
+/// it is; a data-dir `plan.md` is kept as the next free `plan-closed-<n>.md`.
+/// Finished tasks belonged to the old plan and leave the board, or compaction
+/// would take the new plan for a finished one. Returns where the plan is kept.
+fn close_locked(dir: &Path, doc: &PlanDoc) -> Result<String, PlanError> {
+    let kept = if doc.root.is_none() && doc.path == data_plan_path(dir) {
+        let to = (1u32..).map(|n| dir.join(format!("plan-closed-{n}.md"))).find(|p| std::fs::symlink_metadata(p).is_err()).unwrap_or_else(|| dir.join("plan-closed.md"));
+        std::fs::rename(&doc.path, &to)?;
+        to.display().to_string()
+    } else {
+        doc.display_path()
+    };
+    match std::fs::remove_file(state_path(dir)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let todos = todo::todos_path(dir);
+    let store = todo::load_store(&todos);
+    let finished = store["items"].as_array().is_some_and(|items| items.iter().any(|i| matches!(i["status"].as_str(), Some("completed" | "cancelled"))));
+    if finished {
+        if let Err(e) = todo::apply(&todos, &[json!({"action": "clear", "status": "finished"})]) {
+            tracing::warn!("plan_close_todos_failed dir={} error={}", dir.display(), e);
+        }
+    }
+    tracing::info!("plan_closed dir={} revision={} kept={}", dir.display(), doc.revision, kept);
+    Ok(kept)
+}
+
 /// Save a change the agent made with the `plan` tool.
 ///
 /// A full write over user edits the agent has not seen is refused once (the
-/// refusal counts as showing them); an edit applies on top of them.
+/// refusal counts as showing them); an edit applies on top of them. A full
+/// write over the approved revision is refused once too, so different work
+/// starts a new plan (`New`) instead of overwriting the approved one.
 pub fn save_agent(dir: &Path, target: PlanTarget, change: PlanChange) -> Result<SaveOutcome, PlanError> {
     let _g = lock();
-    let existing = sync_locked(dir);
+    let mut existing = sync_locked(dir);
+    let mut closed = None;
+    if let PlanChange::New(text) = change {
+        checked_body(text)?;
+        if let Some((doc, _)) = existing.take() {
+            closed = Some(close_locked(dir, &doc)?);
+        }
+    }
     let unseen = existing.as_ref().is_some_and(|(d, _)| d.unseen_edits());
     let body = match change {
         PlanChange::Write(text) => {
@@ -348,8 +396,16 @@ pub fn save_agent(dir: &Path, target: PlanTarget, change: PlanChange) -> Result<
                 write_state(dir, &st)?;
                 return Err(PlanError::UnseenEdits { revision: doc.revision, path: doc.display_path() });
             }
-            checked_body(text)?
+            let body = checked_body(text)?;
+            let approved = |(d, s): &(PlanDoc, PlanState)| d.approved_revision == Some(d.revision) && s.write_warned != Some(d.revision) && d.content != body;
+            if let Some((doc, mut st)) = existing.clone().filter(approved) {
+                st.write_warned = Some(doc.revision);
+                write_state(dir, &st)?;
+                return Err(PlanError::ApprovedPlan { revision: doc.revision, path: doc.display_path() });
+            }
+            body
         }
+        PlanChange::New(text) => checked_body(text)?,
         PlanChange::Edit(edits) => {
             let Some((doc, _)) = &existing else { return Err(PlanError::NoPlan) };
             checked_body(&apply_edits(&doc.content, edits)?)?
@@ -392,7 +448,7 @@ pub fn save_agent(dir: &Path, target: PlanTarget, change: PlanChange) -> Result<
     write_state(dir, &st)?;
     let updated_at = std::fs::metadata(&path).and_then(|m| m.modified()).map(DateTime::<Utc>::from).unwrap_or_else(|_| Utc::now());
     let doc = PlanDoc { content: body, path, root: st.root.clone(), updated_at, revision: st.revision, agent_revision: st.agent_revision, approved_revision: st.approved_revision };
-    Ok(SaveOutcome { doc, changed: changed || moved, included_user_edits: unseen })
+    Ok(SaveOutcome { doc, changed: changed || moved, included_user_edits: unseen, closed })
 }
 
 /// Save the user's edit from the Plan panel. `base_revision` is the revision
@@ -500,9 +556,10 @@ pub fn review_decision(answers: &[Vec<String>]) -> Result<ReviewDecision, String
     })
 }
 
-/// The `submit_plan` tool result a review answer writes. `doc` is the plan
-/// now; when the user edited it, the text carries their version.
-pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, submitted_revision: u64, in_plan_mode: bool) -> String {
+/// The submitting `plan` call's result a review answer writes. `doc` is the plan
+/// now; when the user edited it, the text carries their version. `keep_going`:
+/// the approval also started a goal that runs the plan.
+pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, submitted_revision: u64, in_plan_mode: bool, keep_going: bool) -> String {
     let n = doc.map(|d| d.revision).unwrap_or(submitted_revision);
     let path = doc.map(PlanDoc::display_path).unwrap_or_else(|| "the session plan".into());
     let mut text = String::new();
@@ -512,19 +569,59 @@ pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, subm
     text.push_str(&match decision {
         ReviewDecision::Approve => {
             let switched = if in_plan_mode { " The session is now in Code mode with full tool access." } else { "" };
-            format!("The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step and track progress with `todo`.")
+            let goal = if keep_going { KEEP_GOING_NOTE } else { "" };
+            format!(
+                "The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step. Start by creating one `todo` task per milestone, named after it, and keep the board current.{goal}"
+            )
         }
         ReviewDecision::Changes(Some(feedback)) => {
             let still = if in_plan_mode { "You are still in Plan mode. " } else { "" };
             format!(
-                "The user requested changes to plan revision {n}:\n\n{feedback}\n\n{still}Address every point, update the plan with the `plan` tool, then call `submit_plan` again."
+                "The user requested changes to plan revision {n}:\n\n{feedback}\n\n{still}Address every point, update the plan with the `plan` tool, then submit it again with `submit: true`."
             )
         }
         ReviewDecision::Changes(None) => {
-            format!("The user requested changes to plan revision {n} without saying what to change. Ask them with `ask_user`, then update the plan and call `submit_plan` again.")
+            format!("The user requested changes to plan revision {n} without saying what to change. Ask them with `ask_user`, then update the plan and submit it again with `submit: true`.")
         }
     });
     text
+}
+
+/// Appended to an approval that started a goal.
+const KEEP_GOING_NOTE: &str = " The user chose to keep going until done: a session goal now runs this plan (see `<session_goal>`), so turns continue on their own. When output in this conversation proves the plan's Done when, call `update_goal` with status \"complete\".";
+
+/// The plan's finish line: the `**Done when:**` paragraph, or the body of a
+/// `Done when` heading, trimmed and capped at the goal objective's length.
+/// `None` when the plan has none (it then cannot start a goal).
+pub fn done_when(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let is_label = |l: &str| {
+        let t = l.trim_start().to_ascii_lowercase();
+        t.starts_with("**done when:**") || t.starts_with("**done when**:")
+    };
+    let heading_level = |l: &str| {
+        let t = l.trim_start();
+        let n = t.chars().take_while(|c| *c == '#').count();
+        (n > 0 && t[n..].starts_with(' ')).then_some(n)
+    };
+    let is_done_heading = |l: &str| heading_level(l).is_some_and(|n| l.trim_start()[n..].trim().trim_end_matches(':').trim().eq_ignore_ascii_case("done when"));
+    let mut body: Vec<&str> = Vec::new();
+    if let Some(i) = lines.iter().position(|l| is_done_heading(l)) {
+        let level = heading_level(lines[i]).unwrap_or(1);
+        body.extend(lines[i + 1..].iter().take_while(|l| heading_level(l).is_none_or(|n| n > level)));
+    } else if let Some(i) = lines.iter().position(|l| is_label(l)) {
+        let first = lines[i].trim_start();
+        let rest = first.find(":**").or_else(|| first.find("**:")).map_or("", |at| &first[at + 3..]);
+        body.push(rest);
+        // The paragraph and any list under it, up to a blank line, heading or next label.
+        body.extend(lines[i + 1..].iter().take_while(|l| !l.trim().is_empty() && heading_level(l).is_none() && !l.trim_start().starts_with("**")));
+    }
+    let text = body.join("\n").trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    let max = crate::goal::MAX_OBJECTIVE_CHARS;
+    Some(if text.chars().count() > max { format!("{}…", crate::util::head_chars(&text, max - 1).trim_end()) } else { text })
 }
 
 pub struct ReviewOutcome {
@@ -536,12 +633,22 @@ pub struct ReviewOutcome {
 /// Close an open plan review with the user's decision. On approval the
 /// session switches to Code mode and the plan is marked approved. `None`
 /// when the review was already closed (lost race); do not resume then.
-pub async fn resolve_review(pool: &DbPool, session_id: &str, question: &PendingQuestion, decision: &ReviewDecision, answers: &Value) -> anyhow::Result<Option<ReviewOutcome>> {
+/// `keep_going`: the caller starts a goal for the approved plan
+/// ([`crate::session::AgentSession::start_goal_from_plan`]) before resuming.
+pub async fn resolve_review(
+    pool: &DbPool,
+    session_id: &str,
+    question: &PendingQuestion,
+    decision: &ReviewDecision,
+    answers: &Value,
+    keep_going: bool,
+) -> anyhow::Result<Option<ReviewOutcome>> {
     let dir = denied::session_artifacts_dir(Some(session_id));
     let doc = sync(&dir);
     let session = db::get_session(pool, session_id).await?.ok_or_else(|| anyhow::anyhow!("Session not found."))?;
     let in_plan = session.interaction_mode == "plan";
-    let text = review_result_text(decision, doc.as_ref(), question.plan_revision().unwrap_or(0), in_plan);
+    let keep_going = keep_going && *decision == ReviewDecision::Approve;
+    let text = review_result_text(decision, doc.as_ref(), question.plan_revision().unwrap_or(0), in_plan, keep_going);
     if db::resolve_pending_question_with(pool, &question.id, "answered", Some(answers), Some(&text)).await?.is_none() {
         return Ok(None);
     }
@@ -739,6 +846,90 @@ mod tests {
     }
 
     #[test]
+    fn new_keeps_the_old_workspace_file_and_starts_at_revision_one() {
+        let d = tempfile::tempdir().unwrap();
+        let (dir, root) = (d.path().join("sid"), d.path().join("ws"));
+        std::fs::create_dir_all(&root).unwrap();
+        let a = save_agent(&dir, workspace(&root), PlanChange::Write("# Feature A\n1. a")).unwrap();
+        save_agent(&dir, workspace(&root), PlanChange::Edit(&[edit("1. a", "1. a done")])).unwrap();
+        mark_approved(&dir, 2);
+
+        let b = save_agent(&dir, workspace(&root), PlanChange::New("# Feature B\n1. b")).unwrap();
+        assert_eq!(b.closed.as_deref(), Some(".agents/plans/feature-a-16df61f9.md"));
+        assert_eq!(b.doc.workspace_path().as_deref(), Some(".agents/plans/feature-b-16df61f9.md"));
+        assert_eq!((b.doc.revision, b.doc.agent_revision, b.doc.approved_revision, b.changed), (1, 1, None, true));
+        assert_eq!(std::fs::read_to_string(&a.doc.path).unwrap(), "# Feature A\n1. a done\n", "the closed plan is untouched");
+        assert_eq!(sync(&dir).unwrap().content, "# Feature B\n1. b");
+
+        let again = save_agent(&dir, workspace(&root), PlanChange::New("# Feature B\n1. b2")).unwrap();
+        assert_eq!(again.doc.workspace_path().as_deref(), Some(".agents/plans/feature-b-16df61f9-2.md"), "a repeated title gets a suffix");
+    }
+
+    #[test]
+    fn new_without_a_plan_writes_the_first_one() {
+        let d = tempfile::tempdir().unwrap();
+        let out = save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# P")).unwrap();
+        assert_eq!((out.closed, out.doc.revision), (None, 1));
+        assert_eq!(save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("  ")).unwrap_err(), PlanError::Empty);
+        assert_eq!(sync(d.path()).unwrap().content, "# P", "an empty new plan closes nothing");
+    }
+
+    #[test]
+    fn new_keeps_a_chat_plan_beside_the_session() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).unwrap();
+        let b = save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# B")).unwrap();
+        let kept = d.path().join("plan-closed-1.md");
+        assert_eq!(b.closed, Some(kept.display().to_string()));
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "# A\n");
+        assert_eq!((b.doc.path.clone(), b.doc.revision), (data_plan_path(d.path()), 1));
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# C")).unwrap();
+        assert_eq!(std::fs::read_to_string(d.path().join("plan-closed-2.md")).unwrap(), "# B\n");
+    }
+
+    #[test]
+    fn new_drops_finished_tasks_only() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).unwrap();
+        let todos = todo::todos_path(d.path());
+        let create = |content: &str, status: &str| json!({"action": "create", "content": content, "status": status});
+        todo::apply(&todos, &[create("done", "completed"), create("dropped", "cancelled"), create("open", "pending")]).unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# B")).unwrap();
+        let items = todo::load_store(&todos)["items"].as_array().cloned().unwrap();
+        assert_eq!(todo::format_items(&items), "[task_3] [pending] open");
+    }
+
+    #[test]
+    fn carry_note_restates_a_new_plan_after_a_finished_one() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A\n1. Build")).unwrap();
+        todo::apply(&todo::todos_path(d.path()), &[json!({"action": "create", "content": "Build", "status": "completed"})]).unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::New("# B\n1. Ship")).unwrap();
+        let note = carry_note(d.path()).unwrap();
+        assert!(note.contains("\n# B\n1. Ship\n</session_plan>"), "{note}");
+        assert!(!note.contains("tasks_finished"));
+    }
+
+    #[test]
+    fn a_write_over_an_approved_plan_is_refused_once() {
+        let d = tempfile::tempdir().unwrap();
+        save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).unwrap();
+        mark_approved(d.path(), 1);
+        assert!(save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# A")).is_ok(), "an identical write changes nothing");
+        let err = save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# B")).unwrap_err();
+        assert!(matches!(err, PlanError::ApprovedPlan { revision: 1, .. }), "{err:?}");
+        assert!(err.to_string().contains("use action \"new\""));
+        assert_eq!(sync(d.path()).unwrap().content, "# A");
+        let second = save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# B")).unwrap();
+        assert_eq!(second.doc.revision, 2);
+        assert!(save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("# C")).is_ok(), "only the approved revision is guarded");
+
+        mark_approved(d.path(), 3);
+        let edited = save_agent(d.path(), PlanTarget::DataDir, PlanChange::Edit(&[edit("C", "D")])).unwrap();
+        assert_eq!(edited.doc.content, "# D", "an edit revises without the guard");
+    }
+
+    #[test]
     fn review_answers_parse_to_a_decision() {
         let one = |s: &str| vec![vec![s.to_string()]];
         assert_eq!(review_decision(&one("Approve")), Ok(ReviewDecision::Approve));
@@ -755,24 +946,45 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("## Plan")).unwrap();
         let doc = sync(d.path()).unwrap();
-        let approved = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, true);
+        let approved = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, true, false);
         assert!(approved.starts_with("The user approved plan revision 1. The session is now in Code mode"), "{approved}");
-        let approved_code = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false);
+        assert!(approved.contains("one `todo` task per milestone"), "{approved}");
+        assert!(!approved.contains("update_goal"), "{approved}");
+        let approved_code = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false, false);
         assert!(approved_code.starts_with("The user approved plan revision 1. Implement the plan in"), "{approved_code}");
         assert!(!approved_code.contains("The session is now in Code mode"));
+        let kept_going = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false, true);
+        assert!(kept_going.ends_with(KEEP_GOING_NOTE), "{kept_going}");
 
-        let changes = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, true);
+        let changes = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, true, false);
         assert!(changes.contains("revision 1:\n\nSplit step 2\n\nYou are still in Plan mode."), "{changes}");
-        let changes_code = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, false);
+        let changes_code = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, false, false);
         assert!(changes_code.contains("revision 1:\n\nSplit step 2\n\nAddress every point,"), "{changes_code}");
         assert!(!changes_code.contains("You are still in Plan mode."));
 
-        assert!(review_result_text(&ReviewDecision::Changes(None), Some(&doc), 1, true).contains("without saying what to change"));
+        assert!(review_result_text(&ReviewDecision::Changes(None), Some(&doc), 1, true, false).contains("without saying what to change"));
 
         save_user(d.path(), "## Plan\n1. user step", 1).unwrap();
-        let edited = review_result_text(&ReviewDecision::Approve, sync(d.path()).as_ref(), 1, true);
+        let edited = review_result_text(&ReviewDecision::Approve, sync(d.path()).as_ref(), 1, true, false);
         assert!(edited.starts_with("The user edited the plan during review; this is revision 2"), "{edited}");
         assert!(edited.contains("<plan>\n## Plan\n1. user step\n</plan>\n\nThe user approved plan revision 2."));
+    }
+
+    #[test]
+    fn done_when_reads_the_label_paragraph_or_the_section() {
+        let label = "# Ship\n\n**Outcome:** x\n\n**Done when:** export works;\n- tests pass\n- tsc clean\n\n## Appendix\nfiles";
+        assert_eq!(done_when(label).as_deref(), Some("export works;\n- tests pass\n- tsc clean"));
+        let section = "# Ship\n\n## Done when\n\n- a\n- b\n\n### Checks\n`make x`\n\n## Appendix\nfiles";
+        assert_eq!(done_when(section).as_deref(), Some("- a\n- b\n\n### Checks\n`make x`"), "subsections belong to it");
+        assert_eq!(done_when("# P\n\n## Done when:\n- a").as_deref(), Some("- a"));
+        assert_eq!(done_when("# P\n**Done When**: it works").as_deref(), Some("it works"));
+        assert_eq!(done_when("# P\n\n**Done when:** a\n**Appendix:** b").as_deref(), Some("a"));
+        assert_eq!(done_when("# P\n\n## Approach\n1. a"), None);
+        assert_eq!(done_when("# P\n\n## Done when\n\n## Appendix"), None, "an empty section is none");
+        let long = format!("# P\n**Done when:** {}", "x".repeat(crate::goal::MAX_OBJECTIVE_CHARS + 10));
+        let capped = done_when(&long).unwrap();
+        assert_eq!(capped.chars().count(), crate::goal::MAX_OBJECTIVE_CHARS);
+        assert!(capped.ends_with('…'));
     }
 
     #[test]

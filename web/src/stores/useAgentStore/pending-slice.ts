@@ -3,7 +3,7 @@ import { cancelQueuedMessage, postAgentChat } from '@/api/client'
 import { applyQuestionResolution, revokeBlobUrlsFromBlocks } from './helpers'
 import { createDefaultAgentStream } from './defaults'
 import { clearReconnectTimer } from './stream-slice'
-import type { PendingMessage, AgentStore } from './types'
+import type { PendingMessage, AgentStore, SendMessageOptions } from './types'
 import type { MessageAttachment, SessionInteractionMode } from '@/api/types'
 
 /**
@@ -14,13 +14,7 @@ function newSessionInteractionMode(state: AgentStore): SessionInteractionMode | 
   return state.sessionId ? undefined : state.sessionInteractionMode
 }
 
-interface SendOptions {
-  workspace: string
-  model?: string | null
-  thinkingLevel?: string | null
-  fastMode?: boolean
-  mentions?: string[]
-}
+type SendOptions = SendMessageOptions
 
 function effectiveLeadModel(state: AgentStore, leadName: string | null, requestedModel?: string | null): string | null {
   return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
@@ -135,7 +129,7 @@ export const createPendingSlice: StateCreator<
    * text and attachments being silently destroyed — see the restore in
    * ``AgentChatView``.
    */
-  sendMessage: async (content: string, files: File[] | undefined, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }): Promise<boolean> => {
+  sendMessage: async (content: string, files: File[] | undefined, options: SendOptions): Promise<boolean> => {
     const { leadName, agentStreams } = get()
     const effectiveLead = leadName || 'openagentd'
     const leadWorking = agentStreams[effectiveLead]?.status === 'working'

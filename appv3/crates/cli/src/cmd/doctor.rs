@@ -64,6 +64,7 @@ pub fn doctor() -> Result<ExitCode> {
     let s = appv3_core::settings();
     appv3_core::env::load_config_env(&s.config_dir);
     crate::cmd::auth::migrate_first();
+    crate::dotenv::migrate();
 
     println!();
     println!("  {}  {}", bold(&cyan("agentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));
@@ -84,6 +85,9 @@ pub fn doctor() -> Result<ExitCode> {
     if !ignored.is_empty() {
         checks.warn(&format!("Ignored provider keys from a .env file: {}", ignored.join(", ")));
         println!("     {}", dim("Add them in Settings → Providers, or run `agentd credentials import <file>`"));
+    }
+    for n in appv3_core::env::env_notices() {
+        checks.warn(&n);
     }
     let key_vars = provider_key_vars();
     let lead = read_lead_provider(&s.agents_dir);

@@ -230,6 +230,137 @@ explicitly.
     by a restart is stored as `stopped` the next time the thread is listed.
   - Each ask records a `side_question` client span with the session id
     and usage (lengths only, no text).
+- **Goals: Keep going until done (v3.32.0, v3 only).** Approving a plan
+  with Keep going starts a durable objective, the plan's Done when, that a
+  top-level session keeps taking turns toward until a completion check
+  confirms it, the agent reports a blocker, or a limit pauses it
+  (`agent/src/goal.rs`, `agent/src/tools/goal.rs`). There is no `/goal`
+  command and no goal field on `POST /api/agent/chat`. Formats:
+  - *Table:* revision **00000028** adds `session_goals`, `WITHOUT ROWID` and
+    clustered on `(session_id, id)` with uuid7 ids: `objective` (≤ 4,000
+    chars), `status` (`active|paused|achieved|cleared`), `pause_reason`
+    (`stopped|user|blocked|turn_limit|token_limit|no_progress|unverified|check_failed|error|restart`),
+    `detail` (blocker or last check reason), `max_turns`, `token_budget`, and
+    the counters `turns_used`, `tokens_used` (uncached input plus output),
+    `active_seconds`, `rejected_claims`, `idle_turns`. The partial unique
+    index `uq_session_goals_live` allows one active or paused goal per
+    session. No foreign key; session delete removes the rows in its
+    transaction.
+  - *Starting a goal:* the plan review answer
+    (`POST /api/agent/{sid}/question/{qid}/answer`) takes
+    `keep_going` beside `answers`: `true`, `{}` or `{"max_turns": n}`
+    (1–1000; omitted takes `goals.max_turns`). Request changes ignores it.
+    With Approve the plan needs a non-empty Done when (`plan::done_when`
+    reads a `**Done when:**` paragraph or a `Done when` heading section,
+    capped at 4,000 chars; the plan JSON exposes it as `done_when`); a
+    plan without one, or turns out of range, is a 422 that leaves the
+    review open. After approval
+    `AgentSession::start_goal_from_plan` clears a live goal, creates the
+    goal with the token budget from `goals.token_budget`, and saves its
+    rules in a pinned, hidden `kind='note'` row with `extra.goal_note` and
+    `extra.goal_id`, kept out of compaction while the goal is live; when no
+    turn resumed, it starts one. The approval result asks for one `todo`
+    task per plan milestone and, with Keep going, adds the goal rules.
+    Once the goal ends the note is unpinned and a `<goal_ended>` note
+    (`extra.goal_ended`) follows, both between turns only. The goal's part
+    of the history starts at its rules note.
+  - *Routes* (`api/src/routes/agent/goal.rs`): `GET
+    /api/agent/sessions/{sid}/goal` returns `{goal}` (the newest goal of
+    any status, or `null`); `POST …/goal/pause` and `…/goal/resume` return
+    the goal, or 404 without a live one; `DELETE …/goal` is 204 and
+    idempotent. Resume grants another settings-sized batch of turns (and
+    another budget) when a limit paused it, and starts a turn when the
+    session is idle; while a stopped turn is still ending it is a 422.
+    Pause and clear delete a queued `goal_turn` row. Member sessions are
+    404.
+  - *Undo:* undoing a message before the goal's rules note (back past the
+    approval) clears the goal, since the note goes with it; undoing a
+    `goal_turn` row keeps the goal.
+  - *Continuation:* when a goal turn ends normally, `run_turn` accounts it
+    and queues a user row with `extra.goal_turn {id, turn, max_turns, why,
+    check?}` holding a `<goal_reminder>`, which names the plan file and the
+    next unfinished task (in progress, else first pending). `why` says why the
+    goal went on, for the transcript's turn divider: `unclaimed` (the last
+    turn ended without a claim), `rejected` (the last check said not yet;
+    `check` is its reason), `check_failed` (the last check gave no
+    verdict) or `resumed`. It then runs like an activated queued
+    message, without `close_turn`, so no notification fires until the goal
+    stops; that one is titled `Goal achieved`, `Goal blocked` or `Goal
+    paused` instead of `Done`, and the `desktop_notification` payload gains
+    `goal` (`achieved|blocked|paused`). Queued messages, working subagents, an open question,
+    and Plan mode make it wait (`PATCH` to Code mode starts it). Two turns
+    in a row without tool calls pause it (`no_progress`), as do the turn
+    and token limits, a failed turn (`error`), and Stop (`stopped`).
+    Startup pauses running goals with `restart` and deletes their queued
+    `goal_turn` rows.
+  - *`update_goal` tool* (`crates/tools/data/tool_definitions.json`):
+    `{status: complete|blocked, evidence? (≤ 4,000 chars), reason? (≤ 2,000)}`, injected into every
+    lead session so the cached tool list does not change; it fails without
+    a live goal. `blocked` pauses the goal with the reason. `complete` runs
+    the check inline: one request on the session's own model and thinking
+    level (there is no separate check model), with its last request frame
+    (system prompt and tools, from `RequestFrameHook`, as `/btw` does), the
+    history the claim was made from, the claim's text without its tool call
+    (a stand-in line when it has none),
+    and a hidden `<goal_check>` user message asking for JSON `{met,
+    reason}`, so the turn's prompt cache covers all but the new tail. The
+    message also carries a `<runtime_log>`: the runtime's own record,
+    from the goal's part of the history (after its rules note), of
+    each `shell` command with its outcome (`succeeded`, `failed, exit code
+    N`, `timed out`, `started in the background`, `no result yet`) and each
+    applied `patch` with its files, the last 40 steps, then the files
+    changed after the last command that ran to an end, and a
+    `<task_board>` with the session's tasks; unfinished tasks count as
+    unproven unless the claim explains them. The check is told
+    to trust the log over the claimed evidence. The objective, evidence,
+    log and board go in with their `<goal_check>`, `<objective>`,
+    `<claimed_evidence>`, `<runtime_log>` and `<task_board>` tags defused,
+    so none can close its block.
+    `tool_choice` stays unset, which keeps Anthropic's message
+    cache valid; a tool call in the reply is dropped. A reply without a
+    verdict is asked once more; a second miss, or a check that cannot run,
+    neither accepts nor rejects the claim (the result starts `The
+    completion check failed:`), and three such failures in a row pause the
+    goal (`check_failed`). Nothing of the check is saved to
+    `session_messages`; the verdict goes in `detail`, and three rejected
+    claims in a row pause the goal (`unverified`). A `complete` claim made
+    after a rejection with nothing new since (no result of a tool other
+    than `update_goal`, no incoming message other than a goal reminder) is
+    rejected without a check: it counts as a rejection, and its result
+    starts `The check did not accept the claim: Nothing ran since the last
+    rejected claim` and repeats the last reason.
+  - *Unattended turns:* unless `goals.allow_questions` is on, goal turns
+    carry the unattended run metadata, as scheduled turns do, with a goal
+    reason: `ask_user` returns the `goal_unattended_refusal` text instead of
+    waiting, and `plan` with `submit: true` saves without opening a review and
+    leads with `goal_unattended_submit`.
+  - *Events and sessions:* the global stream gains `session_goal
+    {session_id, goal}` (`sse_events.json`), sent on every goal change,
+    ended goals included. `SessionResponse` gains `goal_status`
+    (`active|paused`, omitted otherwise) and the live goal's
+    `goal_turns_used` and `goal_max_turns` on the list and detail routes.
+  - *Telemetry:* a goal turn's `agent_run` span gains `openagentd.goal.id`
+    (API id) and `openagentd.goal.turn` (from 1). Each check request gets
+    its own `goal_check` CLIENT span under the `update_goal` tool span:
+    `gen_ai.operation.name=goal_check`, the session, agent, provider,
+    model, workspace and goal id, the `gen_ai.usage.*` tokens and estimated
+    cost, `goal_check.attempt`, and `goal_check.met` when the reply had a
+    verdict (`goal_check.stopped` when Stop dropped it mid-request). The
+    check's spend therefore counts in the Telemetry totals, per session,
+    and as its own step in `cache_by_step`.
+  - *Settings:* `settings.yaml` gains `goals: {max_turns, token_budget,
+    allow_questions, keep_going_default}`, each written only when it differs
+    from the default (50, no budget, `false`, `false`);
+    `keep_going_default` ticks Keep going in the review footer.
+    `GET/PUT /api/settings/goals` returns them plus
+    `default_max_turns`; PUT keeps omitted keys, resets `max_turns` and
+    removes `token_budget` with `null`, and returns 422 for a `max_turns`
+    outside 1–1000, a `token_budget` below 1, or an unknown key.
+
+  Tests: `agent/tests/goal_loop.rs`, `agent/tests/goal_questions.rs`, unit tests in `agent/src/goal.rs`,
+  `agent/src/plan.rs`, `db/src/queries/goals.rs` and `db/tests/queries.rs`,
+  `agent/tests/plan_review.rs`, `goal_flow` in `api/tests/http_api.rs`.
+  v2 has no equivalent.
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,
@@ -296,7 +427,8 @@ explicitly.
 - **Hardening beyond v2:** deliberate behaviour changes, each covered by
   tests in the named crate:
   - *Origin and Host guard* (`api/src/middleware.rs`, `core/src/auth.rs`).
-    v2 defaults `CORS_ORIGINS` to `["*"]`. In v3, with `CORS_ORIGINS` unset,
+    v2 defaults `CORS_ORIGINS` to `["*"]`. In v3 (where the variable is
+    `OPENAGENTD_CORS_ORIGINS` since v3.32.0), with it unset,
     the Tauri and loopback origins are always allowed. If no access key is
     set (and no `API_ALLOW_INSECURE_LAN`), other origins are refused: a
     preflight gets 400, a request 403, and a WebSocket upgrade the WS
@@ -312,6 +444,15 @@ explicitly.
     terminal, git, MCP servers, plugins. The shell tool's `LEAK_KEYS` is
     that same list; v2's Python/venv entries are dropped because v3 has no
     venv. Diagnostics still reports `desktop_session`.
+  - *Mode, variables and `.env`* (`core/src/settings.rs`, `core/src/env.rs`,
+    v3.32.0). v2 took the mode from `APP_ENV` and read `.env` from the working
+    directory and `~/.config/openagentd/`. v3 lets the build pick the mode
+    (release: production, debug: development), overridable with
+    `OPENAGENTD_ENV`; reads only the active config dir's `.env`, which cannot
+    set the mode; and moves the settings variables to the `OPENAGENTD_`
+    prefix (`settings::RENAMED_ENV`), still reading the old names with a
+    note. The shell tool and terminal drop `APP_ENV` and every
+    `OPENAGENTD_*` variable.
   - *Shutdown.* v2's parent watch sends SIGTERM to its own process. v3 wakes
     the graceful-shutdown path directly, which also works on Windows. SSE
     streams close when shutdown starts, so a server with open streams exits
@@ -375,8 +516,8 @@ explicitly.
     the server is stopped or a check fails; `server health` is a hidden
     alias. The LAN check appears only when listening on all interfaces.
   - `server start` daemonises this binary's `server serve --host H --port P`
-    with the binary's directory as cwd, and the child inherits `APP_ENV`
-    (the CLI defaults it to `production`) instead of having it forced. The
+    with the binary's directory as cwd, and passes it this process's mode as
+    `OPENAGENTD_ENV` (a release build defaults to `production`). The
     daemon keeps log records off stderr, since its stderr is appended to
     `app.log` next to the JSON sink. `--wait` exits 1 if the server dies or
     is not ready within 30 s.
@@ -652,11 +793,15 @@ explicitly.
 - **Session plan and plan review** (`agent/src/plan.rs`,
   `agent/src/tools/plan.rs`; tested there, in `agent/tests/plan_review.rs`,
   the summarization hook and `api/tests/http_api.rs`). v2 has none of this.
-  - **Tools.** The lead gets two session-injected tools, defined in
-    `crates/tools/data/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
-    exact-match replacements; works in both modes) and `submit_plan`
-    (works in both modes; in Code mode its description limits it to when
-    the user asks for a review). Agent files cannot claim either name. The
+  - **Tools.** The lead gets one session-injected tool, defined in
+    `crates/tools/data/tool_definitions.json`: `plan` (`write`, `edit` with 1–20
+    exact-match replacements, or `new`, and/or `submit: true` with an optional
+    `summary`; works in both modes, and in Code mode its description limits
+    submitting to when the user asks for a review). A call that both saves
+    and submits opens no review when the save fails. Until v3.32.0 the review
+    was a separate `submit_plan` tool; the name stays reserved, agent files
+    listing it are skipped like other former names, a call to it is told to
+    use `plan`, and the web still renders its old cards. Agent files cannot claim either name. The
     `<proposed_plan>` tag is no longer captured, detected or acted on; old
     transcripts still render it as a read-only card.
   - **Where the plan lives.** In a project (`coding`) workspace the first
@@ -678,13 +823,23 @@ explicitly.
     (`extra.plan_edit_note`) with the new plan, and a `write` over unseen
     edits is refused once. A session with only a v2 `plan.md` reads as
     revision 1; its first write in a project workspace moves it.
+  - **New plan** (v3.32.0). `action: "new"` closes the current plan and
+    starts a fresh one from `content`, under the same lock: the state file
+    is removed, a workspace plan file stays where it is, and a data-folder
+    `plan.md` is renamed to the next free `plan-closed-<n>.md`. Completed and
+    cancelled tasks are cleared from the board, so `carry_note` does not take
+    the new plan for a finished one. The new plan is created as a first write
+    (new file name, revision 1, no approval). A `write` over the approved
+    revision is refused once (`write_warned` in the state), naming `new`;
+    `edit` is not guarded. The result reads "Started a new plan … The
+    previous plan stays at …", and the web refreshes the task board on it.
   - **Routes.** `GET /api/agent/sessions/{id}/plan` adds `revision`,
     `approved_revision`, `path` and `workspace_path`. New `PUT` on the same
     path saves the user's edit (`{content, base_revision}`; 409 when the plan
     moved on). `DELETE` returns 409 while a review is open and otherwise
     detaches: it removes the state file and any data-folder `plan.md` but
     keeps a workspace plan file.
-  - **Review.** `submit_plan` opens a `pending_questions` row whose payload
+  - **Review.** `plan` with `submit: true` opens a `pending_questions` row whose payload
     adds `kind: "plan_review"` and `plan_revision` (extra JSON keys, no
     schema change), and `question_asked` plus the pending-question response
     carry both fields. The answer route takes one string of at most 8,000
@@ -705,7 +860,8 @@ explicitly.
     that missed the live frame (a reattach, a feed that went quiet) otherwise
     showed the agent waiting with no card.
   - **Mode notes.** The Plan-mode note is versioned (`version 3` since
-    v3.21.0: reviewer-shaped plans with an Appendix and visuals); a session
+    v3.21.0: reviewer-shaped plans with an Appendix and visuals; `version 4`
+    since v3.32.0: submit with `plan` and `submit: true`); a session
     whose last Plan-mode note is older gets the new instructions once, and a
     version-1 note also gets a line saying they replace the `<proposed_plan>`
     ones.
@@ -906,11 +1062,20 @@ explicitly.
   cancelled caller cannot leave a half-written line on stdin. Tests:
   `mcp/src/lib.rs`. v2 waits without a deadline.
 - **ETag on workspace listings (v3 only):** `GET /api/agent/{sid}/files`,
-  `/api/agent/workspace/files/list`, `/api/agent/workspace/status` and
-  `/api/agent/workspace/git-diff/view` send an `ETag` (64-bit hash of the
+  `/api/agent/workspace/files/list`, `/api/agent/workspace/status`,
+  `/api/agent/workspace/git-diff/view` and `/git-diff/files` send an `ETag` (64-bit hash of the
   JSON body) with `Cache-Control: no-cache`, and answer `304` with an empty
   body when `If-None-Match` matches. The body is still computed on every
   request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
+- **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
+  lists every changed path with status and +/− counts from
+  `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000
+  with the uncapped `total`), so the Review dock's list no longer depends on
+  the diff text that `git-diff/view` cuts at 512 K characters. The dock now
+  fetches bodies one file at a time from `git-diff/view?paths=…`, which reads
+  paths literally (`--literal-pathspecs`) and keeps the `untracked` list when
+  the tracked diff is cut. Test: `api/src/routes/agent/files.rs`. v2 has only
+  the whole diff.
 - **`read` tool `outline` removed (v3.14.0):** the `outline` argument and
   `crates/tools/src/outline.rs` are gone and `crates/tools/data/tool_definitions.json`
   no longer lists it, so a call passing `outline` fails as an unknown
@@ -1190,8 +1355,8 @@ lock until someone deletes it. v3 changes three things:
 v2 refreshes the file tree, git status and diff only after the agent's own
 file tools, or on window focus. v3 also watches the workspaces the UI is
 showing (`crates/api/src/watch.rs`). Watching starts on
-`/workspace/files/list`, `/workspace/status`, `/workspace/git-diff/view` and
-`/{sid}/files`. The watcher publishes a debounced
+`/workspace/files/list`, `/workspace/status`, `/workspace/git-diff/view`,
+`/workspace/git-diff/files` and `/{sid}/files`. The watcher publishes a debounced
 `workspace_files_changed` global SSE event (300 ms, at most one per 2 s
 burst), and `use-global-event-stream.ts` invalidates the matching coding and
 session queries. The event carries the resolved path plus every spelling the

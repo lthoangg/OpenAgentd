@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000027";
+pub const ALEMBIC_HEAD: &str = "00000028";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -62,7 +62,11 @@ pub const ALEMBIC_HEAD: &str = "00000027";
 ///   mark stays only where the id's version digit (character 13) is `5`.
 /// - 00000027: `chat_sessions.title_locked`, set when the user renames a
 ///   session, so retitling after compaction keeps the name they chose.
-pub const MIGRATIONS: [(&str, &str); 27] = [
+/// - 00000028: `session_goals` (session goals), clustered `WITHOUT ROWID` on
+///   `(session_id, id)` with UUIDv7 ids like `side_questions`, so a
+///   session's goals are one time-ordered range. The partial unique index
+///   allows one live (active or paused) goal per session.
+pub const MIGRATIONS: [(&str, &str); 28] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -90,6 +94,7 @@ pub const MIGRATIONS: [(&str, &str); 27] = [
     ("00000025", include_str!("../resources/migrations/00000025.sql")),
     ("00000026", include_str!("../resources/migrations/00000026.sql")),
     ("00000027", include_str!("../resources/migrations/00000027.sql")),
+    ("00000028", include_str!("../resources/migrations/00000028.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -477,6 +482,26 @@ CREATE TABLE workspace_group_members (
 	PRIMARY KEY (group_id, path)
 );
 CREATE INDEX ix_workspace_group_members_path ON workspace_group_members (path);
+CREATE TABLE session_goals (
+	session_id CHAR(32) NOT NULL,
+	id CHAR(32) NOT NULL,
+	objective TEXT NOT NULL,
+	status VARCHAR(16) NOT NULL,
+	pause_reason VARCHAR(32),
+	detail TEXT,
+	max_turns INTEGER NOT NULL,
+	token_budget INTEGER,
+	turns_used INTEGER DEFAULT 0 NOT NULL,
+	tokens_used INTEGER DEFAULT 0 NOT NULL,
+	active_seconds INTEGER DEFAULT 0 NOT NULL,
+	rejected_claims INTEGER DEFAULT 0 NOT NULL,
+	idle_turns INTEGER DEFAULT 0 NOT NULL,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	ended_at DATETIME,
+	PRIMARY KEY (session_id, id)
+) WITHOUT ROWID;
+CREATE UNIQUE INDEX uq_session_goals_live ON session_goals (session_id) WHERE status IN ('active', 'paused');
 "#;
 
     async fn master(conn: &mut SqliteConnection) -> Vec<(String, String, String, Option<String>)> {

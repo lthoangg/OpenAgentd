@@ -37,10 +37,13 @@ import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble, type OpenSessionHandler } from './AgentView/UserBubble'
+import { GoalTurnDivider } from './AgentView/GoalTurnDivider'
+import { goalTurnInfo } from '@/lib/goal'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
-import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
+import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
+import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { copyText, useChatMenu } from './ChatContextMenu'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -322,6 +325,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   switch (block.type) {
     case 'user': {
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
+      const goalTurn = goalTurnInfo(block)
+      if (goalTurn) return <GoalTurnDivider info={goalTurn} />
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
@@ -512,7 +517,7 @@ export function AgentView({
     : undefined
   // A report folded into the answer (reader mode) follows the prompt too.
   const answerHoldsReport = lastTurnItem?.kind === 'assistant' && lastTurnItem.blocks.some((b) => b.type === 'user')
-  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isDirectUserBlock(latestPrompt.block) && !answerHoldsReport
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !answerHoldsReport
   // A failed turn offers its way forward on the failure itself: the card for
   // a failure the transcript does not show, else the error the turn ended on.
   const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []
@@ -537,7 +542,7 @@ export function AgentView({
   // lands renders at once, as one turn, before the reader asked for any of it.
   const hasMoreHistory = useAgentStore((s) => s.hasMore)
   const hasLoadedPrompt = useMemo(
-    () => turnItems.some((item) => item.kind === 'user' && isDirectUserBlock(item.block)),
+    () => turnItems.some((item) => item.kind === 'user' && isTypedPromptBlock(item.block)),
     [turnItems],
   )
   const promptSeekedForRef = useRef<string | null>(null)
@@ -610,7 +615,7 @@ export function AgentView({
   const lastContent = lastBlock
     ? `${lastBlock.id}:${lastBlock.content?.length ?? -1}:${lastBlock.toolOutput?.length ?? -1}:${lastBlock.toolResult?.length ?? -1}:${lastBlock.toolArgs?.length ?? -1}`
     : ''
-  const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
+  const isUserMessage = lastBlock ? isTypedPromptBlock(lastBlock) : false
   const isEmpty = !isWorking &&
     !blocks.some((b) => b.type !== 'compaction') &&
     !liveTail.some((b) => b.type !== 'compaction') &&
@@ -964,7 +969,7 @@ export function AgentView({
                      <div
                        key={item.block.id}
                        data-block-id={item.block.id}
-                      data-prompt-id={isDirectUserBlock(item.block) ? item.block.id : undefined}
+                      data-prompt-id={isTypedPromptBlock(item.block) ? item.block.id : undefined}
                      >
                        <BlockRenderer
                          block={item.block}
@@ -1034,7 +1039,7 @@ export function AgentView({
              * turn: its work row already reads "Working".
              * Covers the POST to first SSE event gap so the user always gets immediate feedback.
              */}
-            {((!isTurnOpen && !isError && currentBlocks.some(isDirectUserBlock)) ||
+            {((!isTurnOpen && !isError && currentBlocks.some(isTypedPromptBlock)) ||
               isAwaitingRestart ||
               (isWorking && !answerHoldsReport && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
               <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">

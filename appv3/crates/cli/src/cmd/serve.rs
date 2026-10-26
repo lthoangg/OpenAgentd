@@ -9,12 +9,12 @@ use std::io::Write;
 use std::sync::OnceLock;
 use tokio::sync::Notify;
 
-/// stderr at `LOG_LEVEL`, `app.log` at `FILE_LOG_LEVEL`. The daemon's stderr
+/// stderr at `OPENAGENTD_LOG_LEVEL`, `app.log` at `OPENAGENTD_FILE_LOG_LEVEL`. The daemon's stderr
 /// is appended to `app.log` too, so it keeps log records off stderr (the
 /// file sink already has them) and only stray output such as a fatal
 /// error lands there.
 fn init_logging(daemon: bool) {
-    let file_level = std::env::var("FILE_LOG_LEVEL").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "DEBUG".into());
+    let file_level = appv3_core::settings().file_log_level.clone();
     let stderr_level = if daemon { "CRITICAL" } else { appv3_core::settings().log_level.as_str() };
     crate::logging::setup(stderr_level, &file_level, true);
     crate::logging::install_panic_hook();
@@ -108,7 +108,11 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
     crate::net::require_loopback_or_auth(&host, has_auth)?;
     appv3_core::env::load_config_env(&appv3_core::settings().config_dir);
     init_logging(daemon);
+    for n in appv3_core::env::env_notices() {
+        tracing::warn!("env_notice {n}");
+    }
     appv3_providers::credentials_migration::migrate_active();
+    crate::dotenv::migrate();
     if let Some(p) = args.parent_pid {
         start_parent_watch(p);
     }

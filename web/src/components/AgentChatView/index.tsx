@@ -29,6 +29,8 @@ import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
+import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import type { GoalAction } from '@/lib/goal'
 import { useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -319,6 +321,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleToggleTasks,
     handleOpenPlan,
     handleOpenSideQuestions,
+    handleOpenGoal,
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
@@ -381,6 +384,25 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onError: (err) => pushToast({ tone: 'error', title: 'Could not clear the plan', description: err instanceof Error ? err.message : String(err) }),
     })
   }, [sessionIdState, clearPlan, pushToast])
+
+  // ── Session goal ───────────────────────────────────────────────────────────
+  const { data: goalData } = useSessionGoalQuery(sessionIdState)
+  const goal = goalData?.goal ?? null
+  // The goal lives in the dock's Goal tab: the palette and the dock's "+"
+  // menu open it.
+  const showGoal = handleOpenGoal
+  const { mutate: mutateGoal } = useGoalActionMutation()
+  const handleGoalAction = useCallback((action: GoalAction) => {
+    if (!sessionIdState) return
+    mutateGoal({ sessionId: sessionIdState, action }, {
+      onSuccess: () => pushToast({ tone: 'info', title: action === 'pause' ? 'Goal paused' : action === 'resume' ? 'Goal resumed' : 'Goal cleared' }),
+      onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: err instanceof Error ? err.message : String(err) }),
+    })
+  }, [sessionIdState, mutateGoal, pushToast])
+  const paletteGoal = useMemo(
+    () => (workspace ? { status: goal?.status ?? null, onShow: showGoal, onAction: handleGoalAction } : undefined),
+    [workspace, goal?.status, showGoal, handleGoalAction],
+  )
   const providersQ = useProvidersQuery()
 
   // Lead capabilities — used to drive composer affordances (slash menu).
@@ -579,6 +601,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     planAwaitingReview,
     handleOpenPreview: workspace && previewsAvailable() ? handleOpenNewPreview : undefined,
     handleOpenSideQuestions,
+    goal: paletteGoal,
     setFileViewer,
     setFileOpenKey,
     setWorkspacePanel,
@@ -998,9 +1021,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
+        goal={goal}
         plan={plan}
         onClearPlan={handleClearPlan}
         onOpenPlan={workspace ? handleOpenPlan : undefined}
+        onOpenGoal={workspace ? handleOpenGoal : undefined}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}
@@ -1014,6 +1039,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onQuickOpenFileOpen={handleQuickOpenFileOpen}
         onClosePalette={closePalette}
         onCloseQuickOpen={closeQuickOpen}
-      />    </div>
+      />
+    </div>
   )
 }

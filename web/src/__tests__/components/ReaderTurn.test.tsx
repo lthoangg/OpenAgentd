@@ -413,4 +413,43 @@ describe('AssistantTurn — reader mode, submit_plan', () => {
 
     expect(rendered('submit')).toBeNull()
   })
+
+  it('keeps a plan call with submit waiting for review out of the fold', () => {
+    useAgentStore.setState({
+      sessionId: 's-1',
+      pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] },
+      resolvedQuestions: {},
+    })
+    const planSubmit: ContentBlock = { ...submit(PLACEHOLDER), toolName: 'plan', toolArgs: '{"action":"write","content":"# P","submit":true}' }
+
+    renderTurn([read, planSubmit])
+
+    expect(rendered('submit')).not.toBeNull()
+  })
+})
+
+describe('AssistantTurn — reader mode, goal', () => {
+  const read = finished[1]
+  const achieved: ContentBlock = {
+    id: 'claim', type: 'tool', content: '', toolName: 'update_goal', toolArgs: '{"status":"complete","evidence":"bun test: 0 failures"}',
+    toolDone: true, toolResult: 'The check confirmed the goal is met: 0 failures.\nThe goal is achieved.',
+  }
+  const summary: ContentBlock = { id: 'summary', type: 'text', content: 'All green.' }
+
+  it('shows that the goal was achieved without opening the work', () => {
+    renderTurn([read, achieved, summary])
+
+    expect(rendered('claim')).not.toBeNull()
+    expect(rendered('summary')).not.toBeNull()
+    expect(rendered('read')).toBeNull()
+  })
+
+  it('keeps the goal card out of the one work row while the agent works on', () => {
+    renderTurn([read, achieved, running[4]], { isWorking: true, startedAt: Date.now() - 5000 })
+
+    const rows = screen.getAllByRole('button')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toMatch(/^Working · .*Shell: Run web tests/)
+    expect(rendered('claim')).not.toBeNull()
+  })
 })

@@ -119,6 +119,25 @@ export interface WorkspaceGitDiffResponse {
   truncated?: boolean
 }
 
+/** One row of ``GET /agent/workspace/git-diff/files``. */
+export interface WorkspaceChangedFile {
+  path: string
+  status: 'A' | 'M' | 'D'
+  /** ``null`` for an untracked file past the server's read budget. */
+  additions: number | null
+  deletions: number | null
+}
+
+/** Every changed path, from git's file lists; complete however big the diff. */
+export interface WorkspaceChangesResponse {
+  workspace: string
+  is_git_repo: boolean
+  files: WorkspaceChangedFile[]
+  /** Changed paths before the 5,000-row cap. */
+  total: number
+  truncated: boolean
+}
+
 export interface WorkspaceStatusResponse {
   workspace: string
   name: string
@@ -258,6 +277,8 @@ export interface SessionResponse {
   background_work?: boolean
   /** When the session was pinned in the sidebar (v3); absent when unpinned. */
   pinned_at?: string | null
+  /** The session's live goal (v3); absent without one. */
+  goal_status?: 'active' | 'paused' | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {
@@ -614,8 +635,8 @@ export interface AgentCommandResponse {
   /**
    * Present on ``undo`` / ``redo`` responses only. The client uses
    * the union of all three buckets to drive a scoped
-   * ``coding_workspace_paths`` invalidation — splicing the cached git
-   * diff for just these paths instead of refetching the whole repo.
+   * ``coding_workspace_paths`` invalidation — refreshing the diff bodies
+   * of just these paths instead of every one on screen.
    */
   changed_paths?: ChangedPaths
 }
@@ -739,10 +760,54 @@ export interface SessionPlan {
   path?: string
   /** Workspace-relative path, for a plan kept in the project workspace. */
   workspace_path?: string | null
+  /** The plan's Done when: what a goal started from it must prove (``null`` without one). */
+  done_when?: string | null
 }
 
 export interface SessionPlanResponse {
   plan: SessionPlan | null
+}
+
+export type SessionGoalStatus = 'active' | 'paused' | 'achieved' | 'cleared'
+
+/** Why a goal is paused (`session_goals.pause_reason`). */
+export type GoalPauseReason =
+  | 'stopped'
+  | 'user'
+  | 'blocked'
+  | 'turn_limit'
+  | 'token_limit'
+  | 'no_progress'
+  | 'unverified'
+  | 'check_failed'
+  | 'error'
+  | 'restart'
+
+/** A goal: an objective the session keeps taking turns toward (v3). */
+export interface SessionGoal {
+  id: string
+  session_id: string
+  objective: string
+  status: SessionGoalStatus
+  pause_reason: GoalPauseReason | null
+  /** The blocker, the last check's reason, or the error that paused it. */
+  detail: string | null
+  max_turns: number
+  token_budget: number | null
+  turns_used: number
+  /** Uncached input plus output tokens of its turns and checks. */
+  tokens_used: number
+  active_seconds: number
+  /** Completion claims the check rejected in a row. */
+  rejected_claims: number
+  created_at: string
+  updated_at: string
+  ended_at: string | null
+}
+
+export interface SessionGoalResponse {
+  /** The newest goal, ended ones included; clients hide a cleared one. */
+  goal: SessionGoal | null
 }
 
 export interface AgentChatResponse {
@@ -806,7 +871,7 @@ export interface PendingQuestionResponse {
   tool_call_id: string
   questions: QuestionItem[]
   created_at: string
-  /** ``plan_review`` for a ``submit_plan`` review; absent for ``ask_user``. */
+  /** ``plan_review`` for a plan review (``plan`` with ``submit: true``); absent for ``ask_user``. */
   kind?: string | null
   plan_revision?: number | null
 }
@@ -821,7 +886,7 @@ export interface PendingQuestion {
   sessionId: string
   toolCallId: string
   questions: QuestionItem[]
-  /** ``plan_review`` when the lead waits on a plan review (``submit_plan``). */
+  /** ``plan_review`` when the lead waits on a plan review (``plan`` with ``submit: true``). */
   kind?: 'plan_review'
   /** The plan revision the review was opened for. */
   planRevision?: number

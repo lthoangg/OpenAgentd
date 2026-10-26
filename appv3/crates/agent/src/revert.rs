@@ -56,6 +56,8 @@ pub async fn undo_session_messages(pool: DbPool, session_id: String) -> anyhow::
     }
     let state = db::revert_state(&target, anchor.as_deref());
     db::update_session(&pool, &session_id, db::SessionUpdate { revert: Some(Some(state)), ..Default::default() }).await?;
+    // Taking back a goal's objective takes its rules with it: end the goal.
+    crate::goal::clear_undone_goal(&pool, &session_id, &target).await?;
     Ok(BoundaryShift::ok(Some(target), result))
 }
 

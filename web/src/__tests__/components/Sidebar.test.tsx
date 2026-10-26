@@ -225,6 +225,7 @@ mock.module('lucide-react', () => ({
   Settings: Icon,
   Settings2: Icon,
   Pencil: Icon,
+  Target: Icon,
   Trash2: Icon,
   X: Icon,
 }))
@@ -2599,6 +2600,7 @@ describe('Sidebar workspace trust flow', () => {
 
       await renderSidebarForSessions('session-1')
 
+      fireEvent.click(screen.getByRole('button', { name: 'Expand 1 subagents' }))
       fireEvent.click(screen.getByRole('button', { name: 'More actions for subagent explorer#1' }))
       const menu = screen.getByRole('menu')
       expect(within(menu).queryByRole('menuitem', { name: 'Edit title' })).toBeNull()

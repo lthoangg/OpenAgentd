@@ -360,6 +360,7 @@ const TOOL_ALIASES: &[(&str, &str)] = &[
     ("schedule_task", "schedule"),
     ("send_to_workspace", "workspace"),
     ("delegate", "team"),
+    ("submit_plan", "plan"),
 ];
 
 /// `Tool 'x' not found.`, plus the tool the model most likely meant and the
@@ -513,11 +514,11 @@ mod tests {
     /// history; the error points it to the new one.
     #[tokio::test]
     async fn a_former_tool_name_points_to_its_new_name() {
-        let set = named(&["todo", "schedule", "workspace", "team"]);
+        let set = named(&["todo", "schedule", "workspace", "team", "plan"]);
         let d = tempfile::tempdir().unwrap();
-        for (old, new) in [("todo_manage", "todo"), ("schedule_task", "schedule"), ("send_to_workspace", "workspace"), ("delegate", "team")] {
+        for (old, new) in [("todo_manage", "todo"), ("schedule_task", "schedule"), ("send_to_workspace", "workspace"), ("delegate", "team"), ("submit_plan", "plan")] {
             let text = execute(&set, &ctx(d.path()), old, "{}").await.unwrap().text;
-            assert_eq!(text, format!("Error: Tool '{old}' not found. Did you mean '{new}'? Available tools: todo, schedule, workspace, team."));
+            assert_eq!(text, format!("Error: Tool '{old}' not found. Did you mean '{new}'? Available tools: todo, schedule, workspace, team, plan."));
         }
     }
 

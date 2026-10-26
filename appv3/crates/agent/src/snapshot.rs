@@ -39,11 +39,11 @@ static LAST_HASHES: LazyLock<Mutex<HashMap<(String, PathBuf), String>>> = LazyLo
 static TRACK_COUNTS: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Default::default);
 static SEED_ATTEMPTED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
-/// `SNAPSHOT_SEED_OBJECTS` (default on).
+/// `OPENAGENTD_SNAPSHOT_SEED_OBJECTS` (default on).
 pub fn seed_objects_enabled() -> bool {
-    match std::env::var("SNAPSHOT_SEED_OBJECTS") {
-        Err(_) => true,
-        Ok(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+    match appv3_core::settings::env_var("OPENAGENTD_SNAPSHOT_SEED_OBJECTS") {
+        None => true,
+        Some(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"),
     }
 }
 
@@ -71,13 +71,13 @@ enum Engine {
     /// In-process `gix` (default): no `git` executable needed, no process
     /// launches per turn. Falls back to the CLI on error when git exists.
     Gix,
-    /// The git CLI, exactly like v2 (`SNAPSHOT_ENGINE=git`).
+    /// The git CLI, exactly like v2 (`OPENAGENTD_SNAPSHOT_ENGINE=git`).
     Git,
 }
 
 fn engine() -> Engine {
-    match std::env::var("SNAPSHOT_ENGINE").map(|v| v.trim().to_lowercase()) {
-        Ok(v) if v == "git" => Engine::Git,
+    match appv3_core::settings::env_var("OPENAGENTD_SNAPSHOT_ENGINE").map(|v| v.trim().to_lowercase()) {
+        Some(v) if v == "git" => Engine::Git,
         _ => Engine::Gix,
     }
 }
@@ -739,16 +739,16 @@ pub async fn release_queued(pool: &appv3_db::DbPool, session_id: &str) -> anyhow
 // ── Retention sweep (port of `snapshot_maintenance.py`) ─────────────────────
 
 fn int_env(name: &str, default: i64, min: i64) -> i64 {
-    match std::env::var(name) {
-        Err(_) => default,
-        Ok(v) => v.trim().parse::<i64>().map(|x| x.max(min)).unwrap_or(default),
+    match appv3_core::settings::env_var(name) {
+        None => default,
+        Some(v) => v.trim().parse::<i64>().map(|x| x.max(min)).unwrap_or(default),
     }
 }
 
 fn maintenance_enabled() -> bool {
-    match std::env::var("SNAPSHOT_MAINTENANCE_ENABLED") {
-        Err(_) => true,
-        Ok(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+    match appv3_core::settings::env_var("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED") {
+        None => true,
+        Some(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"),
     }
 }
 
@@ -807,9 +807,9 @@ pub fn start_maintenance(pool: appv3_db::DbPool) {
     if slot.as_ref().is_some_and(|h| !h.is_finished()) {
         return;
     }
-    let hours = int_env("SNAPSHOT_MAINTENANCE_INTERVAL_HOURS", 6, 1) as u64;
-    let delay = int_env("SNAPSHOT_MAINTENANCE_START_DELAY_SECONDS", 60, 0) as u64;
-    let max_bytes = int_env("SNAPSHOT_MAX_BYTES", 256 * 1024 * 1024, 0) as u64;
+    let hours = int_env("OPENAGENTD_SNAPSHOT_MAINTENANCE_INTERVAL_HOURS", 6, 1) as u64;
+    let delay = int_env("OPENAGENTD_SNAPSHOT_MAINTENANCE_START_DELAY_SECONDS", 60, 0) as u64;
+    let max_bytes = int_env("OPENAGENTD_SNAPSHOT_MAX_BYTES", 256 * 1024 * 1024, 0) as u64;
     *slot = Some(tokio::spawn(async move {
         if delay > 0 {
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;

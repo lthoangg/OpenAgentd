@@ -151,6 +151,44 @@ export function workspaceRelativePath(path: string, workspace: string | null): s
   return parts.length > 0 ? parts.join('/') : null
 }
 
+/**
+ * The workspace paths a reference in the Markdown file ``fromFile`` may mean,
+ * most likely first: from the file's folder (how links read on GitHub, and
+ * how the file's images resolve), then from the workspace root (code spans
+ * name files that way). A leading ``/`` is the workspace root unless it is the
+ * workspace's own absolute path. Empty when the path leaves the workspace.
+ */
+export function documentRefCandidates(fromFile: string, path: string, workspace: string): string[] {
+  if (path.startsWith('~')) return []
+  const root = workspace.replace(/\/+$/, '')
+  if (path.startsWith('/')) {
+    const rel = path.startsWith(`${root}/`) ? workspaceRelativePath(path, workspace) : workspaceRelativePath(path.slice(1), workspace)
+    return rel ? [rel] : []
+  }
+  const folder = fromFile.includes('/') ? fromFile.slice(0, fromFile.lastIndexOf('/')) : ''
+  const candidates = [workspaceRelativePath(folder ? `${folder}/${path}` : path, workspace), workspaceRelativePath(path, workspace)]
+  return [...new Set(candidates.filter((candidate): candidate is string => candidate !== null))]
+}
+
+/**
+ * The listed file a reference in the Markdown file ``fromFile`` opens, or
+ * ``null`` when it points outside the workspace. When the listing was cut
+ * short, an unlisted file may still exist, so the likeliest path opens.
+ */
+export function resolveDocumentRef(
+  fromFile: string,
+  path: string,
+  workspace: string,
+  isListed: (path: string) => boolean,
+  truncated = false,
+): { kind: 'file'; path: string } | { kind: 'missing' } | null {
+  const candidates = documentRefCandidates(fromFile, path, workspace)
+  if (candidates.length === 0) return null
+  const listed = candidates.find(isListed)
+  if (listed) return { kind: 'file', path: listed }
+  return truncated ? { kind: 'file', path: candidates[0] } : { kind: 'missing' }
+}
+
 export type WorkspaceRefMatch =
   | { kind: 'file'; path: string }
   | { kind: 'ambiguous'; paths: string[] }

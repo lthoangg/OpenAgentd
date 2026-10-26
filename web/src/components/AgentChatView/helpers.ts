@@ -6,7 +6,7 @@
  */
 import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
-import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
+import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type { SlashCommand } from '../InputComposer'
 import { patchFileStats } from '../ToolCall/diffUtils'
@@ -71,12 +71,13 @@ export function btwSubmit(content: string, files: readonly File[] | undefined, s
 /**
  * What composer ↑/↓ steps through, newest first: prompts the user wrote.
  * Sub-agent reports arrive as ``user`` blocks too, but recalling one would
- * put another agent's words in the user's mouth.
+ * put another agent's words in the user's mouth; a goal's own turns start
+ * from a hidden reminder the user never wrote.
  */
 export function composerHistoryPrompts(blocks: readonly ContentBlock[]): string[] {
   const prompts: string[] = []
   for (let i = blocks.length - 1; i >= 0; i--) {
-    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim()) prompts.push(blocks[i].content)
+    if (isTypedPromptBlock(blocks[i]) && blocks[i].content.trim()) prompts.push(blocks[i].content)
   }
   return prompts
 }
@@ -88,7 +89,7 @@ export function composerHistoryPrompts(blocks: readonly ContentBlock[]): string[
 export function newestUserBlockId(blocks: readonly ContentBlock[], prompt: string): string | undefined {
   const text = prompt.trim()
   for (let i = blocks.length - 1; i >= 0; i--) {
-    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim() === text) return blocks[i].id
+    if (isTypedPromptBlock(blocks[i]) && blocks[i].content.trim() === text) return blocks[i].id
   }
   return undefined
 }

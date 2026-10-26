@@ -439,11 +439,11 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo", "schedule", "lsp", "ask_user", "plan", "submit_plan", "workspace", "mcp"];
+const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo", "schedule", "lsp", "ask_user", "plan", "workspace", "mcp"];
 /// Former names of injected tools. Agent files written before the renames
 /// still list them; they are skipped like the injected tools, never pruned
 /// from the user's file.
-const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate"];
+const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan"];
 
 /// `_default_tool_registry` (built-ins by name). MCP tools are reached
 /// through the `mcp` tool, which `build_agent` adds.

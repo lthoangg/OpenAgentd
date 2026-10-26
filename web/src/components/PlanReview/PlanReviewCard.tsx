@@ -1,5 +1,6 @@
 /**
- * The ``submit_plan`` tool card, rendered inline in the transcript.
+ * The plan review card, rendered inline in the transcript for a ``plan`` call
+ * with ``submit: true`` (or the former ``submit_plan`` tool).
  *
  * The review itself happens in the Plan tab (the dock, or the full-screen
  * sheet on mobile); this card marks where the agent submitted the plan, says
@@ -9,7 +10,7 @@
  * and otherwise from the persisted tool result, which is all a cold load has.
  * The result sentences mirror ``plan::review_result_text``, the question
  * closing texts in ``queries/questions.rs``, and the agent loop's
- * ``SUBMIT_DEFERRED`` / ``SUBMIT_MERGED``.
+ * ``SUBMIT_DEFERRED`` / ``SUBMIT_MERGED`` and ``tools::plan::UNATTENDED_SUBMIT``.
  */
 import { FileText } from 'lucide-react'
 
@@ -42,8 +43,10 @@ const CLOSED_PREFIXES: readonly (readonly [string, PlanReviewState])[] = [
   ['Superseded', { kind: 'closed', reason: 'superseded' }],
   ['Question(s) being dismissed', { kind: 'closed', reason: 'dismissed' }],
   ['This question is no longer relevant', { kind: 'closed', reason: 'expired' }],
+  ['Not submitted for review: a scheduled task', { kind: 'failed', message: 'a scheduled task started this turn' }],
   ['Not submitted:', { kind: 'not_submitted' }],
-  ['Merged into your other submit_plan call', { kind: 'merged' }],
+  // ``Merged into your other submit_plan call`` before the tools merged.
+  ['Merged into your', { kind: 'merged' }],
   ['The plan could not be submitted', { kind: 'failed', message: null }],
   ['Tool execution was interrupted', { kind: 'failed', message: null }],
 ]
@@ -62,7 +65,7 @@ function fromAnswer(answer: string): PlanReviewState {
   return { kind: 'changes', feedback: text }
 }
 
-/** The review outcome a persisted ``submit_plan`` result records. */
+/** The review outcome a persisted plan submission result records. */
 export function planReviewFromResult(result: string): PlanReviewState {
   let text = result.trim()
   if (text.startsWith(EDITED_PREFIX)) {

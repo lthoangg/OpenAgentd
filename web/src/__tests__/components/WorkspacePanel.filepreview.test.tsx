@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
+import { useToastStore } from '@/stores/useToastStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
@@ -24,7 +26,7 @@ const Icon = () => null
 mock.module('lucide-react', () => ({
   AlertTriangle: Icon, CheckCircle2: Icon, Info: Icon,
   Globe: Icon, ArrowRight: Icon, MousePointerClick: Icon, RotateCw: Icon, Smartphone: Icon, SquareTerminal: Icon, Send: Icon, Bot: Icon,
-  CalendarClock: Icon, ListTodo: Icon, MessageCircleQuestion: Icon, Square: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
+  CalendarClock: Icon, ListTodo: Icon, MessageCircleQuestion: Icon, Target: Icon, CircleCheck: Icon, Square: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
   AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
   Pause: Icon, Play: Icon, Terminal: Icon, Trash2: Icon, Zap: Icon,
   ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
@@ -91,7 +93,7 @@ beforeEach(() => {
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
     if (url.includes('/workspace/files/read') && url.includes('.env.example')) return new Response('OPENAGENTD_PORT=4082\n')
     if (url.includes('/workspace/files/read')) return new Response('const value = 1\n// comment\nreturn value')
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
     return new Response(null, { status: 404 })
   }) as typeof fetch
 })
@@ -184,7 +186,7 @@ describe('Coding workspace two-layer file preview', () => {
       const url = String(input)
       if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: listing }))
       if (url.includes('/workspace/files/read')) return new Response('const value = 1')
-      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diff))
+      if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diff)
       return new Response(null, { status: 404 })
     }) as typeof fetch
     const { queryClient } = await renderWorkspacePanel(mock(() => {}), readmePath)
@@ -287,7 +289,7 @@ describe('Coding workspace two-layer file preview', () => {
         return new Response('const payload = `<script>window.__pwned = true</script>`\n<img src=x onerror="window.__pwned = true">')
       }
       if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
-      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+      if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
       return new Response(null, { status: 404 })
     }) as typeof fetch
 
@@ -580,5 +582,95 @@ describe('Markdown file preview', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: /select line 1/i })).toBeTruthy())
     expect(screen.queryByRole('radiogroup', { name: 'Markdown view' })).toBeNull()
+  })
+})
+
+describe('Links in a rendered markdown file', () => {
+  const markdown: WorkspaceFileInfo = { path: 'docs/README.md', name: 'README.md', size: 200, mtime: 1, mime: 'text/markdown' }
+  const LISTED = new Set(['docs/README.md', 'docs/guide.md', 'docs/demo.html', 'setup.md', 'src/app.ts'])
+  const SOURCE = [
+    'See [the guide](guide.md), [setup](../setup.md#L12), `src/app.ts:42`,',
+    '[the demo](demo.html), [gone](missing.md), [outside](../../outside.md)',
+    'and [the site](https://x.dev).',
+    '',
+  ].join('\n')
+
+  beforeEach(() => {
+    useFileRevealStore.setState({ request: null })
+    useToastStore.setState({ toasts: [] })
+    globalThis.fetch = mock(async (input: unknown) => {
+      if (String(input).includes('/workspace/files/read')) return new Response(SOURCE)
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+  })
+
+  async function renderLinked() {
+    const onOpenFile = mock(() => {})
+    const onOpenPreview = mock(() => {})
+    const { FilePreviewSubPanel } = await import('@/components/WorkspacePanel/FilePreviewSubPanel')
+    await act(async () => {
+      render(
+        <FilePreviewSubPanel
+          workspace={WORKSPACE}
+          file={markdown}
+          onOpenFile={onOpenFile}
+          onOpenPreview={onOpenPreview}
+          isListed={(path) => LISTED.has(path)}
+        />,
+      )
+    })
+    await waitFor(() => expect(screen.getByRole('link', { name: 'the guide' })).toBeTruthy())
+    return { onOpenFile, onOpenPreview, user: userEvent.setup() }
+  }
+
+  it("opens a relative link from the file's folder in a file tab", async () => {
+    const { onOpenFile, user } = await renderLinked()
+
+    await user.click(screen.getByRole('link', { name: 'the guide' }))
+
+    expect(onOpenFile).toHaveBeenCalledWith('docs/guide.md')
+  })
+
+  it('opens a line link at that line', async () => {
+    const { onOpenFile, user } = await renderLinked()
+
+    await user.click(screen.getByRole('link', { name: 'setup' }))
+
+    expect(onOpenFile).toHaveBeenCalledWith('setup.md')
+    expect(useFileRevealStore.getState().request).toMatchObject({ path: 'setup.md', line: 12 })
+  })
+
+  it('opens a file-named code span from the workspace root', async () => {
+    const { onOpenFile, user } = await renderLinked()
+
+    await user.click(screen.getByRole('button', { name: 'src/app.ts:42' }))
+
+    expect(onOpenFile).toHaveBeenCalledWith('src/app.ts')
+    expect(useFileRevealStore.getState().request).toMatchObject({ path: 'src/app.ts', line: 42 })
+  })
+
+  it('opens an HTML link in Preview', async () => {
+    const { onOpenFile, onOpenPreview, user } = await renderLinked()
+
+    await user.click(screen.getByRole('link', { name: 'the demo' }))
+
+    expect(onOpenPreview).toHaveBeenCalledWith('docs/demo.html')
+    expect(onOpenFile).not.toHaveBeenCalled()
+  })
+
+  it('says so when the linked file is missing', async () => {
+    const { onOpenFile, user } = await renderLinked()
+
+    await user.click(screen.getByRole('link', { name: 'gone' }))
+
+    expect(onOpenFile).not.toHaveBeenCalled()
+    expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['File not found'])
+  })
+
+  it('leaves links outside the workspace and web links as plain links', async () => {
+    await renderLinked()
+
+    expect(screen.getByRole('link', { name: 'outside' }).getAttribute('target')).toBe('_blank')
+    expect(screen.getByRole('link', { name: 'the site' }).getAttribute('target')).toBe('_blank')
   })
 })

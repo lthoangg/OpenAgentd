@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { Check, CircleAlert, X } from 'lucide-react'
+import { Check, CircleAlert, Pause, X } from 'lucide-react'
 import { DURATIONS_S } from '@/lib/motion'
 import {
   DEFAULT_ISLAND_SETTINGS,
   EAR_WIDTH,
+  type IslandGoal,
   type IslandMode,
   type IslandPointer,
   type IslandSession,
@@ -16,6 +17,7 @@ import {
   allFailed,
   compactLabels,
   compactMode,
+  goalLabel,
   islandHeight,
   islandMode,
   islandWidth,
@@ -65,8 +67,22 @@ function useShellEvent<T>(event: string, onPayload: (payload: T) => void) {
   }, [event, onPayload])
 }
 
-function StateMark({ mode, failed }: { mode: IslandMode; failed: boolean }) {
+/** What became of a goal: achieved in blue, blocked as an alert, paused as a pause. */
+function GoalOutcomeMark({ goal, size }: { goal: Exclude<IslandGoal['status'], 'active'>; size: number }) {
+  if (goal === 'achieved') return <Check size={size} strokeWidth={3} className="island-mark island-mark--goal" aria-hidden="true" />
+  if (goal === 'blocked') return <CircleAlert size={size} className="island-mark island-mark--failed" aria-hidden="true" />
+  return <Pause size={size} strokeWidth={2.5} className="island-mark island-mark--paused" aria-hidden="true" />
+}
+
+/** A finished row's goal outcome, if it ended one. */
+function outcomeOf(session: IslandSession | undefined): Exclude<IslandGoal['status'], 'active'> | null {
+  const status = session?.goal?.status
+  return status && status !== 'active' ? status : null
+}
+
+function StateMark({ mode, failed, goal }: { mode: IslandMode; failed: boolean; goal: Exclude<IslandGoal['status'], 'active'> | null }) {
   if (mode === 'done') {
+    if (goal) return <GoalOutcomeMark goal={goal} size={13} />
     return failed
       ? <CircleAlert size={13} className="island-mark island-mark--failed" aria-hidden="true" />
       : <Check size={13} strokeWidth={3} className="island-mark island-mark--done" aria-hidden="true" />
@@ -75,7 +91,10 @@ function StateMark({ mode, failed }: { mode: IslandMode; failed: boolean }) {
   return <span className="island-spinner" aria-hidden="true" />
 }
 
-function RowMark({ state }: { state: IslandSession['state'] }) {
+function RowMark({ session }: { session: IslandSession }) {
+  const { state } = session
+  const goal = outcomeOf(session)
+  if ((state === 'done' || state === 'failed') && goal) return <GoalOutcomeMark goal={goal} size={12} />
   if (state === 'needs_input') return <span className="island-dot" aria-hidden="true" />
   if (state === 'done') return <Check size={12} strokeWidth={3} className="island-mark island-mark--done" aria-hidden="true" />
   if (state === 'failed') return <CircleAlert size={12} className="island-mark island-mark--failed" aria-hidden="true" />
@@ -90,7 +109,7 @@ function SessionRow({ session, hover, onMenu }: {
   const hovered = hover?.id === session.id
   const waiting = session.state === 'needs_input'
   const unread = session.state === 'done' || session.state === 'failed'
-  const meta = [session.server, waiting ? 'Open' : session.workspace].filter(Boolean).join(' · ')
+  const meta = [session.server, waiting ? 'Open' : goalLabel(session) ?? session.workspace].filter(Boolean).join(' · ')
   return (
     <li className="island-row-item" data-unread={unread ? '' : undefined} onContextMenu={(event) => onMenu(event, session.id)}>
       <button
@@ -100,7 +119,7 @@ function SessionRow({ session, hover, onMenu }: {
         data-hover={hovered ? '' : undefined}
         onClick={() => openSession(session.id)}
       >
-        <RowMark state={session.state} />
+        <RowMark session={session} />
         <span className="island-row-title">{session.title}</span>
         <span className="island-row-meta">{meta}</span>
         {waiting && session.question && <span className="island-row-question">{session.question}</span>}
@@ -215,13 +234,19 @@ export function Island() {
   }, [wantVisible])
 
   // What the pill shows while it shrinks away: the last thing it showed.
-  const shown = useRef<{ mode: IslandMode; lead: string; detail: string; failed: boolean }>({
-    mode: 'hidden', lead: '', detail: '', failed: false,
+  const shown = useRef<{ mode: IslandMode; lead: string; detail: string; failed: boolean; goal: Exclude<IslandGoal['status'], 'active'> | null }>({
+    mode: 'hidden', lead: '', detail: '', failed: false, goal: null,
   })
   if (wantVisible) {
-    shown.current = { mode: compactMode(sessions, unread), ...compactLabels(sessions, unread), failed: allFailed(unread) }
+    shown.current = {
+      mode: compactMode(sessions, unread),
+      ...compactLabels(sessions, unread),
+      failed: allFailed(unread),
+      // One unread goal names its outcome, so its mark shows it too.
+      goal: unread.length === 1 ? outcomeOf(unread[0]) : null,
+    }
   }
-  const { mode: barMode, lead, detail, failed } = shown.current
+  const { mode: barMode, lead, detail, failed, goal: barGoal } = shown.current
 
   useLayoutEffect(() => {
     if (mode !== 'expanded' || !listRef.current) return
@@ -268,7 +293,7 @@ export function Island() {
             <span className="island-lead" role="status" aria-live="polite">
               {barMode !== 'hidden' && (
                 <span key={barMode} className="island-swap island-lead-inner">
-                  <StateMark mode={barMode} failed={failed} />
+                  <StateMark mode={barMode} failed={failed} goal={barGoal} />
                   <span className="island-text">{lead}</span>
                 </span>
               )}

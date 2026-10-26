@@ -4,6 +4,7 @@
  * their listener with the last tab that uses it.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -56,7 +57,7 @@ beforeEach(() => {
     }
     if (url.includes('/api/preview/') && method === 'DELETE') return new Response(null, { status: 204 })
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: false, diff: '' }))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, { workspace: WORKSPACE, is_git_repo: false, diff: '' })
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
     return new Response(JSON.stringify({}), { status: 404 })
   }) as typeof fetch

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -11,7 +12,7 @@ const Icon = () => null
 mock.module('lucide-react', () => ({
   AlertTriangle: Icon, CheckCircle2: Icon, Info: Icon,
   Globe: Icon, ArrowRight: Icon, MousePointerClick: Icon, RotateCw: Icon, Smartphone: Icon, SquareTerminal: Icon, Send: Icon, Bot: Icon,
-  CalendarClock: Icon, ListTodo: Icon, MessageCircleQuestion: Icon, Square: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
+  CalendarClock: Icon, ListTodo: Icon, MessageCircleQuestion: Icon, Target: Icon, CircleCheck: Icon, Square: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
   AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
   Pause: Icon, Play: Icon, Terminal: Icon, Trash2: Icon, Zap: Icon,
   ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
@@ -75,7 +76,7 @@ beforeEach(() => {
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(historyResponse))
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(emptyDiff))
+    if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, emptyDiff)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
     if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commitWithBody.sha, diff: '' }))
     return new Response(null, { status: 404 })
@@ -225,7 +226,7 @@ describe('WorkspacePanel – commit body expand/collapse', () => {
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(encodedHistory))
-      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(emptyDiff))
+      if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, emptyDiff)
       if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
       return new Response(null, { status: 404 })
     }) as typeof fetch
@@ -249,7 +250,7 @@ describe('WorkspacePanel – commit body expand/collapse', () => {
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(invalidEncodedHistory))
-      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(emptyDiff))
+      if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, emptyDiff)
       if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
       return new Response(null, { status: 404 })
     }) as typeof fetch
@@ -423,7 +424,7 @@ function makeFetch(ahead: number | null, behind: number | null = null) {
   return mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(historyResponse))
-    if (url.includes('/workspace/git-diff'))    return new Response(JSON.stringify(emptyDiff))
+    if (url.includes('/workspace/git-diff'))    return gitDiffResponse(url, emptyDiff)
     if (url.includes('/workspace/files/list'))  return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
     if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commitWithBody.sha, diff: '' }))
     if (url.includes('/workspace/status'))      return new Response(JSON.stringify(statusWithDivergence(ahead, behind)))

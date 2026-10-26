@@ -19,6 +19,7 @@ import type { RefObject } from 'react'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { renderCommand, renderSnippet } from '@/api/client'
+import { restoredPromptText } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -152,7 +153,10 @@ export function useSlashCommands({
         void useAgentStore.getState().undoAgent().then(async (response) => {
           const message = response?.message
           if (!message || message.role !== 'user' || message.is_summary) return
-          inputRef.current?.setValue(message.content ?? '')
+          // A goal's own turn gives nothing back.
+          const text = restoredPromptText(message.content ?? '', message.extra)
+          if (text === null) return
+          inputRef.current?.setValue(text)
           const attachments = message.attachments ?? []
           const files = (
             await Promise.all(attachments.map((att) => attachmentToFile(att)))

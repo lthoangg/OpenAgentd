@@ -2,13 +2,18 @@
  * PlanTabView — the session plan as a review-dock tab (full-screen sheet on
  * mobile).
  *
- * The lead writes the plan with the ``plan`` tool and submits it with
- * ``submit_plan``; while that review is open the footer offers Approve and
+ * The lead writes the plan with the ``plan`` tool and submits it with the
+ * same tool (``submit: true``); while that review is open the footer offers Approve and
  * Request changes. Selecting plan text offers Comment: each comment stays
  * anchored to its passage (highlighted in the plan, listed in the footer) and
  * Request changes sends them all, with any overall feedback, as one answer.
  * The user can also edit the plan here (or in any editor): the server notices
  * the change by content and tells the agent once.
+ *
+ * Beside Approve, "Keep going until done" also starts a goal that runs the
+ * plan turn after turn until a check confirms its Done when. Settings → Goals
+ * decides whether it starts ticked and the turn count it starts with; the
+ * turns can be changed here for this plan.
  *
  * Links and file-named code spans that point into the workspace open in the
  * dock: an HTML attachment (a mockup) in the Preview tab, anything else as a
@@ -23,8 +28,9 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronRight, Copy, ExternalLink, FileText, MessageSquarePlus, Pencil, Unlink } from 'lucide-react'
-import type { SessionPlan } from '@/api/types'
+import type { SessionPlan, TodoItem } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -32,8 +38,11 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { dismissKeyboard } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries/keys'
+import { useGoalSettingsQuery } from '@/queries/useGoalSettingsQuery'
+import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useUpdateSessionPlanMutation } from '@/queries/useUpdateSessionPlanMutation'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -60,24 +69,26 @@ import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 /** Mirrors the server's limits (``PLAN_MAX_CHARS``, ``PLAN_REVIEW_MAX_ANSWER_CHARS``). */
 export const PLAN_MAX_CHARS = 100_000
 export const PLAN_FEEDBACK_MAX_CHARS = 8000
+/** Matches ``appv3_core::runtime_settings::MAX_GOAL_MAX_TURNS``. */
+const MAX_GOAL_TURNS = 1000
+/** Until the goal settings load (``DEFAULT_GOAL_MAX_TURNS``). */
+const DEFAULT_GOAL_TURNS = 50
 
 const APPROVE = 'Approve'
 const REQUEST_CHANGES = 'Request changes'
 
-export type PlanStatus = 'review' | 'approved' | 'changed' | 'draft'
-
-export function planStatus(plan: SessionPlan, reviewing: boolean): PlanStatus {
-  if (reviewing) return 'review'
-  const approved = plan.approved_revision
-  if (approved === null || approved === undefined) return 'draft'
-  return plan.revision !== undefined && plan.revision > approved ? 'changed' : 'approved'
+const STATUS_CHIP_CLASS: Record<PlanStatus, string> = {
+  review: 'bg-(--color-warning-subtle) text-(--accent-orange-text)',
+  approved: 'bg-(--color-success-subtle) text-(--accent-green-text)',
+  done: 'bg-(--color-success-subtle) text-(--accent-green-text)',
+  changed: 'bg-(--bg-key) text-(--color-text-muted)',
+  draft: 'bg-(--bg-key) text-(--color-text-muted)',
 }
 
-const STATUS_CHIP: Record<PlanStatus, { label: string; className: string }> = {
-  review: { label: 'Awaiting review', className: 'bg-(--color-warning-subtle) text-(--accent-orange-text)' },
-  approved: { label: 'Approved', className: 'bg-(--color-success-subtle) text-(--accent-green-text)' },
-  changed: { label: 'Changed since approval', className: 'bg-(--bg-key) text-(--color-text-muted)' },
-  draft: { label: 'Draft', className: 'bg-(--bg-key) text-(--color-text-muted)' },
+/** Why the turns typed for Keep going cannot be sent, if they cannot. */
+function turnsError(text: string): string | null {
+  const n = Number(text)
+  return Number.isInteger(n) && n >= 1 && n <= MAX_GOAL_TURNS ? null : `Turns: a whole number from 1 to ${MAX_GOAL_TURNS}`
 }
 
 const HTML_FILE = /\.html?$/i
@@ -142,6 +153,8 @@ export interface PlanTabViewProps {
   onOpenPreview?: (path: string) => void
   /** The workspace root, for links written as absolute paths. */
   workspace?: string | null
+  /** The task board, so a plan whose tasks are all finished reads Done. */
+  todos?: readonly TodoItem[]
 }
 
 /** How plan links open workspace files: HTML in Preview, the rest as file tabs. */
@@ -163,11 +176,13 @@ export function planFileOpener(
   }
 }
 
-export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPreview, workspace = null }: PlanTabViewProps) {
+export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPreview, workspace = null, todos }: PlanTabViewProps) {
   const pendingQuestion = useAgentStore((s) => s.pendingQuestion)
   const review = pendingQuestion?.kind === 'plan_review' ? pendingQuestion : null
   const reviewId = review?.id ?? null
   const resolver = useQuestionResolver(review)
+  const { data: goalData } = useSessionGoalQuery(sessionId)
+  const { data: goalSettings } = useGoalSettingsQuery()
   const queryClient = useQueryClient()
   const update = useUpdateSessionPlanMutation()
   const reducedMotion = useReducedMotion() ?? false
@@ -190,12 +205,18 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const [reviewDraft, setReviewDraft] = useState<PlanReviewDraft>(() => readPlanReviewDraft(reviewId))
   // So does a half-written comment.
   const [composer, setComposer] = useState<ComposerState | null>(() => restoredComposer(readPlanReviewDraft(reviewId)))
+  // "Keep going until done" and its turns: the Settings defaults until the
+  // user changes them for this review.
+  const [keepGoingChoice, setKeepGoingChoice] = useState<boolean | null>(null)
+  const [turnsDraft, setTurnsDraft] = useState<string | null>(null)
   const [draftFor, setDraftFor] = useState(reviewId)
   if (reviewId !== draftFor) {
     setDraftFor(reviewId)
     const next = readPlanReviewDraft(reviewId)
     setReviewDraft(next)
     setComposer(restoredComposer(next))
+    setKeepGoingChoice(null)
+    setTurnsDraft(null)
   }
   const previousReview = useRef(reviewId)
   useEffect(() => {
@@ -318,8 +339,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     )
   }
 
-  const status = planStatus(plan, Boolean(review))
-  const chip = STATUS_CHIP[status]
+  const status = planStatus(plan, Boolean(review), { todos, goal: goalData?.goal })
+  const chip = { label: PLAN_STATUS_LABEL[status], className: STATUS_CHIP_CLASS[status] }
   // A server without plan revisions (v2) has no edit route.
   const canEdit = plan.revision !== undefined && Boolean(sessionId)
   const unsavedEdits = editing && draft !== plan.content
@@ -327,14 +348,32 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const pendingComment = composer?.text.trim() ? [{ quote: composer.quote, text: composer.text }] : []
   const answerText = formatPlanReview([...comments, ...pendingComment], overall)
   const tooLong = answerText.length > PLAN_FEEDBACK_MAX_CHARS
+  const defaultTurns = goalSettings?.max_turns ?? DEFAULT_GOAL_TURNS
+  const canKeepGoing = Boolean(plan.done_when?.trim())
+  const keepGoing = canKeepGoing && (keepGoingChoice ?? goalSettings?.keep_going_default ?? false)
+  const turnsText = turnsDraft ?? String(defaultTurns)
+  const badTurns = keepGoing ? turnsError(turnsText) : null
   const approveHint = unsavedEdits
     ? 'Save or cancel your edits first'
     : pendingComment.length
       ? 'Add or cancel your comment first'
       : comments.length || overall.trim()
         ? 'Your comments go with Request changes'
-        : null
+        : badTurns
   const footerHint = tooLong ? 'Too long to send — shorten your comments' : approveHint
+  const keepGoingTitle = canKeepGoing
+    ? `The goal is the plan's Done when${goalSettings?.token_budget ? `, with the token budget from Settings → Goals` : ''}. A check confirms it before the goal ends.`
+    : 'Add a Done when to the plan to keep going'
+
+  const approve = () => {
+    if (mobile) dismissKeyboard()
+    if (!keepGoing) {
+      resolver.answer([[APPROVE]])
+      return
+    }
+    const maxTurns = Number(turnsText)
+    resolver.answer([[APPROVE]], { keepGoing: maxTurns === defaultTurns ? {} : { maxTurns } })
+  }
 
   const startEditing = () => {
     setDraft(plan.content)
@@ -369,17 +408,19 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const startComment = (from: PlanSelection | null = selection) => {
     if (!from) return
     const next = { quote: from.text, anchor: from, text: '' }
+    window.getSelection()?.removeAllRanges()
+    clearSelection()
+    setHeldSelection(null)
     if (mobile) {
       // Render the docked composer and focus it inside this tap: iOS raises
       // the keyboard only for focus that happens within a user gesture.
+      // Focus last: WebKit keeps the box's caret in the page selection, so
+      // clearing the selection after focusing would drop focus again.
       flushSync(() => changeComposer(next))
       commentInputRef.current?.focus()
     } else {
       changeComposer(next)
     }
-    window.getSelection()?.removeAllRanges()
-    clearSelection()
-    setHeldSelection(null)
   }
 
   const clearMobileSelection = () => {
@@ -597,6 +638,36 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             <p role="alert" className="text-[11px] text-(--color-error)">{resolver.error}</p>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
+            {!compactFooter && (
+              <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-(--color-text)" title={keepGoingTitle} data-keep-going={keepGoing ? 'on' : 'off'}>
+                <label className={cn('flex items-center gap-1.5', !canKeepGoing && 'text-(--color-text-subtle)')}>
+                  <Checkbox
+                    aria-label="Keep going until done"
+                    checked={keepGoing}
+                    disabled={!canKeepGoing || resolver.submitting}
+                    onCheckedChange={(checked) => setKeepGoingChoice(checked)}
+                  />
+                  Keep going until done
+                </label>
+                {keepGoing && (
+                  <label className="flex items-center gap-1 text-[11px] text-(--color-text-subtle)">
+                    for
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={MAX_GOAL_TURNS}
+                      aria-label="Turns for this goal"
+                      aria-invalid={badTurns ? true : undefined}
+                      value={turnsText}
+                      onChange={(event) => setTurnsDraft(event.target.value)}
+                      className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-[11px] text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 aria-invalid:border-(--color-error)"
+                    />
+                    turns
+                  </label>
+                )}
+              </div>
+            )}
             {compactFooter && comments.length > 0 ? (
               <button
                 type="button"
@@ -615,7 +686,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               </button>
             ) : (
               footerHint && (!compactFooter || tooLong) && (
-                <span className="mr-auto text-[11px] text-(--color-text-subtle)">{footerHint}</span>
+                <span className={cn('text-[11px] text-(--color-text-subtle)', compactFooter && 'mr-auto')}>{footerHint}</span>
               )
             )}
             <Button
@@ -634,10 +705,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               variant="primary"
               size="sm"
               disabled={resolver.submitting || approveHint !== null}
-              onClick={() => {
-                if (mobile) dismissKeyboard()
-                resolver.answer([[APPROVE]])
-              }}
+              onClick={approve}
             >
               Approve
             </Button>

@@ -21,9 +21,11 @@ import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import type { WorkspaceFileInfo } from '@/api/types'
+import type { UseAgentCommandsGoal } from './useAgentCommands'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
 import { usePaletteSwitchCommands } from './usePaletteSwitchCommands'
+import { usePaletteServerCommands } from './usePaletteServerCommands'
 import { switchPagePath } from './paletteSwitchCommands'
 
 export interface UseCommandPaletteArgs {
@@ -52,6 +54,8 @@ export interface UseCommandPaletteArgs {
   handleOpenPreview?: () => void
   /** Shows the session's ``/btw`` side questions (dock tab or composer panel). */
   handleOpenSideQuestions: (sessionId: string) => void
+  /** The session's goal, for its palette entries. */
+  goal?: UseAgentCommandsGoal
 
   setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   setFileOpenKey: Dispatch<SetStateAction<number>>
@@ -86,6 +90,7 @@ export function useCommandPalette({
   planAwaitingReview,
   handleOpenPreview,
   handleOpenSideQuestions: openSideQuestions,
+  goal,
   setFileViewer,
   setFileOpenKey,
   setWorkspacePanel,
@@ -124,9 +129,14 @@ export function useCommandPalette({
     planAwaitingReview,
     handleOpenPreview,
     handleOpenSideQuestions,
+    goal,
   })
   const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
-  const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])
+  const serverCommands = usePaletteServerCommands()
+  const paletteCommands = useMemo(
+    () => [...agentCommands, ...switchCommands, ...serverCommands],
+    [agentCommands, switchCommands, serverCommands],
+  )
 
   // ── Quick Open workspace file search ───────────────────────────────────────
   //

@@ -88,9 +88,9 @@ fn start_daemon(args: &StartArgs) -> Result<bool> {
     }
     let log = std::fs::OpenOptions::new().create(true).append(true).open(&srv_log).with_context(|| format!("open {}", srv_log.display()))?;
     let mut cmd = std::process::Command::new(exe());
-    // APP_ENV is inherited (main defaults it to production), so the daemon
-    // uses the same state dir as this process's PID file and log.
-    cmd.args(["server", "serve", "--host", &host, "--port", &port.to_string()]).env(DAEMON_ENV, "1");
+    // Pass the mode on, so the daemon uses the same state dir as this
+    // process's PID file and log.
+    cmd.args(["server", "serve", "--host", &host, "--port", &port.to_string()]).env(DAEMON_ENV, "1").env(appv3_core::settings::MODE_ENV, &appv3_core::settings().app_env);
     if has_key && !env_set("OPENAGENTD_ACCESS_KEY") {
         cmd.env("OPENAGENTD_ACCESS_KEY", cfg.access_key.as_deref().unwrap_or(""));
     }

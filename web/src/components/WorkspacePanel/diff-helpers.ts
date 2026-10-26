@@ -1,4 +1,4 @@
-import type { WorkspaceGitDiffResponse } from '@/api/types'
+import type { WorkspaceChangesResponse, WorkspaceGitDiffResponse } from '@/api/types'
 
 export type ChangedFileStatus = 'A' | 'M' | 'D'
 
@@ -82,6 +82,26 @@ export function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFil
     else files.set(path, { path, status: 'A', additions: 0, deletions: 0 })
   }
   return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/** Changes-list rows from ``git-diff/files``; unknown counts show as none. */
+export function changedFilesFromResponse(changes?: WorkspaceChangesResponse): ChangedFileInfo[] {
+  if (!changes?.is_git_repo) return []
+  return changes.files
+    .map((file) => ({ path: file.path, status: file.status, additions: file.additions ?? 0, deletions: file.deletions ?? 0 }))
+    .sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/**
+ * ``path``'s section of a diff scoped to it. A path git had to quote in the
+ * header (non-ASCII, spaces) does not match by name, so a diff holding a
+ * single file is that file's.
+ */
+export function fileDiffBody(diff: WorkspaceGitDiffResponse | undefined, path: string): string | null {
+  const sections = collectDiffSections(diff)
+  const own = sections.get(path)
+  if (own) return own.diff
+  return sections.size === 1 ? sections.values().next().value!.diff : null
 }
 
 export function collectDiffSections(diff?: WorkspaceGitDiffResponse): Map<string, DiffFileSection> {

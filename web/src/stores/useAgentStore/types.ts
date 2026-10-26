@@ -230,9 +230,17 @@ export interface AgentStoreState {
   cacheInvalidations: CacheInvalidation[]
 }
 
+export interface SendMessageOptions {
+  workspace: string
+  model?: string | null
+  thinkingLevel?: string | null
+  fastMode?: boolean
+  mentions?: string[]
+}
+
 export interface AgentStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
-  sendMessage: (content: string, files: File[] | undefined, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
+  sendMessage: (content: string, files: File[] | undefined, options: SendMessageOptions) => Promise<boolean>
   setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactAgent: () => Promise<void>

@@ -15,12 +15,15 @@
  *
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
- * An ``ask_user`` or ``submit_plan`` card stays out only while it waits on the
- * user; once answered or closed it is one more step of the work.
+ * An ``ask_user`` or plan review card stays out only while it waits on the
+ * user; once answered or closed it is one more step of the work. A goal
+ * claim stays out when it is the goal's outcome (checking, achieved, blocked,
+ * or paused); a rejected claim the agent keeps working past folds.
  */
 import type { ContentBlock } from '@/api/types'
+import { isGoalOutcome, UPDATE_GOAL_TOOL } from '@/lib/goal'
 import { isAgentReport } from '@/utils/turns'
-import { canonicalToolName } from '@/utils/tool-names'
+import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
 
 import { patchFileStats } from '../ToolCall/diffUtils'
 import { isFailedResult } from '../ToolCall/toolResultStatus'
@@ -31,17 +34,20 @@ export type ReaderSegment =
   | { kind: 'work'; indices: number[] }
   | { kind: 'block'; index: number }
 
-/** Whether an ``ask_user`` / ``submit_plan`` block's card still waits on the user. */
+/** Whether an ``ask_user`` / plan review block's card still waits on the user. */
 export type AwaitsUser = (block: ContentBlock) => boolean
 
-/** Tools that pause the turn on the user; see ``useQuestionAwaitsUser``. */
-const USER_GATED_TOOLS = new Set(['ask_user', 'submit_plan'])
+/** Calls that pause the turn on the user; see ``useQuestionAwaitsUser``. */
+function isUserGated(block: ContentBlock): boolean {
+  return block.toolName === 'ask_user' || isPlanSubmission(block.toolName, block.toolArgs)
+}
 
 function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   if (block.type === 'thinking') return true
   if (isAgentReport(block)) return true
   if (block.type !== 'tool') return false
-  if (USER_GATED_TOOLS.has(block.toolName ?? '')) return !awaitsUser(block)
+  if (isUserGated(block)) return !awaitsUser(block)
+  if (block.toolName === UPDATE_GOAL_TOOL) return !isGoalOutcome(block)
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 
@@ -83,6 +89,8 @@ export interface WorkSummary {
   previews: number
   mcpCalls: number
   generations: number
+  /** Goal completion claims the check did not accept. */
+  checks: number
   /** Tools no group knows, e.g. a plugin's or an MCP server's own. */
   other: number
   thought: boolean
@@ -116,6 +124,7 @@ const STEP_KIND: Record<string, StepKind> = {
   mcp: 'mcpCalls',
   generate_image: 'generations',
   generate_video: 'generations',
+  [UPDATE_GOAL_TOOL]: 'checks',
 }
 
 /** The MCP hub's ``action`` ("search" or "call"); null while its arguments still stream. */
@@ -137,7 +146,7 @@ function stepKind(block: ContentBlock): StepKind {
 export function summarizeWork(blocks: readonly ContentBlock[]): WorkSummary {
   const summary: WorkSummary = {
     reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, plans: 0, questions: 0, delegations: 0,
-    reports: 0, previews: 0, mcpCalls: 0, generations: 0, other: 0, thought: false,
+    reports: 0, previews: 0, mcpCalls: 0, generations: 0, checks: 0, other: 0, thought: false,
   }
   for (const block of blocks) {
     if (block.type === 'thinking' && block.content.trim()) summary.thought = true
@@ -165,6 +174,7 @@ export function workSummaryDetail(summary: WorkSummary): string {
     count(summary.previews, 'preview action'),
     count(summary.mcpCalls, 'MCP call'),
     count(summary.generations, 'generation'),
+    count(summary.checks, 'goal check'),
     summary.other ? `${summary.other} other` : '',
   ].filter(Boolean).join(', ')
 }

@@ -320,6 +320,20 @@ describe("useAgentStore — todo_manage rendering and event emission", () => {
       expect(useAgentStore.getState().cacheInvalidations).toEqual([{ kind: "plan", sessionId: "sess-123" }])
     })
 
+    it("also refreshes the task board when a new plan starts", () => {
+      primeBlock("lead", "plan", "tc-plan-2", { action: "new", content: "# Next" })
+      useAgentStore.getState()._handleSSEEvent("tool_end", {
+        agent: "lead",
+        name: "plan",
+        tool_call_id: "tc-plan-2",
+        result: "Started a new plan as revision 1 (1 line) at plan.md.",
+      })
+      expect(useAgentStore.getState().cacheInvalidations).toEqual([
+        { kind: "plan", sessionId: "sess-123" },
+        { kind: "todos", sessionId: "sess-123" },
+      ])
+    })
+
     it("does not refetch the plan when a turn ends", () => {
       useAgentStore.setState({ sessionInteractionMode: "plan" })
       useAgentStore.getState()._handleSSEEvent("done", {})

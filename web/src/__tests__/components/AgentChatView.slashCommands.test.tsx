@@ -7,9 +7,10 @@ import { useBtwStore } from '@/stores/useBtwStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 
 const redo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
+const undo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
 const stopAgent = mock(async () => {})
 mock.module('@/stores/useAgentStore', () => ({
-  useAgentStore: { getState: () => ({ redoAgent: redo, redoAllAgent: redo, sessionId: 'session-1', stopAgent, _pendingMessages: [] }) },
+  useAgentStore: { getState: () => ({ undoAgent: undo, redoAgent: redo, redoAllAgent: redo, sessionId: 'session-1', stopAgent, _pendingMessages: [] }) },
 }))
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -42,6 +43,13 @@ describe('BASE_SLASH_COMMANDS', () => {
     expect(redoAll).toBeDefined()
     expect(redoAll?.label).toBe('Redo All')
     expect(redoAll?.description).toBe('Restore all undone messages back to the live tip')
+  })
+
+  it('does not offer /goal: a goal starts from a plan review, not a command', () => {
+    expect(BASE_SLASH_COMMANDS.map((c) => c.id)).not.toContain('goal')
+    expect(parseBuiltInSlashCommand('/goal')).toBeNull()
+    const everything = filterBaseSlashCommands({ isAgentWorking: true, revertedCount: 1, hasVisibleMessages: true, hasLiveMessages: true, hasWorkspace: true })
+    expect(everything.map((c) => c.id)).not.toContain('goal')
   })
 
   it('inserts /btw for a question instead of running it', () => {
@@ -186,6 +194,29 @@ describe('useSlashCommands', () => {
 
     const ids = result.current.slashCommands.map((c) => c.id)
     expect(ids).toEqual(['btw', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
+  })
+
+  const undone = (content: string, extra: Record<string, unknown> | null): AgentCommandResponse => ({
+    status: 'accepted', session_id: 'session-1', command: 'undo',
+    message: {
+      id: 'm1', session_id: 'session-1', role: 'user', content, reasoning_content: null, tool_calls: null,
+      tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra, created_at: null, attachments: null,
+    },
+  })
+
+  it('/undo gives the undone prompt back as it was written', async () => {
+    undo.mockImplementation(async () => undone('tests pass', null))
+    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
+    await act(async () => { result.current.handleSlashCommand('undo') })
+    expect(inputRef.current.setValue).toHaveBeenCalledWith('tests pass')
+  })
+
+  it('/undo of a goal turn leaves the composer alone: its text is a hidden reminder', async () => {
+    undo.mockImplementation(async () => undone('<goal_reminder turn="2">', { goal_turn: { turn: 2, max_turns: 50 } }))
+    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
+    await act(async () => { result.current.handleSlashCommand('undo') })
+    expect(inputRef.current.setValue).not.toHaveBeenCalled()
+    expect(inputRef.current.setFiles).not.toHaveBeenCalled()
   })
 
   it('a bare /btw reopens the session side questions', async () => {

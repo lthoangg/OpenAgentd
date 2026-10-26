@@ -25,6 +25,7 @@ import type {
   WorkspaceGroupWithMembers,
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
+  WorkspaceChangesResponse,
   WorkspaceStatusResponse,
   WorkspaceGitHistoryResponse,
   WorkspaceCommitDiffResponse,
@@ -45,6 +46,8 @@ import type {
   SubagentsResponse,
   SideQuestionEvent,
   SideQuestionListResponse,
+  SessionGoal,
+  SessionGoalResponse,
 } from '../types'
 
 export async function postAgentChat(
@@ -371,14 +374,21 @@ export async function getCodingWorkspaceGitDiff(
   signal?: AbortSignal,
 ): Promise<WorkspaceGitDiffResponse> {
   const params = new URLSearchParams({ workspace })
-  // Repeated ``paths`` params translate to FastAPI's
-  // ``Query(list[str])`` — scoped diff response covering just these
-  // entries, used by the SSE cache-invalidation bridge for surgical
-  // splice instead of a whole-repo refresh.
+  // Repeated ``paths`` params scope the diff to those files; the Review dock
+  // asks for one file's body at a time.
   if (paths && paths.length > 0) {
     for (const p of paths) params.append('paths', p)
   }
   return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/git-diff/view?${params}`, 'getCodingWorkspaceGitDiff', signal)
+}
+
+/** Changed paths with status and counts — no diff bodies. */
+export async function getCodingWorkspaceChanges(
+  workspace: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceChangesResponse> {
+  const params = new URLSearchParams({ workspace })
+  return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/git-diff/files?${params}`, 'getCodingWorkspaceChanges', signal)
 }
 
 export async function getCodingWorkspaceStatus(
@@ -638,19 +648,26 @@ export async function getPendingQuestion(
  * ``answers`` is index-matched to the questions that were asked; an empty entry
  * skips that question. A ``resumed: false`` response means the answer was saved
  * but the turn did not restart — the caller should surface that rather than
- * assume the agent is working.
+ * assume the agent is working. ``options.keepGoing`` (a plan review's
+ * approval): also start a goal that runs the plan until its Done when is
+ * proven, with ``maxTurns`` turns (the Settings default when left out).
  */
 export async function answerQuestion(
   sessionId: string,
   questionId: string,
   answers: string[][],
+  options?: { keepGoing?: { maxTurns?: number } },
 ): Promise<QuestionResolveResult> {
+  const keepGoing = options?.keepGoing
+  const body = keepGoing
+    ? { answers, keep_going: keepGoing.maxTurns === undefined ? {} : { max_turns: keepGoing.maxTurns } }
+    : { answers }
   const res = await fetch(
     `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/answer`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify(body),
     },
   )
   if (!res.ok) await parseDetailOrThrow(res, 'answerQuestion')
@@ -739,4 +756,40 @@ export async function updateSessionPlan(sessionId: string, content: string, base
   })
   if (!res.ok) await parseDetailOrThrow(res, 'updateSessionPlan')
   return res.json()
+}
+
+function goalUrl(sessionId: string, action?: 'pause' | 'resume'): string {
+  return `${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/goal${action ? `/${action}` : ''}`
+}
+
+/**
+ * The session's newest goal. The route answers 404 only for a session that
+ * is gone or is a member's (which never has a goal), and a v2 backend has no
+ * such route: each means "no goal".
+ */
+export async function getSessionGoal(sessionId: string): Promise<SessionGoalResponse> {
+  const res = await fetch(goalUrl(sessionId))
+  if (res.status === 404) return { goal: null }
+  if (!res.ok) await parseDetailOrThrow(res, 'getSessionGoal')
+  return res.json()
+}
+
+/** Pause the goal: the running turn finishes; no new goal turn starts. */
+export async function pauseSessionGoal(sessionId: string): Promise<SessionGoal> {
+  const res = await fetch(goalUrl(sessionId, 'pause'), { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'pauseSessionGoal')
+  return res.json()
+}
+
+/** Resume the goal: it continues, starting a turn when the session is idle. */
+export async function resumeSessionGoal(sessionId: string): Promise<SessionGoal> {
+  const res = await fetch(goalUrl(sessionId, 'resume'), { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'resumeSessionGoal')
+  return res.json()
+}
+
+/** Clear the goal: end it. */
+export async function clearSessionGoal(sessionId: string): Promise<void> {
+  const res = await fetch(goalUrl(sessionId), { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, 'clearSessionGoal')
 }

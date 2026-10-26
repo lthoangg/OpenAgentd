@@ -23,10 +23,10 @@ const { useAgentStore } = await import('@/stores/useAgentStore')
 const user = (id: string, content: string, extra: Partial<ContentBlock> = {}): ContentBlock => ({ id, type: 'user', content, ...extra })
 const reply = (id: string): ContentBlock => ({ id, type: 'text', content: `reply ${id}` })
 
-function undoResponse(id: string, content: string): AgentCommandResponse {
+function undoResponse(id: string, content: string, extra: Record<string, unknown> | null = null): AgentCommandResponse {
   const message: MessageResponse = {
     id, session_id: 'session-1', role: 'user', content, reasoning_content: null, tool_calls: null,
-    tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: null,
+    tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra,
     created_at: '2026-01-01T00:00:00Z', attachments: null,
   }
   return { status: 'accepted', session_id: 'session-1', command: 'undo', message }
@@ -114,5 +114,21 @@ describe('revertToMessage', () => {
     expect(await useAgentStore.getState().revertToMessage('a2')).toBeNull()
     expect(await useAgentStore.getState().revertToMessage('missing')).toBeNull()
     expect(postAgentCommand).not.toHaveBeenCalled()
+  })
+})
+
+describe('undoAgent', () => {
+  it('puts an undone prompt back in the composer', async () => {
+    await useAgentStore.getState().undoAgent()
+
+    expect(useAgentStore.getState().pendingDraft).toEqual({ content: 'third', attachments: [] })
+  })
+
+  it('puts nothing in the composer for a goal turn, whose text is a hidden reminder', async () => {
+    postAgentCommand.mockImplementation(async () => undoResponse('m3', '<goal_reminder turn="2">', { goal_turn: { turn: 2, max_turns: 50 } }))
+
+    await useAgentStore.getState().undoAgent()
+
+    expect(useAgentStore.getState().pendingDraft).toBeNull()
   })
 })

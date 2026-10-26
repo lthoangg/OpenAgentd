@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ChevronRight, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen } from 'lucide-react'
+import { ChevronRight, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen, Target } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -120,12 +120,10 @@ function SessionRowView({
   const hasWorkingSubagent = subagents.some((sub) => sub.status === 'working')
   const hasActiveWork = hasWaitingSubagent || hasWorkingSubagent
 
+  // Subagents start folded behind the count pill (its dot still shows
+  // activity); only an open subagent forces its lead's list open.
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
-  const isExpanded =
-    isChildActive ||
-    (expandedOverride !== null
-      ? expandedOverride
-      : (isCurrent || hasActiveWork))
+  const isExpanded = isChildActive || (expandedOverride ?? false)
   const subagentToggleLabel = `${isExpanded ? 'Collapse' : 'Expand'} ${subagents.length} subagents`
 
   // Keyboard shortcuts for the hover-revealed row actions.
@@ -212,6 +210,7 @@ function SessionRowView({
                 {checkoutName && <span className="sr-only">{`, in worktree ${checkoutName}`}</span>}
                 {contextLabel && <span className="sr-only">{`, in ${contextLabel}`}</span>}
                 {pinned && <span className="sr-only">, pinned</span>}
+                {session.goal_status && <span className="sr-only">{`, goal ${session.goal_status}`}</span>}
               </LongPressButton>
             }
           />
@@ -271,6 +270,16 @@ function SessionRowView({
         {pinned && !isEditing && (
           <span className={`ml-1 flex shrink-0 items-center text-(--color-text-subtle) ${metaVisibility}`} aria-hidden="true">
             <Pin size={11} />
+          </span>
+        )}
+        {session.goal_status && !isEditing && (
+          <span
+            data-goal-status={session.goal_status}
+            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--accent-blue-text)' : 'text-(--color-text-subtle)'} ${metaVisibility}`}
+            title={session.goal_status === 'active' ? 'Working toward a goal' : 'Goal paused'}
+            aria-hidden="true"
+          >
+            <Target size={11} />
           </span>
         )}
         {sessionAge && !isEditing && (

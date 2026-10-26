@@ -148,7 +148,7 @@ jobs:
           [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
           sb="$RUNNER_TEMP/oad-smoke"
           mkdir -p "$sb"
-          export APP_ENV=production OPENAGENTD_DATA_DIR="$sb/data" OPENAGENTD_CONFIG_DIR="$sb/config" \
+          export OPENAGENTD_ENV=production OPENAGENTD_DATA_DIR="$sb/data" OPENAGENTD_CONFIG_DIR="$sb/config" \
             OPENAGENTD_STATE_DIR="$sb/state" OPENAGENTD_CACHE_DIR="$sb/cache" OPENAGENTD_WORKSPACE_DIR="$sb/ws"
           "$bin" server serve --host 127.0.0.1 --port 0 --handshake --generate-token > "$sb/out.txt" 2> "$sb/err.txt" &
           pid=$!

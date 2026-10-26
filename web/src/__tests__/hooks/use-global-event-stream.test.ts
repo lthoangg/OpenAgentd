@@ -17,7 +17,7 @@ const globalEventStream = mock((...args: unknown[]) => {
 })
 mock.module('@/api/global-events', () => ({ globalEventStream }))
 
-import { GlobalEventStream, handleGlobalEvent, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
+import { GlobalEventStream, handleGlobalEvent, invalidateGlobalEventQueries, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
@@ -822,6 +822,38 @@ describe('handleGlobalEvent', () => {
     expect(await handleGlobalEvent(client, 'mcp_status_changed', { name: 'slack', state: 'ready' }, 1, () => 1)).toBe(true)
     expect(client.getQueryState(queryKeys.mcp.list())?.isInvalidated).toBe(true)
     expect(await handleGlobalEvent(client, 'mcp_status_changed', { state: 'ready' }, 1, () => 1)).toBe(false)
+  })
+
+  it('writes a session_goal into the goal cache and the sidebar rows', async () => {
+    const client = new QueryClient()
+    const row = { id: 's1', title: 'Fix tests', agent_name: null, created_at: null, updated_at: null }
+    client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [{ data: [row], next_cursor: null, has_more: false }], pageParams: [null] })
+    const goal = {
+      id: 'g1', session_id: 's1', objective: 'tests pass', status: 'active', pause_reason: null, detail: null,
+      max_turns: 50, token_budget: null, turns_used: 2, tokens_used: 900, active_seconds: 30, rejected_claims: 0,
+      created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:01:00Z', ended_at: null,
+    }
+
+    expect(await handleGlobalEvent(client, 'session_goal', { session_id: 's1', goal }, 1, () => 1)).toBe(true)
+    expect(client.getQueryData(queryKeys.goal('s1'))).toEqual({ goal })
+    const rows = () => (client.getQueryData(queryKeys.session.sessions.infinite()) as { pages: { data: { goal_status?: string | null }[] }[] }).pages[0].data
+    expect(rows()[0].goal_status).toBe('active')
+
+    // An achieved goal is no longer live: the row loses its mark.
+    await handleGlobalEvent(client, 'session_goal', { session_id: 's1', goal: { ...goal, status: 'achieved' } }, 1, () => 1)
+    expect(rows()[0].goal_status).toBeNull()
+    expect(await handleGlobalEvent(client, 'session_goal', { goal }, 1, () => 1)).toBe(false)
+  })
+
+  it('refetches every cached goal on a resync, since a dropped feed missed its session_goal events', () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.goal('s1'), { goal: null })
+    client.setQueryData(queryKeys.goal('s2'), { goal: null })
+
+    invalidateGlobalEventQueries(client)
+
+    expect(client.getQueryState(queryKeys.goal('s1'))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.goal('s2'))?.isInvalidated).toBe(true)
   })
 
   it('prompts for TypeScript tooling only when backend downloads are enabled', async () => {

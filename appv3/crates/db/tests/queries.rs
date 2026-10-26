@@ -15,7 +15,8 @@ async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
     (dir, pool)
 }
 
-/// Deleting a session tree takes its `/btw` side questions with it.
+/// Deleting a session tree takes its `/btw` side questions and goal
+/// goals with it.
 #[tokio::test]
 async fn deleting_a_session_removes_its_side_questions() {
     let (_d, pool) = fresh().await;
@@ -24,11 +25,15 @@ async fn deleting_a_session_removes_its_side_questions() {
     let other = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
     for s in [&lead, &child, &other] {
         insert_side_question(&pool, &s.id, "why?").await.unwrap();
+        insert_session_goal(&pool, &s.id, "done", 50, None).await.unwrap();
     }
     delete_session_rows(&pool, &lead.id).await.unwrap();
     assert_eq!(count_side_questions(&pool, &lead.id).await.unwrap(), 0);
     assert_eq!(count_side_questions(&pool, &child.id).await.unwrap(), 0);
     assert_eq!(count_side_questions(&pool, &other.id).await.unwrap(), 1);
+    assert!(latest_session_goal(&pool, &lead.id).await.unwrap().is_none());
+    assert!(latest_session_goal(&pool, &child.id).await.unwrap().is_none());
+    assert!(live_session_goal(&pool, &other.id).await.unwrap().is_some());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -448,6 +453,23 @@ async fn first_history_page_reaches_past_a_staged_undo() {
     let page = first_history_page(&pool, &s).await.unwrap();
     assert_eq!(page.rows[0].id, first.id);
     assert_eq!(page.rows.len(), 1 + 150 + 1 + 20);
+}
+
+/// A goal turn starts from a hidden reminder, not a prompt the user wrote:
+/// a long goal run pins its objective.
+#[tokio::test]
+async fn first_history_page_pins_a_goals_objective_not_its_turns() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let objective = save_message(&pool, &s.id, from_agent("tests pass", serde_json::json!({"goal": {"id": "g1"}}))).await.unwrap();
+    save_steps(&pool, &s.id, FIRST_PAGE_MAX as usize).await;
+    let reminder = serde_json::json!({"goal_turn": {"id": "g1", "turn": 2, "max_turns": 50, "why": "unclaimed"}});
+    save_message(&pool, &s.id, from_agent("<goal_reminder turn=\"2\">", reminder)).await.unwrap();
+    save_steps(&pool, &s.id, 20).await;
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    assert_eq!(page.rows.len(), FIRST_PAGE_MAX as usize);
+    assert_eq!(page.latest_prompt.map(|p| p.id), Some(objective.id));
 }
 
 #[tokio::test]

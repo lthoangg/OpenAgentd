@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.31.0 · October 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.31.0)
+**Latest release:** v3.32.0 · October 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.32.0)
 
 ---
 
@@ -62,7 +62,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Safer local server and backend auto-restart (v3)** `[v3.0.0]` — without an
   access key, the server refuses requests from other websites and from foreign
   `Host` names, so a page open in your browser cannot drive your agent. The
-  desktop, mobile and local dev UIs are unaffected; `CORS_ORIGINS` adds
+  desktop, mobile and local dev UIs are unaffected; `OPENAGENTD_CORS_ORIGINS` adds
   origins and `["*"]` restores the open default. The desktop token and access
   key are removed from the environment of every process the agent starts
   (shell, terminal, git, MCP, plugins). The desktop app restarts a crashed
@@ -133,6 +133,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   selection, and backend-log-path copy actions instead of waiting indefinitely;
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
+- **Switch Server from the command palette** `[v3.32.0]` — run **Switch Server…** in the
+  command palette (⌘K) to list the builtin sidecar and saved servers (current one
+  marked, online/offline shown) and connect with Enter. It reuses the Settings →
+  Connection checks (reachable, access key accepted); a failure shows a toast and
+  keeps the current server. No keyboard shortcut; desktop app only.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
   `/` is a new session and `/{session_id}` a session; old `/coding` and
@@ -153,7 +158,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   Chat is not a repository either, so the pinned row offers no worktree or
   removal actions and the workspace dock has no Git tab; file-level undo is
   off, and `/undo` moves the conversation boundary only. Set
-  `CHAT_WORKSPACE_DIR` to run Chat elsewhere and keep your home directory
+  `OPENAGENTD_CHAT_WORKSPACE_DIR` to run Chat elsewhere and keep your home directory
   usable as a coding workspace.
 - **Connection-ready screen warmup** `[v1.113.3]` — after either the bundled
   sidecar or an external server connects, the app preloads coding data in the
@@ -309,8 +314,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and writes a plan for you to review, while the runtime
   blocks changes to project files and permits read-only inspection and testing via shell.
-  The agent writes its plan with the `plan` tool and submits it with
-  `submit_plan` (in either Plan or Code mode), which pauses the turn for review in the **Plan** tab of the
+  The agent writes its plan with the `plan` tool and submits it with the same
+  tool (`submit: true`, in either Plan or Code mode; one call can save and
+  submit, and a save that fails submits nothing — it was a separate
+  `submit_plan` tool before `[v3.32.0]`), which pauses the turn for review in the **Plan** tab of the
   review dock (full screen on mobile; it opens by itself on desktop). The tab
   shows the rendered plan and its status, and offers **Approve** and
   **Request changes**. Select plan text and choose **Comment** to attach a
@@ -344,6 +351,69 @@ run from the terminal (the native Rust binary since v3.0.0).
     file is kept). The Tasks tab and popover show a Plan row with its
     revision, **Open** and **Clear**, which stops using the plan in the
     session and leaves the file in place.
+    Since `[v3.32.0]` the plan reads **Done** once its goal is achieved or,
+    without a goal, once every task is finished, and approving a plan asks
+    the agent for one task per milestone, named after it.
+  - **Keep going until done** `[v3.32.0]` — the plan review footer has a
+    **Keep going until done** checkbox and, beside it, the turns for this
+    plan (prefilled from Settings). Approving with it ticked starts a goal
+    whose objective is the plan's **Done when**, and the agent keeps working
+    turn after turn without a "continue" from you. The checkbox is disabled
+    while the plan has no Done when. Each goal turn names the plan file and
+    the next unfinished task. It stops when a separate completion check
+    confirms the agent's `update_goal` claim from evidence shown in the
+    conversation, when the agent reports a blocker, or at a limit: 50 turns by
+    default, two turns in a row without tool calls, three rejected claims in a
+    row, or an optional token budget (uncached input plus output). A rejected
+    claim's reason goes back to the agent. The check also reads the task board,
+    where unfinished tasks need a stated reason, and the runtime's own log of
+    the commands the goal ran, with their exit codes, and the files it changed,
+    so a claim cannot cite a run that failed, never happened, or came before
+    later edits. Claiming again with nothing run since a rejection is turned
+    down without another check. A check that fails to give a verdict neither
+    accepts nor rejects the claim, so the agent can claim again; three such
+    failures in a row pause the goal. Goal turns run unattended by default: the
+    agent decides instead of asking and notes each choice, and a plan it
+    submits is saved without opening a review. **Settings → Goals** sets
+    whether Keep going starts ticked, the turn limit, a default token budget,
+    and allows questions during a goal. The check runs on the session's own
+    model, so it reuses the conversation's prompt cache. It is told which
+    messages are the runtime's own notes (goal reminders, mode and plan
+    notes), so it never takes them for your requirements or for proof the
+    work is done `[v3.31.1]`. A **Goal** tab in the
+    review dock (the drawer on phones) shows what the session is doing now
+    (running a turn and the next task, waiting for your answer, for plan
+    approval, for Code mode, for subagents, or for your queued messages), the
+    objective, the plan with its status and task progress, turns, tokens and
+    time, the last check, and Pause, Resume, and Clear. Its title follows the
+    goal ("Goal 7/50", "Goal paused"). **Cmd+K → Goal** and the dock's **+**
+    menu open it, and **Cmd+K** also pauses, resumes and clears the goal. The
+    Tasks tab and the task popover show a Goal row above the Plan row. Stop
+    pauses the goal, Plan mode and running subagents make it wait, and a goal
+    running when the app quit comes back paused. Approving another plan with
+    Keep going replaces the goal. A scheduled task that runs in the goal's
+    session skips each run that comes due while the goal works (the scheduler
+    skips busy sessions) and fires again at its next scheduled time. Undoing a
+    goal turn keeps the goal; undoing back past the approval ends it. The
+    transcript marks each goal turn and each claim's verdict; each turn's
+    divider says why the goal went on (no claim yet, the check said not yet,
+    the check gave no verdict, or you resumed it), with the check's full reason
+    on hover or tap. An achieved goal shows in blue. The sidebar marks sessions
+    with a live goal, one notification ("Goal achieved", "Goal blocked", or
+    "Goal paused") arrives when the goal ends, and on macOS the notch shows a
+    running goal's progress ("Goal 7/50") and the same outcome. In the Reader
+    transcript the goal's outcome (achieved, blocked, or paused by rejections
+    or failed checks) stays visible, and claims the agent worked past fold
+    into the turn's row as "goal checks". One goal per top-level session.
+  - **A new plan for new work** `[v3.32.0]` — when you move on to work the
+    current plan does not cover (for example after it was implemented), the
+    agent starts a fresh plan instead of overwriting the old one. The old
+    plan keeps its file unchanged (in a chat session it is kept as
+    `plan-closed-<n>.md` beside the session); the new one gets its own file,
+    starts at revision 1 and is not approved. Finished tasks leave the task
+    list, unfinished ones stay. A full rewrite of an approved plan is refused
+    once, so the agent chooses between revising it and starting a new one.
+    The transcript card reads **Started a new plan**.
   - **Plans written for the reviewer** `[v3.21.0]` — a plan opens with
     what you get (**Outcome**) and the choices to confirm (**Decisions**,
     each with a recommendation), shows the change (**Preview**), and lists
@@ -640,12 +710,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     conversation is compacted, so the title follows what the session is
     working on now. Titles you renamed yourself and scheduled-task sessions
     keep their names.
+    The new title comes from the summary's goal and your own latest message,
+    not from runtime notes the summary may have quoted `[v3.31.1]`. A session
+    another workspace's agent started is titled from its request, without the
+    routing header in front of it `[v3.31.1]`.
 - **Mode-scoped recent-session lists** `[v1.66.1]` — session sidebars now fetch
   their own coding session pages instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
-  `/redo`, `/redo-all`, plus user-defined commands. Commands are contextually
+  `/redo`, `/redo-all`, `/btw`, plus user-defined commands. Commands are contextually
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
@@ -658,6 +732,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     without a workspace they open in a panel above the composer, where you step back
     through earlier ones and Close only hides the panel. Show them again with a bare
     `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
+    Answers no longer credit you with the runtime's own notes, such as a Plan
+    mode note or a goal reminder `[v3.31.1]`.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
@@ -1347,6 +1423,10 @@ agent against it.
   the side drawer. Desktop uses the native folder picker only for the bundled
   sidecar or loopback backends; LAN/external backends use the web folder browser
   so the selected path exists on the backend host.
+  Since `[v3.32.0]` the Git Changes list is complete even when the combined
+  diff is too large: it lists every changed file (up to 5,000), shows 200 rows
+  at a time with **Show more**, and loads each file's diff only when you
+  expand it, so opening Git → Changes on a large change set stays fast.
 - **Git worktree sessions** `[v1.41.0, v1.61.0]` — create an isolated git worktree
   from an existing coding workspace, start a new coding session in that worktree,
   list existing worktrees, edit sidebar titles without renaming git directories,
@@ -1551,9 +1631,11 @@ agent against it.
   session exists: the first message starts the session in the picked mode, and
   switching the draft's folder keeps it `[v3.20.0]`.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
-  delegated subagents render an expandable accordion of child sessions that defaults to
-  expanded while a child is running, waiting on the lead, or selected, and collapses to a
-  count pill with an activity dot so background work stays visible. Individual child rows
+  delegated subagents render an expandable accordion of child sessions behind a
+  count pill with an activity dot, so background work stays visible. Since
+  `[v3.32.0]` the accordion starts collapsed and opens on its own only while a
+  child is selected; it used to open whenever the lead was selected or a child
+  was running or waiting on the lead. Individual child rows
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
@@ -1637,6 +1719,10 @@ agent against it.
   front matter shows as a YAML block. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
+  Links and file-named code spans in a rendered Markdown file open the
+  workspace file in a new tab, at the line when one is given; paths read from
+  the file's folder, then the workspace root. HTML files open in Preview, and
+  a missing file shows a "File not found" notice `[v3.32.0]`.
 - **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including
@@ -1680,8 +1766,8 @@ agent against it.
   Snapshot repos borrow the workspace repository's object store, so committed
   content is stored once, and every snapshot is anchored by a ref so background
   repacking never drops a live undo point. A per-session size cap
-  (`SNAPSHOT_MAX_BYTES`, default 256 MiB) drops the oldest snapshots once a repo
-  outgrows it; `SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.18.0]`.
+  (`OPENAGENTD_SNAPSHOT_MAX_BYTES`, default 256 MiB) drops the oldest snapshots once a repo
+  outgrows it; `OPENAGENTD_SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.18.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.
@@ -1819,6 +1905,10 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   out rules that stay in context anyway, and never copy secrets. The agent
   reads the summary marked as a summary of earlier context, not as a new
   message from you, so it carries on after compacting mid-turn `[v3.24.0]`.
+  The latest request a summary quotes is always a message you wrote, never
+  a Plan/Code mode note, a plan approval, a goal reminder, or another
+  agent's message; with nothing new from you since the last summary, it keeps
+  the request that summary recorded `[v3.31.1]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
@@ -2048,6 +2138,7 @@ MCP.
 | Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
+| Session goal | `update_goal` (lead agent; claims the goal of a plan approved with Keep going complete or blocked) `[v3.32.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
 | Utility | `skill` |
 
@@ -2118,7 +2209,7 @@ MCP.
   concise typed HTTP/network/conversion failures, and supports distinct Markdown,
   text, HTML-source, and raw-text output modes. Destinations that resolve to
   loopback, private, or link-local addresses are refused unless
-  `WEB_FETCH_ALLOW_PRIVATE_NETWORK=true` is set, which lets the agent reach local
+  `OPENAGENTD_WEB_FETCH_ALLOW_PRIVATE_NETWORK=true` is set, which lets the agent reach local
   dev servers and trusted internal hosts. The check is enforced at connect time
   and the socket is pinned to the validated address, so a DNS answer cannot
   change between validation and connection. Repeated fetches reuse one pooled
@@ -2426,7 +2517,10 @@ Single-user trust model. The host is trusted. The operator is the user.
   token, provider API keys, and every other value it loaded from a `.env` file
   or saved from Settings (including MCP secrets). `printenv` cannot get around
   the `**/.env` read denial. Variables the user exported before starting the
-  server still pass through.
+  server still pass through, except the server's own `APP_ENV` and
+  `OPENAGENTD_*` variables `[v3.32.0]`: a project reading `APP_ENV` no longer
+  sees the app's `production`, and a development build started from the
+  agent's shell no longer opens the installed app's database.
 - **`credentials.yaml` secret store** `[v3.30.0]` — every saved API key, OAuth
   login, and MCP client secret lives in one versioned `credentials.yaml` in the
   config dir, written atomically under a file lock with owner-only (`0600`)
@@ -2435,9 +2529,37 @@ Single-user trust model. The host is trusted. The operator is the user.
   files in the cache dir move into it; the originals are kept (`.env` as
   `.env.migrated`). Provider keys still in a `.env` afterwards are ignored, and
   `agentd doctor` warns about them. Non-secret settings in `.env` keep loading. A
+  server reads only its config dir's `.env` `[v3.32.0]`: not the `.env` of the
+  directory it starts in (a project's `DATABASE_URL` or `API_PORT` no longer
+  reach it), not the installed app's file when it runs in development, and a
+  `.env` cannot set the mode; the log and `agentd doctor` name skipped files. A
   malformed store is an error, never read as empty. Agent file tools and shell
   commands are denied the store, its lock, and the backup. It is plaintext, so
   shell tools running as the user could still read it outside those checks.
+- **Production and development modes** `[v3.32.0]` — the build picks the mode:
+  the installed app and `agentd` (release builds) run in production with the
+  `~/.local/share/openagentd`-style dirs, and a source checkout's `cargo run`,
+  `make run` and `make dev` (debug builds) run in development under
+  `.openagentd/dev/`, whatever the shell they start from inherited.
+  `OPENAGENTD_ENV=production|development` overrides it, and any other value
+  stops `agentd` with an error. `APP_ENV` still works for this release when it
+  is `production` or `development`, with a note to rename it; other values
+  (another program's `APP_ENV=local`) are ignored instead of moving the data
+  into the current directory.
+  The server's settings variables moved to the `OPENAGENTD_` prefix too
+  (`OPENAGENTD_PORT`, `OPENAGENTD_DATABASE_URL`, `OPENAGENTD_LOG_LEVEL`,
+  `OPENAGENTD_CORS_ORIGINS`, …), so a project's `API_PORT` or `DATABASE_URL`
+  is never read as the app's. The old names still work for this release, and
+  the log and `agentd doctor` name the new one. Standard names of other tools
+  keep theirs (`OTEL_EXPORTER_OTLP_ENDPOINT`, `RUST_LOG`, provider keys).
+- **`.env` replaced by `server.yaml`** `[v3.32.0]` — the CORS origins, the LAN
+  opt-out and both log levels live in the config dir's `server.yaml`
+  (`cors_origins`, `allow_insecure_lan`, `log_level`, `file_log_level`) beside
+  the host, port and access key; the environment still overrides them. On
+  first start they move there from the config dir's `.env`, which is kept as
+  `.env.v3.32.bak` (denied to agent tools like `.env.migrated`). The `.env` is
+  *(deprecated)*: what is left in it still loads in this release, and the log
+  and `agentd doctor` name those keys so they can move to the environment.
 
 ---
 
@@ -2479,7 +2601,7 @@ Everything stays local. No third-party telemetry SaaS.
 - **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
   kept for 90 days by default (traces were previously kept for 30), so the
   90-day telemetry range shows full trace history. Older data is removed by a
-  daily sweep; `OTEL_SPAN_RETENTION_DAYS` and `OTEL_METRIC_RETENTION_DAYS`
+  daily sweep; `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
   override the defaults.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
@@ -2506,8 +2628,8 @@ Everything stays local. No third-party telemetry SaaS.
   query execution and lower latency without DuckDB binary dependency weight.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
-  loguru-based. `FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
-  independently of the console's `LOG_LEVEL` (default `DEBUG`, unchanged); the
+  loguru-based. `OPENAGENTD_FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
+  independently of the console's `OPENAGENTD_LOG_LEVEL` (default `DEBUG`, unchanged); the
   error log stays ERROR-only, so raising it never hides crashes.
 - **Export diagnostics** `[v3.31.0]` — the desktop **Help → Export
   Diagnostics…** item, also in the Windows/Linux tray, saves an

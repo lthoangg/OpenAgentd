@@ -7,11 +7,13 @@ import {
   PLAIN_HIDDEN_WIDTH,
   WING_WIDTH,
   compactLabels,
+  goalLabel,
   islandHeight,
   islandMode,
   islandWidth,
   listOrder,
   primarySessionId,
+  type IslandGoal,
   type IslandSession,
 } from '@/island/status'
 
@@ -23,6 +25,7 @@ const done = (id: string, title = `Done ${id}`): IslandSession =>
   ({ id, title, workspace: 'web', state: 'done', question: null })
 const failed = (id: string, title = `Failed ${id}`): IslandSession =>
   ({ id, title, workspace: 'web', state: 'failed', question: null })
+const withGoal = (session: IslandSession, goal: IslandGoal): IslandSession => ({ ...session, goal })
 const defaults = DEFAULT_ISLAND_SETTINGS
 
 describe('islandMode', () => {
@@ -72,6 +75,26 @@ describe('compactLabels', () => {
   it('shows unread finishes over running work, and a waiting session over both', () => {
     expect(compactLabels([running('a', 'Docs')], [done('x', 'Fix tooltip slide')])).toEqual({ lead: 'Done', detail: 'Fix tooltip slide' })
     expect(compactLabels([running('a'), waiting('b', 'Plan review')], [done('x')])).toEqual({ lead: 'Needs input', detail: 'Plan review' })
+  })
+
+  it("shows a goal's progress while it runs, and what became of it once it ended", () => {
+    const goal = withGoal(running('a', 'Migrate'), { status: 'active', turn: 7, maxTurns: 50 })
+    expect(compactLabels([goal], [])).toEqual({ lead: 'Goal 7/50', detail: 'Migrate' })
+    expect(compactLabels([goal, running('b')], [])).toEqual({ lead: 'Working', detail: '2 sessions' })
+
+    expect(compactLabels([], [withGoal(done('x', 'Migrate'), { status: 'achieved' })])).toEqual({ lead: 'Goal achieved', detail: 'Migrate' })
+    expect(compactLabels([], [withGoal(done('x'), { status: 'paused' })]).lead).toBe('Goal paused')
+    expect(compactLabels([], [withGoal(done('x'), { status: 'blocked' })]).lead).toBe('Goal blocked')
+    expect(compactLabels([], [withGoal(done('x'), { status: 'achieved' }), done('y')]).lead).toBe('Done')
+  })
+})
+
+describe('goalLabel', () => {
+  it('names the goal, matching the notification, and nothing without one', () => {
+    expect(goalLabel(withGoal(running('a'), { status: 'active', turn: 3, maxTurns: 10 }))).toBe('Goal 3/10')
+    expect(goalLabel(withGoal(done('a'), { status: 'achieved' }))).toBe('Goal achieved')
+    expect(goalLabel(running('a'))).toBeNull()
+    expect(goalLabel({ ...running('a'), goal: null })).toBeNull()
   })
 })
 

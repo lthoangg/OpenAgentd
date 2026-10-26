@@ -2,8 +2,8 @@
  * WorkspacePanel — the review dock.
  *
  * Editor-style tab strip (Git review, file previews, full-height diffs,
- * commits, web previews, terminals, and on desktop the agent Tasks, Plan,
- * `/btw` side questions, and Schedule views)
+ * commits, web previews, terminals, the session's Plan and Goal, and on
+ * desktop the agent Tasks, `/btw` side questions, and Schedule views)
  * over one content area. Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
@@ -18,7 +18,7 @@
  * positions are all there when it reopens. Queries pause while it is closed.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
   getCodingWorkspaceGitHistory,
@@ -33,7 +33,7 @@ import {
   COMMIT_DIFF_STALE_MS,
   WORKSPACE_DIFF_STALE_MS,
   commitDiffQueryOptions,
-  workspaceDiffQueryOptions,
+  workspaceChangesQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { PanelResizeHandle, ResizableAside, settledWidthBesidePanels, type LiveWidth } from '@/components/ResizableAside'
@@ -50,6 +50,9 @@ import {
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useAgentStore } from '@/stores/useAgentStore'
+import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { goalTabTitle, isLiveGoal } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -57,6 +60,7 @@ import {
   type ChangedFileStatus,
   type ChangedFileInfo,
   type DiffFileSection,
+  changedFilesFromResponse,
   collectChangedFiles,
   collectDiffSections,
 } from './WorkspacePanel/diff-helpers'
@@ -70,6 +74,7 @@ import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { PlanTabView } from './WorkspacePanel/PlanTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
+import { GoalTabView } from './WorkspacePanel/GoalTabView'
 import { AttachmentTabView } from './WorkspacePanel/AttachmentTabView'
 import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -94,6 +99,7 @@ import {
   type DockViewRequest,
   type PreviewTabRequest,
   BTW_TAB,
+  GOAL_TAB,
   PLAN_TAB,
   REVIEW_TAB_ID,
   SCHEDULE_TAB,
@@ -340,19 +346,26 @@ export function WorkspacePanel({
     enabled: open,
     staleTime: WORKSPACE_TREE_STALE_MS,
   })
-  const diff = useQuery({
-    ...workspaceDiffQueryOptions(workspace),
+  // The changed paths only; each file's diff body loads when it is expanded
+  // or opened in a tab (see ``workspace-git.ts``).
+  const changes = useQuery({
+    ...workspaceChangesQueryOptions(workspace),
     enabled: open && !chatWorkspace,
     staleTime: WORKSPACE_DIFF_STALE_MS,
   })
+  const queryClient = useQueryClient()
+  /** Refetch the changed paths and every diff body on screen. */
+  const refreshChanges = useCallback(() => {
+    void changes.refetch()
+    void queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
+  }, [changes, queryClient, workspace])
   const workspaceStatus = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
     enabled: open && !chatWorkspace,
     staleTime: 10_000,
   })
-  const changedFiles = useMemo(() => collectChangedFiles(diff.data), [diff.data])
-  const diffSections = useMemo(() => collectDiffSections(diff.data), [diff.data])
+  const changedFiles = useMemo(() => changedFilesFromResponse(changes.data), [changes.data])
   // Working-tree status per changed path; ``has`` doubles as "is changed".
   const changedPaths = useMemo(() => new Map(changedFiles.map((file) => [file.path, file.status])), [changedFiles])
   const filesByPath = useMemo(() => new Map((files.data?.files ?? []).map((file) => [file.path, file])), [files.data?.files])
@@ -415,9 +428,9 @@ export function WorkspacePanel({
 
   // React Query hands back a new result object every render; the list views
   // get memoized slices of the fields they read so ``memo`` can skip them.
-  const diffView = useMemo(
-    () => ({ isLoading: diff.isLoading, isError: diff.isError, data: diff.data }),
-    [diff.isLoading, diff.isError, diff.data],
+  const changesView = useMemo(
+    () => ({ isLoading: changes.isLoading, isError: changes.isError, data: changes.data }),
+    [changes.isLoading, changes.isError, changes.data],
   )
   const filesView = useMemo(() => ({ isLoading: files.isLoading, data: files.data }), [files.isLoading, files.data])
   const { isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData } = gitHistory
@@ -444,6 +457,7 @@ export function WorkspacePanel({
     const file = filesByPath.get(path) ?? { path, name: basename(path), size: 0, mtime: 0, mime: 'text/plain' }
     openFileTab(file)
   }, [filesByPath, openFileTab])
+  const isListedFile = useCallback((path: string) => filesByPath.has(path), [filesByPath])
 
   const openCommitTabBySha = (sha: string) => {
     const commit = commits.find((item) => item.sha === sha)
@@ -460,11 +474,25 @@ export function WorkspacePanel({
   const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
   const previewTabs = visibleTabs.filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
   const openQuickOpen = () => useUIStore.getState().openQuickOpen('')
+  // The Goal tab's title follows the goal ("Goal 7/50", "Goal paused").
+  const { data: goalData } = useSessionGoalQuery(sessionId)
+  const goal = goalData?.goal ?? null
+  const agentWorking = useAgentStore((s) => s.isAgentWorking)
+  const goalTitle = goalTabTitle(goal, agentWorking)
+  const stripTabs = useMemo(
+    () => (visibleTabs.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
+      ? visibleTabs.map((tab) => (tab.type === 'goal' ? { ...tab, title: goalTitle } : tab))
+      : visibleTabs),
+    [visibleTabs, goalTitle],
+  )
+  const openGoal = sessionId ? () => openTab(GOAL_TAB) : undefined
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
-  // above the chat on phones, so only desktop lists them here.
+  // above the chat on phones, so only desktop lists them here; the plan and
+  // the goal open here everywhere.
   const openItems = dockOpenItems(os, {
     onOpenGit: chatWorkspace ? undefined : openGitTab,
+    onOpenGoal: openGoal,
     onOpenPlan: plan ? () => openTab(PLAN_TAB) : undefined,
     onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB),
     onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB),
@@ -477,12 +505,12 @@ export function WorkspacePanel({
   const handleRefresh = useCallback(() => {
     void files.refetch()
     if (chatWorkspace) return
-    void diff.refetch()
+    refreshChanges()
     void workspaceStatus.refetch()
     if (subTab === 'commits' || subTab === 'tree') {
       void gitHistory.refetch()
     }
-  }, [files, diff, workspaceStatus, gitHistory, subTab, chatWorkspace])
+  }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, chatWorkspace])
 
   const toggleDiffExpanded = useCallback((path: string) => {
     useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
@@ -494,14 +522,14 @@ export function WorkspacePanel({
 
   // Expansions persist per workspace; forget files that are no longer
   // changed so a later edit to them does not reopen as a stale peek and the
-  // stored list does not grow forever. A truncated diff lists only part of
-  // the change set, so it cannot prove a path is gone.
+  // stored list does not grow forever. A capped list (over 5,000 files)
+  // cannot prove a path is gone.
   useEffect(() => {
-    if (!diff.data?.is_git_repo || diff.data.truncated) return
+    if (!changes.data?.is_git_repo || changes.data.truncated) return
     const stored = useGitPanelStore.getState().workspaces[workspace]?.expandedDiffs ?? []
     const kept = stored.filter((path) => changedPaths.has(path))
     if (kept.length !== stored.length) useGitPanelStore.getState().setExpandedDiffs(workspace, kept)
-  }, [diff.data, changedPaths, workspace])
+  }, [changes.data, changedPaths, workspace])
 
   useEffect(() => {
     if (handledFileOpenKeyRef.current === selectedFileOpenKey) return
@@ -542,18 +570,18 @@ export function WorkspacePanel({
       setMobileCommitActions(null)
       setDesktopCommitActions(null)
       void gitHistory.refetch()
-      void diff.refetch()
+      refreshChanges()
       void files.refetch()
     },
     onWorkingTreeChanged: () => {
-      void diff.refetch()
+      refreshChanges()
       void files.refetch()
     },
   })
 
   const reviewView = (
     <div className="flex h-full min-h-0 flex-col">
-      {diff.data?.is_git_repo && (
+      {changes.data?.is_git_repo && (
         <GitViewToolbar
           idBase={gitViewIdBase}
           subTab={subTab}
@@ -571,9 +599,9 @@ export function WorkspacePanel({
       )}
       <div
         ref={commitsScrollRef}
-        id={diff.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
-        role={diff.data?.is_git_repo ? 'tabpanel' : undefined}
-        aria-labelledby={diff.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
+        id={changes.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
+        role={changes.data?.is_git_repo ? 'tabpanel' : undefined}
+        aria-labelledby={changes.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
         // Vertical only: ``overflow: auto`` lets one over-wide row pan the
         // whole list sideways. Tree is the exception: its ASCII rails cannot
         // wrap, so a graph wider than the dock scrolls sideways.
@@ -583,8 +611,7 @@ export function WorkspacePanel({
           <GitReviewSubPanel
             workspace={workspace}
             changedFiles={changedFiles}
-            diffSections={diffSections}
-            diff={diffView}
+            changes={changesView}
             files={filesView}
             selectedFilePath={selectedFilePath}
             expandedDiffs={expandedDiffs}
@@ -661,7 +688,7 @@ export function WorkspacePanel({
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
         <DockTabBar
-          tabs={visibleTabs}
+          tabs={stripTabs}
           activeTabId={activeTabId}
           workspace={workspace}
           terminalMetas={terminalMetas}
@@ -708,6 +735,9 @@ export function WorkspacePanel({
               file={resolveFileTabInfo(activeTab.file, filesByPath.get(activeTab.file.path), changedPaths.get(activeTab.file.path))}
               onAddComment={onAddComment}
               onOpenPreview={canPreview && !chatWorkspace ? openFilePreview : undefined}
+              onOpenFile={openChangedFile}
+              isListed={isListedFile}
+              listingTruncated={files.data?.truncated === true}
             />
           ) : activeTab?.type === 'diff' ? (
             <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />
@@ -720,11 +750,20 @@ export function WorkspacePanel({
             // and a hidden terminal detaches so the idle reaper can close it.
             open ? <TerminalSubPanel key={activeTab.termId} termId={activeTab.termId} workspace={workspace} /> : null
           ) : activeTab?.type === 'tasks' ? (
-            <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} onOpenPlan={() => openTab(PLAN_TAB)} />
+            <TasksTabView
+              todos={todos}
+              sessionId={sessionId}
+              plan={plan}
+              onClearPlan={onClearPlan}
+              onOpenPlan={() => openTab(PLAN_TAB)}
+              goal={goal}
+              onOpenGoal={openGoal}
+            />
           ) : activeTab?.type === 'plan' ? (
             <PlanTabView
               plan={plan}
               sessionId={sessionId}
+              todos={todos}
               onClearPlan={onClearPlan}
               onOpenFile={openChangedFile}
               onOpenPreview={canPreview ? openFilePreview : undefined}
@@ -732,6 +771,8 @@ export function WorkspacePanel({
             />
           ) : activeTab?.type === 'btw' ? (
             <SideQuestionsTabView sessionId={sessionId} active={open} />
+          ) : activeTab?.type === 'goal' ? (
+            <GoalTabView sessionId={sessionId} plan={plan} todos={todos} onOpenPlan={plan ? () => openTab(PLAN_TAB) : undefined} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : activeTab?.type === 'preview' ? (
@@ -740,6 +781,8 @@ export function WorkspacePanel({
             <DockLauncher
               os={os}
               onOpenGit={chatWorkspace ? undefined : openGitTab}
+              // A live goal is one tap away from the empty dock.
+              onOpenGoal={isLiveGoal(goal) ? openGoal : undefined}
               onOpenTerminal={openTerminal}
               onOpenPreview={canPreview ? openNewPreview : undefined}
               onOpenFile={mobile ? undefined : openQuickOpen}

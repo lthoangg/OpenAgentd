@@ -199,11 +199,12 @@ export function userMessageSender(msg: MessageResponse): string | undefined {
 
 /**
  * A row that ``parseAgentBlocks`` turns into a prompt the user wrote: a user
- * row that is not queued, a summary, or an agent's report.
+ * row that is not queued, a summary, an agent's report, or a goal turn's
+ * hidden reminder (``extra.goal_turn``). Matches the server's ``PROMPT``.
  */
 export function isPromptMessage(msg: MessageResponse): boolean {
   if (msg.kind === 'queued' || msg.extra?.queue_status === 'queued' || msg.is_summary) return false
-  return msg.role === 'user' && !userMessageSender(msg)
+  return msg.role === 'user' && !userMessageSender(msg) && !msg.extra?.goal_turn
 }
 
 /**

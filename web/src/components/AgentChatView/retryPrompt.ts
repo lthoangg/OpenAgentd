@@ -6,8 +6,9 @@
  * as with /undo followed by a send.
  */
 import type { MessageAttachment } from '@/api/types'
+import { restoredPromptText } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
+import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { attachmentToFile } from './helpers'
 
 /** ``@path`` mentions are re-attached server-side from ``mentions``; resending them as uploads would double them. */
@@ -18,7 +19,9 @@ function uploadedAttachments(attachments: MessageAttachment[] | undefined): Mess
 export async function retryLatestPrompt(workspace: string): Promise<boolean> {
   const store = useAgentStore.getState()
   const lead = store.leadName ? store.agentStreams[store.leadName] : undefined
-  const latest = lead ? [...lead.blocks].reverse().find(isDirectUserBlock) : undefined
+  // A goal's own turns are hidden reminders, not something the user wrote:
+  // retry the prompt before them (rewinding them too).
+  const latest = lead ? [...lead.blocks].reverse().find(isTypedPromptBlock) : undefined
   if (!latest) return false
 
   const prompt = await store.revertToMessage(latest.id, { restoreDraft: false })
@@ -36,6 +39,6 @@ export async function retryLatestPrompt(workspace: string): Promise<boolean> {
     mentions,
   })
   // The prompt is already rewound; a failed resend must not lose it.
-  if (!delivered) current.setPendingDraft({ content: prompt.content, attachments })
+  if (!delivered) current.setPendingDraft({ content: restoredPromptText(prompt.content, prompt.extra) ?? '', attachments })
   return delivered
 }

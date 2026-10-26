@@ -150,6 +150,25 @@ describe('PlanTabView on a phone', () => {
     expect(screen.getByLabelText('Feedback on the plan')).toBeTruthy()
   })
 
+  it('keeps the comment box focused when the page selection is cleared (WebKit)', () => {
+    // WebKit keeps a focused text box's caret in the page selection, so
+    // clearing the selection after focusing it drops focus (and the keyboard).
+    const original = Selection.prototype.removeAllRanges
+    Selection.prototype.removeAllRanges = function (this: Selection) {
+      original.call(this)
+      ;(document.activeElement as HTMLElement | null)?.blur()
+    }
+    try {
+      const { container } = renderTab()
+      selectText(planItem(container, 'Write the migration'))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
+
+      expect(document.activeElement).toBe(screen.getByLabelText('Comment'))
+    } finally {
+      Selection.prototype.removeAllRanges = original
+    }
+  })
+
   it('keeps a half-written comment when the tab remounts', () => {
     const first = renderTab()
     selectText(planItem(first.container, 'Write the migration'))

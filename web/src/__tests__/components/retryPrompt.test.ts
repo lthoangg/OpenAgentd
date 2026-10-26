@@ -86,4 +86,23 @@ describe('retryLatestPrompt', () => {
     expect(await retryLatestPrompt('/repo')).toBe(false)
     expect(postAgentCommand).not.toHaveBeenCalled()
   })
+
+  it("retries the user's prompt, not a turn the goal started on its own", async () => {
+    const goalTurn: ContentBlock = { id: 'g1', type: 'user', content: '<goal_reminder turn="2"/>', extra: { goal_turn: { id: 'goal-1', turn: 2, max_turns: 50 } } }
+    useAgentStore.setState((state) => { state.agentStreams.lead.blocks.push(goalTurn, { id: 'a3', type: 'text', content: 'more' }) })
+
+    expect(await retryLatestPrompt('/repo')).toBe(true)
+    const args = postAgentChat.mock.calls[0]
+    expect(args[0]).toBe('rename @src/a.ts')
+  })
+
+  it('hands a failed resend back to the composer as it was written', async () => {
+    const earlier: ContentBlock = { id: 'o1', type: 'user', content: 'tests pass' }
+    useAgentStore.setState((state) => { state.agentStreams.lead.blocks.push(earlier) })
+    postAgentCommand.mockImplementation(async () => undone('o1', 'tests pass'))
+    postAgentChat.mockImplementation(async () => { throw new Error('offline') })
+
+    expect(await retryLatestPrompt('/repo')).toBe(false)
+    expect(useAgentStore.getState().pendingDraft).toEqual({ content: 'tests pass', attachments: [] })
+  })
 })

@@ -1,6 +1,7 @@
 //! Session-bound tools (v2 `app/agent/tools/builtin/{question,team,member,skill,schedule}.py`).
 
 pub mod ask_user;
+pub mod goal;
 pub mod plan;
 pub mod preview;
 pub mod team;

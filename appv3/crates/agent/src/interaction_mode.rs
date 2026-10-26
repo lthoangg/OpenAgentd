@@ -8,18 +8,18 @@ use serde_json::{json, Map, Value};
 /// Some tools check each call themselves: `mcp` allows search and calls to
 /// read-only tools, `patch` writes only plan attachments under
 /// `.agents/plans/<folder>/`, and `preview` only looks (no click, fill or press).
-pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 14] =
-    ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "submit_plan", "team", "web_fetch", "web_search"];
+pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 13] = ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "team", "web_fetch", "web_search"];
 
 /// `extra.interaction_mode_prompt_version` of the notes written now. Notes
 /// without it are version 1 (the `<proposed_plan>` instructions); version 2
-/// wrote implementation-shaped plans; version 3 writes reviewer-shaped plans
-/// with visuals in the plan's attachments folder.
-pub const MODE_PROMPT_VERSION: u64 = 3;
+/// wrote implementation-shaped plans; version 3 wrote reviewer-shaped plans
+/// with visuals in the plan's attachments folder; version 4 submits with
+/// `plan` (`submit: true`) instead of `submit_plan`.
+pub const MODE_PROMPT_VERSION: u64 = 4;
 const MODE_PROMPT_VERSION_KEY: &str = "interaction_mode_prompt_version";
 
 /// Appended to the Plan-mode note that replaces a version-1 one.
-pub const PLAN_PROMPT_UPGRADE: &str = "These Plan mode instructions replace the earlier ones in this conversation: write the plan with the `plan` tool and submit it with `submit_plan` instead of a `<proposed_plan>` block.";
+pub const PLAN_PROMPT_UPGRADE: &str = "These Plan mode instructions replace the earlier ones in this conversation: write the plan with the `plan` tool and submit it with `submit: true` instead of a `<proposed_plan>` block.";
 
 pub fn normalize(value: &str) -> &'static str {
     if value == "plan" {
@@ -170,7 +170,7 @@ mod tests {
         rows.last().and_then(|r| r.content.clone()).unwrap_or_default()
     }
 
-    /// A member has no `plan`, `submit_plan`, `ask_user` or `todo`, so
+    /// A member has no `plan`, `ask_user` or `todo`, so
     /// it gets its own notes rather than the lead's instructions for them.
     #[tokio::test]
     async fn subagent_mode_notes_are_written_for_a_subagent() {
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(plan, transition_instruction("plan", true));
         assert_eq!(code, transition_instruction("code", true));
         for note in [&plan, &code] {
-            for lead_only in ["submit_plan", "ask_user", "`todo`", "`plan` tool"] {
+            for lead_only in ["submit: true", "ask_user", "`todo`", "`plan` tool"] {
                 assert!(!note.contains(lead_only), "a subagent note names {lead_only}: {note}");
             }
         }
@@ -293,7 +293,7 @@ mod tests {
         assert!(ensure_prompt(&pool, &sid, "plan").await.unwrap());
         let rows = db::llm_window_rows(&pool, &sid, false).await.unwrap();
         let text = rows.last().unwrap().content.clone().unwrap();
-        assert!(text.contains("`submit_plan`") && !text.contains(PLAN_PROMPT_UPGRADE));
+        assert!(text.contains("`submit: true`") && !text.contains("submit_plan") && !text.contains(PLAN_PROMPT_UPGRADE));
         for section in ["**Outcome:**", "**Decisions:**", "**Preview:**", "## Appendix", "### Visuals", "`mermaid`", ".agents/plans/"] {
             assert!(text.contains(section), "missing {section}");
         }

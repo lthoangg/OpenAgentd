@@ -19,6 +19,7 @@ export const GLOBAL_EVENT_TYPES = [
   'config_changed',
   'mcp_status_changed',
   'lsp_install_required',
+  'session_goal',
   // Session streams carried on this feed; the stream hub consumes them.
   'session_event',
   'session_stream_end',

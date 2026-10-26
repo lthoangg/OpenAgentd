@@ -1,9 +1,9 @@
 //! Port of `app/core/logging_config.py` (loguru sinks) on top of `tracing`.
 //!
 //! - stderr: loguru's colourised `HH:mm:ss.SSS | LEVEL | name:function:line | message`
-//!   at `LOG_LEVEL` (default INFO).
+//!   at `OPENAGENTD_LOG_LEVEL` (default INFO).
 //! - `{STATE_DIR}/logs/app/app.log`: loguru `serialize=True` JSON lines at
-//!   `FILE_LOG_LEVEL` (default DEBUG), rotated past 10 MB, rotated files
+//!   `OPENAGENTD_FILE_LOG_LEVEL` (default DEBUG), rotated past 10 MB, rotated files
 //!   older than 7 days removed on rotation.
 //! - `{STATE_DIR}/logs/app/app-error.log`: same format, ERROR+, 14 days.
 //!

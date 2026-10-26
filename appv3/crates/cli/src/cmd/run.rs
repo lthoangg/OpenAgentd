@@ -123,6 +123,7 @@ pub fn run(args: &RunArgs) -> Result<()> {
     appv3_core::env::load_config_env(&appv3_core::settings().config_dir);
     crate::logging::setup("ERROR", "DEBUG", true);
     appv3_providers::credentials_migration::migrate_active();
+    crate::dotenv::migrate();
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let res = rt.block_on(run_turn(args));
     rt.shutdown_background();

@@ -5,10 +5,10 @@
  * since the dock's width varies and there is room for the full text.
  */
 import { ListTodo } from 'lucide-react'
-import type { SessionPlan, TodoItem } from '@/api/types'
+import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { cn } from '@/lib/utils'
-import { ActivePlanSection } from '../ActivePlanSection'
 import { TaskChecklist, TaskProgressBar, summarizeTodos } from '../TaskChecklist'
+import { WorkSummary } from '../WorkSummary'
 
 export interface TasksTabViewProps {
   todos: TodoItem[]
@@ -18,11 +18,25 @@ export interface TasksTabViewProps {
   onClearPlan?: () => void
   /** Open the plan in the Plan tab. */
   onOpenPlan?: () => void
+  /** The session's goal; its row sits above the plan row. */
+  goal?: SessionGoal | null
+  /** Open the goal in the Goal tab. */
+  onOpenGoal?: () => void
 }
 
-export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan }: TasksTabViewProps) {
+export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan, goal = null, onOpenGoal }: TasksTabViewProps) {
   const summary = summarizeTodos(todos)
-  const planRow = plan && onClearPlan ? <ActivePlanSection plan={plan} onClear={onClearPlan} onOpen={onOpenPlan} className="px-3" /> : null
+  const planRow = (
+    <WorkSummary
+      goal={goal}
+      plan={plan}
+      todos={todos}
+      onClearPlan={onClearPlan}
+      onOpenPlan={onOpenPlan}
+      onOpenGoal={onOpenGoal}
+      className="px-3"
+    />
+  )
 
   if (summary.total === 0) {
     return (

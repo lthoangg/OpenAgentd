@@ -1,9 +1,13 @@
-//! `plan` and `submit_plan` — the lead's session plan and its review gate.
+//! `plan` — the lead's session plan and its review gate.
 //!
-//! `plan` writes the plan file ([`crate::plan`]) in either mode; `submit_plan`
-//! opens a plan review, a `pending_questions` row with
+//! `action` writes the plan file ([`crate::plan`]) in either mode: `write`
+//! and `edit` revise the current plan, `new` closes it (its file stays) and
+//! starts a fresh one for different work;
+//! `submit: true` then opens a plan review, a `pending_questions` row with
 //! `payload.kind = "plan_review"`, and pauses the turn like `ask_user`. The
-//! answer route closes it ([`crate::plan::resolve_review`]).
+//! answer route closes it ([`crate::plan::resolve_review`]). A failed save
+//! opens no review. The review was a separate `submit_plan` tool before;
+//! old transcripts and reviews still carry that name.
 
 use super::{invalid_args, publish_input_needed};
 use crate::events;
@@ -16,12 +20,69 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 pub const PLAN_TOOL: &str = "plan";
-pub const SUBMIT_PLAN_TOOL: &str = "submit_plan";
+/// The review tool before it merged into `plan`.
+pub const LEGACY_SUBMIT_PLAN_TOOL: &str = "submit_plan";
+/// Turn metadata: tool call id → why that call's `submit` is held back. The
+/// agent loop sets it for the submissions it does not open (another call in
+/// the response asks or submits); the call still saves its change.
+pub const HELD_SUBMITS_META: &str = "plan_submits_held";
+/// Why a `plan` call in a turn nobody watches saves without a review.
+pub const UNATTENDED_SUBMIT: &str =
+    "Not submitted for review: a scheduled task started this turn, so nobody is there to review it. Decide on your own and explain your choices in your final reply.";
 const MAX_EDITS: usize = 20;
 const MAX_SUMMARY_CHARS: usize = 600;
 
 fn in_plan_mode(ctx: &ToolContext) -> bool {
     ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan")
+}
+
+fn submit_flag(v: Option<&Value>) -> Result<bool, String> {
+    match v {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(Value::String(s)) if s.trim().eq_ignore_ascii_case("true") => Ok(true),
+        Some(Value::String(s)) if s.trim().eq_ignore_ascii_case("false") => Ok(false),
+        Some(_) => Err("submit: Input should be a valid boolean".into()),
+    }
+}
+
+/// Whether a `plan` call's raw arguments ask for a review, so the agent
+/// loop runs it last and pauses on it.
+pub fn submits(arguments: &str) -> bool {
+    serde_json::from_str::<Value>(arguments).ok().is_some_and(|a| submit_flag(a.get("submit")) == Ok(true))
+}
+
+/// Hold back `call_id`'s review for `reason`; see [`HELD_SUBMITS_META`].
+pub fn hold_submit(meta: &std::sync::Mutex<serde_json::Map<String, Value>>, call_id: &str, reason: &str) {
+    let mut m = meta.lock().unwrap();
+    let held = m.entry(HELD_SUBMITS_META).or_insert_with(|| json!({}));
+    if let Some(held) = held.as_object_mut() {
+        held.insert(call_id.to_string(), json!(reason));
+    }
+}
+
+/// Why this call's review is held back, if it is; consumes the entry.
+fn take_held_submit(ctx: &ToolContext) -> Option<String> {
+    let mut m = ctx.metadata.lock().unwrap();
+    let held = m.get_mut(HELD_SUBMITS_META)?.as_object_mut()?;
+    let reason = held.remove(&ctx.tool_call_id)?.as_str().map(String::from);
+    if held.is_empty() {
+        m.remove(HELD_SUBMITS_META);
+    }
+    reason
+}
+
+/// Why a submission in a turn nobody watches saves without a review, if this
+/// turn is one: a scheduled task's, or a goal turn's own wording.
+fn unattended_submit(ctx: &ToolContext) -> Option<String> {
+    let meta = ctx.metadata.lock().unwrap();
+    if !meta.get(crate::agent::UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    if meta.get(crate::agent::UNATTENDED_REASON_META).and_then(Value::as_str) == Some(crate::agent::UNATTENDED_GOAL) {
+        return Some(crate::prompts::s("goal_unattended_submit").to_string());
+    }
+    Some(UNATTENDED_SUBMIT.to_string())
 }
 
 /// A JSON value models sometimes send as a string holding JSON.
@@ -35,6 +96,28 @@ fn unstring(v: &Value) -> Value {
 enum PlanArgs {
     Write(String),
     Edit(Vec<PlanEdit>),
+    New(String),
+}
+
+/// One `plan` call: an optional change, then an optional review.
+struct PlanCall {
+    change: Option<PlanArgs>,
+    submit: bool,
+    summary: Option<String>,
+}
+
+fn parse_call(args: &Value) -> Result<PlanCall, Vec<String>> {
+    let submit = submit_flag(args.get("submit")).map_err(|e| vec![e]);
+    let summary = parse_summary(args);
+    let change = match args.get("action") {
+        None | Some(Value::Null) => Ok(None),
+        Some(_) => parse_plan_args(args).map(Some),
+    };
+    match (change, submit, summary) {
+        (Ok(None), Ok(false), _) => Err(vec!["action: Field required unless submit is true".into()]),
+        (Ok(change), Ok(submit), Ok(summary)) => Ok(PlanCall { change, submit, summary }),
+        (c, s, m) => Err([c.err(), s.err(), m.err()].into_iter().flatten().flatten().collect()),
+    }
 }
 
 fn parse_plan_args(args: &Value) -> Result<PlanArgs, Vec<String>> {
@@ -47,6 +130,7 @@ fn parse_plan_args(args: &Value) -> Result<PlanArgs, Vec<String>> {
     };
     match args.get("action").and_then(Value::as_str) {
         Some("write") => text(args.get("content"), "content").map(PlanArgs::Write).map_err(|e| vec![e]),
+        Some("new") => text(args.get("content"), "content").map(PlanArgs::New).map_err(|e| vec![e]),
         Some("edit") => {
             let raw = args.get("edits").map(unstring);
             let items = match raw {
@@ -71,23 +155,25 @@ fn parse_plan_args(args: &Value) -> Result<PlanArgs, Vec<String>> {
                 Err(errs)
             }
         }
-        None if args.get("action").is_none() => Err(vec!["action: Field required".into()]),
-        _ => Err(vec!["action: Input should be 'write' or 'edit'".into()]),
+        _ => Err(vec!["action: Input should be 'write', 'edit' or 'new'".into()]),
     }
 }
 
-/// The lead's session plan (both modes).
+/// The lead's session plan and its review (both modes).
 pub struct PlanTool {
     pub session_id: String,
     /// A project workspace: the plan lives in `.agents/plans/`.
     pub coding: bool,
+    pub pool: DbPool,
 }
 
 /// Save a `plan` call's change and describe the result for the model.
-fn save_plan(dir: &Path, target: PlanTarget, parsed: &PlanArgs, plan_mode: bool) -> Result<String, plan::PlanError> {
+/// `hints` adds the Plan-mode next steps (attachments, then submit).
+fn save_plan(dir: &Path, target: PlanTarget, parsed: &PlanArgs, hints: bool) -> Result<String, plan::PlanError> {
     let change = match parsed {
         PlanArgs::Write(body) => PlanChange::Write(body),
         PlanArgs::Edit(edits) => PlanChange::Edit(edits),
+        PlanArgs::New(body) => PlanChange::New(body),
     };
     let out = plan::save_agent(dir, target, change)?;
     let doc = &out.doc;
@@ -95,15 +181,22 @@ fn save_plan(dir: &Path, target: PlanTarget, parsed: &PlanArgs, plan_mode: bool)
         return Ok(format!("Plan unchanged (revision {}).", doc.revision));
     }
     let lines = doc.content.lines().count();
-    let mut text = format!("Plan saved as revision {} ({lines} line{}) at {}.", doc.revision, if lines == 1 { "" } else { "s" }, doc.display_path());
+    let plural = if lines == 1 { "" } else { "s" };
+    let mut text = match (parsed, &out.closed) {
+        (PlanArgs::New(_), Some(old)) => {
+            format!("Started a new plan as revision {} ({lines} line{plural}) at {}. The previous plan stays at {old}.", doc.revision, doc.display_path())
+        }
+        (PlanArgs::New(_), None) => format!("Started a new plan as revision {} ({lines} line{plural}) at {}.", doc.revision, doc.display_path()),
+        _ => format!("Plan saved as revision {} ({lines} line{plural}) at {}.", doc.revision, doc.display_path()),
+    };
     if out.included_user_edits {
         text.push_str(" This revision includes the user's edits.");
     }
-    if plan_mode {
+    if hints {
         if let Some(dir) = doc.attachments_dir() {
             text.push_str(&format!(" Put its mockups and diagrams in {dir}/ (write them with patch) and link them by that path."));
         }
-        text.push_str(" Call submit_plan when it is ready for review.");
+        text.push_str(" Call plan with submit: true when it is ready for review.");
     }
     tracing::info!("plan_saved dir={} revision={} path={}", dir.display(), doc.revision, doc.path.display());
     Ok(text)
@@ -116,11 +209,49 @@ impl Tool for PlanTool {
     }
 
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
-        let parsed = parse_plan_args(&args).map_err(|e| invalid_args(PLAN_TOOL, &e))?;
+        let call = parse_call(&args).map_err(|e| invalid_args(PLAN_TOOL, &e))?;
+        // A held-back review still saves; the reason leads the result.
+        let held = if call.submit { take_held_submit(ctx).or_else(|| unattended_submit(ctx)) } else { None };
         let dir = denied::session_artifacts_dir(Some(&self.session_id));
-        let target =
-            if self.coding { PlanTarget::Workspace { root: &ctx.denied.workspace_root, session_id: &self.session_id, denied: Some(&ctx.denied) } } else { PlanTarget::DataDir };
-        save_plan(&dir, target, &parsed, in_plan_mode(ctx)).map(ToolOutput::text).map_err(ToolError::exec)
+        let saved = match &call.change {
+            Some(change) => {
+                let target = if self.coding {
+                    PlanTarget::Workspace { root: &ctx.denied.workspace_root, session_id: &self.session_id, denied: Some(&ctx.denied) }
+                } else {
+                    PlanTarget::DataDir
+                };
+                let hints = in_plan_mode(ctx) && (!call.submit || held.is_some());
+                Some(save_plan(&dir, target, change, hints).map_err(ToolError::exec)?)
+            }
+            None => None,
+        };
+        if let Some(reason) = held {
+            return Ok(ToolOutput::text(saved.map_or(reason.clone(), |s| format!("{reason}\n{s}"))));
+        }
+        if !call.submit {
+            return Ok(ToolOutput::text(saved.unwrap_or_default()));
+        }
+        self.open_review(ctx, &dir, call.summary).await
+    }
+}
+
+impl PlanTool {
+    /// Hand the plan to the user for review and pause the turn.
+    async fn open_review(&self, ctx: &ToolContext, dir: &Path, summary: Option<String>) -> ToolResult {
+        let doc = reviewable(dir)?;
+        if ctx.tool_call_id.is_empty() {
+            return Ok(ToolOutput::text("The plan could not be submitted (no tool call id). Ask the user to review it in the Plan panel."));
+        }
+        let in_plan = in_plan_mode(ctx);
+        let payload = review_payload(doc.revision, summary.as_deref(), in_plan);
+        let row = appv3_db::create_pending_question_with(&self.pool, &self.session_id, &ctx.tool_call_id, PLAN_TOOL, &payload).await.map_err(ToolError::exec)?;
+        let sid = appv3_db::codec::api_uuid(&appv3_db::codec::db_id(&self.session_id));
+        let qid = appv3_db::codec::api_uuid(&row.id);
+        let questions = payload["questions"].as_array().cloned().unwrap_or_default();
+        store().push_event(&sid, &events::plan_review_asked(&qid, &sid, &ctx.tool_call_id, &questions, doc.revision), false);
+        publish_input_needed(&self.pool, &self.session_id, &qid, "Plan ready", |_| summary.clone().unwrap_or_else(|| "Review the agent's plan".into())).await;
+        tracing::info!("plan_review_opened session_id={} question_id={} revision={}", sid, qid, doc.revision);
+        Err(ToolError::Suspended(Suspension::Question { question_id: qid, session_id: sid }))
     }
 }
 
@@ -158,40 +289,9 @@ fn parse_summary(args: &Value) -> Result<Option<String>, Vec<String>> {
     }
 }
 
-/// The plan a `submit_plan` call would put up for review.
+/// The plan a submitting `plan` call would put up for review.
 fn reviewable(dir: &Path) -> Result<plan::PlanDoc, ToolError> {
-    plan::sync(dir).ok_or_else(|| ToolError::Execution("There is no plan to submit. Write it with the plan tool first.".into()))
-}
-
-/// Hand the plan to the user for review.
-pub struct SubmitPlanTool {
-    pub session_id: String,
-    pub pool: DbPool,
-}
-
-#[async_trait]
-impl Tool for SubmitPlanTool {
-    fn name(&self) -> &str {
-        SUBMIT_PLAN_TOOL
-    }
-
-    async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
-        let summary = parse_summary(&args).map_err(|e| invalid_args(SUBMIT_PLAN_TOOL, &e))?;
-        let doc = reviewable(&denied::session_artifacts_dir(Some(&self.session_id)))?;
-        if ctx.tool_call_id.is_empty() {
-            return Ok(ToolOutput::text("The plan could not be submitted (no tool call id). Ask the user to review it in the Plan panel."));
-        }
-        let in_plan = in_plan_mode(ctx);
-        let payload = review_payload(doc.revision, summary.as_deref(), in_plan);
-        let row = appv3_db::create_pending_question_with(&self.pool, &self.session_id, &ctx.tool_call_id, SUBMIT_PLAN_TOOL, &payload).await.map_err(ToolError::exec)?;
-        let sid = appv3_db::codec::api_uuid(&appv3_db::codec::db_id(&self.session_id));
-        let qid = appv3_db::codec::api_uuid(&row.id);
-        let questions = payload["questions"].as_array().cloned().unwrap_or_default();
-        store().push_event(&sid, &events::plan_review_asked(&qid, &sid, &ctx.tool_call_id, &questions, doc.revision), false);
-        publish_input_needed(&self.pool, &self.session_id, &qid, "Plan ready", |_| summary.clone().unwrap_or_else(|| "Review the agent's plan".into())).await;
-        tracing::info!("plan_review_opened session_id={} question_id={} revision={}", sid, qid, doc.revision);
-        Err(ToolError::Suspended(Suspension::Question { question_id: qid, session_id: sid }))
-    }
+    plan::sync(dir).ok_or_else(|| ToolError::Execution("There is no plan to submit. Write it first (action \"write\").".into()))
 }
 
 #[cfg(test)]
@@ -206,14 +306,34 @@ mod tests {
 
     #[test]
     fn plan_arguments_are_validated() {
-        let err = |v: Value| parse_plan_args(&v).err().unwrap();
-        assert_eq!(err(json!({})), vec!["action: Field required"]);
-        assert_eq!(err(json!({"action": "replace"})), vec!["action: Input should be 'write' or 'edit'"]);
+        let err = |v: Value| parse_call(&v).err().unwrap();
+        assert_eq!(err(json!({})), vec!["action: Field required unless submit is true"]);
+        assert_eq!(err(json!({"submit": false})), vec!["action: Field required unless submit is true"]);
+        assert_eq!(err(json!({"submit": 1})), vec!["submit: Input should be a valid boolean"]);
+        assert_eq!(err(json!({"action": "replace"})), vec!["action: Input should be 'write', 'edit' or 'new'"]);
         assert_eq!(err(json!({"action": "write"})), vec!["content: Field required"]);
+        assert_eq!(err(json!({"action": "new"})), vec!["content: Field required"]);
+        assert!(matches!(parse_call(&json!({"action": "new", "content": "# B", "submit": true})), Ok(PlanCall { change: Some(PlanArgs::New(_)), submit: true, .. })));
+        assert_eq!(err(json!({"action": "write", "submit": true, "summary": 3})), vec!["content: Field required", "summary: Input should be a valid string"]);
         assert_eq!(err(json!({"action": "edit", "edits": []})), vec!["edits: List should have 1 to 20 items, not 0"]);
         assert_eq!(err(json!({"action": "edit", "edits": [{"old": "a"}]})), vec!["edits -> 0 -> new: Field required"]);
         let edits = json!({"action": "edit", "edits": "[{\"old\": \"a\", \"new\": \"b\"}]"});
         assert!(matches!(parse_plan_args(&edits), Ok(PlanArgs::Edit(e)) if e == vec![PlanEdit { old: "a".into(), new: "b".into() }]));
+    }
+
+    #[test]
+    fn submit_alone_or_with_a_change_asks_for_review() {
+        let only = parse_call(&json!({"submit": true, "summary": "Ready."})).unwrap();
+        assert!(only.change.is_none() && only.submit);
+        assert_eq!(only.summary.as_deref(), Some("Ready."));
+        let both = parse_call(&json!({"action": "write", "content": "# P", "submit": "true"})).unwrap();
+        assert!(matches!(both.change, Some(PlanArgs::Write(_))) && both.submit);
+        assert!(!parse_call(&json!({"action": "write", "content": "# P"})).unwrap().submit);
+
+        assert!(submits(r##"{"action": "write", "content": "# P", "submit": true}"##));
+        assert!(submits(r#"{"submit": "true"}"#));
+        assert!(!submits(r##"{"action": "write", "content": "# P"}"##));
+        assert!(!submits(r#"{"submit": true"#), "unparsable arguments do not pause");
     }
 
     #[test]
@@ -249,7 +369,7 @@ mod tests {
         let wrote = save_plan(&dir, ws(), &args(json!({"action": "write", "content": "# Ship it\n1. a"})), true).unwrap();
         assert_eq!(
             wrote,
-            "Plan saved as revision 1 (2 lines) at .agents/plans/ship-it-16df61f9.md. Put its mockups and diagrams in .agents/plans/ship-it-16df61f9/ (write them with patch) and link them by that path. Call submit_plan when it is ready for review."
+            "Plan saved as revision 1 (2 lines) at .agents/plans/ship-it-16df61f9.md. Put its mockups and diagrams in .agents/plans/ship-it-16df61f9/ (write them with patch) and link them by that path. Call plan with submit: true when it is ready for review."
         );
         let same = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. a"}]})), false).unwrap();
         assert_eq!(same, "Plan unchanged (revision 1).");
@@ -257,6 +377,8 @@ mod tests {
         assert_eq!(edited, "Plan saved as revision 2 (2 lines) at .agents/plans/ship-it-16df61f9.md.");
         let missing = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "zzz", "new": "y"}]})), false).unwrap_err();
         assert_eq!(missing.to_string(), "edits -> 0: old text not found in the plan.");
+        let started = save_plan(&dir, ws(), &args(json!({"action": "new", "content": "# Next thing"})), false).unwrap();
+        assert_eq!(started, "Started a new plan as revision 1 (1 line) at .agents/plans/next-thing-16df61f9.md. The previous plan stays at .agents/plans/ship-it-16df61f9.md.");
     }
 
     #[test]
@@ -283,9 +405,9 @@ mod tests {
     }
 
     #[test]
-    fn submit_plan_needs_a_plan() {
+    fn submitting_needs_a_plan() {
         let d = tempfile::tempdir().unwrap();
-        assert_eq!(reviewable(d.path()).unwrap_err().to_string(), "There is no plan to submit. Write it with the plan tool first.");
+        assert_eq!(reviewable(d.path()).unwrap_err().to_string(), "There is no plan to submit. Write it first (action \"write\").");
         save_plan(d.path(), PlanTarget::DataDir, &args(json!({"action": "write", "content": "# P"})), true).unwrap();
         assert_eq!(reviewable(d.path()).unwrap().revision, 1);
     }

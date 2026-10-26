@@ -17,7 +17,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use bytes::Bytes;
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -37,6 +37,9 @@ fn is_unlisted_ignored_name(name: &str) -> bool {
 }
 const MAX_GIT_DIFF_CHARS: usize = 512 * 1024;
 const MAX_UNTRACKED_DIFF_BYTES: u64 = 256 * 1024;
+/// Bytes of untracked files read to count their lines for the changed-files
+/// list; past it the remaining untracked files are listed without counts.
+const UNTRACKED_COUNT_BUDGET_BYTES: u64 = 8 * 1024 * 1024;
 /// Global flags for the panels' read-only git calls, which run after every
 /// agent tool call. Without them `git status` and `git diff` take
 /// `.git/index.lock` to save a refreshed index, so the agent's own `git
@@ -54,6 +57,7 @@ pub fn router() -> Router<AppState> {
         // Polled after every tool call: ETag / 304 (see `with_etag`).
         .route("/workspace/files/list", get(|h: HeaderMap, q: Qs| async move { etagged(&h, list_workspace_files(q).await).await }))
         .route("/workspace/git-diff/view", get(|h: HeaderMap, q: Qs| async move { etagged(&h, git_diff(q).await).await }))
+        .route("/workspace/git-diff/files", get(|h: HeaderMap, q: Qs| async move { etagged(&h, git_diff_files(q).await).await }))
         .route("/workspace/status", get(|h: HeaderMap, q: Qs| async move { etagged(&h, workspace_status(q).await).await }))
         .route("/workspace/git/history", get(git_history))
         .route("/workspace/git/discard", post(git_discard))
@@ -595,10 +599,11 @@ async fn git_diff(q: Qs) -> ApiResult<Response> {
     }
     let diff_paths: Vec<String> = if scoped.is_empty() { vec![".".into()] } else { scoped.clone() };
     // Listing untracked files doesn't depend on the diff, so it runs with the
-    // HEAD probe; a truncated diff just drops the list.
-    let (head, listed) = tokio::join!(git(&resolved, &["rev-parse", "--verify", "HEAD"]), git(&resolved, &["ls-files", "--others", "--exclude-standard"]));
+    // HEAD probe. `-z`: unquoted paths, as the scope and the files read them.
+    let (head, listed) = tokio::join!(git(&resolved, &["rev-parse", "--verify", "HEAD"]), git(&resolved, &["ls-files", "-z", "--others", "--exclude-standard"]));
     let has_head = head.is_some();
-    let mut args: Vec<&str> = if has_head { vec!["diff", "HEAD"] } else { vec!["diff"] };
+    // A scoped path is a file name, not a pattern (`app/[id].tsx`).
+    let mut args: Vec<&str> = if has_head { vec!["--literal-pathspecs", "diff", "HEAD"] } else { vec!["--literal-pathspecs", "diff"] };
     args.push("--");
     args.extend(diff_paths.iter().map(String::as_str));
     let (tracked, stderr, code, tracked_trunc) = bounded_git_diff(&resolved, &args, MAX_GIT_DIFF_CHARS).await?;
@@ -606,13 +611,14 @@ async fn git_diff(q: Qs) -> ApiResult<Response> {
         let e = stderr.trim();
         return Err(ApiError::new(500, if e.is_empty() { "git diff failed".to_string() } else { e.to_string() }));
     }
-    let mut untracked: Vec<String> = vec![];
+    let mut untracked: Vec<String> = listed.map(|o| o.split('\0').filter(|p| !p.is_empty()).map(String::from).collect()).unwrap_or_default();
+    if !scoped.is_empty() {
+        untracked.retain(|u| scoped.contains(u));
+    }
+    // Past the cap there is no room for untracked bodies, but the files are
+    // still listed.
     let mut full = tracked;
     if !tracked_trunc {
-        untracked = listed.map(|o| o.lines().map(String::from).collect()).unwrap_or_default();
-        if !scoped.is_empty() {
-            untracked.retain(|u| scoped.contains(u));
-        }
         let (r, u) = (root.clone(), untracked.clone());
         full.push_str(&blocking(move || untracked_diff(&r, &u)).await);
     }
@@ -620,6 +626,102 @@ async fn git_diff(q: Qs) -> ApiResult<Response> {
     let truncated = tracked_trunc || nchars > MAX_GIT_DIFF_CHARS;
     let diff: String = if nchars > MAX_GIT_DIFF_CHARS { full.chars().take(MAX_GIT_DIFF_CHARS).collect() } else { full };
     Ok(json(json!({"workspace": resolved, "is_git_repo": true, "diff": diff, "untracked": untracked, "truncated": truncated})))
+}
+
+/// Every changed path with its status and line counts, read from git's file
+/// lists rather than the diff text: a diff too big to send still lists every
+/// file. The Review dock polls this after each write and fetches a body from
+/// `git-diff/view?paths=…` only for a file the user opens.
+async fn git_diff_files(q: Qs) -> ApiResult<Response> {
+    let workspace = q.req("workspace")?;
+    let resolved = validated(&workspace)?;
+    crate::watch::touch_workspace(Path::new(&resolved), &workspace);
+    let root = PathBuf::from(&resolved);
+    if !root.join(".git").exists() {
+        return Ok(json(json!({"workspace": resolved, "is_git_repo": false, "files": [], "total": 0, "truncated": false})));
+    }
+    let (head, untracked) = tokio::join!(git(&resolved, &["rev-parse", "--verify", "HEAD"]), git(&resolved, &["ls-files", "-z", "--others", "--exclude-standard"]));
+    // `--no-renames`: a rename lists as a delete plus an add, as the diff
+    // bodies show it.
+    let base: &[&str] = if head.is_some() { &["diff", "HEAD", "--no-renames", "-z"] } else { &["diff", "--no-renames", "-z"] };
+    let with = |flag: &'static str| -> Vec<&'static str> { base.iter().copied().chain([flag]).collect() };
+    let (name_args, count_args) = (with("--name-status"), with("--numstat"));
+    let (names, counts) = tokio::join!(git(&resolved, &name_args), git(&resolved, &count_args));
+    let (Some(names), Some(counts)) = (names, counts) else {
+        return Err(ApiError::new(500, "git diff failed"));
+    };
+    let untracked = untracked.unwrap_or_default();
+    let (files, total) = blocking(move || changed_files(&root, &names, &counts, &untracked)).await;
+    let truncated = total > files.len();
+    Ok(json(json!({"workspace": resolved, "is_git_repo": true, "files": files, "total": total, "truncated": truncated})))
+}
+
+/// Rows for `git_diff_files` from `--name-status -z`, `--numstat -z` and
+/// `ls-files -z --others` output, sorted by path and capped at
+/// [`MAX_FILES_LISTED`]; also returns the uncapped total.
+fn changed_files(root: &Path, names: &str, counts: &str, untracked: &str) -> (Vec<Value>, usize) {
+    let mut status: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut fields = names.split('\0');
+    while let (Some(s), Some(path)) = (fields.next(), fields.next()) {
+        if s.is_empty() || path.is_empty() {
+            break;
+        }
+        status.insert(
+            path,
+            if s.starts_with('A') {
+                "A"
+            } else if s.starts_with('D') {
+                "D"
+            } else {
+                "M"
+            },
+        );
+    }
+    let mut lines: HashMap<&str, (u64, u64)> = HashMap::new();
+    for rec in counts.split('\0') {
+        let mut f = rec.splitn(3, '\t');
+        if let (Some(a), Some(d), Some(path)) = (f.next(), f.next(), f.next()) {
+            // Binary files report `-`.
+            lines.insert(path, (a.parse().unwrap_or(0), d.parse().unwrap_or(0)));
+        }
+    }
+    let untracked: HashSet<&str> = untracked.split('\0').filter(|p| !p.is_empty()).collect();
+    for path in &untracked {
+        status.insert(path, "A");
+    }
+    let mut budget = UNTRACKED_COUNT_BUDGET_BYTES;
+    let files = status
+        .iter()
+        .take(MAX_FILES_LISTED)
+        .map(|(path, s)| {
+            let (additions, deletions) = if untracked.contains(path) {
+                let a = untracked_lines(root, path, &mut budget);
+                (a, a.map(|_| 0))
+            } else {
+                let (a, d) = lines.get(path).copied().unwrap_or((0, 0));
+                (Some(a), Some(d))
+            };
+            json!({"path": path, "status": s, "additions": additions, "deletions": deletions})
+        })
+        .collect();
+    (files, status.len())
+}
+
+/// Lines an untracked file adds, counted as `untracked_diff` renders it:
+/// `0` for a binary, unreadable or too-large file, `None` once the read
+/// budget is spent.
+fn untracked_lines(root: &Path, rel: &str, budget: &mut u64) -> Option<u64> {
+    let Ok(fp) = safe_resolve(root, rel) else { return Some(0) };
+    let size = std::fs::metadata(&fp).map(|m| m.len()).unwrap_or(0);
+    if size > MAX_UNTRACKED_DIFF_BYTES {
+        return Some(0);
+    }
+    if size > *budget {
+        return None;
+    }
+    *budget -= size;
+    let Some(text) = std::fs::read(&fp).ok().and_then(|b| String::from_utf8(b).ok()) else { return Some(0) };
+    Some(text.replace("\r\n", "\n").replace('\r', "\n").split_inclusive('\n').count() as u64)
 }
 
 struct Porcelain {
@@ -1132,6 +1234,140 @@ mod tests {
         assert_eq!(v["is_git_repo"], true);
         assert_eq!(v["untracked"], json!(["b.txt"]));
         assert!(v["diff"].as_str().unwrap().contains("b.txt"));
+    }
+
+    /// A tracked diff of `bytes` characters in `big.txt`.
+    fn big_tracked_change(dir: &Path, bytes: usize) {
+        std::fs::write(dir.join("big.txt"), "x\n").unwrap();
+        git_ok(dir, &["add", "big.txt"]);
+        git_ok(dir, &["commit", "-qm", "big"]);
+        std::fs::write(dir.join("big.txt"), "y\n".repeat(bytes / 2)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn diff_keeps_the_untracked_list_when_the_tracked_diff_is_cut() {
+        let d = repo_on_main();
+        big_tracked_change(d.path(), MAX_GIT_DIFF_CHARS * 2);
+        std::fs::write(d.path().join("new.txt"), "n\n").unwrap();
+        let v = body_of(git_diff(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(v["truncated"], true);
+        assert_eq!(v["untracked"], json!(["new.txt"]));
+    }
+
+    /// A scoped diff names one file; glob characters in it (Next.js
+    /// `[id].tsx` routes) must not be read as a pathspec pattern.
+    #[tokio::test]
+    async fn scoped_diff_treats_paths_literally() {
+        let d = repo_on_main();
+        commit(d.path(), "[id].txt");
+        commit(d.path(), "i.txt");
+        std::fs::write(d.path().join("[id].txt"), "changed\n").unwrap();
+        std::fs::write(d.path().join("i.txt"), "changed\n").unwrap();
+        let v = body_of(git_diff(ws_query(d.path(), "&paths=%5Bid%5D.txt")).await.unwrap()).await;
+        let diff = v["diff"].as_str().unwrap();
+        assert!(diff.contains("diff --git a/[id].txt b/[id].txt"), "{diff}");
+        assert!(!diff.contains("a/i.txt"), "{diff}");
+    }
+
+    async fn changed_files(dir: &Path) -> Value {
+        body_of(git_diff_files(ws_query(dir, "")).await.unwrap()).await
+    }
+
+    /// `(path, status, additions, deletions)` per listed file.
+    fn rows(v: &Value) -> Vec<(String, String, Value, Value)> {
+        v["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| (f["path"].as_str().unwrap().to_string(), f["status"].as_str().unwrap().to_string(), f["additions"].clone(), f["deletions"].clone()))
+            .collect()
+    }
+
+    fn paths_of(v: &Value) -> Vec<String> {
+        rows(v).into_iter().map(|r| r.0).collect()
+    }
+
+    #[tokio::test]
+    async fn changed_files_lists_every_file_past_the_diff_cap() {
+        let d = repo_on_main();
+        commit(d.path(), "zz.txt");
+        big_tracked_change(d.path(), MAX_GIT_DIFF_CHARS * 2);
+        std::fs::write(d.path().join("zz.txt"), "after the cut\n").unwrap();
+        std::fs::write(d.path().join("new.txt"), "n\n").unwrap();
+        // The diff body stops inside big.txt: zz.txt and new.txt are not in it.
+        let view = body_of(git_diff(ws_query(d.path(), "")).await.unwrap()).await;
+        assert!(!view["diff"].as_str().unwrap().contains("zz.txt"));
+        let v = changed_files(d.path()).await;
+        assert_eq!(paths_of(&v), ["big.txt", "new.txt", "zz.txt"]);
+        assert_eq!((v["total"].clone(), v["truncated"].clone()), (json!(3), json!(false)));
+    }
+
+    #[tokio::test]
+    async fn changed_files_report_status_and_line_counts() {
+        let d = repo_on_main();
+        commit(d.path(), "gone.txt");
+        commit(d.path(), "old.txt");
+        std::fs::write(d.path().join("bin.dat"), [0u8, 1, 2]).unwrap();
+        git_ok(d.path(), &["add", "bin.dat"]);
+        git_ok(d.path(), &["commit", "-qm", "bin"]);
+        std::fs::write(d.path().join("a.txt"), "a\nb\n").unwrap();
+        std::fs::remove_file(d.path().join("gone.txt")).unwrap();
+        git_ok(d.path(), &["mv", "old.txt", "renamed.txt"]);
+        std::fs::write(d.path().join("bin.dat"), [0u8, 1, 3]).unwrap();
+        std::fs::write(d.path().join("new.txt"), "1\r\n2\n3").unwrap();
+        std::fs::write(d.path().join("large.txt"), "z".repeat(MAX_UNTRACKED_DIFF_BYTES as usize + 1)).unwrap();
+        let v = changed_files(d.path()).await;
+        let row = |p: &str, s: &str, a: i64, d: i64| (p.to_string(), s.to_string(), json!(a), json!(d));
+        assert_eq!(
+            rows(&v),
+            [
+                row("a.txt", "M", 1, 0),
+                row("bin.dat", "M", 0, 0),
+                row("gone.txt", "D", 0, 1),
+                row("large.txt", "A", 0, 0),
+                row("new.txt", "A", 3, 0),
+                row("old.txt", "D", 0, 1),
+                row("renamed.txt", "A", 1, 0),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn changed_files_cap_the_list_and_report_the_total() {
+        let d = repo_on_main();
+        std::fs::create_dir(d.path().join("gen")).unwrap();
+        for i in 0..=MAX_FILES_LISTED {
+            std::fs::write(d.path().join(format!("gen/{i:05}.txt")), "g\n").unwrap();
+        }
+        let v = changed_files(d.path()).await;
+        assert_eq!(v["files"].as_array().unwrap().len(), MAX_FILES_LISTED);
+        assert_eq!((v["total"].clone(), v["truncated"].clone()), (json!(MAX_FILES_LISTED + 1), json!(true)));
+    }
+
+    #[tokio::test]
+    async fn changed_files_stop_counting_untracked_lines_past_the_read_budget() {
+        let d = repo_on_main();
+        let size = MAX_UNTRACKED_DIFF_BYTES as usize - 1;
+        let n = UNTRACKED_COUNT_BUDGET_BYTES as usize / size + 2;
+        for i in 0..n {
+            std::fs::write(d.path().join(format!("u{i:03}.txt")), "u\n".repeat(size / 2)).unwrap();
+        }
+        let v = changed_files(d.path()).await;
+        let files = v["files"].as_array().unwrap();
+        assert_eq!(files[0]["additions"], json!(size / 2));
+        assert_eq!(files[n - 1]["additions"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn changed_files_work_before_the_first_commit_and_outside_git() {
+        let d = tempfile::tempdir().unwrap();
+        let v = changed_files(d.path()).await;
+        assert_eq!((v["is_git_repo"].clone(), v["files"].clone()), (json!(false), json!([])));
+        git_ok(d.path(), &["init", "-q"]);
+        std::fs::write(d.path().join("b.txt"), "b\n").unwrap();
+        let v = changed_files(d.path()).await;
+        assert_eq!(v["is_git_repo"], true);
+        assert_eq!(rows(&v), [("b.txt".to_string(), "A".to_string(), json!(1), json!(0))]);
     }
 
     fn listed(root: &Path) -> Vec<String> {

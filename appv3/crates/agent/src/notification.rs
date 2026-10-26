@@ -30,9 +30,42 @@ pub fn body(text: &str) -> Option<String> {
     Some(format!("{head}…"))
 }
 
+/// What became of a goal whose last turn just ended (`achieved`,
+/// `blocked` or `paused`), from the goal's `status` and `pause_reason`;
+/// `None` while it still runs (or was cleared), so the turn's own status is
+/// used. It goes on the notification as `goal`, for clients that mark it
+/// (the macOS notch).
+pub fn goal_outcome(status: &str, pause_reason: Option<&str>) -> Option<&'static str> {
+    match (status, pause_reason) {
+        ("achieved", _) => Some("achieved"),
+        ("paused", Some("blocked")) => Some("blocked"),
+        ("paused", _) => Some("paused"),
+        _ => None,
+    }
+}
+
+/// The notification status for a goal `outcome` (see [`goal_outcome`]).
+pub fn goal_status(outcome: &str) -> &'static str {
+    match outcome {
+        "achieved" => "Goal achieved",
+        "blocked" => "Goal blocked",
+        _ => "Goal paused",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_goal_turn_names_what_became_of_the_goal() {
+        let status = |s, r| goal_outcome(s, r).map(|o| (o, goal_status(o)));
+        assert_eq!(status("achieved", None), Some(("achieved", "Goal achieved")));
+        assert_eq!(status("paused", Some("blocked")), Some(("blocked", "Goal blocked")));
+        assert_eq!(status("paused", Some("turn_limit")), Some(("paused", "Goal paused")));
+        assert_eq!(status("active", None), None, "a goal still running says nothing new");
+        assert_eq!(status("cleared", None), None);
+    }
 
     #[test]
     fn title_appends_the_workspace_directory_name() {

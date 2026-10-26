@@ -28,7 +28,7 @@ tell the user to switch it in the model picker.
 
 - **`code.md`** always has `glob`, `grep`, `patch`, `read`, `shell`,
   `web_fetch`, `web_search`, plus the auto-injected `skill`, `todo`,
-  `schedule`, `ask_user`, `team`, `plan`, `submit_plan`,
+  `schedule`, `ask_user`, `team`, `plan`,
   `workspace`, `preview` (project workspaces) and `mcp` (when MCP
   servers are configured). Never list these. `workspace` (messaging
   sessions in other workspaces) is turned off globally with

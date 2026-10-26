@@ -107,7 +107,7 @@ fn task(name: &str, ws: &str, session_id: &str) -> TaskCreate {
     }
 }
 
-const LEAD_TOOLS: [&str; 5] = ["ask_user", "team", "plan", "submit_plan", "preview"];
+const LEAD_TOOLS: [&str; 4] = ["ask_user", "team", "plan", "preview"];
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn scheduled_runs_keep_every_tool_and_refuse_the_ones_that_wait_on_a_person() {
@@ -121,7 +121,7 @@ async fn scheduled_runs_keep_every_tool_and_refuse_the_ones_that_wait_on_a_perso
         MockProvider::text("Done."),
         MockProvider::text("Done."),
         // The "auto" task tries to ask and to submit a plan, then finishes.
-        MockProvider::tool_calls(&[("ask1", "ask_user", ask), ("submit1", "submit_plan", "{}")]),
+        MockProvider::tool_calls(&[("ask1", "ask_user", ask), ("submit1", "plan", r##"{"action": "write", "content": "# Auto", "submit": true}"##)]),
         MockProvider::text("Decided on my own."),
         // The user then writes in the scheduler's session.
         MockProvider::text("Done."),
@@ -165,6 +165,7 @@ async fn scheduled_runs_keep_every_tool_and_refuse_the_ones_that_wait_on_a_perso
         let text = tool_result(after_tools, id);
         assert!(text.contains("scheduled task started this turn"), "{id} was not refused: {text}");
     }
+    assert!(tool_result(after_tools, "submit1").contains("\nPlan saved as revision 1 "), "the plan is still saved");
     assert_eq!(appv3_db::get_pending_question(&pool, &auto_sid).await.unwrap().map(|q| q.id), None, "the scheduled run left a question open");
 
     // The user writing in that session gets the same tools, so the cache holds.

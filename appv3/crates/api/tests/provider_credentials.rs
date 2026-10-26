@@ -140,10 +140,10 @@ async fn plugin_credentials_over_http() {
         std::env::set_var(k, r.join(d));
     }
     std::env::set_var("HOME", r.join("home"));
-    std::env::set_var("APP_ENV", "production");
+    std::env::set_var("OPENAGENTD_ENV", "production");
     std::env::set_var("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false");
     std::env::set_var("OPENAGENTD_PLUGINS_DIRS", r.join("plugins"));
-    for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "LEGACY_KEY", "MULTI_REGION", "KEYED_KEY", "KEYED_TOKEN"] {
+    for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_DATABASE_URL", "LEGACY_KEY", "MULTI_REGION", "KEYED_KEY", "KEYED_TOKEN"] {
         std::env::remove_var(k);
     }
     std::fs::create_dir_all(r.join("plugins")).unwrap();

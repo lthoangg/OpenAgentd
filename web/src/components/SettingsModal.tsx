@@ -48,6 +48,7 @@ import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
 import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
 import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
+import { GoalsSettingsPage } from '@/components/settings/pages/settings.goals'
 import { TitlesSettingsPage } from '@/components/settings/pages/settings.titles'
 import { ContextSettingsPage } from '@/components/settings/pages/settings.context'
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
@@ -213,6 +214,7 @@ function SectionContent({
     case 'providers':    return <ProvidersSettingsPage />
     case 'denied_paths': return <DeniedPathsSettingsPage />
     case 'workspaces':   return <WorkspacesSettingsPage />
+    case 'goals':        return <GoalsSettingsPage />
     case 'titles':       return <TitlesSettingsPage />
     case 'context':      return <ContextSettingsPage />
     case 'media':        return <MediaSettingsPage />

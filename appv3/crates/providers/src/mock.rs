@@ -8,10 +8,12 @@ use std::sync::Mutex;
 /// Arguments recorded for one `stream` call: messages, tools, kwargs.
 pub type MockCall = (Vec<ChatMessage>, Option<Vec<ToolSpec>>, Kwargs);
 
-/// One scripted turn: a list of chunks, or an error raised before streaming.
+/// One scripted turn: a list of chunks, an error raised before streaming, or
+/// a stream that never yields (a request that hangs until it is dropped).
 pub enum MockTurn {
     Chunks(Vec<ChatCompletionChunk>),
     Error(ProviderError),
+    Hang,
 }
 
 pub struct MockProvider {
@@ -41,6 +43,11 @@ impl MockProvider {
 
     pub fn tool_call(id: &str, name: &str, args: &str) -> MockTurn {
         Self::tool_calls(&[(id, name, args)])
+    }
+
+    /// A request that never answers.
+    pub fn hang() -> MockTurn {
+        MockTurn::Hang
     }
 
     /// One response making several tool calls: `(id, name, arguments)`.
@@ -80,12 +87,14 @@ impl LlmProvider for MockProvider {
     }
     async fn chat(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<AssistantMessage> {
         self.calls.lock().unwrap().push((messages.to_vec(), tools.map(|t| t.to_vec()), kwargs.clone()));
-        match self.turns.lock().unwrap().pop_front() {
+        let turn = self.turns.lock().unwrap().pop_front();
+        match turn {
             Some(MockTurn::Chunks(chunks)) => {
                 let content: String = chunks.iter().flat_map(|c| c.choices.iter()).filter_map(|c| c.delta.content.clone()).collect();
                 Ok(AssistantMessage { content: Some(content).filter(|s| !s.is_empty()), ..Default::default() })
             }
             Some(MockTurn::Error(e)) => Err(e),
+            Some(MockTurn::Hang) => std::future::pending().await,
             None => Ok(AssistantMessage { content: Some("mock".into()), ..Default::default() }),
         }
     }
@@ -95,6 +104,7 @@ impl LlmProvider for MockProvider {
         match turn {
             Some(MockTurn::Chunks(chunks)) => Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok)))),
             Some(MockTurn::Error(e)) => Err(e),
+            Some(MockTurn::Hang) => Ok(Box::pin(futures::stream::pending())),
             None => {
                 let MockTurn::Chunks(c) = Self::text("mock") else { unreachable!() };
                 Ok(Box::pin(futures::stream::iter(c.into_iter().map(Ok))))

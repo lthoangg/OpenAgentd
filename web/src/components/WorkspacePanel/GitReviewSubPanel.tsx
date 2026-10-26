@@ -1,4 +1,5 @@
-import { memo } from 'react'
+import { memo, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, ExternalLink, FileDiff } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -7,16 +8,20 @@ import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { cn } from '@/lib/utils'
-import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
+import { WORKSPACE_DIFF_STALE_MS, workspaceFileDiffQueryOptions } from '@/queries/workspace-git'
+import type { WorkspaceChangesResponse, WorkspaceFileInfo } from '@/api/types'
 import { ChangeCounts } from './ChangeCounts'
-import { type ChangedFileInfo, type DiffFileSection } from './diff-helpers'
+import { type ChangedFileInfo, fileDiffBody } from './diff-helpers'
 import { DOCK_ROW_ACTION_CLASS } from './dock-tab-styles'
+import { DockLoadError } from './DockLoadError'
+
+/** Rows rendered per step; thousands of untracked files must not stall a render. */
+export const CHANGED_ROWS_PAGE = 200
 
 export interface GitReviewSubPanelProps {
   workspace: string
   changedFiles: ChangedFileInfo[]
-  diffSections: Map<string, DiffFileSection>
-  diff: { isLoading: boolean; isError: boolean; data?: WorkspaceGitDiffResponse }
+  changes: { isLoading: boolean; isError: boolean; data?: WorkspaceChangesResponse }
   files: { isLoading: boolean; data?: { files: WorkspaceFileInfo[] } }
   selectedFilePath: string | null
   expandedDiffs: Set<string>
@@ -40,10 +45,32 @@ export function DockListNotice({ children, tone = 'muted' }: { children: React.R
   )
 }
 
+const NOTICE_CLASS = 'border-b border-(--color-border-subtle) bg-(--color-warning)/10 px-3 py-1.5 text-xs text-(--color-warning)'
+
+/** An expanded row's diff: fetched for this file alone, only while open. */
+function ChangedFileDiff({ workspace, path }: { workspace: string; path: string }) {
+  const diff = useQuery({ ...workspaceFileDiffQueryOptions(workspace, path), staleTime: WORKSPACE_DIFF_STALE_MS })
+  const body = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
+  if (diff.isLoading) return <p className="px-3 py-3 text-xs text-(--color-text-subtle)">Loading diff…</p>
+  if (diff.isError) {
+    return <DockLoadError message="Failed to load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
+  }
+  if (!body) return <p className="px-3 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>
+  return (
+    <>
+      {diff.data?.truncated && <p className={NOTICE_CLASS}>This diff is too large to show in full.</p>}
+      {/* Capped peek; "Open diff in tab" gives the full height. */}
+      <div className="max-h-[70vh] min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
+        <DiffPreview diff={body} autoScroll={false} />
+      </div>
+    </>
+  )
+}
+
 function GitReviewSubPanelView({
+  workspace,
   changedFiles,
-  diffSections,
-  diff,
+  changes,
   files,
   selectedFilePath,
   expandedDiffs,
@@ -54,23 +81,24 @@ function GitReviewSubPanelView({
   setMobileFileActions,
   setDesktopFileActions,
 }: GitReviewSubPanelProps) {
-  if (diff.isLoading || files.isLoading) return <DockListNotice>Loading changed files…</DockListNotice>
-  if (diff.isError) return <DockListNotice tone="error">Failed to load changed files</DockListNotice>
-  if (!diff.data?.is_git_repo) return <DockListNotice>Not a git repository</DockListNotice>
+  const [shownRows, setShownRows] = useState(CHANGED_ROWS_PAGE)
+  if (changes.isLoading || files.isLoading) return <DockListNotice>Loading changed files…</DockListNotice>
+  if (changes.isError) return <DockListNotice tone="error">Failed to load changed files</DockListNotice>
+  if (!changes.data?.is_git_repo) return <DockListNotice>Not a git repository</DockListNotice>
   if (changedFiles.length === 0) return <DockListNotice>No changed files</DockListNotice>
 
+  const hiddenRows = changedFiles.length - shownRows
   return (
     <div>
-      {diff.data.truncated && (
-        <p className="border-b border-(--color-border-subtle) bg-(--color-warning)/10 px-3 py-1.5 text-xs text-(--color-warning)">
-          Changed list may be incomplete because the diff was truncated.
+      {changes.data.truncated && (
+        <p className={NOTICE_CLASS}>
+          Showing {changedFiles.length.toLocaleString()} of {changes.data.total.toLocaleString()} changed files.
         </p>
       )}
       <ul aria-label="Changed files" className="divide-y divide-(--color-border-subtle) border-b border-(--color-border-subtle)">
-        {changedFiles.map((changedFile) => {
+        {changedFiles.slice(0, shownRows).map((changedFile) => {
           const isSelected = selectedFilePath === changedFile.path
           const expanded = expandedDiffs.has(changedFile.path)
-          const fileDiff = diffSections.get(changedFile.path)?.diff
           return (
             <li key={changedFile.path}>
               <div className="group/row flex h-(--spacing-list-row) items-center pr-2 transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60">
@@ -146,20 +174,22 @@ function GitReviewSubPanelView({
 
               <Collapsible open={expanded}>
                 <div className="border-t border-(--color-border-subtle)">
-                  {fileDiff ? (
-                    // Capped peek; "Open diff in tab" gives the full height.
-                    <div className="max-h-[70vh] min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
-                      <DiffPreview diff={fileDiff} autoScroll={false} />
-                    </div>
-                  ) : (
-                    <p className="px-3 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>
-                  )}
+                  <ChangedFileDiff workspace={workspace} path={changedFile.path} />
                 </div>
               </Collapsible>
             </li>
           )
         })}
       </ul>
+      {hiddenRows > 0 && (
+        <button
+          type="button"
+          onClick={() => setShownRows((n) => n + CHANGED_ROWS_PAGE)}
+          className="flex h-(--spacing-list-row) w-full cursor-pointer items-center px-3 text-left text-xs text-(--color-text-subtle) outline-none hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-key:bg-(--bg-key)/60"
+        >
+          Show {Math.min(hiddenRows, CHANGED_ROWS_PAGE).toLocaleString()} more ({hiddenRows.toLocaleString()} not shown)
+        </button>
+      )}
     </div>
   )
 }

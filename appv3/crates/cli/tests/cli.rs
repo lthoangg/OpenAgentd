@@ -31,6 +31,14 @@ impl Sandbox {
     }
 
     fn run_bin(&self, bin: &str, args: &[&str]) -> Output {
+        self.run_bin_with(bin, args, &[])
+    }
+
+    fn run_with(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
+        self.run_bin_with(env!("CARGO_BIN_EXE_agentd"), args, env)
+    }
+
+    fn run_bin_with(&self, bin: &str, args: &[&str], env: &[(&str, &str)]) -> Output {
         let mut cmd = Command::new(bin);
         cmd.args(args).current_dir(self.root.path()).stdin(Stdio::null());
         for (k, d) in [
@@ -44,19 +52,26 @@ impl Sandbox {
         ] {
             cmd.env(k, self.path(d));
         }
-        cmd.env("APP_ENV", "production").env("NO_COLOR", "1").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("SNAPSHOT_MAINTENANCE_ENABLED", "false");
+        cmd.env("OPENAGENTD_ENV", "production").env("NO_COLOR", "1").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
         for k in [
             "OPENAGENTD_DESKTOP_TOKEN",
             "OPENAGENTD_ACCESS_KEY",
             "OPENAGENTD_HANDSHAKE_FILE",
             "DATABASE_URL",
+            "OPENAGENTD_DATABASE_URL",
             "AGENTS_DIR",
+            "OPENAGENTD_AGENTS_DIR",
             "SKILLS_DIR",
+            "OPENAGENTD_SKILLS_DIR",
             "RUST_LOG",
             "LOG_LEVEL",
+            "OPENAGENTD_LOG_LEVEL",
             "OPENAI_API_KEY",
         ] {
             cmd.env_remove(k);
+        }
+        for (k, v) in env {
+            cmd.env(k, v);
         }
         cmd.output().expect("run agentd")
     }
@@ -79,6 +94,25 @@ fn version_prints_the_release_string() {
     let o = Sandbox::new().run(&["--version"]);
     assert_eq!(code(&o), 0);
     assert_eq!(stdout(&o), format!("agentd v{}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn an_unknown_mode_is_refused() {
+    let o = Sandbox::new().run_with(&["doctor"], &[("OPENAGENTD_ENV", "staging")]);
+    assert_ne!(code(&o), 0);
+    assert!(stderr(&o).contains("OPENAGENTD_ENV"), "{}", stderr(&o));
+}
+
+#[test]
+fn doctor_moves_server_settings_out_of_dotenv_and_names_the_rest() {
+    let sb = Sandbox::new();
+    sb.write("config/.env", "LOG_LEVEL=WARNING\nOPENAGENTD_FS_WATCH=false\n");
+    let o = sb.run(&["doctor"]);
+    let yaml = std::fs::read_to_string(sb.path("config/server.yaml")).unwrap();
+    assert!(yaml.contains("log_level: WARNING"), "{yaml}");
+    assert_eq!(std::fs::read_to_string(sb.path("config/.env")).unwrap(), "OPENAGENTD_FS_WATCH=false\n");
+    let out = stdout(&o);
+    assert!(out.contains("deprecated") && out.contains("OPENAGENTD_FS_WATCH"), "{out}");
 }
 
 #[test]

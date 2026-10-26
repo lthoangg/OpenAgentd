@@ -2,13 +2,13 @@
  * DockLauncher — what an empty review dock shows.
  *
  * The dock starts with no tabs (Git opens on demand, like any other tab),
- * so this lists what it can open, each with its shortcut. The tab strip's
- * "+" menu lists the same rows (``dockOpenItems``), so a tab can be opened
- * while others are open too: on a phone it is the only way to reach Git
- * once the Plan is showing.
+ * so this lists what it can open, each with its shortcut, and the session's
+ * goal while it has one. The tab strip's "+" menu lists the same rows
+ * (``dockOpenItems``), so a tab can be opened while others are open too: on
+ * a phone it is the only way to reach Git once the Plan is showing.
  */
 import type { ReactNode } from 'react'
-import { CalendarClock, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, TerminalSquare } from 'lucide-react'
+import { CalendarClock, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, Target, TerminalSquare } from 'lucide-react'
 
 import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -30,6 +30,7 @@ export interface DockOpenActions {
   /** Project workspaces only: chat workspaces are not repositories. */
   onOpenGit?: () => void
   onOpenPlan?: () => void
+  onOpenGoal?: () => void
   onOpenTasks?: () => void
   onOpenSideQuestions?: () => void
   onOpenSchedule?: () => void
@@ -48,6 +49,7 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
     if (run) rows.push({ id, label, icon, shortcut, group: 'tool', run })
   }
   view('review', 'Git', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
+  view('goal', 'Goal', <Target size={14} aria-hidden="true" />, actions.onOpenGoal)
   view('plan', 'Plan', <FileText size={14} aria-hidden="true" />, actions.onOpenPlan)
   view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))
   view('btw', 'Side Questions', <MessageCircleQuestion size={14} aria-hidden="true" />, actions.onOpenSideQuestions)
@@ -58,7 +60,7 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   return rows
 }
 
-export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActions, 'onOpenGit' | 'onOpenTerminal' | 'onOpenPreview' | 'onOpenFile'>) {
+export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActions, 'onOpenGit' | 'onOpenGoal' | 'onOpenTerminal' | 'onOpenPreview' | 'onOpenFile'>) {
   const rows = dockOpenItems(os, actions)
   return (
     <div data-dock-launcher className="flex h-full items-center justify-center px-4">

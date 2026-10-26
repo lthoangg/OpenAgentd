@@ -1,4 +1,4 @@
-//! The session plan end to end: the `plan` tool writes it, `submit_plan`
+//! The session plan end to end: the `plan` tool writes it, `submit: true`
 //! pauses the turn for review, and the answer resumes the same turn.
 
 use appv3_agent::agent::{SUBMIT_DEFERRED, SUBMIT_MERGED};
@@ -81,7 +81,7 @@ async fn harness(name: &str, mode: &str, ws: Option<PathBuf>, turns: Vec<MockTur
     let p: Arc<dyn LlmProvider> = provider.clone();
     let p2 = p.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
-    let agent = Agent::new(p, "code", "You are a test agent.", vec![Arc::new(UserEdit)], Some("mock:mock".into()));
+    let agent = Agent::new(p, "code", "You are a test agent.", vec![Arc::new(UserEdit), Arc::new(appv3_tools::todo::TodoTool)], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
     let id = uuid::Uuid::now_v7();
     let new = appv3_db::NewSession { id: Some(id), workspace: ws.display().to_string(), interaction_mode: Some(mode.into()), ..Default::default() };
@@ -103,10 +103,31 @@ impl Harness {
     /// Answer the open plan review the way the answer route does.
     async fn review(&self, decision: ReviewDecision, answer: &str) {
         let row = appv3_db::get_pending_question(&self.pool, &self.sid).await.unwrap().expect("an open review");
-        let outcome = plan::resolve_review(&self.pool, &self.sid, &row, &decision, &json!([[answer]])).await.unwrap().expect("review was open");
+        let outcome = plan::resolve_review(&self.pool, &self.sid, &row, &decision, &json!([[answer]]), false).await.unwrap().expect("review was open");
         assert_eq!(outcome.approved, decision == ReviewDecision::Approve);
         self.session.resume_after_question_answer().await;
         self.settle().await;
+    }
+
+    /// Approve with "Keep going until done" the way the answer route does:
+    /// close the review, start the goal from the plan's Done when, resume.
+    async fn approve_and_keep_going(&self, max_turns: i64) {
+        let row = appv3_db::get_pending_question(&self.pool, &self.sid).await.unwrap().expect("an open review");
+        let objective = plan::done_when(&plan::sync(&self.data_dir()).unwrap().content).expect("a Done when");
+        plan::resolve_review(&self.pool, &self.sid, &row, &ReviewDecision::Approve, &json!([["Approve"]]), true).await.unwrap().expect("review was open");
+        self.session.start_goal_from_plan(&self.sid, &objective, Some(max_turns)).await.unwrap();
+        self.session.resume_after_question_answer().await;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                self.settle().await;
+                if !appv3_db::has_queued_user_messages(&self.pool, &self.sid).await.unwrap() && !self.session.is_busy() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the goal's turns settle");
     }
 
     /// The messages the provider was sent on call `i`.
@@ -140,6 +161,9 @@ fn write(content: &str) -> String {
     json!({"action": "write", "content": content}).to_string()
 }
 
+/// Submit the current plan without changing it.
+const SUBMIT: &str = r#"{"submit": true}"#;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn submit_pauses_and_approval_resumes_in_code_mode() {
     let h = harness(
@@ -148,7 +172,7 @@ async fn submit_pauses_and_approval_resumes_in_code_mode() {
         None,
         vec![
             MockProvider::tool_call("c1", "plan", &write("# Fix the bug\n1. Patch it")),
-            MockProvider::tool_call("c2", "submit_plan", r#"{"summary": "Ready."}"#),
+            MockProvider::tool_call("c2", "plan", r#"{"submit": true, "summary": "Ready."}"#),
             MockProvider::text("Implementing step 1."),
         ],
     )
@@ -164,7 +188,7 @@ async fn submit_pauses_and_approval_resumes_in_code_mode() {
     let attachments = rel.trim_end_matches(".md");
     assert_eq!(
         h.last_tool_result(1),
-        format!("Plan saved as revision 1 (2 lines) at {rel}. Put its mockups and diagrams in {attachments}/ (write them with patch) and link them by that path. Call submit_plan when it is ready for review.")
+        format!("Plan saved as revision 1 (2 lines) at {rel}. Put its mockups and diagrams in {attachments}/ (write them with patch) and link them by that path. Call plan with submit: true when it is ready for review.")
     );
     let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
     assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
@@ -189,15 +213,15 @@ async fn change_request_resumes_in_plan_mode_with_feedback() {
         None,
         vec![
             // The plan is written before the submission in the same response.
-            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "submit_plan", "{}"), ("c3", "submit_plan", "{}")]),
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "plan", SUBMIT), ("c3", "plan", SUBMIT)]),
             MockProvider::text("Revising."),
         ],
     )
     .await;
     h.send("Plan it.").await;
     assert_eq!(h.session.state(), "waiting_input");
-    assert_eq!(h.stored_result("c3").await, SUBMIT_MERGED);
-    assert_eq!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap().tool_call_id, "c2");
+    assert_eq!(h.stored_result("c2").await, SUBMIT_MERGED);
+    assert_eq!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap().tool_call_id, "c3", "the last submission opens the review");
 
     h.review(ReviewDecision::Changes(Some("Drop step 2.".into())), "Drop step 2.").await;
     assert_eq!(h.mode().await, "plan");
@@ -208,10 +232,10 @@ async fn change_request_resumes_in_plan_mode_with_feedback() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn submit_needs_a_plan() {
-    let h = harness("code", "code", None, vec![MockProvider::tool_call("c1", "submit_plan", "{}"), MockProvider::text("OK.")]).await;
+    let h = harness("code", "code", None, vec![MockProvider::tool_call("c1", "plan", SUBMIT), MockProvider::text("OK.")]).await;
     h.send("Submit.").await;
     assert_eq!(h.session.state(), "idle");
-    assert_eq!(h.last_tool_result(1), "Error: There is no plan to submit. Write it with the plan tool first.");
+    assert_eq!(h.last_tool_result(1), "Error: There is no plan to submit. Write it first (action \"write\").");
     assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
 }
 
@@ -227,7 +251,7 @@ async fn a_mode_switch_during_review_applies_to_the_next_message() {
         "plan",
         None,
         vec![
-            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a")), ("c2", "submit_plan", "{}")]),
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a")), ("c2", "plan", SUBMIT)]),
             MockProvider::tool_call("c3", "user_edit", &edit),
             MockProvider::text("Done."),
         ],
@@ -254,7 +278,7 @@ async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
         "code",
         None,
         vec![
-            MockProvider::tool_calls(&[("c1", "plan", &write("# Fix the bug\n1. Patch it")), ("c2", "submit_plan", r#"{"summary": "Ready."}"#)]),
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Fix the bug\n1. Patch it")), ("c2", "plan", r#"{"submit": true, "summary": "Ready."}"#)]),
             MockProvider::text("Implementing step 1."),
         ],
     )
@@ -277,13 +301,90 @@ async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
     assert_eq!(plan::sync(&h.data_dir()).unwrap().approved_revision, Some(1));
 }
 
+/// After an approved plan, different work gets its own plan: a `write` over
+/// the approved one is refused once, and `new` keeps it and starts afresh.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn different_work_after_approval_starts_a_new_plan() {
+    let new_b = json!({"action": "new", "content": "# Feature B\n1. b", "submit": true}).to_string();
+    let h = harness(
+        "new_plan",
+        "plan",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &json!({"action": "write", "content": "# Feature A\n1. a", "submit": true}).to_string()),
+            MockProvider::text("Implemented A."),
+            MockProvider::tool_call("c2", "plan", &write("# Feature B\n1. b")),
+            MockProvider::tool_call("c3", "plan", &new_b),
+        ],
+    )
+    .await;
+    h.send("Plan feature A.").await;
+    h.review(ReviewDecision::Approve, "Approve").await;
+    let a = format!(".agents/plans/feature-a-{}.md", h.id8());
+
+    h.send("Now plan feature B.").await;
+    assert!(h.stored_result("c2").await.contains("For different work, use action \"new\""));
+    assert_eq!(h.session.state(), "waiting_input");
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
+    let doc = plan::sync(&h.data_dir()).unwrap();
+    assert_eq!(doc.workspace_path(), Some(format!(".agents/plans/feature-b-{}.md", h.id8())));
+    assert_eq!((doc.content.as_str(), doc.revision, doc.approved_revision), ("# Feature B\n1. b", 1, None));
+    assert_eq!(std::fs::read_to_string(h.ws.join(&a)).unwrap(), "# Feature A\n1. a\n", "the approved plan is kept");
+}
+
+/// "Keep going until done": the approval starts a goal from the plan's Done
+/// when, the resumed turn is its first, and the next turn is pointed at the
+/// plan and the next unfinished task.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn approving_with_keep_going_runs_the_plan_as_a_goal() {
+    let content = "# Ship it\n\n## Approach\n1. Build\n2. Test\n\n**Done when:** `bun test` passes.";
+    let tasks = json!({"actions": [{"action": "create", "content": "Build", "status": "completed"}, {"action": "create", "content": "Test"}]}).to_string();
+    let h = harness(
+        "keep_going",
+        "plan",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &json!({"action": "write", "content": content, "submit": true}).to_string()),
+            MockProvider::tool_call("t1", "todo", &tasks),
+            MockProvider::text("Built it."),
+            MockProvider::tool_call("t2", "todo", r#"{"actions": [{"action": "read"}]}"#),
+            MockProvider::text("Testing next."),
+        ],
+    )
+    .await;
+    h.send("Plan the release.").await;
+    assert_eq!(h.session.state(), "waiting_input");
+
+    h.approve_and_keep_going(2).await;
+    assert_eq!(h.mode().await, "code");
+    let g = appv3_db::latest_session_goal(&h.pool, &h.sid).await.unwrap().expect("a goal");
+    assert_eq!(g.objective, "`bun test` passes.");
+    assert_eq!((g.max_turns, g.turns_used, g.pause_reason.as_deref()), (2, 2, Some("turn_limit")), "the resumed turn was the goal's first: {g:?}");
+
+    // The approval says the goal runs the plan, after the rules note, and
+    // the plan call keeps its result.
+    let resumed = h.request(1);
+    let rules = resumed.iter().position(|m| m.content().is_some_and(|c| c.contains("<objective>\n`bun test` passes.\n</objective>"))).expect("the rules reach the model");
+    let result = resumed.iter().position(|m| matches!(m, ChatMessage::Tool { tool_call_id, .. } if tool_call_id == "c1")).expect("the plan call keeps its result");
+    assert!(result < rules, "the rules follow the approved call's result");
+    let approval = h.last_tool_result(1);
+    assert!(approval.contains("one `todo` task per milestone") && approval.contains("keep going until done"), "{approval}");
+
+    // The next goal turn names the plan file and the next unfinished task.
+    let rows = appv3_db::llm_window_rows(&h.pool, &h.sid, false).await.unwrap();
+    let reminder = rows.iter().find(|r| r.extra_json().is_some_and(|e| e.get("goal_turn").is_some())).and_then(|r| r.content.clone()).expect("a goal reminder");
+    assert!(reminder.contains(&format!("Follow the plan in `.agents/plans/ship-it-{}.md`.", h.id8())), "{reminder}");
+    assert!(reminder.contains("Next task on the board: Test"), "{reminder}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn change_request_in_code_mode_resumes_in_code_mode_with_feedback() {
     let h = harness(
         "changes_code",
         "code",
         None,
-        vec![MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "submit_plan", "{}")]), MockProvider::text("Revising in code mode.")],
+        vec![MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "plan", SUBMIT)]), MockProvider::text("Revising in code mode.")],
     )
     .await;
     h.send("Plan it.").await;
@@ -304,7 +405,7 @@ async fn ask_user_in_the_same_response_defers_submit() {
         "defer",
         "plan",
         None,
-        vec![MockProvider::tool_call("c1", "plan", &write("# Plan")), MockProvider::tool_calls(&[("c2", "submit_plan", "{}"), ("c3", "ask_user", &ask)])],
+        vec![MockProvider::tool_call("c1", "plan", &write("# Plan")), MockProvider::tool_calls(&[("c2", "plan", SUBMIT), ("c3", "ask_user", &ask)])],
     )
     .await;
     h.send("Plan it.").await;
@@ -312,6 +413,77 @@ async fn ask_user_in_the_same_response_defers_submit() {
     let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
     assert_eq!((row.tool_call_id.as_str(), row.kind()), ("c3", None), "the question is asked first");
     assert_eq!(h.stored_result("c2").await, SUBMIT_DEFERRED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn one_call_writes_and_submits() {
+    let call = json!({"action": "write", "content": "# Ship it\n1. a", "submit": true, "summary": "First draft."}).to_string();
+    let h = harness("write_and_submit", "plan", None, vec![MockProvider::tool_call("c1", "plan", &call), MockProvider::text("Implementing.")]).await;
+    h.send("Plan it.").await;
+
+    assert_eq!(h.session.state(), "waiting_input");
+    let rel = format!(".agents/plans/ship-it-{}.md", h.id8());
+    assert_eq!(std::fs::read_to_string(h.ws.join(&rel)).unwrap(), "# Ship it\n1. a\n");
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.tool_call_id.as_str(), row.plan_revision()), ("c1", Some(1)));
+    assert_eq!(row.questions()[0]["question"], "Review plan revision 1. First draft.");
+
+    h.review(ReviewDecision::Approve, "Approve").await;
+    assert_eq!(h.mode().await, "code");
+    assert!(h.last_tool_result(1).starts_with("The user approved plan revision 1."));
+}
+
+/// Before the merge, a refused `plan` write and a `submit_plan` in the same
+/// response still put the stale revision up for review.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_write_opens_no_review() {
+    let call = json!({"action": "write", "content": "# P\n1. mine", "submit": true}).to_string();
+    let h = harness(
+        "refused_submit",
+        // Code mode, so the stand-in for the user's editor may run.
+        "code",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &write("# P\n1. a")),
+            MockProvider::tool_call("c2", "user_edit", &json!({"content": "# P\n1. a (user)"}).to_string()),
+            MockProvider::tool_call("c3", "plan", &call),
+            MockProvider::text("I'll merge their edit."),
+        ],
+    )
+    .await;
+    h.send("Plan.").await;
+
+    assert!(h.last_tool_result(3).starts_with("Error: The user edited the plan since you last saw it"), "{}", h.last_tool_result(3));
+    assert_eq!(h.session.state(), "idle");
+    assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_deferred_submission_still_saves() {
+    let ask = json!({"questions": [{"question": "Which database?", "header": "DB"}]}).to_string();
+    let call = json!({"action": "write", "content": "# Plan\n1. a", "submit": true}).to_string();
+    let h = harness("defer_saves", "plan", None, vec![MockProvider::tool_calls(&[("c1", "plan", &call), ("c2", "ask_user", &ask)])]).await;
+    h.send("Plan it.").await;
+
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.tool_call_id.as_str(), row.kind()), ("c2", None));
+    assert_eq!(plan::sync(&h.data_dir()).unwrap().content, "# Plan\n1. a");
+    let result = h.stored_result("c1").await;
+    assert!(result.starts_with(&format!("{SUBMIT_DEFERRED}\nPlan saved as revision 1 ")), "{result}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn merged_submissions_save_in_order_and_the_last_opens_the_review() {
+    let first = json!({"action": "write", "content": "# Plan\n1. a", "submit": true}).to_string();
+    let second = json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. b"}], "submit": true}).to_string();
+    let h = harness("merge_saves", "plan", None, vec![MockProvider::tool_calls(&[("c1", "plan", &first), ("c2", "plan", &second)])]).await;
+    h.send("Plan it.").await;
+
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.tool_call_id.as_str(), row.plan_revision()), ("c2", Some(2)));
+    assert_eq!(plan::sync(&h.data_dir()).unwrap().content, "# Plan\n1. b");
+    let result = h.stored_result("c1").await;
+    assert!(result.starts_with(&format!("{SUBMIT_MERGED}\nPlan saved as revision 1 ")), "{result}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

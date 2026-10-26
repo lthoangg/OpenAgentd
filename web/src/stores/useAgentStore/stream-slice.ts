@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { postAgentChat, postAgentCommand, agentStream } from '@/api/client'
+import { restoredPromptText } from '@/lib/goal'
 import { applyQuestionResolution, applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
 import {
   applySSEDeltaBatch,
@@ -219,11 +220,11 @@ export const createStreamSlice: StateCreator<
             boundaryContent: response.message?.content ?? null,
           })
         })
-        if (restoreDraft && response.message?.role === 'user' && !response.message.is_summary) {
-          draft.pendingDraft = {
-            content: response.message.content ?? '',
-            attachments: response.message.attachments ?? [],
-          }
+        const restored = restoreDraft && response.message?.role === 'user' && !response.message.is_summary
+          ? restoredPromptText(response.message.content ?? '', response.message.extra)
+          : null
+        if (restored !== null) {
+          draft.pendingDraft = { content: restored, attachments: response.message?.attachments ?? [] }
         }
       })
       return response
@@ -259,12 +260,13 @@ export const createStreamSlice: StateCreator<
       if (!leadBlocks().some((block) => block.id === blockId)) break
     }
     if (leadBlocks().some((block) => block.id === blockId)) return null
-    if (restoreDraft) {
+    const restored = restoreDraft ? restoredPromptText(target.content, target.extra) : null
+    if (restored !== null) {
       set((draft) => {
         // ``@path`` mentions come back from the restored text; restoring their
         // attachments too would send each file twice.
         const attachments = (target.attachments ?? []).filter((att) => att.source !== 'mention')
-        draft.pendingDraft = { content: target.content, attachments }
+        draft.pendingDraft = { content: restored, attachments }
       })
     }
     return target

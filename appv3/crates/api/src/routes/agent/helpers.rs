@@ -25,6 +25,13 @@ pub fn manager_err(e: manager::ManagerError) -> ApiError {
     }
 }
 
+pub fn goal_err(e: appv3_agent::goal::GoalError) -> ApiError {
+    match e {
+        appv3_agent::goal::GoalError::Invalid(m) => ApiError::unprocessable(m),
+        appv3_agent::goal::GoalError::Db(e) => ApiError::internal(e),
+    }
+}
+
 pub async fn get_or_start(ws: &str, sid: Option<&str>) -> ApiResult<Option<Arc<AgentSession>>> {
     manager::get_or_start_agent_session(ws, sid).await.map_err(manager_err)
 }

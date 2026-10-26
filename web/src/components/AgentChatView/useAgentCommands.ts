@@ -15,6 +15,8 @@
  */
 import { useMemo } from 'react'
 import type { Command } from '../CommandPalette'
+import type { SessionGoalStatus } from '@/api/types'
+import type { GoalAction } from '@/lib/goal'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -23,6 +25,15 @@ import { useThemePreference } from '@/hooks/useThemePreference'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
+
+/** The session's goal as the palette needs it. */
+export interface UseAgentCommandsGoal {
+  /** ``null`` without a goal: the tab then explains how to set one. */
+  status: SessionGoalStatus | null
+  /** Opens the dock's Goal tab. */
+  onShow: () => void
+  onAction: (action: GoalAction) => void
+}
 
 interface UseAgentCommandsArgs {
   toggleAgentCapabilities: () => void
@@ -50,6 +61,36 @@ interface UseAgentCommandsArgs {
   handleOpenPreview?: () => void
   /** Once the session exists: reopens its ``/btw`` side questions. */
   handleOpenSideQuestions?: () => void
+  /** The session's goal, with a workspace to show its tab in. */
+  goal?: UseAgentCommandsGoal
+}
+
+/** Palette entries for the session goal: its tab always, actions while it is live. */
+function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
+  if (!goal) return []
+  const keywords = 'goal objective loop continue autonomous'
+  const out: Command[] = [
+    {
+      id: 'goal-open',
+      group: 'View',
+      label: 'Goal',
+      description: goal.status === null || goal.status === 'cleared'
+        ? 'How to set a goal the agent works toward across turns'
+        : 'Progress, limits, and the last completion check',
+      keywords,
+      action: goal.onShow,
+    },
+  ]
+  if (goal.status === 'active') {
+    out.push({ id: 'goal-pause', group: 'Session', label: 'Pause Goal', description: 'Let the current turn finish, then stop continuing', keywords, action: () => goal.onAction('pause') })
+  }
+  if (goal.status === 'paused') {
+    out.push({ id: 'goal-resume', group: 'Session', label: 'Resume Goal', description: 'Keep working toward the goal', keywords, action: () => goal.onAction('resume') })
+  }
+  if (goal.status === 'active' || goal.status === 'paused') {
+    out.push({ id: 'goal-clear', group: 'Session', label: 'Clear Goal', description: 'Remove the goal; the current turn finishes first', keywords, action: () => goal.onAction('clear') })
+  }
+  return out
 }
 
 export function useAgentCommands({
@@ -66,6 +107,7 @@ export function useAgentCommands({
   planAwaitingReview = false,
   handleOpenPreview,
   handleOpenSideQuestions,
+  goal,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { preference: theme, setPreference: setTheme } = useThemePreference()
@@ -74,6 +116,7 @@ export function useAgentCommands({
   const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
+    ...goalCommands(goal),
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     ...(handleOpenPlan
@@ -151,5 +194,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
 }

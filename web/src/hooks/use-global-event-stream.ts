@@ -7,7 +7,9 @@ import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { haptic } from '@/lib/haptics'
 import { queryKeys } from '@/queries'
-import { appendSubagent, bumpSessionActivity, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, bumpSessionActivity, patchSessionGoalStatus, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import type { SessionGoalResponse } from '@/api/types'
+import { isSessionGoal } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -44,6 +46,8 @@ export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
   // MCP status is pushed instead of polled on v3; resync what a gap missed.
   queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+  // Goal progress arrives as ``session_goal`` events only.
+  queryClient.invalidateQueries({ queryKey: queryKeys.goals() })
 }
 
 /**
@@ -235,6 +239,7 @@ export async function handleGlobalEvent(
     const workspaces = new Set(names.filter((w): w is string => typeof w === 'string' && w.length > 0))
     for (const workspace of workspaces) {
       queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(workspace) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.changes(workspace) })
       queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
       queryClient.invalidateQueries({ queryKey: queryKeys.coding.status(workspace) })
       if (event.git === true) {
@@ -265,6 +270,17 @@ export async function handleGlobalEvent(
     // A server settled (ready / error / stopped); replaces polling while it starts.
     if (typeof event.name !== 'string') return false
     queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+    return true
+  }
+
+  if (type === 'session_goal') {
+    // A goal was set, counted a turn, paused, resumed, achieved, or cleared.
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    if (!sessionId) return false
+    const goal = isSessionGoal(event.goal) ? event.goal : null
+    queryClient.setQueryData<SessionGoalResponse>(queryKeys.goal(sessionId), { goal })
+    const live = goal && (goal.status === 'active' || goal.status === 'paused') ? goal.status : null
+    patchSessionGoalStatus(queryClient, sessionId, live)
     return true
   }
 

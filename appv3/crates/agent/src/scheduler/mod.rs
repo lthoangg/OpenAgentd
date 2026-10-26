@@ -808,6 +808,99 @@ fn py_fromisoformat(s: &str) -> Result<(chrono::NaiveDateTime, Option<i32>), Str
 
 pub struct ScheduleTaskTool;
 
+/// `session_id='current'` → the calling chat session.
+fn resolve_current_session(ctx: &ToolContext, session_id: Option<String>) -> Result<Option<String>, String> {
+    if session_id.as_deref() != Some("current") {
+        return Ok(session_id);
+    }
+    let cur = ctx.metadata.lock().unwrap().get("session_id").and_then(|v| v.as_str()).map(String::from).filter(|s| !s.is_empty());
+    cur.map(Some).ok_or_else(|| "Error: session_id='current' is unavailable outside an active chat session.".to_string())
+}
+
+/// Parse an ISO-8601 `at_datetime`; naive values are read in `timezone`.
+fn parse_at_datetime(at: Option<&str>, timezone: &str) -> Result<Option<DateTime<Utc>>, String> {
+    let Some(a) = at.filter(|a| !a.is_empty()) else {
+        return Ok(None);
+    };
+    let (naive, off) = py_fromisoformat(a).map_err(|e| format!("Error: invalid at_datetime '{a}': {e}"))?;
+    Ok(Some(match off {
+        Some(o) => chrono::FixedOffset::east_opt(o).and_then(|fo| naive.and_local_timezone(fo).single()).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| naive.and_utc()),
+        None => {
+            let Some(tz) = cron::parse_tz(timezone) else {
+                return Err(format!("Error: unknown timezone '{timezone}'."));
+            };
+            naive.and_local_timezone(tz).earliest().map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| naive.and_utc())
+        }
+    }))
+}
+
+/// The `update` fields as the model sent them; `None` means "leave as is".
+struct UpdateArgs {
+    schedule_type: Option<String>,
+    at_datetime: Option<String>,
+    every_seconds: Option<i64>,
+    cron_expression: Option<String>,
+    timezone: Option<String>,
+    prompt: Option<String>,
+    session_id: Option<String>,
+    max_runs: Option<i64>,
+    enabled: Option<bool>,
+}
+
+/// `action='update'`: change only the given fields of an existing task.
+async fn update_task(s: &Arc<TaskScheduler>, ctx: &ToolContext, existing: &ScheduledTask, a: UpdateArgs) -> ToolResult {
+    let fail = |m: String| Ok(ToolOutput::text(m));
+    if let Some(tz) = a.timezone.as_deref().filter(|tz| cron::parse_tz(tz).is_none()) {
+        return fail(format!("Error: unknown timezone '{tz}'."));
+    }
+    let session_id = match resolve_current_session(ctx, a.session_id) {
+        Ok(sid) => sid,
+        Err(msg) => return fail(msg),
+    };
+    // Naive `at_datetime` values are read in the new timezone, else the task's own.
+    let tz_for_at = a.timezone.clone().unwrap_or_else(|| existing.timezone.clone());
+    let at_dt = match parse_at_datetime(a.at_datetime.as_deref(), &tz_for_at) {
+        Ok(d) => d,
+        Err(msg) => return fail(msg),
+    };
+    // Restating the current type is not a switch: keep the other schedule fields.
+    let schedule_type = a.schedule_type.filter(|t| *t != existing.schedule_type);
+    if schedule_type.is_none() {
+        let ty = existing.schedule_type.as_str();
+        let stray = [("at_datetime", "at", at_dt.is_some()), ("every_seconds", "every", a.every_seconds.is_some()), ("cron_expression", "cron", a.cron_expression.is_some())]
+            .into_iter()
+            .find(|(_, t, given)| *given && *t != ty);
+        if let Some((field, _, _)) = stray {
+            return fail(format!("Error: {field} does not apply to this task's schedule_type='{ty}'. To switch types, also set schedule_type and its field."));
+        }
+        if let Some(c) = a.cron_expression.as_deref().filter(|c| !validate_cron(c)) {
+            return fail(format!("Error: invalid task configuration — Invalid cron expression: '{c}'"));
+        }
+    }
+    let mut body = TaskUpdate {
+        schedule_type,
+        at_datetime: at_dt,
+        every_seconds: a.every_seconds,
+        cron_expression: a.cron_expression,
+        timezone: a.timezone,
+        prompt: a.prompt,
+        session_id,
+        max_runs: a.max_runs,
+        max_runs_set: a.max_runs.is_some(),
+        enabled: a.enabled,
+        ..Default::default()
+    };
+    if let Err(e) = body.validate() {
+        return fail(format!("Error: invalid task configuration — {}", pydantic_error_text("ScheduledTaskUpdate", &e)));
+    }
+    let updated = match s.apply_update(&existing.slug, body).await {
+        Ok(t) => t,
+        Err(e) => return fail(format!("Error: failed to update task — {e}")),
+    };
+    tracing::info!("schedule_tool_update slug={} schedule_type={} next_fire={:?}", updated.slug, updated.schedule_type, updated.next_fire_at);
+    Ok(ToolOutput::text(format!("Task '{}' updated.\n{}", updated.name, fmt_task(&updated))))
+}
+
 #[async_trait]
 impl Tool for ScheduleTaskTool {
     fn name(&self) -> &str {
@@ -821,9 +914,9 @@ impl Tool for ScheduleTaskTool {
                 errs.push("action: Field required".into());
                 String::new()
             }
-            Some(Value::String(s)) if ["create", "list", "pause", "resume", "delete", "trigger"].contains(&s.as_str()) => s.clone(),
+            Some(Value::String(s)) if ["create", "list", "pause", "resume", "delete", "update", "trigger"].contains(&s.as_str()) => s.clone(),
             Some(_) => {
-                errs.push("action: Input should be 'create', 'list', 'pause', 'resume', 'delete' or 'trigger'".into());
+                errs.push("action: Input should be 'create', 'list', 'pause', 'resume', 'delete', 'update' or 'trigger'".into());
                 String::new()
             }
         };
@@ -843,6 +936,7 @@ impl Tool for ScheduleTaskTool {
         let name = opt_s(&mut errs, "name", o.get("name"));
         let schedule_type = match o.get("schedule_type") {
             None | Some(Value::Null) => None,
+            Some(Value::String(s)) if s.trim().is_empty() => None,
             Some(Value::String(s)) if ["at", "every", "cron"].contains(&s.as_str()) => Some(s.clone()),
             Some(_) => {
                 errs.push("schedule_type: Input should be 'at', 'every' or 'cron'".into());
@@ -869,33 +963,48 @@ impl Tool for ScheduleTaskTool {
         let every_seconds = int_field("every_seconds");
         let max_runs = int_field("max_runs");
         let cron_expression = opt_s(&mut errs, "cron_expression", o.get("cron_expression"));
-        let timezone = match o.get("timezone") {
-            None | Some(Value::Null) => "UTC".to_string(),
-            Some(Value::String(s)) if s.trim().is_empty() => "UTC".to_string(),
-            Some(Value::String(s)) => s.clone(),
+        let timezone_arg = match o.get("timezone") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) if s.trim().is_empty() => None,
+            Some(Value::String(s)) => Some(s.clone()),
             Some(_) => {
                 errs.push("timezone: Input should be a valid string".into());
-                "UTC".into()
+                None
             }
         };
         let prompt = opt_s(&mut errs, "prompt", o.get("prompt"));
         let session_id = opt_s(&mut errs, "session_id", o.get("session_id"));
         let enabled = match o.get("enabled") {
-            None => true,
+            None | Some(Value::Null) => None,
             Some(v) => match appv3_tools::args::coerce_bool(v) {
-                Some(b) => b,
+                Some(b) => Some(b),
                 None => {
                     errs.push("enabled: Input should be a valid boolean".into());
-                    true
+                    None
                 }
             },
         };
         let slug = opt_s(&mut errs, "slug", o.get("slug").or_else(|| o.get("task_slug")));
         if errs.is_empty() {
             let ve = |m: String| format!("Value error, {m}");
-            if ["pause", "resume", "delete", "trigger"].contains(&action.as_str()) {
+            if ["pause", "resume", "delete", "update", "trigger"].contains(&action.as_str()) {
                 if slug.as_deref().unwrap_or("").is_empty() {
                     errs.push(ve(format!("slug is required for action='{action}'")));
+                } else if action == "update" {
+                    let changes = schedule_type.is_some()
+                        || at_datetime.is_some()
+                        || every_seconds.is_some()
+                        || cron_expression.is_some()
+                        || timezone_arg.is_some()
+                        || prompt.is_some()
+                        || session_id.is_some()
+                        || max_runs.is_some()
+                        || enabled.is_some();
+                    if name.is_some() {
+                        errs.push(ve("name cannot be changed; delete the task and create a new one to rename it".into()));
+                    } else if !changes {
+                        errs.push(ve("at least one field to change is required for action='update'".into()));
+                    }
                 }
             } else if action == "create" {
                 if name.as_deref().unwrap_or("").is_empty() {
@@ -943,6 +1052,15 @@ impl Tool for ScheduleTaskTool {
             let Some(existing) = existing.filter(|t| in_scope(t)) else {
                 return Ok(ToolOutput::text(format!("Error: no task with slug '{slug}'.")));
             };
+            if action == "update" {
+                return update_task(
+                    &s,
+                    ctx,
+                    &existing,
+                    UpdateArgs { schedule_type, at_datetime, every_seconds, cron_expression, timezone: timezone_arg, prompt, session_id, max_runs, enabled },
+                )
+                .await;
+            }
             let text = match action.as_str() {
                 "pause" => {
                     let t = s.pause(&slug).await.map_err(exec)?;
@@ -964,30 +1082,15 @@ impl Tool for ScheduleTaskTool {
             return Ok(ToolOutput::text(text));
         }
         // ── create ──
-        let mut session_id = session_id;
-        if session_id.as_deref() == Some("current") {
-            let cur = ctx.metadata.lock().unwrap().get("session_id").and_then(|v| v.as_str()).map(String::from).filter(|s| !s.is_empty());
-            match cur {
-                Some(c) => session_id = Some(c),
-                None => return Ok(ToolOutput::text("Error: session_id='current' is unavailable outside an active chat session.")),
-            }
-        }
-        let mut at_dt: Option<DateTime<Utc>> = None;
-        if let Some(a) = at_datetime.as_deref().filter(|a| !a.is_empty()) {
-            let (naive, off) = match py_fromisoformat(a) {
-                Ok(x) => x,
-                Err(e) => return Ok(ToolOutput::text(format!("Error: invalid at_datetime '{a}': {e}"))),
-            };
-            at_dt = Some(match off {
-                Some(o) => chrono::FixedOffset::east_opt(o).and_then(|fo| naive.and_local_timezone(fo).single()).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| naive.and_utc()),
-                None => {
-                    let Some(tz) = cron::parse_tz(&timezone) else {
-                        return Ok(ToolOutput::text(format!("Error: unknown timezone '{timezone}'.")));
-                    };
-                    naive.and_local_timezone(tz).earliest().map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| naive.and_utc())
-                }
-            });
-        }
+        let timezone = timezone_arg.unwrap_or_else(|| "UTC".to_string());
+        let session_id = match resolve_current_session(ctx, session_id) {
+            Ok(s) => s,
+            Err(msg) => return Ok(ToolOutput::text(msg)),
+        };
+        let at_dt = match parse_at_datetime(at_datetime.as_deref(), &timezone) {
+            Ok(d) => d,
+            Err(msg) => return Ok(ToolOutput::text(msg)),
+        };
         let mut body = TaskCreate {
             name: name.unwrap_or_default(),
             slug,
@@ -1000,7 +1103,7 @@ impl Tool for ScheduleTaskTool {
             prompt: prompt.unwrap_or_default(),
             session_id,
             max_runs,
-            enabled,
+            enabled: enabled.unwrap_or(true),
         };
         if let Err(e) = body.validate() {
             return Ok(ToolOutput::text(format!("Error: invalid task configuration — {}", pydantic_error_text("ScheduledTaskCreate", &e))));
@@ -1045,7 +1148,7 @@ mod tests {
     /// Strict-schema models fill every field, sending `""` for the unused
     /// ones; those count as unset, not as a conflicting schedule.
     #[tokio::test]
-    async fn create_treats_blank_unused_fields_as_unset() {
+    async fn schedule_tool_create_and_update() {
         let dir = tempfile::tempdir().unwrap().keep();
         init(appv3_db::create_pool(dir.join("t.db")).await.unwrap());
         let ctx = ToolContext {
@@ -1069,5 +1172,86 @@ mod tests {
         };
         assert!(out.starts_with("Scheduled task created."), "{out}");
         assert!(out.contains("schedule    : every"), "{out}");
+
+        // ── update ── (same test: the scheduler is a process-wide singleton)
+        async fn run(ctx: &ToolContext, args: serde_json::Value) -> String {
+            match ScheduleTaskTool.run(ctx, args).await {
+                Ok(ToolOutput::Text(t)) => t,
+                Err(e) => format!("ERR {e:?}"),
+                other => panic!("unexpected: {other:?}"),
+            }
+        }
+        // Blank fields from strict-schema models are "unchanged"; `enabled` stays false.
+        let out = run(
+            &ctx,
+            serde_json::json!({
+                "action": "update", "slug": "check-deploy", "name": "", "schedule_type": "", "at_datetime": "",
+                "every_seconds": 120, "cron_expression": "", "timezone": "", "prompt": "", "session_id": "", "max_runs": null
+            }),
+        )
+        .await;
+        assert!(out.starts_with("Task 'check-deploy' updated."), "{out}");
+        assert!(out.contains("slug=check-deploy") && out.contains("schedule=every 120s"), "{out}");
+        assert!(out.contains("status=paused") && out.contains("runs=0/2"), "{out}");
+
+        // The run count survives later updates.
+        let s = scheduler();
+        let mut t = s.get_task("check-deploy").await.unwrap().unwrap();
+        t.run_count = 1;
+        s.update(t).await.unwrap();
+
+        // Resume and pause through `enabled`.
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "enabled": true})).await;
+        assert!(out.contains("status=enabled/pending") && out.contains("runs=1/2") && out.contains("next="), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "enabled": false})).await;
+        assert!(out.contains("status=paused"), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "enabled": true, "prompt": "y", "max_runs": 5})).await;
+        assert!(out.contains("status=enabled") && out.contains("runs=1/5") && out.contains("schedule=every 120s"), "{out}");
+        assert_eq!(s.get_task("check-deploy").await.unwrap().unwrap().prompt, "y");
+
+        // A field that does not fit the task's schedule type is refused, nothing changes.
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "cron_expression": "0 9 * * *"})).await;
+        assert!(out.starts_with("Error: cron_expression does not apply"), "{out}");
+        assert_eq!(s.get_task("check-deploy").await.unwrap().unwrap().every_seconds, Some(120));
+
+        // Switching to cron needs its field and keeps slug and run count.
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "schedule_type": "cron"})).await;
+        assert!(out.contains("cron_expression is required"), "{out}");
+        let out = run(
+            &ctx,
+            serde_json::json!({
+                "action": "update", "slug": "check-deploy", "schedule_type": "cron",
+                "cron_expression": "0 9 * * 1-5", "timezone": "Europe/Paris"
+            }),
+        )
+        .await;
+        assert!(out.contains("schedule=cron '0 9 * * 1-5' (Europe/Paris)") && out.contains("runs=1/5"), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "cron_expression": "not cron"})).await;
+        assert!(out.starts_with("Error: invalid task configuration"), "{out}");
+
+        // Unknown slug, empty update, rename, unknown timezone.
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "nope", "prompt": "z"})).await;
+        assert_eq!(out, "Error: no task with slug 'nope'.");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "prompt": "", "timezone": ""})).await;
+        assert!(out.starts_with("ERR") && out.contains("at least one field to change"), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "name": "other"})).await;
+        assert!(out.starts_with("ERR") && out.contains("name cannot be changed"), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "check-deploy", "timezone": "Mars/Base"})).await;
+        assert_eq!(out, "Error: unknown timezone 'Mars/Base'.");
+
+        // A naive `at_datetime` is read in the task's own timezone unless one is given.
+        let out = run(
+            &ctx,
+            serde_json::json!({
+                "action": "create", "name": "once", "schedule_type": "at",
+                "at_datetime": "2099-01-01T09:00:00", "timezone": "Europe/Paris", "prompt": "x"
+            }),
+        )
+        .await;
+        assert!(out.contains("2099-01-01 08:00:00"), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "once", "at_datetime": "2099-06-01T09:00:00"})).await;
+        assert!(out.contains("next=2099-06-01 07:00:00"), "{out}");
+        let out = run(&ctx, serde_json::json!({"action": "update", "slug": "once", "at_datetime": "2099-06-01T09:00:00", "timezone": "UTC"})).await;
+        assert!(out.contains("next=2099-06-01 09:00:00"), "{out}");
     }
 }

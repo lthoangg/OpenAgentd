@@ -2132,7 +2132,7 @@ MCP.
 | Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`; read-only in Plan mode `[v2.17.0]`) |
 | Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
-| Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]` |
+| Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]`; `update` changes a task's schedule, prompt, run limit or paused state in place, keeping its slug and run count `[v3.33.0]` |
 | Tasks | `todo` (`todo_manage` before v3.30.0) |
 | Team orchestration | `team` (lead agent; `delegate` before v3.30.0) `[v2.16.0]` |
 | Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |

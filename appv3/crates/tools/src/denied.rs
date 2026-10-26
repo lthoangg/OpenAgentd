@@ -26,11 +26,16 @@ pub fn builtin_skills_root() -> PathBuf {
 }
 
 /// Files in the config dir that hold secrets: the credential store, its
-/// lock, and the dotenv backup the migration keeps. Agent tools never
+/// lock, and the dotenv backups the migrations keep. Agent tools never
 /// touch them.
 pub fn secret_config_files() -> Vec<PathBuf> {
     let cfg = &appv3_core::settings().config_dir;
-    vec![cfg.join(appv3_core::credentials::FILE_NAME), cfg.join(format!(".{}.lock", appv3_core::credentials::FILE_NAME)), cfg.join(".env.migrated")]
+    vec![
+        cfg.join(appv3_core::credentials::FILE_NAME),
+        cfg.join(format!(".{}.lock", appv3_core::credentials::FILE_NAME)),
+        cfg.join(".env.migrated"),
+        cfg.join(appv3_core::runtime_settings::DOTENV_BACKUP),
+    ]
 }
 
 /// Python `fnmatch.translate` → anchored regex.
@@ -424,7 +429,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let d = DeniedPaths::new(&tmp.path().join("ws"), None);
         let cfg = &appv3_core::settings().config_dir;
-        for f in [appv3_core::credentials::FILE_NAME, ".env.migrated"] {
+        for f in [appv3_core::credentials::FILE_NAME, ".env.migrated", appv3_core::runtime_settings::DOTENV_BACKUP] {
             let p = cfg.join(f);
             assert!(d.validate_path(p.to_str().unwrap()).is_err(), "{f} writable");
             assert!(d.validate_read_path(p.to_str().unwrap()).is_err(), "{f} readable");

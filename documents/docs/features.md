@@ -2510,6 +2510,14 @@ Single-user trust model. The host is trusted. The operator is the user.
   is never read as the app's. The old names still work for this release, and
   the log and `agentd doctor` name the new one. Standard names of other tools
   keep theirs (`OTEL_EXPORTER_OTLP_ENDPOINT`, `RUST_LOG`, provider keys).
+- **`.env` replaced by `server.yaml`** `[v3.32.0]` — the CORS origins, the LAN
+  opt-out and both log levels live in the config dir's `server.yaml`
+  (`cors_origins`, `allow_insecure_lan`, `log_level`, `file_log_level`) beside
+  the host, port and access key; the environment still overrides them. On
+  first start they move there from the config dir's `.env`, which is kept as
+  `.env.v3.32.bak` (denied to agent tools like `.env.migrated`). The `.env` is
+  *(deprecated)*: what is left in it still loads in this release, and the log
+  and `agentd doctor` name those keys so they can move to the environment.
 
 ---
 

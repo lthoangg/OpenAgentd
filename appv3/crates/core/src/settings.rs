@@ -28,6 +28,8 @@ pub struct Settings {
     pub web_fetch_allow_private_network: bool,
     pub model_registry_refresh: bool,
     pub log_level: String,
+    /// `app.log` threshold (the console uses `log_level`).
+    pub file_log_level: String,
     pub database_path: PathBuf,
 }
 
@@ -182,10 +184,9 @@ impl Settings {
             }
             None => data_dir.join("openagentd.db"),
         };
-        let cors_origins = env_var("OPENAGENTD_CORS_ORIGINS").map(|raw| {
-            // pydantic-settings parses list env vars as JSON.
-            serde_json::from_str::<Vec<String>>(&raw).unwrap_or_else(|_| raw.split(',').map(|s| s.trim().to_string()).collect())
-        });
+        // Server settings: the environment wins over `server.yaml`.
+        let server_yaml = crate::runtime_settings::read_server_yaml_at(&config_dir.join("server.yaml")).unwrap_or_default();
+        let cors_origins = env_var("OPENAGENTD_CORS_ORIGINS").map(|raw| crate::runtime_settings::parse_origins(&raw)).or(server_yaml.cors_origins);
         let sep = if cfg!(windows) { ';' } else { ':' };
         let plugins_dirs = env_str("OPENAGENTD_PLUGINS_DIRS")
             .map(|raw| raw.split(sep).filter(|s| !s.trim().is_empty()).map(PathBuf::from).collect())
@@ -193,7 +194,10 @@ impl Settings {
         Self {
             api_host: env_var("OPENAGENTD_HOST").unwrap_or_else(|| "127.0.0.1".into()),
             api_port: env_var("OPENAGENTD_PORT").and_then(|p| p.parse().ok()).unwrap_or(4082),
-            api_allow_insecure_lan: env_bool("OPENAGENTD_ALLOW_INSECURE_LAN", false),
+            api_allow_insecure_lan: env_var("OPENAGENTD_ALLOW_INSECURE_LAN")
+                .map(|v| crate::runtime_settings::parse_env_bool(&v))
+                .or(server_yaml.allow_insecure_lan)
+                .unwrap_or(false),
             cors_origins,
             agents_dir: env_var("OPENAGENTD_AGENTS_DIR").map(|p| abs(&p)).unwrap_or_else(|| config_dir.join("agents")),
             skills_dir: env_var("OPENAGENTD_SKILLS_DIR").map(|p| abs(&p)).unwrap_or_else(|| config_dir.join("skills")),
@@ -201,7 +205,8 @@ impl Settings {
             chat_workspace_dir: env_var("OPENAGENTD_CHAT_WORKSPACE_DIR").map(|p| abs(&p)),
             web_fetch_allow_private_network: env_bool("OPENAGENTD_WEB_FETCH_ALLOW_PRIVATE_NETWORK", false),
             model_registry_refresh: env_bool("OPENAGENTD_MODEL_REGISTRY_REFRESH", true),
-            log_level: env_var("OPENAGENTD_LOG_LEVEL").unwrap_or_else(|| "INFO".into()),
+            log_level: env_var("OPENAGENTD_LOG_LEVEL").or(server_yaml.log_level).unwrap_or_else(|| "INFO".into()),
+            file_log_level: env_var("OPENAGENTD_FILE_LOG_LEVEL").or(server_yaml.file_log_level).unwrap_or_else(|| "DEBUG".into()),
             app_env,
             data_dir,
             config_dir,

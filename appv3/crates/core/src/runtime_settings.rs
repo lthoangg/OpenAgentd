@@ -335,10 +335,24 @@ pub struct ServerYaml {
     pub port: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_key: Option<String>,
+    /// Browser origins allowed besides the first-party ones
+    /// (`OPENAGENTD_CORS_ORIGINS` overrides). The four fields below moved
+    /// here from `.env` in v3.32.0; unset ones are not written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cors_origins: Option<Vec<String>>,
+    /// Allow LAN origins without an access key (`OPENAGENTD_ALLOW_INSECURE_LAN`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_insecure_lan: Option<bool>,
+    /// Console log level (`OPENAGENTD_LOG_LEVEL`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_level: Option<String>,
+    /// `app.log` level (`OPENAGENTD_FILE_LOG_LEVEL`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_log_level: Option<String>,
 }
 impl Default for ServerYaml {
     fn default() -> Self {
-        Self { host: "127.0.0.1".into(), port: 4082, access_key: None }
+        Self { host: "127.0.0.1".into(), port: 4082, access_key: None, cors_origins: None, allow_insecure_lan: None, log_level: None, file_log_level: None }
     }
 }
 
@@ -388,7 +402,8 @@ pub fn load_server_settings() -> Result<ServerYaml> {
         return Ok(current);
     }
     if let Some(legacy) = pop_legacy_server(&legacy_path)? {
-        let migrated = ServerYaml { host: legacy.host.unwrap_or_else(|| "127.0.0.1".into()), port: legacy.port.unwrap_or(4082), access_key: legacy.access_key };
+        let migrated =
+            ServerYaml { host: legacy.host.unwrap_or_else(|| "127.0.0.1".into()), port: legacy.port.unwrap_or(4082), access_key: legacy.access_key, ..Default::default() };
         save_server_settings(&migrated)?;
         return Ok(migrated);
     }
@@ -427,13 +442,159 @@ pub fn to_pyyaml<T: Serialize>(v: &T) -> Result<String> {
 }
 
 pub fn save_server_settings(cfg: &ServerYaml) -> Result<()> {
-    write_secret_file(&settings().server_settings_path(), &to_pyyaml(cfg)?)?;
+    save_server_yaml_at(&settings().server_settings_path(), cfg)
+}
+
+fn save_server_yaml_at(path: &Path, cfg: &ServerYaml) -> Result<()> {
+    write_secret_file(path, &to_pyyaml(cfg)?)?;
     Ok(())
+}
+
+/// `server.yaml` at `path`, without the legacy migration and without
+/// touching the process settings (which are built from it). `None` when it
+/// is missing; `Err` when it cannot be read or parsed.
+fn try_read_server_yaml_at(path: &Path) -> Result<Option<ServerYaml>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = load_yaml_or_empty(&std::fs::read_to_string(path)?, "server.yaml")?;
+    match raw {
+        serde_json::Value::Object(_) => Ok(Some(serde_json::from_value(raw)?)),
+        _ => bail!("server.yaml must contain a YAML mapping."),
+    }
+}
+
+/// [`try_read_server_yaml_at`] for building settings: a missing or broken
+/// file gives `None` (the server then uses its defaults; `agentd doctor`
+/// reports the broken file).
+pub fn read_server_yaml_at(path: &Path) -> Option<ServerYaml> {
+    try_read_server_yaml_at(path).ok().flatten()
+}
+
+/// Kept next to `.env` when [`migrate_dotenv_server_keys`] rewrites it.
+pub const DOTENV_BACKUP: &str = ".env.v3.32.bak";
+
+/// `.env` variables `server.yaml` holds since v3.32.0: (field, new name, old name).
+const SERVER_YAML_ENV: [(&str, &str, &str); 4] = [
+    ("cors_origins", "OPENAGENTD_CORS_ORIGINS", "CORS_ORIGINS"),
+    ("allow_insecure_lan", "OPENAGENTD_ALLOW_INSECURE_LAN", "API_ALLOW_INSECURE_LAN"),
+    ("log_level", "OPENAGENTD_LOG_LEVEL", "LOG_LEVEL"),
+    ("file_log_level", "OPENAGENTD_FILE_LOG_LEVEL", "FILE_LOG_LEVEL"),
+];
+
+/// `CORS_ORIGINS` text: a JSON list (pydantic-settings) or comma-separated.
+pub fn parse_origins(raw: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(raw).unwrap_or_else(|_| raw.split(',').map(|s| s.trim().to_string()).collect())
+}
+
+/// Boolean variable text, as the server reads it.
+pub fn parse_env_bool(raw: &str) -> bool {
+    matches!(raw.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on" | "t" | "y")
+}
+
+/// Move the server settings in `config_dir/.env` (old or new names) into
+/// `server.yaml`, once. A value `server.yaml` already has stays; the `.env`
+/// line goes either way, and the original file is kept as
+/// [`DOTENV_BACKUP`]. Returns the keys still in `.env`, in file order.
+pub fn migrate_dotenv_server_keys(config_dir: &Path) -> Result<Vec<String>> {
+    let env_path = config_dir.join(".env");
+    let Ok(text) = std::fs::read_to_string(&env_path) else { return Ok(vec![]) };
+    // (line index, key, value) for each assignment.
+    let entries: Vec<(usize, String, String)> = text
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let (k, v) = line.split_once('=')?;
+            let v = v.trim();
+            let quoted = v.len() >= 2 && ((v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\'')));
+            let v = if quoted { &v[1..v.len() - 1] } else { v };
+            Some((i, k.trim().to_string(), v.to_string()))
+        })
+        .collect();
+    let is_server_key = |k: &str| SERVER_YAML_ENV.iter().any(|(_, new, old)| k == *new || k == *old);
+    let left: Vec<String> = entries.iter().filter(|(_, k, _)| !is_server_key(k)).map(|(_, k, _)| k.clone()).collect();
+    if !entries.iter().any(|(_, k, _)| is_server_key(k)) {
+        return Ok(left);
+    }
+
+    let yaml_path = config_dir.join("server.yaml");
+    let mut y = try_read_server_yaml_at(&yaml_path)?.unwrap_or_default();
+    let value = |name: &str| entries.iter().rev().find(|(_, k, _)| k == name).map(|(_, _, v)| v.clone());
+    for (field, new, old) in SERVER_YAML_ENV {
+        let Some(v) = value(new).or_else(|| value(old)) else { continue };
+        match field {
+            "cors_origins" => y.cors_origins = y.cors_origins.take().or_else(|| Some(parse_origins(&v))),
+            "allow_insecure_lan" => y.allow_insecure_lan = y.allow_insecure_lan.or(Some(parse_env_bool(&v))),
+            "log_level" => y.log_level = y.log_level.take().or(Some(v)),
+            _ => y.file_log_level = y.file_log_level.take().or(Some(v)),
+        }
+    }
+    write_secret_file(&config_dir.join(DOTENV_BACKUP), &text)?;
+    save_server_yaml_at(&yaml_path, &y)?;
+    let moved: std::collections::BTreeSet<usize> = entries.iter().filter(|(_, k, _)| is_server_key(k)).map(|(i, _, _)| *i).collect();
+    let kept: Vec<&str> = text.lines().enumerate().filter(|(i, _)| !moved.contains(i)).map(|(_, l)| l).collect();
+    write_secret_file(&env_path, &if kept.is_empty() { String::new() } else { kept.join("\n") + "\n" })?;
+    tracing::info!("dotenv_server_keys_migrated path={}", yaml_path.display());
+    Ok(left)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dotenv_server_keys_move_into_server_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = "# mine\nCORS_ORIGINS=[\"https://a.example\"]\nLOG_LEVEL=WARNING\nOPENAGENTD_LOG_LEVEL=DEBUG\nAPI_ALLOW_INSECURE_LAN=true\nFILE_LOG_LEVEL='INFO'\nOPENAGENTD_DATA_DIR=/x\n";
+        std::fs::write(dir.path().join(".env"), env).unwrap();
+        std::fs::write(dir.path().join("server.yaml"), "host: 127.0.0.1\nport: 4090\naccess_key: k\n").unwrap();
+
+        let left = migrate_dotenv_server_keys(dir.path()).unwrap();
+
+        assert_eq!(left, vec!["OPENAGENTD_DATA_DIR".to_string()]);
+        let y = read_server_yaml_at(&dir.path().join("server.yaml")).unwrap();
+        assert_eq!((y.port, y.access_key.as_deref()), (4090, Some("k")), "existing fields are kept");
+        assert_eq!(y.cors_origins, Some(vec!["https://a.example".to_string()]));
+        assert_eq!(y.log_level.as_deref(), Some("DEBUG"), "the new name wins over the old one");
+        assert_eq!(y.allow_insecure_lan, Some(true));
+        assert_eq!(y.file_log_level.as_deref(), Some("INFO"));
+        assert_eq!(std::fs::read_to_string(dir.path().join(".env")).unwrap(), "# mine\nOPENAGENTD_DATA_DIR=/x\n");
+        assert_eq!(std::fs::read_to_string(dir.path().join(DOTENV_BACKUP)).unwrap(), env, "the original is kept");
+    }
+
+    #[test]
+    fn dotenv_migration_keeps_values_already_in_server_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".env"), "LOG_LEVEL=DEBUG\n").unwrap();
+        std::fs::write(dir.path().join("server.yaml"), "log_level: ERROR\n").unwrap();
+        assert!(migrate_dotenv_server_keys(dir.path()).unwrap().is_empty());
+        assert_eq!(read_server_yaml_at(&dir.path().join("server.yaml")).unwrap().log_level.as_deref(), Some("ERROR"));
+        assert_eq!(std::fs::read_to_string(dir.path().join(".env")).unwrap(), "");
+    }
+
+    #[test]
+    fn dotenv_migration_with_nothing_to_move_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".env"), "OPENAGENTD_DATA_DIR=/x\n").unwrap();
+        assert_eq!(migrate_dotenv_server_keys(dir.path()).unwrap(), vec!["OPENAGENTD_DATA_DIR".to_string()]);
+        assert!(!dir.path().join("server.yaml").exists());
+        assert!(!dir.path().join(DOTENV_BACKUP).exists());
+        assert!(migrate_dotenv_server_keys(tempfile::tempdir().unwrap().path()).unwrap().is_empty(), "no .env at all");
+    }
+
+    #[test]
+    fn a_broken_server_yaml_is_not_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".env"), "LOG_LEVEL=DEBUG\n").unwrap();
+        std::fs::write(dir.path().join("server.yaml"), "port: [\n").unwrap();
+        assert!(migrate_dotenv_server_keys(dir.path()).is_err());
+        assert_eq!(std::fs::read_to_string(dir.path().join("server.yaml")).unwrap(), "port: [\n");
+        assert_eq!(std::fs::read_to_string(dir.path().join(".env")).unwrap(), "LOG_LEVEL=DEBUG\n");
+    }
 
     #[test]
     fn serialises_like_pydantic_model_dump() {

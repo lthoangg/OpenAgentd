@@ -104,6 +104,18 @@ fn an_unknown_mode_is_refused() {
 }
 
 #[test]
+fn doctor_moves_server_settings_out_of_dotenv_and_names_the_rest() {
+    let sb = Sandbox::new();
+    sb.write("config/.env", "LOG_LEVEL=WARNING\nOPENAGENTD_FS_WATCH=false\n");
+    let o = sb.run(&["doctor"]);
+    let yaml = std::fs::read_to_string(sb.path("config/server.yaml")).unwrap();
+    assert!(yaml.contains("log_level: WARNING"), "{yaml}");
+    assert_eq!(std::fs::read_to_string(sb.path("config/.env")).unwrap(), "OPENAGENTD_FS_WATCH=false\n");
+    let out = stdout(&o);
+    assert!(out.contains("deprecated") && out.contains("OPENAGENTD_FS_WATCH"), "{out}");
+}
+
+#[test]
 fn openagentd_alias_forwards_to_agentd() {
     let sb = Sandbox::new();
     let o = sb.run_bin(env!("CARGO_BIN_EXE_openagentd"), &["--version"]);

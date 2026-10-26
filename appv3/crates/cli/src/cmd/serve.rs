@@ -14,7 +14,7 @@ use tokio::sync::Notify;
 /// file sink already has them) and only stray output such as a fatal
 /// error lands there.
 fn init_logging(daemon: bool) {
-    let file_level = appv3_core::settings::env_var("OPENAGENTD_FILE_LOG_LEVEL").unwrap_or_else(|| "DEBUG".into());
+    let file_level = appv3_core::settings().file_log_level.clone();
     let stderr_level = if daemon { "CRITICAL" } else { appv3_core::settings().log_level.as_str() };
     crate::logging::setup(stderr_level, &file_level, true);
     crate::logging::install_panic_hook();
@@ -112,6 +112,7 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         tracing::warn!("env_notice {n}");
     }
     appv3_providers::credentials_migration::migrate_active();
+    crate::dotenv::migrate();
     if let Some(p) = args.parent_pid {
         start_parent_watch(p);
     }

@@ -64,6 +64,7 @@ pub fn doctor() -> Result<ExitCode> {
     let s = appv3_core::settings();
     appv3_core::env::load_config_env(&s.config_dir);
     crate::cmd::auth::migrate_first();
+    crate::dotenv::migrate();
 
     println!();
     println!("  {}  {}", bold(&cyan("agentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));

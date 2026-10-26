@@ -4,6 +4,7 @@
 
 mod cli;
 mod cmd;
+mod dotenv;
 mod logging;
 mod net;
 mod paths;

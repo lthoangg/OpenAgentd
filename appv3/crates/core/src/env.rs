@@ -17,7 +17,9 @@ fn notices() -> &'static Mutex<Vec<String>> {
     N.get_or_init(Default::default)
 }
 
-pub(crate) fn notice(text: String) {
+/// Report a skipped or deprecated environment source (logged, and listed by
+/// [`env_notices`]). Repeats are dropped.
+pub fn notice(text: String) {
     let mut n = notices().lock().unwrap();
     if !n.contains(&text) {
         // Before logging starts this goes nowhere; `serve` logs the list

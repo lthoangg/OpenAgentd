@@ -386,11 +386,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     approval, for Code mode, for subagents, or for your queued messages), the
     objective, the plan with its status and task progress, turns, tokens and
     time, the last check, and Pause, Resume, and Clear. Its title follows the
-    goal ("Goal 7/50", "Goal paused"). **Cmd+K → Goal** and the dock's **+**
-    menu open it, and **Cmd+K** also pauses, resumes and clears the goal. The
-    Tasks tab and the task popover show a Goal row above the Plan row. Stop
-    pauses the goal, Plan mode and running subagents make it wait, and a goal
-    running when the app quit comes back paused. Approving another plan with
+    goal ("Goal 7/50", "Goal paused"). The dock's **+** menu opens it, and
+    **Cmd+K → Goal** does too, listed only while the session has a goal. Since
+    `[v3.33.0]` Clear asks for confirmation first, Cmd+K no longer pauses,
+    resumes or clears (the Goal tab does), and **Stop & send** leaves the goal
+    active, so your message is its next turn. The Tasks tab and the task
+    popover show a Goal row above the Plan row. The Stop button pauses the
+    goal, Plan mode and running subagents make it wait, and a goal running
+    when the app quit comes back paused. Approving another plan with
     Keep going replaces the goal. A scheduled task that runs in the goal's
     session skips each run that comes due while the goal works (the scheduler
     skips busy sessions) and fires again at its next scheduled time. Undoing a

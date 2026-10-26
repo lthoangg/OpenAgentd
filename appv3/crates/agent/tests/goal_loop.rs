@@ -479,6 +479,33 @@ async fn stop_pauses_the_goal() {
     assert_eq!(h.user_rows().await.len(), 1);
 }
 
+/// Stop & send adds context mid-turn: the stop leaves the goal active and the
+/// message that follows is its next turn (here the last one the limit allows,
+/// so the goal ends paused for the limit, not for the stop).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_and_send_keeps_the_goal() {
+    let started = Arc::new(AtomicBool::new(false));
+    let turns = vec![MockProvider::tool_call("a", "slow", "{}"), MockProvider::tool_call("b", "work", "{}"), MockProvider::text("Used your note.")];
+    let h = harness("stop-send", turns, started.clone()).await;
+    h.start_goal("make it work", 2).await;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !started.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("tool started");
+    appv3_agent::service::interrupt_agent_keeping_goal(&h.session, Some(&h.sid)).await;
+    assert_eq!(h.goal().await.status, "active", "the stop leaves the goal active");
+    h.send("also mind the docs").await;
+    h.finish().await;
+
+    let g = h.goal().await;
+    assert_eq!((g.status.as_str(), g.pause_reason.as_deref(), g.turns_used), ("paused", Some(goal::reason::TURN_LIMIT), 2), "{g:?}");
+    let users = h.user_rows().await;
+    assert_eq!(users.iter().map(|u| u.0.as_str()).collect::<Vec<_>>(), ["make it work", "also mind the docs"]);
+}
+
 /// Stop ends a turn whose completion check is still waiting on the model,
 /// without waiting out the stop grace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

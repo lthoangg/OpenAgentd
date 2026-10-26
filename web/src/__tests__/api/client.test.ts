@@ -165,6 +165,20 @@ describe('postAgentChat', () => {
     expect(form.get('fast_mode')).toBe('true')
   })
 
+  it('sends keep_goal only with an interrupt that asks for it', async () => {
+    const forms: FormData[] = []
+    globalThis.fetch = mock((_url, init) => {
+      forms.push((init as RequestInit).body as FormData)
+      return Promise.resolve(new Response(JSON.stringify({ status: 'interrupted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postAgentChat(null, 'sid', true, '/tmp', undefined, undefined, undefined, false, undefined, undefined, true)
+    await postAgentChat(null, 'sid', true, '/tmp')
+    await postAgentChat('hello', 'sid', false, '/tmp', undefined, undefined, undefined, false, undefined, undefined, true)
+
+    expect(forms.map((form) => form.get('keep_goal'))).toEqual(['true', null, null])
+  })
+
   it('deletes queued messages by session and message id', async () => {
     let url: string | URL | Request | undefined
     let method: string | undefined

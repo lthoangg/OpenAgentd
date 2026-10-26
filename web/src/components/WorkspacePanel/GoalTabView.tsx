@@ -13,9 +13,11 @@
  * orange while it waits on the user, red when blocked, neutral when paused.
  */
 import { CircleCheck, Target } from 'lucide-react'
+import { useState } from 'react'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   formatGoalDuration,
@@ -253,12 +255,18 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
   const reviewing = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
   const mutation = useGoalActionMutation()
   const pushToast = useToastStore((s) => s.push)
+  const [confirmingClear, setConfirmingClear] = useState(false)
 
   const runAction = (action: GoalAction) => {
     if (!sessionId) return
     mutation.mutate({ sessionId, action }, {
       onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: (err as Error).message }),
     })
+  }
+  // Clearing ends the goal for good, so the button only asks first.
+  const onAction = (action: GoalAction) => {
+    if (action === 'clear') setConfirmingClear(true)
+    else runAction(action)
   }
 
   return (
@@ -280,12 +288,26 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
               goal={goal}
               session={session}
               busy={mutation.isPending}
-              onAction={runAction}
+              onAction={onAction}
               plan={plan ? { plan, todos, reviewing, onOpenPlan } : null}
             />
           </div>
         </div>
       )}
+      <Dialog open={confirmingClear} onOpenChange={setConfirmingClear}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Clear this goal?</DialogTitle>
+            <DialogDescription>
+              The agent stops working toward it and no new goal turn starts. A turn that is running finishes first. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="default" onClick={() => setConfirmingClear(false)}>Cancel</Button>
+            <Button type="button" variant="danger" disabled={mutation.isPending} onClick={() => { setConfirmingClear(false); runAction('clear') }}>Clear goal</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

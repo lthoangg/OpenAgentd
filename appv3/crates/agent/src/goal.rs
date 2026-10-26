@@ -961,6 +961,18 @@ impl AgentSession {
         }
     }
 
+    /// Stop & send: the goal stays active. A continuation queued just before
+    /// the stop must not run on top of the user's message, so it is dropped.
+    pub(crate) async fn drop_goal_reminders_on_stop(&self, session_id: &str) {
+        if self.parent_session_id.is_some() || session_id.is_empty() {
+            return;
+        }
+        let _lock = self.goal_lock().lock().await;
+        if let Err(e) = db::delete_queued_goal_reminders(&self.pool, session_id).await {
+            tracing::warn!("goal_keep_on_stop_failed session_id={} error={}", session_id, e);
+        }
+    }
+
     async fn set_goal_paused(&self, session_id: &str, why: &str) -> Result<Option<SessionGoal>> {
         let _lock = self.goal_lock().lock().await;
         let Some(mut goal) = db::live_session_goal(&self.pool, session_id).await?.filter(SessionGoal::is_active) else { return Ok(None) };

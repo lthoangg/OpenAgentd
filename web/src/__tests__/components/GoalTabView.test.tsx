@@ -4,7 +4,7 @@
  * Resume and Clear. Without a goal it says how to start one.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
@@ -104,6 +104,38 @@ describe('GoalTabView', () => {
     expect(calls.map((c) => [c.url.replace(/^.*\/api/, '/api'), c.method])).toEqual([['/api/agent/sessions/s1/goal/pause', 'POST']])
     expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy()
     expect(screen.getByText('You paused it.')).toBeTruthy()
+  })
+
+  it('asks before clearing the goal, and Cancel leaves it alone', async () => {
+    const calls: { url: string; method?: string }[] = []
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      calls.push({ url: String(input), method: (init as RequestInit | undefined)?.method })
+      return new Response(null, { status: 204 })
+    }) as unknown as typeof fetch
+    const user = userEvent.setup()
+    const client = renderTab(makeGoal())
+
+    // Plain DOM queries for the dialog: role queries walk the whole tree.
+    const openDialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+    await user.click(screen.getByRole('button', { name: 'Clear goal' }))
+    await waitFor(() => expect(openDialog()).not.toBeNull())
+    const dialog = openDialog()!
+    expect(dialog.textContent).toContain('Clear this goal?')
+    expect(calls).toEqual([])
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    // The dialog unmounts once its exit animation has run.
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)) })
+    expect(openDialog()).toBeNull()
+    expect(calls).toEqual([])
+    expect(now()?.dataset.goalNow).toBe('active')
+
+    await user.click(screen.getByRole('button', { name: 'Clear goal' }))
+    await waitFor(() => expect(openDialog()).not.toBeNull())
+    await user.click(within(openDialog()!).getByRole('button', { name: 'Clear goal' }))
+
+    await waitFor(() => expect(calls.map((c) => [c.url.replace(/^.*\/api/, '/api'), c.method])).toEqual([['/api/agent/sessions/s1/goal', 'DELETE']]))
+    await waitFor(() => expect(client.getQueryData<{ goal: SessionGoal }>(queryKeys.goal('s1'))?.goal.status).toBe('cleared'))
   })
 
   it('names what the goal waits for in the session', () => {

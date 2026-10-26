@@ -62,6 +62,8 @@ export async function postAgentChat(
   mentions?: string[],
   /** Mode a session started by this message begins in; ignored by an existing session. */
   interactionMode?: SessionInteractionMode,
+  /** With ``interrupt``: leave the session's active goal active (Stop & send). */
+  keepGoal = false,
 ): Promise<AgentChatResponse> {
   const formData = new FormData()
   if (message) {
@@ -72,6 +74,9 @@ export async function postAgentChat(
   }
   if (interrupt) {
     formData.append('interrupt', 'true')
+  }
+  if (interrupt && keepGoal) {
+    formData.append('keep_goal', 'true')
   }
   formData.append('workspace', workspace)
   if (model !== undefined) {

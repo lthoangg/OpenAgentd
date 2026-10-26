@@ -15,8 +15,6 @@
  */
 import { useMemo } from 'react'
 import type { Command } from '../CommandPalette'
-import type { SessionGoalStatus } from '@/api/types'
-import type { GoalAction } from '@/lib/goal'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -26,13 +24,10 @@ import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
-/** The session's goal as the palette needs it. */
+/** The session's goal as the palette needs it: given only while it has one. */
 export interface UseAgentCommandsGoal {
-  /** ``null`` without a goal: the tab then explains how to set one. */
-  status: SessionGoalStatus | null
   /** Opens the dock's Goal tab. */
   onShow: () => void
-  onAction: (action: GoalAction) => void
 }
 
 interface UseAgentCommandsArgs {
@@ -65,32 +60,17 @@ interface UseAgentCommandsArgs {
   goal?: UseAgentCommandsGoal
 }
 
-/** Palette entries for the session goal: its tab always, actions while it is live. */
+/** The palette's one goal entry: it opens the Goal tab, where the goal's actions are. */
 function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
   if (!goal) return []
-  const keywords = 'goal objective loop continue autonomous'
-  const out: Command[] = [
-    {
-      id: 'goal-open',
-      group: 'View',
-      label: 'Goal',
-      description: goal.status === null || goal.status === 'cleared'
-        ? 'How to set a goal the agent works toward across turns'
-        : 'Progress, limits, and the last completion check',
-      keywords,
-      action: goal.onShow,
-    },
-  ]
-  if (goal.status === 'active') {
-    out.push({ id: 'goal-pause', group: 'Session', label: 'Pause Goal', description: 'Let the current turn finish, then stop continuing', keywords, action: () => goal.onAction('pause') })
-  }
-  if (goal.status === 'paused') {
-    out.push({ id: 'goal-resume', group: 'Session', label: 'Resume Goal', description: 'Keep working toward the goal', keywords, action: () => goal.onAction('resume') })
-  }
-  if (goal.status === 'active' || goal.status === 'paused') {
-    out.push({ id: 'goal-clear', group: 'Session', label: 'Clear Goal', description: 'Remove the goal; the current turn finishes first', keywords, action: () => goal.onAction('clear') })
-  }
-  return out
+  return [{
+    id: 'goal-open',
+    group: 'View',
+    label: 'Goal',
+    description: 'Progress, limits, and the last completion check',
+    keywords: 'goal objective loop continue autonomous pause resume clear',
+    action: goal.onShow,
+  }]
 }
 
 export function useAgentCommands({

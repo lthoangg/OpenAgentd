@@ -12,7 +12,8 @@ pub use openagentd_shell_core::backend_config::{
     normalize_server_name, AppBackendConfig, SavedAppServer,
 };
 use openagentd_shell_core::backend_config::{
-    load_backend_config_from, remove_backend_server_at, save_backend_config_to,
+    load_backend_config_from, remove_backend_server_at, save_backend_server_to,
+    set_backend_server_enabled_at,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -144,13 +145,19 @@ pub fn load_app_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
     load_backend_config_from(&app_backend_config_path(app)?)
 }
 
+/// Save `base_url`/`name` to the server list. A server added now starts
+/// enabled (watched in the background); one already saved keeps its switch.
 pub fn save_app_backend_config(
     app: &AppHandle,
     base_url: Option<&str>,
     name: Option<&str>,
     activate: bool,
 ) -> Result<()> {
-    save_backend_config_to(&app_backend_config_path(app)?, base_url, name, activate)
+    save_backend_server_to(&app_backend_config_path(app)?, base_url, name, activate, true)
+}
+
+pub fn set_app_backend_server_enabled(app: &AppHandle, base_url: &str, enabled: bool) -> Result<()> {
+    set_backend_server_enabled_at(&app_backend_config_path(app)?, base_url, enabled)
 }
 
 pub fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {

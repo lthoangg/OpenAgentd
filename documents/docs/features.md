@@ -657,6 +657,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     unread sessions. With two or more servers, each row names its server
     ("Builtin" for the bundled one), and a click opens the session in a
     window on that server.
+    Since `[v3.33.0]` a saved server can also be **enabled** in Settings →
+    Connection (a switch on its row): the notch then follows it with no
+    window open, so its running, waiting and finished sessions show, and a
+    click opens a new window on that server. A disabled server (the
+    default for servers saved before this, and the seeded Local CLI entry;
+    servers saved from now on start enabled) is still one Connect away but
+    is followed only while a window is on it. Each row shows its
+    background state (Watching, Reconnecting, Access key rejected, or
+    Disabled), a server that is off is retried every 30 s at most (60 s
+    after a rejected key) instead of every 15 s, and rows carry a server
+    name only when two or more servers are connected.
     Right-click the pill or a session row for a native menu with Open and
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an

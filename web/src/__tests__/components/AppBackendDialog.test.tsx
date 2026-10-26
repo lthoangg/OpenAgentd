@@ -10,6 +10,7 @@ const originalReload = window.location.reload
 const invokeCalls: Array<{ command: string; args: unknown }> = []
 const reloadMock = mock(() => {})
 let failExternalSwitch = false
+let watchStates: Record<string, string> = {}
 let fetchCalls: Array<{ url: string; init?: RequestInit }> = []
 let statusPayload = {
   base_url: 'http://127.0.0.1:5999',
@@ -20,7 +21,7 @@ let statusPayload = {
   servers: [
     { base_url: 'http://127.0.0.1:4082', name: 'Local CLI' },
     { base_url: 'http://127.0.0.1:4999', name: null },
-  ],
+  ] as Array<{ base_url: string; name: string | null; enabled?: boolean }>,
 }
 
 const invokeMock = mock(async (...args: unknown[]) => {
@@ -30,6 +31,17 @@ const invokeMock = mock(async (...args: unknown[]) => {
   if (command === 'app_backend_status') return statusPayload
   if (command === 'app_save_backend_server') return statusPayload
   if (command === 'app_remove_backend_server') return statusPayload
+  if (command === 'app_server_watch_states') return watchStates
+  if (command === 'app_set_backend_server_enabled') {
+    const args = commandArgs as { baseUrl: string; enabled: boolean }
+    statusPayload = {
+      ...statusPayload,
+      servers: statusPayload.servers.map((server) => (
+        server.base_url === args.baseUrl ? { ...server, enabled: args.enabled } : server
+      )),
+    }
+    return statusPayload
+  }
   if (command === 'app_use_external_backend') {
     if (failExternalSwitch) throw new Error('switch failed')
     const args = commandArgs as { baseUrl?: string }
@@ -63,6 +75,7 @@ beforeEach(() => {
   invokeCalls.length = 0
   fetchCalls = []
   failExternalSwitch = false
+  watchStates = {}
   reloadMock.mockClear()
   window.location.reload = reloadMock as typeof window.location.reload
   statusPayload = {
@@ -74,7 +87,7 @@ beforeEach(() => {
     servers: [
       { base_url: 'http://127.0.0.1:4082', name: 'Local CLI' },
       { base_url: 'http://127.0.0.1:4999', name: null },
-    ],
+    ] as Array<{ base_url: string; name: string | null; enabled?: boolean }>,
   }
   window.__OAD_API_BASE_URL__ = 'http://127.0.0.1:5999'
   const fetchMock = mock((...args: unknown[]) => {
@@ -456,5 +469,58 @@ describe('AppBackendDialog', () => {
     expect(screen.getByText('Local CLI')).toBeTruthy()
     expect(screen.getByLabelText(/server url/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy()
+  })
+})
+
+describe('saved server Enabled switch (desktop app)', () => {
+  const platform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
+
+  beforeEach(() => {
+    ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {}
+    Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
+  })
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    if (platform) Object.defineProperty(window.navigator, 'platform', platform)
+    else delete (window.navigator as unknown as Record<string, unknown>).platform
+  })
+
+  it('shows each saved server as enabled or not, and turns watching on from the switch', async () => {
+    const user = userEvent.setup()
+    statusPayload.servers[1].enabled = true
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const local = await screen.findByRole('switch', { name: 'Enable Local CLI' })
+    expect(local.getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('switch', { name: 'Enable http://127.0.0.1:4999' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText('Disabled · not watched')).toBeTruthy()
+
+    await user.click(local)
+    await waitFor(() => expect(invokeCalls).toContainEqual({
+      command: 'app_set_backend_server_enabled',
+      args: { baseUrl: 'http://127.0.0.1:4082', enabled: true },
+    }))
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Enable Local CLI' }).getAttribute('aria-checked')).toBe('true'))
+    expect(screen.queryByText('Disabled · not watched')).toBeNull()
+  })
+
+  it('says how the background connection is doing', async () => {
+    statusPayload.servers[0].enabled = true
+    statusPayload.servers[1].enabled = true
+    watchStates = { 'http://127.0.0.1:4082': 'connected', 'http://127.0.0.1:4999': 'key_rejected' }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    expect(await screen.findByText('Watching')).toBeTruthy()
+    expect(await screen.findByText('Access key rejected · update it under Edit')).toBeTruthy()
+  })
+
+  it('shows no switch outside the desktop app', async () => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await screen.findByText('Local CLI')
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByText('Disabled · not watched')).toBeNull()
   })
 })

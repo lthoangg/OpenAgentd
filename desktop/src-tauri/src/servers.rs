@@ -5,9 +5,11 @@
 //! notch island, the tray's "Auto" usage, new windows and notification
 //! routing all ask this module, so they agree on it.
 //!
-//! A saved server is only a choice in the server lists. Nothing here
-//! connects to it on its own: a window is on it only after the user pressed
-//! Connect in that window (or opened a new window from one that is).
+//! A saved server is a choice in the server lists. Nothing here connects a
+//! window to it on its own: a window is on it only after the user pressed
+//! Connect in that window (or opened a new window from one that is). The one
+//! exception is watching: the island also follows saved servers the user
+//! enabled, with or without a window (`followed_servers`).
 
 use std::collections::HashMap;
 
@@ -71,13 +73,16 @@ pub fn current_server(
     }
 }
 
-/// The servers the island follows: every app window's, each once (the
-/// builtin only while it runs). With no window open, the builtin while it
-/// runs: that is where a click would open a window.
+/// The servers the island follows: every app window's, plus every saved
+/// server marked enabled, each once (the builtin only while it runs). With
+/// no window open, the builtin while it runs: that is where a click would
+/// open a window. A disabled saved server is followed only while a window
+/// is on it.
 pub fn followed_servers(
     app_windows: &[String],
     external: &HashMap<String, String>,
     bundled_running: bool,
+    enabled: &[ServerId],
 ) -> Vec<ServerId> {
     let mut servers: Vec<ServerId> = app_windows
         .iter()
@@ -87,9 +92,15 @@ pub fn followed_servers(
     if app_windows.is_empty() && bundled_running {
         servers.push(ServerId::Bundled);
     }
+    servers.extend(enabled.iter().filter(|server| **server != ServerId::Bundled).cloned());
     servers.sort();
     servers.dedup();
     servers
+}
+
+/// The saved servers marked enabled, as server ids.
+pub fn enabled_servers(saved: &[crate::config::SavedAppServer]) -> Vec<ServerId> {
+    saved.iter().filter(|s| s.enabled).map(|s| ServerId::external(&s.base_url)).collect()
 }
 
 /// The window to open a session of `server` in: the focused window, then
@@ -168,10 +179,10 @@ pub async fn app_current_server(app: &AppHandle) -> Option<ServerId> {
     current_server(active_app_window(app).as_deref(), &external_map(app), running)
 }
 
-/// [`followed_servers`] for the running app.
-pub async fn app_followed_servers(app: &AppHandle) -> Vec<ServerId> {
+/// [`followed_servers`] for the running app, with `enabled` saved servers.
+pub async fn app_followed_servers(app: &AppHandle, enabled: &[ServerId]) -> Vec<ServerId> {
     let running = bundled_running(app).await;
-    followed_servers(&app_window_labels(app), &external_map(app), running)
+    followed_servers(&app_window_labels(app), &external_map(app), running, enabled)
 }
 
 /// Base URL and bearer token for `server`: the builtin's desktop token, or
@@ -250,17 +261,45 @@ mod tests {
     #[test]
     fn windows_on_two_servers_are_each_followed_once() {
         let map = external(&[("main-2", REMOTE), ("main-3", REMOTE)]);
-        let followed = followed_servers(&labels(&["main", "main-2", "main-3"]), &map, true);
+        let followed = followed_servers(&labels(&["main", "main-2", "main-3"]), &map, true, &[]);
         assert_eq!(followed, [ServerId::Bundled, ServerId::External(REMOTE.into())]);
     }
 
     #[test]
     fn a_stopped_builtin_is_not_followed() {
         let map = external(&[("main-2", REMOTE)]);
-        let followed = followed_servers(&labels(&["main", "main-2"]), &map, false);
+        let followed = followed_servers(&labels(&["main", "main-2"]), &map, false, &[]);
         assert_eq!(followed, [ServerId::External(REMOTE.into())]);
-        assert!(followed_servers(&[], &map, false).is_empty(), "no window, no builtin: nothing");
-        assert_eq!(followed_servers(&[], &map, true), [ServerId::Bundled]);
+        assert!(followed_servers(&[], &map, false, &[]).is_empty(), "no window, no builtin: nothing");
+        assert_eq!(followed_servers(&[], &map, true, &[]), [ServerId::Bundled]);
+    }
+
+    #[test]
+    fn an_enabled_saved_server_is_followed_with_no_window_open() {
+        let lab = ServerId::External(LAB.into());
+        let enabled = std::slice::from_ref(&lab);
+        assert_eq!(followed_servers(&[], &HashMap::new(), false, enabled), std::slice::from_ref(&lab));
+        assert_eq!(followed_servers(&[], &HashMap::new(), true, enabled), [ServerId::Bundled, lab.clone()]);
+    }
+
+    #[test]
+    fn an_enabled_server_with_a_window_on_it_is_followed_once() {
+        let map = external(&[("main-2", REMOTE)]);
+        let remote = ServerId::External(REMOTE.into());
+        let followed = followed_servers(&labels(&["main", "main-2"]), &map, true, std::slice::from_ref(&remote));
+        assert_eq!(followed, [ServerId::Bundled, remote.clone()]);
+    }
+
+    #[test]
+    fn a_disabled_server_is_followed_only_while_a_window_is_on_it() {
+        let saved = |enabled| vec![crate::config::SavedAppServer { base_url: REMOTE.into(), name: None, enabled }];
+        assert!(enabled_servers(&saved(false)).is_empty());
+        assert_eq!(enabled_servers(&saved(true)), [ServerId::External(REMOTE.into())]);
+        let map = external(&[("main-2", REMOTE)]);
+        let with_window = followed_servers(&labels(&["main", "main-2"]), &map, true, &enabled_servers(&saved(false)));
+        assert!(with_window.contains(&ServerId::External(REMOTE.into())));
+        let closed = followed_servers(&labels(&["main"]), &HashMap::new(), true, &enabled_servers(&saved(false)));
+        assert_eq!(closed, [ServerId::Bundled]);
     }
 
     #[test]

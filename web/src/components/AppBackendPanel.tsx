@@ -16,6 +16,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
 import { Callout } from '@/components/ui/callout'
@@ -40,13 +41,30 @@ import {
 } from '@/lib/backend-switch'
 import {
   getAppBackendStatus,
+  getServerWatchStates,
   removeAppBackendServer,
+  setAppBackendServerEnabled,
   stopBundledAppBackend,
   type SavedAppServer,
   type AppBackendStatus,
+  type ServerWatchState,
 } from '@/lib/app-backend'
 
 const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local CLI server' }]
+
+/** How often the background connection states refresh while the panel is open. */
+const WATCH_POLL_MS = 3000
+
+/** The line under a saved server: its background connection, or that it is not watched. */
+function watchNote(state: ServerWatchState | undefined, enabled: boolean): { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null {
+  switch (state) {
+    case 'connected': return { text: 'Watching', tone: 'ok' }
+    case 'connecting': return { text: 'Connecting…', tone: 'muted' }
+    case 'reconnecting': return { text: 'Reconnecting · server not reachable', tone: 'warn' }
+    case 'key_rejected': return { text: 'Access key rejected · update it under Edit', tone: 'error' }
+    default: return enabled ? null : { text: 'Disabled · not watched', tone: 'muted' }
+  }
+}
 
 /** Server details from a scanned `openagentd://connect` link. */
 export interface AppBackendPrefill {
@@ -80,6 +98,25 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   const [scanned, setScanned] = useState(false)
   /** Label of the saved server loaded into the form, or null for a new one. */
   const [editing, setEditing] = useState<string | null>(null)
+  const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
+  const watchable = isDesktopShell() && status?.supports_bundled !== false
+
+  // The desktop shell watches enabled servers in the background; show how that goes.
+  useEffect(() => {
+    if (!active || !watchable) return
+    let cancelled = false
+    const load = () => {
+      void getServerWatchStates().then((next) => {
+        if (!cancelled) setWatchStates(next)
+      })
+    }
+    load()
+    const timer = setInterval(load, WATCH_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [active, watchable])
 
   useEffect(() => {
     if (!active) return
@@ -197,6 +234,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     void getStoredAccessKey(nextBaseUrl).then((storedKey) => setAccessKeyInput(storedKey ?? ''))
   }
 
+  async function toggleEnabled(server: SavedAppServer, enabled: boolean) {
+    setError(null)
+    try {
+      setStatus(await setAppBackendServerEnabled(normalizeServerBaseUrl(server.base_url), enabled))
+      setWatchStates(await getServerWatchStates())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   async function removeServer(baseUrl: string) {
     setPending(true)
     setError(null)
@@ -307,6 +354,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
           const active = status?.mode === 'external' && normalizeServerBaseUrl(status.base_url) === normalizedServerUrl
           const label = server.name || server.base_url
+          const enabled = server.enabled === true
+          const note = watchable ? watchNote(watchStates[normalizedServerUrl], enabled) : null
           return (
             <ServerRow
               key={server.base_url}
@@ -314,10 +363,22 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               title={label}
               subtitle={server.name ? server.base_url : undefined}
               mono={!server.name}
+              note={note}
               active={active}
               onSelect={() => editServer(normalizedServerUrl, server.name ?? '')}
               disabled={pending}
             >
+              {watchable ? (
+                <label className={cn('mr-1 flex items-center gap-2', TEXT.hint)}>
+                  Enabled
+                  <Switch
+                    checked={enabled}
+                    onCheckedChange={(next) => { void toggleEnabled(server, next) }}
+                    disabled={pending}
+                    aria-label={`Enable ${label}`}
+                  />
+                </label>
+              ) : null}
               <Button
                 type="button"
                 variant="subtle"
@@ -446,6 +507,7 @@ function ServerRow({
   title,
   subtitle,
   mono = false,
+  note = null,
   active,
   onSelect,
   disabled,
@@ -456,6 +518,8 @@ function ServerRow({
   subtitle?: string
   /** Title is a URL. */
   mono?: boolean
+  /** Background connection state, under the subtitle. */
+  note?: { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null
   active: boolean
   onSelect: () => void
   disabled: boolean
@@ -477,6 +541,19 @@ function ServerRow({
           </span>
           {subtitle ? (
             <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>
+          ) : null}
+          {note ? (
+            <span
+              className={cn(
+                'mt-0.5 block truncate',
+                TEXT.hint,
+                note.tone === 'ok' && 'text-(--color-success)',
+                note.tone === 'warn' && 'text-(--color-warning)',
+                note.tone === 'error' && 'text-(--color-error)',
+              )}
+            >
+              {note.text}
+            </span>
           ) : null}
         </span>
       </button>

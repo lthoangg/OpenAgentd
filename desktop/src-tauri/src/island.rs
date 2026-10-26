@@ -7,8 +7,10 @@
 //!
 //! It covers every server an app window is on (`servers::followed_servers`):
 //! windows can each be on a different server, and a session waiting on you
-//! matters whichever window it is in. A saved server no window is on is not
-//! followed. With more than one server, each row names its server.
+//! matters whichever window it is in. A saved server no window is on is
+//! followed only when the user enabled it (Settings → Connection), so its
+//! sessions show with no window open, and a click opens a window on it.
+//! With more than one server, each row names its server.
 //!
 //! The island never sees the backend credentials. The Rust process follows
 //! each server's global event stream and treats each turn event only as a
@@ -94,6 +96,12 @@ const SUPERVISE_EVERY: Duration = Duration::from_secs(2);
 const RETRY_BASE: Duration = Duration::from_secs(2);
 /// Kept short so the island catches up soon after a backend comes back.
 const RETRY_MAX: Duration = Duration::from_secs(15);
+/// A saved server may be off for days (a laptop asleep, a VPN address
+/// away from the VPN): retry less often.
+const RETRY_MAX_REMOTE: Duration = Duration::from_secs(30);
+/// A server that rejected the access key stays rejected until the user
+/// fixes it: check back rarely.
+const RETRY_AUTH_REJECTED: Duration = Duration::from_secs(60);
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Window focus moves in two steps (old window loses it, new one gains it);
 /// decide whether the app is frontmost once it has settled.
@@ -443,6 +451,21 @@ pub fn merge_unread(
     *unread != before
 }
 
+/// Where the background connection to a followed server stands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchState {
+    /// Not connected yet.
+    #[default]
+    Connecting,
+    /// Its event stream is open and its list is current.
+    Connected,
+    /// Unreachable or dropped; retrying.
+    Reconnecting,
+    /// The server refused the saved access key (401 / 403).
+    KeyRejected,
+}
+
 /// One followed server's part of the island.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ServerFeed {
@@ -450,6 +473,7 @@ pub struct ServerFeed {
     pub name: String,
     /// Its active sessions, as last fetched.
     pub sessions: Vec<IslandSession>,
+    pub watch: WatchState,
 }
 
 /// Every followed server's active sessions, and the unread ones from all of
@@ -467,8 +491,27 @@ impl Feeds {
         if self.servers.contains_key(server) {
             return false;
         }
-        self.servers.insert(server.clone(), ServerFeed { name, sessions: Vec::new() });
+        self.servers.insert(server.clone(), ServerFeed { name, sessions: Vec::new(), watch: WatchState::Connecting });
         true
+    }
+
+    /// Record where `server`'s connection stands. True when that changed
+    /// what is shown (the rows' server names depend on it).
+    pub fn set_watch(&mut self, server: &ServerId, watch: WatchState) -> bool {
+        self.servers.get_mut(server).is_some_and(|feed| std::mem::replace(&mut feed.watch, watch) != watch)
+    }
+
+    /// `server` was renamed. True when its name changed.
+    pub fn rename(&mut self, server: &ServerId, name: &str) -> bool {
+        self.servers.get_mut(server).is_some_and(|feed| feed.name != name && {
+            feed.name = name.to_string();
+            true
+        })
+    }
+
+    /// Each followed server's connection state.
+    pub fn watch_states(&self) -> Vec<(ServerId, WatchState)> {
+        self.servers.iter().map(|(server, feed)| (server.clone(), feed.watch)).collect()
     }
 
     /// Stop following `server`: its sessions and unread rows go without
@@ -504,9 +547,11 @@ impl Feeds {
         }
         let finished = if show_finished { newly_finished(&feed.sessions, &next, statuses, goals) } else { Vec::new() };
         let sessions_changed = feed.sessions != next;
+        // A fresh list means the server is reachable.
+        let watch_changed = std::mem::replace(&mut feed.watch, WatchState::Connected) != WatchState::Connected;
         let unread_changed = merge_unread(&mut self.unread, finished, &next, viewed);
         feed.sessions = next;
-        sessions_changed || unread_changed
+        sessions_changed || unread_changed || watch_changed
     }
 
     /// Empty `server`'s active list without reporting a finish: stale
@@ -524,12 +569,20 @@ impl Feeds {
 
 /// The island's two lists across `servers`: waiting sessions first, each
 /// session once (a server reached through two URLs reports it twice), and,
-/// with more than one server, each row named after its server.
+/// with more than one server in play (connected, or holding unread rows),
+/// each row named after its server. An enabled server that is off does not
+/// make the others' rows carry a name.
 pub fn merged_lists(
     servers: &BTreeMap<ServerId, ServerFeed>,
     unread: &[IslandSession],
 ) -> (Vec<IslandSession>, Vec<IslandSession>) {
-    let named = servers.len() > 1;
+    let in_play: HashSet<&ServerId> = servers
+        .iter()
+        .filter(|(_, feed)| feed.watch == WatchState::Connected)
+        .map(|(id, _)| id)
+        .chain(unread.iter().filter_map(|u| u.server_id.as_ref()))
+        .collect();
+    let named = in_play.len() > 1;
     let label = |session: &IslandSession| IslandSession {
         server: session
             .server_id
@@ -818,6 +871,9 @@ struct Shared {
     menu_open: bool,
     /// The session each app window shows, by window label ([`id_key`]s).
     viewing: HashMap<String, String>,
+    /// The saved servers, as last read from the config file: which are
+    /// enabled, and their names. Refreshed by [`servers_changed`].
+    saved: Vec<crate::config::SavedAppServer>,
 }
 
 impl Shared {
@@ -848,6 +904,7 @@ fn shared() -> &'static Mutex<Shared> {
             pointer: None,
             menu_open: false,
             viewing: HashMap::new(),
+            saved: Vec::new(),
         })
     })
 }
@@ -868,6 +925,7 @@ pub fn start(app: &AppHandle) {
     {
         let settings = crate::config::load_island_settings(app);
         shared().lock().unwrap().settings = settings;
+        refresh_saved(app);
         tauri::async_runtime::spawn(run_feed(app.clone()));
         tauri::async_runtime::spawn(run_pointer_watch(app.clone()));
         if settings.enabled {
@@ -1100,11 +1158,17 @@ async fn pause(duration: Duration) {
 }
 
 /// Keep one feed per server an app window is on: start following a server
-/// when a window connects to it, stop when its last window leaves it.
+/// when a window connects to it or it is enabled, stop when its last window
+/// leaves it and it is not enabled.
 async fn run_feed(app: AppHandle) {
     let mut tasks: HashMap<ServerId, tauri::async_runtime::JoinHandle<()>> = HashMap::new();
     loop {
-        let wanted = if is_enabled() { crate::servers::app_followed_servers(&app).await } else { Vec::new() };
+        let saved = shared().lock().unwrap().saved.clone();
+        let wanted = if is_enabled() {
+            crate::servers::app_followed_servers(&app, &crate::servers::enabled_servers(&saved)).await
+        } else {
+            Vec::new()
+        };
         // A feed also ends by itself when the feature is switched off; one
         // switched straight back on is started again below.
         let gone: Vec<ServerId> = tasks
@@ -1119,24 +1183,53 @@ async fn run_feed(app: AppHandle) {
             edit_feeds(&app, |feeds| feeds.forget(&server));
             log::info!("island: stopped following {}", server.key());
         }
-        let new: Vec<ServerId> = wanted.into_iter().filter(|server| !tasks.contains_key(server)).collect();
-        if !new.is_empty() {
-            let saved = crate::config::load_app_backend_config(&app).map(|c| c.servers).unwrap_or_default();
-            for server in new {
-                let name = server.display_name(BUILTIN_NAME, &saved);
-                edit_feeds(&app, |feeds| feeds.join(&server, name));
-                tasks.insert(server.clone(), tauri::async_runtime::spawn(follow_server(app.clone(), server)));
+        for server in wanted {
+            let name = server.display_name(BUILTIN_NAME, &saved);
+            if tasks.contains_key(&server) {
+                // Renamed in Settings since it was joined.
+                edit_feeds(&app, |feeds| feeds.rename(&server, &name));
+                continue;
             }
+            edit_feeds(&app, |feeds| feeds.join(&server, name));
+            tasks.insert(server.clone(), tauri::async_runtime::spawn(follow_server(app.clone(), server)));
         }
         pause(SUPERVISE_EVERY).await;
     }
 }
+
+/// Re-read the saved servers (kept in memory so the supervisor does not
+/// read the file every tick). An unreadable file keeps what was there.
+fn refresh_saved(app: &AppHandle) {
+    if let Ok(config) = crate::config::load_app_backend_config(app) {
+        shared().lock().unwrap().saved = config.servers;
+    }
+}
+
+/// The saved servers changed (added, removed, renamed, switched on or
+/// off): follow or drop feeds now rather than at the next 2 s check.
+pub fn servers_changed(app: &AppHandle) {
+    refresh_saved(app);
+    feed_wake().notify_waiters();
+}
+
+/// The server answered 401 / 403: the access key is wrong or was revoked.
+#[derive(Debug)]
+struct AuthRejected(u16);
+
+impl std::fmt::Display for AuthRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the server rejected the access key (HTTP {})", self.0)
+    }
+}
+
+impl std::error::Error for AuthRejected {}
 
 /// Follow one server's event stream, reconnecting with a backoff, until the
 /// feature is turned off (or [`run_feed`] stops it).
 async fn follow_server(app: AppHandle, server: ServerId) {
     let client = stream_client();
     let mut failures: u32 = 0;
+    let retry_max = if server == ServerId::Bundled { RETRY_MAX } else { RETRY_MAX_REMOTE };
     while is_enabled() {
         let Some((base, token)) = crate::servers::endpoint(&app, &server).await else {
             pause(RETRY_BASE).await;
@@ -1144,8 +1237,17 @@ async fn follow_server(app: AppHandle, server: ServerId) {
         };
         if let Err(e) = follow(&app, &client, &server, &base, token.as_deref(), &mut failures).await {
             failures = failures.saturating_add(1);
-            edit_feeds(&app, |feeds| feeds.clear_sessions(&server));
-            let delay = crate::usage::backoff_delay(RETRY_BASE, failures, RETRY_MAX);
+            let rejected = e.downcast_ref::<AuthRejected>().is_some();
+            let watch = if rejected { WatchState::KeyRejected } else { WatchState::Reconnecting };
+            edit_feeds(&app, |feeds| {
+                let emptied = feeds.clear_sessions(&server);
+                feeds.set_watch(&server, watch) || emptied
+            });
+            let delay = if rejected {
+                RETRY_AUTH_REJECTED
+            } else {
+                crate::usage::backoff_delay(RETRY_BASE, failures, retry_max)
+            };
             // Once per outage: a server that is off can stay off for hours.
             if failures == 1 {
                 log::info!("island: event stream from {} unavailable, retrying: {e:#}", server.key());
@@ -1174,10 +1276,12 @@ async fn follow(
     if let Some(token) = token {
         request = request.bearer_auth(token);
     }
-    let mut response = request
-        .send()
-        .await
-        .context("open event stream")?
+    let response = request.send().await.context("open event stream")?;
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(AuthRejected(status.as_u16()).into());
+    }
+    let mut response = response
         .error_for_status()
         .context("event stream returned an error status")?;
     // Seed after connecting, so nothing that happens in between is missed.
@@ -1411,12 +1515,12 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
             app.emit_to(target.label(), "desktop-notification-clicked", payload)?;
             crate::window::show_window(&target);
         }
-        None if windows.is_empty() => {
+        // No window is on that server (an enabled saved server watched in
+        // the background, or the last window there just closed): open one
+        // on it. Never on another server, where the session is not found.
+        None => {
             crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
         }
-        // Its last window left that server a moment ago; opening it
-        // elsewhere would show "not found".
-        None => bail!("No window is on this session's server anymore."),
     }
     mark_read(app, &id_key(session_id));
     Ok(())
@@ -1554,6 +1658,21 @@ pub fn forget_window(label: &str) {
 #[tauri::command]
 pub fn island_settings() -> Option<IslandSettings> {
     cfg!(target_os = "macos").then(|| shared().lock().unwrap().settings)
+}
+
+/// Each followed server's background connection state, by base URL (the
+/// builtin by [`crate::servers::BUNDLED_KEY`]), for Settings → Connection.
+/// A saved server that is not followed has no entry.
+#[tauri::command]
+pub fn app_server_watch_states() -> HashMap<String, WatchState> {
+    shared()
+        .lock()
+        .unwrap()
+        .feeds
+        .watch_states()
+        .into_iter()
+        .map(|(server, watch)| (server.key().to_string(), watch))
+        .collect()
 }
 
 /// Change some island settings and remember them; returns all of them.
@@ -1793,6 +1912,54 @@ mod tests {
         feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
         feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
         assert_eq!(feeds.lists().0[0].server, None);
+    }
+
+    // A saved server watched in the background but switched off (or away)
+    // must not make the builtin's rows carry a name.
+    #[test]
+    fn an_unreachable_server_does_not_force_names_on_the_others_rows() {
+        let mut feeds = Feeds::default();
+        feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
+        feeds.join(&remote(), REMOTE_NAME.into());
+        feeds.update(&ServerId::Bundled, vec![session("a", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
+        assert_eq!(feeds.lists().0[0].server, None, "the remote never connected");
+
+        feeds.update(&remote(), vec![session("r", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
+        assert_eq!(feeds.lists().0[0].server.as_deref(), Some(BUILTIN_NAME), "both connected");
+
+        assert!(feeds.clear_sessions(&remote()));
+        assert!(feeds.set_watch(&remote(), WatchState::Reconnecting));
+        assert_eq!(feeds.lists().0[0].server, None, "only the builtin is in play again");
+    }
+
+    #[test]
+    fn watch_states_follow_the_connection_and_a_list_means_connected() {
+        let mut feeds = Feeds::default();
+        feeds.join(&remote(), REMOTE_NAME.into());
+        assert_eq!(feeds.watch_states(), [(remote(), WatchState::Connecting)]);
+        assert!(feeds.set_watch(&remote(), WatchState::KeyRejected));
+        assert!(!feeds.set_watch(&remote(), WatchState::KeyRejected), "no change");
+        assert!(feeds.update(&remote(), vec![], &HashMap::new(), &HashMap::new(), None, true), "becoming connected is a change");
+        assert_eq!(feeds.watch_states(), [(remote(), WatchState::Connected)]);
+        assert!(!feeds.set_watch(&ServerId::Bundled, WatchState::Reconnecting), "not followed");
+        assert_eq!(serde_json::to_value(WatchState::KeyRejected).unwrap(), "key_rejected");
+    }
+
+    #[test]
+    fn a_rename_updates_the_label_the_rows_carry() {
+        let mut feeds = two_servers(&["a"], &["r"]);
+        assert!(feeds.rename(&remote(), "Renamed"));
+        assert!(!feeds.rename(&remote(), "Renamed"));
+        assert_eq!(feeds.lists().0[1].server.as_deref(), Some("Renamed"));
+    }
+
+    #[test]
+    fn a_key_rejection_is_told_apart_from_other_failures() {
+        let rejected: anyhow::Error = AuthRejected(401).into();
+        assert!(rejected.downcast_ref::<AuthRejected>().is_some());
+        assert!(rejected.to_string().contains("401"));
+        let other = anyhow::anyhow!("event stream closed");
+        assert!(other.downcast_ref::<AuthRejected>().is_none());
     }
 
     // Switching the followed server used to diff the old server's list

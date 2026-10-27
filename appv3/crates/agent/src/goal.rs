@@ -775,24 +775,56 @@ pub async fn clear_undone_goal(pool: &DbPool, session_id: &str, target: &db::Ses
     Ok(())
 }
 
-/// Pause every goal a restart left active (no turn survives one), and drop
-/// continuation messages it left queued: Resume queues a fresh one.
-pub async fn pause_after_restart(pool: &DbPool) -> usize {
-    match db::pause_active_session_goals(pool, reason::RESTART).await {
-        Ok(goals) => {
-            for g in &goals {
-                if let Err(e) = db::delete_queued_goal_reminders(pool, &g.session_id).await {
-                    tracing::warn!("goal_stale_reminder_drop_failed session_id={} error={}", g.session_id, e);
-                }
-                tracing::info!("goal_paused_after_restart session_id={} goal_id={}", g.session_id, g.id);
-            }
-            goals.len()
-        }
+/// Keep the goals a restart left active running (see
+/// [`crate::restart_resume`]). `continued`: lead sessions whose cut-off turn
+/// runs again, and goes on with the goal when it ends. `not_continued`:
+/// sessions whose turn stays stopped, so their goal pauses (reason
+/// `restart`) and waits for Resume. Any other active goal was between turns:
+/// its stale continuation is dropped and the next turn starts. Returns how
+/// many goals were paused.
+pub async fn continue_after_restart(pool: &DbPool, continued: &[String], not_continued: &[String]) -> usize {
+    let goals = match db::active_session_goals(pool).await {
+        Ok(g) => g,
         Err(e) => {
-            tracing::warn!("goal_pause_after_restart_failed error={}", e);
-            0
+            tracing::warn!("goal_restart_query_failed error={}", e);
+            return 0;
+        }
+    };
+    let has = |list: &[String], sid: &str| list.iter().any(|s| db_id(s) == sid);
+    let mut paused = 0;
+    for mut g in goals {
+        let sid = db::codec::api_uuid(&g.session_id);
+        if has(continued, &g.session_id) {
+            tracing::info!("goal_continues_after_restart session_id={} goal_id={}", sid, g.id);
+            continue;
+        }
+        if let Err(e) = db::delete_queued_goal_reminders(pool, &sid).await {
+            tracing::warn!("goal_stale_reminder_drop_failed session_id={} error={}", sid, e);
+        }
+        if !has(not_continued, &g.session_id) {
+            let ws = db::get_session(pool, &sid).await.ok().flatten().map(|r| r.workspace).filter(|w| !w.is_empty());
+            let ws = ws.unwrap_or_else(|| std::env::current_dir().unwrap_or_default().display().to_string());
+            match crate::manager::get_or_start_agent_session(&ws, Some(&sid)).await {
+                Ok(Some(session)) => {
+                    let kicked = session.kick_goal(&sid, false).await;
+                    tracing::info!("goal_kept_after_restart session_id={} goal_id={} started_turn={}", sid, g.id, kicked);
+                    continue;
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("goal_restart_session_failed session_id={} error={}", sid, e),
+            }
+        }
+        pause(&mut g, reason::RESTART, None);
+        match save(pool, &g).await {
+            Ok(g) => {
+                tracing::info!("goal_paused_after_restart session_id={} goal_id={}", sid, g.id);
+                publish(&sid, Some(&g));
+                paused += 1;
+            }
+            Err(e) => tracing::warn!("goal_pause_after_restart_failed session_id={} error={}", sid, e),
         }
     }
+    paused
 }
 
 // ── Session ──────────────────────────────────────────────────────────────────

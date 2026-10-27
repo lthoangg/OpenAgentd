@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
 import { takePrefetchedHistory } from '@/lib/session-prefetch'
 import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages, userMessageSender } from '@/utils/messages'
+import { isRestartNoteExtra } from '@/lib/restart-note'
 import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
 import { sentFrom } from '@/utils/workspace-messages'
@@ -94,8 +95,8 @@ function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, re
  */
 function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[]) {
   return messages
-    // A goal's queued continuation is a hidden reminder, not the user's message.
-    .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') && !userMessageSender(msg) && !msg.extra?.goal_turn)
+    // A goal's queued continuation and a restart's note are the runtime's, not the user's message.
+    .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') && !userMessageSender(msg) && !msg.extra?.goal_turn && !isRestartNoteExtra(msg.extra))
     .map((msg) => ({
       id: msg.id,
       sessionId,

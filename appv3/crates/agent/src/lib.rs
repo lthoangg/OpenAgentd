@@ -20,6 +20,7 @@ pub mod plugins;
 pub mod prompts;
 pub mod pystr;
 pub mod queue;
+pub mod restart_resume;
 pub mod retry;
 pub mod revert;
 pub mod scheduler;

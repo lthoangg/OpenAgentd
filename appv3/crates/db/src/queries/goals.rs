@@ -149,6 +149,11 @@ pub async fn pause_active_session_goals(pool: &DbPool, reason: &str) -> Result<V
         .await?)
 }
 
+/// Every active goal, across sessions.
+pub async fn active_session_goals(pool: &DbPool) -> Result<Vec<SessionGoal>> {
+    Ok(sqlx::query_as::<_, SessionGoal>("SELECT * FROM session_goals WHERE status = ?").bind(GOAL_ACTIVE).fetch_all(pool).await?)
+}
+
 /// A live goal as session lists show it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveGoalSummary {

@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000028";
+pub const ALEMBIC_HEAD: &str = "00000029";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -66,7 +66,11 @@ pub const ALEMBIC_HEAD: &str = "00000028";
 ///   `(session_id, id)` with UUIDv7 ids like `side_questions`, so a
 ///   session's goals are one time-ordered range. The partial unique index
 ///   allows one live (active or paused) goal per session.
-pub const MIGRATIONS: [(&str, &str); 28] = [
+/// - 00000029: `inflight_turns`, one row per session whose turn is running,
+///   written when the turn starts and deleted when it ends. A row left
+///   behind by a stopped or crashed server is a turn to continue on the next
+///   start; `restart_resumes` caps that at one continuation per turn.
+pub const MIGRATIONS: [(&str, &str); 29] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -95,6 +99,7 @@ pub const MIGRATIONS: [(&str, &str); 28] = [
     ("00000026", include_str!("../resources/migrations/00000026.sql")),
     ("00000027", include_str!("../resources/migrations/00000027.sql")),
     ("00000028", include_str!("../resources/migrations/00000028.sql")),
+    ("00000029", include_str!("../resources/migrations/00000029.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -502,6 +507,12 @@ CREATE TABLE session_goals (
 	PRIMARY KEY (session_id, id)
 ) WITHOUT ROWID;
 CREATE UNIQUE INDEX uq_session_goals_live ON session_goals (session_id) WHERE status IN ('active', 'paused');
+CREATE TABLE inflight_turns (
+	session_id CHAR(32) NOT NULL,
+	started_at DATETIME NOT NULL,
+	restart_resumes INTEGER DEFAULT 0 NOT NULL,
+	PRIMARY KEY (session_id)
+);
 "#;
 
     async fn master(conn: &mut SqliteConnection) -> Vec<(String, String, String, Option<String>)> {

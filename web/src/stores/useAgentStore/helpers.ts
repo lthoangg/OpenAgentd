@@ -1,5 +1,6 @@
 import type { ContentBlock, PendingQuestion } from '@/api/types'
 import { isGoalTurnBlock } from '@/lib/goal'
+import { restartNoteInfo } from '@/lib/restart-note'
 import type { AgentStream, CacheInvalidation, ResolvedQuestion } from './types'
 
 /** Kinds whose live id (``generateBlockId``) differs from the server row's. */
@@ -258,7 +259,7 @@ export function isDirectUserBlock(block: ContentBlock): boolean {
  * so ``isDirectUserBlock`` keeps counting them).
  */
 export function isTypedPromptBlock(block: ContentBlock): boolean {
-  return isDirectUserBlock(block) && !isGoalTurnBlock(block)
+  return isDirectUserBlock(block) && !isGoalTurnBlock(block) && restartNoteInfo(block) === null
 }
 
 export function applyRevertBoundary(

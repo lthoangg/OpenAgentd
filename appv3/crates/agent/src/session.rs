@@ -128,6 +128,9 @@ pub struct TurnOptions {
     pub runtime_model: Option<String>,
     pub runtime_thinking_level: Option<String>,
     pub queued_activation_event: Option<Value>,
+    /// A restart is continuing the turn the last server process left
+    /// running (see [`crate::restart_resume`]).
+    pub restart_resume: bool,
 }
 
 /// `handle_user_message` arguments.
@@ -941,6 +944,12 @@ impl AgentSession {
 
     /// `_activate_queued_user_messages`.
     pub async fn activate_queued_user_messages(&self, session_id: &str) -> bool {
+        self.activate_queued_with(session_id, TurnOptions::default()).await
+    }
+
+    /// Start a turn on the queued rows with `opts` (its activation event is
+    /// filled in here). `false` when nothing was queued.
+    pub(crate) async fn activate_queued_with(&self, session_id: &str, opts: TurnOptions) -> bool {
         if self.session_id() != session_id {
             *self.session_id.lock().unwrap() = session_id.to_string();
         }
@@ -961,10 +970,7 @@ impl AgentSession {
             visible.iter().map(|r| json!({"id": db::codec::api_uuid(&r.id), "content": r.content.clone().unwrap_or_default(), "extra": r.extra_json()})).collect();
         self.clear_cancel();
         self.set_active_turn(true);
-        self.spawn_turn(TurnOptions {
-            queued_activation_event: Some(json!({"type": "queued_turn_start", "agent": self.name(), "message_ids": ids, "messages": data})),
-            ..Default::default()
-        });
+        self.spawn_turn(TurnOptions { queued_activation_event: Some(json!({"type": "queued_turn_start", "agent": self.name(), "message_ids": ids, "messages": data})), ..opts });
         true
     }
 
@@ -1131,6 +1137,14 @@ impl AgentSession {
         if !sid.is_empty() {
             store().init_turn(&sid, true);
         }
+        // Compactions are not continued after a restart: a forced one would
+        // run as an ordinary turn, and an idle one is not worth the cost.
+        let tracks_in_flight = !sid.is_empty() && !opts.force_compaction && !opts.idle_compaction;
+        if tracks_in_flight {
+            if let Err(e) = db::mark_turn_in_flight(&self.pool, &sid, opts.restart_resume).await {
+                tracing::warn!("turn_in_flight_mark_failed session_id={} error={}", sid, e);
+            }
+        }
         self.set_state("working");
         *self.question_suspended.lock().unwrap() = None;
         *self.lead_suspended.lock().unwrap() = None;
@@ -1272,6 +1286,15 @@ impl AgentSession {
             self.close_turn(&sid, "error", notify, opts.idle_compaction, goal_id.as_deref()).await;
         }
         if !activated {
+            // A turn the server's own shutdown stopped stays marked, so the
+            // next start continues it; every other end clears the mark
+            // (before the turn reads as over, so a new turn's mark survives).
+            let stopped_by_shutdown = self.cancel.is_set() && crate::restart_resume::is_shutting_down();
+            if tracks_in_flight && !stopped_by_shutdown && !sid.is_empty() {
+                if let Err(e) = db::clear_turn_in_flight(&self.pool, &sid).await {
+                    tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", sid, e);
+                }
+            }
             self.set_active_turn(false);
         }
         let lead = self.parent_session_id.is_none();

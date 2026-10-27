@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.33.0 · October 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.33.0)
+**Latest release:** v3.34.0 · October 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.34.0)
 
 ---
 
@@ -70,6 +70,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   Stopping the server with open streams exits at once instead of after 5 s.
   An internal crash in one turn ends that turn with an error instead of leaving
   the session busy, and concurrent messages keep distinct history positions.
+- **Running turns survive a server restart** `[v3.34.0]` — when the server
+  stops while an agent is mid-turn (`agentd server restart` or `upgrade`,
+  stopping and starting the builtin backend, an app restart, or a crash or
+  kill), the next start continues that turn on its own. A **Continued after a
+  server restart** divider marks the spot, the agent is told its last step was
+  cut off, and a tool call that was running gets a result saying a restart
+  stopped it and may have partly run it, so the agent checks before repeating
+  it. A turn you stopped stays stopped, a turn waiting on your answer keeps
+  waiting, and each turn is continued at most once: cut off again, it stays
+  stopped with a **Stopped by a server restart** divider. A subagent cut off
+  mid-task is not restarted; its lead gets a report that it was stopped, so
+  the lead can delegate the task again instead of waiting.
 - **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
   Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
   Grep is linear-time and parallel. The file tree, git status and diff refresh live
@@ -138,6 +150,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   marked, online/offline shown) and connect with Enter. It reuses the Settings →
   Connection checks (reachable, access key accepted); a failure shows a toast and
   keeps the current server. No keyboard shortcut; desktop app only.
+  Since `[v3.34.0]`, picking a server here or in Settings → Connection covers
+  the window with **Switching to *name*…** right away (it fades in after a
+  beat, so an instant switch never flashes it), and the startup screen keeps
+  the same words through the reload until the new server is up. A failed
+  connect closes it and shows the error where you started.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
   `/` is a new session and `/{session_id}` a session; old `/coding` and
@@ -400,8 +417,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Done when** and whether the completion check has confirmed it. An
     approved plan that has a Done when and no goal can be started as a goal
     later with **Run as goal** in the Plan tab. The Stop button pauses the
-    goal, Plan mode and running subagents make it wait, and a goal running
-    when the app quit comes back paused. Approving another plan with
+    goal, Plan mode and running subagents make it wait, and since
+    `[v3.34.0]` a goal keeps running across a server or app restart: its
+    cut-off turn continues, and it pauses (reason "restart") only when that
+    turn cannot be continued. Approving another plan with
     Keep going replaces the goal. A scheduled task that runs in the goal's
     session skips each run that comes due while the goal works (the scheduler
     skips busy sessions) and fires again at its next scheduled time. Undoing a
@@ -1915,6 +1934,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
   Changing the trigger in Settings → Context applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
+  Summaries in sessions with an active goal, @-mentioned context, or a
+  session plan now reuse the turn's prompt cache too, so compaction there no
+  longer re-reads the whole context `[v3.34.0]`.
   Opt-in **idle compaction** in Settings → Context → Idle sessions
   compacts a session in the background when it has been idle for 4½ minutes
   after a turn and its context has reached a set share of the trigger

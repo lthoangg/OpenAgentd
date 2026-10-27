@@ -38,7 +38,9 @@ import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble, type OpenSessionHandler } from './AgentView/UserBubble'
 import { GoalTurnDivider } from './AgentView/GoalTurnDivider'
+import { RestartDivider } from './AgentView/RestartDivider'
 import { goalTurnInfo } from '@/lib/goal'
+import { restartNoteInfo } from '@/lib/restart-note'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
@@ -327,6 +329,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
       const goalTurn = goalTurnInfo(block)
       if (goalTurn) return <GoalTurnDivider info={goalTurn} />
+      const restart = restartNoteInfo(block)
+      if (restart) return <RestartDivider info={restart} />
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':

@@ -631,12 +631,10 @@ impl SummarizationHook {
     async fn summarise_inner(&self, ctx: &RunContext, state: &mut AgentState, system_prompt: &str, span: &Span) -> (bool, bool) {
         // `/compact` and idle compaction run alone, not inside an agent run.
         let forced = state.meta_get("force_summarization") == Some(Value::Bool(true));
-        let eligible: Vec<usize> = (0..state.messages.len())
-            .filter(|&i| {
-                let m = &state.messages[i];
-                !m.meta().exclude_from_context && !matches!(m, ChatMessage::System { .. }) && !extra_truthy(m, "hidden_from_summary")
-            })
-            .collect();
+        // Every visible message, runtime notes included: the request must
+        // match the main turn's history to read its prompt cache.
+        let eligible: Vec<usize> =
+            (0..state.messages.len()).filter(|&i| !state.messages[i].meta().exclude_from_context && !matches!(state.messages[i], ChatMessage::System { .. })).collect();
         if eligible.is_empty() {
             tracing::debug!("summarization_skipped_no_messages session_id={:?}", ctx.session_id);
             span.set_attr("summarization.skipped", "no_messages");
@@ -665,11 +663,10 @@ impl SummarizationHook {
         if !system_prompt.is_empty() {
             prefix.push(ChatMessage::system(system_prompt));
         }
-        // An earlier plan note is restated fresh from the file below; the
-        // summariser would only copy it into the summary.
-        // `for_model` keeps a prior summary as the main turn sent it, so the
+        // Exactly what the main turn sent (an earlier plan note included;
+        // `for_model` keeps a prior summary as the turn framed it), so the
         // request shares that turn's prompt-cache prefix.
-        prefix.extend(to_summarise.iter().filter(|&&i| !extra_truthy(&state.messages[i], plan::SESSION_PLAN_KEY)).map(|&i| for_model(&state.messages[i])));
+        prefix.extend(to_summarise.iter().map(|&i| for_model(&state.messages[i])));
         let mut msgs = merge_consecutive_user_messages(prefix);
         // The hint goes in the final instruction, never into the
         // conversation above it, which shares the main turn's prompt cache.
@@ -1097,7 +1094,92 @@ mod tests {
         assert!(new.meta().pinned && !new.meta().exclude_from_context);
         assert!(new.content().unwrap().contains("3. Ship"));
         let request = summariser_request(&provider, 1);
-        assert!(!request.iter().any(|m| m.content().is_some_and(|c| c.contains("<session_plan path="))), "old note reached the summariser");
+        assert!(request.iter().any(|m| m.content().is_some_and(|c| c.contains("<session_plan path="))), "the old note was cut from the summariser's history");
+    }
+
+    /// What a main turn sends for `state`: the system prompt, then the
+    /// visible history (`stream_and_assemble`).
+    fn main_turn_wire(state: &AgentState, system: &str) -> Vec<ChatMessage> {
+        let mut wire = vec![ChatMessage::system(system)];
+        wire.extend(state.messages_for_llm());
+        merge_consecutive_user_messages(wire)
+    }
+
+    /// The summary request must be the main turn's request plus the summary
+    /// instruction, or it cannot read the prompt cache the turn just wrote.
+    fn assert_extends_main_turn(request: &[ChatMessage], main: &[ChatMessage]) {
+        assert_eq!(request.len(), main.len() + 1, "the summary request is not the main turn plus one instruction");
+        for (i, (sent, cached)) in request.iter().zip(main).enumerate() {
+            assert_eq!(sent, cached, "the summary request rewrites message {i} of the main turn");
+        }
+    }
+
+    /// A live goal's pinned rules note, as `goal::note_extra` marks it.
+    fn goal_note() -> ChatMessage {
+        let mut m = ChatMessage::user("<session_goal>\nShip the settings redesign.\n</session_goal>");
+        let meta = m.meta_mut();
+        meta.kind = "note".into();
+        meta.pinned = true;
+        let mut extra = Map::new();
+        extra.insert("hidden_from_user".into(), json!(true));
+        extra.insert("hidden_from_summary".into(), json!(true));
+        extra.insert("goal_note".into(), json!(true));
+        meta.extra = Some(extra);
+        m
+    }
+
+    #[tokio::test]
+    async fn summary_request_extends_the_main_turn_with_a_live_goal_note() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let hook = hook_with(provider.clone(), 0);
+        let mut state = AgentState::new(
+            vec![mode_note("code"), goal_note(), ChatMessage::user("Redesign settings."), ChatMessage::assistant("Step 1 done."), ChatMessage::assistant("Step 2 done.")],
+            String::new(),
+        );
+        let main = main_turn_wire(&state, "sys");
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await);
+
+        assert_extends_main_turn(&summariser_request(&provider, 0), &main);
+    }
+
+    #[tokio::test]
+    async fn second_summary_request_extends_the_main_turn_with_the_plan_note() {
+        let dir = tempfile::tempdir().unwrap();
+        save_plan(dir.path(), PLAN);
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary one."), MockProvider::text("Summary two.")]));
+        let hook = hook_with(provider.clone(), 0).with_plan_dir(dir.path().to_path_buf());
+        let mut state = compact_with(&hook, vec![mode_note("code"), ChatMessage::user("Build it."), ChatMessage::assistant("Building.")]).await;
+        state.messages.push(ChatMessage::user("Now test it."));
+        state.messages.push(ChatMessage::assistant("Tests pass."));
+        let main = main_turn_wire(&state, "sys");
+        assert!(main.iter().any(|m| m.content().is_some_and(|c| c.contains("<session_plan path="))), "the main turn sends the restated plan");
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await);
+
+        assert_extends_main_turn(&summariser_request(&provider, 1), &main);
+    }
+
+    #[tokio::test]
+    async fn live_goal_note_is_summarised_like_any_message() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let hook = hook_with(provider.clone(), 0);
+        let note = goal_note();
+        let note_text = note.content().unwrap().to_string();
+        let mut state = AgentState::new(vec![note, ChatMessage::user("Redesign settings."), ChatMessage::assistant("Step 1 done.")], String::new());
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await);
+
+        assert!(summariser_request(&provider, 0).iter().any(|m| m.content().is_some_and(|c| c.contains(&note_text))), "the summariser did not read the goal note");
+        assert!(!visible(&state, &note_text), "the summary replaces the goal note");
+        assert!(!find(&state, &note_text).1.meta().pinned);
+    }
+
+    /// The goal note is compacted like any message, so the summary carries
+    /// an active goal's rules forward.
+    #[test]
+    fn summary_prompts_carry_an_active_goal_note_forward() {
+        for key in ["summary_coding", "summary_chat"] {
+            assert!(prompts::s(key).contains("`<session_goal>`"), "{key} does not carry the goal note");
+        }
+        assert!(prompts::s("runtime_notes").contains("`<session_goal>`"));
     }
 
     #[tokio::test]

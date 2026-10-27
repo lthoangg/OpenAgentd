@@ -297,6 +297,22 @@ describe('App backend bootstrap', () => {
     })
   })
 
+  it('keeps saying where a server switch is going after its reload, until the server is up', async () => {
+    window.sessionStorage.setItem('openagentd.backendSwitch', JSON.stringify({ name: 'the builtin server', detail: "Running sessions continue once it's up.", at: Date.now() }))
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
+
+    render(<App />)
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+    const loading = document.querySelector('[aria-label="Loading OpenAgentd"]')!
+    expect(loading.textContent).toContain('Switching to the builtin server…')
+    expect(loading.textContent).not.toContain('Connecting to OpenAgentd')
+
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false, token: 'desktop-token' }
+    await waitFor(() => expect(routerMounted).toBe(true))
+    expect(window.sessionStorage.getItem('openagentd.backendSwitch')).toBeNull()
+  })
+
   it('shows recovery immediately when the native shell reports a startup error', async () => {
     statusPayload = { base_url: '', sidecar_running: false, external: false, backend_starting: true }
     render(<App />)

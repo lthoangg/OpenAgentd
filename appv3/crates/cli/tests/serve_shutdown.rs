@@ -8,6 +8,10 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 fn spawn_server(root: &std::path::Path, desktop_token: Option<&str>) -> (Child, BufReader<std::process::ChildStdout>, u16) {
+    spawn_server_with(root, desktop_token, &[])
+}
+
+fn spawn_server_with(root: &std::path::Path, desktop_token: Option<&str>, extra_env: &[(&str, &str)]) -> (Child, BufReader<std::process::ChildStdout>, u16) {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agentd"));
     cmd.args(["server", "serve", "--host", "127.0.0.1", "--port", "0", "--handshake"]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     for (k, d) in [
@@ -26,6 +30,9 @@ fn spawn_server(root: &std::path::Path, desktop_token: Option<&str>) -> (Child, 
     }
     if let Some(t) = desktop_token {
         cmd.env("OPENAGENTD_DESKTOP_TOKEN", t);
+    }
+    for (k, v) in extra_env {
+        cmd.env(k, v);
     }
     let mut child = cmd.spawn().expect("spawn openagentd");
     let mut line = String::new();
@@ -188,5 +195,129 @@ fn the_desktop_opens_a_key_protected_lan_listener_and_closes_it() {
     assert!(TcpStream::connect(("127.0.0.1", lan)).is_err(), "the LAN port is closed");
     // The desktop's own listener is untouched.
     assert_eq!(http(port, "GET", "/api/agents", Some("desk-tok"), None).0, 200);
+    terminate(&mut child);
+}
+
+/// An OpenAI-compatible chat endpoint that never answers its first request
+/// (a turn still running when the server stops) and answers the rest with
+/// `reply`. Returns its port and how many chat requests it has had.
+fn fake_provider(reply: &'static str) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let count = std::sync::Arc::new(AtomicUsize::new(0));
+    let seen = count.clone();
+    std::thread::spawn(move || {
+        let mut held = vec![];
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let (mut request_line, mut line, mut len) = (String::new(), String::new(), 0usize);
+            let _ = reader.read_line(&mut request_line);
+            while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap_or(0);
+                }
+                line.clear();
+            }
+            let mut body = vec![0; len];
+            let _ = reader.read_exact(&mut body);
+            if !request_line.contains("/chat/completions") {
+                let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                continue;
+            }
+            if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                held.push(stream);
+                continue;
+            }
+            let chunk = |delta: &str, finish: &str| {
+                format!(r#"data: {{"id":"c","object":"chat.completion.chunk","created":0,"model":"mock-1","choices":[{{"index":0,"delta":{delta},"finish_reason":{finish}}}]}}"#)
+                    + "\n\n"
+            };
+            let sse = chunk(&format!(r#"{{"role":"assistant","content":"{reply}"}}"#), "null") + &chunk("{}", r#""stop""#) + "data: [DONE]\n\n";
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", sse.len());
+            let _ = stream.write_all((head + &sse).as_bytes());
+        }
+    });
+    (port, count)
+}
+
+/// `POST /api/agent/chat` as the web sends it (multipart form).
+fn send_chat(port: u16, message: &str, workspace: &str) -> (u16, String) {
+    let boundary = "oadboundary";
+    let mut body = String::new();
+    for (k, v) in [("message", message), ("workspace", workspace)] {
+        body += &format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n");
+    }
+    body += &format!("--{boundary}--\r\n");
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.write_all(
+        format!(
+            "POST /api/agent/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: multipart/form-data; boundary={boundary}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    let status = raw.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    (status, raw.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default())
+}
+
+fn wait_until(what: &str, limit: Duration, mut done: impl FnMut() -> bool) {
+    let started = Instant::now();
+    while !done() {
+        assert!(started.elapsed() < limit, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// `agentd server restart` and the desktop's Stop then Connect both stop
+/// the server with SIGTERM and start it again on the same data.
+#[test]
+fn a_turn_running_when_the_server_restarts_continues_after_it() {
+    turn_continues_after(nix::sys::signal::Signal::SIGTERM);
+}
+
+/// The desktop kills a server that outlives its shutdown grace, and a crash
+/// gives no warning at all: the turn still continues.
+#[test]
+fn a_turn_cut_off_by_a_killed_server_continues_after_it() {
+    turn_continues_after(nix::sys::signal::Signal::SIGKILL);
+}
+
+fn turn_continues_after(signal: nix::sys::signal::Signal) {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (fake, chats) = fake_provider("Back at it.");
+    let base = format!("http://127.0.0.1:{fake}/v1");
+    let env = [("OLLAMA_BASE_URL", base.as_str())];
+    let (mut child, _stdout, port) = spawn_server_with(root.path(), None, &env);
+    assert_eq!(http(port, "POST", "/api/settings/default-model", None, Some(r#"{"provider_model":"ollama:mock-1"}"#)).0, 200);
+    let titles = r#"{"enabled":false,"model":"ollama:mock-1","wait_timeout_seconds":0}"#;
+    assert_eq!(http(port, "PUT", "/api/settings/title-generation", None, Some(titles)).0, 200);
+    let ws = root.path().join("proj");
+    std::fs::create_dir_all(&ws).unwrap();
+    let (st, body) = send_chat(port, "do the long thing", &ws.display().to_string());
+    assert_eq!(st, 202, "{body}");
+    let sid = serde_json::from_str::<serde_json::Value>(body.trim()).ok().and_then(|v| v["session_id"].as_str().map(String::from)).unwrap_or_else(|| {
+        // A chunked body: the JSON sits between the size lines.
+        let start = body.find('{').unwrap();
+        let end = body.rfind('}').unwrap();
+        serde_json::from_str::<serde_json::Value>(&body[start..=end]).unwrap()["session_id"].as_str().unwrap().to_string()
+    });
+    wait_until("the model request", Duration::from_secs(10), || chats.load(Ordering::SeqCst) == 1);
+
+    nix::sys::signal::kill(nix::unistd::Pid::from_raw(child.id() as i32), signal).unwrap();
+    wait_until("the server to exit", Duration::from_secs(30), || child.try_wait().unwrap().is_some());
+
+    let (mut child, _stdout, port) = spawn_server_with(root.path(), None, &env);
+    let history = format!("/api/agent/{sid}/history");
+    wait_until("the continued turn's reply", Duration::from_secs(20), || http(port, "GET", &history, None, None).1.contains("Back at it."));
+    let (_, body) = http(port, "GET", &history, None, None);
+    assert!(body.contains("The server restarted while you were working"), "{body}");
+    assert!(body.contains("restart_resume"), "{body}");
+    assert_eq!(chats.load(Ordering::SeqCst), 2, "the continued turn asked the model once more");
     terminate(&mut child);
 }

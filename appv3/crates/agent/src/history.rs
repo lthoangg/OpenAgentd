@@ -271,6 +271,7 @@ pub fn is_user_prompt(m: &ChatMessage) -> bool {
     let truthy = |k: &str| extra.get(k).map(crate::util::truthy).unwrap_or(false);
     !(truthy("hidden_from_user")
         || set("goal_turn")
+        || set(crate::restart_resume::NOTE_KEY)
         || set("attachment_for_message_id")
         || agent(extra.get("from_agent"))
         || agent(routing.and_then(|r| r.get("from_agent")))
@@ -354,6 +355,11 @@ pub fn to_new_message(msg: &ChatMessage) -> NewMessage {
 
 /// Insert synthetic tool rows for unmatched tool_calls in the LLM window.
 pub async fn heal_orphaned_tool_calls(pool: &DbPool, session_id: &str) -> Result<usize> {
+    heal_orphaned_tool_calls_with(pool, session_id, INTERRUPTED_TOOL_RESULT).await
+}
+
+/// [`heal_orphaned_tool_calls`] with `result` as each synthetic tool result.
+pub async fn heal_orphaned_tool_calls_with(pool: &DbPool, session_id: &str, result: &str) -> Result<usize> {
     let rows = db::llm_window_tool_pairs(pool, session_id).await?;
     let assistants: Vec<&db::ToolPairRow> =
         rows.iter().filter(|r| r.role == "assistant" && r.tool_calls_json().map(|t| t.as_array().map(|a| !a.is_empty()).unwrap_or(false)).unwrap_or(false)).collect();
@@ -394,7 +400,7 @@ pub async fn heal_orphaned_tool_calls(pool: &DbPool, session_id: &str) -> Result
             let name = tc.pointer("/function/name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
             anchor = db::seq_between(anchor, upper).max(anchor);
             let created_at = created.map(|d| db::codec::dt_db(&(d + chrono::Duration::microseconds(i as i64 + 1))));
-            db::save_message(pool, session_id, NewMessage { seq: Some(anchor), created_at, ..NewMessage::tool(id.clone(), name, INTERRUPTED_TOOL_RESULT) }).await?;
+            db::save_message(pool, session_id, NewMessage { seq: Some(anchor), created_at, ..NewMessage::tool(id.clone(), name, result) }).await?;
             healed.push(id);
         }
     }

@@ -666,10 +666,11 @@ async fn undo_ends_a_goal_only_when_it_takes_back_the_approval() {
     assert_eq!(h.goal().await.status, "cleared", "taking back the approval takes its goal with it");
 }
 
-/// Compaction summarizes the goal's turns but keeps its rules: the next
-/// goal turn still reads the objective after the summary.
+/// Compaction summarizes the goal's rules note like any message, so the
+/// summary request matches the turn's prompt cache. The summarizer reads the
+/// note and is told to carry an active goal forward verbatim.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn compaction_keeps_the_goal_rules() {
+async fn compaction_hands_the_goal_rules_to_the_summary() {
     let mut turns = vec![];
     for (id, said) in [("a", "One."), ("b", "Two."), ("c", "Three.")] {
         turns.extend([MockProvider::tool_call(id, "work", "{}"), MockProvider::text(said)]);
@@ -686,9 +687,11 @@ async fn compaction_keeps_the_goal_rules() {
     h.session.resume_goal(&h.sid).await.unwrap();
     h.finish().await;
     let calls = h.mock.calls.lock().unwrap().clone();
+    let summary_request: Vec<String> = calls[6].0.iter().filter_map(|m| m.content().map(String::from)).collect();
+    assert!(summary_request.iter().any(|c| c.contains("<objective>\nmake it work\n</objective>")), "the summarizer reads the goal rules");
+    assert!(summary_request.last().unwrap().contains("`<session_goal>` note appears above"), "the summarizer is told to carry the goal forward");
     let read: Vec<String> = calls[7].0.iter().filter_map(|m| m.content().map(String::from)).collect();
     let read = read.join("\n\n");
     assert!(read.contains("Summary: three steps of work are done."), "the turn reads the summary: {read}");
-    assert!(read.contains("<session_goal>") && read.contains("<objective>\nmake it work\n</objective>"), "the rules survive compaction: {read}");
-    assert!(h.notes(goal::GOAL_NOTE_KEY).await[0].pinned);
+    assert!(h.notes(goal::GOAL_NOTE_KEY).await.is_empty(), "the summary replaces the rules note in the window");
 }

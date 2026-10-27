@@ -150,6 +150,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   marked, online/offline shown) and connect with Enter. It reuses the Settings →
   Connection checks (reachable, access key accepted); a failure shows a toast and
   keeps the current server. No keyboard shortcut; desktop app only.
+  Since `[v3.34.0]`, picking a server here or in Settings → Connection covers
+  the window with **Switching to *name*…** right away (it fades in after a
+  beat, so an instant switch never flashes it), and the startup screen keeps
+  the same words through the reload until the new server is up. A failed
+  connect closes it and shows the error where you started.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
   `/` is a new session and `/{session_id}` a session; old `/coding` and

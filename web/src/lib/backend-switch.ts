@@ -2,7 +2,8 @@
  * Switching the app's backend: the steps behind every "Connect" and "Use
  * builtin" button. Settings → Connection (`AppBackendPanel`) and the command
  * palette's Switch Server… both call these, so a switch checks the server and
- * its key, and clears the old session state, the same way from either.
+ * its key, clears the old session state, and shows the "Switching to …"
+ * screen (`BackendSwitchScreen`) the same way from either.
  */
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, setStoredAccessKey } from '@/api/auth'
@@ -10,6 +11,7 @@ import { queryClient } from '@/lib/query-client'
 import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { queryKeys } from '@/queries/keys'
+import { beginBackendSwitch, endBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import {
   getAppBackendStatus,
   switchToBundledAppBackend,
@@ -66,6 +68,34 @@ export function reloadForBackendSwitch(): void {
   window.location.reload()
 }
 
+/** What the switching screen calls the builtin sidecar. */
+export const BUILTIN_SWITCH_TARGET: BackendSwitchTarget = {
+  name: 'the builtin server',
+  detail: "Running sessions continue once it's up.",
+}
+
+function serverLabel(name: string, baseUrl: string): string {
+  if (name.trim()) return name.trim()
+  try {
+    return new URL(baseUrl).host || baseUrl
+  } catch {
+    return baseUrl
+  }
+}
+
+/**
+ * Show the switching screen while `run` switches. It stays up when the
+ * caller is about to reload onto the new server (the startup screen takes
+ * over from it), and goes away on a failure, so the error shows where the
+ * user started.
+ */
+async function withSwitchScreen<T extends { ok: true; reload: boolean } | { ok: false; error: string }>(target: BackendSwitchTarget, run: () => Promise<T>): Promise<T> {
+  beginBackendSwitch(target)
+  const result = await run()
+  if (!result.ok || !result.reload) endBackendSwitch()
+  return result
+}
+
 export type ExternalSwitchResult =
   | { ok: true; status: AppBackendStatus; reload: boolean }
   | { ok: false; error: string }
@@ -88,6 +118,10 @@ export async function connectExternalBackend(options: {
   const target = normalizeServerBaseUrl(options.baseUrl)
   const validationError = validateServerUrl(target)
   if (validationError) return { ok: false, error: validationError }
+  return withSwitchScreen({ name: serverLabel(options.name, target), detail: target }, () => switchExternal(target, options))
+}
+
+async function switchExternal(target: string, options: Parameters<typeof connectExternalBackend>[0]): Promise<ExternalSwitchResult> {
   try {
     const online = await pingServer(target)
     options.onHealth?.(target, online)
@@ -117,6 +151,10 @@ export type BundledSwitchResult =
 
 /** Switch this window to the builtin sidecar, starting it when needed. */
 export async function connectBundledBackend(currentBaseUrl: string): Promise<BundledSwitchResult> {
+  return withSwitchScreen(BUILTIN_SWITCH_TARGET, () => switchBundled(currentBaseUrl))
+}
+
+async function switchBundled(currentBaseUrl: string): Promise<BundledSwitchResult> {
   try {
     await switchToBundledAppBackend()
     const next = await getAppBackendStatus()

@@ -1,12 +1,14 @@
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { Seal } from '@/components/brand/Logo'
 import { AppBackendDialog, type AppBackendPrefill } from '@/components/AppBackendDialog'
+import { BackendSwitchMessage, BackendSwitchScreen } from '@/components/BackendSwitchScreen'
 import { Button } from '@/components/ui/button'
 import { useConnectLink } from '@/hooks/useConnectLink'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { getBundledBackendLogPath } from '@/lib/app-backend'
+import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
@@ -18,6 +20,12 @@ function App() {
   useDynamicType()
   const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
+  // A server switch reloaded the window: the startup screen keeps saying
+  // where it is going, and forgets once the new server is up.
+  const [switchingTo] = useState(pendingBackendSwitch)
+  useEffect(() => {
+    if (ready) clearBackendSwitchHandoff()
+  }, [ready])
   // A scanned `openagentd://connect` link opens the dialog prefilled, in
   // the loading screen (no server yet) and in the running app alike.
   const { request: connectRequest, clear: clearConnectRequest } = useConnectLink()
@@ -26,19 +34,29 @@ function App() {
     if (!open) clearConnectRequest()
   }
 
-  if (!ready) return <AppLoadingScreen unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
+  if (!ready) {
+    return (
+      <>
+        <AppLoadingScreen switchingTo={switchingTo} unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
+        <BackendSwitchScreen />
+      </>
+    )
+  }
 
   return (
     <>
-      <Suspense fallback={<AppLoadingScreen unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
+      <Suspense fallback={<AppLoadingScreen switchingTo={switchingTo} unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
         <RouterProvider router={router} />
       </Suspense>
       <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />
+      <BackendSwitchScreen />
     </>
   )
 }
 
-function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
+function AppLoadingScreen({ switchingTo = null, unavailable, failed, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
+  /** The server a switch reloaded this window onto. */
+  switchingTo?: BackendSwitchTarget | null
   unavailable: boolean
   failed: boolean
   retrying: boolean
@@ -71,7 +89,9 @@ function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServ
         <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
         {!unavailable ? (
           <div className="flex flex-col items-center gap-2">
-            <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Connecting to OpenAgentd…</p>
+            {switchingTo
+              ? <BackendSwitchMessage target={switchingTo} />
+              : <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Connecting to OpenAgentd…</p>}
             <Button variant="ghost" size="sm" className="mt-1 text-xs text-(--color-text-subtle)" onClick={onChooseServer}>
               Choose Server
             </Button>

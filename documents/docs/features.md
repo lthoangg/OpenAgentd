@@ -1934,6 +1934,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
   Changing the trigger in Settings → Context applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
+  Summaries in sessions with an active goal, @-mentioned context, or a
+  session plan now reuse the turn's prompt cache too, so compaction there no
+  longer re-reads the whole context `[v3.34.0]`.
   Opt-in **idle compaction** in Settings → Context → Idle sessions
   compacts a session in the background when it has been idle for 4½ minutes
   after a turn and its context has reached a set share of the trigger

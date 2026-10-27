@@ -82,6 +82,10 @@ async fn a_turn_cut_off_by_shutdown_continues_on_the_next_start_and_a_stopped_on
     session.set_stop_grace(Duration::from_millis(200));
     session.handle_user_message(send("first")).await.unwrap();
     wait_for("the first turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
+    // Stop only once the turn is waiting on its model call: a stop before
+    // the call (likely on a slow machine) would leave the scripted replies
+    // one behind, so the continued turn would get a hang instead of text.
+    wait_for("the first model call", async || mock.calls.lock().unwrap().len() == 1).await;
     assert!(session.handle_stop().await);
     finish(&sid, &session).await;
     assert!(in_flight(&pool).await.is_empty(), "a turn the user stopped is not continued");
@@ -89,6 +93,7 @@ async fn a_turn_cut_off_by_shutdown_continues_on_the_next_start_and_a_stopped_on
     // A turn running when the server shuts down keeps its mark.
     session.handle_user_message(send("second")).await.unwrap();
     wait_for("the second turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
+    wait_for("the second model call", async || mock.calls.lock().unwrap().len() == 2).await;
     restart_resume::begin_shutdown();
     manager::stop().await;
     assert_eq!(in_flight(&pool).await, std::slice::from_ref(&sid), "the shutdown left the turn marked");

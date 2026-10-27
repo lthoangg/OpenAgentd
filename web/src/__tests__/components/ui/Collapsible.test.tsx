@@ -63,13 +63,31 @@ describe('Collapsible', () => {
     expect(screen.getByText('Inside')).toBeTruthy()
   })
 
-  it('clips only while moving, so focus outlines show at rest', () => {
+  it('clips and zeroes its min height only while moving, so focus outlines show and WebKit sizes it fresh at rest', () => {
     const view = render(fold(false))
     timers = useFakeTimers()
     act(() => view.rerender(fold(true)))
     const inner = screen.getByTestId('fold').firstElementChild as HTMLElement
     expect(inner.className).toContain('overflow-hidden')
+    expect(inner.className).toContain('min-h-0')
     act(() => timers!.tick(300))
     expect(inner.className).not.toContain('overflow-hidden')
+    // WebKit keeps a stale row height for a `min-height: 0` grid item when
+    // the width changes, leaving a gap under wrapped text.
+    expect(inner.className).not.toContain('min-h-0')
+  })
+
+  it('mounts open without a zeroed min height', () => {
+    render(fold(true))
+    const inner = screen.getByTestId('fold').firstElementChild as HTMLElement
+    expect(inner.className).not.toContain('min-h-0')
+  })
+
+  it('zeroes its min height again while closing', () => {
+    const view = render(fold(true))
+    timers = useFakeTimers()
+    act(() => view.rerender(fold(false)))
+    const inner = screen.getByTestId('fold').firstElementChild as HTMLElement
+    expect(inner.className).toContain('min-h-0')
   })
 })

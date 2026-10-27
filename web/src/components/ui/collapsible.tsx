@@ -71,8 +71,13 @@ export function Collapsible({ open, children, keepMounted = false, className, in
     >
       {/* `min-w-0`: a grid item may not shrink below its content by default,
        * so one unbreakable line (a truncated title is still one line) would
-       * size the whole fold, and every row in it, past its container. */}
-      <div inert={!open} aria-hidden={open ? undefined : true} className={cn('min-h-0 min-w-0', (!shown || moving) && 'overflow-hidden', innerClassName)}>
+       * size the whole fold, and every row in it, past its container.
+       * `min-h-0` lets the `0fr` row collapse, so it is only needed closed or
+       * moving. At rest it must go: WebKit keeps a `min-height: 0` grid item's
+       * old height when the width changes, so wrapped text laid out narrow
+       * (a session opening, a panel sliding in) left a gap under it once the
+       * transcript widened, until the next relayout. */}
+      <div inert={!open} aria-hidden={open ? undefined : true} className={cn('min-w-0', (!shown || moving) && 'min-h-0 overflow-hidden', innerClassName)}>
         {children}
       </div>
     </div>

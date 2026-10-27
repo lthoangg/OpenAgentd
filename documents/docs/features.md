@@ -70,6 +70,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   Stopping the server with open streams exits at once instead of after 5 s.
   An internal crash in one turn ends that turn with an error instead of leaving
   the session busy, and concurrent messages keep distinct history positions.
+- **Running turns survive a server restart** `[v3.34.0]` — when the server
+  stops while an agent is mid-turn (`agentd server restart` or `upgrade`,
+  stopping and starting the builtin backend, an app restart, or a crash or
+  kill), the next start continues that turn on its own. A **Continued after a
+  server restart** divider marks the spot, the agent is told its last step was
+  cut off, and a tool call that was running gets a result saying a restart
+  stopped it and may have partly run it, so the agent checks before repeating
+  it. A turn you stopped stays stopped, a turn waiting on your answer keeps
+  waiting, and each turn is continued at most once: cut off again, it stays
+  stopped with a **Stopped by a server restart** divider. A subagent cut off
+  mid-task is not restarted; its lead gets a report that it was stopped, so
+  the lead can delegate the task again instead of waiting.
 - **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
   Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
   Grep is linear-time and parallel. The file tree, git status and diff refresh live
@@ -400,8 +412,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Done when** and whether the completion check has confirmed it. An
     approved plan that has a Done when and no goal can be started as a goal
     later with **Run as goal** in the Plan tab. The Stop button pauses the
-    goal, Plan mode and running subagents make it wait, and a goal running
-    when the app quit comes back paused. Approving another plan with
+    goal, Plan mode and running subagents make it wait, and since
+    `[v3.34.0]` a goal keeps running across a server or app restart: its
+    cut-off turn continues, and it pauses (reason "restart") only when that
+    turn cannot be continued. Approving another plan with
     Keep going replaces the goal. A scheduled task that runs in the goal's
     session skips each run that comes due while the goal works (the scheduler
     skips busy sessions) and fires again at its next scheduled time. Undoing a

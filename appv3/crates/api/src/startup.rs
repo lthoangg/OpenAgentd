@@ -58,8 +58,6 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     tracing::info!("server_starting version={} app_env={}", appv3_core::VERSION, settings().app_env);
     ensure_workspace_initialized()?;
     manager::init(pool.clone(), loader::default_provider_factory());
-    // No turn survives a restart: a goal that was running waits for Resume.
-    appv3_agent::goal::pause_after_restart(pool).await;
     let sched = scheduler::init(pool.clone());
     appv3_agent::stream_store::store().spawn_sweeper();
     appv3_agent::snapshot::start_maintenance(pool.clone());
@@ -103,6 +101,12 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     tokio::spawn(async move {
         appv3_agent::idle_compaction::resume_after_restart(&p).await;
     });
+    // Continue the turns the last server process left running, with their
+    // goals; a member it cut off reports that to its lead.
+    let p = pool.clone();
+    tokio::spawn(async move {
+        appv3_agent::restart_resume::resume_after_restart(&p).await;
+    });
     Ok(())
 }
 
@@ -116,6 +120,8 @@ pub fn close_event_streams() {
 
 /// Lifespan shutdown.
 pub async fn shutdown() {
+    // Turns stopped from here on are continued by the next start.
+    appv3_agent::restart_resume::begin_shutdown();
     // A startup registry refresh still on the network must not outlast the
     // desktop's shutdown grace period.
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), crate::registry_refresh_gate().read()).await;

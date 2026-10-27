@@ -4,6 +4,7 @@
  * stay testable without rendering.
  */
 import type { ContentBlock, GoalPauseReason, SessionGoal } from '@/api/types'
+import { isRestartNoteExtra } from '@/lib/restart-note'
 
 /** Matches ``appv3_agent::tools::goal::UPDATE_GOAL_TOOL``. */
 export const UPDATE_GOAL_TOOL = 'update_goal'
@@ -61,7 +62,7 @@ export function pauseReasonText(goal: SessionGoal): string {
     case 'unverified': return 'The check rejected three completion claims in a row.'
     case 'check_failed': return 'The completion check failed three times in a row, without accepting or rejecting a claim.'
     case 'error': return 'A turn failed.'
-    case 'restart': return 'The app restarted while it was running.'
+    case 'restart': return 'A server restart cut off its turn, and the turn could not be continued.'
     default: return 'It is paused.'
   }
 }
@@ -225,7 +226,7 @@ export function isGoalTurnBlock(block: ContentBlock): boolean {
  * which is a hidden reminder the user never wrote.
  */
 export function restoredPromptText(content: string, extra: Record<string, unknown> | null | undefined): string | null {
-  if (extra?.goal_turn) return null
+  if (extra?.goal_turn || isRestartNoteExtra(extra)) return null
   return content
 }
 

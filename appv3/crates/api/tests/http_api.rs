@@ -763,9 +763,9 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     let (st, _) = c.json("GET", &format!("/api/agent/sessions/{}/goal", uuid::Uuid::now_v7()), None).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
 
-    // A goal running when the server stops comes back paused.
+    // A goal whose cut-off turn is not continued after a restart comes back paused.
     appv3_db::insert_session_goal(pool, &sid, "survive a restart", 5, None).await.unwrap();
-    assert!(appv3_agent::goal::pause_after_restart(pool).await >= 1);
+    assert!(appv3_agent::goal::continue_after_restart(pool, &[], std::slice::from_ref(&sid)).await >= 1);
     let (_, v) = c.json("GET", &goal_uri, None).await;
     assert_eq!((v["goal"]["status"].clone(), v["goal"]["pause_reason"].clone()), (json!("paused"), json!("restart")), "{v}");
     let (st, _) = c.json("DELETE", &goal_uri, None).await;

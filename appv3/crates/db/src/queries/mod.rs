@@ -2,6 +2,7 @@
 //! spelling and write the v2 on-disk encoding (see [`crate::codec`]).
 
 pub mod goals;
+pub mod inflight;
 pub mod messages;
 pub mod questions;
 pub mod sessions;
@@ -11,6 +12,7 @@ pub mod workspace_groups;
 pub mod workspaces;
 
 pub use goals::*;
+pub use inflight::*;
 pub use messages::*;
 pub use questions::*;
 pub use sessions::*;

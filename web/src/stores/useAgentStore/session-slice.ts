@@ -104,6 +104,7 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
       submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
       attachments: msg.attachments ?? undefined,
       sentFromWorkspace: sentFrom(msg.extra)?.workspaceName,
+      heldUntilTurnEnd: msg.extra?.hold_until_turn_end === true || undefined,
     }))
 }
 

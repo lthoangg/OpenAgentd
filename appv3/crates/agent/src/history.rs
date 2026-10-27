@@ -245,8 +245,10 @@ fn workspace_message_header(extra: &serde_json::Map<String, Value>) -> Option<St
     } else {
         "No reply is expected."
     };
+    // Written once when the request is saved, so a row renders the same forever.
+    let stopped = if f.get("stopped_turn").is_some_and(crate::util::truthy) { " It stopped your previous turn to send this." } else { "" };
     Some(format!(
-        "[Message from the agent in workspace '{}' ({}), session {}. Its files are readable by absolute path. {tail}]",
+        "[Message from the agent in workspace '{}' ({}), session {}.{stopped} Its files are readable by absolute path. {tail}]",
         s(f, "workspace_name"),
         s(f, "workspace"),
         s(f, "session_id")
@@ -481,6 +483,29 @@ mod tests {
         let c = user_with(json!({"from_agent": "infra", "reply_from": {"session_id": "s2", "workspace": "/r/infra", "workspace_name": "infra", "status": "error"}}));
         assert!(c.starts_with("[Status update from"), "{c}");
         assert_eq!(user_with(json!({"from_agent": "explorer#1"})), "[explorer#1]:\ndo it");
+    }
+
+    /// A request's header is fixed when it is saved: fields stamped later
+    /// (`replied_at`, `error_notified_at`) or removed later never change the
+    /// text the model reads, so the prompt-cache prefix stays valid.
+    #[test]
+    fn a_request_header_ignores_fields_set_after_it_is_saved() {
+        let base = json!({"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": true, "hops": 1});
+        let plain = user_with(json!({"sent_from": base}));
+        assert_eq!(
+            plain,
+            "[Message from the agent in workspace 'app' (/r/app), session s1. Its files are readable by absolute path. \
+             Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call `workspace` to reply.]\ndo it",
+            "a request without `stopped_turn` reads exactly as before"
+        );
+        let mut stamped = base.clone();
+        stamped["replied_at"] = json!("2026-01-01T00:00:00Z");
+        stamped["error_notified_at"] = json!("2026-01-01T00:00:01Z");
+        assert_eq!(user_with(json!({"sent_from": stamped, "hold_until_turn_end": true, "queue_status": "queued"})), plain);
+        let mut stopped = base;
+        stopped["stopped_turn"] = json!(true);
+        let c = user_with(json!({"sent_from": stopped}));
+        assert!(c.contains("session s1. It stopped your previous turn to send this. Its files are readable"), "{c}");
     }
 
     fn user_msg(kind: &str, extra: Value) -> ChatMessage {

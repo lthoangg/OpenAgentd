@@ -148,7 +148,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// different work instead of overwriting the current one.
 /// Raised by 128 for `schedule`'s `update` action, which edits a task in place
 /// instead of deleting and recreating it.
-const LEAD_ALWAYS_ON_CHARS: usize = 37_876;
+/// Raised by 364 for `workspace`'s `delivery` (steer, queue, stop_and_send),
+/// which lets a lead pick how a message reaches a busy session.
+const LEAD_ALWAYS_ON_CHARS: usize = 38_240;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

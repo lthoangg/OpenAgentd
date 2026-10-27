@@ -1274,7 +1274,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   - Session titles in Vietnamese, Chinese, Japanese, Korean, and other scripts are no
     longer cut mid-word.
   - `/init` sends a quarter of the instructions it did (8 KB instead of 32 KB).
-- **Cross-workspace messages** `[v3.9.0, updated v3.21.0]` — the lead agent's `send_to_workspace`
+- **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related
   repository, a worktree of its repository, or Chat), for example from an app
@@ -1293,6 +1293,20 @@ executes tools, manages its task list, and inspects workspace repositories.
     follows if it is retried.
   - You get one completion notification, from the sender, instead of one from
     each side.
+
+  When the session it continues is busy, `delivery` picks how the message lands,
+  the same three ways you can send while a turn runs `[v3.35.0]`:
+  - `steer` (the default): the session reads it before its next step.
+  - `queue`: it waits, shown as "Sends when this turn ends", and starts a turn
+    of its own once the running turn ends. Several queued messages start one
+    turn together.
+  - `stop_and_send`: the running turn (and its members) is stopped, an active
+    goal stays active, and the message starts a new turn that is told its
+    previous turn was stopped. It can stop a session you are working in, so the
+    tool tells agents to use it only when the current work is wrong or obsolete.
+
+  An idle session just starts a turn for any of the three. A message already in a
+  session's history never changes, so the provider's prompt cache stays valid.
 
   `action: "list"` shows the workspaces you can message under their groups,
   each with its brief, or one workspace's recent sessions with their state.

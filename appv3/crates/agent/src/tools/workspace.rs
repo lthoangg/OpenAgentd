@@ -2,7 +2,7 @@
 //! registered workspace; see [`crate::workspace_messages`].
 
 use super::invalid_args;
-use crate::workspace_messages::{self as wm, Delivery, SendRequest, MAX_SENDS_PER_TURN};
+use crate::workspace_messages::{self as wm, Delivery, DeliveryMode, SendRequest, MAX_SENDS_PER_TURN};
 use appv3_db::DbPool;
 use appv3_tools::{Tool, ToolContext, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -59,6 +59,14 @@ impl Tool for WorkspaceTool {
         if let Some(m) = mode.as_deref().filter(|m| !["code", "plan"].contains(m)) {
             errs.push(format!("mode: Input should be 'code' or 'plan'; got '{m}'"));
         }
+        let delivery_raw = opt_str(&mut errs, &o, "delivery");
+        let delivery = match delivery_raw.as_deref() {
+            None => DeliveryMode::Steer,
+            Some(d) => DeliveryMode::parse(d).unwrap_or_else(|| {
+                errs.push(format!("delivery: Input should be 'steer', 'queue' or 'stop_and_send'; got '{d}'"));
+                DeliveryMode::Steer
+            }),
+        };
         if errs.is_empty() && action == "send" {
             if workspace.as_deref().unwrap_or("").trim().is_empty() {
                 errs.push("workspace: Value error, workspace is required for action='send'".into());
@@ -68,6 +76,9 @@ impl Tool for WorkspaceTool {
             }
             if mode.is_some() && session_id.is_some() {
                 errs.push("mode: Value error, mode applies to new sessions only; omit it with session_id".into());
+            }
+            if delivery_raw.is_some() && session_id.is_none() {
+                errs.push("delivery: Value error, delivery applies to an existing session; pass session_id with it".into());
             }
         }
         if !errs.is_empty() {
@@ -89,6 +100,7 @@ impl Tool for WorkspaceTool {
             session_id,
             reply,
             mode,
+            delivery,
         };
         let sent = match wm::send(&self.pool, req).await {
             Ok(s) => s,
@@ -100,7 +112,9 @@ impl Tool for WorkspaceTool {
         let how = match sent.delivery {
             Delivery::Started => format!("new session {} started", sent.session_id),
             Delivery::Delivered => format!("delivered to session {}", sent.session_id),
-            Delivery::Queued => format!("queued in busy session {}; it runs when the current turn ends", sent.session_id),
+            Delivery::Queued => format!("queued in busy session {}; it reads the message before its next step", sent.session_id),
+            Delivery::Held => format!("queued in busy session {}; it starts when the current turn ends", sent.session_id),
+            Delivery::Stopped => format!("stopped the running turn in session {} and sent the message", sent.session_id),
         };
         // The web tool card parses this line for its "Open in <workspace>"
         // button (`web/src/utils/workspace-messages.ts`, `parseSendResult`).
@@ -148,6 +162,12 @@ mod tests {
         assert!(e.contains("new sessions only"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"action": "nope"})).await);
         assert!(e.contains("'send' or 'list'"), "{e}");
+        let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "session_id": "x", "delivery": "now"})).await);
+        assert!(e.contains("'steer', 'queue' or 'stop_and_send'"), "{e}");
+        let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "delivery": "queue"})).await);
+        assert!(e.contains("pass session_id"), "{e}");
+        assert_eq!(DeliveryMode::parse("stop_and_send"), Some(DeliveryMode::StopAndSend));
+        assert_eq!(DeliveryMode::default(), DeliveryMode::Steer);
         // A failed send does not use up the turn's budget.
         let r = tool.run(&c, serde_json::json!({"workspace": "/nonexistent/x", "message": "hi"})).await.unwrap();
         assert!(format!("{r:?}").contains("not registered"), "{r:?}");

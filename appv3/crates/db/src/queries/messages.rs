@@ -580,6 +580,22 @@ pub async fn has_queued_user_messages(pool: &DbPool, session_id: &str) -> Result
     Ok(sqlx::query_scalar(HAS_QUEUED_SQL).bind(db_id(session_id)).fetch_one(pool).await?)
 }
 
+/// `extra` key on a queued row that waits for the running turn to end: the
+/// mid-turn injection skips it, turn-end activation and stop release it.
+pub const HOLD_UNTIL_TURN_END: &str = "hold_until_turn_end";
+
+const HAS_QUEUED_STEERS_SQL: &str = "SELECT EXISTS (SELECT 1 FROM session_messages WHERE session_id = ? AND role = 'user' AND kind = 'queued' \
+     AND COALESCE(json_extract(extra, '$.hold_until_turn_end'), 0) NOT IN (1, 'true'))";
+const QUEUED_STEER_ROWS_SQL: &str = "SELECT * FROM session_messages WHERE session_id = ? AND role = 'user' AND kind = 'queued' \
+     AND COALESCE(json_extract(extra, '$.hold_until_turn_end'), 0) NOT IN (1, 'true') ORDER BY seq ASC, id ASC";
+const QUEUED_ALL_ROWS_SQL: &str = "SELECT * FROM session_messages WHERE session_id = ? AND role = 'user' AND kind = 'queued' ORDER BY seq ASC, id ASC";
+
+/// Whether the session has a queued row a running turn may read before its
+/// next step (every queued row except those held until the turn ends).
+pub async fn has_queued_steers(pool: &DbPool, session_id: &str) -> Result<bool> {
+    Ok(sqlx::query_scalar(HAS_QUEUED_STEERS_SQL).bind(db_id(session_id)).fetch_one(pool).await?)
+}
+
 /// Whether `row` belongs to another message (its @-mention context or an
 /// attachment's text, `extra.attachment_for_message_id`) rather than being
 /// one the user wrote.
@@ -596,14 +612,15 @@ pub fn is_attached_row(row: &SessionMessage) -> bool {
 /// steer, and an injection mid-turn delivered the steer without it. Returns
 /// every moved row in transcript order; [`is_attached_row`] tells them apart.
 pub async fn release_queued_user_messages(pool: &DbPool, session_id: &str, snapshot: Option<&str>) -> Result<Vec<SessionMessage>> {
+    release_queued_user_messages_with(pool, session_id, snapshot, true).await
+}
+
+/// [`release_queued_user_messages`], optionally leaving the rows held until
+/// the turn ends (`include_held = false`) where they are.
+pub async fn release_queued_user_messages_with(pool: &DbPool, session_id: &str, snapshot: Option<&str>, include_held: bool) -> Result<Vec<SessionMessage>> {
     let sid = db_id(session_id);
-    let queued = sqlx::query_as::<_, SessionMessage>(
-        "SELECT * FROM session_messages WHERE session_id = ? AND role = 'user' AND kind = 'queued' \
-         ORDER BY seq ASC, id ASC",
-    )
-    .bind(&sid)
-    .fetch_all(pool)
-    .await?;
+    let sql = if include_held { QUEUED_ALL_ROWS_SQL } else { QUEUED_STEER_ROWS_SQL };
+    let queued = sqlx::query_as::<_, SessionMessage>(sql).bind(&sid).fetch_all(pool).await?;
     if queued.is_empty() {
         return Ok(queued);
     }
@@ -622,6 +639,7 @@ pub async fn release_queued_user_messages(pool: &DbPool, session_id: &str, snaps
         };
         extra.remove("queue_status");
         extra.remove("queued_at");
+        extra.remove(HOLD_UNTIL_TURN_END);
         if let Some(s) = snapshot {
             extra.insert("snapshot".into(), Value::String(s.into()));
         }

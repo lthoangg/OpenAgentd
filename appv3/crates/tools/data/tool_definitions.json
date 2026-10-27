@@ -656,7 +656,17 @@
           "session_id": {
             "type": "string",
             "default": null,
-            "description": "[send] Continue this existing session in the target workspace (from list); omit to start a new session. A busy session queues the message."
+            "description": "[send] Continue this existing session in the target workspace (from list); omit to start a new session. A busy session is handled per `delivery`."
+          },
+          "delivery": {
+            "enum": [
+              "steer",
+              "queue",
+              "stop_and_send"
+            ],
+            "type": "string",
+            "default": null,
+            "description": "[send, with session_id] How a busy session gets it: 'steer' (default) read before its next step; 'queue' its own turn after the current one; 'stop_and_send' stops its running turn first (may be the user's own work: only if that work is wrong or obsolete)."
           },
           "reply": {
             "type": "boolean",

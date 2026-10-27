@@ -113,6 +113,7 @@ async fn send_reply_retry_and_guards() {
         session_id,
         reply,
         mode: mode.map(String::from),
+        delivery: Default::default(),
     };
 
     // ── 0. groups scope the sends ───────────────────────────────────────

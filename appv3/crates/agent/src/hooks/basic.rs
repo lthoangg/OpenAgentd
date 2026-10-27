@@ -304,7 +304,8 @@ impl Hook for QueuedInjectionHook {
         if !self.support_interrupt || appv3_db::codec::parse_uuid(&self.session_id).is_none() {
             return None;
         }
-        let queued = match crate::snapshot::release_queued(&self.pool, &self.session_id).await {
+        // Rows held until the turn ends stay queued: they start a turn of their own.
+        let queued = match crate::snapshot::release_queued_steers(&self.pool, &self.session_id).await {
             Ok(q) if !q.is_empty() => q,
             Ok(_) => return None,
             Err(e) => {

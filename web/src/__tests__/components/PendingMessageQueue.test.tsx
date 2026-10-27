@@ -357,6 +357,17 @@ describe('PendingMessageQueue', () => {
     expect(screen.queryByText('Other session')).toBeNull()
   })
 
+  it('labels a message another workspace queued until the turn ends', () => {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [{ id: 'p-held', sessionId: 'session-1', content: 'Then deploy', sentFromWorkspace: 'api', heldUntilTurnEnd: true }],
+    })
+
+    render(<PendingMessageQueue />)
+
+    expect(screen.getByText('From api · Sends when this turn ends')).toBeTruthy()
+  })
+
   it('shows held messages even when nothing is queued server-side', () => {
     useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn' })
 

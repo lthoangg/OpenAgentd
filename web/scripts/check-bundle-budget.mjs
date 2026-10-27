@@ -100,7 +100,10 @@ if (import.meta.main) {
   // per-tab scroll memory in the review dock and the goal palette changes
   // added 11.6 kB / 4.2 kB gzip: 2.649 MB / 808.6 kB with a 1.978 MB index
   // chunk (v3.33.0).
-  const limits = { eagerBytes: 2_653_000, eagerGzipBytes: 811_000, largestChunkBytes: 1_981_000 }
+  // The "Switching to <name>…" server screen and the restart divider added
+  // 4.6 kB / 1.3 kB gzip: 2.654 MB / 810 kB with a 1.982 MB index chunk
+  // (v3.34.0).
+  const limits = { eagerBytes: 2_658_000, eagerGzipBytes: 813_000, largestChunkBytes: 1_986_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

@@ -199,18 +199,23 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (isProgrammaticScrollRef.current) return
       const dist = currentScrollHeight - currentScrollTop - el.clientHeight
       const atBottom = dist <= SCROLL_THRESHOLD
+      // Content got shorter since the last look: the browser moved the view
+      // (a clamp to the new bottom), not the reader.
+      const layoutShrank =
+        (prevScrollHeight > 0 && currentScrollHeight < prevScrollHeight) ||
+        (prevContentHeight > 0 && currentContentHeight < prevContentHeight)
 
       if (atBottom) {
-        if (Date.now() >= userScrollIntentUntilRef.current) {
+        // Only the reader's own scroll re-attaches. A rebuild that shrinks
+        // the transcript (a turn's end-of-turn sync closing the folds they
+        // opened) can clamp them onto the bottom, and following from there
+        // would pull them away from what they were reading.
+        if (Date.now() >= userScrollIntentUntilRef.current && (attachedRef.current || !layoutShrank)) {
           attachedRef.current = true
           syncAnchor()
           setShowScrollBtn(false)
         }
       } else if (attachedRef.current) {
-        const layoutShrank =
-          (prevScrollHeight > 0 && currentScrollHeight < prevScrollHeight) ||
-          (prevContentHeight > 0 && currentContentHeight < prevContentHeight)
-
         if (!layoutShrank && !document.documentElement.hasAttribute('data-keyboard-open')) {
           const isScrollUp = currentScrollTop < prevScrollTop
           if (isScrollUp) {
@@ -389,8 +394,6 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     let lastContentHeight = content.getBoundingClientRect().height
     let lastClientHeight = el.clientHeight
     const ro = new ResizeObserver((entries) => {
-      if (!attachedRef.current) return
-      if (pointerDownRef.current) return
       const nextContentHeight = content.getBoundingClientRect().height
       const nextClientHeight = el.clientHeight
       const contentGrew = nextContentHeight > lastContentHeight
@@ -399,8 +402,12 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
 
       lastContentHeight = nextContentHeight
       lastClientHeight = nextClientHeight
+      // Recorded while reading too, so a later shrink is measured against
+      // the content as it was, not as it was at the last scroll event.
       lastContentHeightRef.current = nextContentHeight
       lastScrollHeightRef.current = el.scrollHeight
+      if (!attachedRef.current) return
+      if (pointerDownRef.current) return
       if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
       const target = Math.max(0, el.scrollHeight - el.clientHeight)
       if (Math.abs(el.scrollTop - target) > 0.5) {

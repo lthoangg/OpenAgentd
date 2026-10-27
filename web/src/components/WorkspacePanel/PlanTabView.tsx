@@ -35,14 +35,17 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { dismissKeyboard } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
+import { planStatus, type PlanStatus } from '@/lib/plan'
+import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries/keys'
 import { useGoalSettingsQuery } from '@/queries/useGoalSettingsQuery'
-import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { isLiveGoal } from '@/lib/goal'
+import { useSessionGoalQuery, useStartGoalMutation } from '@/queries/useSessionGoalQuery'
 import { useUpdateSessionPlanMutation } from '@/queries/useUpdateSessionPlanMutation'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -183,6 +186,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const resolver = useQuestionResolver(review)
   const { data: goalData } = useSessionGoalQuery(sessionId)
   const { data: goalSettings } = useGoalSettingsQuery()
+  const startGoal = useStartGoalMutation()
   const queryClient = useQueryClient()
   const update = useUpdateSessionPlanMutation()
   const reducedMotion = useReducedMotion() ?? false
@@ -243,6 +247,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
 
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Switching to another tab unmounts this view; come back to the same place.
+  const rememberScroll = useScrollMemory(sessionId ? `plan:${sessionId}:${plan?.path ?? ''}` : null, scrollRef)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
   const { selection, clear: clearSelection } = usePlanSelection(bodyRef, Boolean(review) && !editing && !composer)
   useCommentHighlights(bodyRef, editing ? [] : [...reviewDraft.comments.map((c) => c.quote), ...(composer ? [composer.quote] : [])])
@@ -286,6 +292,13 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const compactFooter = mobile && keyboardOpen
   useEffect(() => {
     if (!compactFooter) setShowComments(false)
+  }, [compactFooter])
+  // Focus in the turns field keeps its row mounted: unmounting a focused input
+  // closes the keyboard that just opened for it.
+  const [turnsFocused, setTurnsFocused] = useState(false)
+  const showKeepGoing = !compactFooter || turnsFocused
+  useEffect(() => {
+    if (!compactFooter) setTurnsFocused(false)
   }, [compactFooter])
 
   const [copied, setCopied] = useState(false)
@@ -340,7 +353,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   }
 
   const status = planStatus(plan, Boolean(review), { todos, goal: goalData?.goal })
-  const chip = { label: PLAN_STATUS_LABEL[status], className: STATUS_CHIP_CLASS[status] }
+  const chip = { label: workStatusLabel(plan, Boolean(review), { todos, goal: goalData?.goal }), className: STATUS_CHIP_CLASS[status] }
   // A server without plan revisions (v2) has no edit route.
   const canEdit = plan.revision !== undefined && Boolean(sessionId)
   const unsavedEdits = editing && draft !== plan.content
@@ -448,6 +461,16 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     void navigator.clipboard?.writeText(content).then(() => setCopied(true), () => {})
   }
 
+  // An approved plan with a Done when and no goal on it can run as one later,
+  // not only at the moment it is approved.
+  const canRunAsGoal = Boolean(sessionId) && status === 'approved' && Boolean(plan.done_when?.trim()) && !isLiveGoal(goalData?.goal) && !review
+  const runAsGoal = () => {
+    if (!sessionId) return
+    startGoal.mutate({ sessionId }, {
+      onError: (err) => useToastStore.getState().push({ tone: 'error', title: 'Could not start the goal', description: (err as Error).message }),
+    })
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pl-3 pr-1.5">
@@ -465,6 +488,18 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           {formatCompactRelative(plan.updated_at)}
         </span>
         <span className="min-w-0 flex-1" aria-hidden="true" />
+        {canRunAsGoal && (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={runAsGoal}
+            disabled={startGoal.isPending}
+            title={`The agent works through the plan turn after turn until a check confirms its Done when, up to ${defaultTurns} turns (Settings → Goals).`}
+          >
+            Run as goal
+          </Button>
+        )}
         {canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
             <Pencil size={12} aria-hidden="true" />
@@ -513,7 +548,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={rememberScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           {/* `oa-reading` (index.css): a maximized dock widens tables, code
               and diagrams while prose keeps its measure. */}
           <div ref={bodyRef} className="oa-reading relative mx-auto max-w-3xl px-4 py-3">
@@ -638,7 +673,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             <p role="alert" className="text-[11px] text-(--color-error)">{resolver.error}</p>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
-            {!compactFooter && (
+            {showKeepGoing && (
               <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-(--color-text)" title={keepGoingTitle} data-keep-going={keepGoing ? 'on' : 'off'}>
                 <label className={cn('flex items-center gap-1.5', !canKeepGoing && 'text-(--color-text-subtle)')}>
                   <Checkbox
@@ -661,6 +696,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                       aria-invalid={badTurns ? true : undefined}
                       value={turnsText}
                       onChange={(event) => setTurnsDraft(event.target.value)}
+                      onFocus={() => setTurnsFocused(true)}
+                      onBlur={() => setTurnsFocused(false)}
                       className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-[11px] text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 aria-invalid:border-(--color-error)"
                     />
                     turns
@@ -685,7 +722,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                 />
               </button>
             ) : (
-              footerHint && (!compactFooter || tooLong) && (
+              footerHint && (!compactFooter || tooLong || turnsFocused) && (
                 <span className={cn('text-[11px] text-(--color-text-subtle)', compactFooter && 'mr-auto')}>{footerHint}</span>
               )
             )}

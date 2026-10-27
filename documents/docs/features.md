@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.32.0 · October 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.32.0)
+**Latest release:** v3.33.0 · October 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.33.0)
 
 ---
 
@@ -384,13 +384,24 @@ run from the terminal (the native Rust binary since v3.0.0).
     review dock (the drawer on phones) shows what the session is doing now
     (running a turn and the next task, waiting for your answer, for plan
     approval, for Code mode, for subagents, or for your queued messages), the
-    objective, the plan with its status and task progress, turns, tokens and
+    objective, the plan with its status, turns, tokens and
     time, the last check, and Pause, Resume, and Clear. Its title follows the
-    goal ("Goal 7/50", "Goal paused"). **Cmd+K → Goal** and the dock's **+**
-    menu open it, and **Cmd+K** also pauses, resumes and clears the goal. The
-    Tasks tab and the task popover show a Goal row above the Plan row. Stop
-    pauses the goal, Plan mode and running subagents make it wait, and a goal
-    running when the app quit comes back paused. Approving another plan with
+    goal ("Goal 7/50", "Goal paused"). The dock's **+** menu opens it, and
+    **Cmd+K → Goal** does too, listed only while the session has a goal. Since
+    `[v3.33.0]` Clear asks for confirmation first, Cmd+K no longer pauses,
+    resumes or clears (the Goal tab does), and **Stop & send** leaves the goal
+    active, so your message is its next turn. Also since `[v3.33.0]`, plan,
+    tasks and goal read as one chain: while a goal runs, the header's **Task
+    list** button carries a ring in the goal's colour (blue working, hollow
+    paused, orange waiting on you, red blocked) with the state and next task
+    in its tooltip; the Tasks tab and task popover lead with one status line
+    for the plan and its goal ("Approved · Running", "All tasks done ·
+    checking") with Pause and Resume, and end the checklist with the plan's
+    **Done when** and whether the completion check has confirmed it. An
+    approved plan that has a Done when and no goal can be started as a goal
+    later with **Run as goal** in the Plan tab. The Stop button pauses the
+    goal, Plan mode and running subagents make it wait, and a goal running
+    when the app quit comes back paused. Approving another plan with
     Keep going replaces the goal. A scheduled task that runs in the goal's
     session skips each run that comes due while the goal works (the scheduler
     skips busy sessions) and fires again at its next scheduled time. Undoing a
@@ -657,6 +668,23 @@ run from the terminal (the native Rust binary since v3.0.0).
     unread sessions. With two or more servers, each row names its server
     ("Builtin" for the bundled one), and a click opens the session in a
     window on that server.
+    Since `[v3.33.0]` a saved server can also be **enabled** in Settings →
+    Connection (a switch on its row): the notch then follows it with no
+    window open, so its running, waiting and finished sessions show, and a
+    click opens a new window on that server. A disabled server (the
+    default for servers saved before this, and the seeded Local CLI entry;
+    servers saved from now on start enabled) is still one Connect away but
+    is followed only while a window is on it. Each row shows its
+    background state (Watching, Reconnecting, Access key rejected, or
+    Disabled), a server that is off is retried every 30 s at most (60 s
+    after a rejected key) instead of every 15 s, and rows carry a server
+    name only when two or more servers are connected.
+    Also since `[v3.33.0]` the resting pill no longer covers menu bar items:
+    on a notch it grows only a narrow wing left of the notch (the state
+    mark, and a count for several sessions), leaving the status icons right
+    of the notch alone; without a notch it is a small pill with the same
+    mark and count. Hover still opens the full list, with titles and
+    questions.
     Right-click the pill or a session row for a native menu with Open and
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
@@ -826,6 +854,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Scroll position per session** `[v3.5.0]` — leave a session scrolled up and
   come back to it, and the transcript opens where you were reading; a session
   you left at the bottom keeps following new output. Kept while the app runs.
+  Since `[v3.33.0]` a turn that finishes while you are scrolled up leaves the
+  view where it is: the finished turn is no longer rebuilt (step lists you
+  opened stay open), and only your own scroll to the bottom resumes following.
 - **Calm session switches** `[v3.28.0]` — opening another session no longer
   flashes a blank or loading screen:
   - The chat you are leaving stays on screen, slightly dimmed, until the next
@@ -1463,6 +1494,9 @@ agent against it.
     diagrams a wider band, up to 960px, rather than the full width
     `[v3.28.0]`. Tabs close
     with ×, middle-click or `Ctrl/⌘+W`, and focus moves to the neighbouring tab.
+    Since `[v3.33.0]` switching to another tab and back returns the Plan, a
+    file, a diff, a commit, Tasks, Goal, an attachment or a Git view to where
+    you were reading (kept while the app runs).
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.
     - A new dock opens empty, on a launcher with Git, Terminal, Preview and
@@ -2132,7 +2166,7 @@ MCP.
 | Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`; read-only in Plan mode `[v2.17.0]`) |
 | Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
-| Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]` |
+| Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]`; `update` changes a task's schedule, prompt, run limit or paused state in place, keeping its slug and run count `[v3.33.0]` |
 | Tasks | `todo` (`todo_manage` before v3.30.0) |
 | Team orchestration | `team` (lead agent; `delegate` before v3.30.0) `[v2.16.0]` |
 | Cross-workspace messages | `workspace` (lead agent; Settings → Workspaces can turn it off; `send_to_workspace` before v3.30.0) `[v3.9.0]` |

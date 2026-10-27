@@ -408,13 +408,13 @@ export const createStreamSlice: StateCreator<
     get().connectStream()
   },
 
-  stopAgent: async () => {
+  stopAgent: async (options) => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId || !get().isAgentWorking) return
 
     try {
       if (!workspace) return
-      await postAgentChat(null, sessionId, true, workspace)
+      await postAgentChat(null, sessionId, true, workspace, undefined, undefined, undefined, false, undefined, undefined, options?.keepGoal === true)
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       // Reloads immediately. The interrupt POST only *signals* cancellation, so
       // the trailing `done` can still be seconds away (a cancelled shell tool

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-set-backend-server-enabled"
+description = "Enables the app_set_backend_server_enabled command without any pre-configured scope."
+commands.allow = ["app_set_backend_server_enabled"]
+
+[[permission]]
+identifier = "deny-app-set-backend-server-enabled"
+description = "Denies the app_set_backend_server_enabled command without any pre-configured scope."
+commands.deny = ["app_set_backend_server_enabled"]

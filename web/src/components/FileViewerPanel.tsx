@@ -10,6 +10,7 @@ import { Check, Copy, Download, ExternalLink, FileHeadphone, FileText, Loader2, 
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
@@ -330,6 +331,9 @@ function TextPreview({
   const [dragging, setDragging] = useState(false)
   const deleted = file.deleted === true
   const containerRef = useRef<HTMLDivElement>(null)
+  // Each view of the file keeps its own place across tab switches.
+  const renderedScrollRef = useScrollMemory(`file:${workspace}:${file.path}:rendered`)
+  const sourceScrollRef = useScrollMemory(`file:${workspace}:${file.path}:source`)
 
   useEffect(() => {
     const handleMouseUp = (e: MouseEvent | TouchEvent) => {
@@ -469,6 +473,7 @@ function TextPreview({
   if (markdown !== null) {
     return (
       <div
+        ref={renderedScrollRef}
         className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y px-4 py-3"
         data-scroll-capture="true"
         tabIndex={-1}
@@ -506,6 +511,7 @@ function TextPreview({
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
       <div
+        ref={sourceScrollRef}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y font-mono text-xs leading-relaxed"
         data-scroll-capture="true"
         data-select-container

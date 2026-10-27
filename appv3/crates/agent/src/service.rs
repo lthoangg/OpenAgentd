@@ -463,12 +463,27 @@ pub async fn dispatch_user_message(session: &AgentSession, d: Dispatch) -> Resul
 /// stopped one. Unread steers are promoted only then: promoted earlier, they
 /// landed before the result of the tool the stop was still cancelling.
 pub async fn interrupt_agent(session: &AgentSession, session_id: Option<&str>) -> Vec<String> {
+    interrupt_agent_with(session, session_id, false).await
+}
+
+/// Stop & send: like [`interrupt_agent`], but an active goal stays active (the
+/// user stops the turn only to add context, and the message that follows is
+/// the goal's next turn).
+pub async fn interrupt_agent_keeping_goal(session: &AgentSession, session_id: Option<&str>) -> Vec<String> {
+    interrupt_agent_with(session, session_id, true).await
+}
+
+async fn interrupt_agent_with(session: &AgentSession, session_id: Option<&str>, keep_goal: bool) -> Vec<String> {
     let effective = session_id.map(String::from).or_else(|| Some(session.session_id())).filter(|s| !s.is_empty());
     session.dismiss_pending_question("dismissed", effective.as_deref()).await;
     let mut names = vec![];
     if session.is_busy() {
         names.push(session.name());
-        session.handle_stop().await;
+        if keep_goal {
+            session.handle_stop_keeping_goal().await;
+        } else {
+            session.handle_stop().await;
+        }
     }
     if !session.wait_for_stop(STOP_SETTLE_TIMEOUT).await {
         tracing::warn!("agent_interrupt_settle_timeout session_id={:?}", effective);

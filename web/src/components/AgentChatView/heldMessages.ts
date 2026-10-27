@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, type RefObject } from 'react'
 import { haptic } from '@/lib/haptics'
+import { pauseSessionGoal } from '@/api/client'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
 import { useHeldMessagesStore, type HeldMessage } from '@/stores/useHeldMessagesStore'
 import type { InputComposerHandle, SendDelivery } from '../InputComposer'
@@ -92,17 +93,24 @@ export async function deliverFromComposer(
     return
   }
   let calledOff: HeldMessage[] = []
-  if (isAgentWorking && delivery === 'interrupt') {
+  const stoppedForSend = isAgentWorking && delivery === 'interrupt'
+  if (stoppedForSend) {
     // Stopping calls off held messages as any stop does, but they return to
     // the composer only after this send, so a failed send restores its own
     // draft first (``restoreLastSubmission`` yields to a non-empty composer).
     if (sessionId) calledOff = useHeldMessagesStore.getState().takeAll(sessionId)
-    await useAgentStore.getState().stopAgent()
+    // The stop only adds context, so an active goal stays active.
+    await useAgentStore.getState().stopAgent({ keepGoal: true })
   }
   const delivered = await sendFromComposer(workspace, message.content, message.files, message.mentions)
   // The composer cleared itself on submit; a send that never landed gets its
   // draft and attachments back instead of vanishing behind an error banner.
-  if (!delivered) composer?.restoreLastSubmission()
+  if (!delivered) {
+    composer?.restoreLastSubmission()
+    // Nothing is left to run the goal's next turn: pause it, as a plain Stop
+    // would have (a session without a goal answers with an error, ignored).
+    if (stoppedForSend && sessionId) void pauseSessionGoal(sessionId).catch(() => {})
+  }
   returnToComposer(composer, calledOff)
 }
 

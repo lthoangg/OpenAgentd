@@ -1,17 +1,19 @@
 /**
- * WorkSummary — the session's goal and plan as one strip above the task
+ * WorkSummary — the session's plan and goal as one header above the task
  * list (the Tasks tab, the header's task popover).
  *
  * A goal runs an approved plan until a check confirms its Done when, and the
- * tasks track the plan's milestones, so the three read together: the goal
- * row says what the goal is doing, and the plan row says where the plan
- * stands (Done once its goal is achieved or every task is finished).
+ * tasks track the plan's milestones, so the three read together. While a goal
+ * runs the plan, the plan row carries the one status ("Approved · Running")
+ * and the goal row under it only adds the turn, with Pause or Resume. A goal
+ * that runs something else keeps its own status row.
  */
 import { CircleCheck } from 'lucide-react'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { Button } from '@/components/ui/button'
-import { goalStatusTone, goalTurnNumber, pauseReasonLabel, type GoalTone } from '@/lib/goal'
-import { planStatus } from '@/lib/plan'
+import { goalStatusTone, goalTurnNumber, pauseReasonLabel, type GoalAction, type GoalTone } from '@/lib/goal'
+import { isPlanGoal, planStatus } from '@/lib/plan'
+import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { ActivePlanSection } from './ActivePlanSection'
@@ -46,16 +48,37 @@ function GoalMark({ tone }: { tone: GoalTone }) {
   )
 }
 
-export function GoalSummaryRow({ goal, onOpen, className }: { goal: SessionGoal; onOpen?: () => void; className?: string }) {
+export function GoalSummaryRow({ goal, onOpen, onAction, bare = false, className }: {
+  goal: SessionGoal
+  onOpen?: () => void
+  /** Pause and Resume; without it the row has no buttons. */
+  onAction?: (action: Extract<GoalAction, 'pause' | 'resume'>) => void
+  /** The plan row above already says how the goal stands: show only its turn. */
+  bare?: boolean
+  className?: string
+}) {
   const running = useAgentStore((s) => s.isAgentWorking)
   const tone = goalStatusTone(goal)
-  const text = goalSummaryText(goal, running)
+  const turn = Math.max(1, goalTurnNumber(goal, running))
+  const text = bare && goal.status !== 'achieved' ? `Turn ${turn}/${goal.max_turns}` : goalSummaryText(goal, running)
   return (
     <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)} data-goal-summary={goal.status}>
       <span className={cn('flex shrink-0 items-center', TONE_CLASS[tone])}><GoalMark tone={tone} /></span>
       <span className="text-xs font-medium text-(--color-text)">Goal</span>
       <span className={cn('shrink-0 text-[11px] font-medium', TONE_CLASS[tone])}>{text}</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-subtle)" title={goal.objective}>{goal.objective}</span>
+      {bare ? <span className="flex-1" aria-hidden="true" /> : (
+        <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-subtle)" title={goal.objective}>{goal.objective}</span>
+      )}
+      {onAction && goal.status === 'active' && (
+        <Button type="button" variant="ghost" size="xs" onClick={() => onAction('pause')} title="Let the current turn finish, then start no new one">
+          Pause
+        </Button>
+      )}
+      {onAction && goal.status === 'paused' && (
+        <Button type="button" variant="ghost" size="xs" onClick={() => onAction('resume')}>
+          Resume
+        </Button>
+      )}
       {onOpen && (
         <Button type="button" variant="ghost" size="xs" onClick={onOpen} aria-label="Open goal">
           Open
@@ -74,27 +97,35 @@ export interface WorkSummaryProps {
   onClearPlan?: () => void
   onOpenPlan?: () => void
   onOpenGoal?: () => void
+  /** Pause and Resume from the goal row. */
+  onGoalAction?: (action: Extract<GoalAction, 'pause' | 'resume'>) => void
   className?: string
 }
 
 /** The goal row (while the session has one) over the plan row (while it has a plan). */
-export function WorkSummary({ goal: rawGoal = null, plan, todos, onClearPlan, onOpenPlan, onOpenGoal, className }: WorkSummaryProps) {
+export function WorkSummary({ goal: rawGoal = null, plan, todos, onClearPlan, onOpenPlan, onOpenGoal, onGoalAction, className }: WorkSummaryProps) {
   const reviewing = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
   const goal = rawGoal && rawGoal.status !== 'cleared' ? rawGoal : null
   const planRow = plan && onClearPlan
   if (!goal && !planRow) return null
+  // The goal runs this plan: one status, on the plan row.
+  const merged = Boolean(goal && planRow && isPlanGoal(goal, plan))
+  const showGoalStatus = goal && goal.status !== 'achieved' ? goalStatusTone(goal) : null
   return (
     <div className="shrink-0" data-work-summary>
-      {goal && <GoalSummaryRow goal={goal} onOpen={onOpenGoal} className={className} />}
+      {goal && !merged && <GoalSummaryRow goal={goal} onOpen={onOpenGoal} onAction={onGoalAction} className={className} />}
       {planRow && (
         <ActivePlanSection
           plan={plan}
           status={planStatus(plan, reviewing, { todos, goal })}
+          statusLabel={merged ? workStatusLabel(plan, reviewing, { todos, goal }) : undefined}
+          statusClassName={merged && showGoalStatus ? TONE_CLASS[showGoalStatus] : undefined}
           onClear={onClearPlan}
           onOpen={onOpenPlan}
           className={className}
         />
       )}
+      {goal && merged && <GoalSummaryRow goal={goal} onOpen={onOpenGoal} onAction={onGoalAction} bare className={className} />}
     </div>
   )
 }

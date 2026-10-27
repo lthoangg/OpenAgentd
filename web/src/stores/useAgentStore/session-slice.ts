@@ -6,7 +6,7 @@ import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
 import { sentFrom } from '@/utils/workspace-messages'
 import { createDefaultAgentStream } from './defaults'
-import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
+import { adoptLiveBlockIds, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
@@ -43,6 +43,19 @@ function messagesBeforeRevert(session: { revert?: { message_id?: string } | null
     }
   }
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
+}
+
+/**
+ * Give a freshly loaded page the ids of the live blocks it now confirms
+ * (``adoptLiveBlockIds``), so a just-finished turn is not remounted.
+ * Assigns only when an id moved, keeping an untouched page's array.
+ */
+function keepLiveIds(stream: AgentStream, shownBefore: readonly ContentBlock[] | undefined) {
+  if (!shownBefore || shownBefore.length === 0) return
+  const loaded = readBlocks(stream.blocks)
+  const inUse = new Set(readBlocks(stream.currentBlocks).map((b) => b.id))
+  const adopted = adoptLiveBlockIds(shownBefore, loaded, inUse)
+  if (adopted !== loaded) stream.blocks = adopted as ContentBlock[]
 }
 
 /** Prepend one older history page to the lead and member streams. */
@@ -590,6 +603,12 @@ async function loadSessionImpl(
       // Drop them up front; everything downstream then sees only genuinely
       // newer content and needs no special casing.
       const turnStillRunning = history.lead.running === true
+      // What each stream showed before this page lands (before the covered
+      // live blocks are dropped), so a just-finished turn keeps its ids.
+      const shownBefore = new Map<string, readonly ContentBlock[]>()
+      Object.entries(draft.agentStreams).forEach(([name, stream]) => {
+        shownBefore.set(name, [...readBlocks(stream.blocks), ...readBlocks(stream.currentBlocks)])
+      })
       if (!turnStillRunning) {
         Object.entries(draft.agentStreams).forEach(([name, stream]) => {
           dropSnapshotCoveredBlocks(
@@ -684,6 +703,8 @@ async function loadSessionImpl(
           leadStream._turnStartedAt =
             history.lead.running === true && !awaitingAnswer ? Date.now() : null
         }
+        // A turn that just ended keeps its live ids, so it is not rebuilt.
+        keepLiveIds(leadStream, shownBefore.get(leadName))
         // No restart bookkeeping needed here: the status assigned above is the
         // snapshot's verdict, and `isAwaitingRestartOutput` only reports a
         // pending restart for a `working` stream. A turn the server says has
@@ -791,6 +812,7 @@ async function loadSessionImpl(
                 : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
           memberStream._turnStartedAt = member.running === true ? Date.now() : null
         }
+        keepLiveIds(memberStream, shownBefore.get(member.name))
         const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
         const prevMemberEstimatedCost = memberStream.usage?.estimatedCostUsd ?? 0
@@ -1160,7 +1182,13 @@ export const createSessionSlice: StateCreator<
         // finished). Attach such orphans to the already-confirmed card, or it
         // stays "running" forever when the live tool_end was missed.
         const orphans = { ...(stream._orphanToolResults ?? {}) }
-        const tail = visible(parseAgentBlocks(messages, orphans))
+        // The canonical rows keep the ids the live blocks they replace had,
+        // so the finished turn is not remounted (``adoptLiveBlockIds``).
+        const tail = adoptLiveBlockIds(
+          loaded.filter((block) => unsynced.has(block.id)),
+          visible(parseAgentBlocks(messages, orphans)),
+          new Set(readBlocks(stream.currentBlocks).map((block) => block.id)),
+        )
         const confirmed = applyOrphanToolResults(confirmedRaw, orphans)
         stream.blocks = [...confirmed, ...tail]
         stream._orphanToolResults = orphans

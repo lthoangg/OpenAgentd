@@ -5,7 +5,6 @@ import { Check, CircleAlert, Pause, X } from 'lucide-react'
 import { DURATIONS_S } from '@/lib/motion'
 import {
   DEFAULT_ISLAND_SETTINGS,
-  EAR_WIDTH,
   type IslandGoal,
   type IslandMode,
   type IslandPointer,
@@ -15,11 +14,14 @@ import {
   type IslandView,
   type NotchGeometry,
   allFailed,
+  compactCount,
   compactLabels,
   compactMode,
   goalLabel,
+  islandHitBox,
   islandHeight,
   islandMode,
+  islandShift,
   islandWidth,
   listOrder,
   primarySessionId,
@@ -234,19 +236,20 @@ export function Island() {
   }, [wantVisible])
 
   // What the pill shows while it shrinks away: the last thing it showed.
-  const shown = useRef<{ mode: IslandMode; lead: string; detail: string; failed: boolean; goal: Exclude<IslandGoal['status'], 'active'> | null }>({
-    mode: 'hidden', lead: '', detail: '', failed: false, goal: null,
+  const shown = useRef<{ mode: IslandMode; lead: string; detail: string; count: number; failed: boolean; goal: Exclude<IslandGoal['status'], 'active'> | null }>({
+    mode: 'hidden', lead: '', detail: '', count: 0, failed: false, goal: null,
   })
   if (wantVisible) {
     shown.current = {
       mode: compactMode(sessions, unread),
       ...compactLabels(sessions, unread),
+      count: compactCount(sessions, unread),
       failed: allFailed(unread),
       // One unread goal names its outcome, so its mark shows it too.
       goal: unread.length === 1 ? outcomeOf(unread[0]) : null,
     }
   }
-  const { mode: barMode, lead, detail, failed, goal: barGoal } = shown.current
+  const { mode: barMode, lead, detail, count, failed, goal: barGoal } = shown.current
 
   useLayoutEffect(() => {
     if (mode !== 'expanded' || !listRef.current) return
@@ -256,14 +259,16 @@ export function Island() {
   const sizeMode: IslandMode = open ? mode : 'hidden'
   const width = geometry ? islandWidth(sizeMode, geometry) : 0
   const height = geometry ? islandHeight(sizeMode, geometry, listHeight) : 0
+  const shift = geometry ? islandShift(sizeMode, geometry) : 0
   const visible = wantVisible || closing
 
   // Tell the shell where the pill is (its click and hover area) and whether
   // the canvas should be up.
   useLayoutEffect(() => {
     if (!geometry) return
-    void invoke(FIT_COMMAND, { width: width + 2 * EAR_WIDTH, height, visible }).catch(() => {})
-  }, [geometry, width, height, visible])
+    const hit = islandHitBox(sizeMode, geometry, width)
+    void invoke(FIT_COMMAND, { width: hit.width, height, visible, shift: hit.shift }).catch(() => {})
+  }, [geometry, sizeMode, width, height, visible])
 
   const hoverRow = rowAt(pointer)
 
@@ -272,6 +277,7 @@ export function Island() {
   const style = {
     '--pill-width': `${width}px`,
     '--pill-height': `${height}px`,
+    '--pill-shift': `${shift}px`,
     '--notch-width': `${geometry.hasNotch ? geometry.width : 0}px`,
     '--notch-height': `${geometry.height}px`,
   } as CSSProperties
@@ -295,6 +301,7 @@ export function Island() {
                 <span key={barMode} className="island-swap island-lead-inner">
                   <StateMark mode={barMode} failed={failed} goal={barGoal} />
                   <span className="island-text">{lead}</span>
+                  {count > 1 && <span className="island-count" aria-hidden="true">{count}</span>}
                 </span>
               )}
             </span>

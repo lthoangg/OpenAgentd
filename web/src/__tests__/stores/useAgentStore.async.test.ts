@@ -1221,9 +1221,18 @@ describe("stopAgent", () => {
     // canonical reload already absorbed it), so Stop stays responsive.
     await useAgentStore.getState().stopAgent()
 
-    expect(mockPostAgentChat).toHaveBeenCalledWith(null, "session-a", true, "/repo/a")
+    // A plain Stop (the last argument is keepGoal).
+    expect(mockPostAgentChat.mock.calls[0]).toEqual([null, "session-a", true, "/repo/a", undefined, undefined, undefined, false, undefined, undefined, false])
     expect(mockSessionHistory).toHaveBeenCalledWith("session-a")
     expect(useAgentStore.getState()._workspace).toBe("/repo/a")
+  })
+
+  it("asks the server to keep the goal when stopping for Stop & send", async () => {
+    useAgentStore.setState({ sessionId: "session-a", isAgentWorking: true, _workspace: "/repo/a" })
+
+    await useAgentStore.getState().stopAgent({ keepGoal: true })
+
+    expect(mockPostAgentChat.mock.calls[0]).toEqual([null, "session-a", true, "/repo/a", undefined, undefined, undefined, false, undefined, undefined, true])
   })
 
   it("does not duplicate message A + the agent's turn when Stop is clicked mid-stream", async () => {

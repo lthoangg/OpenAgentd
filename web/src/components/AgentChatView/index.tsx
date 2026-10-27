@@ -29,8 +29,9 @@ import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
-import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
-import type { GoalAction } from '@/lib/goal'
+import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { useGoalSessionState } from '@/hooks/useGoalSessionState'
+import { goalHeaderState } from '@/lib/work'
 import { useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -388,21 +389,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // ── Session goal ───────────────────────────────────────────────────────────
   const { data: goalData } = useSessionGoalQuery(sessionIdState)
   const goal = goalData?.goal ?? null
-  // The goal lives in the dock's Goal tab: the palette and the dock's "+"
-  // menu open it.
-  const showGoal = handleOpenGoal
-  const { mutate: mutateGoal } = useGoalActionMutation()
-  const handleGoalAction = useCallback((action: GoalAction) => {
-    if (!sessionIdState) return
-    mutateGoal({ sessionId: sessionIdState, action }, {
-      onSuccess: () => pushToast({ tone: 'info', title: action === 'pause' ? 'Goal paused' : action === 'resume' ? 'Goal resumed' : 'Goal cleared' }),
-      onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: err instanceof Error ? err.message : String(err) }),
-    })
-  }, [sessionIdState, mutateGoal, pushToast])
+  // The goal lives in the dock's Goal tab (its actions too): the palette
+  // lists one entry that opens it, and only while the session has a goal.
   const paletteGoal = useMemo(
-    () => (workspace ? { status: goal?.status ?? null, onShow: showGoal, onAction: handleGoalAction } : undefined),
-    [workspace, goal?.status, showGoal, handleGoalAction],
+    () => (workspace && goal && goal.status !== 'cleared' ? { onShow: handleOpenGoal } : undefined),
+    [workspace, goal, handleOpenGoal],
   )
+  // The header's Task list button shows the live goal as a ring and tooltip.
+  const goalSession = useGoalSessionState(sessionIdState, goal)
+  const headerGoalState = useMemo(() => goalHeaderState(goal, goalSession, todosData?.todos ?? []), [goal, goalSession, todosData])
+  const goalControls = useGoalControls(sessionIdState)
   const providersQ = useProvidersQuery()
 
   // Lead capabilities — used to drive composer affordances (slash menu).
@@ -774,6 +770,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           todos={todos}
           onToggleTasks={handleToggleTasks}
           tasksViewActive={dockViewsEnabled ? workspacePanel !== null && dockActiveView === 'tasks' : showTodos}
+          goalState={headerGoalState}
           workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
@@ -1022,6 +1019,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
         goal={goal}
+        onGoalAction={goalControls}
         plan={plan}
         onClearPlan={handleClearPlan}
         onOpenPlan={workspace ? handleOpenPlan : undefined}

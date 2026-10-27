@@ -127,18 +127,19 @@
     "type": "function",
     "function": {
       "name": "schedule",
-      "description": "Schedule your own future or recurring prompt. For a bounded loop use schedule_type='every', every_seconds=30, session_id='current', and max_runs. Use trigger for an immediate first run, then pause or delete early when done.",
+      "description": "Schedule your own future or recurring prompt. For a bounded loop use schedule_type='every', every_seconds=30, session_id='current', and max_runs. Use trigger for an immediate first run, then pause or delete early when done. Use update to change a task in place.",
       "parameters": {
         "type": "object",
         "properties": {
           "action": {
-            "description": "What to do: create, list, pause, resume, delete, or trigger (run it now).",
+            "description": "What to do: create, list, pause, resume, delete, update, or trigger (run it now).",
             "enum": [
               "create",
               "list",
               "pause",
               "resume",
               "delete",
+              "update",
               "trigger"
             ],
             "type": "string"
@@ -156,54 +157,52 @@
             ],
             "type": "string",
             "default": null,
-            "description": "[create] Schedule type: at is one-shot, every is an interval, and cron is a 5-field expression."
+            "description": "[create, update] Schedule type: at is one-shot, every is an interval, and cron is a 5-field expression."
           },
           "at_datetime": {
             "type": "string",
             "default": null,
-            "description": "[create, schedule_type='at'] ISO-8601 target datetime string (e.g. '2026-09-10T15:00:00Z')."
+            "description": "[create, update; schedule_type='at'] ISO-8601 target datetime string (e.g. '2026-09-10T15:00:00Z')."
           },
           "every_seconds": {
             "type": "integer",
             "default": null,
-            "description": "[create, schedule_type='every'] Recurring interval period in seconds.",
+            "description": "[create, update; schedule_type='every'] Recurring interval period in seconds.",
             "minimum": 1
           },
           "cron_expression": {
             "type": "string",
             "default": null,
-            "description": "[create, schedule_type='cron'] Standard 5-field cron expression (e.g. '0 9 * * 1-5')."
+            "description": "[create, update; schedule_type='cron'] Standard 5-field cron expression (e.g. '0 9 * * 1-5')."
           },
           "timezone": {
-            "default": "UTC",
-            "description": "[create] IANA timezone for cron and naive at datetimes (defaults to UTC).",
+            "description": "[create, update] IANA timezone for cron and naive at datetimes (create defaults to UTC).",
             "type": "string"
           },
           "prompt": {
             "type": "string",
             "default": null,
-            "description": "[create] Prompt delivered when the task fires; for loops, describe one iteration and include stopping/exit conditions."
+            "description": "[create, update] Prompt delivered when the task fires; for loops, describe one iteration and include stopping/exit conditions."
           },
           "session_id": {
             "type": "string",
             "default": null,
-            "description": "[create] Where prompts land: 'current' re-enters this conversation; 'auto' uses a persistent task session; omit for a fresh session; a UUID continues that session."
+            "description": "[create, update] Where prompts land: 'current' re-enters this conversation; 'auto' uses a persistent task session; omit for a fresh session; a UUID continues that session."
           },
           "max_runs": {
             "type": "integer",
             "default": null,
-            "description": "[create] Maximum successful firings; the task then disables. Use to bound loops.",
+            "description": "[create, update] Maximum successful firings; the task then disables. Use to bound loops.",
             "minimum": 1
           },
           "enabled": {
-            "default": true,
-            "description": "[create] Start enabled.",
+            "description": "[create, update] Enabled (create defaults to true).",
             "type": "boolean"
           },
           "slug": {
             "type": "string",
             "default": null,
-            "description": "[pause, resume, delete, trigger] Task slug returned from create or list (e.g. 'check-build-status-a1b2')."
+            "description": "[pause, resume, delete, update, trigger] Task slug returned from create or list (e.g. 'check-build-status-a1b2')."
           }
         },
         "required": [

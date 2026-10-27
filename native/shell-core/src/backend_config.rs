@@ -28,6 +28,11 @@ pub const DEFAULT_LOCAL_NAME: &str = "Local CLI server";
 pub struct SavedAppServer {
     pub base_url: String,
     pub name: Option<String>,
+    /// Watch this server in the background (the desktop notch follows it
+    /// with no window open). Off for entries written before the flag
+    /// existed and for the seeded default.
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +48,7 @@ impl Default for AppBackendConfig {
             servers: vec![SavedAppServer {
                 base_url: DEFAULT_LOCAL_BASE_URL.to_string(),
                 name: Some(DEFAULT_LOCAL_NAME.to_string()),
+                enabled: false,
             }],
         }
     }
@@ -117,6 +123,7 @@ pub fn load_backend_config_from(path: &Path) -> Result<AppBackendConfig> {
                 .map(|base_url| SavedAppServer {
                     base_url: base_url.to_string(),
                     name: None,
+                    enabled: false,
                 })
                 .collect(),
         }
@@ -164,7 +171,9 @@ fn write_backend_config(path: &Path, config: &AppBackendConfig) -> Result<()> {
 }
 
 /// Mutate `config` in place: upsert `base_url`/`name` into the known-servers
-/// list, and only touch `active_base_url` when `activate` is true.
+/// list, and only touch `active_base_url` when `activate` is true. A server
+/// added by this call starts enabled when `enable_new`; one already saved
+/// keeps its flag.
 ///
 /// Pure (no I/O) so the activate/no-activate branching — which keeps one
 /// desktop window's backend choice from leaking into the persisted startup
@@ -174,6 +183,7 @@ pub fn apply_backend_config_update(
     base_url: Option<&str>,
     name: Option<&str>,
     activate: bool,
+    enable_new: bool,
 ) {
     if activate {
         config.active_base_url = base_url.map(str::to_string);
@@ -191,23 +201,57 @@ pub fn apply_backend_config_update(
             config.servers.push(SavedAppServer {
                 base_url: url.to_string(),
                 name: name.map(str::to_string),
+                enabled: enable_new,
             });
         }
     }
 }
 
-/// Load, apply [`apply_backend_config_update`], and write back.
+/// Load, apply [`apply_backend_config_update`] (new servers disabled), and
+/// write back.
 pub fn save_backend_config_to(
     path: &Path,
     base_url: Option<&str>,
     name: Option<&str>,
     activate: bool,
 ) -> Result<()> {
+    save_backend_server_to(path, base_url, name, activate, false)
+}
+
+/// [`save_backend_config_to`], with a newly added server enabled when
+/// `enable_new`.
+pub fn save_backend_server_to(
+    path: &Path,
+    base_url: Option<&str>,
+    name: Option<&str>,
+    activate: bool,
+    enable_new: bool,
+) -> Result<()> {
     let _guard = CONFIG_MUTATION
         .lock()
         .map_err(|_| anyhow!("backend config lock poisoned"))?;
     let mut config = load_backend_config_from(path)?;
-    apply_backend_config_update(&mut config, base_url, name, activate);
+    apply_backend_config_update(&mut config, base_url, name, activate, enable_new);
+    write_backend_config(path, &config)
+}
+
+/// Switch the saved server whose normalised URL equals `base_url` (already
+/// normalised by the caller) on or off. Errors when it is not saved.
+pub fn set_backend_server_enabled_at(path: &Path, base_url: &str, enabled: bool) -> Result<()> {
+    let _guard = CONFIG_MUTATION
+        .lock()
+        .map_err(|_| anyhow!("backend config lock poisoned"))?;
+    let mut config = load_backend_config_from(path)?;
+    let mut found = false;
+    for server in &mut config.servers {
+        if normalize_base_url(&server.base_url).is_ok_and(|saved| saved == base_url) {
+            server.enabled = enabled;
+            found = true;
+        }
+    }
+    if !found {
+        return Err(anyhow!("server is not saved"));
+    }
     write_backend_config(path, &config)
 }
 
@@ -314,6 +358,7 @@ mod tests {
             Some("http://192.168.1.10:5000"),
             Some("Window B server"),
             false,
+            false,
         );
         assert_eq!(
             config.active_base_url.as_deref(),
@@ -331,14 +376,20 @@ mod tests {
             active_base_url: None,
             servers: vec![],
         };
-        apply_backend_config_update(&mut config, Some("http://127.0.0.1:9000"), None, true);
+        apply_backend_config_update(
+            &mut config,
+            Some("http://127.0.0.1:9000"),
+            None,
+            true,
+            false,
+        );
         assert_eq!(
             config.active_base_url.as_deref(),
             Some("http://127.0.0.1:9000")
         );
         // Switching the main window back to bundled clears the persisted
         // external URL so the app doesn't reconnect to it on next launch.
-        apply_backend_config_update(&mut config, None, None, true);
+        apply_backend_config_update(&mut config, None, None, true, false);
         assert_eq!(config.active_base_url, None);
     }
 
@@ -349,6 +400,7 @@ mod tests {
             servers: vec![SavedAppServer {
                 base_url: "http://127.0.0.1:4082".to_string(),
                 name: Some("Old name".to_string()),
+                enabled: true,
             }],
         };
         apply_backend_config_update(
@@ -356,9 +408,63 @@ mod tests {
             Some("http://127.0.0.1:4082"),
             Some("New name"),
             false,
+            false,
         );
         assert_eq!(config.servers.len(), 1);
         assert_eq!(config.servers[0].name.as_deref(), Some("New name"));
+        assert!(config.servers[0].enabled, "a rename keeps the flag");
+    }
+
+    #[test]
+    fn only_a_newly_added_server_takes_enable_new() {
+        let mut config = AppBackendConfig {
+            active_base_url: None,
+            servers: vec![],
+        };
+        apply_backend_config_update(&mut config, Some("http://a:1"), None, false, true);
+        assert!(config.servers[0].enabled);
+        config.servers[0].enabled = false;
+        apply_backend_config_update(&mut config, Some("http://a:1"), None, false, true);
+        assert!(
+            !config.servers[0].enabled,
+            "saving again must not re-enable it"
+        );
+    }
+
+    #[test]
+    fn flag_defaults_to_disabled_for_old_and_seeded_entries() {
+        assert!(!AppBackendConfig::default().servers[0].enabled);
+        let (_dir, path) = config_file();
+        std::fs::write(
+            &path,
+            br#"{"active_base_url":null,"servers":[{"base_url":"http://a:1","name":"A"}]}"#,
+        )
+        .unwrap();
+        let config = load_backend_config_from(&path).unwrap();
+        assert!(!config.servers[0].enabled);
+    }
+
+    #[test]
+    fn set_enabled_persists_matches_normalised_urls_and_rejects_unknown() {
+        let (_dir, path) = config_file();
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&AppBackendConfig {
+                active_base_url: None,
+                servers: vec![SavedAppServer {
+                    base_url: "https://example.com/".to_string(),
+                    name: None,
+                    enabled: false,
+                }],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        set_backend_server_enabled_at(&path, "https://example.com", true).unwrap();
+        assert!(load_backend_config_from(&path).unwrap().servers[0].enabled);
+        set_backend_server_enabled_at(&path, "https://example.com", false).unwrap();
+        assert!(!load_backend_config_from(&path).unwrap().servers[0].enabled);
+        assert!(set_backend_server_enabled_at(&path, "https://other.com", true).is_err());
     }
 
     // ── file round-trips ────────────────────────────────────────────────
@@ -387,11 +493,13 @@ mod tests {
             vec![
                 SavedAppServer {
                     base_url: "http://a:1".into(),
-                    name: None
+                    name: None,
+                    enabled: false,
                 },
                 SavedAppServer {
                     base_url: "http://b:2".into(),
-                    name: None
+                    name: None,
+                    enabled: false,
                 },
             ]
         );
@@ -483,6 +591,7 @@ mod tests {
                 servers: vec![SavedAppServer {
                     base_url: "https://example.com/".to_string(),
                     name: None,
+                    enabled: false,
                 }],
             })
             .unwrap(),

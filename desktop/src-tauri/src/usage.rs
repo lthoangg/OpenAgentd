@@ -1702,10 +1702,12 @@ mod tests {
             crate::config::SavedAppServer {
                 base_url: "http://192.168.1.10:4082".to_string(),
                 name: Some("Mac Studio".to_string()),
+                enabled: false,
             },
             crate::config::SavedAppServer {
                 base_url: "http://10.0.0.5:8000".to_string(),
                 name: None,
+                enabled: false,
             },
         ];
         assert_eq!(resolve_server_display_name("http://192.168.1.10:4082", &servers), "Mac Studio");

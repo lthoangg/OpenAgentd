@@ -855,6 +855,16 @@ impl AgentSession {
     }
 
     pub async fn handle_stop(&self) -> bool {
+        self.handle_stop_with(false).await
+    }
+
+    /// Stop & send: the user stops the turn only to add context, so the goal
+    /// stays active and the message that follows is its next turn.
+    pub async fn handle_stop_keeping_goal(&self) -> bool {
+        self.handle_stop_with(true).await
+    }
+
+    async fn handle_stop_with(&self, keep_goal: bool) -> bool {
         // A turn task still running is stopped even if the state already
         // reads idle, or nothing could ever reach it.
         if !self.is_busy() && self.active_task_done() {
@@ -864,7 +874,11 @@ impl AgentSession {
         self.hard_cancel.set();
         if self.parent_session_id.is_none() {
             Box::pin(crate::subagents::stop_all_subagents(&self.session_id())).await;
-            self.pause_goal_on_stop(&self.session_id()).await;
+            if keep_goal {
+                self.drop_goal_reminders_on_stop(&self.session_id()).await;
+            } else {
+                self.pause_goal_on_stop(&self.session_id()).await;
+            }
         }
         self.dismiss_pending_question("dismissed", None).await;
         *self.lead_suspended.lock().unwrap() = None;

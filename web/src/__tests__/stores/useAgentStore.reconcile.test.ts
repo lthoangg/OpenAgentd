@@ -244,6 +244,86 @@ describe('reconcileTurnTail', () => {
     expect(useAgentStore.getState().agentStreams.lead._unsyncedBlockIds).toEqual([])
   })
 
+  // The transcript keys turns and their step folds by block id. A finished
+  // turn whose blocks all got new ids remounted: folds the reader opened
+  // closed, and the shrink pulled them off what they were reading.
+  it('keeps the live id of a streamed answer the delta confirms', async () => {
+    await seedLoadedSession()
+    useAgentStore.setState((state) => {
+      const stream = state.agentStreams.lead
+      stream.blocks = [
+        ...stream.blocks,
+        { id: 'block-1-think', type: 'thinking', content: 'pondering', timestamp: new Date() },
+        { id: 'block-2-answer', type: 'text', content: 'canonical', timestamp: new Date() },
+      ]
+      stream._unsyncedBlockIds = ['block-1-think', 'block-2-answer']
+      return state
+    })
+    mockSessionHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
+      lead: leadSession({
+        messages: [
+          { id: 'm3', role: 'assistant', content: 'canonical', reasoning_content: 'pondering', created_at: '2026-07-01T00:00:05Z' },
+        ],
+      }),
+    })))
+
+    await useAgentStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useAgentStore.getState().agentStreams.lead.blocks
+    expect(blocks.map((b) => [b.id, b.content])).toEqual([
+      ['m1', 'hello'],
+      ['m2:text', 'hi'],
+      ['block-1-think', 'pondering'],
+      ['block-2-answer', 'canonical'],
+    ])
+  })
+
+  it('keeps the live ids when the turn end takes a full page', async () => {
+    await seedLoadedSession()
+    useAgentStore.setState((state) => {
+      const stream = state.agentStreams.lead
+      stream.blocks = [
+        ...stream.blocks,
+        { id: 'block-2-answer', type: 'text', content: 'canonical', timestamp: new Date() },
+      ]
+      stream._unsyncedBlockIds = ['block-2-answer']
+      state.isAgentWorking = true
+      return state
+    })
+    mockSessionHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        messages: [
+          { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
+          { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
+          { id: 'm3', role: 'assistant', content: 'canonical', created_at: '2026-07-01T00:00:05Z' },
+        ],
+      }),
+    })))
+
+    await useAgentStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useAgentStore.getState().agentStreams.lead.blocks
+    expect(blocks.map((b) => b.id)).toEqual(['m1', 'm2:text', 'block-2-answer'])
+  })
+
+  it('does not lend a live id to a different answer', async () => {
+    await seedLoadedSession()
+    useAgentStore.setState((state) => {
+      const stream = state.agentStreams.lead
+      stream.blocks = [
+        ...stream.blocks,
+        { id: 'block-2-answer', type: 'text', content: 'streamed draft', timestamp: new Date() },
+      ]
+      stream._unsyncedBlockIds = ['block-2-answer']
+      return state
+    })
+
+    await useAgentStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useAgentStore.getState().agentStreams.lead.blocks
+    expect(blocks.map((b) => b.id)).toEqual(['m1', 'm2:text', 'm3:text'])
+  })
+
   it('preserves provider_status error blocks when reconcileTurnTail runs', async () => {
     await seedLoadedSession()
     useAgentStore.setState((draft) => {

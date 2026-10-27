@@ -146,7 +146,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// cached tool definitions do not change when a goal starts.
 /// Raised by 189 for `plan`'s `new` action, which starts a fresh plan for
 /// different work instead of overwriting the current one.
-const LEAD_ALWAYS_ON_CHARS: usize = 37_748;
+/// Raised by 128 for `schedule`'s `update` action, which edits a task in place
+/// instead of deleting and recreating it.
+const LEAD_ALWAYS_ON_CHARS: usize = 37_876;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

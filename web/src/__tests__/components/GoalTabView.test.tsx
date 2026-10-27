@@ -4,7 +4,7 @@
  * Resume and Clear. Without a goal it says how to start one.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
@@ -106,6 +106,38 @@ describe('GoalTabView', () => {
     expect(screen.getByText('You paused it.')).toBeTruthy()
   })
 
+  it('asks before clearing the goal, and Cancel leaves it alone', async () => {
+    const calls: { url: string; method?: string }[] = []
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      calls.push({ url: String(input), method: (init as RequestInit | undefined)?.method })
+      return new Response(null, { status: 204 })
+    }) as unknown as typeof fetch
+    const user = userEvent.setup()
+    const client = renderTab(makeGoal())
+
+    // Plain DOM queries for the dialog: role queries walk the whole tree.
+    const openDialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+    await user.click(screen.getByRole('button', { name: 'Clear goal' }))
+    await waitFor(() => expect(openDialog()).not.toBeNull())
+    const dialog = openDialog()!
+    expect(dialog.textContent).toContain('Clear this goal?')
+    expect(calls).toEqual([])
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    // The dialog unmounts once its exit animation has run.
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)) })
+    expect(openDialog()).toBeNull()
+    expect(calls).toEqual([])
+    expect(now()?.dataset.goalNow).toBe('active')
+
+    await user.click(screen.getByRole('button', { name: 'Clear goal' }))
+    await waitFor(() => expect(openDialog()).not.toBeNull())
+    await user.click(within(openDialog()!).getByRole('button', { name: 'Clear goal' }))
+
+    await waitFor(() => expect(calls.map((c) => [c.url.replace(/^.*\/api/, '/api'), c.method])).toEqual([['/api/agent/sessions/s1/goal', 'DELETE']]))
+    await waitFor(() => expect(client.getQueryData<{ goal: SessionGoal }>(queryKeys.goal('s1'))?.goal.status).toBe('cleared'))
+  })
+
   it('names what the goal waits for in the session', () => {
     useAgentStore.setState({ isAgentWorking: true, pendingQuestion: { kind: 'ask_user', id: 'q1' } as never })
     renderTab(makeGoal())
@@ -130,7 +162,7 @@ describe('GoalTabView', () => {
     expect(now()?.textContent).toContain('Waiting for plan approval')
   })
 
-  it('shows the plan the goal runs, its task progress, and the next task', async () => {
+  it('shows the plan the goal runs as one line, with its status and a link, and the next task', async () => {
     useAgentStore.setState({ isAgentWorking: true })
     const onOpenPlan = mock(() => {})
     const user = userEvent.setup()
@@ -139,9 +171,9 @@ describe('GoalTabView', () => {
     expect(now()?.textContent).toContain('Next task: Attachments as links')
     const plan = screen.getByRole('region', { name: 'Plan' })
     expect(plan.textContent).toContain('Export sessions as Markdown')
-    expect(plan.textContent).toContain('rev 2')
-    expect(plan.textContent).toContain('Approved')
-    expect(plan.textContent).toContain('Tasks 2/4')
+    expect(plan.textContent).toContain('Approved · Running')
+    // Task progress lives in the Tasks view, not here.
+    expect(plan.textContent).not.toContain('Tasks 2/4')
 
     await user.click(screen.getByRole('button', { name: 'Open plan' }))
     expect(onOpenPlan).toHaveBeenCalledTimes(1)

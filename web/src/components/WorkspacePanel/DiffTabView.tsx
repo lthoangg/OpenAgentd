@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ExternalLink } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { WORKSPACE_DIFF_STALE_MS, workspaceChangesQueryOptions, workspaceFileDiffQueryOptions } from '@/queries/workspace-git'
@@ -28,6 +29,7 @@ export interface DiffTabViewProps {
 export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
   const changes = useQuery({ ...workspaceChangesQueryOptions(workspace), staleTime: WORKSPACE_DIFF_STALE_MS })
   const diff = useQuery({ ...workspaceFileDiffQueryOptions(workspace, path), staleTime: WORKSPACE_DIFF_STALE_MS })
+  const scrollRef = useScrollMemory(`diff:${workspace}:${path}`)
   const changed = useMemo(
     () => changedFilesFromResponse(changes.data).find((file) => file.path === path) ?? null,
     [changes.data, path],
@@ -65,7 +67,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
           </Tooltip>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y">
         {diff.isLoading ? (
           <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading diff…</p>
         ) : diff.isError ? (

@@ -6,10 +6,14 @@ import {
   PLAIN_WIDTH,
   PLAIN_HIDDEN_WIDTH,
   WING_WIDTH,
+  EAR_WIDTH,
+  compactCount,
   compactLabels,
   goalLabel,
+  islandHitBox,
   islandHeight,
   islandMode,
+  islandShift,
   islandWidth,
   listOrder,
   primarySessionId,
@@ -102,22 +106,54 @@ describe('islandWidth and islandHeight', () => {
   const notch = { hasNotch: true, width: 188, height: 38 }
   const plain = { hasNotch: false, width: 200, height: 24 }
 
-  it('shrinks into the notch when hidden and grows a wing either side', () => {
+  it('shrinks into the notch when hidden and grows one narrow wing, left of it', () => {
     expect(islandWidth('hidden', notch)).toBe(188)
-    expect(islandWidth('running', notch)).toBe(188 + 2 * WING_WIDTH)
-    expect(islandWidth('done', notch)).toBe(188 + 2 * WING_WIDTH)
+    expect(islandWidth('running', notch)).toBe(188 + WING_WIDTH)
+    expect(islandWidth('done', notch)).toBe(188 + WING_WIDTH)
+    // Narrow enough to stay clear of the frontmost app's menus.
+    expect(WING_WIDTH).toBeLessThanOrEqual(48)
   })
 
-  it('uses fixed pills without a notch, and widens when expanded', () => {
+  it('keeps the right of the notch clear while compact, and centres when expanded', () => {
+    // The pill's right edge sits on the notch's: nothing covers the status icons.
+    expect(islandShift('running', notch)).toBe(-WING_WIDTH / 2)
+    expect(islandShift('needs_input', notch)).toBe(-WING_WIDTH / 2)
+    expect(islandShift('expanded', notch)).toBe(0)
+    expect(islandShift('hidden', notch)).toBe(0)
+    expect(islandShift('running', plain)).toBe(0)
+  })
+
+  it('reports a hit area that leaves out the hidden right corner while compact', () => {
+    const width = islandWidth('running', notch)
+    const box = islandHitBox('running', notch, width)
+    const notchCentre = 0
+    // Right edge of the hit area: exactly the notch's right edge.
+    expect(notchCentre + box.shift + box.width / 2).toBe(188 / 2)
+    expect(box.width).toBe(188 + WING_WIDTH + EAR_WIDTH)
+    expect(islandHitBox('expanded', notch, 400)).toEqual({ width: 400 + 2 * EAR_WIDTH, shift: 0 })
+  })
+
+  it('uses small fixed pills without a notch, and widens when expanded', () => {
     expect(islandWidth('hidden', plain)).toBe(PLAIN_HIDDEN_WIDTH)
     expect(islandWidth('running', plain)).toBe(PLAIN_WIDTH)
+    expect(PLAIN_WIDTH).toBeLessThanOrEqual(64)
     expect(islandWidth('expanded', plain)).toBe(EXPANDED_WIDTH)
+    expect(islandWidth('expanded', notch)).toBe(EXPANDED_WIDTH)
   })
 
   it('adds the list to the height only when expanded, up to the canvas', () => {
     expect(islandHeight('running', notch, 120)).toBe(38)
     expect(islandHeight('expanded', notch, 120)).toBe(158)
     expect(islandHeight('expanded', notch, 5_000)).toBe(CANVAS_HEIGHT)
+  })
+})
+
+describe('compactCount', () => {
+  it('counts the sessions the compact pill stands for', () => {
+    expect(compactCount([running('a')], [])).toBe(1)
+    expect(compactCount([running('a'), running('b')], [])).toBe(2)
+    expect(compactCount([running('a'), waiting('b')], [done('x'), done('y')])).toBe(1)
+    expect(compactCount([running('a')], [done('x'), done('y')])).toBe(2)
   })
 })
 

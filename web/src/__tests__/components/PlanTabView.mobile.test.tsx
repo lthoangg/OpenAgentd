@@ -24,6 +24,7 @@ const PLAN: SessionPlan = {
   approved_revision: null,
   path: '/repo/project/.agents/plans/ship-it-0000abcd.md',
   workspace_path: '.agents/plans/ship-it-0000abcd.md',
+  done_when: 'The endpoint answers and its tests pass.',
 }
 
 const REVIEW: PendingQuestion = {
@@ -60,6 +61,10 @@ beforeEach(() => {
       answers.push(JSON.parse(String(init?.body)))
       return new Response(JSON.stringify({ status: 'answered', resumed: true }))
     }
+    if (url.includes('/settings/goals')) {
+      return new Response(JSON.stringify({ max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: true, keep_going_default: false }))
+    }
+    if (url.includes('/goal')) return new Response(JSON.stringify({ goal: null }))
     return new Response(JSON.stringify({ plan: PLAN }))
   }) as typeof fetch
 })
@@ -211,5 +216,20 @@ describe('PlanTabView on a phone', () => {
 
     await waitFor(() => expect(answers).toHaveLength(1))
     expect(answers[0]).toEqual({ answers: [['**Comment 1**\n> Write the migration\n\nMake it reversible.']] })
+  })
+
+  it('keeps the turns field mounted and focused when the keyboard opens for it', async () => {
+    renderTab()
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Keep going until done' }))
+    const turns = screen.getByLabelText('Turns for this goal') as HTMLInputElement
+    turns.focus()
+    await setKeyboardOpen(true)
+
+    expect(screen.getByLabelText('Turns for this goal')).toBe(turns)
+    expect(document.activeElement).toBe(turns)
+
+    // Leaving the field folds the row away again while the keyboard is up.
+    act(() => { turns.blur() })
+    await waitFor(() => expect(screen.queryByLabelText('Turns for this goal')).toBeNull())
   })
 })

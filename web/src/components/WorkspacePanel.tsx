@@ -41,6 +41,7 @@ import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
   DOCK_MIN_WIDTH,
   dockMaxWidth,
@@ -51,7 +52,7 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
+import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle, isLiveGoal } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
@@ -372,6 +373,8 @@ export function WorkspacePanel({
 
   const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
   const subTab = gitState.subTab
+  // Each Git view (changes, commits, tree) keeps its place across tab switches.
+  const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
   const allBranches = gitState.allBranches
   const expandedCommitSha = gitState.expandedCommitSha
   const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
@@ -477,6 +480,7 @@ export function WorkspacePanel({
   // The Goal tab's title follows the goal ("Goal 7/50", "Goal paused").
   const { data: goalData } = useSessionGoalQuery(sessionId)
   const goal = goalData?.goal ?? null
+  const goalControls = useGoalControls(sessionId)
   const agentWorking = useAgentStore((s) => s.isAgentWorking)
   const goalTitle = goalTabTitle(goal, agentWorking)
   const stripTabs = useMemo(
@@ -598,7 +602,7 @@ export function WorkspacePanel({
         />
       )}
       <div
-        ref={commitsScrollRef}
+        ref={rememberReviewScroll}
         id={changes.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
         role={changes.data?.is_git_repo ? 'tabpanel' : undefined}
         aria-labelledby={changes.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
@@ -758,6 +762,7 @@ export function WorkspacePanel({
               onOpenPlan={() => openTab(PLAN_TAB)}
               goal={goal}
               onOpenGoal={openGoal}
+              onGoalAction={goalControls}
             />
           ) : activeTab?.type === 'plan' ? (
             <PlanTabView

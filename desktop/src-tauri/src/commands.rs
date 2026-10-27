@@ -391,6 +391,24 @@ pub async fn app_save_backend_server(
         false,
     )
     .map_err(|e| format!("{e:#}"))?;
+    crate::island::servers_changed(&app);
+    app_backend_status_for_window(app.clone(), app.state(), window.label())
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// Switch a saved server's background watching on or off. The notch follows
+/// the change at once.
+#[tauri::command]
+pub async fn app_set_backend_server_enabled(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    base_url: String,
+    enabled: bool,
+) -> Result<AppBackendStatus, String> {
+    let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
+    crate::config::set_app_backend_server_enabled(&app, &normalized, enabled).map_err(|e| format!("{e:#}"))?;
+    crate::island::servers_changed(&app);
     app_backend_status_for_window(app.clone(), app.state(), window.label())
         .await
         .map_err(|e| format!("{e:#}"))
@@ -427,6 +445,7 @@ pub async fn app_use_external_backend(
             false,
         )
         .map_err(|e| format!("{e:#}"))?;
+        crate::island::servers_changed(&app);
     }
 
     let init_script = frontend_init_script(None, &normalized);
@@ -491,6 +510,7 @@ pub async fn app_remove_backend_server(
     for label in detached {
         crate::preview_relay::close_window(&app, &label);
     }
+    crate::island::servers_changed(&app);
     app_backend_status_for_window(app.clone(), app.state(), window.label())
         .await
         .map_err(|e| format!("{e:#}"))

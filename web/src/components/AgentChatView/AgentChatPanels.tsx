@@ -32,6 +32,8 @@ interface AgentChatPanelsProps {
   onOpenPlan?: () => void
   /** Open the goal in the dock's Goal tab; unset without a workspace. */
   onOpenGoal?: () => void
+  /** Pause and Resume from the task popover's goal row. */
+  onGoalAction?: (action: 'pause' | 'resume') => void
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
@@ -66,6 +68,7 @@ export function AgentChatPanels({
   onClearPlan,
   onOpenPlan,
   onOpenGoal,
+  onGoalAction,
   schedulerOpen,
   onCloseScheduler,
   showPalette,
@@ -103,6 +106,7 @@ export function AgentChatPanels({
         onClearPlan={onClearPlan}
         onOpenPlan={onOpenPlan}
         onOpenGoal={onOpenGoal}
+        onGoalAction={onGoalAction}
       />
       {schedulerOpened && (
         <SchedulerPanel

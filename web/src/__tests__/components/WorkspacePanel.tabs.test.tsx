@@ -313,3 +313,41 @@ describe('Git view toolbar', () => {
     await waitFor(() => expect(useGitPanelStore.getState().workspaces[WORKSPACE].expandedDiffs).toEqual(['src/app.ts']))
   })
 })
+
+describe('Review dock tabs keep their scroll position', () => {
+  const scrollTo = async (scroller: HTMLElement, top: number) => {
+    await act(async () => {
+      scroller.scrollTop = top
+      scroller.dispatchEvent(new Event('scroll'))
+    })
+  }
+
+  it('a diff tab opens where it was left after visiting another tab', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    const diffScroller = () => screen.getByText('const before = 2').closest('.overflow-y-auto') as HTMLElement
+    await scrollTo(diffScroller(), 240)
+
+    await user.click(screen.getByRole('button', { name: 'Git' }))
+    expect(screen.queryByText('const before = 2')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'app.ts diff' }))
+
+    await waitFor(() => expect(diffScroller().scrollTop).toBe(240))
+  })
+
+  it('a file tab opens where it was left after visiting another tab', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+    await user.click(screen.getByRole('button', { name: 'Open src/app.ts' }))
+    const fileScroller = () => document.querySelector('[data-select-container]') as HTMLElement | null
+    await waitFor(() => expect(fileScroller()).toBeTruthy())
+    await scrollTo(fileScroller()!, 120)
+
+    await user.click(screen.getByRole('button', { name: 'Git' }))
+    expect(fileScroller()).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'app.ts' }))
+
+    await waitFor(() => expect(fileScroller()?.scrollTop).toBe(120))
+  })
+})

@@ -16,8 +16,8 @@ pub mod private_file;
 pub use access_key::{delete_access_key, get_access_key, set_access_key, use_file_store};
 pub use backend_config::{
     apply_backend_config_update, load_backend_config_from, normalize_base_url,
-    normalize_server_name, remove_backend_server_at, save_backend_config_to, AppBackendConfig,
-    SavedAppServer,
+    normalize_server_name, remove_backend_server_at, save_backend_config_to,
+    save_backend_server_to, set_backend_server_enabled_at, AppBackendConfig, SavedAppServer,
 };
 pub use download::{
     decode_base64, ensure_content_length_limit, ensure_max_download_size, resolve_download_bytes,

@@ -73,16 +73,36 @@ describe('Island', () => {
     expect(lastFit()).toMatchObject({ visible: false })
   })
 
-  it('shows a running session, then grows out of the notch', async () => {
+  it('shows a running session, then grows out of the notch to the left only', async () => {
     await mount()
     push(status(2, [running('a', 'Refactor auth')]))
     expect(screen.getByText('Working')).toBeInTheDocument()
     expect(screen.getByText('Refactor auth')).toBeInTheDocument()
     // The canvas comes up with the pill still notch-sized…
-    expect(lastFit()).toMatchObject({ visible: true, width: 188 + 16 })
-    // …then the pill opens to its full width.
+    expect(lastFit()).toMatchObject({ visible: true, width: 188 + 16, shift: 0 })
+    // …then the pill grows one narrow wing left of the notch; its right edge
+    // stays on the notch's, clear of the status icons.
     await waitFor(() => expect(pill().dataset.open).toBe('true'))
-    expect(lastFit()).toMatchObject({ visible: true, width: 188 + 200 + 16 })
+    expect(lastFit()).toMatchObject({ visible: true, width: 188 + 44 + 8, shift: -26 })
+    expect(pill().style.getPropertyValue('--pill-shift')).toBe('-22px')
+  })
+
+  it('counts several sessions beside the mark, and centres when expanded', async () => {
+    await mount()
+    push(status(2, [running('a', 'Refactor auth'), running('b', 'Docs')]))
+    await waitFor(() => expect(pill().dataset.open).toBe('true'))
+    expect(document.querySelector('.island-count')?.textContent).toBe('2')
+
+    point(true)
+    expect(lastFit()).toMatchObject({ width: 400 + 16, shift: 0 })
+    expect(pill().style.getPropertyValue('--pill-shift')).toBe('0px')
+  })
+
+  it('shows no count for a single session', async () => {
+    await mount()
+    push(status(2, [running('a', 'Refactor auth')]))
+    await waitFor(() => expect(pill().dataset.open).toBe('true'))
+    expect(document.querySelector('.island-count')).toBeNull()
   })
 
   it('puts a waiting session first and shows its question when the pointer is over it', async () => {

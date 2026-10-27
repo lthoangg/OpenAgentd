@@ -13,6 +13,7 @@ import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
 import { summarizeTodos } from '@/components/TaskChecklist'
+import type { GoalHeaderState } from '@/lib/work'
 import { TokenMeter } from '@/components/ui/token-meter'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
@@ -34,6 +35,8 @@ interface AgentChatHeaderProps {
   onToggleTasks: () => void
   /** Whether the task list is showing (popover open, or Tasks tab focused). */
   tasksViewActive: boolean
+  /** The session's live goal: its ring and tooltip sit on the Task list button. */
+  goalState?: GoalHeaderState | null
   workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
   agentCapabilitiesOpen: boolean
@@ -63,6 +66,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   todos,
   onToggleTasks,
   tasksViewActive,
+  goalState = null,
   workspacePanel,
   onWorkspaceFiles,
   agentCapabilitiesOpen,
@@ -183,6 +187,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               disabled={!sessionId}
               badge={activeTodoCount}
               active={tasksViewActive}
+              goalTone={goalState?.tone}
+              tooltip={goalState ? `Tasks · ${goalState.text}` : undefined}
             />
             <MobileHeaderAction
               Icon={PanelRight}
@@ -218,10 +224,13 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               Icon: ListTodo,
               onClick: onToggleTasks,
               disabled: !sessionId,
-              title: sessionId ? `Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})` : 'No active session',
+              title: sessionId
+                ? `${goalState ? `${goalState.text} · ` : ''}Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
+                : 'No active session',
               ariaLabel: 'Task list',
               badge: todoSummary.progressLabel,
               indicator: todoSummary.hasInProgress,
+              goalTone: goalState?.tone,
               indicatorClassName: 'bg-(--color-info)',
               pressed: tasksViewActive,
               className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,

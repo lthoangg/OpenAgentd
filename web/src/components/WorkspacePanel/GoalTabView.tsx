@@ -13,9 +13,12 @@
  * orange while it waits on the user, red when blocked, neutral when paused.
  */
 import { CircleCheck, Target } from 'lucide-react'
+import { useState } from 'react'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   formatGoalDuration,
@@ -29,14 +32,14 @@ import {
   type GoalSessionState,
   type GoalTone,
 } from '@/lib/goal'
-import { PLAN_STATUS_LABEL, nextTask, planStatus, type PlanStatus } from '@/lib/plan'
+import { nextTask, planStatus, type PlanStatus } from '@/lib/plan'
+import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
 import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
-import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
+import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { planTitle } from '../ActivePlanSection'
-import { summarizeTodos } from '../TaskChecklist'
 import { DockLoadError } from './DockLoadError'
 
 const NOW_CLASS: Record<GoalTone, string> = {
@@ -105,41 +108,27 @@ function goalNote(goal: SessionGoal): { title: string; text: string; detail: str
   return null
 }
 
-/** The plan the goal runs: title, revision, status, and how far its tasks have got. */
-function GoalPlanSection({ plan, status, todos, onOpenPlan }: {
+/** The plan the goal runs, as one line: title and status, with a link to the Plan tab. */
+function GoalPlanSection({ plan, status, label, onOpenPlan }: {
   plan: SessionPlan
   status: PlanStatus
-  todos: TodoItem[]
+  label: string
   onOpenPlan?: () => void
 }) {
-  const summary = summarizeTodos(todos)
   const title = planTitle(plan.content) ?? 'Session plan'
   return (
     <section aria-label="Plan" className="flex flex-col gap-1.5" data-goal-plan={status}>
       <h3 className="label-caps text-(--color-text-muted)">Plan</h3>
-      <div className="flex flex-col gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-(--color-text)" title={title}>
-            {title}
-            {plan.revision !== undefined && <span className="ml-1.5 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>}
-          </span>
-          <span className={cn('shrink-0 rounded-full px-2 py-px text-[11px] font-medium', PLAN_PILL_CLASS[status] ?? 'bg-(--bg-key) text-(--color-text-2)')}>
-            {PLAN_STATUS_LABEL[status]}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-muted)">
-            {summary.total > 0 ? `Tasks ${summary.finished}/${summary.total}` : 'No tasks yet'}
-          </span>
-          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-(--bg-key)" aria-hidden="true">
-            <span className="block h-full rounded-full bg-(--accent-blue)" style={{ width: `${summary.progressPct}%` }} />
-          </span>
-          {onOpenPlan && (
-            <Button type="button" size="xs" variant="ghost" onClick={onOpenPlan}>
-              Open plan
-            </Button>
-          )}
-        </div>
+      <div className="flex items-center gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-(--color-text)" title={title}>{title}</span>
+        <span className={cn('shrink-0 rounded-full px-2 py-px text-[11px] font-medium', PLAN_PILL_CLASS[status] ?? 'bg-(--bg-key) text-(--color-text-2)')}>
+          {label}
+        </span>
+        {onOpenPlan && (
+          <Button type="button" size="xs" variant="ghost" onClick={onOpenPlan}>
+            Open plan
+          </Button>
+        )}
       </div>
     </section>
   )
@@ -188,7 +177,7 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
         <GoalPlanSection
           plan={plan.plan}
           status={planStatus(plan.plan, plan.reviewing, { todos: plan.todos, goal })}
-          todos={plan.todos}
+          label={workStatusLabel(plan.plan, plan.reviewing, { todos: plan.todos, goal })}
           onOpenPlan={plan.onOpenPlan}
         />
       )}
@@ -224,19 +213,6 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
   )
 }
 
-/** The session state a goal reads, from the live stream (and subagents while it waits). */
-function useGoalSessionState(sessionId: string | null, goal: SessionGoal | null): GoalSessionState {
-  const running = useAgentStore((s) => s.isAgentWorking)
-  const waitingForUser = useAgentStore((s) => Boolean(s.pendingQuestion) && s.pendingQuestion?.kind !== 'plan_review')
-  const planReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
-  const planMode = useAgentStore((s) => (s.sessionPendingInteractionMode ?? s.sessionInteractionMode) === 'plan')
-  const queuedMessages = useAgentStore((s) => s._pendingMessages.length)
-  // Only an active goal between turns waits on subagents.
-  const { data: subagents } = useSessionSubagentsQuery(sessionId, goal?.status === 'active' && !running)
-  const subagentsRunning = (subagents?.live_members ?? subagents?.subagents ?? []).filter((sub) => sub.status === 'working').length
-  return { running, waitingForUser, planReview, planMode, queuedMessages, subagentsRunning }
-}
-
 export interface GoalTabViewProps {
   sessionId: string | null
   /** The session plan; its section sits under the objective. */
@@ -247,18 +223,25 @@ export interface GoalTabViewProps {
 }
 
 export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: GoalTabViewProps) {
+  const scrollRef = useScrollMemory(sessionId ? `goal:${sessionId}` : null)
   const { data, isLoading, isError, isFetching, refetch } = useSessionGoalQuery(sessionId)
   const goal = data?.goal && data.goal.status !== 'cleared' ? data.goal : null
   const session = useGoalSessionState(sessionId, goal)
   const reviewing = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
   const mutation = useGoalActionMutation()
   const pushToast = useToastStore((s) => s.push)
+  const [confirmingClear, setConfirmingClear] = useState(false)
 
   const runAction = (action: GoalAction) => {
     if (!sessionId) return
     mutation.mutate({ sessionId, action }, {
       onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: (err as Error).message }),
     })
+  }
+  // Clearing ends the goal for good, so the button only asks first.
+  const onAction = (action: GoalAction) => {
+    if (action === 'clear') setConfirmingClear(true)
+    else runAction(action)
   }
 
   return (
@@ -274,18 +257,32 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
       ) : !goal ? (
         <p className="px-4 py-3 text-xs text-(--color-text-subtle)">Loading the goal…</p>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div className="mx-auto max-w-xl px-4 py-4 pb-safe">
             <GoalStatusPanel
               goal={goal}
               session={session}
               busy={mutation.isPending}
-              onAction={runAction}
+              onAction={onAction}
               plan={plan ? { plan, todos, reviewing, onOpenPlan } : null}
             />
           </div>
         </div>
       )}
+      <Dialog open={confirmingClear} onOpenChange={setConfirmingClear}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Clear this goal?</DialogTitle>
+            <DialogDescription>
+              The agent stops working toward it and no new goal turn starts. A turn that is running finishes first. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="default" onClick={() => setConfirmingClear(false)}>Cancel</Button>
+            <Button type="button" variant="danger" disabled={mutation.isPending} onClick={() => { setConfirmingClear(false); runAction('clear') }}>Clear goal</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

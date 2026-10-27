@@ -12,8 +12,10 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/window.rs`: WebViews, platform chrome, zoom, and injected bridge state.
 - `src/servers.rs`: which server each window is on (`ServerId`: builtin or
   one external URL). The notch, the tray's "Auto" usage, new windows and
-  notification routing all ask it. A saved server is never chosen here;
-  it only becomes a window's server when the user clicks Connect.
+  notification routing all ask it. A saved server is never chosen as a
+  window's server here; it only becomes one when the user clicks Connect.
+  The notch additionally follows saved servers marked `enabled`
+  (`followed_servers`), with or without a window.
 - `src/commands.rs`: Tauri commands exposed to the frontend; access-key and
   download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
@@ -23,10 +25,12 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/menu.rs`: tray/menu construction, polling, and event routing. Usage
   snapshots, errors and alert dedup are kept per server (`usage::UsageCache`).
 - `src/island.rs`: the macOS notch island (`web/island.html`): follows the
-  event stream of every server with a window open (one task per server,
-  started and stopped by a 2 s supervisor), refetches each one's
+  event stream of every server with a window open and every enabled saved
+  server (one task per server, started and stopped by a 2 s supervisor,
+  woken by `servers_changed` when the saved list changes), refetches each one's
   active-session list, merges them, and places the window over the notch
-  with AppKit. Its webview has its own capability
+  with AppKit. It keeps each feed's `WatchState` (read by Settings through
+  `app_server_watch_states`). Its webview has its own capability
   (`capabilities/island.json`, like the tray popup's `capabilities/tray.json`)
   and, like the tray popup, never gets the backend token
   (`window::is_overlay_window`).

@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { GoalRing } from '@/components/ui/goal-ring'
+import type { GoalTone } from '@/lib/goal'
 
 export function MobileHeaderAction({
   Icon,
@@ -8,6 +10,8 @@ export function MobileHeaderAction({
   active = false,
   disabled = false,
   badge = 0,
+  goalTone,
+  tooltip,
 }: {
   Icon: LucideIcon
   label: string
@@ -15,6 +19,10 @@ export function MobileHeaderAction({
   active?: boolean
   disabled?: boolean
   badge?: number
+  /** A goal's ring, in the colour of its status. */
+  goalTone?: GoalTone
+  /** Tooltip text when it should say more than the label. */
+  tooltip?: string
 }) {
   return (
     <Tooltip>
@@ -37,10 +45,11 @@ export function MobileHeaderAction({
                 {badge > 9 ? '9+' : badge}
               </span>
             )}
+            {goalTone && <GoalRing tone={goalTone} className="absolute bottom-1 right-1" />}
           </button>
         }
       />
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>{tooltip ?? label}</TooltipContent>
     </Tooltip>
   )
 }

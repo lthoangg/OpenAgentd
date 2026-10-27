@@ -96,7 +96,11 @@ if (import.meta.main) {
   // Keep going from plan review, workspace file links in Markdown previews,
   // collapsed subagent lists and per-file Git diffs added 11 kB / 3.5 kB gzip:
   // 2.638 MB / 804.5 kB with a 1.966 MB index chunk (v3.32.0).
-  const limits = { eagerBytes: 2_641_000, eagerGzipBytes: 807_000, largestChunkBytes: 1_969_000 }
+  // The plan, tasks and goal chain (goal ring, Done when row, Run as goal),
+  // per-tab scroll memory in the review dock and the goal palette changes
+  // added 11.6 kB / 4.2 kB gzip: 2.649 MB / 808.6 kB with a 1.978 MB index
+  // chunk (v3.33.0).
+  const limits = { eagerBytes: 2_653_000, eagerGzipBytes: 811_000, largestChunkBytes: 1_981_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

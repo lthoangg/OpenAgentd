@@ -1,7 +1,12 @@
 export interface SavedAppServer {
   base_url: string
   name?: string | null
+  /** Desktop only: watch it in the background (the notch follows it with no window open). */
+  enabled?: boolean
 }
+
+/** Where the desktop shell's background connection to a followed server stands. */
+export type ServerWatchState = 'connecting' | 'connected' | 'reconnecting' | 'key_rejected'
 
 export interface AppBackendStatus {
   base_url: string
@@ -71,6 +76,21 @@ export async function saveAppBackendServer(baseUrl: string, name: string): Promi
 export async function removeAppBackendServer(baseUrl: string): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
   return await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl })
+}
+
+export async function setAppBackendServerEnabled(baseUrl: string, enabled: boolean): Promise<AppBackendStatus> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return await invoke<AppBackendStatus>('app_set_backend_server_enabled', { baseUrl, enabled })
+}
+
+/** Background connection state per followed server, by normalised base URL. Empty when unavailable. */
+export async function getServerWatchStates(): Promise<Record<string, ServerWatchState>> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<Record<string, ServerWatchState>>('app_server_watch_states')
+  } catch {
+    return {}
+  }
 }
 
 export async function switchToExternalAppBackend(baseUrl: string, name: string, persist: boolean): Promise<AppBackendStatus> {

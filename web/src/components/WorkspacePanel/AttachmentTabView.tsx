@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { Download, ExternalLink } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { FileLightboxGeneric, triggerDownload, type FileLightboxItem } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { PdfDocumentViewer } from '../PdfDocumentViewer'
@@ -25,6 +26,8 @@ function ImageView({ item }: { item: FileLightboxItem }) {
 
 function TextView({ item }: { item: FileLightboxItem }) {
   const [content, setContent] = useState<string | null>(item.textContent ?? null)
+  // A data: URL can be the whole file; its name and size identify it well enough.
+  const scrollRef = useScrollMemory<HTMLPreElement>(`attachment:${item.name}:${item.src.startsWith('data:') ? item.src.length : item.src}`)
   useEffect(() => {
     if (item.textContent !== undefined || !item.src) return
     let cancelled = false
@@ -35,7 +38,7 @@ function TextView({ item }: { item: FileLightboxItem }) {
     return () => { cancelled = true }
   }, [item.src, item.textContent])
   return (
-    <pre className="selectable-text h-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
+    <pre ref={scrollRef} className="selectable-text h-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
       {content ?? 'Loading…'}
     </pre>
   )

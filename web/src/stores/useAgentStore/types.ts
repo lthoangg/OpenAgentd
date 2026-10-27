@@ -257,7 +257,8 @@ export interface AgentStoreActions {
   redoAllAgent: () => Promise<AgentCommandResponse | undefined>
   consumePendingDraft: () => { content: string; attachments?: MessageAttachment[] } | null
   setPendingDraft: (draft: { content: string; attachments?: MessageAttachment[] } | null) => void
-  stopAgent: () => Promise<void>
+  /** ``keepGoal``: Stop & send, which leaves an active goal active. */
+  stopAgent: (options?: { keepGoal?: boolean }) => Promise<void>
   connectStream: () => AbortController
   /**
    * A turn just started for this session: if the live feed then stays silent

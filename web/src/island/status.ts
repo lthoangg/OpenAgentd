@@ -73,12 +73,18 @@ export interface IslandPointer {
 
 export type IslandMode = 'hidden' | 'running' | 'needs_input' | 'done' | 'expanded'
 
-/** Width of each side of the pill beside the notch. */
-export const WING_WIDTH = 100
+/**
+ * The pill's one wing, left of the notch: the state mark and, for several
+ * sessions, their count. Nothing grows right of the notch, where the status
+ * icons start (macOS gives no way to read where they are), and the left wing
+ * stays this narrow so the frontmost app's menus keep their room. Hover
+ * expands it with the full details.
+ */
+export const WING_WIDTH = 44
 /** What the pill shrinks into on a screen without a notch. */
-export const PLAIN_HIDDEN_WIDTH = 64
-/** Width of the pill on a screen without a notch. */
-export const PLAIN_WIDTH = 240
+export const PLAIN_HIDDEN_WIDTH = 40
+/** Width of the pill on a screen without a notch: the mark and a count. */
+export const PLAIN_WIDTH = 56
 export const EXPANDED_WIDTH = 400
 /** Concave corners where the pill meets the top of the screen (island.css --island-ear). */
 export const EAR_WIDTH = 8
@@ -114,8 +120,35 @@ export function islandMode(
 export function islandWidth(mode: IslandMode, geometry: NotchGeometry): number {
   const { hasNotch, width } = geometry
   if (mode === 'hidden') return hasNotch ? width : PLAIN_HIDDEN_WIDTH
-  const compact = hasNotch ? width + 2 * WING_WIDTH : Math.max(width, PLAIN_WIDTH)
-  return mode === 'expanded' ? Math.min(Math.max(compact, EXPANDED_WIDTH), CANVAS_WIDTH - 2 * EAR_WIDTH) : compact
+  if (mode === 'expanded') return Math.min(Math.max(width, EXPANDED_WIDTH), CANVAS_WIDTH - 2 * EAR_WIDTH)
+  return hasNotch ? width + WING_WIDTH : PLAIN_WIDTH
+}
+
+/**
+ * How far the pill's centre sits from the notch's (negative is left). The
+ * compact pill's right edge is the notch's own, so its wing only grows left;
+ * expanded, it is centred.
+ */
+export function islandShift(mode: IslandMode, geometry: NotchGeometry): number {
+  return geometry.hasNotch && mode !== 'hidden' && mode !== 'expanded' ? -WING_WIDTH / 2 : 0
+}
+
+/**
+ * The pill's click and hover area for the shell: the pill and its corners,
+ * less the right corner while the compact pill ends at the notch (it is
+ * hidden there, so the status icon beside the notch keeps its clicks).
+ */
+export function islandHitBox(mode: IslandMode, geometry: NotchGeometry, width: number): { width: number; shift: number } {
+  const shift = islandShift(mode, geometry)
+  if (shift === 0) return { width: width + 2 * EAR_WIDTH, shift }
+  return { width: width + EAR_WIDTH, shift: shift - EAR_WIDTH / 2 }
+}
+
+/** The number behind the compact pill's mark, in {@link compactMode}'s order. */
+export function compactCount(sessions: readonly IslandSession[], unread: readonly IslandSession[]): number {
+  const waiting = sessions.filter((s) => s.state === 'needs_input').length
+  if (waiting > 0) return waiting
+  return unread.length > 0 ? unread.length : sessions.length
 }
 
 /** The pill's height: the notch's, or that plus the session list when expanded. */

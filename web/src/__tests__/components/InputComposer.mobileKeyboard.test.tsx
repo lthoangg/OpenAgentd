@@ -39,4 +39,33 @@ describe('InputComposer on a phone — keyboard stays up', () => {
 
     expect(fireEvent.pointerDown(screen.getByRole('button', { name: 'Send message' }))).toBe(true)
   })
+
+  it('holds the press on Code / Plan, including the selected segment', () => {
+    const onChange = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={() => {}} interactionMode="code" onInteractionModeChange={onChange} />)
+    const box = screen.getByLabelText('Message input') as HTMLTextAreaElement
+    box.focus()
+
+    const selected = screen.getByRole('button', { name: 'Code mode' })
+    // A native disabled button would swallow the press; it must stay pressable.
+    expect((selected as HTMLButtonElement).disabled).toBe(false)
+    expect(fireEvent.pointerDown(selected)).toBe(false)
+    fireEvent.click(selected)
+    expect(onChange).not.toHaveBeenCalled()
+
+    const plan = screen.getByRole('button', { name: 'Plan mode' })
+    expect(fireEvent.pointerDown(plan)).toBe(false)
+    fireEvent.click(plan)
+    expect(onChange).toHaveBeenCalledWith('plan')
+    expect(document.activeElement).toBe(box)
+  })
+
+  it('keeps holding the press while a switch is in flight', () => {
+    render(<InputComposer onSubmit={() => {}} interactionMode="code" interactionModeDisabled onInteractionModeChange={() => {}} />)
+    const box = screen.getByLabelText('Message input') as HTMLTextAreaElement
+    box.focus()
+
+    expect(fireEvent.pointerDown(screen.getByRole('button', { name: 'Plan mode' }))).toBe(false)
+    expect(document.activeElement).toBe(box)
+  })
 })

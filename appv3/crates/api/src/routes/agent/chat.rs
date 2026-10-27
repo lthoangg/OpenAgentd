@@ -115,6 +115,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let form = read_form(req).await?;
     let mut errs = vec![];
     let interrupt = form_bool(&form, "interrupt", &mut errs);
+    let keep_goal = form_bool(&form, "keep_goal", &mut errs);
     let fast_mode = form_bool(&form, "fast_mode", &mut errs);
     let workspace = form.opt("workspace");
     if workspace.is_none() {
@@ -158,6 +159,8 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         Some("interrupt and message are mutually exclusive.")
     } else if interrupt && session_id.is_none() {
         Some("session_id is required when interrupt=true.")
+    } else if keep_goal && !interrupt {
+        Some("keep_goal requires interrupt=true.")
     } else if !interrupt && message.is_none() {
         Some("message is required when interrupt=false.")
     } else if message.as_deref().map(|m| m.trim().is_empty()).unwrap_or(false) {
@@ -191,7 +194,11 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let ws = resolved.workspace.clone();
 
     if interrupt {
-        appv3_agent::service::interrupt_agent(&agent, Some(&sid)).await;
+        if keep_goal {
+            appv3_agent::service::interrupt_agent_keeping_goal(&agent, Some(&sid)).await;
+        } else {
+            appv3_agent::service::interrupt_agent(&agent, Some(&sid)).await;
+        }
         return Ok(json_code(202, json!({"status": "interrupted", "session_id": sid, "message_id": null})));
     }
     // A first message with no session id starts a session (the web's lazy

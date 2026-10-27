@@ -16,6 +16,9 @@ import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from '@/compone
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 const INITIAL_AGENT_STATE = useAgentStore.getState()
+const REAL_FETCH = globalThis.fetch
+/** Goal requests the module sends on its own (`POST …/goal/pause`). */
+let goalCalls: string[] = []
 
 function fakeComposer() {
   const appended: Array<{ text: string; paragraph?: boolean; mentions?: readonly string[] }> = []
@@ -46,6 +49,12 @@ const held = () => useHeldMessagesStore.getState().messages.map((m) => m.content
 beforeEach(() => {
   useHeldMessagesStore.setState({ messages: [] })
   haptic.mockClear()
+  goalCalls = []
+  globalThis.fetch = mock(async (...args: unknown[]) => {
+    const init = args[1] as RequestInit | undefined
+    goalCalls.push(`${init?.method ?? 'GET'} ${String(args[0]).replace(/^.*\/api/, '/api')}`)
+    return new Response('{}', { status: 404 })
+  }) as unknown as typeof fetch
   useAgentStore.setState({
     sessionId: 's1',
     isAgentWorking: true,
@@ -57,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  globalThis.fetch = REAL_FETCH
   useAgentStore.setState(INITIAL_AGENT_STATE, true)
 })
 
@@ -344,6 +354,28 @@ describe('deliverFromComposer', () => {
     await deliverFromComposer('/repo', composer.ref.current, { content: 'do this instead' }, 'interrupt')
 
     expect(order).toEqual(['stop', 'send do this instead'])
+  })
+
+  it('keeps the goal on Stop & send, but not on a plain Stop', async () => {
+    const stopAgent = mock(async (..._args: unknown[]) => {})
+    useAgentStore.setState({ stopAgent, sendMessage: mock(async () => true) })
+    const composer = fakeComposer()
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'also this' }, 'interrupt')
+    await stopTurn(composer.ref.current)
+
+    expect(stopAgent.mock.calls.map((call) => call[0])).toEqual([{ keepGoal: true }, undefined])
+    expect(goalCalls).toEqual([])
+  })
+
+  it('pauses the goal when the message of a Stop & send never lands', async () => {
+    useAgentStore.setState({ stopAgent: mock(async () => {}), sendMessage: mock(async () => false) })
+    const composer = fakeComposer()
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'also this' }, 'interrupt')
+    await Promise.resolve()
+
+    expect(goalCalls).toEqual(['POST /api/agent/sessions/s1/goal/pause'])
   })
 
   it('hands held messages back after the replacement, once a failed draft has restored itself', async () => {

@@ -568,13 +568,14 @@ describe('Markdown file preview', () => {
     expect((window as Window & { __mdPwned?: boolean }).__mdPwned).toBeUndefined()
   })
 
-  it('shows front matter as a code block, not as a heading', async () => {
+  it('hides front matter in the rendered view, with no code block or stray heading', async () => {
     globalThis.fetch = mock(async () => new Response('---\nname: demo\n---\n# Body\n')) as typeof fetch
     await renderViewer(markdown)
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Body' })).toBeTruthy())
     expect(screen.queryByRole('heading', { name: 'name: demo' })).toBeNull()
-    expect(document.body.textContent).toContain('name: demo')
+    expect(document.body.textContent).not.toContain('name: demo')
+    expect(document.querySelector('pre')).toBeNull()
   })
 
   it('offers no markdown view switch for other text files', async () => {

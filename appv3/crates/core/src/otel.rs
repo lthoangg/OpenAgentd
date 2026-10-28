@@ -911,7 +911,8 @@ fn int_env(name: &str, default: i64, min: i64) -> i64 {
     }
 }
 
-fn retention_enabled() -> bool {
+/// Whether the retention sweep runs (`OPENAGENTD_OTEL_RETENTION_ENABLED`, default on).
+pub fn retention_enabled() -> bool {
     match crate::settings::env_var("OPENAGENTD_OTEL_RETENTION_ENABLED") {
         None => true,
         Some(raw) => ["1", "true", "yes", "on"].contains(&raw.trim().to_lowercase().as_str()),
@@ -967,16 +968,33 @@ pub fn sweep_old_partitions(root: &Path, max_age_days: i64, now: Option<f64>) ->
     r
 }
 
-/// Default retention for span and metric partitions, in days.
-const DEFAULT_SPAN_RETENTION_DAYS: i64 = 90;
-const DEFAULT_METRIC_RETENTION_DAYS: i64 = 90;
+const SPAN_RETENTION_ENV: &str = "OPENAGENTD_OTEL_SPAN_RETENTION_DAYS";
+const METRIC_RETENTION_ENV: &str = "OPENAGENTD_OTEL_METRIC_RETENTION_DAYS";
 
-fn span_retention_days() -> i64 {
-    int_env("OPENAGENTD_OTEL_SPAN_RETENTION_DAYS", DEFAULT_SPAN_RETENTION_DAYS, 1)
+/// Days to keep: a valid environment value (at least 1) wins over `stored`,
+/// the `telemetry.retention_days` setting.
+fn retention_days_from(env: Option<String>, stored: i64) -> i64 {
+    env.and_then(|raw| py_int(&raw)).map(|v| v.max(1)).unwrap_or(stored)
 }
 
-fn metric_retention_days() -> i64 {
-    int_env("OPENAGENTD_OTEL_METRIC_RETENTION_DAYS", DEFAULT_METRIC_RETENTION_DAYS, 1)
+/// Read on every sweep, so a change in Settings applies without a restart.
+fn stored_retention_days() -> i64 {
+    crate::runtime_settings::telemetry_settings().retention_days()
+}
+
+/// Days spans are kept: the environment, else the setting.
+pub fn span_retention_days() -> i64 {
+    retention_days_from(crate::settings::env_var(SPAN_RETENTION_ENV), stored_retention_days())
+}
+
+/// Days metrics are kept: the environment, else the setting.
+pub fn metric_retention_days() -> i64 {
+    retention_days_from(crate::settings::env_var(METRIC_RETENTION_ENV), stored_retention_days())
+}
+
+/// Whether an environment variable overrides the retention setting.
+pub fn retention_env_pinned() -> bool {
+    [SPAN_RETENTION_ENV, METRIC_RETENTION_ENV].iter().any(|k| crate::settings::env_var(k).and_then(|raw| py_int(&raw)).is_some())
 }
 
 /// One retention pass over spans and metrics.
@@ -1035,6 +1053,17 @@ pub fn stop_retention() {
     }
 }
 
+/// Run one sweep in the background now (after the retention setting
+/// changes), unless retention is disabled. Needs a Tokio runtime.
+pub fn sweep_retention_now() {
+    if !retention_enabled() {
+        return;
+    }
+    tokio::task::spawn_blocking(|| {
+        run_retention_once(None);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1056,6 +1085,14 @@ mod tests {
         assert!(!trace_passes_ratio(1, 0.0));
         assert!(trace_passes_ratio(5, 0.5));
         assert!(!trace_passes_ratio(u64::MAX as u128, 0.5));
+    }
+
+    #[test]
+    fn retention_env_wins_over_the_setting() {
+        assert_eq!(retention_days_from(None, 30), 30, "no env: the setting");
+        assert_eq!(retention_days_from(Some("7".into()), 30), 7, "env wins");
+        assert_eq!(retention_days_from(Some("0".into()), 30), 1, "env is at least one day");
+        assert_eq!(retention_days_from(Some("soon".into()), 30), 30, "bad env: the setting");
     }
 
     #[test]

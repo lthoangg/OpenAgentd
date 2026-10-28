@@ -129,6 +129,36 @@ impl GoalSettings {
     }
 }
 
+/// `telemetry` — how long local spans and metrics are kept (v3 only).
+/// Written only when it differs from the default, so files stay unchanged.
+/// `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` / `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
+/// still win when set.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TelemetrySettings {
+    /// Days to keep telemetry; `None` means [`DEFAULT_TELEMETRY_RETENTION_DAYS`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_days: Option<i64>,
+}
+
+pub const DEFAULT_TELEMETRY_RETENTION_DAYS: i64 = 90;
+/// Largest accepted `retention_days` (ten years).
+pub const MAX_TELEMETRY_RETENTION_DAYS: i64 = 3650;
+
+impl TelemetrySettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+    /// The effective retention. A hand-edited value outside
+    /// 1..=[`MAX_TELEMETRY_RETENTION_DAYS`] falls back to the default.
+    pub fn retention_days(&self) -> i64 {
+        match self.retention_days {
+            Some(n) if (1..=MAX_TELEMETRY_RETENTION_DAYS).contains(&n) => n,
+            _ => DEFAULT_TELEMETRY_RETENTION_DAYS,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ProviderUiSettings {
@@ -175,6 +205,8 @@ pub struct RuntimeSettings {
     pub workspace_messages: WorkspaceMessagesSettings,
     #[serde(skip_serializing_if = "GoalSettings::is_default")]
     pub goals: GoalSettings,
+    #[serde(skip_serializing_if = "TelemetrySettings::is_default")]
+    pub telemetry: TelemetrySettings,
 }
 
 pub fn load_runtime_settings_from(path: &Path) -> Result<RuntimeSettings> {
@@ -212,6 +244,11 @@ pub fn workspace_messages_enabled() -> bool {
 /// Goal settings (defaults when the file is unreadable).
 pub fn goal_settings() -> GoalSettings {
     load_runtime_settings().map(|c| c.goals).unwrap_or_default()
+}
+
+/// Telemetry settings (defaults when the file is unreadable).
+pub fn telemetry_settings() -> TelemetrySettings {
+    load_runtime_settings().map(|c| c.telemetry).unwrap_or_default()
 }
 
 fn cleaned_sorted(models: &[String]) -> Vec<String> {
@@ -707,5 +744,29 @@ mod tests {
         assert_eq!(with(Some(150)), 70);
         assert_eq!(with(Some(85)), 85);
         assert_eq!(with(Some(100)), 100);
+    }
+
+    #[test]
+    fn telemetry_retention_written_only_when_set() {
+        let mut cfg = RuntimeSettings::default();
+        assert!(!to_pyyaml(&cfg).unwrap().contains("telemetry"));
+        assert_eq!(cfg.telemetry.retention_days(), DEFAULT_TELEMETRY_RETENTION_DAYS);
+        cfg.telemetry.retention_days = Some(14);
+        let text = to_pyyaml(&cfg).unwrap();
+        assert!(text.ends_with("telemetry:\n  retention_days: 14\n"), "{text}");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.yaml");
+        std::fs::write(&p, &text).unwrap();
+        assert_eq!(load_runtime_settings_from(&p).unwrap().telemetry.retention_days(), 14);
+    }
+
+    #[test]
+    fn telemetry_retention_out_of_range_falls_back_to_default() {
+        let with = |n: Option<i64>| TelemetrySettings { retention_days: n }.retention_days();
+        assert_eq!(with(None), 90);
+        assert_eq!(with(Some(0)), 90);
+        assert_eq!(with(Some(MAX_TELEMETRY_RETENTION_DAYS + 1)), 90);
+        assert_eq!(with(Some(1)), 1);
+        assert_eq!(with(Some(365)), 365);
     }
 }

@@ -49,6 +49,7 @@ import { ProvidersSettingsPage } from '@/components/settings/pages/settings.prov
 import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
 import { GoalsSettingsPage } from '@/components/settings/pages/settings.goals'
+import { TelemetrySettingsPage } from '@/components/settings/pages/settings.telemetry'
 import { TitlesSettingsPage } from '@/components/settings/pages/settings.titles'
 import { ContextSettingsPage } from '@/components/settings/pages/settings.context'
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
@@ -215,6 +216,7 @@ function SectionContent({
     case 'denied_paths': return <DeniedPathsSettingsPage />
     case 'workspaces':   return <WorkspacesSettingsPage />
     case 'goals':        return <GoalsSettingsPage />
+    case 'telemetry':    return <TelemetrySettingsPage />
     case 'titles':       return <TitlesSettingsPage />
     case 'context':      return <ContextSettingsPage />
     case 'media':        return <MediaSettingsPage />

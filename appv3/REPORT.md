@@ -1023,6 +1023,16 @@ explicitly.
   `agent/tests/workspace_messages.rs`, unit tests in the two modules and
   `history.rs`, `db/src/queries/messages.rs`, `core/src/runtime_settings.rs`,
   and `api/tests/http_api.rs`. v2 has no equivalent.
+- **Telemetry retention setting (v3 only):** `settings.yaml` gains
+  `telemetry: {retention_days}` (1–3650, default 90, written only when it
+  differs from the default), served by `GET/PUT /api/settings/telemetry`.
+  The response carries `retention_days`, `default_retention_days`,
+  `max_retention_days`, `env_pinned` and `effective_days: {spans, metrics}`;
+  `retention_days: null` restores the default and a PUT runs a sweep at once.
+  The span and metric sweeps read the setting on every pass;
+  `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` / `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
+  still win when set. Tests: `core/src/runtime_settings.rs`,
+  `core/src/otel.rs` and `api/tests/http_api.rs`. v2 has no equivalent.
 - **Idle compaction (v3 only, opt-in):** when a lead session's turn
   completes, a timer starts (`agent/src/idle_compaction.rs`,
   `agent/src/session.rs`). If the session is still idle 270 s later, which is

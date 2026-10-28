@@ -701,6 +701,7 @@ describe("AgentView — UserBubble folds by rendered lines", () => {
   let height = 0
   let width = 400
   let resize: (() => void) | null = null
+  let observedTexts = 0
   const realObserver = globalThis.ResizeObserver
   const realComputed = window.getComputedStyle
   const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight")
@@ -710,6 +711,7 @@ describe("AgentView — UserBubble folds by rendered lines", () => {
     height = 0
     width = 400
     resize = null
+    observedTexts = 0
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
       get(this: HTMLElement) {
@@ -733,7 +735,10 @@ describe("AgentView — UserBubble folds by rendered lines", () => {
       }
       // Only the bubble text's observer is driven; others (scroll follow) stay idle.
       observe(target: Element) {
-        if (target.tagName === "P") textObservers.push(() => this.callback([]))
+        if (target.tagName === "P") {
+          observedTexts += 1
+          textObservers.push(() => this.callback([]))
+        }
       }
       unobserve() {}
       disconnect() {}
@@ -751,7 +756,8 @@ describe("AgentView — UserBubble folds by rendered lines", () => {
   it("folds when the bubble narrows past 8 lines and unfolds when it widens again", async () => {
     const { act } = await import("@testing-library/react")
     height = 5 * LINE
-    render(<AgentView blocks={[{ id: "1", type: "user", content: "a fairly long single paragraph prompt" }]} currentBlocks={[]} isWorking={false} />)
+    const prompt = "a fairly long single paragraph prompt that wraps to a few lines in a wide chat and to many more once the sidebar and the dock are both open"
+    render(<AgentView blocks={[{ id: "1", type: "user", content: prompt }]} currentBlocks={[]} isWorking={false} />)
     expect(document.querySelector("p[data-collapsed]")).toBeNull()
 
     height = 11 * LINE
@@ -766,13 +772,22 @@ describe("AgentView — UserBubble folds by rendered lines", () => {
   it("ignores a zero-width reading from a hidden chat column", async () => {
     const { act } = await import("@testing-library/react")
     height = 3 * LINE
-    render(<AgentView blocks={[{ id: "1", type: "user", content: "Reply with exactly: purple elephant" }]} currentBlocks={[]} isWorking={false} />)
+    render(<AgentView blocks={[{ id: "1", type: "user", content: "Reply with exactly: purple elephant, then list the three files you changed and say which test covers each of them" }]} currentBlocks={[]} isWorking={false} />)
+    expect(observedTexts).toBe(1)
 
     // Hidden: every character on its own line.
     width = 0
     height = 35 * LINE
     act(() => resize?.())
 
+    expect(document.querySelector("p[data-collapsed]")).toBeNull()
+  })
+
+  // Measuring costs a style read, an observer and a second render per bubble;
+  // a session opens with many short prompts that could never fold.
+  it("does not measure a prompt too short to reach 8 lines in any bubble", () => {
+    render(<AgentView blocks={[{ id: "1", type: "user", content: "continue" }, { id: "2", type: "user", content: "yes\nand run the tests" }]} currentBlocks={[]} isWorking={false} />)
+    expect(observedTexts).toBe(0)
     expect(document.querySelector("p[data-collapsed]")).toBeNull()
   })
 })

@@ -39,9 +39,18 @@ fn setup_roots(root: &Path) {
 }
 
 /// A shell call that says it started, then blocks until `release` exists.
+/// The shell tool runs PowerShell on Windows, so the command differs there.
 fn blocking_build(dir: &Path, name: &str) -> (String, PathBuf, PathBuf) {
     let (started, release) = (dir.join(format!("{name}.started")), dir.join(format!("{name}.release")));
-    let command = format!("touch '{}'; while [ ! -f '{}' ]; do sleep 0.05; done; echo built", started.display(), release.display());
+    let command = if cfg!(windows) {
+        format!(
+            "New-Item -ItemType File -Force -Path '{}' | Out-Null; while (-not (Test-Path '{}')) {{ Start-Sleep -Milliseconds 50 }}; 'built'",
+            started.display(),
+            release.display()
+        )
+    } else {
+        format!("touch '{}'; while [ ! -f '{}' ]; do sleep 0.05; done; echo built", started.display(), release.display())
+    };
     (serde_json::json!({ "command": command }).to_string(), started, release)
 }
 

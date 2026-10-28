@@ -1,7 +1,6 @@
 /**
  * Settings → Telemetry — how many days local traces and metrics are kept.
  * A daily sweep deletes older files; saving a new value sweeps right away.
- * The ``OPENAGENTD_OTEL_*_RETENTION_DAYS`` variables override the setting.
  */
 import { useTelemetrySettingsQuery, useUpdateTelemetrySettingsMutation } from '@/queries/useTelemetrySettingsQuery'
 import { Input } from '@/components/ui/input'
@@ -40,8 +39,6 @@ export function TelemetrySettingsPage() {
   })
   const maxDays = telemetryQ.data?.max_retention_days ?? FALLBACK_MAX_DAYS
   const defaultDays = telemetryQ.data?.default_retention_days ?? TELEMETRY_DEFAULT.retention_days
-  const envPinned = telemetryQ.data?.env_pinned ?? false
-  const effective = telemetryQ.data?.effective_days
   const days = draft.value.retention_days
   const daysError = !Number.isFinite(days) || days < 1 || days > maxDays
     ? `A whole number from 1 to ${maxDays}.`
@@ -51,7 +48,7 @@ export function TelemetrySettingsPage() {
     <SettingsPage
       title="Telemetry"
       description="Traces and metrics for every turn are stored on this computer and power the Telemetry view. Nothing is sent anywhere."
-      draft={{ ...draft, canSave: draft.canSave && !daysError && !envPinned }}
+      draft={{ ...draft, canSave: draft.canSave && !daysError }}
       loading={telemetryQ.isLoading}
       error={telemetryQ.error}
     >
@@ -59,11 +56,7 @@ export function TelemetrySettingsPage() {
         <PanelRow
           label="Keep telemetry for"
           htmlFor="telemetry-retention-days"
-          description={
-            envPinned
-              ? `The server sets this with OPENAGENTD_OTEL_SPAN_RETENTION_DAYS or OPENAGENTD_OTEL_METRIC_RETENTION_DAYS${effective ? `: traces ${effective.spans} days, metrics ${effective.metrics} days` : ''}. Remove the variable to change it here.`
-              : `Older traces and metrics are deleted daily, and right away when you save. Spend and turn history older than this is gone from the Telemetry view. Default ${defaultDays} days.`
-          }
+          description={`Older traces and metrics are deleted daily, and right away when you save. Spend and turn history older than this is gone from the Telemetry view. Default ${defaultDays} days.`}
           error={daysError}
         >
           <div className="flex items-center gap-2">
@@ -73,8 +66,7 @@ export function TelemetrySettingsPage() {
               min={1}
               max={maxDays}
               aria-label="Days to keep telemetry"
-              disabled={envPinned}
-              value={envPinned && effective ? String(effective.spans) : Number.isFinite(days) ? String(days) : ''}
+              value={Number.isFinite(days) ? String(days) : ''}
               onChange={(e) => draft.patch({ retention_days: parseInt(e.target.value, 10) })}
               className="h-9 w-24 font-mono"
             />

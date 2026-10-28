@@ -174,10 +174,6 @@ export type TelemetrySettings = {
   retention_days: number
   default_retention_days: number
   max_retention_days: number
-  /** An ``OPENAGENTD_OTEL_*_RETENTION_DAYS`` variable overrides the setting. */
-  env_pinned: boolean
-  /** Days the sweep uses, environment overrides included. */
-  effective_days: { spans: number; metrics: number }
 }
 
 /** ``retention_days: null`` restores the default. */

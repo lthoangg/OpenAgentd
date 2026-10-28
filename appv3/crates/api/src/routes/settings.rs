@@ -341,10 +341,6 @@ fn telemetry_json(t: &rs::TelemetrySettings) -> Value {
         "retention_days": t.retention_days(),
         "default_retention_days": rs::DEFAULT_TELEMETRY_RETENTION_DAYS,
         "max_retention_days": rs::MAX_TELEMETRY_RETENTION_DAYS,
-        // An environment variable overrides the setting.
-        "env_pinned": appv3_core::otel::retention_env_pinned(),
-        // What the sweep uses, environment overrides included.
-        "effective_days": {"spans": appv3_core::otel::span_retention_days(), "metrics": appv3_core::otel::metric_retention_days()},
     })
 }
 

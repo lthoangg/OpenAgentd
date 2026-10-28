@@ -19,13 +19,7 @@ import { TelemetrySettingsPage } from '@/components/settings/pages/settings.tele
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
 
-const TELEMETRY = {
-  retention_days: 90,
-  default_retention_days: 90,
-  max_retention_days: 3650,
-  env_pinned: false,
-  effective_days: { spans: 90, metrics: 90 },
-}
+const TELEMETRY = { retention_days: 90, default_retention_days: 90, max_retention_days: 3650 }
 const TELEMETRY_URL = 'http://localhost/api/settings/telemetry'
 
 beforeEach(() => {
@@ -91,15 +85,5 @@ describe('TelemetrySettingsPage', () => {
     expect(save.disabled).toBe(true)
     fireEvent.click(save)
     expect(puts).toBe(0)
-  })
-
-  it('locks the field to the value the environment variable sets', async () => {
-    server.use(http.get(TELEMETRY_URL, () => HttpResponse.json({ ...TELEMETRY, env_pinned: true, effective_days: { spans: 7, metrics: 30 } })))
-    renderPage()
-
-    const input = await screen.findByLabelText('Days to keep telemetry') as HTMLInputElement
-    await waitFor(() => expect(input.disabled).toBe(true))
-    expect(input.value).toBe('7')
-    expect(screen.getByText(/traces 7 days, metrics 30 days/)).toBeTruthy()
   })
 })

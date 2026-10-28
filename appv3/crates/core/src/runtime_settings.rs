@@ -131,8 +131,6 @@ impl GoalSettings {
 
 /// `telemetry` — how long local spans and metrics are kept (v3 only).
 /// Written only when it differs from the default, so files stay unchanged.
-/// `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` / `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
-/// still win when set.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct TelemetrySettings {

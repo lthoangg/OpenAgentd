@@ -968,51 +968,26 @@ pub fn sweep_old_partitions(root: &Path, max_age_days: i64, now: Option<f64>) ->
     r
 }
 
-const SPAN_RETENTION_ENV: &str = "OPENAGENTD_OTEL_SPAN_RETENTION_DAYS";
-const METRIC_RETENTION_ENV: &str = "OPENAGENTD_OTEL_METRIC_RETENTION_DAYS";
-
-/// Days to keep: a valid environment value (at least 1) wins over `stored`,
-/// the `telemetry.retention_days` setting.
-fn retention_days_from(env: Option<String>, stored: i64) -> i64 {
-    env.and_then(|raw| py_int(&raw)).map(|v| v.max(1)).unwrap_or(stored)
-}
-
+/// Days spans and metrics are kept: the `telemetry.retention_days` setting.
 /// Read on every sweep, so a change in Settings applies without a restart.
-fn stored_retention_days() -> i64 {
+fn retention_days() -> i64 {
     crate::runtime_settings::telemetry_settings().retention_days()
-}
-
-/// Days spans are kept: the environment, else the setting.
-pub fn span_retention_days() -> i64 {
-    retention_days_from(crate::settings::env_var(SPAN_RETENTION_ENV), stored_retention_days())
-}
-
-/// Days metrics are kept: the environment, else the setting.
-pub fn metric_retention_days() -> i64 {
-    retention_days_from(crate::settings::env_var(METRIC_RETENTION_ENV), stored_retention_days())
-}
-
-/// Whether an environment variable overrides the retention setting.
-pub fn retention_env_pinned() -> bool {
-    [SPAN_RETENTION_ENV, METRIC_RETENTION_ENV].iter().any(|k| crate::settings::env_var(k).and_then(|raw| py_int(&raw)).is_some())
 }
 
 /// One retention pass over spans and metrics.
 pub fn run_retention_once(otel_dir: Option<&Path>) -> (SweepResult, SweepResult) {
     let base = otel_dir.map(Path::to_path_buf).unwrap_or_else(|| crate::settings().state_dir.join("otel"));
-    let span_days = span_retention_days();
-    let metric_days = metric_retention_days();
-    let s = sweep_old_partitions(&base.join("spans"), span_days, None);
-    let m = sweep_old_partitions(&base.join("metrics"), metric_days, None);
+    let days = retention_days();
+    let s = sweep_old_partitions(&base.join("spans"), days, None);
+    let m = sweep_old_partitions(&base.join("metrics"), days, None);
     if s.deleted > 0 || m.deleted > 0 {
         tracing::info!(
-            "otel_retention_swept spans_deleted={} spans_bytes={} metrics_deleted={} metrics_bytes={} span_days={} metric_days={}",
+            "otel_retention_swept spans_deleted={} spans_bytes={} metrics_deleted={} metrics_bytes={} days={}",
             s.deleted,
             s.bytes_freed,
             m.deleted,
             m.bytes_freed,
-            span_days,
-            metric_days
+            days
         );
     } else {
         tracing::debug!("otel_retention_swept nothing_to_delete spans_scanned={} metrics_scanned={}", s.scanned, m.scanned);
@@ -1044,7 +1019,7 @@ pub fn start_retention() {
             tokio::time::sleep(Duration::from_secs(hours as u64 * 3600)).await;
         }
     }));
-    tracing::info!("otel_retention_started span_days={} metric_days={} interval_h={}", span_retention_days(), metric_retention_days(), hours);
+    tracing::info!("otel_retention_started days={} interval_h={}", retention_days(), hours);
 }
 
 pub fn stop_retention() {
@@ -1085,14 +1060,6 @@ mod tests {
         assert!(!trace_passes_ratio(1, 0.0));
         assert!(trace_passes_ratio(5, 0.5));
         assert!(!trace_passes_ratio(u64::MAX as u128, 0.5));
-    }
-
-    #[test]
-    fn retention_env_wins_over_the_setting() {
-        assert_eq!(retention_days_from(None, 30), 30, "no env: the setting");
-        assert_eq!(retention_days_from(Some("7".into()), 30), 7, "env wins");
-        assert_eq!(retention_days_from(Some("0".into()), 30), 1, "env is at least one day");
-        assert_eq!(retention_days_from(Some("soon".into()), 30), 30, "bad env: the setting");
     }
 
     #[test]

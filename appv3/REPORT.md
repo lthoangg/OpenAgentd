@@ -1026,13 +1026,13 @@ explicitly.
 - **Telemetry retention setting (v3 only):** `settings.yaml` gains
   `telemetry: {retention_days}` (1–3650, default 90, written only when it
   differs from the default), served by `GET/PUT /api/settings/telemetry`.
-  The response carries `retention_days`, `default_retention_days`,
-  `max_retention_days`, `env_pinned` and `effective_days: {spans, metrics}`;
-  `retention_days: null` restores the default and a PUT runs a sweep at once.
-  The span and metric sweeps read the setting on every pass;
-  `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` / `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
-  still win when set. Tests: `core/src/runtime_settings.rs`,
-  `core/src/otel.rs` and `api/tests/http_api.rs`. v2 has no equivalent.
+  The response carries `retention_days`, `default_retention_days` and
+  `max_retention_days`; `retention_days: null` restores the default and a
+  PUT runs a sweep at once. The span and metric sweeps read the setting on
+  every pass. The setting is the only source: v2's
+  `OTEL_SPAN_RETENTION_DAYS` / `OTEL_METRIC_RETENTION_DAYS` (and their
+  `OPENAGENTD_` names) are no longer read. Tests: `core/src/runtime_settings.rs`
+  and `api/tests/http_api.rs`.
 - **Idle compaction (v3 only, opt-in):** when a lead session's turn
   completes, a timer starts (`agent/src/idle_compaction.rs`,
   `agent/src/session.rs`). If the session is still idle 270 s later, which is

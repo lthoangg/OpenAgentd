@@ -210,18 +210,13 @@ async fn http_api_end_to_end() {
     // ── telemetry retention (v3 only) ────────────────────────────────────
     let tel = "/api/settings/telemetry";
     let (st, v) = c.json("GET", tel, None).await;
-    assert_eq!(st, StatusCode::OK);
-    assert_eq!((v["retention_days"].clone(), v["default_retention_days"].clone(), v["max_retention_days"].clone()), (json!(90), json!(90), json!(3650)));
-    assert!(v["env_pinned"].is_boolean(), "{v}");
+    assert_eq!((st, v), (StatusCode::OK, json!({"retention_days": 90, "default_retention_days": 90, "max_retention_days": 3650})));
     for bad in [json!({"retention_days": 0}), json!({"retention_days": 3651}), json!({"retention_days": "week"}), json!({"nope": 1})] {
         let (st, v) = c.json("PUT", tel, Some(bad.clone())).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
     }
     let (st, v) = c.json("PUT", tel, Some(json!({"retention_days": 14}))).await;
     assert_eq!((st, v["retention_days"].clone()), (StatusCode::OK, json!(14)));
-    if v["env_pinned"] == json!(false) {
-        assert_eq!(v["effective_days"], json!({"spans": 14, "metrics": 14}), "the sweep uses the setting");
-    }
     let (_, v) = c.json("GET", tel, None).await;
     assert_eq!(v["retention_days"], json!(14));
     // Omitting the key changes nothing; null restores the default.

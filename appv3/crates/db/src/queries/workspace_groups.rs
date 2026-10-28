@@ -64,7 +64,8 @@ pub fn clean_name(name: &str) -> GroupResult<String> {
     Ok(n.to_string())
 }
 
-fn clean_brief(brief: Option<&str>) -> GroupResult<Option<String>> {
+/// A valid group brief, trimmed; `None` when blank.
+pub fn clean_brief(brief: Option<&str>) -> GroupResult<Option<String>> {
     let Some(b) = brief.map(str::trim).filter(|b| !b.is_empty()) else { return Ok(None) };
     if b.chars().count() > GROUP_BRIEF_MAX_CHARS {
         return Err(GroupError::Invalid(format!("Group brief must be at most {GROUP_BRIEF_MAX_CHARS} characters.")));

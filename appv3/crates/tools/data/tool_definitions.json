@@ -630,7 +630,7 @@
     "type": "function",
     "function": {
       "name": "workspace",
-      "description": "Send a message to an agent session in another workspace that shares a group with this one (a related repo, a worktree of this repo, or Chat, which every workspace can reach). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces you can message under their groups, with each group's brief describing its repos, or one workspace's recent sessions. When the user asks to group repos, action='set_groups' proposes groups for one registered repo to join or leave; the user applies it on a card.",
+      "description": "Send a message to an agent session in another workspace that shares a group with this one (a related repo, a worktree of this repo, or Chat, which every workspace can reach). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces you can message under their groups, with each group's brief describing its repos, or one workspace's recent sessions. When the user asks to group repos, action='set_groups' proposes groups for one registered repo to join or leave, and a group's brief; the user applies it on a card.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -664,6 +664,11 @@
             },
             "default": null,
             "description": "[set_groups] Group names to leave."
+          },
+          "brief": {
+            "type": "string",
+            "default": null,
+            "description": "[set_groups, one name in join] That group's brief for its agents, e.g. 'api = Rust backend, web = Next.js'; '' clears it."
           },
           "message": {
             "type": "string",

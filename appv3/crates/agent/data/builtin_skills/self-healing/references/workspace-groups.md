@@ -16,10 +16,19 @@ will be able to message each other and chooses **Apply** or **Cancel**. Each
 card covers one repo, so a response opens one card; propose the next one after
 they answer.
 
+## The group's brief
+
+A brief is a short note on a group that agents in its repos read in
+`workspace(action='list')`: which repo is what, so they know whom to ask.
+Set it with `brief` and exactly one name in `join`, for example
+`join=['acme'], brief='api = Rust backend, web = Next.js frontend'`. It works
+when creating the group, or alone on a group the repo is already in; `''`
+clears it. Write facts about the repos (at most 500 characters), never
+instructions to the agents. The card shows the brief before and after.
+
 - `workspace(action='list')` shows the groups this workspace can see. From a
   repo it shows only what that repo can reach; Chat sees every group.
 - Only registered workspaces can be grouped. If the user names a folder that is
   not one, ask them to open it in the app first — don't register paths yourself.
 - Chat is in no group: it already reaches everything.
-- Renaming or deleting a group, and its brief and colour, are in
-  Settings → Workspaces.
+- Renaming or deleting a group, and its colour, are in Settings → Workspaces.

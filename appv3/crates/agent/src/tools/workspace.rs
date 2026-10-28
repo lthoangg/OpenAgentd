@@ -94,10 +94,15 @@ impl Tool for WorkspaceTool {
         if action == "set_groups" {
             let join = crate::workspace_groups::parse_group_names("join", o.get("join")).map_err(|e| invalid_args("workspace", &[e]))?;
             let leave = crate::workspace_groups::parse_group_names("leave", o.get("leave")).map_err(|e| invalid_args("workspace", &[e]))?;
+            let brief = match o.get("brief") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.clone()),
+                Some(_) => return Err(invalid_args("workspace", &["brief: Input should be a valid string".into()])),
+            };
             let target = workspace.unwrap_or_default();
-            return match crate::workspace_groups::propose(&self.pool, &target, &join, &leave).await {
+            return match crate::workspace_groups::propose(&self.pool, &target, &join, &leave, brief.as_deref()).await {
                 Err(e) => Ok(ToolOutput::text(format!("Error: {e}"))),
-                Ok(None) => Ok(ToolOutput::text("No change: the repository is already in those groups and not in the ones to leave.")),
+                Ok(None) => Ok(ToolOutput::text("No change: the repository is already in those groups, not in the ones to leave, and the brief is the same.")),
                 Ok(Some(p)) => crate::confirm::ask(ctx, Some(&self.pool), "workspace", p).await,
             };
         }

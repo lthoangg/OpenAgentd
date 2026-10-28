@@ -1228,7 +1228,7 @@ async fn confirm_change_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
         async move {
             let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "workspace", "arguments": "{}"}}]);
             appv3_db::save_message(pool, &csid, appv3_db::NewMessage { tool_calls: Some(tool_calls), ..appv3_db::NewMessage::assistant(None) }).await.unwrap();
-            let p = appv3_agent::workspace_groups::propose(pool, &repo, &["duo".into()], &[]).await.unwrap().expect("a change");
+            let p = appv3_agent::workspace_groups::propose(pool, &repo, &["duo".into()], &[], None).await.unwrap().expect("a change");
             let q = appv3_db::create_pending_question_with(pool, &csid, call, "workspace", &confirm::payload(&p)).await.unwrap();
             appv3_db::codec::api_uuid(&q.id)
         }

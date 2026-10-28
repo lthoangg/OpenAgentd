@@ -133,6 +133,73 @@ fn join(workspace: &str, groups: &[&str]) -> String {
     json!({"action": "set_groups", "workspace": workspace, "join": groups}).to_string()
 }
 
+async fn brief_of(pool: &appv3_db::DbPool, group: &str) -> Option<String> {
+    appv3_db::list_workspace_groups(pool).await.unwrap().into_iter().find(|g| g.name == group).and_then(|g| g.brief)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_group_brief_is_set_with_the_group_and_rechecked() {
+    let with_brief = |ws: &str, group: &str, brief: &str| json!({"action": "set_groups", "workspace": ws, "join": [group], "brief": brief}).to_string();
+    let h = harness(
+        "brief",
+        vec![
+            // A new group created with its brief.
+            MockProvider::tool_call("c1", "workspace", &with_brief("api", "backend", "api = Rust backend")),
+            // Only the brief of a group api is already in.
+            MockProvider::tool_call("c2", "workspace", &with_brief("api", "backend", "api = Rust backend, web = Next.js")),
+            // The brief is edited elsewhere while this card is open.
+            MockProvider::tool_call("c3", "workspace", &with_brief("api", "backend", "")),
+            MockProvider::text("OK."),
+        ],
+    )
+    .await;
+    h.send("Group api in backend and describe it.").await;
+    let row = h.card().await;
+    let q = row.questions()[0]["question"].as_str().unwrap().to_string();
+    assert!(q.contains("join `backend (new)`") && q.contains("Set the brief of group `backend` to \"api = Rust backend\""), "{q}");
+    let text = h.answer(&row, "Apply").await.unwrap();
+    assert!(text.ends_with("The brief of 'backend' is set."), "{text}");
+    assert_eq!(brief_of(&h.pool, "backend").await.as_deref(), Some("api = Rust backend"));
+    h.session.resume_after_question_answer().await;
+    h.settle().await;
+
+    let row = h.card().await;
+    let q = row.questions()[0]["question"].as_str().unwrap().to_string();
+    assert!(q.starts_with("Set the brief of group `backend` to \"api = Rust backend, web = Next.js\""), "only the brief changes: {q}");
+    assert!(q.ends_with("It now reads \"api = Rust backend\"."), "{q}");
+    assert_eq!(brief_of(&h.pool, "backend").await.as_deref(), Some("api = Rust backend"), "nothing changes before Apply");
+    h.answer(&row, "Apply").await.unwrap();
+    assert_eq!(brief_of(&h.pool, "backend").await.as_deref(), Some("api = Rust backend, web = Next.js"));
+    h.session.resume_after_question_answer().await;
+    h.settle().await;
+
+    let row = h.card().await;
+    assert!(row.questions()[0]["question"].as_str().unwrap().starts_with("Clear the brief of group `backend`."));
+    let id = appv3_db::list_workspace_groups(&h.pool).await.unwrap().into_iter().find(|g| g.name == "backend").unwrap().id;
+    appv3_db::update_workspace_group(&h.pool, &id, None, Some(Some("edited in Settings")), None).await.unwrap();
+    let text = h.answer(&row, "Apply").await.unwrap();
+    assert!(text.contains("not applied: the brief of 'backend' changed since this was proposed."), "{text}");
+    assert_eq!(brief_of(&h.pool, "backend").await.as_deref(), Some("edited in Settings"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_brief_names_one_group_and_fits_the_limit() {
+    let root = root();
+    let pool = appv3_db::create_pool(root.join("brief-args.db")).await.unwrap();
+    let r = repos(&pool, "brief-args").await;
+    let sid = uuid::Uuid::now_v7();
+    appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(sid), workspace: r.api.clone(), ..Default::default() }).await.unwrap();
+    let tool = WorkspaceTool::new(sid.to_string(), pool.clone());
+    let c = ctx(&r.api, &sid.to_string(), None);
+    let t = text(&tool, &c, json!({"action": "set_groups", "workspace": "api", "join": ["a", "b"], "brief": "x"})).await;
+    assert!(t.contains("brief describes one group"), "{t}");
+    let t = text(&tool, &c, json!({"action": "set_groups", "workspace": "api", "join": ["a"], "brief": "x".repeat(501)})).await;
+    assert!(t.contains("at most 500 characters"), "{t}");
+    let t = text(&tool, &c, json!({"action": "set_groups", "workspace": "web", "join": ["acme"], "brief": ""})).await;
+    assert!(t.contains("No change"), "acme has no brief to clear: {t}");
+    assert!(appv3_db::get_pending_question(&pool, &sid.to_string()).await.unwrap().is_none());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_group_change_waits_for_apply_and_applies_once() {
     let wt = root().join("apply").join("api-wt").display().to_string();

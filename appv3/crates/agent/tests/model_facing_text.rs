@@ -153,7 +153,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 497 for `workspace`'s `set_groups` (join, leave), the Plan note
 /// naming the tools it now allows, and the self-healing skill listing slash
 /// commands and workspace groups.
-const LEAD_ALWAYS_ON_CHARS: usize = 38_737;
+/// Raised by 200 for `set_groups`'s `brief`, so the agent can describe a
+/// group it sets up.
+const LEAD_ALWAYS_ON_CHARS: usize = 38_937;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

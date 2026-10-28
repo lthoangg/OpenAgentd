@@ -1348,6 +1348,10 @@ executes tools, manages its task list, and inspects workspace repositories.
     registered workspaces can be grouped (the agent asks you to open a folder
     in the app first), a worktree is grouped through its repository, and Chat
     is in no group. In Plan mode the agent can only list.
+    The same card can set or clear a group's **brief** (`brief` with one group
+    in `join`), when the group is created or on its own; the card shows the
+    brief before and after, and an edit made in Settings meanwhile is not
+    overwritten.
 - **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
   features a dedicated System prompt card with a monospace textarea bound to the
   Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).

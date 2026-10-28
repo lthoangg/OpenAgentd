@@ -82,15 +82,30 @@ fn names(set: &BTreeSet<String>) -> String {
     set.iter().map(|n| format!("**{n}**")).collect::<Vec<_>>().join(", ")
 }
 
-/// What joining `join` and leaving `leave` would change, as a card;
-/// `Ok(None)` when nothing would.
-pub async fn propose(pool: &DbPool, workspace: &str, join: &[String], leave: &[String]) -> Result<Option<Proposal>, String> {
+fn quoted(names: &BTreeSet<String>) -> String {
+    names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
+}
+
+/// A brief on the card: one line, in quotes.
+fn brief_text(b: &str) -> String {
+    format!("\"{}\"", b.replace(['\n', '\r'], " ").replace('`', "'"))
+}
+
+/// What joining `join`, leaving `leave` and setting `brief` (of the one
+/// group in `join`; `Some("")` clears it) would change, as a card; `Ok(None)`
+/// when nothing would.
+pub async fn propose(pool: &DbPool, workspace: &str, join: &[String], leave: &[String], brief: Option<&str>) -> Result<Option<Proposal>, String> {
     if join.is_empty() && leave.is_empty() {
         return Err("action='set_groups' needs group names in join, leave, or both.".into());
     }
     if let Some(n) = join.iter().find(|j| leave.iter().any(|l| l.eq_ignore_ascii_case(j))) {
         return Err(format!("'{n}' is in both join and leave."));
     }
+    let brief = match brief {
+        None => None,
+        Some(_) if join.len() != 1 => return Err("brief describes one group: pass exactly that group's name in join (the repo stays in it if it already is).".into()),
+        Some(b) => Some(db::clean_brief(Some(b)).map_err(|e| e.to_string())?),
+    };
     let err = |e: anyhow::Error| e.to_string();
     let targets = registered_workspaces(pool).await.map_err(err)?;
     let repo = resolve_repo(&targets, workspace)?;
@@ -120,44 +135,63 @@ pub async fn propose(pool: &DbPool, workspace: &str, join: &[String], leave: &[S
             None => return Err(format!("There is no group named '{name}' to leave.")),
         }
     }
-    if new_names.is_empty() && before == after {
+    // The brief's group: an existing one (with its current brief) or a new one.
+    let brief_change = brief.and_then(|b| match groups.iter().find(|g| g.name.eq_ignore_ascii_case(&join[0])) {
+        Some(g) if g.brief == b => None,
+        Some(g) => Some(json!({"name": g.name, "id": g.id, "before": g.brief, "after": b})),
+        None => Some(json!({"name": join[0], "id": null, "before": null, "after": b})),
+    });
+    let membership_changes = !new_names.is_empty() || before != after;
+    if !membership_changes && brief_change.is_none() {
         return Ok(None);
     }
-    let name_of = |id: &String| groups.iter().find(|g| &g.id == id).map(|g| g.name.clone()).unwrap_or_default();
-    let joined: BTreeSet<String> = after.difference(&before).map(name_of).chain(new_names.iter().map(|n| format!("{n} (new)"))).collect();
-    let left: BTreeSet<String> = before.difference(&after).map(name_of).collect();
-    let gained: BTreeSet<String> = reach(&targets, &repo.path, &after).difference(&reach(&targets, &repo.path, &before)).cloned().collect();
-    let lost: BTreeSet<String> = reach(&targets, &repo.path, &before).difference(&reach(&targets, &repo.path, &after)).cloned().collect();
 
-    let mut q = format!("Change the workspace groups of **{}** (`{}`):", repo.name, repo.path);
-    if !joined.is_empty() {
-        q.push_str(&format!(" join {};", joined.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")));
+    let mut parts: Vec<String> = vec![];
+    if membership_changes {
+        let name_of = |id: &String| groups.iter().find(|g| &g.id == id).map(|g| g.name.clone()).unwrap_or_default();
+        let joined: BTreeSet<String> = after.difference(&before).map(name_of).chain(new_names.iter().map(|n| format!("{n} (new)"))).collect();
+        let left: BTreeSet<String> = before.difference(&after).map(name_of).collect();
+        let mut moves = vec![];
+        if !joined.is_empty() {
+            moves.push(format!("join {}", quoted(&joined)));
+        }
+        if !left.is_empty() {
+            moves.push(format!("leave {}", quoted(&left)));
+        }
+        parts.push(format!("Change the workspace groups of **{}** (`{}`): {}.", repo.name, repo.path, moves.join("; ")));
+        let gained: BTreeSet<String> = reach(&targets, &repo.path, &after).difference(&reach(&targets, &repo.path, &before)).cloned().collect();
+        let lost: BTreeSet<String> = reach(&targets, &repo.path, &before).difference(&reach(&targets, &repo.path, &after)).cloned().collect();
+        if !gained.is_empty() {
+            parts.push(format!("Agents in **{}** and {} can then message each other.", repo.name, names(&gained)));
+        }
+        if !lost.is_empty() {
+            parts.push(format!("They can no longer message {}.", names(&lost)));
+        }
+        if gained.is_empty() && lost.is_empty() {
+            parts.push("Which workspaces it can message does not change.".into());
+        }
     }
-    if !left.is_empty() {
-        q.push_str(&format!(" leave {};", left.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")));
-    }
-    q.pop();
-    q.push('.');
-    if !gained.is_empty() {
-        q.push_str(&format!(" Agents in **{}** and {} can then message each other.", repo.name, names(&gained)));
-    }
-    if !lost.is_empty() {
-        q.push_str(&format!(" They can no longer message {}.", names(&lost)));
-    }
-    if gained.is_empty() && lost.is_empty() {
-        q.push_str(" Which workspaces it can message does not change.");
+    if let Some(b) = &brief_change {
+        let group = b["name"].as_str().unwrap_or_default();
+        parts.push(match b["after"].as_str() {
+            Some(a) => format!("Set the brief of group `{group}` to {}; agents in its repos read it when they list workspaces.", brief_text(a)),
+            None => format!("Clear the brief of group `{group}`."),
+        });
+        if let Some(old) = b["before"].as_str() {
+            parts.push(format!("It now reads {}.", brief_text(old)));
+        }
     }
     let before_ids: Vec<&String> = before.iter().collect();
     let leaving: Vec<&String> = before.difference(&after).collect();
     Ok(Some(Proposal {
-        question: q,
-        apply: "Save these groups now. You can change them later in Settings → Workspaces.".into(),
-        change: json!({"type": SET_GROUPS_CHANGE, "repo": repo.path, "name": repo.name, "before": before_ids, "join": joining, "leave": leaving}),
+        question: parts.join(" "),
+        apply: "Save it now. You can change it later in Settings → Workspaces.".into(),
+        change: json!({"type": SET_GROUPS_CHANGE, "repo": repo.path, "name": repo.name, "before": before_ids, "join": joining, "leave": leaving, "brief": brief_change}),
     }))
 }
 
 /// Apply a confirmed `set_groups` change, if nothing it depends on changed
-/// since the card opened.
+/// since the card opened. Every check runs before anything is written.
 pub async fn apply(pool: &DbPool, change: &Value) -> Result<String, String> {
     let err = |e: anyhow::Error| e.to_string();
     let repo_path = change["repo"].as_str().unwrap_or_default();
@@ -185,18 +219,37 @@ pub async fn apply(pool: &DbPool, change: &Value) -> Result<String, String> {
             None => to_create.push(name.to_string()),
         }
     }
+    let brief = change.get("brief").filter(|b| b.is_object());
+    if let Some(id) = brief.and_then(|b| b["id"].as_str()) {
+        let name = brief.and_then(|b| b["name"].as_str()).unwrap_or_default();
+        let Some(g) = groups.iter().find(|x| x.id == id) else { return Err(format!("group '{name}' was deleted since this was proposed.")) };
+        if g.brief.as_deref() != brief.and_then(|b| b["before"].as_str()) {
+            return Err(format!("the brief of '{}' changed since this was proposed. Propose again.", g.name));
+        }
+    }
+    let brief_after = |name: &str| brief.filter(|b| b["id"].is_null() && b["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(name))).and_then(|b| b["after"].as_str());
+
     for name in &to_create {
-        let g = db::create_workspace_group(pool, name, None, None).await.map_err(|e| e.to_string())?;
+        let g = db::create_workspace_group(pool, name, brief_after(name), None).await.map_err(|e| e.to_string())?;
         ids.push(g.id);
     }
     db::set_workspace_groups(pool, &repo.path, &ids).await.map_err(|e| e.to_string())?;
+    if let Some(b) = brief.filter(|b| b["id"].is_string()) {
+        db::update_workspace_group(pool, b["id"].as_str().unwrap_or_default(), None, Some(b["after"].as_str()), None).await.map_err(|e| e.to_string())?;
+    }
+
     let targets = registered_workspaces(pool).await.map_err(err)?;
     let now: BTreeSet<String> = targets.iter().find(|t| t.path == repo.path).map(|t| t.groups.iter().cloned().collect()).unwrap_or_default();
     let group_names: Vec<String> = db::list_workspace_groups(pool).await.map_err(|e| e.to_string())?.into_iter().filter(|g| now.contains(&g.id)).map(|g| g.name).collect();
     let reachable: Vec<String> = reach(&targets, &repo.path, &now).into_iter().collect();
-    tracing::info!("workspace_groups_set repo={} groups={}", repo.path, now.iter().map(|g| codec::api_uuid(g)).collect::<Vec<_>>().join(","));
+    tracing::info!("workspace_groups_set repo={} groups={} brief={}", repo.path, now.iter().map(|g| codec::api_uuid(g)).collect::<Vec<_>>().join(","), brief.is_some());
     let groups_text = if group_names.is_empty() { "no group".to_string() } else { format!("groups: {}", group_names.join(", ")) };
     let reach_text =
         if reachable.is_empty() { "It shares a group with no other repository.".to_string() } else { format!("It can message (and be messaged by): {}.", reachable.join(", ")) };
-    Ok(format!("'{}' is now in {groups_text}. {reach_text}", repo.name))
+    let brief_text = match brief {
+        Some(b) if b["after"].is_string() => format!(" The brief of '{}' is set.", b["name"].as_str().unwrap_or_default()),
+        Some(b) => format!(" The brief of '{}' is cleared.", b["name"].as_str().unwrap_or_default()),
+        None => String::new(),
+    };
+    Ok(format!("'{}' is now in {groups_text}. {reach_text}{brief_text}", repo.name))
 }

@@ -155,7 +155,10 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// commands and workspace groups.
 /// Raised by 200 for `set_groups`'s `brief`, so the agent can describe a
 /// group it sets up.
-const LEAD_ALWAYS_ON_CHARS: usize = 38_937;
+/// Raised by 9 for `team`'s rule that parallel tasks get their shared
+/// interface in every brief, after `shell`'s file-tool line and `team`'s
+/// reply line were tightened to pay for most of it.
+const LEAD_ALWAYS_ON_CHARS: usize = 38_946;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {
@@ -180,6 +183,29 @@ async fn a_coding_leads_always_on_text_stays_within_its_budget() {
     let total = system.chars().count() + serde_json::to_string(&tools).unwrap().chars().count();
 
     assert!(total <= LEAD_ALWAYS_ON_CHARS, "always-on text grew to {total} chars (budget {LEAD_ALWAYS_ON_CHARS})");
+}
+
+/// Models reach for shell in place of the file tools (`cat`, `sed -n`, Python
+/// edits), and parallel subagents can block on the same unanswered interface
+/// question; the tool text a lead reads names both.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_and_team_text_steer_away_from_common_waste() {
+    let (_, lead) = first_call("lead-steer", false).await;
+    let describe = |name: &str| {
+        lead.iter()
+            .find(|d| d.pointer("/function/name").and_then(Value::as_str) == Some(name))
+            .and_then(|d| d.pointer("/function/description"))
+            .and_then(Value::as_str)
+            .map(String::from)
+    };
+    let shell = describe("shell").expect("a lead gets shell");
+    assert!(shell.contains("use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits"), "{shell}");
+    assert!(!shell.contains("do NOT"), "calm wording, not shouting: {shell}");
+    let team = describe("team").unwrap_or_else(appv3_agent::tools::team::delegate_description);
+    assert!(
+        team.contains("To run independent tasks concurrently, call team multiple times in the same turn; when tasks share an interface, decide it first and put it in every brief"),
+        "{team}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

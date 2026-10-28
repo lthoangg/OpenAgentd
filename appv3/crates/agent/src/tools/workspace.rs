@@ -80,9 +80,6 @@ impl Tool for WorkspaceTool {
             if message.as_deref().unwrap_or("").trim().is_empty() {
                 errs.push("message: Value error, message is required for action='send'".into());
             }
-            if mode.is_some() && session_id.is_some() {
-                errs.push("mode: Value error, mode applies to new sessions only; omit it with session_id".into());
-            }
             if delivery_raw.is_some() && session_id.is_none() {
                 errs.push("delivery: Value error, delivery applies to an existing session; pass session_id with it".into());
             }
@@ -113,6 +110,9 @@ impl Tool for WorkspaceTool {
         if self.sends.fetch_add(1, Ordering::SeqCst) >= MAX_SENDS_PER_TURN {
             return Ok(ToolOutput::text(format!("Error: this turn already sent {MAX_SENDS_PER_TURN} messages to other workspaces. Wait for replies or finish the turn.")));
         }
+        // Models that fill every enum send `mode` with `session_id` too; an
+        // existing session keeps its mode, and the result says so.
+        let mode_ignored = mode.is_some() && session_id.is_some();
         let req = SendRequest {
             source_session_id: self.session_id.clone(),
             source_workspace: current,
@@ -142,6 +142,9 @@ impl Tool for WorkspaceTool {
         let mut text = format!("Sent to '{}' ({}) — {how}.", sent.target.name, sent.target.path);
         if reply {
             text.push_str(" Its final answer will arrive here as a message; do not poll.");
+        }
+        if mode_ignored {
+            text.push_str(" Its mode was left as it was: mode applies to new sessions only.");
         }
         Ok(ToolOutput::text(text))
     }
@@ -179,8 +182,6 @@ mod tests {
         assert!(e.contains("workspace is required"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": " "})).await);
         assert!(e.contains("message is required"), "{e}");
-        let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "session_id": "x", "mode": "plan"})).await);
-        assert!(e.contains("new sessions only"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"action": "nope"})).await);
         assert!(e.contains("'send', 'list' or 'set_groups'"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "session_id": "x", "delivery": "now"})).await);

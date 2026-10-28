@@ -1282,7 +1282,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   continues one of its top-level sessions (queued when that session is busy). It
   arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
   chip that opens the sending session. `mode: "plan"` makes a new session plan
-  first and wait for your approval. The tool card in the sending session has an
+  first and wait for your approval; an existing session keeps its mode, and a
+  `mode` sent along with `session_id` is ignored instead of refused `[v3.35.0]`.
+  The tool card in the sending session has an
   **Open in <workspace>** button that switches to the session it reached. With
   `reply: true`, the other session's final answer comes back as a **Workspace
   reply** report that starts the sender's next turn and links to the replying

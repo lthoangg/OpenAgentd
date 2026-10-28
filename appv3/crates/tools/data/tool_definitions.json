@@ -215,7 +215,7 @@
     "type": "function",
     "function": {
       "name": "shell",
-      "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags for commands that may prompt. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. Prefer file tools for file operations: do NOT use shell commands ('cat', 'head', 'sed', 'awk') for file inspection or editing when read and patch apply. Never run interactive pagers or prompts (use --no-pager, -y, -q). Environment: Darwin arm64, shell=zsh.",
+      "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: Darwin arm64, shell=zsh.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -702,7 +702,7 @@
             ],
             "type": "string",
             "default": null,
-            "description": "[send, new session] 'plan' makes the target plan first and wait for the user's approval."
+            "description": "[send, new sessions only] 'plan' makes the target plan first and wait for the user's approval."
           }
         },
         "required": []

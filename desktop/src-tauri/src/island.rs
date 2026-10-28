@@ -113,7 +113,10 @@ const PREWARM_DELAY: Duration = Duration::from_secs(3);
 /// elsewhere while the island is up, and while it is hidden.
 const POINTER_POLL_INSIDE: Duration = Duration::from_millis(40);
 const POINTER_POLL: Duration = Duration::from_millis(80);
-const POINTER_IDLE_POLL: Duration = Duration::from_millis(400);
+/// Far from the canvas (more than [`POINTER_NEAR`] away) the pointer needs a
+/// few readings to get there, so it is read half as often.
+const POINTER_FAR_POLL: Duration = Duration::from_millis(160);
+const POINTER_NEAR: f64 = 240.0;
 /// Unread sessions kept; older ones drop off.
 const MAX_UNREAD: usize = 6;
 /// How the memo records a turn that only compacted an idle session.
@@ -930,6 +933,13 @@ fn feed_wake() -> &'static tokio::sync::Notify {
     WAKE.get_or_init(tokio::sync::Notify::new)
 }
 
+/// Wakes the pointer watch when the canvas is shown. Hidden (or with the
+/// feature off), the watch sleeps until then instead of polling.
+fn pointer_wake() -> &'static tokio::sync::Notify {
+    static WAKE: OnceLock<tokio::sync::Notify> = OnceLock::new();
+    WAKE.get_or_init(tokio::sync::Notify::new)
+}
+
 static FOCUS_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -1025,6 +1035,7 @@ fn apply(app: &AppHandle) {
         native::place(&window, canvas);
         // Placing resets click-through; the pointer watch starts over.
         send_pointer(app, None);
+        pointer_wake().notify_one();
     }
 }
 
@@ -1055,18 +1066,31 @@ fn send_pointer(app: &AppHandle, pointer: Option<PointerPayload>) {
     }
 }
 
+/// How long until the pointer is read again while the canvas is up: often
+/// over the pill (hover), every [`POINTER_POLL`] near it, and less often far
+/// away, so a shown island costs few wakeups while you work elsewhere.
+pub fn pointer_poll_interval(canvas: &Rect, pointer: Option<PointerPayload>) -> Duration {
+    match pointer {
+        Some(p) if p.inside => POINTER_POLL_INSIDE,
+        // Canvas coordinates: y grows downwards from the top of the screen.
+        Some(p) if p.x < -POINTER_NEAR || p.x > canvas.width + POINTER_NEAR || p.y > canvas.height + POINTER_NEAR => POINTER_FAR_POLL,
+        _ => POINTER_POLL,
+    }
+}
+
 /// Poll the pointer while the canvas is up (see the module docs for why).
 #[cfg(target_os = "macos")]
 async fn run_pointer_watch(app: AppHandle) {
     loop {
-        let (canvas, inside) = {
+        let (canvas, pointer) = {
             let s = shared().lock().unwrap();
-            (s.canvas, s.pointer.is_some_and(|p| p.inside))
+            (s.canvas, s.pointer)
         };
         let Some(canvas) = canvas else {
-            tokio::time::sleep(POINTER_IDLE_POLL).await;
+            pointer_wake().notified().await;
             continue;
         };
+        let inside = pointer.is_some_and(|p| p.inside);
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
             let pill = {
@@ -1092,7 +1116,7 @@ async fn run_pointer_watch(app: AppHandle) {
             let (cx, cy) = canvas_point(&canvas, x, y);
             send_pointer(&handle, Some(PointerPayload { inside: now_inside, x: cx, y: cy }));
         });
-        tokio::time::sleep(if inside { POINTER_POLL_INSIDE } else { POINTER_POLL }).await;
+        tokio::time::sleep(pointer_poll_interval(&canvas, pointer)).await;
     }
 }
 
@@ -2403,5 +2427,17 @@ mod tests {
         assert_eq!(workspace_label("/Users/me/code/web/"), Some("web".into()));
         assert_eq!(workspace_label("C:\\code\\api"), Some("api".into()));
         assert_eq!(workspace_label("/"), None);
+    }
+
+    #[test]
+    fn the_pointer_is_read_less_often_the_further_it_is_from_the_island() {
+        let canvas = Rect { x: 526.0, y: 602.0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
+        let at = |inside, x, y| Some(PointerPayload { inside, x, y });
+        assert_eq!(pointer_poll_interval(&canvas, at(true, 230.0, 20.0)), POINTER_POLL_INSIDE, "over the pill");
+        assert_eq!(pointer_poll_interval(&canvas, at(false, 230.0, CANVAS_HEIGHT + 100.0)), POINTER_POLL, "just below the canvas");
+        assert_eq!(pointer_poll_interval(&canvas, at(false, -100.0, 10.0)), POINTER_POLL, "beside it in the menu bar");
+        assert_eq!(pointer_poll_interval(&canvas, at(false, 230.0, CANVAS_HEIGHT + 600.0)), POINTER_FAR_POLL, "down in a window");
+        assert_eq!(pointer_poll_interval(&canvas, at(false, CANVAS_WIDTH + 500.0, 10.0)), POINTER_FAR_POLL, "far along the menu bar");
+        assert_eq!(pointer_poll_interval(&canvas, None), POINTER_POLL, "not read yet");
     }
 }

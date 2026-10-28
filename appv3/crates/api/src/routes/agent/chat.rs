@@ -1067,7 +1067,23 @@ async fn usage_totals(pool: &DbPool, root: &db::ChatSession, subs: &[db::ChatSes
     Ok(db::session_usage_totals_many(pool, &ids).await?)
 }
 
-async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
+async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs) -> ApiResult<Response> {
+    let started = std::time::Instant::now();
+    let page = if q.opt("since").is_some() {
+        "since"
+    } else if q.opt("before").is_some() {
+        "older"
+    } else {
+        "newest"
+    };
+    let session = raw.0.clone();
+    let res = agent_history_page(st, raw, q).await;
+    let bytes = res.as_ref().ok().and_then(|r| axum::body::HttpBody::size_hint(r.body()).exact()).unwrap_or(0);
+    tracing::debug!("history_page_served session_id={} page={} ok={} bytes={} elapsed_ms={}", session, page, res.is_ok(), bytes, started.elapsed().as_millis());
+    res
+}
+
+async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &raw)?;
     let before = q.opt("before");
     let since = q.opt("since");

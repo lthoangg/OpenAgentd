@@ -505,6 +505,7 @@ pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
     if settings().is_chat_workspace(Some(workspace)) {
         return None;
     }
+    let started = std::time::Instant::now();
     let gitdir = snapshot_dir(session_id);
     let key = (session_id.to_string(), resolve(workspace));
     let l = lock(session_id);
@@ -530,7 +531,7 @@ pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
     if n % MAINTENANCE_INTERVAL == 0 && is_available() {
         maintain_repo(&gitdir).await;
     }
-    tracing::debug!("snapshot_tracked session_id={} hash={}", session_id, hash);
+    tracing::debug!("snapshot_tracked session_id={} hash={} elapsed_ms={}", session_id, hash, started.elapsed().as_millis());
     Some(hash)
 }
 

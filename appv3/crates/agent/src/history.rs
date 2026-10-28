@@ -292,8 +292,12 @@ pub fn prompt_text(m: &ChatMessage) -> Option<&str> {
 
 /// `get_messages_for_llm`.
 pub async fn get_messages_for_llm(pool: &DbPool, session_id: &str) -> Result<Vec<ChatMessage>> {
+    let started = std::time::Instant::now();
     let rows = db::llm_window_rows(pool, session_id, true).await?;
-    Ok(apply_llm_content_overrides(deserialize_messages(rows, true)))
+    let rows_count = rows.len();
+    let messages = apply_llm_content_overrides(deserialize_messages(rows, true));
+    tracing::debug!("llm_window_loaded session_id={} rows={} elapsed_ms={}", session_id, rows_count, started.elapsed().as_millis());
+    Ok(messages)
 }
 
 /// Rows → runtime messages without the pair sanitiser (queued injection).

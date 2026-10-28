@@ -232,7 +232,7 @@ dependencies = [
  "dunce",
  "flate2",
  "libc",
- "nix 0.29.0",
+ "nix 0.31.3",
  "qrcode",
  "regex",
  "reqwest",
@@ -258,7 +258,7 @@ dependencies = [
  "directories",
  "dunce",
  "indexmap",
- "nix 0.29.0",
+ "nix 0.31.3",
  "regex",
  "serde",
  "serde_json",
@@ -424,7 +424,7 @@ version = "3.35.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
- "nix 0.29.0",
+ "nix 0.31.3",
  "portable-pty",
  "tokio",
  "tracing",
@@ -452,7 +452,7 @@ dependencies = [
  "ignore",
  "markup5ever_rcdom",
  "memchr",
- "nix 0.29.0",
+ "nix 0.31.3",
  "os_pipe",
  "pdf-inspector",
  "rayon",
@@ -3588,9 +3588,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.29.0"
+version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
 dependencies = [
  "bitflags 2.13.2",
  "cfg-if",

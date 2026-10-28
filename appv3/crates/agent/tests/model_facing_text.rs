@@ -158,7 +158,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 9 for `team`'s rule that parallel tasks get their shared
 /// interface in every brief, after `shell`'s file-tool line and `team`'s
 /// reply line were tightened to pay for most of it.
-const LEAD_ALWAYS_ON_CHARS: usize = 38_946;
+/// Raised by 185 for the Replying rule to name .md and .html files as Markdown
+/// links instead of code spans, so they open in the viewer from the transcript.
+const LEAD_ALWAYS_ON_CHARS: usize = 39_131;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

@@ -2347,6 +2347,9 @@ MCP.
   error never crashes the tool. The coding workspace renders the block as a compact,
   color-coded `ERR`/`WARN` strip beneath the diff. Diagnostics depend on the server
   being available and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
+  A clean TypeScript edit returns as soon as tsserver says the file has no
+  errors or warnings, instead of after a fixed 1 s quiet period; an edit with
+  errors still waits for the diagnostics that report them `[v3.35.0]`.
   Pinned `ty` + `ruff` now ship with the Python runtime, while TypeScript is a
   consented, on-demand backend component with a verified Bun download, locked
   npm packages, a cross-surface install prompt (styled as a floating, non-blocking, draggable and minimizable notification card `[v2.12.0]`), and `agentd lsp` status/install

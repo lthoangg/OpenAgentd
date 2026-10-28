@@ -550,11 +550,11 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
         }
         // One `mcp` tool for every server: it resolves the live servers on
         // each call, so a server still starting now is usable once ready.
-        if !mcp_names.is_empty() {
-            let hub = mcp.hub_tool();
-            if seen.insert(hub.name().to_string()) {
-                tools.push(hub);
-            }
+        // Listed even with no server, so the lead can add one from chat and
+        // the tools block does not change when the first server is added.
+        let hub = mcp.hub_tool();
+        if seen.insert(hub.name().to_string()) {
+            tools.push(hub);
         }
     }
     cfg.mcp = mcp_names;

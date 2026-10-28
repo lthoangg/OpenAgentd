@@ -207,6 +207,27 @@ async fn http_api_end_to_end() {
     let (st, _) = c.json("PUT", "/api/settings/workspace-messages", Some(json!({"enabled": true}))).await;
     assert_eq!(st, StatusCode::OK);
 
+    // ── telemetry retention (v3 only) ────────────────────────────────────
+    let tel = "/api/settings/telemetry";
+    let (st, v) = c.json("GET", tel, None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"retention_days": 90, "default_retention_days": 90, "max_retention_days": 3650})));
+    for bad in [json!({"retention_days": -1}), json!({"retention_days": 3651}), json!({"retention_days": "week"}), json!({"nope": 1})] {
+        let (st, v) = c.json("PUT", tel, Some(bad.clone())).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
+    }
+    let (st, v) = c.json("PUT", tel, Some(json!({"retention_days": 14}))).await;
+    assert_eq!((st, v["retention_days"].clone()), (StatusCode::OK, json!(14)));
+    let (_, v) = c.json("GET", tel, None).await;
+    assert_eq!(v["retention_days"], json!(14));
+    // Omitting the key changes nothing; null restores the default.
+    let (_, v) = c.json("PUT", tel, Some(json!({}))).await;
+    assert_eq!(v["retention_days"], json!(14));
+    // 0 keeps telemetry forever.
+    let (st, v) = c.json("PUT", tel, Some(json!({"retention_days": 0}))).await;
+    assert_eq!((st, v["retention_days"].clone()), (StatusCode::OK, json!(0)));
+    let (_, v) = c.json("PUT", tel, Some(json!({"retention_days": null}))).await;
+    assert_eq!(v["retention_days"], json!(90));
+
     // ── idle compaction (v3 only) ────────────────────────────────────────
     let summ = "/api/settings/summarization";
     let (st, v) = c.json("GET", summ, None).await;
@@ -470,6 +491,7 @@ async fn http_api_end_to_end() {
     history_paging_flow(&c, &pool, &ws).await;
     history_first_page_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
+    confirm_change_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     side_question_flow(&c, &pool, &sid).await;
 
@@ -1204,6 +1226,59 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     let (st, _) = c.json("PUT", &plan_uri, Some(json!({"content": "# New", "base_revision": 2}))).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{psid}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+}
+
+/// A confirmation card (`appv3_agent::confirm`) answered through the route:
+/// only Apply changes anything, and only once.
+async fn confirm_change_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    use appv3_agent::confirm;
+    let base = ws.parent().unwrap().join("confirm-repos");
+    let mut repos = vec![];
+    for name in ["front", "back"] {
+        let p = base.join(name);
+        std::fs::create_dir_all(&p).unwrap();
+        let p = appv3_db::resolve_path(&p.display().to_string());
+        appv3_db::upsert_coding_workspace(pool, &p, "repo", None, None, false, false).await.unwrap();
+        repos.push(p);
+    }
+    let csid = appv3_db::codec::api_uuid(&appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap().id);
+    let open = |call: &'static str| {
+        let repo = repos[0].clone();
+        let csid = csid.clone();
+        async move {
+            let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "workspace", "arguments": "{}"}}]);
+            appv3_db::save_message(pool, &csid, appv3_db::NewMessage { tool_calls: Some(tool_calls), ..appv3_db::NewMessage::assistant(None) }).await.unwrap();
+            let p = appv3_agent::workspace_groups::propose(pool, &repo, &["duo".into()], &[], None).await.unwrap().expect("a change");
+            let q = appv3_db::create_pending_question_with(pool, &csid, call, "workspace", &confirm::payload(&p)).await.unwrap();
+            appv3_db::codec::api_uuid(&q.id)
+        }
+    };
+    let in_duo = || async { appv3_db::list_group_memberships(pool).await.unwrap().iter().any(|(_, p)| *p == repos[0]) };
+
+    let qid = open("call-confirm-1").await;
+    let (_, v) = c.json("GET", &format!("/api/agent/{csid}/question"), None).await;
+    assert_eq!(v["question"]["kind"], json!("confirm_change"), "{v}");
+    let answer_uri = format!("/api/agent/{csid}/question/{qid}/answer");
+    let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Apply", "Cancel"]]}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Cancel"]]}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(!in_duo().await, "Cancel changed the groups");
+    assert!(tool_result(pool, &csid, "call-confirm-1").await.starts_with("The user cancelled the change"));
+    wait_idle(&csid).await;
+
+    let qid = open("call-confirm-2").await;
+    let answer_uri = format!("/api/agent/{csid}/question/{qid}/answer");
+    let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Apply"]]}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(in_duo().await, "Apply did not change the groups");
+    let result = tool_result(pool, &csid, "call-confirm-2").await;
+    assert_eq!(result, "The user applied the change. 'front' is now in groups: duo. It shares a group with no other repository.");
+    let (st, _) = c.json("POST", &answer_uri, Some(json!({"answers": [["Apply"]]}))).await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    wait_idle(&csid).await;
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{csid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
 }
 

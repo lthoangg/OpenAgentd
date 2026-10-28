@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-27
+updated: 2026-10-28
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.34.0 · October 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.34.0)
+**Latest release:** v3.35.0 · October 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.35.0)
 
 ---
 
@@ -116,6 +116,16 @@ run from the terminal (the native Rust binary since v3.0.0).
   - An idle server uses almost no CPU (under 10 ms a minute, was 60 ms).
   - `grep` keeps the matches it found when it times out. `read` caps
     directory listings and reports binary files instead of dumping them.
+- **Faster startup and agent edits** `[v3.35.0]`:
+  - The app loads 641 kB of JavaScript (gzip) before its first screen, down
+    from 810 kB: Settings, Telemetry, the scheduler and MCP app results load
+    while the app is idle right after it starts, so they still open at once.
+    The app starts sooner, most noticeably on slower phones.
+  - A clean TypeScript `patch` no longer waits a fixed second for late
+    diagnostics (see *Real-time LSP diagnostics injection*), and opening a
+    session with many short prompts skips measuring prompts too short to fold.
+  - On macOS the notch island stops checking the pointer while it is hidden,
+    and checks it half as often while the pointer is far away.
 - **Plugins page and live settings refresh (v3)** `[v3.0.0]` — Settings →
   Plugins lists each plugin with its provider, tool hooks and load errors,
   and flags v2 Python plugins that have no TypeScript port (v3 does not run
@@ -980,6 +990,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     `src/app.ts` for `web/src/app.ts`) finds its file, preferring one the
     session read or patched; when several files match, Quick Open opens
     searching for the reference.
+    A code span that names a whole Markdown or HTML document (`DESIGN.md`,
+    `.agents/plans/x/mockup.html`) renders as a plain link rather than code,
+    and paths through dot folders such as `.agents/` are recognized
+    `[v3.35.0]`.
   - Clicking an `@path#L42-L58` mention or a design feedback source opens the
     file with that range selected too, not just the file `[v3.6.0]`.
   - On desktop a timeline scrubber replaces the transcript's scrollbar and
@@ -1274,7 +1288,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   - Session titles in Vietnamese, Chinese, Japanese, Korean, and other scripts are no
     longer cut mid-word.
   - `/init` sends a quarter of the instructions it did (8 KB instead of 32 KB).
-- **Cross-workspace messages** `[v3.9.0, updated v3.21.0]` — the lead agent's `send_to_workspace`
+- **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related
   repository, a worktree of its repository, or Chat), for example from an app
@@ -1282,7 +1296,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   continues one of its top-level sessions (queued when that session is busy). It
   arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
   chip that opens the sending session. `mode: "plan"` makes a new session plan
-  first and wait for your approval. The tool card in the sending session has an
+  first and wait for your approval; an existing session keeps its mode, and a
+  `mode` sent along with `session_id` is ignored instead of refused `[v3.35.0]`.
+  The tool card in the sending session has an
   **Open in <workspace>** button that switches to the session it reached. With
   `reply: true`, the other session's final answer comes back as a **Workspace
   reply** report that starts the sender's next turn and links to the replying
@@ -1294,10 +1310,25 @@ executes tools, manages its task list, and inspects workspace repositories.
   - You get one completion notification, from the sender, instead of one from
     each side.
 
+  When the session it continues is busy, `delivery` picks how the message lands,
+  the same three ways you can send while a turn runs `[v3.35.0]`:
+  - `steer` (the default): the session reads it before its next step.
+  - `queue`: it waits, shown as "Sends when this turn ends", and starts a turn
+    of its own once the running turn ends. Several queued messages start one
+    turn together.
+  - `stop_and_send`: the running turn (and its members) is stopped, an active
+    goal stays active, and the message starts a new turn that is told its
+    previous turn was stopped. It can stop a session you are working in, so the
+    tool tells agents to use it only when the current work is wrong or obsolete.
+
+  An idle session just starts a turn for any of the three. A message already in a
+  session's history never changes, so the provider's prompt cache stays valid.
+
   `action: "list"` shows the workspaces you can message under their groups,
   each with its brief, or one workspace's recent sessions with their state.
-  Sending to a workspace outside its groups is refused with a message asking
-  you to group them. Limits: a request can pass through at most
+  Sending to a workspace outside its groups is refused with a message telling
+  the agent it can propose a shared group (see **Workspace groups** below)
+  `[v3.35.0]`. Limits: a request can pass through at most
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
   32,000 characters. **Settings → Workspaces → Messages** turns the
   tool off for every agent; replies already on their way still arrive.
@@ -1322,6 +1353,21 @@ executes tools, manages its task list, and inspects workspace repositories.
     so after upgrading, group related repositories to let them talk again.
   - Replies are never blocked: a request that was allowed when it was sent
     still gets its answer back.
+  - **Group repositories from chat** `[v3.35.0]` — ask the agent ("group this
+    repo with infra") and it proposes the groups one repository joins or
+    leaves (`workspace` with `action: "set_groups"`; a new name creates the
+    group, its other groups stay). Nothing changes until you choose **Apply**
+    on a **Confirm change** card that names the repositories that will be able
+    to message each other. The change is checked again when you apply it: if
+    the repository's groups changed in the meantime, or a group it would
+    create now exists, nothing is applied and the agent is told why. Only
+    registered workspaces can be grouped (the agent asks you to open a folder
+    in the app first), a worktree is grouped through its repository, and Chat
+    is in no group. In Plan mode the agent can only list.
+    The same card can set or clear a group's **brief** (`brief` with one group
+    in `join`), when the group is created or on its own; the card shows the
+    brief before and after, and an edit made in Settings meanwhile is not
+    overwritten.
 - **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
   features a dedicated System prompt card with a monospace textarea bound to the
   Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).
@@ -1769,7 +1815,7 @@ agent against it.
   reference; the backend auto-attaches only the selected file lines.
   Markdown files (`.md`, `.markdown`) open rendered like a chat answer, with
   tables, highlighted code, diagrams, maths and images relative to the file;
-  front matter shows as a YAML block. A **Rendered / Source** switch in the
+  front matter is hidden there and shown only in Source `[v3.35.0]`. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
   Links and file-named code spans in a rendered Markdown file open the
@@ -2315,6 +2361,9 @@ MCP.
   error never crashes the tool. The coding workspace renders the block as a compact,
   color-coded `ERR`/`WARN` strip beneath the diff. Diagnostics depend on the server
   being available and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
+  A clean TypeScript edit returns as soon as tsserver says the file has no
+  errors or warnings, instead of after a fixed 1 s quiet period; an edit with
+  errors still waits for the diagnostics that report them `[v3.35.0]`.
   Pinned `ty` + `ruff` now ship with the Python runtime, while TypeScript is a
   consented, on-demand backend component with a verified Bun download, locked
   npm packages, a cross-surface install prompt (styled as a floating, non-blocking, draggable and minimizable notification card `[v2.12.0]`), and `agentd lsp` status/install
@@ -2451,6 +2500,26 @@ Four orthogonal ways to add capability.
     that finishes starting or reconnects is usable at once. In Plan mode the
     agent can search, and call tools the server marks read-only
     (`readOnlyHint`); the server sets that hint, so it is trusted as given.
+  - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
+    server ("add the GitHub MCP") and it proposes the `mcp.json` entry
+    (`mcp` with `action: "save"`, or `"remove"`). A **Confirm change** card
+    shows the command it runs or the URL it connects to; only **Apply** saves
+    it and starts the server, and the agent then reports whether it is ready
+    and its tools, or the error. `action: "servers"` lists every server with
+    its state, error, tools and config, also in Plan mode. The agent never
+    sees a secret: `env` and header values and OAuth credentials show as
+    `********` (a `${NAME}` reference shows as written), sending `********`
+    back keeps the stored value, and tokens and OAuth sign-in stay in
+    Settings → MCP. The `mcp` tool is listed even before the first server, and
+    its description is fixed for the session, so adding or removing a server
+    does not invalidate the prompt cache; new sessions see the new list. A
+    change that was made elsewhere after the card opened is not applied.
+  - **Confirm change cards** `[v3.35.0]` — the card the MCP and workspace group
+    changes above use: an ordinary question card with **Apply** and
+    **Cancel**, answered on the server, so only your **Apply** runs the
+    change, at most once. Typing an answer instead cancels and passes your
+    words to the agent. One change is confirmed at a time; in a scheduled or
+    goal turn nobody is there to confirm, so the change is refused.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be
@@ -2525,6 +2594,9 @@ Four orthogonal ways to add capability.
     skills, plugins (with the `openagentd` plugin API typings), and image/video generation. It
     replaces the separate `skill-installer` skill. `read`, `grep`, and `glob` may open bundled
     skill files, while write tools and `shell` still cannot touch them.
+    References for slash commands (where the files go, `$ARGUMENTS`, names
+    to avoid) and workspace groups were added, so "make a /review command for
+    this project" writes `.agents/commands/review.md` `[v3.35.0]`.
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs
@@ -2657,8 +2729,14 @@ Everything stays local. No third-party telemetry SaaS.
 - **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
   kept for 90 days by default (traces were previously kept for 30), so the
   90-day telemetry range shows full trace history. Older data is removed by a
-  daily sweep; `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
-  override the defaults.
+  daily sweep. Since `[v3.35.0]` the period is set in **Settings → Telemetry**;
+  the `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
+  variables are no longer read.
+- **Telemetry retention setting** `[v3.35.0]` — **Settings → Telemetry**
+  sets how many days local traces and metrics are kept (0 to 3650, default
+  90; 0 keeps them forever). Saving a shorter period deletes older telemetry
+  right away instead of at the next daily sweep. This replaces
+  `OPENAGENTD_OTEL_RETENTION_ENABLED`, which is no longer read.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

@@ -58,10 +58,18 @@ export function FileRefButton({ fileRef, opener, className, children }: {
   )
 }
 
+// Documents read as prose, so a span naming one shows as a link, not code.
+const DOCUMENT_EXTENSION = /\.(md|mdx|markdown|html?)$/i
+
 /** Markdown ``code``: a span that is only a file reference opens the file. */
 export function FileRefCode({ children, ...props }: HTMLAttributes<HTMLElement> & { children: string }) {
   const opener = useContext(FileRefContext)
-  const fileRef = opener ? parseFileRef(children) : null
+  const fileRef = parseFileRef(children)
+  // A whole document (no line) reads as a link; inside a link or where it
+  // cannot open, as plain text.
+  if (fileRef && !fileRef.line && DOCUMENT_EXTENSION.test(fileRef.path)) {
+    return opener?.canOpen(fileRef) ? <MarkdownLink href={fileRef.path}>{children}</MarkdownLink> : <>{children}</>
+  }
   if (!opener || !fileRef || !opener.canOpen(fileRef)) return <code {...props}>{children}</code>
   return (
     <code {...props}>

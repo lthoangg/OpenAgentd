@@ -1,5 +1,6 @@
-//! The lead reaches MCP servers through one `mcp` tool, attached whenever a
-//! server is configured, instead of one tool per server tool. Lives in its
+//! The lead reaches MCP servers through one `mcp` tool instead of one tool
+//! per server tool. It is attached even with no server, so the lead can add
+//! the first one from chat without the tools block changing. Lives in its
 //! own test binary because the MCP source is a process-wide slot.
 
 use appv3_agent::loader::{self, McpSource, ProviderFactory};
@@ -36,7 +37,7 @@ impl McpSource for FakeSource {
 }
 
 #[test]
-fn lead_gets_one_mcp_tool_when_servers_are_configured() {
+fn lead_gets_one_mcp_tool_with_or_without_servers() {
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("code.md");
     std::fs::write(&p, "---\nname: code\nmodel: openai:gpt-5\ntools:\n- read\n- mcp\n- docs_search\n---\n\nHi\n").unwrap();
@@ -44,7 +45,7 @@ fn lead_gets_one_mcp_tool_when_servers_are_configured() {
 
     loader::set_mcp_source(Arc::new(FakeSource(vec![])));
     let agent = loader::rebuild_agent_from_disk(&p, &factory).unwrap();
-    assert!(!agent.tools.contains("mcp"), "no servers, no mcp tool");
+    assert!(agent.tools.contains("mcp"), "with no server the lead can still add one");
     assert!(agent.mcp_servers.is_empty());
 
     loader::set_mcp_source(Arc::new(FakeSource(vec!["docs".into(), "github".into()])));

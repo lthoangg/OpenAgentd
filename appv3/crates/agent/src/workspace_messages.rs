@@ -89,7 +89,10 @@ pub fn can_reach(targets: &[Target], from: &str, to: &Target) -> bool {
 }
 
 fn out_of_scope(t: &Target) -> String {
-    format!("'{}' does not share a group with this workspace, so you cannot message it. Ask the user to add both workspaces to a group (Settings → Workspaces → Groups).", t.name)
+    format!(
+        "'{}' does not share a group with this workspace, so you cannot message it. If the user wants them to work together, propose a shared group with action='set_groups' (they confirm it).",
+        t.name
+    )
 }
 
 fn looks_like_path(q: &str) -> bool {
@@ -175,6 +178,30 @@ fn settle_outstanding(session_id: &str) {
 
 // ── send ─────────────────────────────────────────────────────────────────────
 
+/// How a message reaches a session that is busy (an idle one just starts a
+/// turn). The same three ways a user can send while a turn runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DeliveryMode {
+    /// The target reads it before its next step.
+    #[default]
+    Steer,
+    /// It waits and starts a turn of its own once the running turn ends.
+    Queue,
+    /// The running turn is stopped, then the message starts a new turn.
+    StopAndSend,
+}
+
+impl DeliveryMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "steer" => Some(Self::Steer),
+            "queue" => Some(Self::Queue),
+            "stop_and_send" => Some(Self::StopAndSend),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SendRequest {
     pub source_session_id: String,
@@ -187,6 +214,8 @@ pub struct SendRequest {
     pub reply: bool,
     /// `code` | `plan` (new sessions only).
     pub mode: Option<String>,
+    /// How it reaches a busy session (existing sessions only).
+    pub delivery: DeliveryMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,6 +226,11 @@ pub enum Delivery {
     Delivered,
     /// The session is busy or waits on the user; the message runs next.
     Queued,
+    /// The session is busy; the message waits for the running turn to end,
+    /// then starts a turn of its own.
+    Held,
+    /// The running turn was stopped and the message started a new one.
+    Stopped,
 }
 
 #[derive(Debug, Clone)]
@@ -273,20 +307,36 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
             crate::interaction_mode::set_mode(pool, &sid, mode).await.map_err(err)?;
         }
     }
+    // Stop & send: stop the running turn first, outside the lock (as the chat
+    // route does), so nothing blocks on the turn winding down. Whether it
+    // stopped anything is recorded on the request now, once; the row's
+    // model-visible header is never rewritten.
+    let mut stopped = false;
+    if existing && req.delivery == DeliveryMode::StopAndSend && (agent.has_active_user_turn() || agent.is_awaiting_question_answer()) {
+        crate::service::interrupt_agent_keeping_goal(&agent, Some(&sid)).await;
+        stopped = true;
+        if let Some(Value::Object(sf)) = extra.get_mut("sent_from") {
+            sf.insert("stopped_turn".into(), json!(true));
+        }
+    }
+    let hold = req.delivery == DeliveryMode::Queue;
     let delivery = {
         let _g = agent.user_message_lock.lock().await;
         if existing {
             db::cleanup_reverted_tail(pool, &sid).await.map_err(err)?;
         }
-        let queue = |extra: Map<String, Value>| {
+        let queue = |mut extra: Map<String, Value>| {
             let agent = agent.clone();
             let (sid, message) = (sid.clone(), req.message.clone());
             async move {
+                if hold {
+                    extra.insert(db::HOLD_UNTIL_TURN_END.into(), json!(true));
+                }
                 db::save_queued_user_message(pool, &sid, &message, Some(extra)).await.map_err(err)?;
                 if !agent.has_active_user_turn() {
                     agent.activate_queued_user_messages(&sid).await;
                 }
-                Ok::<Delivery, String>(Delivery::Queued)
+                Ok::<Delivery, String>(if hold { Delivery::Held } else { Delivery::Queued })
             }
         };
         if existing && agent.has_active_user_turn() && !agent.is_awaiting_question_answer() {
@@ -301,6 +351,7 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
                 ..Default::default()
             };
             match dispatch_user_message(&agent, d).await {
+                Ok(_) if stopped => Delivery::Stopped,
                 Ok(_) if existing => Delivery::Delivered,
                 Ok(_) => Delivery::Started,
                 // Waiting on the user: the message runs once they answer.
@@ -421,7 +472,9 @@ pub fn render_workspace_list(targets: &[Target], groups: &[db::WorkspaceGroup], 
         lines.push(format!("… and {} more; pass a path to reach them.", total - shown));
     }
     if !in_chat && src.is_none_or(|s| s.groups.is_empty()) {
-        lines.push("This workspace is in no group, so it can message only Chat and its own worktrees. Ask the user to add it to a group (Settings → Workspaces → Groups).".into());
+        lines.push(
+            "This workspace is in no group, so it can message only Chat and its own worktrees. To work with another repo, propose a shared group with action='set_groups'.".into(),
+        );
     }
     lines.join("\n")
 }
@@ -655,7 +708,7 @@ mod tests {
         let from_solo = render_workspace_list(&ts, &gs, "/nonexistent/solo");
         assert!(!from_solo.contains("Group '"), "{from_solo}");
         assert!(from_solo.contains("This repository:\n- solo — /nonexistent/solo (current)\n- solo-1 — /nonexistent/wt/solo-1 (worktree of solo)"), "{from_solo}");
-        assert!(from_solo.ends_with("Ask the user to add it to a group (Settings → Workspaces → Groups)."), "{from_solo}");
+        assert!(from_solo.ends_with("propose a shared group with action='set_groups'."), "{from_solo}");
 
         let from_chat = render_workspace_list(&ts, &gs, "/nonexistent/chat");
         assert!(from_chat.contains("Group 'acme'") && from_chat.contains("Group 'shared'"), "{from_chat}");

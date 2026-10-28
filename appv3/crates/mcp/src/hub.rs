@@ -3,6 +3,8 @@
 //! runs one. It reads the live manager on every call, so a server that
 //! connects after the agent was built is usable at once, and the model's
 //! tool list stays the same however many servers and tools there are.
+//! `servers` lists the servers with their state; `save` and `remove`
+//! propose a change the user confirms on a card (see [`crate::admin`]).
 
 use crate::tool::McpTool;
 use crate::{McpManager, ServerStatus};
@@ -18,7 +20,9 @@ const MAX_LIMIT: usize = 20;
 /// Longest tool description a search result carries (characters).
 const RESULT_DESCRIPTION_MAX: usize = 800;
 
-const DESCRIPTION: &str = "Use tools from the user's MCP servers. action='search' finds tools by keywords (or, with an empty query and a server, lists that server's tools) and returns each tool's input_schema. action='call' runs one tool: server, tool (its name as search returned it) and arguments matching its input_schema. Search before calling a tool whose schema you have not seen. In Plan mode only tools marked read_only can be called.";
+const DESCRIPTION: &str = "Use tools from the user's MCP servers. action='search' finds tools by keywords (or, with an empty query and a server, lists that server's tools) and returns each tool's input_schema. action='call' runs one tool: server, tool (its name as search returned it) and arguments matching its input_schema. Search before calling a tool whose schema you have not seen. In Plan mode only tools marked read_only can be called. action='servers' shows each server's state, errors and config; action='save' (server, config) adds or replaces one and action='remove' deletes one, after the user applies it on a card.";
+/// Freezes the description for a session (see [`crate::McpHubTool::definition_for`]).
+const FROZEN_KEY: &str = "mcp_tool_description";
 
 fn tokens(s: &str) -> Vec<String> {
     s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).map(String::from).collect()
@@ -95,11 +99,12 @@ pub fn definition(servers: &str) -> Value {
         "parameters": {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["search", "call"], "description": "'search' finds tools and returns their input schemas; 'call' runs one tool."},
+                "action": {"type": "string", "enum": ["search", "call", "servers", "save", "remove"], "description": "'search' finds tools and returns their input schemas; 'call' runs one tool; 'servers', 'save' and 'remove' manage the servers."},
                 "query": {"type": "string", "default": null, "description": "[search] Keywords matched against server, tool name and description. Leave empty, with server set, to list that server's tools."},
-                "server": {"type": "string", "default": null, "description": "[search] Only search this server. [call] The server that owns the tool (required)."},
+                "server": {"type": "string", "default": null, "description": "[search] Only search this server. [call, save, remove] The server's name (required)."},
                 "tool": {"type": "string", "default": null, "description": "[call] The tool name exactly as search returned it (required)."},
                 "arguments": {"type": "object", "default": null, "description": "[call] Arguments matching the tool's input_schema."},
+                "config": {"type": "object", "default": null, "description": "[save] The mcp.json entry: {command, args, env} (stdio) or {url, headers, oauth} (http), plus enabled. Never put a secret here; keep ******** values as servers showed them."},
                 "limit": {"type": "integer", "default": DEFAULT_LIMIT, "minimum": 1, "maximum": MAX_LIMIT, "description": "[search] Most tools to return (defaults to 8)."}
             },
             "required": ["action"]
@@ -230,6 +235,15 @@ impl Tool for McpHubTool {
         definition(&describe_servers(&self.manager.list_status()))
     }
 
+    /// The description lists the servers, and it opens the cached prompt
+    /// prefix: it is fixed for a session, so adding or removing a server
+    /// (from chat or Settings) does not re-send the session's context. The
+    /// `save` result and `servers` report the current ones.
+    fn definition_for(&self, ctx: &ToolContext) -> Value {
+        let servers = appv3_agent::session_frozen::get_or_freeze(ctx.session_id.as_deref(), FROZEN_KEY, || describe_servers(&self.manager.list_status()));
+        definition(&servers)
+    }
+
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
         let mut a = Args::new(MCP_TOOL, &args);
         let action = a.req_str(&["action"]);
@@ -246,8 +260,32 @@ impl Tool for McpHubTool {
                 };
                 self.call(ctx, &server, &tool, args.get("arguments")).await
             }
-            other => Err(ToolError::Argument(format!("Unknown action '{other}': use 'search' or 'call'."))),
+            "servers" => Ok(ToolOutput::Text(crate::admin::servers_text(&self.manager))),
+            "save" | "remove" => {
+                let Some(server) = server else { return Err(ToolError::Argument(format!("action='{action}' needs server (the server's name)."))) };
+                let proposal = if action == "save" {
+                    match args.get("config") {
+                        Some(c) if !c.is_null() => crate::admin::propose_save(&server, &parse_config_arg(c)?),
+                        _ => return Err(ToolError::Argument("action='save' needs config, the server's mcp.json entry.".into())),
+                    }
+                } else {
+                    crate::admin::propose_remove(&server)
+                };
+                match proposal {
+                    Ok(p) => appv3_agent::confirm::ask(ctx, None, MCP_TOOL, p).await,
+                    Err(e) => Err(ToolError::Execution(e)),
+                }
+            }
+            other => Err(ToolError::Argument(format!("Unknown action '{other}': use 'search', 'call', 'servers', 'save' or 'remove'."))),
         }
+    }
+}
+
+/// `config` as an object; a JSON-encoded string is accepted too.
+fn parse_config_arg(v: &Value) -> Result<Value, ToolError> {
+    match v {
+        Value::String(s) => serde_json::from_str::<Value>(s).ok().filter(Value::is_object).ok_or_else(|| ToolError::Argument("config must be a JSON object.".into())),
+        other => Ok(other.clone()),
     }
 }
 

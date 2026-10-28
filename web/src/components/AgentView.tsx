@@ -22,7 +22,7 @@ import { MarkdownBlock } from '@/utils/markdown'
 import { ChevronDown, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
-import { MCPAppResult } from './MCPAppResult'
+import { lazySurface } from '@/lib/lazy-surface'
 import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn, type AssistantTurnProps } from './AssistantTurnFooter'
@@ -54,6 +54,10 @@ import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useSessionSwitchHold } from './AgentView/useSessionSwitchHold'
+
+// MCP app results (and the MCP SDK they need) are rare: kept out of the
+// startup bundle and prefetched while the app is idle.
+const MCPAppResult = lazySurface(() => import('./MCPAppResult'), 'MCPAppResult')
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80

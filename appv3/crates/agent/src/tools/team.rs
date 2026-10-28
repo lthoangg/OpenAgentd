@@ -44,7 +44,7 @@ pub fn delegate_description() -> String {
         format!("\n\nAvailable subagent profiles:\n{}\n\n", bullets.join("\n"))
     };
     format!(
-        "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent's deliverable arrives as a message when it finishes, so don't wait or poll for it.{doc}To run tasks concurrently, call team multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1'). action='interrupt' redirects one at once, dropping its current step; action='stop' ends its work without a report (a later task resumes it); action='list' shows their status. A subagent that fails or stalls messages you why: retry it, use another profile, or do it yourself."
+        "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent's deliverable arrives as a message when it finishes, so don't wait or poll for it.{doc}To run independent tasks concurrently, call team multiple times in the same turn; when tasks share an interface, decide it first and put it in every brief. To answer a subagent or send it follow-up instructions, pass target='<handle>' (e.g. 'explorer#1'). action='interrupt' redirects one at once, dropping its current step; action='stop' ends its work without a report (a later task resumes it); action='list' shows their status. A subagent that fails or stalls messages you why: retry it, use another profile, or do it yourself."
     )
 }
 

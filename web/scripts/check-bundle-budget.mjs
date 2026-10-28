@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { basename, resolve, dirname } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
 export function budgetFailures(sizes, limits) {
@@ -30,82 +30,45 @@ export function measureBundle(directory) {
     }
   }
   return {
+    eagerChunks: [...eager].map((path) => basename(path)),
     eagerBytes: [...eager].reduce((total, path) => total + chunks.get(path).length, 0),
     eagerGzipBytes: [...eager].reduce((total, path) => total + gzipSync(chunks.get(path)).length, 0),
     largestChunkBytes: Math.max(...[...chunks.values()].map((source) => source.length)),
   }
 }
 
+// Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
+// each loads on first use or while the app is idle after it starts. A static
+// import from startup code would quietly put it back; this check fails then.
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult']
+
+// The startup path loads everything not behind a dynamic import. History:
+// features had grown it from 2.37 MB / 705 kB gzip (early October) to
+// 2.654 MB / 810 kB with a 1.98 MB index chunk (v3.34.0), each release
+// raising this budget. Moving Settings, Telemetry, the scheduler and MCP app
+// results (with the MCP SDK) behind `lazySurface` cut it to 2.021 MB /
+// 641 kB with a 1.17 MB index chunk. Limits sit just above that. A new
+// surface that is not needed on the first screen belongs behind
+// `lazySurface`, not in a raised budget; `bundle-budget.test.js` keeps the
+// limits under the pre-split size.
+export const LIMITS = { eagerBytes: 2_030_000, eagerGzipBytes: 645_000, largestChunkBytes: 1_180_000 }
+
+/** Each lazy surface must have a chunk of its own, outside the startup path. */
+export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {
+  const chunks = readdirSync(resolve(directory, 'assets')).filter((name) => name.endsWith('.js'))
+  const eager = new Set(measureBundle(directory).eagerChunks)
+  return names.flatMap((name) => {
+    const own = chunks.filter((chunk) => chunk.startsWith(`${name}-`))
+    if (!own.length) return [`${name} has no chunk of its own; keep it behind lazySurface`]
+    return own.some((chunk) => eager.has(chunk)) ? [`${name} loads with the startup path; keep it behind lazySurface`] : []
+  })
+}
+
 if (import.meta.main) {
-  const sizes = measureBundle(resolve(import.meta.dir, '../dist'))
-  // App surfaces (Settings pages, Telemetry, the review dock, the scheduler
-  // and Session Settings modals, Markdown, MCP app results) load with the
-  // shell, so opening one never waits on a chunk; that raised the eager graph
-  // by ~231 kB gzip. Only the heavy renderers stay lazy: PDF.js, xterm and
-  // KaTeX (Mermaid.js was removed; Pele now draws Mermaid fences and loads on first use).
-  // Limits sit just above the measured 2.54 MB / 754 kB gzip, and the
-  // 1.90 MB index chunk is now the largest one.
-  // The plan review (Plan tab, transcript card) raised it to 2.57 MB / 765 kB.
-  // The web preview (Preview tab, design comments) raised it to 2.61 MB /
-  // 778 kB, with a 1.97 MB index chunk.
-  // Design feedback chips, comment editing and React 19 source mapping
-  // raised it to 2.62 MB / 783 kB, with a 1.98 MB index chunk.
-  // Loading KaTeX and its stylesheet on first use lowered it to
-  // 2.37 MB / 705 kB, with a 1.72 MB index chunk.
-  // Desktop keyboard focus (zones, row keys, dock tab keys, drag and the
-  // launcher, chat menus, tooltip timing) raised it to 2.39 MB / 716 kB,
-  // with a 1.75 MB index chunk.
-  // Later features (the shared event stream, window titles, UI primitives)
-  // and framer-motion 14 raised it to 2.39 MB / 721 kB, with a 1.75 MB
-  // index chunk.
-  // `/btw` side questions (panel, store, client) added 12 kB / 4 kB gzip:
-  // 2.41 MB / 726 kB, with a 1.76 MB index chunk.
-  // Sidebar sections (View options, Pinned, the flat Status / Date / None
-  // views) and the new-session screen with its folder picker added 40 kB /
-  // 12 kB gzip: 2.45 MB / 739 kB, with a 1.80 MB index chunk.
-  // framer-motion 14.3 (hardware-accelerated independent transforms) added
-  // 9 kB / 3 kB gzip: 2.46 MB / 742 kB, with a 1.80 MB index chunk.
-  // Later features had already reached 2.48 MB / 752 kB with a 1.82 MB index
-  // chunk. Reviewer-shaped plans (the Appendix, plan links) and the Mermaid
-  // block with its SVG sanitizer added 10 kB / 3 kB gzip: 2.49 MB / 755 kB,
-  // with a 1.83 MB index chunk. Pele itself stays out of the startup graph.
-  // Phone keyboard work (the visible-viewport helper, the mobile plan review
-  // footer and docked comment composer, transcript keyboard dismissal, field
-  // defaults and the native time picker) reached 2.50 MB / 760 kB with a
-  // 1.84 MB index chunk.
-  // Sent attachments in the review dock and the View image button for images
-  // the agent read reached 2.52 MB / 764 kB with a 1.85 MB index chunk.
-  // The smoothness pass (detached scroll anchoring, image boxes, the shared
-  // Collapsible, enter/exit on menus and notices, automated title reveals,
-  // optimistic session and settings actions, loading skeletons) added 16 kB /
-  // 6 kB gzip, all in the index chunk: 2.53 MB / 770 kB with a 1.87 MB index
-  // chunk.
-  // ⌘L / ⌘⇧L switching, hover intent for pickers, and the shared sidebar row
-  // actions reached 2.54 MB / 773.4 kB with a 1.87 MB index chunk (v3.27.0).
-  // Several keys and accounts per provider (the credential list, add-key and
-  // add-account flows, the switched-credential notice, their client calls)
-  // added 16 kB / 4.3 kB gzip: 2.56 MB / 779 kB with a 1.89 MB index chunk.
-  // The v3.31.0 native-feel passes reached 2.58 MB / 787 kB with a 1.91 MB
-  // index chunk: the first (Android Back, theme sync, haptics, contrast
-  // themes) had already measured 2.576 MB / 784.8 kB; the second (connection
-  // banner, scheduler draft guard, sidebar row keys, window-wide drops, retry
-  // states) added 7.6 kB / 2.4 kB gzip.
-  // Goals (the Goal dock tab, the claim cards, the goal turn divider, the
-  // replace dialog and Settings → Goals), all in the index chunk, reached
-  // 2.627 MB / 800.9 kB with a 1.955 MB index chunk (v3.32.0).
-  // Keep going from plan review, workspace file links in Markdown previews,
-  // collapsed subagent lists and per-file Git diffs added 11 kB / 3.5 kB gzip:
-  // 2.638 MB / 804.5 kB with a 1.966 MB index chunk (v3.32.0).
-  // The plan, tasks and goal chain (goal ring, Done when row, Run as goal),
-  // per-tab scroll memory in the review dock and the goal palette changes
-  // added 11.6 kB / 4.2 kB gzip: 2.649 MB / 808.6 kB with a 1.978 MB index
-  // chunk (v3.33.0).
-  // The "Switching to <name>…" server screen and the restart divider added
-  // 4.6 kB / 1.3 kB gzip: 2.654 MB / 810 kB with a 1.982 MB index chunk
-  // (v3.34.0).
-  const limits = { eagerBytes: 2_658_000, eagerGzipBytes: 813_000, largestChunkBytes: 1_986_000 }
+  const dist = resolve(import.meta.dir, '../dist')
+  const { eagerChunks: _chunks, ...sizes } = measureBundle(dist)
   console.log('Production JavaScript budget:', sizes)
-  const failures = budgetFailures(sizes, limits)
+  const failures = [...budgetFailures(sizes, LIMITS), ...lazySurfaceFailures(dist)]
   if (failures.length) {
     console.error(failures.join('\n'))
     process.exit(1)

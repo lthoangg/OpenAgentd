@@ -6,6 +6,7 @@
  * SettingsModal because each section takes genuinely different props.
  */
 import {
+  Activity,
   Brain,
   Heading,
   Image,
@@ -43,6 +44,7 @@ export type TopLevelSection = Extract<
   | 'plugins'
   | 'providers'
   | 'denied_paths'
+  | 'telemetry'
   | 'workspaces'
   | 'goals'
   | 'titles'
@@ -104,6 +106,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // Privacy & safety
   { id: 'memory', label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'privacy' },
   { id: 'denied_paths', label: 'Denied Paths', description: 'Files and folders agents cannot touch', icon: Shield, group: 'privacy' },
+  { id: 'telemetry', label: 'Telemetry', description: 'How long local traces and metrics are kept', icon: Activity, group: 'privacy' },
   // About
   { id: 'about', label: 'About OpenAgentd', description: 'Version, updates and community', icon: Info, group: 'about' },
 ]

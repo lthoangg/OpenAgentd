@@ -129,13 +129,14 @@ export default defineConfig({
         },
       },
     },
-    // index chunk contains the whole app — shell, routes, Settings,
-    // Telemetry, the review dock and Markdown — so no surface waits on a
-    // chunk when it opens. Only KaTeX, PDF.js and xterm load on demand;
-    // Tauri/icons/motion are split into separate eager chunks. Measured:
-    // ~1898 kB minified / ~552 kB gzip. The limit sits just above it so any
-    // regression is visible in Vite output. check:budget enforces the actual
-    // eager graph and compressed-byte limits as a failing build check.
-    chunkSizeWarningLimit: 1950,
+    // The index chunk holds the shell, the transcript, the review dock and
+    // Markdown. Settings, Telemetry, the scheduler and MCP app results are
+    // lazy surfaces (src/lib/lazy-surface.tsx), prefetched while the app is
+    // idle after it starts so they still open at once; KaTeX, PDF.js and
+    // xterm load on first use. Tauri/icons/motion are separate eager chunks.
+    // Measured: ~1170 kB minified. The limit sits just above it so any
+    // regression is visible in Vite output; check:budget enforces the eager
+    // graph, its compressed size and the lazy surfaces as a failing check.
+    chunkSizeWarningLimit: 1200,
   },
 })

@@ -29,6 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/title-generation", get(get_title).put(put_title))
         .route("/workspace-messages", get(get_workspace_messages).put(put_workspace_messages))
         .route("/goals", get(get_goals).put(put_goals))
+        .route("/telemetry", get(get_telemetry).put(put_telemetry))
         .route("/multimodal", get(get_multimodal).put(put_multimodal))
         .route("/providers", get(list_providers))
         .route("/providers/usage-summary", get(usage_summary).put(|b: Bytes| save_provider_named("usage-summary".into(), b)))
@@ -331,6 +332,43 @@ async fn put_goals(raw: Bytes) -> ApiResult<Response> {
     }
     rs::save_runtime_settings(&cfg).map_err(internal)?;
     Ok(json(goals_json(&cfg.goals)))
+}
+
+// ── telemetry retention (v3 only) ───────────────────────────────────────────
+
+fn telemetry_json(t: &rs::TelemetrySettings) -> Value {
+    json!({
+        "retention_days": t.retention_days(),
+        "default_retention_days": rs::DEFAULT_TELEMETRY_RETENTION_DAYS,
+        "max_retention_days": rs::MAX_TELEMETRY_RETENTION_DAYS,
+    })
+}
+
+async fn get_telemetry() -> ApiResult<Response> {
+    let cfg = rs::load_runtime_settings().map_err(internal)?;
+    Ok(json(telemetry_json(&cfg.telemetry)))
+}
+
+/// `retention_days: 0` keeps telemetry forever; `null` restores the default.
+/// A new value is applied by sweeping right away, so lowering it frees space
+/// without a restart.
+async fn put_telemetry(raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let has = v.as_object().is_some_and(|o| o.contains_key("retention_days"));
+    let days = if has { Some(b.opt_int("retention_days")) } else { None };
+    b.finish(&["retention_days"])?;
+    if matches!(days, Some(Some(n)) if !(0..=rs::MAX_TELEMETRY_RETENTION_DAYS).contains(&n)) {
+        return Err(ApiError::unprocessable(format!("retention_days must be an integer from 0 (keep forever) to {} or null", rs::MAX_TELEMETRY_RETENTION_DAYS)));
+    }
+    let mut cfg = rs::load_runtime_settings().map_err(internal)?;
+    if let Some(n) = days {
+        cfg.telemetry.retention_days = n.filter(|n| *n != rs::DEFAULT_TELEMETRY_RETENTION_DAYS);
+        rs::save_runtime_settings(&cfg).map_err(internal)?;
+        tracing::info!("telemetry_retention_saved days={}", cfg.telemetry.retention_days());
+        appv3_core::otel::sweep_retention_now();
+    }
+    Ok(json(telemetry_json(&cfg.telemetry)))
 }
 
 // ── multimodal ──────────────────────────────────────────────────────────────

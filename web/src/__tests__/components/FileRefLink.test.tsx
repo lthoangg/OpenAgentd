@@ -103,6 +103,58 @@ describe('file references in Markdown', () => {
     fireEvent.click(screen.getByRole('link', { name: 'src/a.ts' }))
     expect(files.open).toHaveBeenCalledTimes(1)
   })
+
+  it.each(['DESIGN.md', 'docs/guide.mdx', '.agents/plans/x/mockup.html', 'site/index.htm'])(
+    'renders a code span naming the document %s as a plain link',
+    (path) => {
+      const files = opener()
+      const { container } = render(
+        <FileRefContext.Provider value={files}>
+          <MarkdownBlock content={`Read \`${path}\` first.`} />
+        </FileRefContext.Provider>,
+      )
+
+      expect(container.querySelector('code')).toBeNull()
+      expect(screen.queryByRole('button')).toBeNull()
+      fireEvent.click(screen.getByRole('link', { name: path }))
+      expect(files.open).toHaveBeenCalledWith({ path })
+    },
+  )
+
+  it('drops the code box from a document name inside a link', () => {
+    const files = opener()
+    const { container } = render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content="Read [`web/AGENTS.md`](web/AGENTS.md)." />
+      </FileRefContext.Provider>,
+    )
+
+    expect(container.querySelector('code')).toBeNull()
+    fireEvent.click(screen.getByRole('link', { name: 'web/AGENTS.md' }))
+    expect(files.open).toHaveBeenCalledWith({ path: 'web/AGENTS.md' })
+  })
+
+  it('shows a document it cannot open as plain text', () => {
+    const { container } = render(<MarkdownBlock content="Read `DESIGN.md` first." />)
+
+    expect(container.querySelector('code')).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(container.textContent).toContain('Read DESIGN.md first.')
+  })
+
+  it('keeps code spans for source files, document lines, and identifiers', () => {
+    const files = opener()
+    const { container } = render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content="See `src/app.ts:42`, `README.md:12`, and `config.enabled`." />
+      </FileRefContext.Provider>,
+    )
+
+    const codes = [...container.querySelectorAll('code')].map((c) => c.textContent)
+    expect(codes).toEqual(['src/app.ts:42', 'README.md:12', 'config.enabled'])
+    fireEvent.click(screen.getByRole('button', { name: 'README.md:12' }))
+    expect(files.open).toHaveBeenCalledWith({ path: 'README.md', line: 12 })
+  })
 })
 
 describe('local web links in Markdown', () => {

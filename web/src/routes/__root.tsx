@@ -4,10 +4,8 @@ import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { Seal } from '@/components/brand/Logo'
 import { Home } from 'lucide-react'
-import { SettingsModal } from '@/components/SettingsModal'
-import { PluginNotice } from '@/components/settings/pages/settings.plugins'
-import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
 import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
+import { lazySurface, prefetchSurfacesWhenIdle, useSurfaceMounted } from '@/lib/lazy-surface'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -32,6 +30,12 @@ const WidgetSnapshotSync = lazy(() =>
   import('@/hooks/use-widget-snapshot').then((module) => ({ default: module.WidgetSnapshotSync })),
 )
 
+// Settings and Telemetry stay out of the startup bundle; they load while the
+// app is idle after it starts (or when opened first), so they open at once.
+const SettingsModal = lazySurface(() => import('@/components/SettingsModal'), 'SettingsModal')
+const TelemetryOverlay = lazySurface(() => import('@/components/Telemetry/TelemetryOverlay'), 'TelemetryOverlay')
+const PluginNotice = lazySurface(() => import('@/components/settings/pages/settings.plugins'), 'PluginNotice')
+
 function widgetsSupported(): boolean {
   const { isTauri, os } = getPlatform()
   return isTauri && (os === 'ios' || os === 'android')
@@ -39,8 +43,21 @@ function widgetsSupported(): boolean {
 
 // Only v3 backends can answer the plugin status request the notice makes.
 function PluginNoticeGate() {
-  if (!useServerCapability(CAPABILITY.plugins)) return null
+  const supported = useServerCapability(CAPABILITY.plugins)
+  // A notice, not a screen: it can wait for the idle prefetch.
+  const mounted = useSurfaceMounted(false)
+  if (!supported || !mounted) return null
   return <PluginNotice />
+}
+
+function SettingsSurface() {
+  const open = useSettingsStore((s) => s.open)
+  return useSurfaceMounted(open) ? <SettingsModal /> : null
+}
+
+function TelemetrySurface() {
+  const open = useUIStore((s) => s.telemetryOpen)
+  return useSurfaceMounted(open) ? <TelemetryOverlay /> : null
 }
 
 export function Root() {
@@ -62,6 +79,8 @@ export function Root() {
   // it would override the user's preference.
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => prefetchSurfacesWhenIdle(), [])
 
   useEffect(() => {
     const target = window as Window & { __OAD_INITIAL_ROUTE__?: string }
@@ -106,8 +125,8 @@ export function Root() {
       <Suspense fallback={<RouteLoadingFallback />}>
         <Outlet />
       </Suspense>
-      <SettingsModal />
-      <TelemetryOverlay />
+      <SettingsSurface />
+      <TelemetrySurface />
       <KeyboardShortcutsSheet />
       <FloatingNotices />
     </QueryClientProvider>

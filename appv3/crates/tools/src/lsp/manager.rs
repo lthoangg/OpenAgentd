@@ -715,7 +715,12 @@ impl LspManager {
             return vec![];
         }
         let ts = ts_family(lang_id);
-        let diags = await_settled(client, uri, &event, if ts { 10.0 } else { 3.0 }, if ts { 1.0 } else { 0.25 }).await;
+        let current = || client.get_diagnostics(uri);
+        let diags = if ts {
+            await_settled(current, &event, Some(ts_problem_count(client, uri)), 10.0, 1.0).await
+        } else {
+            await_settled(current, &event, None::<std::future::Ready<Result<usize, String>>>, 3.0, 0.25).await
+        };
         if let Err(e) = client.close_document(uri).await {
             tracing::warn!("Failed to send didClose to LSP: {}", e);
         }
@@ -864,18 +869,84 @@ fn key_repr(k: &ClientKey) -> String {
     format!("({}, {}, {})", crate::py_repr_str(&k.0), crate::py_repr_str(&k.1), tuple)
 }
 
-async fn await_settled(client: &LspClient, uri: &str, event: &Event, overall: f64, settle: f64) -> Vec<Value> {
-    let deadline = Instant::now() + Duration::from_secs_f64(overall);
-    if tokio::time::timeout(Duration::from_secs_f64(overall), event.wait()).await.is_err() {
-        tracing::warn!("Timeout waiting for LSP diagnostics for {}", uri);
-        return client.get_diagnostics(uri);
+/// Ask a TypeScript server, through `typescript.tsserverRequest`, how many
+/// syntax and type errors and warnings the open file has. tsserver answers
+/// these synchronous requests only after checking the file, so the answer
+/// says when the check is done: a clean file needs no quiet-period wait.
+async fn ts_problem_count(client: &LspClient, uri: &str) -> Result<usize, String> {
+    let ask = |kind: &'static str| client.send_request("workspace/executeCommand", Some(json!({"command": "typescript.tsserverRequest", "arguments": [kind, {"file": uri}]})));
+    let (syntactic, semantic) = futures::future::join(ask("syntacticDiagnosticsSync"), ask("semanticDiagnosticsSync")).await;
+    Ok(ts_problems(&syntactic?)? + ts_problems(&semantic?)?)
+}
+
+/// Errors and warnings in a tsserver diagnostics response (suggestions are
+/// hints, which the report leaves out anyway).
+fn ts_problems(response: &Value) -> Result<usize, String> {
+    if response.get("success") != Some(&Value::Bool(true)) {
+        return Err("tsserver request failed".into());
     }
-    if !client.get_diagnostics(uri).is_empty() {
-        return client.get_diagnostics(uri);
+    let Some(Value::Array(body)) = response.get("body") else {
+        return Err("tsserver response has no diagnostics".into());
+    };
+    Ok(body.iter().filter(|d| matches!(d.get("category").and_then(Value::as_str), Some("error" | "warning"))).count())
+}
+
+/// Wait for the diagnostics of a just-opened document. Published problems
+/// return at once. A clean result is only final once the server has had time
+/// to publish late passes (TypeScript publishes syntax, then semantic
+/// diagnostics): with a `check` that reports when the server has checked the
+/// file, a clean answer returns as soon as it says so; without one (or if it
+/// fails) the result must stay quiet for `settle` seconds.
+async fn await_settled<B>(current: impl Fn() -> Vec<Value>, event: &Event, check: Option<B>, overall: f64, settle: f64) -> Vec<Value>
+where
+    B: std::future::Future<Output = Result<usize, String>>,
+{
+    let deadline = tokio::time::Instant::now() + Duration::from_secs_f64(overall);
+    let Some(check) = check else {
+        return await_quiet(&current, event, deadline, settle).await;
+    };
+    tokio::pin!(check);
+    let mut checked = false;
+    loop {
+        event.clear();
+        let diags = current();
+        if !diags.is_empty() {
+            return diags;
+        }
+        tokio::select! {
+            _ = event.wait() => {}
+            problems = &mut check, if !checked => {
+                checked = true;
+                match problems {
+                    Ok(0) => return current(),
+                    // Problems found: wait for the publish that carries them.
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::debug!("lsp_check_unavailable error={}", e);
+                        return await_quiet(&current, event, deadline, settle).await;
+                    }
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                tracing::warn!("Timeout waiting for LSP diagnostics");
+                return current();
+            }
+        }
+    }
+}
+
+/// The first publish, then `settle` seconds without a newer one.
+async fn await_quiet(current: &impl Fn() -> Vec<Value>, event: &Event, deadline: tokio::time::Instant, settle: f64) -> Vec<Value> {
+    if tokio::time::timeout_at(deadline, event.wait()).await.is_err() {
+        tracing::warn!("Timeout waiting for LSP diagnostics");
+        return current();
+    }
+    if !current().is_empty() {
+        return current();
     }
     loop {
         event.clear();
-        let remaining = deadline.saturating_duration_since(Instant::now());
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
             break;
         }
@@ -883,11 +954,11 @@ async fn await_settled(client: &LspClient, uri: &str, event: &Event, overall: f6
         if tokio::time::timeout(wait, event.wait()).await.is_err() {
             break;
         }
-        if !client.get_diagnostics(uri).is_empty() {
+        if !current().is_empty() {
             break;
         }
     }
-    client.get_diagnostics(uri)
+    current()
 }
 
 // ── report formatting ───────────────────────────────────────────────────────
@@ -1076,5 +1147,122 @@ mod tests {
         let r = format_diagnostics(&diags, Path::new("/w/a.py"), Path::new("/w")).unwrap();
         assert!(r.starts_with("[LSP Diagnostics]\n- a.py:4:5: error: boom (LSP)\n- a.py:1:1, 2:1"));
         assert!(r.ends_with("- …and 3 more in a.py"));
+    }
+
+    /// A fake server: publishes `diags` after `ms` milliseconds (paused time).
+    fn publish_after(store: &Arc<Mutex<Vec<Value>>>, event: &Arc<Event>, ms: u64, diags: Vec<Value>) {
+        let (store, event) = (store.clone(), event.clone());
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            *store.lock().unwrap() = diags;
+            event.set();
+        });
+    }
+
+    async fn check_after(ms: u64, answer: Result<usize, String>) -> Result<usize, String> {
+        tokio::time::sleep(Duration::from_millis(ms)).await;
+        answer
+    }
+
+    fn error_diag() -> Value {
+        json!({"severity": 1, "message": "Type 'string' is not assignable to type 'number'."})
+    }
+
+    /// Waits as the TypeScript path does, returning the result and how long it took.
+    async fn settle_ts(store: &Arc<Mutex<Vec<Value>>>, event: &Arc<Event>, check: impl std::future::Future<Output = Result<usize, String>>) -> (Vec<Value>, u128) {
+        let start = tokio::time::Instant::now();
+        let got = await_settled(|| store.lock().unwrap().clone(), event, Some(check), 10.0, 1.0).await;
+        (got, start.elapsed().as_millis())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_clean_typescript_file_returns_when_the_server_says_it_checked_it() {
+        let (store, event) = (Arc::new(Mutex::new(vec![])), Arc::new(Event::default()));
+        // A warm typescript-language-server answers the check before it
+        // publishes the empty result.
+        publish_after(&store, &event, 360, vec![]);
+        let (got, ms) = settle_ts(&store, &event, check_after(30, Ok(0))).await;
+        assert!(got.is_empty());
+        assert_eq!(ms, 30, "no quiet-period wait after a clean check");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_broken_typescript_file_still_reports_its_error() {
+        let (store, event) = (Arc::new(Mutex::new(vec![])), Arc::new(Event::default()));
+        // The syntax pass publishes nothing; the type error arrives later.
+        publish_after(&store, &event, 100, vec![]);
+        publish_after(&store, &event, 650, vec![error_diag()]);
+        let (got, ms) = settle_ts(&store, &event, check_after(600, Ok(1))).await;
+        assert_eq!(got, vec![error_diag()]);
+        assert_eq!(ms, 650);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_late_error_on_a_cold_server_is_still_caught() {
+        let (store, event) = (Arc::new(Mutex::new(vec![])), Arc::new(Event::default()));
+        // A cold project: the first empty publish comes early, the check takes
+        // seconds, and the error is published well past the 1 s quiet period.
+        publish_after(&store, &event, 200, vec![]);
+        publish_after(&store, &event, 5_200, vec![error_diag()]);
+        let (got, _) = settle_ts(&store, &event, check_after(5_100, Ok(1))).await;
+        assert_eq!(got, vec![error_diag()]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_server_without_the_check_falls_back_to_the_quiet_period() {
+        let (store, event) = (Arc::new(Mutex::new(vec![])), Arc::new(Event::default()));
+        publish_after(&store, &event, 300, vec![]);
+        let (got, ms) = settle_ts(&store, &event, check_after(5, Err("Unknown command".into()))).await;
+        assert!(got.is_empty());
+        assert_eq!(ms, 1_300, "first publish, then 1 s of quiet");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn problems_that_are_never_published_end_at_the_deadline() {
+        let (store, event) = (Arc::new(Mutex::new(vec![])), Arc::new(Event::default()));
+        let (got, ms) = settle_ts(&store, &event, check_after(50, Ok(2))).await;
+        assert!(got.is_empty());
+        assert_eq!(ms, 10_000);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn other_languages_keep_the_quiet_period() {
+        let (store, event) = (Arc::new(Mutex::new(vec![])), Arc::new(Event::default()));
+        publish_after(&store, &event, 100, vec![]);
+        let start = tokio::time::Instant::now();
+        let got = await_settled(|| store.lock().unwrap().clone(), &event, None::<std::future::Ready<Result<usize, String>>>, 3.0, 0.25).await;
+        assert!(got.is_empty());
+        assert_eq!(start.elapsed().as_millis(), 350);
+    }
+
+    #[test]
+    fn tsserver_responses_count_errors_and_warnings_only() {
+        let body = json!({"success": true, "body": [{"category": "error"}, {"category": "warning"}, {"category": "suggestion"}, {"category": "message"}]});
+        assert_eq!(ts_problems(&body), Ok(2));
+        assert_eq!(ts_problems(&json!({"success": true, "body": []})), Ok(0));
+        assert!(ts_problems(&json!({"success": false, "message": "Unknown command"})).is_err());
+        assert!(ts_problems(&Value::Null).is_err());
+    }
+
+    /// Against a real `typescript-language-server`, in a throwaway project:
+    /// `OAD_TS_PROBE=<project>/a.ts cargo test -p appv3-tools --lib real_typescript -- --ignored --nocapture`
+    /// (the folder needs a `tsconfig.json` and `node_modules/typescript`).
+    #[tokio::test]
+    #[ignore]
+    async fn real_typescript_server_reports_errors_and_skips_the_wait_when_clean() {
+        let file = PathBuf::from(std::env::var("OAD_TS_PROBE").expect("OAD_TS_PROBE=<file.ts>"));
+        let root = file.parent().unwrap().to_path_buf();
+        let clean = std::fs::read_to_string(&file).unwrap();
+        let broken = format!("{clean}\nexport const probe: number = \"text\";\n");
+        for (label, text, expect_error) in
+            [("cold clean", &clean, false), ("warm clean", &clean, false), ("warm broken", &broken, true), ("warm clean", &clean, false), ("warm broken", &broken, true)]
+        {
+            std::fs::write(&file, text).unwrap();
+            let started = std::time::Instant::now();
+            let report = check_lsp_diagnostics(&file, &root).await;
+            println!("{label}: {} ms, report: {}", started.elapsed().as_millis(), report.as_deref().unwrap_or("none").replace('\n', " | "));
+            assert_eq!(report.as_deref().is_some_and(|r| r.contains("not assignable")), expect_error, "{label}");
+        }
+        std::fs::write(&file, &clean).unwrap();
     }
 }

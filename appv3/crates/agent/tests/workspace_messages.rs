@@ -6,9 +6,11 @@
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::manager;
+use appv3_agent::tools::workspace::WorkspaceTool;
 use appv3_agent::workspace_messages::{self as wm, Delivery, SendRequest};
 use appv3_providers::mock::{MockProvider, MockTurn};
 use appv3_providers::{LlmProvider, ProviderError};
+use appv3_tools::{Tool, ToolContext};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
@@ -113,6 +115,7 @@ async fn send_reply_retry_and_guards() {
         session_id,
         reply,
         mode: mode.map(String::from),
+        delivery: Default::default(),
     };
 
     // ── 0. groups scope the sends ───────────────────────────────────────
@@ -194,9 +197,27 @@ async fn send_reply_retry_and_guards() {
     assert!(e.contains("is this session"), "{e}");
     let e = wm::send(&pool, send("infra", "x", Some(uuid::Uuid::now_v7().to_string()), false, None)).await.unwrap_err();
     assert!(e.contains("not found"), "{e}");
-    let continued = wm::send(&pool, send("infra", "And a dead-letter queue.", Some(infra_sid.clone()), false, None)).await.unwrap();
-    assert_eq!(continued.delivery, Delivery::Delivered);
+    // A follow-up through the tool, with the arguments a GPT model sends:
+    // it fills every enum, so `mode` comes along with `session_id`. The
+    // session keeps its mode and the call goes through instead of looping on
+    // a rejection.
+    let tool = WorkspaceTool::new(app_sid.clone(), pool.clone());
+    let c = ToolContext {
+        session_id: Some(app_sid.clone()),
+        agent_name: "code".into(),
+        tool_call_id: "c1".into(),
+        denied: Arc::new(appv3_tools::DeniedPaths::with(Path::new(&app_ws), None, Some(vec![]), Some(vec![]))),
+        workspace: Some(app_ws.clone()),
+        output: None,
+        metadata: Default::default(),
+        messages: None,
+    };
+    let args = json!({"action": "send", "workspace": "infra", "message": "And a dead-letter queue.", "session_id": infra_sid, "reply": false, "mode": "code"});
+    let out = format!("{:?}", tool.run(&c, args).await.expect("a follow-up with mode set is accepted"));
+    assert!(out.contains(&format!("delivered to session {infra_sid}")), "{out}");
+    assert!(out.contains("mode applies to new sessions only"), "the result says the mode was not changed: {out}");
     wait_turn(&infra_ws, &infra_sid).await;
+    assert_eq!(appv3_db::get_session(&pool, &infra_sid).await.unwrap().unwrap().interaction_mode, "code");
     let e = wm::send(&pool, send("app", "x", Some(infra_sid.clone()), false, None)).await.unwrap_err();
     assert!(e.contains("belongs to workspace"), "{e}");
     // A request that already crossed three workspaces goes no further.

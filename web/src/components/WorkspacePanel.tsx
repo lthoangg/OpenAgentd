@@ -79,8 +79,8 @@ import { GoalTabView } from './WorkspacePanel/GoalTabView'
 import { AttachmentTabView } from './WorkspacePanel/AttachmentTabView'
 import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
-import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
+import { lazySurface } from '@/lib/lazy-surface'
 import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
@@ -108,6 +108,9 @@ import {
   basename,
   resolveFileTabInfo,
 } from './WorkspacePanel/dock-tabs'
+
+// Kept out of the startup bundle; prefetched while the app is idle.
+const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 

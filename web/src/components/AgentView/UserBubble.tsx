@@ -65,6 +65,11 @@ const ESTIMATE_CHARS_PER_LINE = 80
 /** Narrower than any real bubble: a hidden or collapsed chat column, not a layout. */
 const MIN_MEASURABLE_WIDTH = 120
 
+/** The most lines `text` can wrap to in the narrowest bubble (6 wide glyphs a line). */
+function maxWrappedLines(text: string): number {
+  return text.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / 6)), 0)
+}
+
 function estimateWrappedLines(text: string): number {
   return text.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / ESTIMATE_CHARS_PER_LINE)), 0)
 }
@@ -76,9 +81,10 @@ function estimateWrappedLines(text: string): number {
  */
 function useRenderedLines(ref: React.RefObject<HTMLElement | null>, text: string): number | null {
   const [lines, setLines] = useState<number | null>(null)
+  const mayFold = maxWrappedLines(text) > USER_COLLAPSE_AFTER_LINES
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el) return
+    if (!el || !mayFold) return
     const measure = () => {
       const lineHeight = parseFloat(getComputedStyle(el).lineHeight)
       // A zero-width column wraps one character per line; keep the last
@@ -91,8 +97,8 @@ function useRenderedLines(ref: React.RefObject<HTMLElement | null>, text: string
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [ref, text])
-  return lines
+  }, [ref, text, mayFold])
+  return mayFold ? lines : null
 }
 
 /** Opens a session in any workspace (the sender or the replier of a workspace message). */

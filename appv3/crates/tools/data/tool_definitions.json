@@ -215,7 +215,7 @@
     "type": "function",
     "function": {
       "name": "shell",
-      "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags for commands that may prompt. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. Prefer file tools for file operations: do NOT use shell commands ('cat', 'head', 'sed', 'awk') for file inspection or editing when read and patch apply. Never run interactive pagers or prompts (use --no-pager, -y, -q). Environment: Darwin arm64, shell=zsh.",
+      "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: Darwin arm64, shell=zsh.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -630,15 +630,16 @@
     "type": "function",
     "function": {
       "name": "workspace",
-      "description": "Send a message to an agent session in another workspace that shares a group with this one (a related repo, a worktree of this repo, or Chat, which every workspace can reach). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces you can message under their groups, with each group's brief describing its repos, or one workspace's recent sessions.",
+      "description": "Send a message to an agent session in another workspace that shares a group with this one (a related repo, a worktree of this repo, or Chat, which every workspace can reach). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces you can message under their groups, with each group's brief describing its repos, or one workspace's recent sessions. When the user asks to group repos, action='set_groups' proposes groups for one registered repo to join or leave, and a group's brief; the user applies it on a card.",
       "parameters": {
         "type": "object",
         "properties": {
           "action": {
-            "description": "'send' (default) or 'list'.",
+            "description": "'send' (default), 'list' or 'set_groups'.",
             "enum": [
               "send",
-              "list"
+              "list",
+              "set_groups"
             ],
             "type": "string",
             "default": "send"
@@ -646,7 +647,28 @@
           "workspace": {
             "type": "string",
             "default": null,
-            "description": "Target workspace name or absolute path (required for send); it must share a group with this workspace, or be Chat. With action='list', lists that workspace's recent sessions."
+            "description": "Target workspace name or absolute path (required for send and set_groups); for send it must share a group with this workspace, or be Chat. With action='list', lists that workspace's recent sessions."
+          },
+          "join": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": null,
+            "description": "[set_groups] Group names to join; a new name creates the group."
+          },
+          "leave": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": null,
+            "description": "[set_groups] Group names to leave."
+          },
+          "brief": {
+            "type": "string",
+            "default": null,
+            "description": "[set_groups, one name in join] That group's brief for its agents, e.g. 'api = Rust backend, web = Next.js'; '' clears it."
           },
           "message": {
             "type": "string",
@@ -656,7 +678,17 @@
           "session_id": {
             "type": "string",
             "default": null,
-            "description": "[send] Continue this existing session in the target workspace (from list); omit to start a new session. A busy session queues the message."
+            "description": "[send] Continue this existing session in the target workspace (from list); omit to start a new session. A busy session is handled per `delivery`."
+          },
+          "delivery": {
+            "enum": [
+              "steer",
+              "queue",
+              "stop_and_send"
+            ],
+            "type": "string",
+            "default": null,
+            "description": "[send, with session_id] How a busy session gets it: 'steer' (default) read before its next step; 'queue' its own turn after the current one; 'stop_and_send' stops its running turn first (may be the user's own work: only if that work is wrong or obsolete)."
           },
           "reply": {
             "type": "boolean",
@@ -670,7 +702,7 @@
             ],
             "type": "string",
             "default": null,
-            "description": "[send, new session] 'plan' makes the target plan first and wait for the user's approval."
+            "description": "[send, new sessions only] 'plan' makes the target plan first and wait for the user's approval."
           }
         },
         "required": []

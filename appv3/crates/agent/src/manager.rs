@@ -44,6 +44,11 @@ pub fn pool() -> DbPool {
     mgr().pool.clone()
 }
 
+/// [`pool`], or `None` before the manager starts (unit tests).
+pub fn try_pool() -> Option<DbPool> {
+    MANAGER.get().map(|m| m.pool.clone())
+}
+
 pub fn provider_factory() -> ProviderFactory {
     mgr().factory.clone()
 }

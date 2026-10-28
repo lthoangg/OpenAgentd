@@ -86,10 +86,13 @@ function workspaceMediaResolver(workspace: string, filePath: string): (src: stri
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
 
-/** Show leading YAML front matter as a code block instead of a stray rule and heading. */
-function frontmatterAsCode(text: string): string {
+/**
+ * Drop leading YAML front matter from the rendered view: it is metadata, and
+ * unstripped it renders as a stray rule and heading. The Source view keeps it.
+ */
+function stripFrontmatter(text: string): string {
   const match = FRONTMATTER.exec(text)
-  return match ? `\`\`\`yaml\n${match[1]}\n\`\`\`\n${text.slice(match[0].length)}` : text
+  return match ? text.slice(match[0].length) : text
 }
 
 export function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
@@ -437,7 +440,7 @@ function TextPreview({
   const highlightedLines = asyncLines && asyncLines.content === source ? asyncLines.lines : syncLines
 
   const resolveMediaSrc = useMemo(() => workspaceMediaResolver(workspace, file.path), [workspace, file.path])
-  const markdown = useMemo(() => (rendered && content !== null ? frontmatterAsCode(content) : null), [rendered, content])
+  const markdown = useMemo(() => (rendered && content !== null ? stripFrontmatter(content) : null), [rendered, content])
 
   // A clicked ``path:line`` or ``path:start-end`` selects those lines and
   // centres them, once loaded. A rendered markdown file leaves the request

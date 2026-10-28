@@ -35,6 +35,13 @@ describe('parseFileRef — a whole code span', () => {
     expect(parseFileRef('./web/src/App.tsx')).toEqual({ path: './web/src/App.tsx' })
   })
 
+  it('reads paths through dot folders such as .agents and .github', () => {
+    expect(parseFileRef('.agents/plans/x/mockup.html')).toEqual({ path: '.agents/plans/x/mockup.html' })
+    expect(parseFileRef('web/.github/ci.yml:3')).toEqual({ path: 'web/.github/ci.yml', line: 3 })
+    expect(parseFileRef('../.config/a.ts')).toEqual({ path: '../.config/a.ts' })
+    expect(parseFileRef('.../a.ts')).toBeNull()
+  })
+
   it('reads a line range, as start-end or a GitHub anchor', () => {
     expect(parseFileRef('src/a.ts:12-18')).toEqual({ path: 'src/a.ts', line: 12, endLine: 18 })
     expect(parseFileRef('src/a.ts:12–18')).toEqual({ path: 'src/a.ts', line: 12, endLine: 18 })

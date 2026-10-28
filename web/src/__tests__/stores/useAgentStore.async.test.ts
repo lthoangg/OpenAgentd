@@ -2408,6 +2408,7 @@ describe("loadSession", () => {
             makeMessageResponse({ id: "report", role: "user", content: "[Report from explorer#1]: done", kind: "queued", extra: { queue_status: "queued", from_agent: "explorer#1" } }),
             makeMessageResponse({ id: "routed", role: "user", content: "old format", kind: "queued", extra: { queue_status: "queued", routing: { from_agents: ["worker"] } } }),
             makeMessageResponse({ id: "prompt", role: "user", content: "please look", kind: "queued", extra: { queue_status: "queued", sent_from: { workspace_name: "api", workspace: "/api", session_id: "s-api" } } }),
+            makeMessageResponse({ id: "held", role: "user", content: "then deploy", kind: "queued", extra: { queue_status: "queued", hold_until_turn_end: true, sent_from: { workspace_name: "api", workspace: "/api", session_id: "s-api" } } }),
             makeMessageResponse({ id: "steer", role: "user", content: "my steer", kind: "queued", extra: { queue_status: "queued" } }),
           ],
         },
@@ -2420,8 +2421,9 @@ describe("loadSession", () => {
     await useAgentStore.getState().loadSession("sess-1")
 
     const pending = useAgentStore.getState()._pendingMessages
-    expect(pending.map((msg) => msg.id)).toEqual(["prompt", "steer"])
+    expect(pending.map((msg) => msg.id)).toEqual(["prompt", "held", "steer"])
     expect(pending[0].sentFromWorkspace).toBe("api")
+    expect(pending.map((msg) => msg.heldUntilTurnEnd)).toEqual([undefined, true, undefined])
   })
 
   it("shows a queued report the lead reads as that agent's report, not as the user's message", async () => {

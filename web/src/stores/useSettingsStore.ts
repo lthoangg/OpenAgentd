@@ -29,6 +29,7 @@ export type SettingsSection =
   | 'providers'
   | 'denied_paths'
   | 'memory'
+  | 'telemetry'
   | 'plugins'
   // The former Automation page, split into one page per job.
   | 'workspaces'

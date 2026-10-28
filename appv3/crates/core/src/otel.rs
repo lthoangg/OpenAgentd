@@ -911,13 +911,6 @@ fn int_env(name: &str, default: i64, min: i64) -> i64 {
     }
 }
 
-fn retention_enabled() -> bool {
-    match crate::settings::env_var("OPENAGENTD_OTEL_RETENTION_ENABLED") {
-        None => true,
-        Some(raw) => ["1", "true", "yes", "on"].contains(&raw.trim().to_lowercase().as_str()),
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct SweepResult {
     pub scanned: u64,
@@ -967,34 +960,31 @@ pub fn sweep_old_partitions(root: &Path, max_age_days: i64, now: Option<f64>) ->
     r
 }
 
-/// Default retention for span and metric partitions, in days.
-const DEFAULT_SPAN_RETENTION_DAYS: i64 = 90;
-const DEFAULT_METRIC_RETENTION_DAYS: i64 = 90;
-
-fn span_retention_days() -> i64 {
-    int_env("OPENAGENTD_OTEL_SPAN_RETENTION_DAYS", DEFAULT_SPAN_RETENTION_DAYS, 1)
+/// Days spans and metrics are kept: the `telemetry.retention_days` setting,
+/// where 0 keeps them forever. Read on every sweep, so a change in Settings
+/// applies without a restart.
+fn retention_days() -> i64 {
+    crate::runtime_settings::telemetry_settings().retention_days()
 }
 
-fn metric_retention_days() -> i64 {
-    int_env("OPENAGENTD_OTEL_METRIC_RETENTION_DAYS", DEFAULT_METRIC_RETENTION_DAYS, 1)
-}
-
-/// One retention pass over spans and metrics.
+/// One retention pass over spans and metrics (nothing when retention is 0).
 pub fn run_retention_once(otel_dir: Option<&Path>) -> (SweepResult, SweepResult) {
     let base = otel_dir.map(Path::to_path_buf).unwrap_or_else(|| crate::settings().state_dir.join("otel"));
-    let span_days = span_retention_days();
-    let metric_days = metric_retention_days();
-    let s = sweep_old_partitions(&base.join("spans"), span_days, None);
-    let m = sweep_old_partitions(&base.join("metrics"), metric_days, None);
+    let days = retention_days();
+    if days <= 0 {
+        tracing::debug!("otel_retention_off keep_forever");
+        return (SweepResult::default(), SweepResult::default());
+    }
+    let s = sweep_old_partitions(&base.join("spans"), days, None);
+    let m = sweep_old_partitions(&base.join("metrics"), days, None);
     if s.deleted > 0 || m.deleted > 0 {
         tracing::info!(
-            "otel_retention_swept spans_deleted={} spans_bytes={} metrics_deleted={} metrics_bytes={} span_days={} metric_days={}",
+            "otel_retention_swept spans_deleted={} spans_bytes={} metrics_deleted={} metrics_bytes={} days={}",
             s.deleted,
             s.bytes_freed,
             m.deleted,
             m.bytes_freed,
-            span_days,
-            metric_days
+            days
         );
     } else {
         tracing::debug!("otel_retention_swept nothing_to_delete spans_scanned={} metrics_scanned={}", s.scanned, m.scanned);
@@ -1007,12 +997,9 @@ fn retention_task() -> &'static Mutex<Option<tokio::task::JoinHandle<()>>> {
     T.get_or_init(|| Mutex::new(None))
 }
 
-/// `start_otel_retention` — one sweep now, then every interval.
+/// `start_otel_retention` — one sweep now, then every interval. It always
+/// runs; a retention of 0 makes each pass a no-op.
 pub fn start_retention() {
-    if !retention_enabled() {
-        tracing::info!("otel_retention_disabled");
-        return;
-    }
     let mut g = retention_task().lock().unwrap();
     if g.as_ref().map(|t| !t.is_finished()).unwrap_or(false) {
         return;
@@ -1026,13 +1013,21 @@ pub fn start_retention() {
             tokio::time::sleep(Duration::from_secs(hours as u64 * 3600)).await;
         }
     }));
-    tracing::info!("otel_retention_started span_days={} metric_days={} interval_h={}", span_retention_days(), metric_retention_days(), hours);
+    tracing::info!("otel_retention_started days={} interval_h={}", retention_days(), hours);
 }
 
 pub fn stop_retention() {
     if let Some(t) = retention_task().lock().unwrap().take() {
         t.abort();
     }
+}
+
+/// Run one sweep in the background now (after the retention setting
+/// changes). Needs a Tokio runtime.
+pub fn sweep_retention_now() {
+    tokio::task::spawn_blocking(|| {
+        run_retention_once(None);
+    });
 }
 
 #[cfg(test)]

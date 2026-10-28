@@ -2,6 +2,7 @@
 //! HTTP servers with an `oauth` block run the MCP SDK OAuth flow
 //! (`oauth.rs`), sharing `{CACHE_DIR}/mcp-oauth/<name>.json` with v2.
 
+pub mod admin;
 pub mod client;
 pub mod config;
 pub mod hub;
@@ -507,6 +508,10 @@ pub fn mcp_manager() -> Arc<McpManager> {
     M.get_or_init(|| {
         let m = Arc::new(McpManager::default());
         appv3_agent::loader::set_mcp_source(m.clone());
+        // Changes confirmed on a card apply to the global manager.
+        for ty in [admin::SAVE_CHANGE, admin::REMOVE_CHANGE] {
+            appv3_agent::confirm::register_applier(ty, Arc::new(|_pool, change| Box::pin(async move { admin::apply(&mcp_manager(), &change).await })));
+        }
         m
     })
     .clone()

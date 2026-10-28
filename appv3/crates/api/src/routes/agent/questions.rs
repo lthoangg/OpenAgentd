@@ -164,6 +164,9 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
         let keep_going = parse_keep_going(&b)?;
         return answer_plan_review(&st.pool, &sid, &qid, &row, &answers, keep_going).await;
     }
+    if row.kind().as_deref() == Some(appv3_agent::confirm::CONFIRM_KIND) {
+        return answer_confirm_change(&st.pool, &sid, &qid, &row, &answers).await;
+    }
     validate_answers(&row.questions(), &answers, MAX_ANSWER_CHARS)?;
     let av = json!(answers);
     if db::resolve_pending_question(&st.pool, &qid, "answered", Some(&av)).await?.is_none() {
@@ -175,6 +178,22 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
         end_turn(&sid);
     }
     tracing::info!("question_answered session_id={} question_id={} resumed={}", sid, qid, resumed);
+    Ok(json(json!({"status": "ok", "resumed": resumed})))
+}
+
+/// Close a confirmation card: **Apply** runs its stored change on the
+/// server (never the agent), then the turn resumes with the outcome.
+async fn answer_confirm_change(pool: &DbPool, sid: &str, qid: &str, row: &db::PendingQuestion, answers: &[Vec<String>]) -> ApiResult<Response> {
+    validate_answers(&row.questions(), answers, appv3_agent::confirm::MAX_ANSWER_CHARS)?;
+    let Some(_) = appv3_agent::confirm::answer(pool, sid, qid, answers).await.map_err(ApiError::internal)? else {
+        return Err(ApiError::conflict("Question already resolved."));
+    };
+    store().push_event(sid, &events::question_answered(qid, sid, &json!(answers)), true);
+    let resumed = resume_agent(pool, sid).await;
+    if !resumed {
+        end_turn(sid);
+    }
+    tracing::info!("confirm_change_answer_handled session_id={} question_id={} resumed={}", sid, qid, resumed);
     Ok(json(json!({"status": "ok", "resumed": resumed})))
 }
 

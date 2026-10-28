@@ -505,6 +505,7 @@ pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
     if settings().is_chat_workspace(Some(workspace)) {
         return None;
     }
+    let started = std::time::Instant::now();
     let gitdir = snapshot_dir(session_id);
     let key = (session_id.to_string(), resolve(workspace));
     let l = lock(session_id);
@@ -530,7 +531,7 @@ pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
     if n % MAINTENANCE_INTERVAL == 0 && is_available() {
         maintain_repo(&gitdir).await;
     }
-    tracing::debug!("snapshot_tracked session_id={} hash={}", session_id, hash);
+    tracing::debug!("snapshot_tracked session_id={} hash={} elapsed_ms={}", session_id, hash, started.elapsed().as_millis());
     Some(hash)
 }
 
@@ -726,14 +727,25 @@ pub fn forget_lock(session_id: &str) {
 /// v2 `_promote_queued`: snapshot the session workspace (only when queued rows
 /// exist) and promote every queued row, stamping the snapshot on each.
 pub async fn release_queued(pool: &appv3_db::DbPool, session_id: &str) -> anyhow::Result<Vec<appv3_db::SessionMessage>> {
+    release_queued_with(pool, session_id, true).await
+}
+
+/// What a running turn reads before its next step: [`release_queued`]
+/// without the rows held until the turn ends.
+pub async fn release_queued_steers(pool: &appv3_db::DbPool, session_id: &str) -> anyhow::Result<Vec<appv3_db::SessionMessage>> {
+    release_queued_with(pool, session_id, false).await
+}
+
+async fn release_queued_with(pool: &appv3_db::DbPool, session_id: &str, include_held: bool) -> anyhow::Result<Vec<appv3_db::SessionMessage>> {
     let mut snap = None;
-    if appv3_db::has_queued_user_messages(pool, session_id).await? {
+    let any = if include_held { appv3_db::has_queued_user_messages(pool, session_id).await? } else { appv3_db::has_queued_steers(pool, session_id).await? };
+    if any {
         if let Some(row) = appv3_db::get_session(pool, session_id).await? {
             let ws = crate::session::session_workspace_dir(session_id, Some(&row.workspace));
             snap = track(session_id, &ws).await;
         }
     }
-    appv3_db::release_queued_user_messages(pool, session_id, snap.as_deref()).await
+    appv3_db::release_queued_user_messages_with(pool, session_id, snap.as_deref(), include_held).await
 }
 
 // ── Retention sweep (port of `snapshot_maintenance.py`) ─────────────────────

@@ -169,6 +169,34 @@ export async function updateGoalSettings(body: GoalSettingsUpdate): Promise<Goal
   return res.json()
 }
 
+export type TelemetrySettings = {
+  /** Days local traces and metrics are kept before the daily sweep deletes them. */
+  retention_days: number
+  default_retention_days: number
+  max_retention_days: number
+}
+
+/** ``retention_days: null`` restores the default. */
+export type TelemetrySettingsUpdate = {
+  retention_days: number | null
+}
+
+export async function getTelemetrySettings(): Promise<TelemetrySettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/telemetry`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/telemetry')
+  return res.json()
+}
+
+export async function updateTelemetrySettings(body: TelemetrySettingsUpdate): Promise<TelemetrySettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/telemetry`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/telemetry')
+  return res.json()
+}
+
 export type MultimodalSectionSettings = {
   model: string
   [key: string]: string | number | boolean | null

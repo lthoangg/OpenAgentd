@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { CommandPalette, QuickOpen } from '../CommandPalette'
-import { SchedulerPanel } from '../SchedulerPanel'
+import { lazySurface } from '@/lib/lazy-surface'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
 import type { SessionGoal, SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
+
+// Kept out of the startup bundle; prefetched while the app is idle.
+const SchedulerPanel = lazySurface(() => import('../SchedulerPanel'), 'SchedulerPanel')
 
 /** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
 function useOpenedOnce(open: boolean): boolean {

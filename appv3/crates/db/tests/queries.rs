@@ -360,6 +360,38 @@ async fn queued_messages_promote_to_tail() {
     assert_eq!(win.last().unwrap().snapshot().as_deref(), Some("snap1"));
 }
 
+/// A message held until the turn ends is skipped by a running turn's read,
+/// released with everything else at turn end, and appended at the tail (no
+/// earlier row moves). The hold flag is gone once it is in history.
+#[tokio::test]
+async fn held_messages_wait_for_the_turn_to_end() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    save_message(&pool, &s.id, NewMessage::user("first")).await.unwrap();
+    async fn held(pool: &appv3_db::DbPool, sid: &str, text: &str) {
+        let mut extra = serde_json::Map::new();
+        extra.insert(HOLD_UNTIL_TURN_END.into(), serde_json::json!(true));
+        save_queued_user_message(pool, sid, text, Some(extra)).await.unwrap();
+    }
+    held(&pool, &s.id, "held one").await;
+    assert!(has_queued_user_messages(&pool, &s.id).await.unwrap());
+    assert!(!has_queued_steers(&pool, &s.id).await.unwrap());
+    assert!(release_queued_user_messages_with(&pool, &s.id, None, false).await.unwrap().is_empty());
+    // A steer sent after the held message is the only one a running turn reads.
+    save_queued_user_message(&pool, &s.id, "steer", None).await.unwrap();
+    assert!(has_queued_steers(&pool, &s.id).await.unwrap());
+    let read = release_queued_user_messages_with(&pool, &s.id, None, false).await.unwrap();
+    assert_eq!(read.iter().map(|r| r.content.clone().unwrap()).collect::<Vec<_>>(), ["steer"]);
+    let before: Vec<_> = llm_window_rows(&pool, &s.id, true).await.unwrap().into_iter().map(|r| (r.id, r.seq, r.content)).collect();
+    held(&pool, &s.id, "held two").await;
+    let released = release_queued_user_messages(&pool, &s.id, None).await.unwrap();
+    assert_eq!(released.iter().map(|r| r.content.clone().unwrap()).collect::<Vec<_>>(), ["held one", "held two"]);
+    assert!(released.iter().all(|r| r.extra_json().is_none_or(|e| e.get(HOLD_UNTIL_TURN_END).is_none())));
+    let after: Vec<_> = llm_window_rows(&pool, &s.id, true).await.unwrap().into_iter().map(|r| (r.id, r.seq, r.content)).collect();
+    assert_eq!(&after[..before.len()], &before[..], "an earlier row moved");
+    assert_eq!(after.len(), before.len() + 2);
+}
+
 /// `n` assistant rows, as one long agent run writes them.
 async fn save_steps(pool: &appv3_db::DbPool, sid: &str, n: usize) {
     for i in 0..n {

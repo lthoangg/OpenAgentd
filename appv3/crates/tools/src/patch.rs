@@ -69,8 +69,23 @@ pub fn parse_patch(patch_text: &str) -> Result<Vec<FilePatch>, ToolError> {
     if lines.last() == Some(&"") {
         lines.pop();
     }
-    if lines.is_empty() || lines[0].trim() != "*** Begin Patch" || lines[lines.len() - 1].trim() != "*** End Patch" {
+    if lines.is_empty() {
         return Err(verr("Patch must start with '*** Begin Patch' and end with '*** End Patch'."));
+    }
+    // Name the missing marker and quote where the text starts or stops, so a
+    // model that dropped one resends the whole patch rather than guessing.
+    let quote = |l: &str| l.trim().chars().take(80).collect::<String>();
+    if lines[0].trim() != "*** Begin Patch" {
+        return Err(verr(format!(
+            "patch_text does not start with '*** Begin Patch'; it starts with: `{}`. Resend the whole patch with '*** Begin Patch' as its first line.",
+            quote(lines[0])
+        )));
+    }
+    if lines[lines.len() - 1].trim() != "*** End Patch" {
+        return Err(verr(format!(
+            "patch_text has no closing '*** End Patch' line; it ends with: `{}`. Resend the whole patch with '*** End Patch' as its last line, and split very large patches into several calls.",
+            quote(lines[lines.len() - 1])
+        )));
     }
     let mut patches: Vec<FilePatch> = vec![];
     let mut chunk: Option<Chunk> = None;
@@ -862,6 +877,24 @@ mod tests {
         assert!(e.to_string().starts_with("Could not find patch context in b.txt."));
         apply_patch(&d, "*** Begin Patch\n*** Delete File: b.txt\n*** End Patch").unwrap();
         assert!(!t.path().join("b.txt").exists());
+    }
+
+    /// A patch without its closing marker (cut off mid-hunk) says
+    /// which marker is missing and where the text stopped, so the model can
+    /// resend it whole instead of guessing.
+    #[test]
+    fn a_missing_envelope_marker_is_named() {
+        let t = tempfile::tempdir().unwrap();
+        let d = dp(t.path());
+        std::fs::write(t.path().join("a.txt"), "one\n").unwrap();
+        let e = apply_patch(&d, "*** Begin Patch\n*** Update File: a.txt\n@@\n-one\n+uno").unwrap_err().to_string();
+        assert!(e.contains("no closing '*** End Patch' line"), "{e}");
+        assert!(e.contains("it ends with: `+uno`"), "{e}");
+        assert!(e.contains("split very large patches"), "{e}");
+        let e = apply_patch(&d, "*** Update File: a.txt\n@@\n-one\n+uno\n*** End Patch").unwrap_err().to_string();
+        assert!(e.contains("does not start with '*** Begin Patch'"), "{e}");
+        assert!(e.contains("it starts with: `*** Update File: a.txt`"), "{e}");
+        assert_eq!(std::fs::read_to_string(t.path().join("a.txt")).unwrap(), "one\n", "nothing was written");
     }
 
     #[test]

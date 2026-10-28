@@ -16,10 +16,12 @@ use std::sync::OnceLock;
 const BUNDLED: &[(&str, &str)] = &[
     ("self-healing/SKILL.md", include_str!("../data/builtin_skills/self-healing/SKILL.md")),
     ("self-healing/references/agents.md", include_str!("../data/builtin_skills/self-healing/references/agents.md")),
+    ("self-healing/references/commands.md", include_str!("../data/builtin_skills/self-healing/references/commands.md")),
     ("self-healing/references/mcp.md", include_str!("../data/builtin_skills/self-healing/references/mcp.md")),
     ("self-healing/references/media.md", include_str!("../data/builtin_skills/self-healing/references/media.md")),
     ("self-healing/references/plugins.md", include_str!("../data/builtin_skills/self-healing/references/plugins.md")),
     ("self-healing/references/skills.md", include_str!("../data/builtin_skills/self-healing/references/skills.md")),
+    ("self-healing/references/workspace-groups.md", include_str!("../data/builtin_skills/self-healing/references/workspace-groups.md")),
     ("self-healing/references/openagentd.d.ts", appv3_jsplugin::TYPES),
 ];
 

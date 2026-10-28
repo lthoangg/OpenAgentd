@@ -5,10 +5,12 @@ use anyhow::{anyhow, Result};
 use appv3_db::{self as db, DbPool, NewMessage};
 use serde_json::{json, Map, Value};
 
-/// Some tools check each call themselves: `mcp` allows search and calls to
-/// read-only tools, `patch` writes only plan attachments under
-/// `.agents/plans/<folder>/`, and `preview` only looks (no click, fill or press).
-pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 13] = ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "team", "web_fetch", "web_search"];
+/// Some tools check each call themselves: `mcp` allows search, its server
+/// list and calls to read-only tools, `patch` writes only plan attachments
+/// under `.agents/plans/<folder>/`, `preview` only looks (no click, fill or
+/// press), and `workspace` only lists.
+pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 14] =
+    ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "team", "web_fetch", "web_search", "workspace"];
 
 /// `extra.interaction_mode_prompt_version` of the notes written now. Notes
 /// without it are version 1 (the `<proposed_plan>` instructions); version 2

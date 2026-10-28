@@ -3,10 +3,11 @@ name: self-healing
 description: >-
   Change the agent's own OpenAgentd setup on request — model or thinking
   level, tools, member (delegate) agents, MCP servers, skills (install from a
-  URL or write one), plugins, and image/video generation. Use for requests
-  like "switch your model to X", "install this skill", "add the GitHub MCP",
-  "write a plugin that…", "use Gemini for images", "upgrade yourself". Not
-  for the user's own project code.
+  URL or write one), slash commands, workspace groups, plugins, and
+  image/video generation. Use for requests like "switch your model to X",
+  "install this skill", "add the GitHub MCP", "make a /review command",
+  "write a plugin that…", "use Gemini for images". Not for the user's own
+  project code.
 ---
 
 # Self-Healing
@@ -19,8 +20,10 @@ one holds the file formats, recipes, and when changes take effect.
 | Topic | Read | Covers |
 |-------|------|--------|
 | Agents | `{SKILL_DIR}/references/agents.md` | `code.md` and member agents: model, thinking level, tools, system prompt |
-| MCP servers | `{SKILL_DIR}/references/mcp.md` | `mcp.json` format, Settings → MCP, when servers start |
+| MCP servers | `{SKILL_DIR}/references/mcp.md` | list, add, change or remove servers with `mcp`; secrets and sign-in |
 | Skills | `{SKILL_DIR}/references/skills.md` | install from a URL, write a new skill, discovery order, overrides |
+| Slash commands | `{SKILL_DIR}/references/commands.md` | where command files live, format, `$ARGUMENTS`, names to avoid |
+| Workspace groups | `{SKILL_DIR}/references/workspace-groups.md` | which repos may message each other; join or leave a group |
 | Plugins | `{SKILL_DIR}/references/plugins.md` | provider and tool plugins, where they live, reload, review |
 | Plugin API types | `{SKILL_DIR}/references/openagentd.d.ts` | full `openagentd` module typings — read when writing a plugin |
 | Image / video | `{SKILL_DIR}/references/media.md` | `multimodal.yaml` for `generate_image` / `generate_video` |
@@ -37,7 +40,8 @@ References use these placeholders; substitute the real paths:
 
 ## Rules for every topic
 
-- Change configuration files only — no OpenAgentd code changes.
+- Change configuration files, or use the `mcp` and `workspace` tools where a
+  reference says so — no OpenAgentd code changes.
 - Never restart OpenAgentd from `shell`; it ends the current turn. When a
   change needs a restart, tell the user.
 - Use absolute paths; file tools refuse `~`.
@@ -57,6 +61,10 @@ References use these placeholders; substitute the real paths:
 5. **Apply with `patch`** (it creates parent directories). Patch reports any
    failure, so there is no need to read the file back.
 6. **Report** what changed, which file, and when it takes effect.
+
+MCP servers and workspace groups change through their tool instead: the call
+shows the user a card and applies only on **Apply**, so skip steps 3–5 and
+don't ask first.
 
 ## Failure modes
 

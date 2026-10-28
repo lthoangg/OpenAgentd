@@ -43,7 +43,12 @@ fn submits_plan(call: &ToolCall) -> bool {
 }
 
 fn waits_on_a_person(call: &ToolCall) -> bool {
-    call.function.name == ASK_USER || submits_plan(call)
+    call.function.name == ASK_USER || submits_plan(call) || opens_confirm(call)
+}
+
+/// A call that changes setup only after the user confirms it on a card.
+fn opens_confirm(call: &ToolCall) -> bool {
+    crate::confirm::opens(&call.function.name, &call.function.arguments)
 }
 
 fn unattended_refusal(tool: &str, reason: Option<&str>) -> String {
@@ -364,6 +369,7 @@ impl Agent {
                 match mode {
                     // `plan` handles its own unattended submit (it still saves).
                     _ if unattended && call.function.name == ASK_USER => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
+                    _ if unattended && opens_confirm(&call) => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
                     Some(m) if !tool_allowed_in_mode(&m, &call.function.name) => Ok((format!("Error: Tool '{}' is unavailable in Plan mode.", call.function.name), (None, None))),
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
@@ -775,8 +781,11 @@ impl Agent {
                 // ── _dispatch_question ──
                 // A question wins over a plan submission: the answer may
                 // change the plan, so the submission waits for it. Of several
-                // submissions the last opens the review.
-                let (submit_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(submits_plan);
+                // submissions the last opens the review. A change to confirm
+                // waits behind a question, and opens its card only alone.
+                let (submit_calls, rest): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(submits_plan);
+                let (confirm_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = rest.into_iter().partition(opens_confirm);
+                let mut confirm_calls = confirm_calls.into_iter();
                 let (held, held_reason, primary) = if let Some(first) = ask_calls.first() {
                     let mut primary = first.clone();
                     let dups = &ask_calls[1..];
@@ -787,11 +796,16 @@ impl Agent {
                         }
                     }
                     (submit_calls, SUBMIT_DEFERRED, primary)
+                } else if let Some(first) = confirm_calls.next() {
+                    (submit_calls, SUBMIT_DEFERRED, first)
                 } else {
                     let mut submits = submit_calls;
                     let last = submits.pop().expect("a pausing call");
                     (submits, SUBMIT_MERGED, last)
                 };
+                for tc in confirm_calls {
+                    state.messages.push(tool_msg(&tc, crate::confirm::CONFIRM_DEFERRED));
+                }
                 // A held-back submission still saves its change, in order.
                 for tc in &held {
                     crate::tools::plan::hold_submit(&meta, &tc.id, held_reason);

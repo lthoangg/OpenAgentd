@@ -49,7 +49,8 @@ impl WorkspaceGroup {
     }
 }
 
-fn clean_name(name: &str) -> GroupResult<String> {
+/// A valid group name, trimmed.
+pub fn clean_name(name: &str) -> GroupResult<String> {
     let n = name.trim();
     if n.is_empty() {
         return Err(GroupError::Invalid("Group name must not be blank.".into()));

@@ -5,6 +5,7 @@
 pub mod agent;
 pub mod broadcaster;
 pub mod checkpointer;
+pub mod confirm;
 pub mod errors;
 pub mod events;
 pub mod goal;
@@ -36,6 +37,7 @@ pub mod streaming;
 pub mod subagents;
 pub mod tools;
 pub mod util;
+pub mod workspace_groups;
 pub mod workspace_messages;
 
 pub use agent::{Agent, RunOptions, RunOutcome};

@@ -327,6 +327,7 @@ dependencies = [
  "anyhow",
  "appv3-agent",
  "appv3-core",
+ "appv3-db",
  "appv3-providers",
  "appv3-tools",
  "async-trait",
@@ -343,6 +344,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

@@ -1,5 +1,7 @@
 //! `workspace` (lead, v3 only) — message a session in another
-//! registered workspace; see [`crate::workspace_messages`].
+//! registered workspace (see [`crate::workspace_messages`]), and propose a
+//! repository's workspace groups for the user to confirm (see
+//! [`crate::workspace_groups`]).
 
 use super::invalid_args;
 use crate::workspace_messages::{self as wm, Delivery, DeliveryMode, SendRequest, MAX_SENDS_PER_TURN};
@@ -42,8 +44,12 @@ impl Tool for WorkspaceTool {
         let o = args.as_object().cloned().unwrap_or_default();
         let mut errs = vec![];
         let action = opt_str(&mut errs, &o, "action").unwrap_or_else(|| "send".into());
-        if !["send", "list"].contains(&action.as_str()) {
-            errs.push("action: Input should be 'send' or 'list'".into());
+        if !["send", "list", "set_groups"].contains(&action.as_str()) {
+            errs.push("action: Input should be 'send', 'list' or 'set_groups'".into());
+        }
+        let plan = ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan");
+        if plan && action != "list" && errs.is_empty() {
+            return Ok(ToolOutput::text(format!("Error: workspace(action='{action}') is unavailable in Plan mode; only action='list' is.")));
         }
         let workspace = opt_str(&mut errs, &o, "workspace");
         let message = opt_str(&mut errs, &o, "message");
@@ -85,6 +91,16 @@ impl Tool for WorkspaceTool {
             return Err(invalid_args("workspace", &errs));
         }
         let current = ctx.workspace.clone().unwrap_or_default();
+        if action == "set_groups" {
+            let join = crate::workspace_groups::parse_group_names("join", o.get("join")).map_err(|e| invalid_args("workspace", &[e]))?;
+            let leave = crate::workspace_groups::parse_group_names("leave", o.get("leave")).map_err(|e| invalid_args("workspace", &[e]))?;
+            let target = workspace.unwrap_or_default();
+            return match crate::workspace_groups::propose(&self.pool, &target, &join, &leave).await {
+                Err(e) => Ok(ToolOutput::text(format!("Error: {e}"))),
+                Ok(None) => Ok(ToolOutput::text("No change: the repository is already in those groups and not in the ones to leave.")),
+                Ok(Some(p)) => crate::confirm::ask(ctx, Some(&self.pool), "workspace", p).await,
+            };
+        }
         if action == "list" {
             let text = wm::list(&self.pool, &current, workspace.as_deref()).await.unwrap_or_else(|e| format!("Error: {e}"));
             return Ok(ToolOutput::text(text));
@@ -161,7 +177,7 @@ mod tests {
         let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "session_id": "x", "mode": "plan"})).await);
         assert!(e.contains("new sessions only"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"action": "nope"})).await);
-        assert!(e.contains("'send' or 'list'"), "{e}");
+        assert!(e.contains("'send', 'list' or 'set_groups'"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "session_id": "x", "delivery": "now"})).await);
         assert!(e.contains("'steer', 'queue' or 'stop_and_send'"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "delivery": "queue"})).await);

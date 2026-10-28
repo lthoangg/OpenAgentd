@@ -1310,8 +1310,9 @@ executes tools, manages its task list, and inspects workspace repositories.
 
   `action: "list"` shows the workspaces you can message under their groups,
   each with its brief, or one workspace's recent sessions with their state.
-  Sending to a workspace outside its groups is refused with a message asking
-  you to group them. Limits: a request can pass through at most
+  Sending to a workspace outside its groups is refused with a message telling
+  the agent it can propose a shared group (see **Workspace groups** below)
+  `[v3.35.0]`. Limits: a request can pass through at most
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
   32,000 characters. **Settings → Workspaces → Messages** turns the
   tool off for every agent; replies already on their way still arrive.
@@ -1336,6 +1337,17 @@ executes tools, manages its task list, and inspects workspace repositories.
     so after upgrading, group related repositories to let them talk again.
   - Replies are never blocked: a request that was allowed when it was sent
     still gets its answer back.
+  - **Group repositories from chat** `[v3.35.0]` — ask the agent ("group this
+    repo with infra") and it proposes the groups one repository joins or
+    leaves (`workspace` with `action: "set_groups"`; a new name creates the
+    group, its other groups stay). Nothing changes until you choose **Apply**
+    on a **Confirm change** card that names the repositories that will be able
+    to message each other. The change is checked again when you apply it: if
+    the repository's groups changed in the meantime, or a group it would
+    create now exists, nothing is applied and the agent is told why. Only
+    registered workspaces can be grouped (the agent asks you to open a folder
+    in the app first), a worktree is grouped through its repository, and Chat
+    is in no group. In Plan mode the agent can only list.
 - **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
   features a dedicated System prompt card with a monospace textarea bound to the
   Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).
@@ -2465,6 +2477,26 @@ Four orthogonal ways to add capability.
     that finishes starting or reconnects is usable at once. In Plan mode the
     agent can search, and call tools the server marks read-only
     (`readOnlyHint`); the server sets that hint, so it is trusted as given.
+  - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
+    server ("add the GitHub MCP") and it proposes the `mcp.json` entry
+    (`mcp` with `action: "save"`, or `"remove"`). A **Confirm change** card
+    shows the command it runs or the URL it connects to; only **Apply** saves
+    it and starts the server, and the agent then reports whether it is ready
+    and its tools, or the error. `action: "servers"` lists every server with
+    its state, error, tools and config, also in Plan mode. The agent never
+    sees a secret: `env` and header values and OAuth credentials show as
+    `********` (a `${NAME}` reference shows as written), sending `********`
+    back keeps the stored value, and tokens and OAuth sign-in stay in
+    Settings → MCP. The `mcp` tool is listed even before the first server, and
+    its description is fixed for the session, so adding or removing a server
+    does not invalidate the prompt cache; new sessions see the new list. A
+    change that was made elsewhere after the card opened is not applied.
+  - **Confirm change cards** `[v3.35.0]` — the card the MCP and workspace group
+    changes above use: an ordinary question card with **Apply** and
+    **Cancel**, answered on the server, so only your **Apply** runs the
+    change, at most once. Typing an answer instead cancels and passes your
+    words to the agent. One change is confirmed at a time; in a scheduled or
+    goal turn nobody is there to confirm, so the change is refused.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be
@@ -2539,6 +2571,9 @@ Four orthogonal ways to add capability.
     skills, plugins (with the `openagentd` plugin API typings), and image/video generation. It
     replaces the separate `skill-installer` skill. `read`, `grep`, and `glob` may open bundled
     skill files, while write tools and `shell` still cannot touch them.
+    References for slash commands (where the files go, `$ARGUMENTS`, names
+    to avoid) and workspace groups were added, so "make a /review command for
+    this project" writes `.agents/commands/review.md` `[v3.35.0]`.
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs

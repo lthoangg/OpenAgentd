@@ -4,6 +4,7 @@ use crate::error::{verr, verr_ctx, ApiError, ApiResult};
 use crate::schema::Body;
 use crate::util::*;
 use crate::AppState;
+use appv3_mcp::admin::{merge_masked, store_oauth_secrets};
 use appv3_mcp::config::{self as cfgmod, OAuthConfig, ServerConfig};
 use appv3_mcp::{masked_config_body, mcp_manager, oauth, AppToolError, ServerStatus};
 use axum::extract::{Path as AxPath, State};
@@ -14,8 +15,6 @@ use bytes::Bytes;
 use indexmap::IndexMap;
 use serde_json::{json, Value};
 use std::time::Duration;
-
-const MASK: &str = "********";
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -135,69 +134,6 @@ fn check_timeout(v: Option<i64>, prefix: &[Value], errs: &mut Vec<Value>) -> Opt
         return None;
     }
     Some(v as u64)
-}
-
-// ── OAuth secret storage ────────────────────────────────────────────────────
-
-fn env_ref_re() -> &'static regex::Regex {
-    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$").unwrap());
-    &RE
-}
-
-fn oauth_env_key(name: &str, field: &str) -> String {
-    let re = regex::Regex::new(r"[^A-Za-z0-9]+").unwrap();
-    let p = re.replace_all(name, "_").trim_matches('_').to_uppercase();
-    format!("{}_MCP_{field}", if p.is_empty() { "MCP".to_string() } else { p })
-}
-
-/// Store MCP client secrets as named secrets in `credentials.yaml`;
-/// `mcp.json` keeps only the `${NAME}` references.
-fn save_env_values(values: &[(String, String)]) -> std::io::Result<()> {
-    if values.is_empty() {
-        return Ok(());
-    }
-    let values = values.to_vec();
-    appv3_core::credentials::update(move |f| {
-        for (k, v) in values {
-            f.secrets.insert(k, v);
-        }
-    })?;
-    Ok(())
-}
-
-/// `_store_oauth_secrets`.
-fn store_oauth_secrets(name: &str, cfg: ServerConfig) -> std::io::Result<ServerConfig> {
-    let ServerConfig::Http { url, headers, oauth: Some(o), enabled, timeout } = cfg else { return Ok(cfg) };
-    let re = env_ref_re();
-    let mut env = vec![];
-    let mut client_id = o.client_id.clone();
-    let mut client_secret = o.client_secret.clone();
-    if let Some(id) = client_id.clone().filter(|v| !v.is_empty() && v != MASK && !re.is_match(v)) {
-        let key = oauth_env_key(name, "CLIENT_ID");
-        env.push((key.clone(), id));
-        client_id = Some(format!("${{{key}}}"));
-    }
-    if let Some(sec) = client_secret.clone().filter(|v| !v.is_empty() && v != MASK && !re.is_match(v)) {
-        let key = oauth_env_key(name, "CLIENT_SECRET");
-        env.push((key.clone(), sec));
-        client_secret = Some(format!("${{{key}}}"));
-    }
-    save_env_values(&env)?;
-    Ok(ServerConfig::Http { url, headers, oauth: Some(OAuthConfig { client_id, client_secret }), enabled, timeout })
-}
-
-/// `_merge_masked_http_headers` + `_merge_masked_oauth`.
-fn merge_masked(new: ServerConfig, existing: Option<&ServerConfig>) -> ServerConfig {
-    let (ServerConfig::Http { url, headers, oauth, enabled, timeout }, Some(ServerConfig::Http { headers: old_h, oauth: old_o, .. })) = (new.clone(), existing) else { return new };
-    let headers: IndexMap<String, String> = headers.into_iter().map(|(k, v)| if v == MASK && old_h.contains_key(&k) { (k.clone(), old_h[&k].clone()) } else { (k, v) }).collect();
-    let oauth = match (oauth, old_o) {
-        (Some(n), Some(o)) => Some(OAuthConfig {
-            client_id: if n.client_id.as_deref() == Some(MASK) { o.client_id.clone() } else { n.client_id },
-            client_secret: if n.client_secret.as_deref() == Some(MASK) { o.client_secret.clone() } else { n.client_secret },
-        }),
-        (n, _) => n,
-    };
-    ServerConfig::Http { url, headers, oauth, enabled, timeout }
 }
 
 // ── routes ──────────────────────────────────────────────────────────────────

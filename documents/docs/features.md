@@ -116,6 +116,16 @@ run from the terminal (the native Rust binary since v3.0.0).
   - An idle server uses almost no CPU (under 10 ms a minute, was 60 ms).
   - `grep` keeps the matches it found when it times out. `read` caps
     directory listings and reports binary files instead of dumping them.
+- **Faster startup and agent edits** `[v3.35.0]`:
+  - The app loads 641 kB of JavaScript (gzip) before its first screen, down
+    from 810 kB: Settings, Telemetry, the scheduler and MCP app results load
+    while the app is idle right after it starts, so they still open at once.
+    The app starts sooner, most noticeably on slower phones.
+  - A clean TypeScript `patch` no longer waits a fixed second for late
+    diagnostics (see *Real-time LSP diagnostics injection*), and opening a
+    session with many short prompts skips measuring prompts too short to fold.
+  - On macOS the notch island stops checking the pointer while it is hidden,
+    and checks it half as often while the pointer is far away.
 - **Plugins page and live settings refresh (v3)** `[v3.0.0]` — Settings →
   Plugins lists each plugin with its provider, tool hooks and load errors,
   and flags v2 Python plugins that have no TypeScript port (v3 does not run

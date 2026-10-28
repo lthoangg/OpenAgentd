@@ -33,7 +33,8 @@ const MAX_FREE_REFS = 500
 
 // A segment never ends on a dot, so "see src/a.ts." leaves the full stop out.
 const SEGMENT = String.raw`[\w@+-](?:[\w.@+-]*[\w@+-])?`
-const PATH = String.raw`(?:\.{1,2}\/|~\/|\/)?(?:${SEGMENT}\/)*${SEGMENT}`
+// A folder may be a dot folder such as `.agents/` or `.github/`.
+const PATH = String.raw`(?:\.{1,2}\/|~\/|\/)?(?:\.?${SEGMENT}\/)*${SEGMENT}`
 // :line[:column][-end], or a GitHub anchor #Lline[Ccolumn][-Lend[Ccolumn]].
 // An en dash counts too: models write ranges as prose.
 const POSITION = String.raw`(?::(\d+)(?::(\d+))?(?:[-–](\d+))?|#L(\d+)(?:C(\d+))?(?:-L?(\d+)(?:C\d+)?)?)`

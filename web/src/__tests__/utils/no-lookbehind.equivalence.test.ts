@@ -56,7 +56,7 @@ describe('lookbehind-free patterns', () => {
 
   it('free-text file references match like the lookbehind original', () => {
     const SEGMENT = String.raw`[\w@+-](?:[\w.@+-]*[\w@+-])?`
-    const PATH = String.raw`(?:\.{1,2}\/|~\/|\/)?(?:${SEGMENT}\/)*${SEGMENT}`
+    const PATH = String.raw`(?:\.{1,2}\/|~\/|\/)?(?:\.?${SEGMENT}\/)*${SEGMENT}`
     const POSITION = String.raw`(?::(\d+)(?::(\d+))?(?:[-–](\d+))?|#L(\d+)(?:C(\d+))?(?:-L?(\d+)(?:C\d+)?)?)`
     const OLD = new RegExp(String.raw`(?<![\w./@~:-])(${PATH})${POSITION}?(?![\w/])`, 'g')
     const hasExt = (path: string) => /\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(path.slice(path.lastIndexOf('/') + 1))

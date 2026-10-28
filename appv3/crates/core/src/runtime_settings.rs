@@ -134,7 +134,8 @@ impl GoalSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct TelemetrySettings {
-    /// Days to keep telemetry; `None` means [`DEFAULT_TELEMETRY_RETENTION_DAYS`].
+    /// Days to keep telemetry; 0 keeps it forever (no sweep deletes it).
+    /// `None` means [`DEFAULT_TELEMETRY_RETENTION_DAYS`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retention_days: Option<i64>,
 }
@@ -148,10 +149,10 @@ impl TelemetrySettings {
         *self == Self::default()
     }
     /// The effective retention. A hand-edited value outside
-    /// 1..=[`MAX_TELEMETRY_RETENTION_DAYS`] falls back to the default.
+    /// 0..=[`MAX_TELEMETRY_RETENTION_DAYS`] falls back to the default.
     pub fn retention_days(&self) -> i64 {
         match self.retention_days {
-            Some(n) if (1..=MAX_TELEMETRY_RETENTION_DAYS).contains(&n) => n,
+            Some(n) if (0..=MAX_TELEMETRY_RETENTION_DAYS).contains(&n) => n,
             _ => DEFAULT_TELEMETRY_RETENTION_DAYS,
         }
     }
@@ -762,7 +763,8 @@ mod tests {
     fn telemetry_retention_out_of_range_falls_back_to_default() {
         let with = |n: Option<i64>| TelemetrySettings { retention_days: n }.retention_days();
         assert_eq!(with(None), 90);
-        assert_eq!(with(Some(0)), 90);
+        assert_eq!(with(Some(0)), 0, "0 keeps telemetry forever");
+        assert_eq!(with(Some(-1)), 90);
         assert_eq!(with(Some(MAX_TELEMETRY_RETENTION_DAYS + 1)), 90);
         assert_eq!(with(Some(1)), 1);
         assert_eq!(with(Some(365)), 365);

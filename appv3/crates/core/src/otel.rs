@@ -911,14 +911,6 @@ fn int_env(name: &str, default: i64, min: i64) -> i64 {
     }
 }
 
-/// Whether the retention sweep runs (`OPENAGENTD_OTEL_RETENTION_ENABLED`, default on).
-pub fn retention_enabled() -> bool {
-    match crate::settings::env_var("OPENAGENTD_OTEL_RETENTION_ENABLED") {
-        None => true,
-        Some(raw) => ["1", "true", "yes", "on"].contains(&raw.trim().to_lowercase().as_str()),
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct SweepResult {
     pub scanned: u64,
@@ -968,16 +960,21 @@ pub fn sweep_old_partitions(root: &Path, max_age_days: i64, now: Option<f64>) ->
     r
 }
 
-/// Days spans and metrics are kept: the `telemetry.retention_days` setting.
-/// Read on every sweep, so a change in Settings applies without a restart.
+/// Days spans and metrics are kept: the `telemetry.retention_days` setting,
+/// where 0 keeps them forever. Read on every sweep, so a change in Settings
+/// applies without a restart.
 fn retention_days() -> i64 {
     crate::runtime_settings::telemetry_settings().retention_days()
 }
 
-/// One retention pass over spans and metrics.
+/// One retention pass over spans and metrics (nothing when retention is 0).
 pub fn run_retention_once(otel_dir: Option<&Path>) -> (SweepResult, SweepResult) {
     let base = otel_dir.map(Path::to_path_buf).unwrap_or_else(|| crate::settings().state_dir.join("otel"));
     let days = retention_days();
+    if days <= 0 {
+        tracing::debug!("otel_retention_off keep_forever");
+        return (SweepResult::default(), SweepResult::default());
+    }
     let s = sweep_old_partitions(&base.join("spans"), days, None);
     let m = sweep_old_partitions(&base.join("metrics"), days, None);
     if s.deleted > 0 || m.deleted > 0 {
@@ -1000,12 +997,9 @@ fn retention_task() -> &'static Mutex<Option<tokio::task::JoinHandle<()>>> {
     T.get_or_init(|| Mutex::new(None))
 }
 
-/// `start_otel_retention` — one sweep now, then every interval.
+/// `start_otel_retention` — one sweep now, then every interval. It always
+/// runs; a retention of 0 makes each pass a no-op.
 pub fn start_retention() {
-    if !retention_enabled() {
-        tracing::info!("otel_retention_disabled");
-        return;
-    }
     let mut g = retention_task().lock().unwrap();
     if g.as_ref().map(|t| !t.is_finished()).unwrap_or(false) {
         return;
@@ -1029,11 +1023,8 @@ pub fn stop_retention() {
 }
 
 /// Run one sweep in the background now (after the retention setting
-/// changes), unless retention is disabled. Needs a Tokio runtime.
+/// changes). Needs a Tokio runtime.
 pub fn sweep_retention_now() {
-    if !retention_enabled() {
-        return;
-    }
     tokio::task::spawn_blocking(|| {
         run_retention_once(None);
     });

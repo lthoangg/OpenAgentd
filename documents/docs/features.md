@@ -2716,9 +2716,10 @@ Everything stays local. No third-party telemetry SaaS.
   the `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
   variables are no longer read.
 - **Telemetry retention setting** `[v3.35.0]` — **Settings → Telemetry**
-  sets how many days local traces and metrics are kept (1 to 3650, default
-  90). Saving a shorter period deletes older telemetry right away instead of
-  at the next daily sweep.
+  sets how many days local traces and metrics are kept (0 to 3650, default
+  90; 0 keeps them forever). Saving a shorter period deletes older telemetry
+  right away instead of at the next daily sweep. This replaces
+  `OPENAGENTD_OTEL_RETENTION_ENABLED`, which is no longer read.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

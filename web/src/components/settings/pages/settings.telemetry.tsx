@@ -1,6 +1,7 @@
 /**
  * Settings → Telemetry — how many days local traces and metrics are kept.
  * A daily sweep deletes older files; saving a new value sweeps right away.
+ * 0 keeps telemetry forever.
  */
 import { useTelemetrySettingsQuery, useUpdateTelemetrySettingsMutation } from '@/queries/useTelemetrySettingsQuery'
 import { Input } from '@/components/ui/input'
@@ -40,9 +41,10 @@ export function TelemetrySettingsPage() {
   const maxDays = telemetryQ.data?.max_retention_days ?? FALLBACK_MAX_DAYS
   const defaultDays = telemetryQ.data?.default_retention_days ?? TELEMETRY_DEFAULT.retention_days
   const days = draft.value.retention_days
-  const daysError = !Number.isFinite(days) || days < 1 || days > maxDays
-    ? `A whole number from 1 to ${maxDays}.`
+  const daysError = !Number.isFinite(days) || days < 0 || days > maxDays
+    ? `A whole number from 0 to ${maxDays}.`
     : null
+  const keepForever = days === 0
 
   return (
     <SettingsPage
@@ -56,14 +58,18 @@ export function TelemetrySettingsPage() {
         <PanelRow
           label="Keep telemetry for"
           htmlFor="telemetry-retention-days"
-          description={`Older traces and metrics are deleted daily, and right away when you save. Spend and turn history older than this is gone from the Telemetry view. Default ${defaultDays} days.`}
+          description={
+            keepForever
+              ? 'Telemetry is kept forever: nothing is deleted automatically, so it keeps using disk space.'
+              : `Older traces and metrics are deleted daily, and right away when you save. Spend and turn history older than this is gone from the Telemetry view. 0 keeps telemetry forever. Default ${defaultDays} days.`
+          }
           error={daysError}
         >
           <div className="flex items-center gap-2">
             <Input
               id="telemetry-retention-days"
               type="number"
-              min={1}
+              min={0}
               max={maxDays}
               aria-label="Days to keep telemetry"
               value={Number.isFinite(days) ? String(days) : ''}

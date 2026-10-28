@@ -211,7 +211,7 @@ async fn http_api_end_to_end() {
     let tel = "/api/settings/telemetry";
     let (st, v) = c.json("GET", tel, None).await;
     assert_eq!((st, v), (StatusCode::OK, json!({"retention_days": 90, "default_retention_days": 90, "max_retention_days": 3650})));
-    for bad in [json!({"retention_days": 0}), json!({"retention_days": 3651}), json!({"retention_days": "week"}), json!({"nope": 1})] {
+    for bad in [json!({"retention_days": -1}), json!({"retention_days": 3651}), json!({"retention_days": "week"}), json!({"nope": 1})] {
         let (st, v) = c.json("PUT", tel, Some(bad.clone())).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
     }
@@ -222,6 +222,9 @@ async fn http_api_end_to_end() {
     // Omitting the key changes nothing; null restores the default.
     let (_, v) = c.json("PUT", tel, Some(json!({}))).await;
     assert_eq!(v["retention_days"], json!(14));
+    // 0 keeps telemetry forever.
+    let (st, v) = c.json("PUT", tel, Some(json!({"retention_days": 0}))).await;
+    assert_eq!((st, v["retention_days"].clone()), (StatusCode::OK, json!(0)));
     let (_, v) = c.json("PUT", tel, Some(json!({"retention_days": null}))).await;
     assert_eq!(v["retention_days"], json!(90));
 

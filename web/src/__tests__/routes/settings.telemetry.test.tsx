@@ -66,7 +66,28 @@ describe('TelemetrySettingsPage', () => {
     await waitFor(() => expect(bodies).toEqual([{ retention_days: 30 }]))
   })
 
-  it.each(['0', '3651'])('blocks saving %s days', async (value) => {
+  it('saves 0 to keep telemetry forever', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.get(TELEMETRY_URL, () => HttpResponse.json(TELEMETRY)),
+      http.put(TELEMETRY_URL, async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json({ ...TELEMETRY, ...(body as object) })
+      }),
+    )
+    renderPage()
+
+    const input = await screen.findByLabelText('Days to keep telemetry') as HTMLInputElement
+    await waitFor(() => expect(input.value).toBe('90'))
+    fireEvent.change(input, { target: { value: '0' } })
+    expect(await screen.findByText(/kept forever/i)).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(bodies).toEqual([{ retention_days: 0 }]))
+  })
+
+  it.each(['-1', '3651'])('blocks saving %s days', async (value) => {
     let puts = 0
     server.use(
       http.get(TELEMETRY_URL, () => HttpResponse.json(TELEMETRY)),
@@ -80,7 +101,7 @@ describe('TelemetrySettingsPage', () => {
     const input = await screen.findByLabelText('Days to keep telemetry') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value } })
-    expect(await screen.findByText(/whole number from 1 to 3650/i)).toBeTruthy()
+    expect(await screen.findByText(/whole number from 0 to 3650/i)).toBeTruthy()
     const save = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement
     expect(save.disabled).toBe(true)
     fireEvent.click(save)

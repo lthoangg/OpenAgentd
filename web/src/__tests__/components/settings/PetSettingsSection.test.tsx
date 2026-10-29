@@ -47,8 +47,15 @@ describe('PetSettingsSection', () => {
     render(<PetSettingsSection />)
     expect(await toggle('Show a desktop pet')).toHaveAttribute('aria-checked', 'false')
     expect(await toggle('Show notifications in its bubble')).toBeDisabled()
-    expect(await toggle('Hide over full-screen apps')).toBeDisabled()
+    expect(await toggle('Show while OpenAgentd is in front')).toBeDisabled()
     expect(screen.getByRole('radio', { name: 'Playful' })).toBeDisabled()
+  })
+
+  it('offers no full-screen switch: the pet always steps aside for full-screen apps', async () => {
+    stored = { ...DEFAULT_PET_SETTINGS, enabled: true }
+    render(<PetSettingsSection />)
+    await toggle('Show while OpenAgentd is in front')
+    expect(screen.queryByRole('switch', { name: /full-screen/i })).toBeNull()
   })
 
   it('turns the pet on and saves only that', async () => {
@@ -66,7 +73,6 @@ describe('PetSettingsSection', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Large' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Stay put' }))
     fireEvent.click(await toggle('Show while OpenAgentd is in front'))
-    fireEvent.click(await toggle('Hide over full-screen apps'))
     fireEvent.click(await toggle('Finished turns'))
     await waitFor(() =>
       expect(patches).toEqual([
@@ -74,7 +80,6 @@ describe('PetSettingsSection', () => {
         { size: 'large' },
         { movement: 'still' },
         { showWhenFrontmost: true },
-        { hideInFullscreen: false },
         { bubbleKinds: { inputNeeded: true, assistantDone: false, reminderFired: true } },
       ]),
     )

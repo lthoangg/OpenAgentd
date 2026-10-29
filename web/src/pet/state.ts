@@ -26,7 +26,6 @@ export interface PetSettings {
   bubbles: boolean
   bubbleKinds: BubbleKinds
   showWhenFrontmost: boolean
-  hideInFullscreen: boolean
   /**
    * Where it was dropped: a display, 0..1 across it, and 0..1 down it for
    * the height its feet stand at (missing in older settings: the bottom).
@@ -43,7 +42,6 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   bubbles: true,
   bubbleKinds: { inputNeeded: true, assistantDone: true, reminderFired: true },
   showWhenFrontmost: false,
-  hideInFullscreen: true,
   position: null,
 }
 

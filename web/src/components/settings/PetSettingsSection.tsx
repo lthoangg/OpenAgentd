@@ -130,9 +130,6 @@ export function PetSettingsSection() {
       >
         <Switch id="pet-front" checked={settings.showWhenFrontmost} disabled={off} onCheckedChange={(showWhenFrontmost) => change({ showWhenFrontmost })} />
       </PanelRow>
-      <PanelRow label="Hide over full-screen apps" htmlFor="pet-fullscreen" description="Games, presentations and video stay uncovered.">
-        <Switch id="pet-fullscreen" checked={settings.hideInFullscreen} disabled={off} onCheckedChange={(hideInFullscreen) => change({ hideInFullscreen })} />
-      </PanelRow>
     </PanelSection>
   )
 }

@@ -156,8 +156,6 @@ pub struct PetSettings {
     pub bubble_kinds: BubbleKinds,
     /// Also show while an OpenAgentd window is in front.
     pub show_when_frontmost: bool,
-    /// Step aside while a full-screen app or presentation is in front.
-    pub hide_in_fullscreen: bool,
     pub position: Option<PetPosition>,
 }
 
@@ -172,7 +170,6 @@ impl Default for PetSettings {
             bubbles: true,
             bubble_kinds: BubbleKinds::default(),
             show_when_frontmost: false,
-            hide_in_fullscreen: true,
             position: None,
         }
     }
@@ -191,7 +188,6 @@ pub struct PetSettingsPatch {
     pub bubbles: Option<bool>,
     pub bubble_kinds: Option<BubbleKinds>,
     pub show_when_frontmost: Option<bool>,
-    pub hide_in_fullscreen: Option<bool>,
 }
 
 impl PetSettings {
@@ -205,7 +201,6 @@ impl PetSettings {
             bubbles: patch.bubbles.unwrap_or(self.bubbles),
             bubble_kinds: patch.bubble_kinds.unwrap_or(self.bubble_kinds),
             show_when_frontmost: patch.show_when_frontmost.unwrap_or(self.show_when_frontmost),
-            hide_in_fullscreen: patch.hide_in_fullscreen.unwrap_or(self.hide_in_fullscreen),
             position: self.position,
         }
     }
@@ -219,9 +214,10 @@ pub fn supported() -> bool {
 
 // ── Decisions ───────────────────────────────────────────────────────────────
 
-/// Whether the pet should be on screen.
+/// Whether the pet should be on screen. It always steps aside for a
+/// full-screen app or presentation (macOS keeps it off their Spaces).
 pub fn should_show(settings: &PetSettings, frontmost: bool, fullscreen: bool) -> bool {
-    settings.enabled && (!frontmost || settings.show_when_frontmost) && !(fullscreen && settings.hide_in_fullscreen)
+    settings.enabled && (!frontmost || settings.show_when_frontmost) && !fullscreen
 }
 
 /// Whether a notification of `kind` goes to the pet's bubble instead of the
@@ -588,7 +584,7 @@ fn apply(app: &AppHandle) {
             return;
         }
     };
-    native::configure(&window, settings.hide_in_fullscreen);
+    native::configure(&window);
     let list = displays(app);
     let Some(display) = pick_display(&list, settings.position.as_ref().map(|p| p.display.as_str())) else {
         return;
@@ -1114,16 +1110,13 @@ mod native {
         }
     }
 
-    /// On every Space, out of Cmd-` cycling and Mission Control. Full-screen
-    /// Spaces too only when the user wants it there.
-    pub fn configure(window: &tauri::WebviewWindow, hide_in_fullscreen: bool) {
+    /// On every Space but full-screen ones, out of Cmd-` cycling and
+    /// Mission Control.
+    pub fn configure(window: &tauri::WebviewWindow) {
         with_ns_window(window, |ns| {
-            let mut behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
+            let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::Stationary
                 | NSWindowCollectionBehavior::IgnoresCycle;
-            if !hide_in_fullscreen {
-                behavior |= NSWindowCollectionBehavior::FullScreenAuxiliary;
-            }
             if ns.collectionBehavior() != behavior {
                 ns.setCollectionBehavior(behavior);
             }
@@ -1182,7 +1175,7 @@ mod native {
 
 #[cfg(target_os = "windows")]
 mod native {
-    pub fn configure(_window: &tauri::WebviewWindow, _hide_in_fullscreen: bool) {}
+    pub fn configure(_window: &tauri::WebviewWindow) {}
 
     pub fn show(window: &tauri::WebviewWindow) {
         let _ = window.show();
@@ -1225,7 +1218,7 @@ mod native {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod native {
-    pub fn configure(_window: &tauri::WebviewWindow, _hide_in_fullscreen: bool) {}
+    pub fn configure(_window: &tauri::WebviewWindow) {}
 
     pub fn show(window: &tauri::WebviewWindow) {
         let _ = window.show();
@@ -1260,7 +1253,6 @@ mod tests {
         assert!(defaults.bubbles);
         assert_eq!(defaults.bubble_kinds, BubbleKinds { input_needed: true, assistant_done: true, reminder_fired: true });
         assert!(!defaults.show_when_frontmost);
-        assert!(defaults.hide_in_fullscreen);
         assert_eq!(defaults.position, None);
     }
 
@@ -1271,7 +1263,12 @@ mod tests {
         assert!(!should_show(&on(), true, false), "OpenAgentd in front");
         assert!(should_show(&PetSettings { show_when_frontmost: true, ..on() }, true, false));
         assert!(!should_show(&on(), false, true), "full-screen app in front");
-        assert!(should_show(&PetSettings { hide_in_fullscreen: false, ..on() }, false, true));
+    }
+
+    #[test]
+    fn settings_saved_with_the_old_full_screen_switch_still_load() {
+        let old: PetSettings = serde_json::from_str(r#"{"enabled": true, "hideInFullscreen": false, "colour": "blue"}"#).unwrap();
+        assert_eq!(old, PetSettings { enabled: true, colour: PetColour::Blue, ..PetSettings::default() });
     }
 
     #[test]

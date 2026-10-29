@@ -745,8 +745,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     notch, so it works with every window closed. Settings → General →
     Desktop pet turns it on (off by default) and sets its colour, size,
     movement (stay put, calm or playful), which notifications use the
-    bubble, and whether it shows while OpenAgentd is in front or over
-    full-screen apps; the tray turns it on and off too.
+    bubble, and whether it shows while OpenAgentd is in front (it always
+    steps aside for full-screen apps); the tray turns it on and off too.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

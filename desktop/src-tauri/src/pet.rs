@@ -1,11 +1,12 @@
-//! The desktop pet (macOS and Windows): a small pixel cat that walks along
-//! the bottom of a display, above the Dock or taskbar, and shows agent
-//! notifications in a speech bubble instead of the system banner.
+//! The desktop pet (macOS and Windows): a small pixel cat that stands
+//! wherever it was dragged on a display (the bottom edge, above the Dock or
+//! taskbar, by default), walks left and right at that height, and shows
+//! agent notifications in a speech bubble instead of the system banner.
 //!
-//! The window (`web/pet.html`) is a transparent strip as wide as the
-//! display's work area and [`STRIP_HEIGHT`] tall at its bottom. The pet and
-//! its bubbles move inside it with CSS, so the window itself never moves
-//! while it walks. Clicks pass through the strip except over the hit areas
+//! The window (`web/pet.html`) is transparent and covers the display's work
+//! area. The pet and its bubbles move inside it with CSS, so the window
+//! itself never moves while it walks or is dragged. Clicks pass through the
+//! window except over the hit areas
 //! the page reports (`pet_fit`): Rust polls the pointer and switches the
 //! window's click-through, like the notch island does. The window never
 //! takes keyboard focus.
@@ -45,18 +46,15 @@ pub const PET_SETTINGS_EVENT: &str = "pet-settings-changed";
 /// The tray menu item that turns the pet on or off.
 pub const MENU_TOGGLE_PET: &str = "toggle_pet";
 
-/// Height of the strip the pet lives in, in logical pixels: room for the
-/// largest pet and a bubble above it.
-pub const STRIP_HEIGHT: f64 = 260.0;
 /// Built this long after launch, so its page load does not compete with
 /// the main window's.
 const PREWARM_DELAY: Duration = Duration::from_secs(3);
-/// Pointer polling: often while it is near the strip, rarely far from it
+/// Pointer polling: often while it is near the pet, rarely far from it
 /// or while the pet is hidden (then only the full-screen state is checked).
 const POLL_NEAR: Duration = Duration::from_millis(50);
 const POLL_FAR: Duration = Duration::from_millis(250);
 const POLL_HIDDEN: Duration = Duration::from_secs(1);
-/// How close (logical px above the strip) counts as near.
+/// How close (logical px from the pet or a bubble) counts as near.
 const NEAR: f64 = 200.0;
 /// How often the displays are re-read (plugged in, resolution, Dock moved).
 const GEOMETRY_EVERY: Duration = Duration::from_secs(2);
@@ -129,12 +127,19 @@ impl BubbleKinds {
     }
 }
 
-/// Where the pet was last dropped: the display (by name) and how far
-/// along its bottom edge, 0 (left) to 1 (right).
+/// Where the pet was last dropped: the display (by name), how far across
+/// it, 0 (left) to 1 (right), and the height its feet stand at, 0 (top) to
+/// 1 (bottom). Settings saved before it could move up lack `y`: the bottom.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PetPosition {
     pub display: String,
     pub x: f64,
+    #[serde(default = "bottom_edge")]
+    pub y: f64,
+}
+
+fn bottom_edge() -> f64 {
+    1.0
 }
 
 /// What the user chose in Settings → General (`desktop-pet.json`).
@@ -281,11 +286,10 @@ pub fn pick_display<'a>(displays: &'a [DisplayInfo], saved: Option<&str>) -> Opt
     saved.and_then(|name| displays.iter().find(|d| d.name == name)).or_else(|| displays.first())
 }
 
-/// The strip along the bottom of `work`, in physical pixels.
-pub fn strip_frame(work: Area) -> Area {
+/// The pet window's frame: the whole work area, in physical pixels.
+pub fn pet_frame(work: Area) -> Area {
     let scale = if work.scale.is_finite() && work.scale > 0.0 { work.scale } else { 1.0 };
-    let height = ((STRIP_HEIGHT * scale).round() as u32).min(work.height);
-    Area { x: work.x, y: work.y + (work.height - height) as i32, width: work.width, height, scale }
+    Area { scale, ..work }
 }
 
 /// A Dock or taskbar that hides itself leaves the work area reaching the
@@ -335,7 +339,7 @@ async fn refresh_hidden_bar() -> bool {
     std::mem::replace(&mut *hidden_bar().lock().unwrap(), height) != height
 }
 
-/// A screen point (physical) in the strip's CSS pixels.
+/// A screen point (physical) in the pet window's CSS pixels.
 pub fn local_point(strip: &Area, x: f64, y: f64) -> (f64, f64) {
     ((x - f64::from(strip.x)) / strip.scale, (y - f64::from(strip.y)) / strip.scale)
 }
@@ -364,12 +368,29 @@ pub fn takes_clicks(hits: &[HitRect], capture: bool, point: Option<(f64, f64)>) 
     capture || point.is_some_and(|(x, y)| hits.iter().any(|h| h.contains(x, y)))
 }
 
-/// Where along the edge a drop at `x` lands, as a 0..1 fraction.
+/// Whether the pointer is close enough to the pet or a bubble to poll often.
+pub fn near_hits(hits: &[HitRect], capture: bool, point: Option<(f64, f64)>) -> bool {
+    capture
+        || point.is_some_and(|(x, y)| {
+            hits.iter().any(|h| x >= h.x - NEAR && x <= h.x + h.width + NEAR && y >= h.y - NEAR && y <= h.y + h.height + NEAR)
+        })
+}
+
+/// Where across the display a drop at `x` lands, as a 0..1 fraction.
 pub fn edge_fraction(x: f64, width: f64) -> f64 {
     if !x.is_finite() || !width.is_finite() || width <= 0.0 {
         return 0.3;
     }
     (x / width).clamp(0.0, 1.0)
+}
+
+/// How far down the display a drop with the feet at `y` lands, as a 0..1
+/// fraction (unknown: the bottom).
+pub fn height_fraction(y: f64, height: f64) -> f64 {
+    if !y.is_finite() || !height.is_finite() || height <= 0.0 {
+        return bottom_edge();
+    }
+    (y / height).clamp(0.0, 1.0)
 }
 
 /// Remember a key in a capped list; false when it was already there.
@@ -492,7 +513,7 @@ fn ensure_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
     let window = tauri::WebviewWindowBuilder::new(app, PET_WINDOW, tauri::WebviewUrl::App("pet.html".into()))
         .title("OpenAgentd pet")
-        .inner_size(800.0, STRIP_HEIGHT)
+        .inner_size(800.0, 600.0)
         .visible(false)
         .resizable(false)
         .decorations(false)
@@ -573,7 +594,7 @@ fn apply(app: &AppHandle) {
         return;
     };
     let bar = *hidden_bar().lock().unwrap();
-    let frame = strip_frame(leave_room_for_hidden_bar(display.work, display.bottom, bar));
+    let frame = pet_frame(leave_room_for_hidden_bar(display.work, display.bottom, bar));
     let (moved, was_shown) = {
         let mut s = shared().lock().unwrap();
         (s.strip.replace(frame) != Some(frame), s.shown)
@@ -668,9 +689,10 @@ fn tick(app: &AppHandle, geometry_due: bool) -> Duration {
         s.taking_clicks = take;
         s.occluded = occluded;
     }
-    match point {
-        Some((x, y)) if x >= -NEAR && x <= f64::from(strip.width) / strip.scale + NEAR && y >= -NEAR => POLL_NEAR,
-        _ => POLL_FAR,
+    if near_hits(&hits, capture, point) {
+        POLL_NEAR
+    } else {
+        POLL_FAR
     }
 }
 
@@ -824,10 +846,10 @@ pub fn pet_open(app: AppHandle, window: WebviewWindow, notification_id: String) 
     });
 }
 
-/// The pet was dropped at `x` (CSS pixels along the strip). Dropped over
-/// another display, it moves there.
+/// The pet was dropped with its left edge at `x` and its feet at `y` (CSS
+/// pixels in the window). Dropped over another display, it moves there.
 #[tauri::command]
-pub fn pet_drag_end(app: AppHandle, window: WebviewWindow, x: f64) {
+pub fn pet_drag_end(app: AppHandle, window: WebviewWindow, x: f64, y: f64) {
     if window.label() != PET_WINDOW {
         return;
     }
@@ -842,11 +864,13 @@ pub fn pet_drag_end(app: AppHandle, window: WebviewWindow, x: f64) {
     let position = match dropped_on {
         Some((display, c)) if Some(&display.name) != here.as_ref() => PetPosition {
             x: edge_fraction(c.x - f64::from(display.work.x), f64::from(display.work.width)),
+            y: height_fraction(c.y - f64::from(display.work.y), f64::from(display.work.height)),
             display: display.name,
         },
         _ => PetPosition {
             display: here.unwrap_or_default(),
             x: edge_fraction(x, f64::from(strip.width) / strip.scale),
+            y: height_fraction(y, f64::from(strip.height) / strip.scale),
         },
     };
     let settings = {
@@ -1146,13 +1170,10 @@ mod tests {
     }
 
     #[test]
-    fn the_strip_sits_on_the_bottom_of_the_work_area() {
+    fn the_window_covers_the_work_area() {
         let work = Area { x: 0, y: 25, width: 1440, height: 800, scale: 2.0 };
-        let strip = strip_frame(work);
-        assert_eq!(strip, Area { x: 0, y: 25 + 800 - 520, width: 1440, height: 520, scale: 2.0 });
-        let tiny = strip_frame(Area { x: 10, y: 0, width: 300, height: 100, scale: 1.0 });
-        assert_eq!((tiny.y, tiny.height), (0, 100), "never taller than the work area");
-        let bad_scale = strip_frame(Area { scale: f64::NAN, ..work });
+        assert_eq!(pet_frame(work), work);
+        let bad_scale = pet_frame(Area { scale: f64::NAN, ..work });
         assert_eq!(bad_scale.scale, 1.0);
     }
 
@@ -1174,6 +1195,16 @@ mod tests {
     }
 
     #[test]
+    fn the_pointer_is_polled_often_only_near_the_pet_or_while_dragging() {
+        let hits = [HitRect { x: 1000.0, y: 300.0, width: 64.0, height: 48.0 }];
+        assert!(near_hits(&hits, false, Some((1100.0, 200.0))), "just above and beside it");
+        assert!(!near_hits(&hits, false, Some((100.0, 320.0))), "far to the left");
+        assert!(!near_hits(&hits, false, Some((1020.0, 900.0))), "far below");
+        assert!(!near_hits(&[], false, Some((0.0, 0.0))), "nothing to click");
+        assert!(near_hits(&hits, true, None), "dragging");
+    }
+
+    #[test]
     fn the_saved_display_is_used_when_it_is_still_there() {
         let display = |name: &str| DisplayInfo { name: name.into(), work: Area { x: 0, y: 0, width: 10, height: 10, scale: 1.0 }, bottom: 10 };
         let list = [display("Built-in"), display("LG")];
@@ -1189,13 +1220,30 @@ mod tests {
     }
 
     #[test]
+    fn a_drop_is_kept_as_a_fraction_of_the_height_and_defaults_to_the_bottom() {
+        assert_eq!(height_fraction(450.0, 900.0), 0.5);
+        assert_eq!(height_fraction(-20.0, 900.0), 0.0);
+        assert_eq!(height_fraction(5000.0, 900.0), 1.0);
+        assert_eq!(height_fraction(f64::NAN, 900.0), 1.0);
+        assert_eq!(height_fraction(10.0, 0.0), 1.0);
+    }
+
+    #[test]
+    fn a_position_saved_before_the_pet_could_move_up_stays_on_the_bottom() {
+        let old: PetPosition = serde_json::from_str(r#"{"display":"LG","x":0.4}"#).unwrap();
+        assert_eq!(old, PetPosition { display: "LG".into(), x: 0.4, y: 1.0 });
+        let placed: PetPosition = serde_json::from_str(r#"{"display":"LG","x":0.4,"y":0.25}"#).unwrap();
+        assert_eq!(placed.y, 0.25);
+    }
+
+    #[test]
     fn it_keeps_clear_of_a_dock_or_taskbar_that_hides_itself() {
         // 1680 x 1050 pt at 2x, menu bar 30 pt, Dock hidden: the work area
         // reaches the bottom of the display.
         let work = Area { x: 0, y: 60, width: 3360, height: 2040, scale: 2.0 };
         let raised = leave_room_for_hidden_bar(work, 2100, Some(53.0));
         assert_eq!(raised, Area { height: 2040 - 106, ..work });
-        assert_eq!(strip_frame(raised).y + strip_frame(raised).height as i32, 2100 - 106, "the strip ends above the Dock");
+        assert_eq!(pet_frame(raised).y + pet_frame(raised).height as i32, 2100 - 106, "the window ends above the Dock");
         assert_eq!(leave_room_for_hidden_bar(work, 2100, None), work, "the bar stays up or sits at a side");
         let reserved = Area { height: 1900, ..work };
         assert_eq!(leave_room_for_hidden_bar(reserved, 2100, Some(53.0)), reserved, "the work area already leaves its room");
@@ -1222,7 +1270,7 @@ mod tests {
 
     #[test]
     fn a_patch_changes_only_what_it_names_and_keeps_the_position() {
-        let placed = PetSettings { position: Some(PetPosition { display: "LG".into(), x: 0.5 }), ..on() };
+        let placed = PetSettings { position: Some(PetPosition { display: "LG".into(), x: 0.5, y: 0.4 }), ..on() };
         let patch: PetSettingsPatch = serde_json::from_str(r#"{"colour":"blue","size":"large","bubbleKinds":{"inputNeeded":true,"assistantDone":false,"reminderFired":true}}"#).unwrap();
         let next = placed.clone().with(patch);
         assert_eq!(next.colour, PetColour::Blue);

@@ -723,9 +723,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     A new window opens on that session's server without navigating an
     existing window. Cancelling the menu leaves unread notifications intact.
   - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel cat
-    walks along the bottom of the screen, above the Dock or taskbar (leaving
-    room for one that hides itself, so it never walks where it pops up), on
-    top of other apps. Its pose follows your agents: it wanders and sits when
+    walks along the bottom of the screen by default, above the Dock or
+    taskbar (leaving room for one that hides itself, so it never walks where
+    it pops up), on top of other apps. Drag it anywhere on the screen and it
+    walks left and right at that height; near the top, its bubble opens
+    below it. Its pose follows your agents: it wanders and sits when
     nothing runs (and sleeps after five quiet minutes), types on a tiny
     laptop while an agent works, and raises an orange "!" while one waits on
     you. Notifications show in its speech bubble instead of the system
@@ -733,8 +735,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     finished turn, a failed one or a reminder hops, droops or looks up and
     fades after 8 s into a count badge. Click the pet to list what it
     missed. It never takes focus, clicks beside it reach the app behind,
-    and you can drag it along the edge or onto another display; the spot is
-    remembered. It replaces a banner only while it is on screen: hidden
+    and you can drag it onto another display too; the spot (height
+    included) is remembered. It replaces a banner only while it is on screen: hidden
     over a full-screen app, while OpenAgentd is in front, or on the lock
     screen, the banner shows as before. It follows the same servers as the
     notch, so it works with every window closed. Settings → General →

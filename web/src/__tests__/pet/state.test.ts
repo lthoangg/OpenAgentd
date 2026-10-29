@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'bun:test'
 import {
+  BUBBLE_ROOM,
   BUBBLE_WIDTH,
   EMPTY_BUBBLES,
   MAX_UNREAD,
   SLEEP_AFTER_MS,
+  TOP_ROOM,
   badgeCount,
+  bubbleBelow,
   bubbleLeft,
   bubbleReducer,
   clampX,
+  clampY,
   nextTarget,
   petPose,
   reactionFor,
   startX,
+  startY,
   visibleBubble,
   type BubbleState,
   type BubbleTone,
@@ -165,6 +170,25 @@ describe('placement', () => {
     expect(startX({ display: 'LG', x: 0.5 }, 1000, 64)).toBe(500)
     expect(startX(null, 900, 64)).toBe(270)
     expect(startX({ display: 'LG', x: 1 }, 1000, 64)).toBe(936)
+  })
+
+  it('stands at the height it was dropped, or on the bottom edge', () => {
+    expect(startY({ display: 'LG', x: 0.5, y: 0.5 }, 1000, 48)).toBe(500 - 48)
+    expect(startY(null, 1000, 48)).toBe(1000 - 48)
+    expect(startY({ display: 'LG', x: 0.5 }, 1000, 48)).toBe(1000 - 48)
+    expect(startY({ display: 'LG', x: 0.5, y: 0 }, 1000, 48)).toBe(TOP_ROOM)
+  })
+
+  it('keeps the pet and its marks on screen vertically', () => {
+    expect(clampY(-10, 1000, 48)).toBe(TOP_ROOM)
+    expect(clampY(5000, 1000, 48)).toBe(952)
+    expect(clampY(Number.NaN, 1000, 48)).toBe(952)
+    expect(clampY(10, 40, 48)).toBe(0)
+  })
+
+  it('opens a bubble below the pet when there is no room above it', () => {
+    expect(bubbleBelow(BUBBLE_ROOM + 1)).toBe(false)
+    expect(bubbleBelow(BUBBLE_ROOM - 1)).toBe(true)
   })
 
   it('keeps a bubble above the pet and on screen', () => {

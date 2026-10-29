@@ -1,5 +1,5 @@
-/* Desktop pet (web/pet.html). The window is a transparent strip along the
- * bottom of a display; the pet and its bubble move inside it. Clicks pass
+/* Desktop pet (web/pet.html). The window is transparent and covers a
+ * display's work area; the pet and its bubble move inside it. Clicks pass
  * through everywhere except the pet and the bubble (the shell switches that
  * from the pointer). Colours and motion come from styles/tokens.css; only
  * the block below holds values of its own. pet-css.test.ts keeps it that way. */
@@ -63,7 +63,7 @@ button:focus-visible {
 .pet {
   position: absolute;
   left: 0;
-  bottom: 0;
+  top: 0;
   cursor: grab;
   touch-action: none;
 }
@@ -276,6 +276,17 @@ button:focus-visible {
 
 @keyframes pet-pop {
   from { opacity: 0; transform: scale(0.6); }
+}
+
+/* Too near the top of the screen: the bubble opens below, tail up. */
+.pet-bubble--below {
+  transform-origin: 20px 0;
+}
+
+.pet-bubble--below::after {
+  bottom: auto;
+  top: -7px;
+  transform: rotate(225deg);
 }
 
 .pet-bubble-close {

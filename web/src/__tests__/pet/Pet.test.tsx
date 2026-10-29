@@ -132,13 +132,40 @@ describe('Pet', () => {
   it('takes every click while dragged and reports where it was dropped', async () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
-    fireEvent.pointerDown(petEl(), { button: 0, clientX: 100 })
-    fireEvent.pointerMove(petEl(), { clientX: 160 })
+    fireEvent.pointerDown(petEl(), { button: 0, clientX: 100, clientY: 700 })
+    fireEvent.pointerMove(petEl(), { clientX: 160, clientY: 700 })
     await waitFor(() => expect(fits().at(-1)?.capture).toBe(true))
-    fireEvent.pointerUp(petEl(), { clientX: 160 })
+    fireEvent.pointerUp(petEl(), { clientX: 160, clientY: 700 })
     const drop = calls.find(([cmd]) => cmd === 'pet_drag_end')
     expect(drop?.[1]?.x).toEqual(expect.any(Number))
+    expect(drop?.[1]?.y).toEqual(expect.any(Number))
     await waitFor(() => expect(fits().at(-1)?.capture).toBe(false))
+  })
+
+  it('can be dragged up the screen and reports the height its feet were dropped at', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const bottom = window.innerHeight
+    fireEvent.pointerDown(petEl(), { button: 0, clientX: 100, clientY: bottom - 10 })
+    fireEvent.pointerMove(petEl(), { clientX: 100, clientY: bottom - 310 })
+    fireEvent.pointerUp(petEl(), { clientX: 100, clientY: bottom - 310 })
+    const drop = calls.find(([cmd]) => cmd === 'pet_drag_end')
+    expect(drop?.[1]?.y).toBe(bottom - 300)
+    expect(petEl().style.transform).toContain(`${bottom - 300 - 48}px`)
+  })
+
+  it('opens its bubble below when it stands near the top of the screen', async () => {
+    await mount({ settings: settings({ position: { display: '', x: 0.5, y: 0 } }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble())
+    expect(screen.getByRole('status')).toHaveClass('pet-bubble--below')
+  })
+
+  it('opens its bubble above when it stands on the bottom edge', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble())
+    expect(screen.getByRole('status')).not.toHaveClass('pet-bubble--below')
   })
 
   it('draws the chosen colour and size', async () => {

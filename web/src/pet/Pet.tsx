@@ -13,13 +13,16 @@ import {
   SIZE_SCALE,
   WALK_SPEED,
   badgeCount,
+  bubbleBelow,
   bubbleLeft,
   bubbleReducer,
   clampX,
+  clampY,
   nextTarget,
   petPose,
   reactionFor,
   startX,
+  startY,
   visibleBubble,
   type BubbleTone,
   type PetBubble,
@@ -115,7 +118,9 @@ export function Pet() {
   const [lastActivity, setLastActivity] = useState(() => Date.now())
   const [now, setNow] = useState(() => Date.now())
   const [width, setWidth] = useState(() => window.innerWidth)
+  const [height, setHeight] = useState(() => window.innerHeight)
   const [x, setX] = useState<number | null>(null)
+  const [y, setY] = useState(0)
   const [facingLeft, setFacingLeft] = useState(false)
   const [dragging, setDragging] = useState(false)
   const reducedMotion = useReducedMotion()
@@ -123,8 +128,9 @@ export function Pet() {
   const petRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const xRef = useRef(0)
+  const yRef = useRef(0)
   const targetRef = useRef<number | null>(null)
-  const dragRef = useRef<{ startX: number; petX: number; moved: boolean } | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; petX: number; petY: number; moved: boolean } | null>(null)
   const lastFitRef = useRef('')
 
   const settings = view?.settings
@@ -158,7 +164,10 @@ export function Pet() {
   )
 
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth)
+    const onResize = () => {
+      setWidth(window.innerWidth)
+      setHeight(window.innerHeight)
+    }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
@@ -184,19 +193,23 @@ export function Pet() {
   }, [fadingId])
 
   // ── Position ────────────────────────────────────────────────────────────
-  // Placed once the strip's width and the saved spot are known, and again
-  // when the shell moves it (dropped on another display).
+  // The window covers the display's work area. The pet is placed once its
+  // size and the saved spot are known, and again when the shell moves it
+  // (dropped on another display). It walks left and right at that height.
   const savedFraction = settings?.position?.x
+  const savedHeight = settings?.position?.y
   const savedDisplay = settings?.position?.display
   const ready = settings !== undefined
   useEffect(() => {
-    if (!ready || width <= 0) return
-    const saved = savedFraction === undefined ? null : { display: savedDisplay ?? '', x: savedFraction }
+    if (!ready || width <= 0 || height <= 0) return
+    const saved = savedFraction === undefined ? null : { display: savedDisplay ?? '', x: savedFraction, y: savedHeight }
     const start = startX(saved, width, petWidth)
     xRef.current = start
+    yRef.current = startY(saved, height, petHeight)
     targetRef.current = null
     setX(start)
-  }, [ready, savedFraction, savedDisplay, width, petWidth])
+    setY(yRef.current)
+  }, [ready, savedFraction, savedHeight, savedDisplay, width, height, petWidth, petHeight])
 
   const pose = petPose({
     status,
@@ -245,7 +258,7 @@ export function Pet() {
       const delta = target - xRef.current
       const move = Math.sign(delta) * Math.min(Math.abs(delta), speed * dt)
       xRef.current = clampX(xRef.current + move, window.innerWidth, petWidth)
-      if (petRef.current) petRef.current.style.transform = `translateX(${xRef.current}px)`
+      if (petRef.current) petRef.current.style.transform = `translate(${xRef.current}px, ${yRef.current}px)`
       if (t - lastFit > FIT_EVERY_MS) {
         lastFit = t
         reportFit(false)
@@ -278,13 +291,14 @@ export function Pet() {
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { startX: event.clientX, petX: xRef.current, moved: false }
+    dragRef.current = { startX: event.clientX, startY: event.clientY, petX: xRef.current, petY: yRef.current, moved: false }
   }
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     if (!drag) return
     const dx = event.clientX - drag.startX
-    if (!drag.moved && Math.abs(dx) < DRAG_SLOP) return
+    const dy = event.clientY - drag.startY
+    if (!drag.moved && Math.hypot(dx, dy) < DRAG_SLOP) return
     if (!drag.moved) {
       drag.moved = true
       setDragging(true)
@@ -292,8 +306,10 @@ export function Pet() {
     }
     targetRef.current = null
     xRef.current = clampX(drag.petX + dx, width, petWidth)
-    setFacingLeft(dx < 0)
+    yRef.current = clampY(drag.petY + dy, height, petHeight)
+    if (dx !== 0) setFacingLeft(dx < 0)
     setX(xRef.current)
+    setY(yRef.current)
   }
   const onPointerUp = () => {
     const drag = dragRef.current
@@ -302,7 +318,8 @@ export function Pet() {
     if (drag.moved) {
       setDragging(false)
       setSitting(true)
-      void invoke(DRAG_END_COMMAND, { x: xRef.current }).catch(() => {})
+      // Where its feet are: the height it stands at from now on.
+      void invoke(DRAG_END_COMMAND, { x: xRef.current, y: yRef.current + petHeight }).catch(() => {})
       return
     }
     if (badge > 0 || bubbles.listOpen) dispatch({ type: 'toggleList' })
@@ -318,6 +335,14 @@ export function Pet() {
 
   const left = walking ? xRef.current : x
   const bubbleX = bubbleLeft(left, width)
+  const top = y
+  const below = bubbleBelow(top)
+  const tailX = `${Math.max(16, left - bubbleX + petWidth / 2 - 6)}px`
+  // Above the pet, or below it when it stands too near the top.
+  const bubbleStyle = below
+    ? { left: bubbleX, top: top + petHeight + 16, ['--tail-x' as string]: tailX }
+    : { left: bubbleX, bottom: height - top + 16, ['--tail-x' as string]: tailX }
+  const bubbleSide = below ? ' pet-bubble--below' : ''
 
   return (
     <div className="pet-strip">
@@ -325,8 +350,8 @@ export function Pet() {
         <div
           ref={bubbleRef}
           key={visible.bubble.id}
-          className={`pet-bubble pet-bubble--${visible.bubble.tone}`}
-          style={{ left: bubbleX, bottom: petHeight + 16, ['--tail-x' as string]: `${Math.max(16, left - bubbleX + petWidth / 2 - 6)}px` }}
+          className={`pet-bubble pet-bubble--${visible.bubble.tone}${bubbleSide}`}
+          style={bubbleStyle}
           role="status"
         >
           <button type="button" className="pet-bubble-close" aria-label="Dismiss" onClick={() => dispatch({ type: 'dismiss', id: visible.bubble.id })}>
@@ -350,8 +375,8 @@ export function Pet() {
       {visible?.type === 'list' && (
         <div
           ref={bubbleRef}
-          className="pet-bubble pet-bubble--list"
-          style={{ left: bubbleX, bottom: petHeight + 16, ['--tail-x' as string]: `${Math.max(16, left - bubbleX + petWidth / 2 - 6)}px` }}
+          className={`pet-bubble pet-bubble--list${bubbleSide}`}
+          style={bubbleStyle}
         >
           <button type="button" className="pet-bubble-close" aria-label="Close" onClick={() => dispatch({ type: 'toggleList' })}>
             <X size={13} aria-hidden="true" />
@@ -375,7 +400,7 @@ export function Pet() {
       <div
         ref={petRef}
         className={`pet pet--${pose}${facingLeft ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}`}
-        style={{ width: petWidth, height: petHeight, transform: `translateX(${left}px)` }}
+        style={{ width: petWidth, height: petHeight, transform: `translate(${left}px, ${top}px)` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

@@ -310,7 +310,7 @@ mod tests {
         assert_eq!(partial, PetSettings { enabled: true, colour: PetColour::Bark, ..PetSettings::default() });
         let saved = PetSettings {
             enabled: true,
-            position: Some(PetPosition { display: "LG".into(), x: 0.4 }),
+            position: Some(PetPosition { display: "LG".into(), x: 0.4, y: 0.6 }),
             ..PetSettings::default()
         };
         let bytes = serde_json::to_vec(&saved).unwrap();

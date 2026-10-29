@@ -27,8 +27,11 @@ export interface PetSettings {
   bubbleKinds: BubbleKinds
   showWhenFrontmost: boolean
   hideInFullscreen: boolean
-  /** Where it was dropped: a display, and 0..1 along its bottom edge. */
-  position: { display: string; x: number } | null
+  /**
+   * Where it was dropped: a display, 0..1 across it, and 0..1 down it for
+   * the height its feet stand at (missing in older settings: the bottom).
+   */
+  position: { display: string; x: number; y?: number } | null
 }
 
 export const DEFAULT_PET_SETTINGS: PetSettings = {
@@ -73,6 +76,10 @@ export interface PetBubble {
 export const PET_WIDTH = 64
 export const PET_HEIGHT = 48
 export const BUBBLE_WIDTH = 290
+/** Room kept above the pet for its marks (the alert, the badge, the z z). */
+export const TOP_ROOM = 28
+/** Room a bubble needs above the pet; with less it opens below. */
+export const BUBBLE_ROOM = 200
 /** A finished turn or a reminder fades after this long. */
 export const BUBBLE_FADE_MS = 8000
 /** Unread bubbles kept behind the badge. */
@@ -216,7 +223,7 @@ export function badgeCount(state: BubbleState): number {
 
 // ── Placement ──────────────────────────────────────────────────────────────
 
-/** Keep the pet inside the strip. */
+/** Keep the pet inside the display, left to right. */
 export function clampX(x: number, stripWidth: number, petWidth: number): number {
   const max = Math.max(0, stripWidth - petWidth)
   if (!Number.isFinite(x)) return 0
@@ -232,6 +239,25 @@ export function bubbleLeft(petX: number, stripWidth: number): number {
 export function startX(position: PetSettings['position'], stripWidth: number, petWidth: number): number {
   const fraction = position && Number.isFinite(position.x) ? position.x : 0.3
   return clampX(fraction * stripWidth, stripWidth, petWidth)
+}
+
+/** Keep the pet's top inside the display, with room above it for its marks. */
+export function clampY(y: number, areaHeight: number, petHeight: number): number {
+  const max = Math.max(0, areaHeight - petHeight)
+  const min = Math.min(TOP_ROOM, max)
+  if (!Number.isFinite(y)) return max
+  return Math.min(Math.max(min, y), max)
+}
+
+/** The pet's starting top from a saved 0..1 feet height (default: the bottom edge). */
+export function startY(position: PetSettings['position'], areaHeight: number, petHeight: number): number {
+  const fraction = position && typeof position.y === 'number' && Number.isFinite(position.y) ? position.y : 1
+  return clampY(fraction * areaHeight - petHeight, areaHeight, petHeight)
+}
+
+/** Whether the bubble opens below the pet: too near the top for it to fit above. */
+export function bubbleBelow(petY: number): boolean {
+  return petY < BUBBLE_ROOM
 }
 
 /** The next spot to walk to: somewhere else along the strip, at least `minStep` away. */

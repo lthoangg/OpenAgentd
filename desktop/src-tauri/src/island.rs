@@ -1835,15 +1835,14 @@ mod native {
         }
     }
 
-    /// Above the menu bar, on every Space (full-screen ones too), out of
-    /// Cmd-` cycling and Mission Control.
+    /// Above the menu bar, on every Space but full-screen ones (macOS keeps
+    /// a plain window off them), out of Cmd-` cycling and Mission Control.
     pub fn configure(window: &tauri::WebviewWindow) {
         with_ns_window(window, |ns| {
             ns.setLevel(NSMainMenuWindowLevel + 3);
             ns.setCollectionBehavior(
                 NSWindowCollectionBehavior::CanJoinAllSpaces
                     | NSWindowCollectionBehavior::Stationary
-                    | NSWindowCollectionBehavior::FullScreenAuxiliary
                     | NSWindowCollectionBehavior::IgnoresCycle,
             );
             ns.setHasShadow(false);

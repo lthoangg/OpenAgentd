@@ -690,7 +690,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     ones with a × to dismiss, then running ones; click a row or the pill to
     open that session. The pill grows out of the notch, springs open on hover and
     shrinks back in, and clicks beside it still reach the menu bar. It never
-    takes focus and shows over full-screen apps. Settings → General →
+    takes focus and steps aside for full-screen apps. Settings → General →
     Desktop turns it off, and can also keep it up while OpenAgentd is in
     front (off by default), stop keeping finished sessions, or stop hover
     from expanding it.

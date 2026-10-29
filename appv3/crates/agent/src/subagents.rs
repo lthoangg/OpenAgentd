@@ -56,6 +56,8 @@ pub struct SubagentInstance {
     pub stall: Option<String>,
     /// When its current work started (spawn, or the last message sent to it).
     pub working_since: Option<std::time::Instant>,
+    /// A server restart cut its turn off; the next message resumes it.
+    pub stopped_by_restart: bool,
 }
 
 impl SubagentInstance {
@@ -75,6 +77,7 @@ impl SubagentInstance {
             pending_tool_call_id: None,
             stall: None,
             working_since: (status == "working").then(std::time::Instant::now),
+            stopped_by_restart: false,
         }
     }
 }
@@ -274,6 +277,115 @@ fn mark_turn_refused(lead: &str, handle: &str, child: &str, error: &str) {
     publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "error"}));
 }
 
+/// The model a member runs on when the lead names none: its profile's own
+/// model, else the lead's, else the default.
+fn member_model(cfg: &loader::AgentConfig, lead_model: Option<String>) -> String {
+    if let Some(m) = cfg.model.clone().filter(|m| !m.is_empty() && m != DEFAULT_NEW_USER_MODEL) {
+        m
+    } else if let Some(m) = lead_model.filter(|m| !m.is_empty()) {
+        m
+    } else {
+        cfg.model.clone().filter(|m| !m.is_empty()).unwrap_or_else(|| DEFAULT_NEW_USER_MODEL.into())
+    }
+}
+
+/// Build a member's agent session (prompt, tools, model) on `child_sid`.
+#[allow(clippy::too_many_arguments)]
+fn build_member_session(
+    handle: &str,
+    cfg: &loader::AgentConfig,
+    model: &str,
+    thinking: Option<&str>,
+    allowed: &[String],
+    child_sid: &str,
+    workspace: &str,
+    lead: &str,
+    pool: &DbPool,
+    factory: &ProviderFactory,
+) -> Result<Arc<AgentSession>, SubagentError> {
+    let member_tools = build_member_tools(allowed);
+    let system_prompt = format!("{}\n\n{}", cfg.system_prompt.trim(), team_context(handle, &cfg.role));
+    let mut kw = Kwargs::new();
+    if let Some(t) = thinking {
+        kw.insert("thinking_level".into(), json!(t));
+    }
+    let provider = factory(Some(model), kw).map_err(|e| SubagentError::General(e.to_string()))?;
+    let mut agent = Agent::new(provider, handle, &system_prompt, member_tools, Some(model.to_string()));
+    agent.description = cfg.description.clone();
+    agent.thinking_level = thinking.map(String::from);
+    Ok(AgentSession::new(agent, Some(child_sid.to_string()), Some(workspace.to_string()), pool.clone(), factory.clone(), Some(lead.to_string())))
+}
+
+/// Bring back an earlier member of `lead` that is not in the live list (a
+/// server restart empties it), from its saved session: same handle, same
+/// session, full transcript. It is listed as stopped until a message starts
+/// it. `NotFound` when the lead never had a member by that handle.
+pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: &ProviderFactory, stopped_by_restart: bool) -> Result<String, SubagentError> {
+    let handle = handle.trim();
+    if with_instance(lead, handle, |_| ()).is_some() {
+        return Ok(handle.to_string());
+    }
+    let not_found = || SubagentError::NotFound(format!("Member '{handle}' not found."));
+    let Some((profile, _)) = parse_instance_handle(handle) else { return Err(not_found()) };
+    let err = |e: anyhow::Error| SubagentError::General(e.to_string());
+    reconcile_lead_instances(lead, pool).await.map_err(err)?;
+    let children = db::list_child_sessions(pool, &[lead.to_string()]).await.map_err(err)?;
+    // The newest one, should a handle ever have been reused.
+    let Some(row) = children.into_iter().filter(|c| c.agent_name.as_deref() == Some(handle)).max_by(|a, b| a.created_at.cmp(&b.created_at)) else {
+        return Err(not_found());
+    };
+    let child_sid = db::codec::api_uuid(&row.id);
+    let profiles = loader::load_member_profiles(&agents_dir());
+    let Some(cfg) = profiles.iter().find(|(n, _)| *n == profile).map(|(_, c)| c.clone()) else {
+        return Err(SubagentError::General(format!(
+            "{handle}'s profile '{profile}' no longer exists, so it cannot be resumed. Delegate the task to another profile, or do it yourself."
+        )));
+    };
+    let workspace = if row.workspace.is_empty() { std::env::current_dir().unwrap_or_default().display().to_string() } else { row.workspace.clone() };
+    let thinking = row.thinking_level.clone().filter(|s| !s.is_empty()).or_else(|| cfg.thinking_level.clone().filter(|s| !s.is_empty()));
+    let saved_model = row.model.clone().filter(|m| !m.is_empty());
+    let session = match saved_model.as_deref().map(|m| build_member_session(handle, &cfg, m, thinking.as_deref(), &cfg.tools, &child_sid, &workspace, lead, pool, factory)) {
+        Some(Ok(s)) => s,
+        // Its model is gone from the config: pick one the way a spawn does.
+        _ => {
+            let lead_model = db::get_session(pool, lead).await.ok().flatten().and_then(|r| r.model);
+            let model = member_model(&cfg, lead_model);
+            build_member_session(handle, &cfg, &model, thinking.as_deref(), &cfg.tools, &child_sid, &workspace, lead, pool, factory)?
+        }
+    };
+    {
+        let mut r = reg().lock().unwrap();
+        let live = r.live.entry(lead.to_string()).or_default();
+        if live.contains_key(handle) {
+            return Ok(handle.to_string());
+        }
+        let mut inst = SubagentInstance::new(handle, &profile, lead, &child_sid, session, "stopped");
+        inst.stopped_by_restart = stopped_by_restart;
+        live.insert(handle.to_string(), inst);
+        let order = r.order.entry(lead.to_string()).or_default();
+        if !order.iter().any(|h| h == handle) {
+            order.push(handle.to_string());
+        }
+    }
+    tracing::info!("subagent_rehydrated lead={} handle={} session_id={}", lead, handle, child_sid);
+    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "status": "stopped", "workspace": workspace}));
+    Ok(handle.to_string())
+}
+
+/// [`resolve_instance`], bringing back an earlier member named by its exact
+/// handle when the live list no longer has it.
+async fn resolve_or_rehydrate(lead: &str, target: &str, pool: &DbPool) -> Result<String, SubagentError> {
+    let missing = match resolve_instance(lead, target) {
+        Err(SubagentError::NotFound(m)) => m,
+        other => return other,
+    };
+    let Some(factory) = crate::manager::try_provider_factory() else { return Err(SubagentError::NotFound(missing)) };
+    match rehydrate_member(lead, target, pool, &factory, false).await {
+        Err(SubagentError::NotFound(_)) => Err(SubagentError::NotFound(missing)),
+        other => other,
+    }
+}
+
 /// `spawn_subagent(..., wait=False)`.
 #[allow(clippy::too_many_arguments)] // mirrors v2's spawn_subagent signature
 pub async fn spawn_subagent(
@@ -310,28 +422,10 @@ pub async fn spawn_subagent(
     let handle = allocate_instance_handle(lead, profile, name);
     let child_uuid = uuid::Uuid::now_v7();
     let child_sid = child_uuid.to_string();
-    let effective_model = if let Some(m) = model_override.clone().filter(|m| !m.is_empty()) {
-        m
-    } else if let Some(m) = cfg.model.clone().filter(|m| !m.is_empty() && m != DEFAULT_NEW_USER_MODEL) {
-        m
-    } else if let Some(m) = lead_model.filter(|m| !m.is_empty()) {
-        m
-    } else {
-        cfg.model.clone().filter(|m| !m.is_empty()).unwrap_or_else(|| DEFAULT_NEW_USER_MODEL.into())
-    };
+    let effective_model = model_override.clone().filter(|m| !m.is_empty()).unwrap_or_else(|| member_model(&cfg, lead_model));
     let effective_thinking = cfg.thinking_level.clone().filter(|s| !s.is_empty()).or(lead_thinking);
     let allowed = tools_override.unwrap_or_else(|| cfg.tools.clone());
-    let member_tools = build_member_tools(&allowed);
-    let system_prompt = format!("{}\n\n{}", cfg.system_prompt.trim(), team_context(&handle, &cfg.role));
-    let mut kw = Kwargs::new();
-    if let Some(t) = &effective_thinking {
-        kw.insert("thinking_level".into(), json!(t));
-    }
-    let provider = factory(Some(&effective_model), kw).map_err(|e| SubagentError::General(e.to_string()))?;
-    let mut agent = Agent::new(provider, &handle, &system_prompt, member_tools, Some(effective_model.clone()));
-    agent.description = cfg.description.clone();
-    agent.thinking_level = effective_thinking.clone();
-    let child = AgentSession::new(agent, Some(child_sid.clone()), Some(workspace.to_string()), pool.clone(), factory.clone(), Some(lead.to_string()));
+    let child = build_member_session(&handle, &cfg, &effective_model, effective_thinking.as_deref(), &allowed, &child_sid, workspace, lead, pool, factory)?;
 
     let clean_task = task.split_whitespace().collect::<Vec<_>>().join(" ");
     let title = format!("{handle}: {}", clean_task.chars().take(60).collect::<String>());
@@ -385,11 +479,12 @@ pub async fn spawn_subagent(
 
 /// `send_subagent_message(..., wait=False)`.
 pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, pool: &DbPool) -> Result<Value, SubagentError> {
-    let handle = resolve_instance(lead, member_id)?;
+    let handle = resolve_or_rehydrate(lead, member_id, pool).await?;
     let (inst_session, waiting, tool_call_id, child_sid) = with_instance(lead, &handle, |i| {
         let waiting = i.status == "waiting_lead";
         let tcid = i.pending_tool_call_id.clone();
         i.status = "working".into();
+        i.stopped_by_restart = false;
         i.question_delivered = false;
         i.result_delivered = false;
         i.last_error = None;
@@ -462,7 +557,7 @@ pub async fn stop_subagent(lead: &str, member_id: &str) -> Result<Value, Subagen
 /// interrupted turn sends no report; the new message's turn does. A member
 /// waiting on `ask_lead` takes `message` as the answer.
 pub async fn interrupt_subagent(lead: &str, member_id: &str, message: &str, pool: &DbPool) -> Result<Value, SubagentError> {
-    let handle = resolve_instance(lead, member_id)?;
+    let handle = resolve_or_rehydrate(lead, member_id, pool).await?;
     let (session, waiting) =
         with_instance(lead, &handle, |i| (i.session.clone(), i.status == "waiting_lead")).ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
     if waiting {
@@ -620,6 +715,7 @@ pub fn describe_subagents(lead: &str) -> String {
                     }
                 }
                 "error" => format!("failed: {}", i.last_error.as_deref().filter(|e| !e.is_empty()).unwrap_or("unknown error")),
+                "stopped" if i.stopped_by_restart => "stopped by a server restart (send it a task to resume)".to_string(),
                 "stopped" => "stopped (send it a task to resume)".to_string(),
                 "completed" => "done (report delivered)".to_string(),
                 other => other.to_string(),
@@ -1041,6 +1137,7 @@ mod tests {
                 pending_tool_call_id: None,
                 stall: None,
                 working_since: None,
+                stopped_by_restart: false,
             };
             reg().lock().unwrap().live.entry(lead.into()).or_default().insert(handle.into(), inst);
         };
@@ -1096,6 +1193,7 @@ mod tests {
             pending_tool_call_id: None,
             stall: None,
             working_since: None,
+            stopped_by_restart: false,
         };
         reg().lock().unwrap().live.entry(lead.clone()).or_default().insert("worker#1".into(), inst);
 
@@ -1139,6 +1237,7 @@ mod tests {
             pending_tool_call_id: None,
             stall: None,
             working_since: None,
+            stopped_by_restart: false,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("worker#1".into(), inst);
 
@@ -1175,6 +1274,7 @@ mod tests {
             pending_tool_call_id: None,
             stall: None,
             working_since: None,
+            stopped_by_restart: false,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         let reported = || find_by_session(lead, &child_sid, |i| i.last_result.clone()).flatten();
@@ -1221,6 +1321,7 @@ mod tests {
             pending_tool_call_id: None,
             stall: None,
             working_since: None,
+            stopped_by_restart: false,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         assert!(subagents_waiting_on_lead().contains(&child_sid));

@@ -80,8 +80,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   it. A turn you stopped stays stopped, a turn waiting on your answer keeps
   waiting, and each turn is continued at most once: cut off again, it stays
   stopped with a **Stopped by a server restart** divider. A subagent cut off
-  mid-task is not restarted; its lead gets a report that it was stopped, so
-  the lead can delegate the task again instead of waiting.
+  mid-task is not restarted on its own; its lead gets a report that it was
+  stopped, so the lead never waits for it. `[v3.36.0]` The lead can resume
+  that same member by its handle (`team(target='worker#1', task='continue')`):
+  it is rebuilt from its saved session and goes on with its full transcript
+  instead of a new member starting from nothing. `team(action='list')` shows
+  it as stopped by a server restart until then.
 - **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
   Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
   Grep is linear-time and parallel. The file tree, git status and diff refresh live

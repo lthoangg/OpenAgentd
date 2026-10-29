@@ -193,7 +193,7 @@ pub fn verified_bun_binary(payload: &[u8], asset: &BunAsset) -> IResult<Vec<u8>>
         return Err(InstallError::Value("Bun archive checksum verification failed".into()));
     }
     let mut archive = open_zip(payload)?;
-    if !archive.file_names().any(|n| n == asset.executable_member) {
+    if !archive.file_names().any(|n| n.is_ok_and(|n| n == asset.executable_member)) {
         return Err(InstallError::Value("Bun archive does not contain the expected executable".into()));
     }
     read_member(&mut archive, &asset.executable_member, "Bun executable exceeds the size limit")?

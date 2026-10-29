@@ -17,7 +17,7 @@ uuid.workspace = true
 chrono.workspace = true
 sqlx.workspace = true
 # Same version sqlx-sqlite links; used only for a pre-init sqlite3_config call.
-libsqlite3-sys = "0.30"
+libsqlite3-sys = "0.37"
 
 [dev-dependencies]
 tempfile = "3"

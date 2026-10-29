@@ -217,6 +217,10 @@ fn tempdir_in(dir: &Path) -> Result<PathBuf> {
 mod tests {
     use super::*;
 
+    fn sha_hex(bytes: &[u8]) -> String {
+        Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     #[test]
     fn versions_compare_numerically() {
         assert!(is_newer("3.0.1", "3.0.0"));
@@ -242,7 +246,7 @@ mod tests {
 
     #[test]
     fn checksum_must_match() {
-        let good = format!("{:x}  a.tar.gz\n", Sha256::digest(b"data"));
+        let good = format!("{}  a.tar.gz\n", sha_hex(b"data"));
         assert!(verify_sha256(b"data", &good).is_ok());
         assert!(verify_sha256(b"tampered", &good).is_err());
         assert!(verify_sha256(b"data", "").is_err());
@@ -300,7 +304,7 @@ mod tests {
     #[tokio::test]
     async fn update_replaces_every_binary_from_a_verified_archive() {
         let archive = fake_archive(&["agentd", "openagentd"], "new");
-        let sha = format!("{:x}  x\n", Sha256::digest(&archive));
+        let sha = format!("{}  x\n", sha_hex(&archive));
         let base = fake_releases("3.1.0", archive, sha).await;
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("agentd"), "old").unwrap();
@@ -321,7 +325,7 @@ mod tests {
     #[tokio::test]
     async fn update_refuses_a_tampered_archive() {
         let archive = fake_archive(&["agentd"], "evil");
-        let base = fake_releases("3.1.0", archive, format!("{:x}  x\n", Sha256::digest(b"something else"))).await;
+        let base = fake_releases("3.1.0", archive, format!("{}  x\n", sha_hex(b"something else"))).await;
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("agentd"), "old").unwrap();
 

@@ -1370,6 +1370,16 @@ executes tools, manages its task list, and inspects workspace repositories.
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
   32,000 characters. **Settings → Workspaces → Messages** turns the
   tool off for every agent; replies already on their way still arrive.
+
+  **Worktrees from chat** `[v3.36.0]` — to run several features in one
+  repository at once, the agent can send work to another checkout of the same
+  repository by naming it in `worktree` (the workspace defaults to the current
+  one). An existing worktree is matched by name, `"main"` targets the main
+  checkout, and a new name creates a worktree on branch `oad/<name>` from the
+  sender's current commit and starts the session there, so you no longer create
+  and pick each worktree yourself. The tool card shows a **Created worktree**
+  chip and the checkout the message reached. Folders that are not git
+  repositories cannot have worktrees, and the agent is told so.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
   **Settings → Workspaces → Groups**: create a group, give it a
@@ -1569,6 +1579,12 @@ agent against it.
   Since `[v3.1.0]` these actions live in the repository's checkout menu (see
   **Compact coding sidebar**), where **New worktree…**, **Rename** and
   **Remove** act on the worktree the list is narrowed to.
+  Since `[v3.36.0]` workspaces are grouped by their git repository rather than
+  their path: a worktree created outside the app, or a subfolder of a
+  repository opened on its own, is listed under that repository instead of as a
+  separate one (existing workspaces are re-filed once at startup). A checkout
+  whose folder no longer exists shows a **Missing** badge. Removing a worktree
+  also deletes its `openagentd/` or `oad/` branch.
 - **Warm-paper workspace refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper

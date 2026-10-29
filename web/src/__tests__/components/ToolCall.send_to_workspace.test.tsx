@@ -25,6 +25,11 @@ describe('send_to_workspace display', () => {
     expect(getToolDisplay('send_to_workspace', JSON.stringify({ action: 'list' })).headerTitle).toBe('Listing workspaces…')
     expect(getToolDisplay('send_to_workspace', JSON.stringify({ action: 'list', workspace: 'infra' })).headerTitle).toBe('Listing sessions in infra')
   })
+
+  it('names the checkout a worktree send picks', () => {
+    expect(getToolDisplay('workspace', JSON.stringify({ worktree: 'auth', message: 'x', reply: true })).headerTitle).toBe('Message to worktree auth (awaiting reply)')
+    expect(getToolDisplay('workspace', JSON.stringify({ workspace: 'app', worktree: 'main', message: 'x' })).headerTitle).toBe('Message to app · main checkout')
+  })
 })
 
 describe('send_to_workspace result', () => {
@@ -35,6 +40,19 @@ describe('send_to_workspace result', () => {
     expect(parseSendResult(`Sent to 'infra' (/r/my (infra)) — queued in busy session ${SID}; it runs when the current turn ends.`)).toEqual(expected)
     expect(parseSendResult("Error: No registered workspace is named 'infra'.")).toBeNull()
     expect(parseSendResult(undefined)).toBeNull()
+  })
+
+  it('reads the worktree a send created', () => {
+    const text = `Sent to 'auth' (/d/worktrees/app-1/auth) — new session ${SID} started. Created worktree 'auth' on branch oad/auth. Its final answer will arrive here as a message; do not poll.`
+    expect(parseSendResult(text)).toEqual({
+      workspaceName: 'auth',
+      workspace: '/d/worktrees/app-1/auth',
+      sessionId: SID,
+      createdWorktree: { name: 'auth', branch: 'oad/auth' },
+    })
+    render(<ToolCall name="workspace" args={JSON.stringify({ worktree: 'auth', message: 'x' })} done result={text} />)
+    expect(document.querySelector('[data-created-worktree]')?.textContent).toBe('Created worktree auth on oad/auth')
+    expect(screen.getByRole('button', { name: 'Open in auth' })).toBeTruthy()
   })
 
   it('offers a switch to the target session once the send succeeded, under either tool name', () => {

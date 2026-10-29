@@ -70,7 +70,7 @@ import {
 } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
-import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
+import { getCodingWorkspaceTree, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
 import { WORKSPACES_KEY, loadLastWorkspace, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
@@ -195,6 +195,15 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
 }
 
 /** One pick-one row of a repository's checkout menu. */
+/** A workspace or checkout whose folder is gone from disk. */
+function MissingBadge() {
+  return (
+    <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-error)" data-sidebar-missing="">
+      missing
+    </span>
+  )
+}
+
 function CheckoutMenuItem({ checked, onSelect, children }: { checked: boolean; onSelect: () => void; children: ReactNode }) {
   return (
     <button
@@ -721,6 +730,19 @@ export function Sidebar({
     ? { name: checkoutMenuSelection.name, directory: checkoutMenuSelection.path, managed: checkoutMenuSelection.managed }
     : null
 
+  // A checkout that is not OpenAgentd's to delete (a subfolder, an outside
+  // worktree, or one whose folder is gone) leaves the sidebar only.
+  const hideCheckout = (path: string) => {
+    void setCodingWorkspaceVisibility(path, true)
+      .then(async () => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+        await refreshWorkspaceTree()
+      })
+      .catch((err: unknown) => {
+        pushToast({ tone: 'error', title: 'Could not remove it from the sidebar', description: err instanceof Error ? err.message : undefined })
+      })
+  }
+
   const openSelectedFolder = async () => {
     try {
       const trustedWorkspace = await selectTrustedWorkspace(browserPath, validateTrustedWorkspace)
@@ -1059,6 +1081,7 @@ export function Sidebar({
                         <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                           {sourceLabel}
                         </span>
+                        {workspaceByPath.get(path)?.missing && <MissingBadge />}
                         <WorkspaceGroupDots groups={sourceGroups} />
                         {sourceIsPending && (
                           <span>
@@ -1070,6 +1093,7 @@ export function Sidebar({
                   />
                   <TooltipContent>
                     {sourceIsChat ? 'Chat workspace' : path}
+                    {workspaceByPath.get(path)?.missing && <span className="block">Folder not found on disk</span>}
                     {sourceGroups.length > 0 && <span className="block">{workspaceGroupsLabel(sourceGroups)}</span>}
                   </TooltipContent>
                 </Tooltip>
@@ -1686,9 +1710,15 @@ export function Sidebar({
               checked={checkoutMenuRepository.selected === item.path}
               onSelect={() => { selectCheckout(checkoutMenu.repo, item.path); setCheckoutMenu(null) }}
             >
-              <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+              {item.kind === 'folder'
+                ? <Folder size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                : <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
               <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-              {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-text-subtle)">external</span>}
+              {item.missing
+                ? <MissingBadge />
+                : item.kind === 'folder'
+                  ? <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-text-subtle)">folder</span>
+                  : !item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-text-subtle)">external</span>}
             </CheckoutMenuItem>
           ))}
           <ContextMenuSeparator />
@@ -1734,6 +1764,22 @@ export function Sidebar({
             >
               <Trash2 size={12} aria-hidden="true" />
               {`Remove ${checkoutMenuWorktree.name}…`}
+            </button>
+          )}
+          {checkoutMenuWorktree && !checkoutMenuWorktree.managed && (
+            <button
+              type="button"
+              role="menuitem"
+              className={CONTEXT_MENU_ITEM_CLASS}
+              onClick={() => {
+                const target = checkoutMenuWorktree.directory
+                selectCheckout(checkoutMenu.repo, null)
+                setCheckoutMenu(null)
+                hideCheckout(target)
+              }}
+            >
+              <X size={12} aria-hidden="true" />
+              {`Remove ${checkoutMenuWorktree.name} from sidebar`}
             </button>
           )}
         </ContextMenu>

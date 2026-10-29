@@ -632,7 +632,7 @@ async fn update_visibility(State(st): State<AppState>, raw: Bytes) -> ApiResult<
     if hidden {
         db::hide_coding_workspace(&st.pool, &workspace).await?;
     } else {
-        db::upsert_coding_workspace(&st.pool, &workspace, "repo", None, None, false, false).await?;
+        register_session_workspace(&st.pool, &workspace).await?;
     }
     Ok(json(json!({"workspace": workspace, "hidden": hidden})))
 }
@@ -660,12 +660,12 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
         if s.is_chat_workspace(Some(Path::new(&row.path))) || s.is_chat_workspace(row.source_path.as_deref().map(Path::new)) {
             continue;
         }
-        if row.kind == "worktree" {
+        if row.kind == "worktree" || row.kind == "folder" {
             pending.push(row);
             continue;
         }
         let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
-        let entry = json!({"path": row.path, "name": name, "worktrees": [], "group_ids": group_ids(&row.path)});
+        let entry = json!({"path": row.path, "name": name, "worktrees": [], "group_ids": group_ids(&row.path), "missing": !Path::new(&row.path).is_dir()});
         match repos.iter_mut().find(|(p, _)| *p == row.path) {
             Some(slot) => slot.1 = entry.as_object().unwrap().clone(),
             None => repos.push((row.path.clone(), entry.as_object().unwrap().clone())),
@@ -674,11 +674,27 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
     for row in pending {
         let Some(source) = row.source_path.clone().filter(|p| !p.is_empty()) else { continue };
         if !repos.iter().any(|(p, _)| *p == source) {
-            repos.push((source.clone(), json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source)}).as_object().unwrap().clone()));
+            let missing = !Path::new(&source).is_dir();
+            repos.push((
+                source.clone(),
+                json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source), "missing": missing}).as_object().unwrap().clone(),
+            ));
         }
-        let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
+        // A subfolder shows its path inside the repository (`web/app`).
+        let rel = Path::new(&row.path).strip_prefix(&source).ok().map(|r| r.display().to_string()).filter(|r| !r.is_empty());
+        let default_name = match (row.kind.as_str(), rel) {
+            ("folder", Some(r)) => r,
+            _ => basename(&row.path),
+        };
+        let name = row.name.clone().filter(|n| !n.is_empty() && !(row.kind == "folder" && *n == basename(&row.path))).unwrap_or(default_name);
         let slot = repos.iter_mut().find(|(p, _)| *p == source).unwrap();
-        slot.1.get_mut("worktrees").unwrap().as_array_mut().unwrap().push(json!({"path": row.path, "name": name, "managed": row.managed}));
+        slot.1.get_mut("worktrees").unwrap().as_array_mut().unwrap().push(json!({
+            "path": row.path,
+            "name": name,
+            "managed": row.managed,
+            "kind": row.kind,
+            "missing": !Path::new(&row.path).is_dir(),
+        }));
     }
     Ok(json(json!({
         "repositories": repos.into_iter().map(|(_, m)| Value::Object(m)).collect::<Vec<_>>(),
@@ -758,22 +774,11 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
 }
 
-/// Record a session's folder as a sidebar workspace (a managed worktree
-/// under its source repository). The Chat workspace is never listed.
+/// Record a session's folder as a sidebar workspace, filed under its
+/// repository when it is a worktree or a subfolder of one. The Chat
+/// workspace is never listed.
 async fn register_session_workspace(pool: &DbPool, workspace: &str) -> ApiResult<()> {
-    if workspace.is_empty() || settings().is_chat_workspace(Some(Path::new(workspace))) {
-        return Ok(());
-    }
-    match worktrees::find_managed_worktree_source(Path::new(workspace)).await {
-        Some(source) => {
-            db::upsert_coding_workspace(pool, &source, "repo", None, None, false, false).await?;
-            db::upsert_coding_workspace(pool, workspace, "worktree", Some(&source), None, true, false).await?;
-        }
-        None => {
-            db::upsert_coding_workspace(pool, workspace, "repo", None, None, false, false).await?;
-        }
-    }
-    Ok(())
+    appv3_agent::worktrees::register_workspace(pool, workspace).await.map_err(ApiError::internal)
 }
 
 async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {

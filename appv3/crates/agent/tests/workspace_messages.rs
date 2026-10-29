@@ -116,6 +116,7 @@ async fn send_reply_retry_and_guards() {
         reply,
         mode: mode.map(String::from),
         delivery: Default::default(),
+        worktree: None,
     };
 
     // ── 0. groups scope the sends ───────────────────────────────────────

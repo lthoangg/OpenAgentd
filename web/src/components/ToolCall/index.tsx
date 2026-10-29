@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowUpRight, ChevronRight, Copy, Check, FileText, Globe } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, Copy, Check, FileText, GitBranch, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
@@ -498,6 +498,18 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
             <span className="truncate">Open in {sentSession.workspaceName}</span>
           </button>
+        )}
+        {sentSession?.createdWorktree && (
+          <span
+            className="ml-2 inline-flex max-w-[60%] items-center gap-1 align-middle text-[11px] text-(--color-text-muted)"
+            data-created-worktree=""
+          >
+            <GitBranch size={11} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
+            <span className="truncate">
+              Created worktree <span className="font-mono">{sentSession.createdWorktree.name}</span>
+              {sentSession.createdWorktree.branch && <> on <span className="font-mono">{sentSession.createdWorktree.branch}</span></>}
+            </span>
+          </span>
         )}
       </div>
 

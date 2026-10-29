@@ -1781,6 +1781,43 @@ describe('Sidebar workspace trust flow', () => {
     expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
+  it('files subfolders and outside worktrees under the repository and marks missing folders', async () => {
+    const user = userEvent.setup()
+    sessionsData = []
+    workspaceSessionsData = sessionsData
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/api/agent/workspace/tree')) {
+        return new Response(JSON.stringify({
+          repositories: [{
+            path: '/repo/project',
+            name: 'project',
+            missing: true,
+            worktrees: [
+              { path: '/repo/project/web', name: 'web', managed: false, kind: 'folder', missing: false },
+              { path: '/repo/project-fix', name: 'project-fix', managed: false, kind: 'worktree', missing: true },
+            ],
+          }],
+        }))
+      }
+      if (url.startsWith('/api/agent/workspace/worktrees')) return new Response(JSON.stringify([]))
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+    localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' }]))
+
+    await renderSidebarWithProps({ workspace: '/repo/project' })
+
+    const repoRow = await waitFor(() => screen.getByLabelText(/(Expand|Collapse) repository project/))
+    expect(repoRow.querySelector('[data-sidebar-missing]')?.textContent).toBe('missing')
+    // Neither the subfolder nor the outside worktree is a repository row.
+    expect(screen.queryByLabelText(/(Expand|Collapse) repository (web|project-fix)/)).toBeNull()
+    await user.click(screen.getByLabelText(/^Checkouts in project/))
+    const menu = await waitFor(() => screen.getByRole('menu', { name: 'Checkouts in project' }))
+    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="menuitemcheckbox"], [role="menuitem"]')).map((el) => el.textContent)
+    expect(items).toContain('webfolder')
+    expect(items).toContain('project-fixmissing')
+  })
+
   it('filters a repository to one worktree and starts sessions there', async () => {
     const user = userEvent.setup()
     sessionsData = [

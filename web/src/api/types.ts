@@ -61,6 +61,10 @@ export interface CodingWorkspaceTreeWorktree {
   path: string
   name: string
   managed: boolean
+  /** ``folder`` is a subfolder of a checkout, filed under its repository. */
+  kind?: 'worktree' | 'folder'
+  /** The folder no longer exists on disk. */
+  missing?: boolean
 }
 
 export interface CodingWorkspaceTreeRepository {
@@ -69,6 +73,8 @@ export interface CodingWorkspaceTreeRepository {
   worktrees: CodingWorkspaceTreeWorktree[]
   /** Ids of the workspace groups this repository is in (its worktrees share them). */
   group_ids?: string[]
+  /** The folder no longer exists on disk. */
+  missing?: boolean
 }
 
 /**

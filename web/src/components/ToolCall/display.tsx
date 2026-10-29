@@ -768,6 +768,16 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       }
     }
     const waits = parsed.reply === true ? ' (awaiting reply)' : ''
+    const worktree = str(parsed, 'worktree')
+    const checkout = worktree ? (worktree.toLowerCase() === 'main' ? 'main checkout' : `worktree ${trunc(worktree)}`) : null
+    if (checkout) {
+      const where = label ? `${label} · ${checkout}` : checkout
+      return {
+        header: <>Message to <Arg>{where}</Arg>{waits}</>,
+        headerTitle: `Message to ${where}${waits}`,
+        formattedArgs: str(parsed, 'message'),
+      }
+    }
     const target = label ?? 'workspace'
     return {
       header: <>Message to <Arg>{target}</Arg>{waits}</>,

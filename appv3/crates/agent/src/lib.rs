@@ -39,6 +39,7 @@ pub mod tools;
 pub mod util;
 pub mod workspace_groups;
 pub mod workspace_messages;
+pub mod worktrees;
 
 pub use agent::{Agent, RunOptions, RunOutcome};
 pub use errors::{format_agent_error, AgentError};

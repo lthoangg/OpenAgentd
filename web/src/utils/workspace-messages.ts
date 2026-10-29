@@ -68,6 +68,8 @@ export interface SentSession {
   workspaceName: string
   workspace: string
   sessionId: string
+  /** The send created this worktree first. */
+  createdWorktree?: { name: string; branch: string | null }
 }
 
 /**
@@ -75,12 +77,18 @@ export interface SentSession {
  * ``Sent to '<name>' (<path>) — new session <id> started.`` and its
  * delivered / queued variants. Errors start with ``Error:`` and do not match.
  */
-const SENT_RE = /^Sent to '(.+?)' \((.+)\) — (?:new session|delivered to session|queued in busy session) ([0-9a-fA-F-]{36})\b/
+const SENT_RE = /^Sent to '(.+?)' \((.+)\) — (?:new session|delivered to session|queued in busy session|stopped the running turn in session) ([0-9a-fA-F-]{36})\b/
+/** `` Created worktree '<name>' on branch <branch>.`` after the sent line. */
+const CREATED_RE = / Created worktree '(.+?)'(?: on branch (\S+?))?\./
 
 /** The session a successful ``workspace`` call reached, if any. */
 export function parseSendResult(result: string | undefined | null): SentSession | null {
   const m = result ? SENT_RE.exec(result.trim()) : null
-  return m ? { workspaceName: m[1], workspace: m[2], sessionId: m[3] } : null
+  if (!m) return null
+  const sent: SentSession = { workspaceName: m[1], workspace: m[2], sessionId: m[3] }
+  const created = CREATED_RE.exec(result ?? '')
+  if (created) sent.createdWorktree = { name: created[1], branch: created[2] ?? null }
+  return sent
 }
 
 /** Window event the chat view handles by switching to a session in any workspace. */

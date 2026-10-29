@@ -11,6 +11,10 @@
 //! each other, and otherwise two workspaces must share a group. Worktrees
 //! use their repository's groups. Replies are never scoped: they answer a
 //! request that was allowed when it was sent.
+//!
+//! A send may pick a checkout of the target repository by `worktree`: an
+//! existing worktree by name, `main` for the repository's own checkout, or
+//! a new name, which creates a managed worktree on branch `oad/<name>`.
 
 use crate::manager;
 use crate::service::{dispatch_user_message, Dispatch, DispatchError};
@@ -38,7 +42,7 @@ const LIST_SESSIONS_MAX: i64 = 10;
 pub struct Target {
     pub path: String,
     pub name: String,
-    /// `chat` | `repo` | `worktree`
+    /// `chat` | `repo` | `worktree` | `folder` (a subfolder of a checkout)
     pub kind: String,
     pub source_path: Option<String>,
     /// Ids (db form) of the groups its repository is in.
@@ -46,11 +50,11 @@ pub struct Target {
 }
 
 impl Target {
-    /// The repository this workspace belongs to: a worktree's source, else
-    /// its own path.
+    /// The repository this workspace belongs to: a worktree's (or
+    /// subfolder's) source, else its own path.
     pub fn repo(&self) -> &str {
         match (self.kind.as_str(), self.source_path.as_deref()) {
-            ("worktree", Some(src)) if !src.is_empty() => src,
+            ("worktree" | "folder", Some(src)) if !src.is_empty() => src,
             _ => &self.path,
         }
     }
@@ -216,6 +220,9 @@ pub struct SendRequest {
     pub mode: Option<String>,
     /// How it reaches a busy session (existing sessions only).
     pub delivery: DeliveryMode,
+    /// A checkout of the target's repository: an existing worktree's name,
+    /// `main` (the repository itself), or a new name to create a worktree.
+    pub worktree: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,10 +245,88 @@ pub struct Sent {
     pub target: Target,
     pub session_id: String,
     pub delivery: Delivery,
+    /// Set when the send created a worktree: its branch.
+    pub created_worktree: Option<CreatedWorktree>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreatedWorktree {
+    pub name: String,
+    pub branch: Option<String>,
 }
 
 fn same_path(a: &str, b: &str) -> bool {
     a == b || db::resolve_path(a) == db::resolve_path(b)
+}
+
+/// The name `main` picks a repository's own checkout.
+pub const MAIN_CHECKOUT: &str = "main";
+
+fn checkout_matches(t: &Target, name: &str) -> bool {
+    let slug = crate::worktrees::slugify(name);
+    let base = basename(&t.path);
+    t.name.eq_ignore_ascii_case(name) || base.eq_ignore_ascii_case(name) || (!slug.is_empty() && base == slug)
+}
+
+/// The checkout of `target`'s repository named `name` (see
+/// [`SendRequest::worktree`]); creates a worktree when none has the name.
+/// `source_workspace` is the sender's folder: a new worktree starts from its
+/// HEAD when it is a checkout of the same repository.
+async fn resolve_checkout(pool: &DbPool, target: &Target, source_workspace: &str, name: &str) -> Result<(Target, Option<CreatedWorktree>), String> {
+    use crate::worktrees as wt;
+    let err = |e: anyhow::Error| e.to_string();
+    let name = name.trim();
+    if target.kind == "chat" {
+        return Err("Chat is not a git repository, so it has no worktrees. Omit worktree to message Chat.".into());
+    }
+    let repo = target.repo().to_string();
+    if wt::require_git_repo(Path::new(&repo)).await.is_err() {
+        return Err(format!("'{}' is not a git repository, so it cannot have worktrees. Omit worktree to work in that folder instead.", target.name));
+    }
+    let find = |targets: &[Target]| -> Option<Target> {
+        let own: Vec<&Target> = targets.iter().filter(|t| t.kind != "chat" && same_path(t.repo(), &repo)).collect();
+        if name.eq_ignore_ascii_case(MAIN_CHECKOUT) {
+            return own.iter().find(|t| same_path(&t.path, &repo)).map(|t| (*t).clone());
+        }
+        own.iter().find(|t| t.kind == "worktree" && checkout_matches(t, name)).map(|t| (*t).clone())
+    };
+    let targets = registered_workspaces(pool).await.map_err(err)?;
+    if let Some(t) = find(&targets) {
+        return Ok((t, None));
+    }
+    // A checkout git knows about but the app has not seen yet (e.g. made
+    // with `git worktree add`, or a hidden repository row): register it.
+    let entries = wt::list_entries(Path::new(&repo)).await.map_err(|e| e.detail)?;
+    let known = entries.iter().find(|(dir, _)| {
+        if name.eq_ignore_ascii_case(MAIN_CHECKOUT) {
+            return same_path(dir, &repo);
+        }
+        let base = basename(dir);
+        !same_path(dir, &repo) && (base.eq_ignore_ascii_case(name) || base == wt::slugify(name))
+    });
+    if let Some((dir, _)) = known {
+        wt::register_workspace(pool, dir).await.map_err(err)?;
+        let targets = registered_workspaces(pool).await.map_err(err)?;
+        if let Some(t) = targets.into_iter().find(|t| same_path(&t.path, dir)) {
+            return Ok((t, None));
+        }
+    }
+    if name.eq_ignore_ascii_case(MAIN_CHECKOUT) {
+        return Err(format!("The main checkout of '{}' ({repo}) is not available.", target.name));
+    }
+    // New worktree, from the sender's HEAD when it works in this repository.
+    let same_repo = match wt::placement(Path::new(source_workspace)).await {
+        wt::Placement::Repo => same_path(source_workspace, &repo),
+        wt::Placement::Worktree { source, .. } | wt::Placement::Folder { source } => same_path(&source, &repo),
+    };
+    let base = if same_repo { source_workspace.to_string() } else { repo.clone() };
+    let slug = wt::slugify(name);
+    let slug = if slug.is_empty() { "session".to_string() } else { slug };
+    let branch = format!("oad/{slug}");
+    let info = wt::create_worktree_at(pool, Path::new(&repo), Path::new(&base), Some(&slug), Some(&branch), false).await.map_err(|e| e.detail)?;
+    let targets = registered_workspaces(pool).await.map_err(err)?;
+    let t = targets.into_iter().find(|t| same_path(&t.path, &info.directory)).ok_or_else(|| format!("Worktree {} was created but is not registered.", info.directory))?;
+    Ok((t, Some(CreatedWorktree { name: info.name, branch: info.branch })))
 }
 
 /// Send `req.message` to a session in another workspace as a user prompt.
@@ -255,12 +340,20 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
     }
     let targets = registered_workspaces(pool).await.map_err(err)?;
     let target = resolve_in(&targets, &req.source_workspace, &req.workspace)?;
-    let ws = manager::validate_workspace(&target.path, true)?;
-
     let hops = next_hops(db::latest_sent_from(pool, &req.source_session_id).await.map_err(err)?.as_ref());
     if hops > MAX_HOPS {
         return Err(format!("Refused: this request has already passed through {MAX_HOPS} workspaces. Finish the work here or ask the user to take it further."));
     }
+    // A checkout of the same repository is always reachable once the
+    // repository is, so `worktree` needs no scope check of its own.
+    let (target, created_worktree) = match req.worktree.as_deref().map(str::trim).filter(|w| !w.is_empty()) {
+        Some(name) => resolve_checkout(pool, &target, &req.source_workspace, name).await?,
+        None => (target, None),
+    };
+    if same_path(&target.path, &req.source_workspace) && req.session_id.is_none() && created_worktree.is_none() && req.worktree.is_some() {
+        return Err(format!("'{}' is this checkout. Pick another worktree, or omit worktree.", target.name));
+    }
+    let ws = manager::validate_workspace(&target.path, true)?;
     let source_row = db::get_session(pool, &req.source_session_id).await.map_err(err)?;
     let source_name = targets.iter().find(|t| same_path(&t.path, &req.source_workspace)).map(|t| t.name.clone()).unwrap_or_else(|| basename(&req.source_workspace));
     let mut sent_from = Map::new();
@@ -372,7 +465,7 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
         req.reply,
         hops
     );
-    Ok(Sent { target, session_id: sid, delivery })
+    Ok(Sent { target, session_id: sid, delivery, created_worktree })
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
@@ -417,10 +510,10 @@ pub fn render_workspace_list(targets: &[Target], groups: &[db::WorkspaceGroup], 
     let in_chat = src.is_some_and(|t| t.kind == "chat");
     let line = |t: &Target| {
         let mut line = format!("- {} — {}", t.name, t.path);
-        if t.kind == "worktree" {
+        if t.kind == "worktree" || t.kind == "folder" {
             if let Some(src) = t.source_path.as_deref() {
                 let of = targets.iter().find(|x| same_path(&x.path, src)).map(|x| x.name.clone()).unwrap_or_else(|| basename(src));
-                line.push_str(&format!(" (worktree of {of})"));
+                line.push_str(&format!(" ({} of {of})", if t.kind == "folder" { "folder" } else { "worktree" }));
             }
         }
         if same_path(&t.path, current) {
@@ -470,6 +563,11 @@ pub fn render_workspace_list(targets: &[Target], groups: &[db::WorkspaceGroup], 
     }
     if total > shown {
         lines.push(format!("… and {} more; pass a path to reach them.", total - shown));
+    }
+    if !in_chat && src.is_some() {
+        lines.push(format!(
+            "worktree='<name>' picks a checkout of a repository: an existing worktree, '{MAIN_CHECKOUT}' for the repository itself, or a new name to create a worktree (branch oad/<name>)."
+        ));
     }
     if !in_chat && src.is_none_or(|s| s.groups.is_empty()) {
         lines.push(
@@ -700,7 +798,8 @@ mod tests {
              - web — /nonexistent/web (current)\n\
              - api — /nonexistent/api\n\
              Always reachable:\n\
-             - Chat — /nonexistent/chat"
+             - Chat — /nonexistent/chat\n\
+             worktree='<name>' picks a checkout of a repository: an existing worktree, 'main' for the repository itself, or a new name to create a worktree (branch oad/<name>)."
         );
         let from_api = render_workspace_list(&ts, &gs, "/nonexistent/api");
         assert!(from_api.contains("Group 'shared'\n- api — /nonexistent/api (current)\n- lib — /nonexistent/lib"), "{from_api}");

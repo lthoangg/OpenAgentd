@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
-import { AskUser } from '../AskUser'
+import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
@@ -41,7 +41,7 @@ import { TOOL_CHIP_CLASS } from './chipStyles'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
-import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
+import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
 import { UPDATE_GOAL_TOOL } from '@/lib/goal'
 
@@ -232,6 +232,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // reopen, a revealed turn, an older page, a reconnect replay), and
   // animating those started hundreds of compositor animations at once.
   const [animatesIn] = useState(() => !done)
+  // A change to OpenAgentd's setup waits on the user's Apply / Cancel.
+  const confirmationCard = useShowsConfirmationCard(opensConfirmation(name, args ?? undefined), toolCallId, result)
 
   // Determine status: start (name only) → running (args) → success/failed (result)
   const isPending = args === undefined || args === null
@@ -393,7 +395,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // not be hidden behind a disclosure triangle, and once answered it is a
   // two-line summary with nothing to collapse. It also must not show the
   // persisted "waiting for the user" placeholder as a finished tool result.
-  if (name === ASK_USER) {
+  if (name === ASK_USER || confirmationCard) {
     return <AskUser toolCallId={toolCallId} args={args} result={result} />
   }
   // A plan submission is reviewed in the Plan tab; its card records the outcome.

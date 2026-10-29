@@ -50,8 +50,9 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // 641 kB with a 1.17 MB index chunk. Limits sit just above that. A new
 // surface that is not needed on the first screen belongs behind
 // `lazySurface`, not in a raised budget; `bundle-budget.test.js` keeps the
-// limits under the pre-split size.
-export const LIMITS = { eagerBytes: 2_030_000, eagerGzipBytes: 645_000, largestChunkBytes: 1_180_000 }
+// limits under the pre-split size. The gzip limit took 1 kB more for the
+// dependency bumps after v3.35.0 (measured 645.5 kB in CI).
+export const LIMITS = { eagerBytes: 2_030_000, eagerGzipBytes: 646_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

@@ -70,16 +70,20 @@ describe('PetSettingsSection', () => {
     stored = { ...DEFAULT_PET_SETTINGS, enabled: true }
     render(<PetSettingsSection />)
     fireEvent.click(await screen.findByRole('radio', { name: 'Blue' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Duck' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Large' }))
-    fireEvent.click(screen.getByRole('radio', { name: 'Stay put' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Chaotic' }))
     fireEvent.click(await toggle('Show while OpenAgentd is in front'))
+    fireEvent.click(await toggle('Climb on windows'))
     fireEvent.click(await toggle('Finished turns'))
     await waitFor(() =>
       expect(patches).toEqual([
         { colour: 'blue' },
+        { character: 'duck' },
         { size: 'large' },
-        { movement: 'still' },
+        { movement: 'chaotic' },
         { showWhenFrontmost: true },
+        { climb: false },
         { bubbleKinds: { inputNeeded: true, assistantDone: false, reminderFired: true } },
       ]),
     )

@@ -41,6 +41,10 @@ pub const PET_WINDOW: &str = "pet";
 pub const PET_STATE_EVENT: &str = "pet-state";
 /// A notification for the pet's bubble.
 pub const PET_NOTIFICATION_EVENT: &str = "pet-notification";
+/// The pointer near the pet, in the page's CSS pixels, or null once it leaves.
+pub const PET_POINTER_EVENT: &str = "pet-pointer";
+/// Other apps' windows the pet can climb, front first, in the page's CSS pixels.
+pub const PET_WINDOWS_EVENT: &str = "pet-windows";
 /// The pet settings changed; sent to every window.
 pub const PET_SETTINGS_EVENT: &str = "pet-settings-changed";
 /// The tray menu item that turns the pet on or off.
@@ -70,6 +74,8 @@ const MAX_ROUTES: usize = 50;
 pub enum PetCharacter {
     #[default]
     Cat,
+    Duck,
+    Crab,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,6 +105,8 @@ pub enum PetMovement {
     #[default]
     Calm,
     Playful,
+    /// Playful, and runs about (zoomies) now and then.
+    Chaotic,
 }
 
 /// Which notification kinds use the bubble; the others keep the banner.
@@ -156,6 +164,8 @@ pub struct PetSettings {
     pub bubble_kinds: BubbleKinds,
     /// Also show while an OpenAgentd window is in front.
     pub show_when_frontmost: bool,
+    /// Jump onto other apps' windows (when playful or chaotic).
+    pub climb: bool,
     pub position: Option<PetPosition>,
 }
 
@@ -170,6 +180,7 @@ impl Default for PetSettings {
             bubbles: true,
             bubble_kinds: BubbleKinds::default(),
             show_when_frontmost: false,
+            climb: true,
             position: None,
         }
     }
@@ -188,6 +199,7 @@ pub struct PetSettingsPatch {
     pub bubbles: Option<bool>,
     pub bubble_kinds: Option<BubbleKinds>,
     pub show_when_frontmost: Option<bool>,
+    pub climb: Option<bool>,
 }
 
 impl PetSettings {
@@ -201,6 +213,7 @@ impl PetSettings {
             bubbles: patch.bubbles.unwrap_or(self.bubbles),
             bubble_kinds: patch.bubble_kinds.unwrap_or(self.bubble_kinds),
             show_when_frontmost: patch.show_when_frontmost.unwrap_or(self.show_when_frontmost),
+            climb: patch.climb.unwrap_or(self.climb),
             position: self.position,
         }
     }
@@ -218,6 +231,11 @@ pub fn supported() -> bool {
 /// full-screen app or presentation (macOS keeps it off their Spaces).
 pub fn should_show(settings: &PetSettings, frontmost: bool, fullscreen: bool) -> bool {
     settings.enabled && (!frontmost || settings.show_when_frontmost) && !fullscreen
+}
+
+/// Whether the pet climbs onto other windows, so the page needs them.
+pub fn climbs(settings: &PetSettings) -> bool {
+    settings.climb && matches!(settings.movement, PetMovement::Playful | PetMovement::Chaotic)
 }
 
 /// Whether a notification of `kind` goes to the pet's bubble instead of the
@@ -372,6 +390,60 @@ pub fn near_hits(hits: &[HitRect], capture: bool, point: Option<(f64, f64)>) -> 
         })
 }
 
+/// The pointer, when it is near the pet itself (the first hit area): the
+/// page turns the pet to look at it, and pounces at it.
+pub fn pointer_near_pet(hits: &[HitRect], point: Option<(f64, f64)>) -> Option<(f64, f64)> {
+    let pet = hits.first()?;
+    point.filter(|&(x, y)| x >= pet.x - NEAR && x <= pet.x + pet.width + NEAR && y >= pet.y - NEAR && y <= pet.y + pet.height + NEAR)
+}
+
+// ── Other windows ───────────────────────────────────────────────────────────
+
+/// Another app's window on screen, in physical screen pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScreenWindow {
+    pub id: u64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Another app's window in the page's CSS pixels: the page picks the top
+/// edges the pet can stand on.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct PageWindow {
+    pub id: u64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Smaller windows (palettes, popups) are no place to stand, in CSS px.
+const MIN_WINDOW: (f64, f64) = (120.0, 60.0);
+/// Front windows sent to the page, at most.
+const MAX_WINDOWS: usize = 24;
+/// How often the other windows are read while the pet climbs.
+const WINDOWS_EVERY: Duration = Duration::from_millis(200);
+
+/// The windows over the pet's area, front first, in the page's CSS pixels
+/// and rounded to whole pixels (so an unmoved window compares equal).
+pub fn page_windows(windows: &[ScreenWindow], strip: &Area) -> Vec<PageWindow> {
+    let (area_w, area_h) = (f64::from(strip.width) / strip.scale, f64::from(strip.height) / strip.scale);
+    windows
+        .iter()
+        .filter(|w| [w.x, w.y, w.width, w.height].iter().all(|v| v.is_finite()))
+        .map(|w| {
+            let (x, y) = local_point(strip, w.x, w.y);
+            PageWindow { id: w.id, x: x.round(), y: y.round(), width: (w.width / strip.scale).round(), height: (w.height / strip.scale).round() }
+        })
+        .filter(|w| w.width >= MIN_WINDOW.0 && w.height >= MIN_WINDOW.1)
+        .filter(|w| w.x < area_w && w.x + w.width > 0.0 && w.y < area_h && w.y + w.height > 0.0)
+        .take(MAX_WINDOWS)
+        .collect()
+}
+
 /// Where across the display a drop at `x` lands, as a 0..1 fraction.
 pub fn edge_fraction(x: f64, width: f64) -> f64 {
     if !x.is_finite() || !width.is_finite() || width <= 0.0 {
@@ -426,6 +498,11 @@ struct Shared {
     capture: bool,
     /// The window takes clicks now.
     taking_clicks: bool,
+    /// The pointer near the pet as last sent to the page, rounded.
+    pointer: Option<(i32, i32)>,
+    /// Other windows as last sent to the page, and when they were read.
+    windows: Vec<PageWindow>,
+    windows_read: Option<Instant>,
     status: PetStatus,
     seen: VecDeque<String>,
     routes: VecDeque<Route>,
@@ -443,6 +520,9 @@ fn shared() -> &'static Mutex<Shared> {
             hits: Vec::new(),
             capture: false,
             taking_clicks: false,
+            pointer: None,
+            windows: Vec::new(),
+            windows_read: None,
             status: PetStatus::default(),
             seen: VecDeque::new(),
             routes: VecDeque::new(),
@@ -680,11 +760,19 @@ fn tick(app: &AppHandle, geometry_due: bool) -> Duration {
     if take != taking {
         let _ = window.set_ignore_cursor_events(!take);
     }
-    {
+    let near = pointer_near_pet(&hits, point);
+    let rounded = near.map(|(x, y)| (x.round() as i32, y.round() as i32));
+    let pointer_moved = {
         let mut s = shared().lock().unwrap();
         s.taking_clicks = take;
         s.occluded = occluded;
+        std::mem::replace(&mut s.pointer, rounded) != rounded
+    };
+    if pointer_moved {
+        let payload = near.map(|(x, y)| serde_json::json!({ "x": x, "y": y }));
+        let _ = app.emit_to(PET_WINDOW, PET_POINTER_EVENT, payload);
     }
+    send_windows(app, &strip);
     if near_hits(&hits, capture, point) {
         POLL_NEAR
     } else {
@@ -693,6 +781,37 @@ fn tick(app: &AppHandle, geometry_due: bool) -> Duration {
 }
 
 // ── Feed ────────────────────────────────────────────────────────────────────
+
+/// Send the page the other apps' windows while the pet climbs (at most
+/// every [`WINDOWS_EVERY`], and only when they changed), or an empty list
+/// once it stops. Main thread only.
+fn send_windows(app: &AppHandle, strip: &Area) {
+    let (climbing, due) = {
+        let s = shared().lock().unwrap();
+        (climbs(&s.settings), s.windows_read.map_or(true, |at| at.elapsed() >= WINDOWS_EVERY))
+    };
+    let next = if climbing {
+        if !due {
+            return;
+        }
+        page_windows(&native::other_windows(strip.scale), strip)
+    } else {
+        Vec::new()
+    };
+    let changed = {
+        let mut s = shared().lock().unwrap();
+        s.windows_read = climbing.then(Instant::now);
+        if s.windows == next {
+            false
+        } else {
+            s.windows = next.clone();
+            true
+        }
+    };
+    if changed {
+        let _ = app.emit_to(PET_WINDOW, PET_WINDOWS_EVENT, next);
+    }
+}
 
 /// The pet's view of the agents, as the page reads it.
 #[derive(Clone, Serialize)]
@@ -870,6 +989,7 @@ pub enum PetMenuAction<'a> {
     Open(&'a str),
     Clear,
     Movement(PetMovement),
+    Character(PetCharacter),
 }
 
 fn movement_key(movement: PetMovement) -> &'static str {
@@ -877,7 +997,14 @@ fn movement_key(movement: PetMovement) -> &'static str {
         PetMovement::Still => "still",
         PetMovement::Calm => "calm",
         PetMovement::Playful => "playful",
+        PetMovement::Chaotic => "chaotic",
     }
+}
+
+const CHARACTERS: [(PetCharacter, &str, &str); 3] = [(PetCharacter::Cat, "cat", "Cat"), (PetCharacter::Duck, "duck", "Duck"), (PetCharacter::Crab, "crab", "Crab")];
+
+fn character_key(character: PetCharacter) -> &'static str {
+    CHARACTERS.iter().find(|(c, _, _)| *c == character).map_or("cat", |(_, key, _)| key)
 }
 
 pub fn menu_id(action: PetMenuAction) -> String {
@@ -885,6 +1012,7 @@ pub fn menu_id(action: PetMenuAction) -> String {
         PetMenuAction::Open(id) => format!("pet:open:{id}"),
         PetMenuAction::Clear => "pet:clear".to_string(),
         PetMenuAction::Movement(m) => format!("pet:movement:{}", movement_key(m)),
+        PetMenuAction::Character(c) => format!("pet:character:{}", character_key(c)),
     }
 }
 
@@ -896,10 +1024,14 @@ pub fn parse_menu_id(id: &str) -> Option<PetMenuAction<'_>> {
     if let Some(notification_id) = rest.strip_prefix("open:").filter(|n| !n.is_empty()) {
         return Some(PetMenuAction::Open(notification_id));
     }
+    if let Some(key) = rest.strip_prefix("character:") {
+        return CHARACTERS.iter().find(|(_, k, _)| *k == key).map(|(c, _, _)| PetMenuAction::Character(*c));
+    }
     let movement = match rest.strip_prefix("movement:")? {
         "still" => PetMovement::Still,
         "calm" => PetMovement::Calm,
         "playful" => PetMovement::Playful,
+        "chaotic" => PetMovement::Chaotic,
         _ => return None,
     };
     Some(PetMenuAction::Movement(movement))
@@ -944,6 +1076,12 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) -> bool {
                 log::warn!("pet: could not change movement: {e:#}");
             }
         }
+        PetMenuAction::Character(character) => {
+            let patch = PetSettingsPatch { character: Some(character), ..PetSettingsPatch::default() };
+            if let Err(e) = update_settings(app, patch) {
+                log::warn!("pet: could not change character: {e:#}");
+            }
+        }
     }
     true
 }
@@ -976,10 +1114,10 @@ pub async fn pet_menu(app: AppHandle, window: WebviewWindow, x: f64, y: f64, unr
 fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, unread: &[MenuUnread]) -> Result<()> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
-    let (movement, rows) = {
+    let (movement, character, rows) = {
         let s = shared().lock().unwrap();
         let rows = unread_rows(unread, |id| s.routes.iter().any(|r| r.notification_id == id));
-        (s.settings.movement, rows)
+        (s.settings.movement, s.settings.character, rows)
     };
     let menu = Menu::new(app)?;
     if !rows.is_empty() {
@@ -993,10 +1131,15 @@ fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, unread: &[
     menu.append(&MenuItem::with_id(app, crate::menu::MENU_NEW_SESSION, "New Session", true, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     let moves = Submenu::with_id(app, "pet:movement", "Movement", true)?;
-    for (choice, label) in [(PetMovement::Still, "Stay Put"), (PetMovement::Calm, "Calm"), (PetMovement::Playful, "Playful")] {
+    for (choice, label) in [(PetMovement::Still, "Stay Put"), (PetMovement::Calm, "Calm"), (PetMovement::Playful, "Playful"), (PetMovement::Chaotic, "Chaotic")] {
         moves.append(&CheckMenuItem::with_id(app, menu_id(PetMenuAction::Movement(choice)), label, true, choice == movement, None::<&str>)?)?;
     }
     menu.append(&moves)?;
+    let characters = Submenu::with_id(app, "pet:character", "Character", true)?;
+    for (choice, _, label) in CHARACTERS {
+        characters.append(&CheckMenuItem::with_id(app, menu_id(PetMenuAction::Character(choice)), label, true, choice == character, None::<&str>)?)?;
+    }
+    menu.append(&characters)?;
     menu.append(&MenuItem::with_id(app, crate::menu::MENU_SETTINGS, "Pet Settings…", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, MENU_TOGGLE_PET, "Hide Pet", true, None::<&str>)?)?;
     // Keep taking clicks while the menu tracks the pointer (AppKit runs a
@@ -1147,6 +1290,52 @@ mod native {
         with_ns_window(window, |ns| ns.orderFrontRegardless());
     }
 
+    /// Other apps' ordinary windows on screen, front first, in physical
+    /// pixels of a display at `scale`. Reads frames only (no titles), which
+    /// needs no Screen Recording permission.
+    pub fn other_windows(scale: f64) -> Vec<super::ScreenWindow> {
+        use objc2_core_foundation::{CFArray, CFDictionary, CFNumber, CFRetained, CFString, CFType, CGRect};
+        use objc2_core_graphics::{
+            kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerPID, CGRectMakeWithDictionaryRepresentation,
+            CGWindowListCopyWindowInfo, CGWindowListOption,
+        };
+
+        let options = CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements;
+        let Some(list) = CGWindowListCopyWindowInfo(options, kCGNullWindowID) else {
+            return Vec::new();
+        };
+        // SAFETY: CoreGraphics documents the list as an array of
+        // dictionaries keyed by CFString.
+        let list: CFRetained<CFArray<CFDictionary<CFString, CFType>>> = unsafe { CFRetained::cast_unchecked(list) };
+        // SAFETY: the keys are constant CFStrings exported by CoreGraphics.
+        let (bounds_key, layer_key, number_key, pid_key, alpha_key) = unsafe { (kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerPID, kCGWindowAlpha) };
+        let own_pid = i64::from(std::process::id());
+        let mut found = Vec::new();
+        for entry in list.iter() {
+            let number = |key: &CFString| entry.get(key).and_then(|v| v.downcast_ref::<CFNumber>().and_then(CFNumber::as_f64));
+            if number(layer_key) != Some(0.0) || number(pid_key) == Some(own_pid as f64) || number(alpha_key).is_some_and(|a| a <= 0.0) {
+                continue;
+            }
+            let Some(id) = number(number_key) else { continue };
+            let Some(bounds) = entry.get(bounds_key) else { continue };
+            let Some(bounds) = bounds.downcast_ref::<CFDictionary>() else { continue };
+            let mut rect = CGRect::default();
+            // SAFETY: `bounds` is the window's bounds dictionary and `rect`
+            // a valid place to write it.
+            if !unsafe { CGRectMakeWithDictionaryRepresentation(Some(bounds), &mut rect) } {
+                continue;
+            }
+            found.push(super::ScreenWindow {
+                id: id as u64,
+                x: rect.origin.x * scale,
+                y: rect.origin.y * scale,
+                width: rect.size.width * scale,
+                height: rect.size.height * scale,
+            });
+        }
+        found
+    }
+
     /// Any part of the window is visible: false on a full-screen app's
     /// Space, the lock screen, or with the display asleep.
     pub fn on_screen(window: &tauri::WebviewWindow) -> bool {
@@ -1214,6 +1403,69 @@ mod native {
         let found = unsafe { SHAppBarMessage(ABM_GETTASKBARPOS, &mut data) } != 0;
         (found && data.uEdge == ABE_BOTTOM).then_some(TASKBAR_HEIGHT)
     }
+
+    /// Other apps' ordinary windows on screen, front first, in physical
+    /// pixels (the app is per-monitor DPI aware). Reads frames only.
+    pub fn other_windows(_scale: f64) -> Vec<super::ScreenWindow> {
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+        use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            EnumWindows, GetWindowLongW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
+        };
+
+        struct Found {
+            own_pid: u32,
+            windows: Vec<super::ScreenWindow>,
+        }
+
+        unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            // SAFETY: `lparam` is the `Found` passed to EnumWindows below,
+            // alive and not otherwise borrowed for the whole enumeration.
+            let found = unsafe { &mut *(lparam.0 as *mut Found) };
+            // SAFETY: plain queries about a window EnumWindows handed us.
+            unsafe {
+                if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+                    return BOOL(1);
+                }
+                if GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0 != 0 {
+                    return BOOL(1);
+                }
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if pid == found.own_pid {
+                    return BOOL(1);
+                }
+                // Suspended UWP apps and windows on other virtual desktops
+                // are "cloaked": visible to the API, not on screen.
+                let mut cloaked = 0u32;
+                let size = std::mem::size_of::<u32>() as u32;
+                if DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, (&mut cloaked as *mut u32).cast(), size).is_ok() && cloaked != 0 {
+                    return BOOL(1);
+                }
+                // The frame without the invisible resize borders.
+                let mut rect = RECT::default();
+                let size = std::mem::size_of::<RECT>() as u32;
+                if DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, (&mut rect as *mut RECT).cast(), size).is_err() {
+                    return BOOL(1);
+                }
+                found.windows.push(super::ScreenWindow {
+                    id: hwnd.0 as usize as u64,
+                    x: f64::from(rect.left),
+                    y: f64::from(rect.top),
+                    width: f64::from(rect.right - rect.left),
+                    height: f64::from(rect.bottom - rect.top),
+                });
+            }
+            BOOL(1)
+        }
+
+        let mut found = Found { own_pid: std::process::id(), windows: Vec::new() };
+        // SAFETY: `each` only touches `found` through `lparam`, and the
+        // enumeration finishes before `found` goes out of scope.
+        let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut found as *mut Found as isize)) };
+        found.windows
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -1234,6 +1486,10 @@ mod native {
 
     pub fn hidden_bar_height() -> Option<f64> {
         None
+    }
+
+    pub fn other_windows(_scale: f64) -> Vec<super::ScreenWindow> {
+        Vec::new()
     }
 }
 
@@ -1387,6 +1643,52 @@ mod tests {
     }
 
     #[test]
+    fn the_page_hears_of_the_pointer_only_near_the_pet_itself() {
+        let pet = HitRect { x: 1000.0, y: 300.0, width: 64.0, height: 48.0 };
+        let bubble = HitRect { x: 100.0, y: 40.0, width: 290.0, height: 140.0 };
+        assert_eq!(pointer_near_pet(&[pet, bubble], Some((1100.0, 250.0))), Some((1100.0, 250.0)));
+        assert_eq!(pointer_near_pet(&[pet, bubble], Some((150.0, 60.0))), None, "near the bubble only");
+        assert_eq!(pointer_near_pet(&[pet], Some((1020.0, 900.0))), None, "far below");
+        assert_eq!(pointer_near_pet(&[], Some((0.0, 0.0))), None, "no pet drawn");
+        assert_eq!(pointer_near_pet(&[pet], None), None, "pointer unknown");
+    }
+
+    #[test]
+    fn other_windows_reach_the_page_in_its_css_pixels_front_first() {
+        let strip = Area { x: 0, y: 50, width: 2000, height: 1000, scale: 2.0 };
+        let front = ScreenWindow { id: 7, x: 200.0, y: 450.0, width: 800.0, height: 400.0 };
+        let behind = ScreenWindow { id: 3, x: 1000.0, y: 250.0, width: 900.0, height: 700.0 };
+        assert_eq!(
+            page_windows(&[front, behind], &strip),
+            [PageWindow { id: 7, x: 100.0, y: 200.0, width: 400.0, height: 200.0 }, PageWindow { id: 3, x: 500.0, y: 100.0, width: 450.0, height: 350.0 }],
+        );
+    }
+
+    #[test]
+    fn tiny_and_off_screen_windows_are_left_out() {
+        let strip = Area { x: 0, y: 0, width: 1000, height: 800, scale: 1.0 };
+        let tiny = ScreenWindow { id: 1, x: 10.0, y: 10.0, width: 40.0, height: 20.0 };
+        let elsewhere = ScreenWindow { id: 2, x: 3000.0, y: 100.0, width: 600.0, height: 400.0 };
+        let partly = ScreenWindow { id: 3, x: 800.0, y: 100.0, width: 600.0, height: 400.0 };
+        let broken = ScreenWindow { id: 4, x: f64::NAN, y: 0.0, width: 600.0, height: 400.0 };
+        let ids: Vec<u64> = page_windows(&[tiny, elsewhere, partly, broken], &strip).iter().map(|w| w.id).collect();
+        assert_eq!(ids, [3]);
+    }
+
+    #[test]
+    fn it_climbs_on_windows_by_default_but_only_when_playful_or_chaotic() {
+        assert!(PetSettings::default().climb);
+        let climber = |movement| PetSettings { movement, ..on() };
+        assert!(climbs(&climber(PetMovement::Playful)));
+        assert!(climbs(&climber(PetMovement::Chaotic)));
+        assert!(!climbs(&climber(PetMovement::Calm)));
+        assert!(!climbs(&climber(PetMovement::Still)));
+        assert!(!climbs(&PetSettings { climb: false, ..climber(PetMovement::Chaotic) }));
+        let old: PetSettings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+        assert!(old.climb, "settings saved before it could climb");
+    }
+
+    #[test]
     fn the_saved_display_is_used_when_it_is_still_there() {
         let display = |name: &str| DisplayInfo { name: name.into(), work: Area { x: 0, y: 0, width: 10, height: 10, scale: 1.0 }, bottom: 10 };
         let list = [display("Built-in"), display("LG")];
@@ -1488,13 +1790,25 @@ mod tests {
             PetMenuAction::Movement(PetMovement::Still),
             PetMenuAction::Movement(PetMovement::Calm),
             PetMenuAction::Movement(PetMovement::Playful),
+            PetMenuAction::Movement(PetMovement::Chaotic),
+            PetMenuAction::Character(PetCharacter::Cat),
+            PetMenuAction::Character(PetCharacter::Duck),
+            PetMenuAction::Character(PetCharacter::Crab),
         ] {
             assert_eq!(parse_menu_id(&menu_id(action)), Some(action));
         }
         assert_eq!(parse_menu_id("pet:open:a:b"), Some(PetMenuAction::Open("a:b")), "ids may hold colons");
-        for other in ["pet:open:", "pet:movement:fast", "pet:movement", "show", "toggle_pet", "island:open:s1", ""] {
+        for other in ["pet:open:", "pet:movement:fast", "pet:movement", "pet:character:dog", "pet:character", "show", "toggle_pet", "island:open:s1", ""] {
             assert_eq!(parse_menu_id(other), None, "{other}");
         }
+    }
+
+    #[test]
+    fn a_character_is_saved_by_name_and_the_cat_stays_the_default() {
+        assert_eq!(PetSettings::default().character, PetCharacter::Cat);
+        let duck: PetSettings = serde_json::from_str(r#"{"enabled": true, "character": "duck"}"#).unwrap();
+        assert_eq!(duck.character, PetCharacter::Duck);
+        assert_eq!(serde_json::to_value(PetCharacter::Crab).unwrap(), "crab");
     }
 
     #[test]

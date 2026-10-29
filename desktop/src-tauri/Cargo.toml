@@ -54,6 +54,10 @@ nix = { version = "0.31", features = ["signal"] }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "objc2-core-foundation"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "objc2-core-foundation"] }
+# The desktop pet reads where other apps' windows are (CGWindowListCopyWindowInfo:
+# frames only, no window titles, so no Screen Recording permission).
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGGeometry"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString", "CFCGTypes"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
@@ -67,6 +71,10 @@ windows = { version = "0.62", features = [
     # SHQueryUserNotificationState: the desktop pet steps aside for
     # full-screen apps and presentations.
     "Win32_UI_Shell",
+    # EnumWindows and DWM frame bounds: the desktop pet climbs onto other
+    # apps' windows.
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Dwm",
 ] }
 
 [features]

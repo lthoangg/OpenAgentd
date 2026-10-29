@@ -10,6 +10,7 @@
   /* One leg cycle while walking, and the bounces. */
   --pet-step: 360ms;
   --pet-hop: 550ms;
+  --pet-jump: 420ms;
   --pet-bob: 1s;
   --pet-snooze: 2s;
   /* Floating over any wallpaper needs a stronger shadow than the app's. */
@@ -109,6 +110,74 @@ button:focus-visible {
   50% { visibility: visible; }
 }
 
+/* The duck rocks from foot to foot as it walks. */
+.pet--duck.pet--walk .pet-body {
+  animation: pet-waddle calc(var(--pet-step) * 2) var(--ease-in-out) infinite;
+}
+
+.pet--duck.pet--walk.pet--left .pet-body {
+  animation-name: pet-waddle-left;
+}
+
+@keyframes pet-waddle {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+@keyframes pet-waddle-left {
+  0%, 100% { transform: scaleX(-1) rotate(-5deg); }
+  50% { transform: scaleX(-1) rotate(5deg); }
+}
+
+/* A jump onto a window or back down: the move glides, the body hops. */
+.pet--jump {
+  transition: transform var(--pet-jump) var(--ease-out);
+}
+
+.pet--jump .pet-body {
+  animation: pet-hop var(--pet-jump) var(--ease-out);
+}
+
+.pet--left.pet--jump .pet-body {
+  animation-name: pet-hop-left;
+}
+
+/* Zoomies: legs at double speed and a bounce in every stride. */
+.pet--zoom .pet-frame--0 {
+  animation: pet-frame-a calc(var(--pet-step) / 2) steps(1) infinite;
+}
+
+.pet--zoom .pet-frame--1 {
+  animation: pet-frame-b calc(var(--pet-step) / 2) steps(1) infinite;
+}
+
+.pet--zoom .pet-body {
+  animation: pet-hop var(--pet-step) var(--ease-out) infinite;
+}
+
+.pet--left.pet--zoom .pet-body {
+  animation-name: pet-hop-left;
+}
+
+/* Out of breath after a bout. */
+.pet--pant .pet-body {
+  animation: pet-pant calc(var(--pet-step) * 1.5) var(--ease-in-out) infinite;
+}
+
+.pet--left.pet--pant .pet-body {
+  animation-name: pet-pant-left;
+}
+
+@keyframes pet-pant {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.94); }
+}
+
+@keyframes pet-pant-left {
+  0%, 100% { transform: scaleX(-1) scaleY(1); }
+  50% { transform: scaleX(-1) scaleY(0.94); }
+}
+
 .pet--hop .pet-body {
   animation: pet-hop var(--pet-hop) var(--ease-out) 3;
 }
@@ -162,6 +231,11 @@ button:focus-visible {
 }
 
 .pet-mark--look {
+  background: var(--accent-blue);
+  color: var(--color-text);
+}
+
+.pet-mark--pant {
   background: var(--accent-blue);
   color: var(--color-text);
 }

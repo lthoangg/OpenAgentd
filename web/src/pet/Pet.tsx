@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { AlarmClock, Check, CircleAlert, MessageCircleQuestion, X } from 'lucide-react'
@@ -6,30 +6,49 @@ import { AlarmClock, Check, CircleAlert, MessageCircleQuestion, X } from 'lucide
 import { poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from './sprites'
 import {
   BUBBLE_FADE_MS,
+  CHARACTER_TRAITS,
+  CLIMB_CHANCE,
   EMPTY_BUBBLES,
+  JUMP_DOWN_CHANCE,
+  JUMP_MS,
+  PANT_MS,
   PET_HEIGHT,
   PET_WIDTH,
+  POUNCE_AFTER_MS,
   SIT_PAUSE,
   SIZE_SCALE,
   WALK_SPEED,
+  ZOOM_DASHES,
+  ZOOM_SPEED,
   badgeCount,
   bubbleBelow,
   bubbleLeft,
   bubbleReducer,
   clampX,
   clampY,
+  dashTarget,
+  followLedge,
+  ledges,
   nextTarget,
   petPose,
   reactionFor,
   startX,
   startY,
   visibleBubble,
+  withinPounce,
+  zoomDelay,
+  zoomsWhenDone,
   type BubbleTone,
   type PetBubble,
+  type PetCharacter,
   type PetColour,
+  type PetMovement,
   type PetPose,
   type PetReaction,
   type PetView,
+  type OtherWindow,
+  type Perch,
+  type ZoomPhase,
 } from './state'
 
 const STATE_COMMAND = 'pet_state'
@@ -40,6 +59,10 @@ const MENU_COMMAND = 'pet_menu'
 const STATE_EVENT = 'pet-state'
 const NOTIFICATION_EVENT = 'pet-notification'
 const MENU_EVENT = 'pet-menu-action'
+/** Where the pointer is while it is near the pet (CSS px), or null once it leaves. */
+const POINTER_EVENT = 'pet-pointer'
+/** Other apps' windows it can climb, front first (CSS px); empty when it may not. */
+const WINDOWS_EVENT = 'pet-windows'
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_SLOP = 4
 const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500, look: 2000 }
@@ -49,6 +72,7 @@ const FIT_EVERY_MS = 100
 const POKE_SAY_MS = 2500
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
+type PointerAt = { x: number; y: number } | null
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
 function useShellEvent<T>(event: string, onPayload: (payload: T) => void) {
@@ -80,8 +104,8 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
-function Sprite({ pose, colour }: { pose: PetPose; colour: PetColour }) {
-  const frames = poseFrames(pose)
+function Sprite({ character, pose, colour }: { character: PetCharacter; pose: PetPose; colour: PetColour }) {
+  const frames = poseFrames(character, pose)
   return (
     <>
       {frames.map((rows, i) => (
@@ -130,6 +154,10 @@ export function Pet() {
   const [facingLeft, setFacingLeft] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [zoom, setZoom] = useState<ZoomPhase | null>(null)
+  const [pointer, setPointer] = useState<PointerAt>(null)
+  const [windows, setWindows] = useState<OtherWindow[]>([])
+  const [jumping, setJumping] = useState(false)
   const [say, setSay] = useState<{ text: string; at: number } | null>(null)
   const reducedMotion = useReducedMotion()
 
@@ -137,12 +165,25 @@ export function Pet() {
   const bubbleRef = useRef<HTMLDivElement>(null)
   const badgeRef = useRef<HTMLButtonElement>(null)
   const xRef = useRef(0)
+  /** The height it stands at on the ground (where it was placed or dropped). */
+  const groundRef = useRef(0)
+  /** The window it stands on, if any. */
+  const perchRef = useRef<Perch | null>(null)
+  const jumpTimerRef = useRef(0)
   const yRef = useRef(0)
   const targetRef = useRef<number | null>(null)
   const dragRef = useRef<{ startX: number; startY: number; petX: number; petY: number; moved: boolean } | null>(null)
   const lastFitRef = useRef('')
+  const dashesRef = useRef(0)
+  /** A finished turn asked for zoomies; they start once nothing holds the pet. */
+  const zoomPendingRef = useRef(false)
+  const movementRef = useRef<PetMovement>('calm')
 
   const settings = view?.settings
+  movementRef.current = settings?.movement ?? 'calm'
+  // An unknown name (a newer shell) draws the cat.
+  const character: PetCharacter = settings && settings.character in CHARACTER_TRAITS ? settings.character : 'cat'
+  const traits = CHARACTER_TRAITS[character]
   const status = view?.status ?? { running: 0, needsInput: 0 }
   const scale = settings ? SIZE_SCALE[settings.size] : 1
   const petWidth = PET_WIDTH * scale
@@ -169,6 +210,7 @@ export function Pet() {
       dispatch({ type: 'notify', bubble })
       setLastActivity(Date.now())
       setReaction(reactionFor(bubble.tone))
+      if (bubble.tone === 'done' && zoomsWhenDone(movementRef.current)) zoomPendingRef.current = true
     }, []),
   )
   // Items of the right-click menu that change the bubbles.
@@ -179,6 +221,8 @@ export function Pet() {
       else dispatch({ type: 'clearUnread' })
     }, []),
   )
+  useShellEvent<PointerAt>(POINTER_EVENT, setPointer)
+  useShellEvent<OtherWindow[]>(WINDOWS_EVENT, setWindows)
 
   useEffect(() => {
     const onResize = () => {
@@ -229,20 +273,145 @@ export function Pet() {
     const start = startX(saved, width, petWidth)
     xRef.current = start
     yRef.current = startY(saved, height, petHeight)
+    groundRef.current = yRef.current
+    perchRef.current = null
     targetRef.current = null
     setX(start)
     setY(yRef.current)
   }, [ready, savedFraction, savedHeight, savedDisplay, width, height, petWidth, petHeight])
 
+  const held = dragging || menuOpen || jumping || visible !== null
   const pose = petPose({
     status,
     reaction,
-    sitting: sitting || dragging || menuOpen || visible !== null,
+    sitting,
+    held,
+    zoom,
     idleMs: now - lastActivity,
     reducedMotion,
     movement: settings?.movement ?? 'calm',
   })
-  const walking = active && pose === 'walk'
+  const zooming = pose === 'zoom'
+  const walking = active && (pose === 'walk' || zooming)
+
+  // ── Zoomies ─────────────────────────────────────────────────────────────
+  const startZoom = useCallback(() => {
+    zoomPendingRef.current = false
+    dashesRef.current = ZOOM_DASHES
+    targetRef.current = null
+    setSitting(false)
+    setZoom('run')
+  }, [])
+
+  // Now and then on its own (chaotic only).
+  useEffect(() => {
+    if (!settings || zoom !== null || reducedMotion) return
+    const delay = zoomDelay(settings.movement, Math.random())
+    if (delay === null) return
+    const timer = window.setTimeout(startZoom, delay)
+    return () => window.clearTimeout(timer)
+  }, [settings, zoom, reducedMotion, startZoom])
+
+  // After a finished turn, once its bubble and hop are over.
+  useEffect(() => {
+    if (!zoomPendingRef.current || !active || zoom !== null || held || reaction) return
+    if (reducedMotion || !zoomsWhenDone(settings?.movement ?? 'calm')) {
+      zoomPendingRef.current = false
+      return
+    }
+    startZoom()
+  }, [active, zoom, held, reaction, reducedMotion, settings?.movement, startZoom])
+
+  useEffect(() => {
+    if (zoom !== 'pant') return
+    const timer = window.setTimeout(() => {
+      setZoom(null)
+      setSitting(true)
+    }, PANT_MS)
+    return () => window.clearTimeout(timer)
+  }, [zoom])
+
+  // ── Climbing on windows ─────────────────────────────────────────────────
+  const allLedges = useMemo(() => ledges(windows, { width, height }, { width: petWidth, height: petHeight }), [windows, width, height, petWidth, petHeight])
+  const ledgesRef = useRef(allLedges)
+  ledgesRef.current = allLedges
+  const movement = settings?.movement ?? 'calm'
+  const mayClimb = Boolean(settings?.climb) && (movement === 'playful' || movement === 'chaotic') && !reducedMotion
+
+  /** Jump (CSS animates the move) to `x`, with its feet `y` above the edge. */
+  const jumpTo = useCallback((nextX: number, nextY: number) => {
+    targetRef.current = null
+    xRef.current = nextX
+    yRef.current = nextY
+    setX(nextX)
+    setY(nextY)
+    setJumping(true)
+    window.clearTimeout(jumpTimerRef.current)
+    jumpTimerRef.current = window.setTimeout(() => {
+      setJumping(false)
+      setSitting(false)
+    }, JUMP_MS)
+  }, [])
+  useEffect(() => () => window.clearTimeout(jumpTimerRef.current), [])
+
+  // Its window moved, shrank or went away: ride along, or fall to the ground.
+  useEffect(() => {
+    const perch = perchRef.current
+    if (!perch) return
+    const next = followLedge(perch, xRef.current, allLedges, { width: petWidth, height: petHeight })
+    if (!next) {
+      perchRef.current = null
+      jumpTo(xRef.current, groundRef.current)
+      return
+    }
+    perchRef.current = next.perch
+    if (next.x === xRef.current && next.y === yRef.current) return
+    targetRef.current = null
+    xRef.current = next.x
+    yRef.current = next.y
+    if (petRef.current) petRef.current.style.transform = `translate(${next.x}px, ${next.y}px)`
+    setX(next.x)
+    setY(next.y)
+  }, [allLedges, petWidth, petHeight, jumpTo])
+
+  /** After a sit: maybe jump onto the nearest window, or back down; else walk on. */
+  const afterSit = useCallback(() => {
+    if (mayClimb) {
+      if (perchRef.current && Math.random() < JUMP_DOWN_CHANCE) {
+        perchRef.current = null
+        jumpTo(xRef.current, groundRef.current)
+        return
+      }
+      const choices = ledgesRef.current
+      if (!perchRef.current && choices.length > 0 && Math.random() < CLIMB_CHANCE) {
+        const centre = (l: { x: number; width: number }) => Math.abs(l.x + l.width / 2 - xRef.current)
+        const ledge = choices.reduce((best, l) => (centre(l) < centre(best) ? l : best))
+        perchRef.current = { id: ledge.id, ledgeX: ledge.x }
+        jumpTo(Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - petWidth), ledge.y - petHeight)
+        return
+      }
+    }
+    setSitting(false)
+  }, [mayClimb, jumpTo, petWidth, petHeight])
+
+  /** Where it may walk: the edge it stands on, or the whole width. */
+  const walkRange = useCallback((): [number, number] => {
+    const perch = perchRef.current
+    const ledge = perch && ledgesRef.current.find((l) => l.id === perch.id)
+    return ledge ? [ledge.x, ledge.x + ledge.width] : [0, window.innerWidth]
+  }, [])
+
+  // ── The pointer ─────────────────────────────────────────────────────────
+  // Standing about, it turns to look at the pointer nearby; when the pointer
+  // rests close beside it, it pounces (not when told to stay put).
+  useEffect(() => {
+    if (!pointer || walking || dragging) return
+    setFacingLeft(pointer.x < xRef.current + petWidth / 2)
+    if (movement === 'still' || reducedMotion) return
+    if (!withinPounce({ x: xRef.current, y: yRef.current, width: petWidth, height: petHeight }, pointer)) return
+    const timer = window.setTimeout(() => setReaction('hop'), POUNCE_AFTER_MS)
+    return () => window.clearTimeout(timer)
+  }, [pointer, walking, dragging, movement, reducedMotion, petWidth, petHeight])
 
   // ── Hit areas ───────────────────────────────────────────────────────────
   const reportFit = useCallback((capture: boolean) => {
@@ -266,7 +435,7 @@ export function Pet() {
   // ── Walking ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!walking || !settings) return
-    const speed = WALK_SPEED[settings.movement]
+    const speed = zooming ? ZOOM_SPEED : WALK_SPEED[settings.movement] * traits.pace
     let frame = 0
     let last = performance.now()
     let lastFit = 0
@@ -274,13 +443,16 @@ export function Pet() {
       const dt = Math.min(0.05, (t - last) / 1000)
       last = t
       if (targetRef.current === null) {
-        targetRef.current = nextTarget(xRef.current, window.innerWidth, petWidth, Math.random())
+        const [lo, hi] = walkRange()
+        const pick = zooming ? dashTarget : nextTarget
+        targetRef.current = lo + pick(xRef.current - lo, hi - lo, petWidth, Math.random())
         setFacingLeft(targetRef.current < xRef.current)
       }
       const target = targetRef.current
       const delta = target - xRef.current
       const move = Math.sign(delta) * Math.min(Math.abs(delta), speed * dt)
-      xRef.current = clampX(xRef.current + move, window.innerWidth, petWidth)
+      const [lo, hi] = walkRange()
+      xRef.current = lo + clampX(xRef.current + move - lo, hi - lo, petWidth)
       if (petRef.current) petRef.current.style.transform = `translate(${xRef.current}px, ${yRef.current}px)`
       if (t - lastFit > FIT_EVERY_MS) {
         lastFit = t
@@ -288,6 +460,17 @@ export function Pet() {
       }
       if (Math.abs(target - xRef.current) < 0.5) {
         targetRef.current = null
+        if (zooming) {
+          // Turn and dash again until the bout is over, then pant.
+          dashesRef.current -= 1
+          if (dashesRef.current > 0) {
+            frame = requestAnimationFrame(step)
+            return
+          }
+          setX(xRef.current)
+          setZoom('pant')
+          return
+        }
         setX(xRef.current)
         setSitting(true)
         return
@@ -299,16 +482,16 @@ export function Pet() {
       cancelAnimationFrame(frame)
       setX(xRef.current)
     }
-  }, [walking, settings, petWidth, reportFit])
+  }, [walking, zooming, settings, traits, petWidth, reportFit, walkRange])
 
   // Sit a while between walks.
   useEffect(() => {
     if (!sitting || !settings) return
     const [min, max] = SIT_PAUSE[settings.movement]
     if (!Number.isFinite(min)) return
-    const timer = window.setTimeout(() => setSitting(false), min + Math.random() * (max - min))
+    const timer = window.setTimeout(afterSit, min + Math.random() * (max - min))
     return () => window.clearTimeout(timer)
-  }, [sitting, settings])
+  }, [sitting, settings, afterSit])
 
   // ── Drag and click ──────────────────────────────────────────────────────
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -324,6 +507,7 @@ export function Pet() {
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_SLOP) return
     if (!drag.moved) {
       drag.moved = true
+      perchRef.current = null
       setDragging(true)
       reportFit(true)
     }
@@ -341,13 +525,15 @@ export function Pet() {
     if (drag.moved) {
       setDragging(false)
       setSitting(true)
+      // Dropped: the height it stands at from now on.
+      groundRef.current = yRef.current
       // Where its feet are: the height it stands at from now on.
       void invoke(DRAG_END_COMMAND, { x: xRef.current, y: yRef.current + petHeight }).catch(() => {})
       return
     }
     // A click on the body is only a poke: the pet answers where it is and
     // opens nothing. The badge opens the unread list; a right-click, the menu.
-    setSay({ text: 'Meow!', at: Date.now() })
+    setSay({ text: traits.voice, at: Date.now() })
     setReaction('hop')
   }
 
@@ -439,7 +625,7 @@ export function Pet() {
       )}
       <div
         ref={petRef}
-        className={`pet pet--${pose}${facingLeft ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}`}
+        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumping ? ' pet--jump' : ''}`}
         style={{ width: petWidth, height: petHeight, transform: `translate(${left}px, ${top}px)` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -468,9 +654,10 @@ export function Pet() {
         )}
         {pose === 'alert' && <span className="pet-mark pet-mark--alert">!</span>}
         {pose === 'look' && <span className="pet-mark pet-mark--look">♪</span>}
+        {pose === 'pant' && <span className="pet-mark pet-mark--pant">~</span>}
         {pose === 'sleep' && <span className="pet-zzz">z z</span>}
         <div className="pet-body">
-          <Sprite pose={pose} colour={settings.colour} />
+          <Sprite character={character} pose={pose} colour={settings.colour} />
         </div>
         {(pose === 'work' || pose === 'alert') && (
           <span className="pet-laptop" aria-hidden="true">

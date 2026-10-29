@@ -1,7 +1,8 @@
 /**
- * Settings → General → Desktop pet (macOS and Windows app): a pixel cat
- * that walks along the bottom of the screen and shows agent notifications
- * in its bubble. Off by default; the shell stores the settings.
+ * Settings → General → Desktop pet (macOS and Windows app): a pixel pet
+ * (a cat, a duck or a crab) that walks along the bottom of the screen and
+ * shows agent notifications in its bubble. Off by default; the shell
+ * stores the settings.
  */
 import { useEffect, useState } from 'react'
 
@@ -11,9 +12,11 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
 import { listenPetSettings, readPetSettings, updatePetSettings, type PetSettings } from '@/lib/pet-setting'
 import { BODY_COLOURS } from '@/pet/sprites'
-import type { BubbleKinds, PetColour, PetMovement, PetSize } from '@/pet/state'
+import { CHARACTER_TRAITS, type BubbleKinds, type PetCharacter, type PetColour, type PetMovement, type PetSize } from '@/pet/state'
 
 type Patch = Partial<Omit<PetSettings, 'position'>>
+
+const CHARACTERS = (Object.keys(CHARACTER_TRAITS) as PetCharacter[]).map((value) => ({ value, label: CHARACTER_TRAITS[value].label }))
 
 const COLOURS: ReadonlyArray<{ value: PetColour; label: string }> = [
   { value: 'orange', label: 'Orange' },
@@ -32,6 +35,7 @@ const MOVEMENTS: ReadonlyArray<{ value: PetMovement; label: string }> = [
   { value: 'still', label: 'Stay put' },
   { value: 'calm', label: 'Calm' },
   { value: 'playful', label: 'Playful' },
+  { value: 'chaotic', label: 'Chaotic' },
 ]
 
 const KINDS: ReadonlyArray<{ key: keyof BubbleKinds; label: string; description: string }> = [
@@ -81,12 +85,12 @@ export function PetSettingsSection() {
       <PanelRow
         label="Show a desktop pet"
         htmlFor="pet-enabled"
-        description={error ?? 'A small cat walks along the bottom of your screen and reacts to your agents. It never takes focus, and clicks beside it reach the app behind.'}
+        description={error ?? 'A small pet walks along the bottom of your screen and reacts to your agents. It never takes focus, and clicks beside it reach the app behind.'}
       >
         <Switch id="pet-enabled" checked={settings.enabled} onCheckedChange={(enabled) => change({ enabled })} />
       </PanelRow>
-      <PanelRow label="Character" description="More characters may come later.">
-        <SegmentedControl label="Character" value={settings.character} disabled={off} onChange={(character) => change({ character })} options={[{ value: 'cat', label: 'Cat' }]} />
+      <PanelRow label="Character" description="Each walks its own way.">
+        <SegmentedControl label="Character" value={settings.character} disabled={off} onChange={(character) => change({ character })} options={CHARACTERS} />
       </PanelRow>
       <PanelRow label="Colour">
         <SegmentedControl
@@ -103,7 +107,7 @@ export function PetSettingsSection() {
       <PanelRow label="Size">
         <SegmentedControl label="Size" value={settings.size} disabled={off} onChange={(size) => change({ size })} options={SIZES} />
       </PanelRow>
-      <PanelRow label="Movement" description="Stay put keeps it where you drop it. Drag it along the edge, or onto another display.">
+      <PanelRow label="Movement" description="Stay put keeps it where you drop it. Playful and Chaotic run about when a turn finishes; Chaotic also does now and then. Drag it anywhere, or onto another display.">
         <SegmentedControl label="Movement" value={settings.movement} disabled={off} onChange={(movement) => change({ movement })} options={MOVEMENTS} />
       </PanelRow>
       <PanelRow
@@ -129,6 +133,9 @@ export function PetSettingsSection() {
         description="By default it steps aside while you use the app."
       >
         <Switch id="pet-front" checked={settings.showWhenFrontmost} disabled={off} onCheckedChange={(showWhenFrontmost) => change({ showWhenFrontmost })} />
+      </PanelRow>
+      <PanelRow label="Climb on windows" htmlFor="pet-climb" description="When playful or chaotic, it jumps onto the windows you have open and rides along as they move.">
+        <Switch id="pet-climb" checked={settings.climb} disabled={off} onCheckedChange={(climb) => change({ climb })} />
       </PanelRow>
     </PanelSection>
   )

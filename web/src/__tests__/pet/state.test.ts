@@ -12,12 +12,17 @@ import {
   bubbleReducer,
   clampX,
   clampY,
+  followLedge,
+  ledges,
   nextTarget,
   petPose,
   reactionFor,
   startX,
   startY,
   visibleBubble,
+  withinPounce,
+  zoomDelay,
+  zoomsWhenDone,
   type BubbleState,
   type BubbleTone,
   type PetBubble,
@@ -74,6 +79,47 @@ describe('petPose', () => {
     expect(reactionFor('failed')).toBe('droop')
     expect(reactionFor('remind')).toBe('look')
     expect(reactionFor('input')).toBeNull()
+  })
+
+  it('dashes about during zoomies, then stands panting', () => {
+    expect(petPose({ ...base, zoom: 'run' })).toBe('zoom')
+    expect(petPose({ ...base, zoom: 'pant' })).toBe('pant')
+    expect(petPose({ ...base, sitting: true, zoom: 'run' })).toBe('zoom')
+  })
+
+  it('never runs about while held, told to stay put, or with motion reduced', () => {
+    expect(petPose({ ...base, zoom: 'run', held: true })).toBe('sit')
+    expect(petPose({ ...base, zoom: 'run', movement: 'still' })).toBe('sit')
+    expect(petPose({ ...base, zoom: 'run', reducedMotion: true })).toBe('sit')
+    expect(petPose({ ...base, held: true })).toBe('sit')
+  })
+
+  it('lets work, questions and sleep win over zoomies', () => {
+    expect(petPose({ ...base, zoom: 'run', status: { running: 1, needsInput: 0 } })).toBe('work')
+    expect(petPose({ ...base, zoom: 'run', status: { running: 0, needsInput: 1 } })).toBe('alert')
+  })
+})
+
+describe('zoomies', () => {
+  it('pounces only at a pointer close beside it', () => {
+    const pet = { x: 100, y: 500, width: 64, height: 48 }
+    expect(withinPounce(pet, { x: 200, y: 520 })).toBe(true)
+    expect(withinPounce(pet, { x: 130, y: 520 })).toBe(false)
+    expect(withinPounce(pet, { x: 400, y: 520 })).toBe(false)
+    expect(withinPounce(pet, { x: 200, y: 300 })).toBe(false)
+  })
+
+  it('come on their own every one to two minutes, only when chaotic', () => {
+    expect(zoomDelay('chaotic', 0)).toBe(60_000)
+    expect(zoomDelay('chaotic', 0.999)).toBeLessThanOrEqual(120_000)
+    for (const movement of ['still', 'calm', 'playful'] as const) expect(zoomDelay(movement, 0.5)).toBeNull()
+  })
+
+  it('celebrate a finished turn when playful or chaotic', () => {
+    expect(zoomsWhenDone('chaotic')).toBe(true)
+    expect(zoomsWhenDone('playful')).toBe(true)
+    expect(zoomsWhenDone('calm')).toBe(false)
+    expect(zoomsWhenDone('still')).toBe(false)
   })
 })
 
@@ -214,5 +260,52 @@ describe('placement', () => {
       expect(Math.abs(target - 500)).toBeGreaterThanOrEqual(80)
     }
     expect(nextTarget(10, 100, 64, 0.9)).toBe(10)
+  })
+})
+
+describe('ledges', () => {
+  const area = { width: 1600, height: 1000 }
+  const pet = { width: 64, height: 48 }
+  const win = (id: number, x: number, y: number, width = 600, height = 400) => ({ id, x, y, width, height })
+
+  it('stands on the top edge of an open window', () => {
+    expect(ledges([win(1, 100, 300)], area, pet)).toEqual([{ id: 1, x: 100, y: 300, width: 600 }])
+  })
+
+  it('needs room above the edge and never takes the ground or a window off screen', () => {
+    expect(ledges([win(1, 100, 30)], area, pet)).toEqual([])
+    expect(ledges([win(2, 100, 970)], area, pet)).toEqual([])
+    expect(ledges([win(3, -400, 300)], area, pet)).toEqual([{ id: 3, x: 0, y: 300, width: 200 }])
+  })
+
+  it('leaves out the part a window in front covers, keeping the widest piece', () => {
+    const front = win(9, 280, 150, 200, 400)
+    expect(ledges([front, win(1, 100, 300)], area, pet)).toEqual([
+      { id: 9, x: 280, y: 150, width: 200 },
+      { id: 1, x: 480, y: 300, width: 220 },
+    ])
+  })
+
+  it('drops an edge too short to walk on', () => {
+    const front = win(9, 120, 100, 560, 500)
+    expect(ledges([front, win(1, 100, 300)], area, pet).map((l) => l.id)).toEqual([9])
+  })
+})
+
+describe('followLedge', () => {
+  const pet = { width: 64, height: 48 }
+
+  it('moves with its window', () => {
+    const perch = { id: 1, ledgeX: 100 }
+    expect(followLedge(perch, 250, [{ id: 1, x: 150, y: 420, width: 600 }], pet)).toEqual({ x: 300, y: 372, perch: { id: 1, ledgeX: 150 } })
+  })
+
+  it('stays on an edge that got shorter', () => {
+    const perch = { id: 1, ledgeX: 100 }
+    expect(followLedge(perch, 600, [{ id: 1, x: 100, y: 300, width: 300 }], pet)?.x).toBe(336)
+  })
+
+  it('falls when its window closes, shrinks away or is covered', () => {
+    expect(followLedge({ id: 1, ledgeX: 100 }, 200, [{ id: 2, x: 100, y: 300, width: 600 }], pet)).toBeNull()
   })
 })

@@ -48,6 +48,11 @@ const bubble = (patch: Partial<PetBubble> = {}): PetBubble => ({
 
 const fits = () => calls.filter(([cmd]) => cmd === 'pet_fit').map(([, args]) => args as { rects: unknown[]; capture: boolean })
 const petEl = () => screen.getByRole('img', { name: /Desktop pet/ })
+/** The pet's top-left corner, from its transform. */
+function petAt() {
+  const match = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(petEl().style.transform)
+  return { x: Number(match?.[1]), y: Number(match?.[2]) }
+}
 
 async function mount(next: Partial<PetView> = {}) {
   view = { ...view, ...next }
@@ -226,6 +231,15 @@ describe('Pet', () => {
     expect(petEl().querySelector('rect[fill="#5AA8E2"]')).not.toBeNull()
   })
 
+  it('draws the chosen character, which answers a poke in its own voice', async () => {
+    await mount({ settings: settings({ character: 'duck' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    expect(petEl()).toHaveClass('pet--duck')
+    fireEvent.pointerDown(petEl(), { button: 0, clientX: 10 })
+    fireEvent.pointerUp(petEl(), { clientX: 10 })
+    expect(screen.getByText('Quack!')).toBeInTheDocument()
+  })
+
   it('stands still while its right-click menu is open', async () => {
     await mount({ settings: settings({ movement: 'playful' }) })
     await waitFor(() => expect(petEl()).toBeInTheDocument())
@@ -247,6 +261,136 @@ describe('Pet', () => {
       expect(petEl()).toHaveClass('pet--walk')
     } finally {
       timers.restore()
+    }
+  })
+
+  it('runs about now and then when chaotic', async () => {
+    await mount({ settings: settings({ movement: 'chaotic' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      // Fresh settings restart its timers on the fake clock.
+      emit('pet-state', { ...view, settings: settings({ movement: 'chaotic' }) })
+      expect(petEl()).not.toHaveClass('pet--zoom')
+      act(() => timers.tick(120_000))
+      expect(petEl()).toHaveClass('pet--zoom')
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('celebrates a finished turn by running about once its bubble is gone', async () => {
+    await mount({ settings: settings({ movement: 'playful' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      emit('pet-notification', bubble())
+      expect(petEl()).not.toHaveClass('pet--zoom')
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+      act(() => timers.tick(2000))
+      expect(petEl()).toHaveClass('pet--zoom')
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('never runs about when calm', async () => {
+    await mount({ settings: settings({ movement: 'calm' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      emit('pet-notification', bubble())
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+      act(() => timers.tick(300_000))
+      expect(petEl()).not.toHaveClass('pet--zoom')
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('turns to look at the pointer nearby', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const { x, y } = petAt()
+    emit('pet-pointer', { x: x - 80, y })
+    expect(petEl()).toHaveClass('pet--left')
+    emit('pet-pointer', { x: x + 150, y })
+    expect(petEl()).not.toHaveClass('pet--left')
+  })
+
+  it('pounces at a pointer that rests beside it', async () => {
+    await mount({ settings: settings({ movement: 'calm' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      const { x, y } = petAt()
+      emit('pet-pointer', { x: x + 100, y: y + 10 })
+      expect(petEl()).not.toHaveClass('pet--hop')
+      act(() => timers.tick(1500))
+      expect(petEl()).toHaveClass('pet--hop')
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('only watches the pointer when told to stay put', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      const { x, y } = petAt()
+      emit('pet-pointer', { x: x + 100, y: y + 10 })
+      act(() => timers.tick(5000))
+      expect(petEl()).not.toHaveClass('pet--hop')
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('jumps onto an open window, rides along when it moves, and falls when it closes', async () => {
+    const random = Math.random
+    Math.random = () => 0
+    await mount({ settings: settings({ movement: 'playful' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const ground = petAt()
+    const timers = useFakeTimers()
+    try {
+      emit('pet-windows', [{ id: 1, x: 100, y: 400, width: 500, height: 300 }])
+      // Fresh settings restart its sit timer on the fake clock.
+      emit('pet-state', { ...view, settings: settings({ movement: 'playful' }) })
+      act(() => timers.tick(1000))
+      expect(petAt().y).toBe(400 - 48)
+      expect(petAt().x).toBeGreaterThanOrEqual(100)
+      expect(petAt().x).toBeLessThanOrEqual(600 - 64)
+      expect(petEl()).toHaveClass('pet--jump')
+
+      const onWindow = petAt().x
+      emit('pet-windows', [{ id: 1, x: 150, y: 450, width: 500, height: 300 }])
+      expect(petAt()).toEqual({ x: onWindow + 50, y: 450 - 48 })
+
+      emit('pet-windows', [])
+      expect(petAt().y).toBe(ground.y)
+    } finally {
+      timers.restore()
+      Math.random = random
+    }
+  })
+
+  it('stays on the ground when climbing is off', async () => {
+    const random = Math.random
+    Math.random = () => 0
+    await mount({ settings: settings({ movement: 'playful', climb: false }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const ground = petAt()
+    const timers = useFakeTimers()
+    try {
+      emit('pet-windows', [{ id: 1, x: 100, y: 400, width: 500, height: 300 }])
+      emit('pet-state', { ...view, settings: settings({ movement: 'playful', climb: false }) })
+      act(() => timers.tick(1000))
+      expect(petAt().y).toBe(ground.y)
+    } finally {
+      timers.restore()
+      Math.random = random
     }
   })
 })

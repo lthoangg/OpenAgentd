@@ -722,7 +722,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
     existing window. Cancelling the menu leaves unread notifications intact.
-  - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel cat
+  - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel pet
+    (a cat, a duck that waddles, or a crab that walks sideways)
     walks along the bottom of the screen by default, above the Dock or
     taskbar (leaving room for one that hides itself, so it never walks where
     it pops up), on top of other apps. Drag it anywhere on the screen and it
@@ -734,18 +735,26 @@ run from the terminal (the native Rust binary since v3.0.0).
     banner: a question stays until it is answered (Answer opens it), and a
     finished turn, a failed one or a reminder hops, droops or looks up and
     fades after 8 s into a count badge. Click the badge to list what it
-    missed; a click on the pet itself is only a poke (it hops and meows)
+    missed; a click on the pet itself is only a poke (it hops and meows,
+    quacks or snips)
     and never brings OpenAgentd forward. Right-click it for a menu: what
     it missed (open one, or clear them), Open OpenAgentd, New Session,
-    Movement, Pet Settings and Hide Pet. It never takes focus, clicks beside it reach the app behind,
+    Movement, Character, Pet Settings and Hide Pet; it stands still while
+    the menu is open. It turns to look at the pointer nearby and pounces
+    at one resting beside it. Playful and Chaotic pets run about (zoomies)
+    when a turn finishes, Chaotic ones now and then too, and pant a moment
+    after; they also jump onto the top edge of the windows you have open,
+    walk along it, ride along when the window moves, and jump or fall back
+    down (no extra permission: only window frames are read). It never takes focus, clicks beside it reach the app behind,
     and you can drag it onto another display too; the spot (height
     included) is remembered. It replaces a banner only while it is on screen: hidden
     over a full-screen app, while OpenAgentd is in front, or on the lock
     screen, the banner shows as before. It follows the same servers as the
     notch, so it works with every window closed. Settings → General →
-    Desktop pet turns it on (off by default) and sets its colour, size,
-    movement (stay put, calm or playful), which notifications use the
-    bubble, and whether it shows while OpenAgentd is in front (it always
+    Desktop pet turns it on (off by default) and sets its character,
+    colour, size, movement (stay put, calm, playful or chaotic), which
+    notifications use the bubble, whether it climbs on windows, and
+    whether it shows while OpenAgentd is in front (it always
     steps aside for full-screen apps); the tray turns it on and off too.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)

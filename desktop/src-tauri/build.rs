@@ -36,6 +36,7 @@ fn main() {
                 "pet_fit",
                 "pet_open",
                 "pet_drag_end",
+                "pet_menu",
                 "pet_settings",
                 "pet_update_settings",
                 "updater_check",

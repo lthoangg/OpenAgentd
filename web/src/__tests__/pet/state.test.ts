@@ -157,6 +157,15 @@ describe('bubbleReducer', () => {
     const state = notify(notify(EMPTY_BUBBLES, bubble('q', 'input')), bubble('a', 'done'))
     expect(bubbleReducer(state, { type: 'clear' })).toEqual(EMPTY_BUBBLES)
   })
+
+  it('clears finished notifications but keeps questions still waiting on you', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('a', 'done'))
+    state = notify(state, bubble('b', 'done'))
+    state = notify(state, bubble('q', 'input'))
+    state = bubbleReducer(state, { type: 'toggleList' })
+    const cleared = bubbleReducer(state, { type: 'clearUnread' })
+    expect(cleared).toEqual({ ...EMPTY_BUBBLES, questions: [bubble('q', 'input')] })
+  })
 })
 
 describe('placement', () => {

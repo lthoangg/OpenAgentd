@@ -834,16 +834,182 @@ pub fn pet_open(app: AppHandle, window: WebviewWindow, notification_id: String) 
     if window.label() != PET_WINDOW {
         return;
     }
+    open_notification(&app, &notification_id);
+}
+
+fn open_notification(app: &AppHandle, notification_id: &str) {
     let route = shared().lock().unwrap().routes.iter().find(|r| r.notification_id == notification_id).cloned();
     let Some(route) = route else {
         log::warn!("pet: no session for bubble {notification_id}");
         return;
     };
+    let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = crate::island::open_session_on_server(&app, route.server, &route.session_id).await {
             log::warn!("pet: could not open session: {e:#}");
         }
     });
+}
+
+// ── Right-click menu ────────────────────────────────────────────────────────
+
+/// Sent to the pet page when a menu item changes its bubbles.
+pub const PET_MENU_EVENT: &str = "pet-menu-action";
+/// Unread notifications listed in the menu, at most.
+const MENU_MAX_UNREAD: usize = 6;
+/// A notification title in the menu is cut to this many characters.
+const MENU_TITLE_MAX: usize = 48;
+
+/// An unread bubble the page lists in the menu.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct MenuUnread {
+    pub id: String,
+    pub title: String,
+}
+
+/// What a pet menu item does. Items the tray has too (open the app, a new
+/// session, settings, hide the pet) reuse the tray's ids instead.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PetMenuAction<'a> {
+    Open(&'a str),
+    Clear,
+    Movement(PetMovement),
+}
+
+fn movement_key(movement: PetMovement) -> &'static str {
+    match movement {
+        PetMovement::Still => "still",
+        PetMovement::Calm => "calm",
+        PetMovement::Playful => "playful",
+    }
+}
+
+pub fn menu_id(action: PetMenuAction) -> String {
+    match action {
+        PetMenuAction::Open(id) => format!("pet:open:{id}"),
+        PetMenuAction::Clear => "pet:clear".to_string(),
+        PetMenuAction::Movement(m) => format!("pet:movement:{}", movement_key(m)),
+    }
+}
+
+pub fn parse_menu_id(id: &str) -> Option<PetMenuAction<'_>> {
+    let rest = id.strip_prefix("pet:")?;
+    if rest == "clear" {
+        return Some(PetMenuAction::Clear);
+    }
+    if let Some(notification_id) = rest.strip_prefix("open:").filter(|n| !n.is_empty()) {
+        return Some(PetMenuAction::Open(notification_id));
+    }
+    let movement = match rest.strip_prefix("movement:")? {
+        "still" => PetMovement::Still,
+        "calm" => PetMovement::Calm,
+        "playful" => PetMovement::Playful,
+        _ => return None,
+    };
+    Some(PetMenuAction::Movement(movement))
+}
+
+/// The unread rows of the menu: the newest few, titles cut to fit, and
+/// whether each can be opened (only a notification about a session can).
+pub fn unread_rows(unread: &[MenuUnread], openable: impl Fn(&str) -> bool) -> Vec<(String, String, bool)> {
+    unread
+        .iter()
+        .take(MENU_MAX_UNREAD)
+        .map(|u| {
+            let title = u.title.trim();
+            let title = if title.chars().count() > MENU_TITLE_MAX {
+                format!("{}…", title.chars().take(MENU_TITLE_MAX - 1).collect::<String>())
+            } else if title.is_empty() {
+                "Notification".to_string()
+            } else {
+                title.to_string()
+            };
+            (u.id.clone(), title, openable(&u.id))
+        })
+        .collect()
+}
+
+/// Called by the app's single menu listener. False when `id` is not a pet item.
+pub fn handle_menu_event(app: &AppHandle, id: &str) -> bool {
+    let Some(action) = parse_menu_id(id) else {
+        return false;
+    };
+    match action {
+        PetMenuAction::Open(notification_id) => {
+            open_notification(app, notification_id);
+            let _ = app.emit_to(PET_WINDOW, PET_MENU_EVENT, serde_json::json!({ "action": "dismiss", "id": notification_id }));
+        }
+        PetMenuAction::Clear => {
+            let _ = app.emit_to(PET_WINDOW, PET_MENU_EVENT, serde_json::json!({ "action": "clear" }));
+        }
+        PetMenuAction::Movement(movement) => {
+            let patch = PetSettingsPatch { movement: Some(movement), ..PetSettingsPatch::default() };
+            if let Err(e) = update_settings(app, patch) {
+                log::warn!("pet: could not change movement: {e:#}");
+            }
+        }
+    }
+    true
+}
+
+/// Right-click on the pet: a native menu at (`x`, `y`), CSS pixels in the
+/// pet window. The promise stays pending until the menu closes.
+#[tauri::command]
+pub async fn pet_menu(app: AppHandle, window: WebviewWindow, x: f64, y: f64, unread: Vec<MenuUnread>) -> Result<(), String> {
+    if window.label() != PET_WINDOW {
+        return Err("Only the pet can show its menu.".into());
+    }
+    let size = window.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(window.scale_factor().unwrap_or(1.0));
+    if !x.is_finite() || !y.is_finite() || !(0.0..=size.width).contains(&x) || !(0.0..=size.height).contains(&y) {
+        return Err("Invalid menu position.".into());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = show_menu(&handle, &window, x, y, &unread);
+        if let Err(e) = &result {
+            log::warn!("pet: could not show its menu: {e:#}");
+        }
+        let _ = tx.send(result.map_err(|e| e.to_string()));
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|e| e.to_string())?
+}
+
+/// Main thread only.
+fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, unread: &[MenuUnread]) -> Result<()> {
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+
+    let (movement, rows) = {
+        let s = shared().lock().unwrap();
+        let rows = unread_rows(unread, |id| s.routes.iter().any(|r| r.notification_id == id));
+        (s.settings.movement, rows)
+    };
+    let menu = Menu::new(app)?;
+    if !rows.is_empty() {
+        for (id, title, openable) in &rows {
+            menu.append(&MenuItem::with_id(app, menu_id(PetMenuAction::Open(id)), title, *openable, None::<&str>)?)?;
+        }
+        menu.append(&MenuItem::with_id(app, menu_id(PetMenuAction::Clear), "Clear Notifications", true, None::<&str>)?)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+    menu.append(&MenuItem::with_id(app, crate::menu::MENU_SHOW, "Open OpenAgentd", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, crate::menu::MENU_NEW_SESSION, "New Session", true, None::<&str>)?)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    let moves = Submenu::with_id(app, "pet:movement", "Movement", true)?;
+    for (choice, label) in [(PetMovement::Still, "Stay Put"), (PetMovement::Calm, "Calm"), (PetMovement::Playful, "Playful")] {
+        moves.append(&CheckMenuItem::with_id(app, menu_id(PetMenuAction::Movement(choice)), label, true, choice == movement, None::<&str>)?)?;
+    }
+    menu.append(&moves)?;
+    menu.append(&MenuItem::with_id(app, crate::menu::MENU_SETTINGS, "Pet Settings…", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, MENU_TOGGLE_PET, "Hide Pet", true, None::<&str>)?)?;
+    // Keep taking clicks while the menu tracks the pointer (AppKit runs a
+    // nested loop), and hold no lock across it.
+    shared().lock().unwrap().capture = true;
+    let result = window.popup_menu_at(&menu, tauri::LogicalPosition::new(x, y));
+    shared().lock().unwrap().capture = false;
+    wake().notify_one();
+    result.context("show the pet menu")
 }
 
 /// The pet was dropped with its left edge at `x` and its feet at `y` (CSS
@@ -934,7 +1100,8 @@ pub fn toggle(app: &AppHandle) {
 
 #[cfg(target_os = "macos")]
 mod native {
-    use objc2::MainThreadMarker;
+    use objc2::runtime::{Bool, NSObjectProtocol};
+    use objc2::{msg_send, sel, MainThreadMarker};
     use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState};
 
     fn with_ns_window<T>(window: &tauri::WebviewWindow, f: impl FnOnce(&NSWindow) -> T) -> Option<T> {
@@ -961,7 +1128,25 @@ mod native {
                 ns.setCollectionBehavior(behavior);
             }
             ns.setHasShadow(false);
+            prevent_activation(ns);
         });
+    }
+
+    /// A click on the pet (a poke) must leave the app you are in frontmost.
+    /// `focusable(false)` only refuses key status: AppKit still activates
+    /// the whole app on a mouse-down in one of its windows. A
+    /// non-activating NSPanel avoids that through this same private switch,
+    /// which plain NSWindows honour too. Windows gets the same from
+    /// `focusable(false)` (`WS_EX_NOACTIVATE`).
+    fn prevent_activation(ns: &NSWindow) {
+        let set = sel!(_setPreventsActivation:);
+        if ns.respondsToSelector(set) {
+            // SAFETY: the selector exists on this window (checked above) and
+            // takes one BOOL argument.
+            let _: () = unsafe { msg_send![ns, _setPreventsActivation: Bool::YES] };
+        } else {
+            log::warn!("pet: cannot keep clicks from activating the app on this macOS");
+        }
     }
 
     /// Bring to the front without activating the app.
@@ -1294,7 +1479,39 @@ mod tests {
         assert!(pet.get("remote").is_none());
         assert_eq!(
             strings(&pet["permissions"]),
-            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-drag-end"],
+            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-drag-end", "allow-pet-menu"],
         );
+    }
+
+    #[test]
+    fn menu_ids_round_trip_and_ignore_other_items() {
+        for action in [
+            PetMenuAction::Open("n-1"),
+            PetMenuAction::Clear,
+            PetMenuAction::Movement(PetMovement::Still),
+            PetMenuAction::Movement(PetMovement::Calm),
+            PetMenuAction::Movement(PetMovement::Playful),
+        ] {
+            assert_eq!(parse_menu_id(&menu_id(action)), Some(action));
+        }
+        assert_eq!(parse_menu_id("pet:open:a:b"), Some(PetMenuAction::Open("a:b")), "ids may hold colons");
+        for other in ["pet:open:", "pet:movement:fast", "pet:movement", "show", "toggle_pet", "island:open:s1", ""] {
+            assert_eq!(parse_menu_id(other), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn the_menu_lists_the_newest_unread_with_short_titles() {
+        let unread: Vec<MenuUnread> = (0..8).map(|i| MenuUnread { id: format!("n{i}"), title: format!("Done · web {i}") }).collect();
+        let rows = unread_rows(&unread, |id| id != "n1");
+        assert_eq!(rows.len(), 6, "capped");
+        assert_eq!(rows[0], ("n0".into(), "Done · web 0".into(), true));
+        assert!(!rows[1].2, "a reminder with no session cannot be opened");
+
+        let long = [MenuUnread { id: "x".into(), title: "a".repeat(80) }, MenuUnread { id: "y".into(), title: "  ".into() }];
+        let rows = unread_rows(&long, |_| true);
+        assert_eq!(rows[0].1.chars().count(), 48);
+        assert!(rows[0].1.ends_with('…'));
+        assert_eq!(rows[1].1, "Notification");
     }
 }

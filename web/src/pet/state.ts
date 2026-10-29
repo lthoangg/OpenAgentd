@@ -158,6 +158,7 @@ export type BubbleAction =
   | { type: 'dismiss'; id: string }
   | { type: 'status'; status: PetStatus }
   | { type: 'toggleList' }
+  | { type: 'clearUnread' }
   | { type: 'clear' }
 
 function pushUnread(unread: PetBubble[], bubble: PetBubble): PetBubble[] {
@@ -198,6 +199,9 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
       return action.status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [] } : state
     case 'toggleList':
       return { ...state, listOpen: !state.listOpen && state.unread.length > 0 }
+    case 'clearUnread':
+      // Finished turns and reminders only: a question still waits on you.
+      return { ...state, current: null, unread: [], listOpen: false }
     case 'clear':
       return EMPTY_BUBBLES
   }

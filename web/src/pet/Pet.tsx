@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { AlarmClock, Check, CircleAlert, MessageCircleQuestion, X } from 'lucide-react'
@@ -36,13 +36,19 @@ const STATE_COMMAND = 'pet_state'
 const FIT_COMMAND = 'pet_fit'
 const OPEN_COMMAND = 'pet_open'
 const DRAG_END_COMMAND = 'pet_drag_end'
+const MENU_COMMAND = 'pet_menu'
 const STATE_EVENT = 'pet-state'
 const NOTIFICATION_EVENT = 'pet-notification'
+const MENU_EVENT = 'pet-menu-action'
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_SLOP = 4
 const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500, look: 2000 }
 /** How often the hit areas are re-sent while the pet walks. */
 const FIT_EVERY_MS = 100
+/** How long the pet's reply to a poke stays up. */
+const POKE_SAY_MS = 2500
+
+type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
 function useShellEvent<T>(event: string, onPayload: (payload: T) => void) {
@@ -123,10 +129,12 @@ export function Pet() {
   const [y, setY] = useState(0)
   const [facingLeft, setFacingLeft] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [say, setSay] = useState<{ text: string; at: number } | null>(null)
   const reducedMotion = useReducedMotion()
 
   const petRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
+  const badgeRef = useRef<HTMLButtonElement>(null)
   const xRef = useRef(0)
   const yRef = useRef(0)
   const targetRef = useRef<number | null>(null)
@@ -162,6 +170,14 @@ export function Pet() {
       setReaction(reactionFor(bubble.tone))
     }, []),
   )
+  // Items of the right-click menu that change the bubbles.
+  useShellEvent<MenuAction>(
+    MENU_EVENT,
+    useCallback((payload: MenuAction) => {
+      if (payload.action === 'dismiss') dispatch({ type: 'dismiss', id: payload.id })
+      else dispatch({ type: 'clearUnread' })
+    }, []),
+  )
 
   useEffect(() => {
     const onResize = () => {
@@ -183,6 +199,12 @@ export function Pet() {
     const timer = window.setTimeout(() => setReaction(null), REACTION_MS[reaction])
     return () => window.clearTimeout(timer)
   }, [reaction])
+
+  useEffect(() => {
+    if (!say) return
+    const timer = window.setTimeout(() => setSay(null), POKE_SAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [say])
 
   // A finished turn or reminder fades behind the badge.
   const fadingId = visible?.type === 'bubble' && visible.fades ? visible.bubble.id : null
@@ -223,8 +245,8 @@ export function Pet() {
 
   // ── Hit areas ───────────────────────────────────────────────────────────
   const reportFit = useCallback((capture: boolean) => {
-    const rects = [petRef.current, bubbleRef.current]
-      .filter((el): el is HTMLDivElement => el !== null)
+    const rects = [petRef.current, bubbleRef.current, badgeRef.current]
+      .filter((el): el is HTMLDivElement | HTMLButtonElement => el !== null)
       .map((el) => {
         const r = el.getBoundingClientRect()
         // A little margin so the edge of the pet is easy to grab.
@@ -322,8 +344,16 @@ export function Pet() {
       void invoke(DRAG_END_COMMAND, { x: xRef.current, y: yRef.current + petHeight }).catch(() => {})
       return
     }
-    if (badge > 0 || bubbles.listOpen) dispatch({ type: 'toggleList' })
-    else setReaction('hop')
+    // A click on the body is only a poke: the pet answers where it is and
+    // opens nothing. The badge opens the unread list; a right-click, the menu.
+    setSay({ text: 'Meow!', at: Date.now() })
+    setReaction('hop')
+  }
+
+  const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const unread = bubbles.unread.map(({ id, title }) => ({ id, title }))
+    void invoke(MENU_COMMAND, { x: event.clientX, y: event.clientY, unread }).catch(() => {})
   }
 
   const open = (bubble: PetBubble) => {
@@ -345,7 +375,8 @@ export function Pet() {
   const bubbleSide = below ? ' pet-bubble--below' : ''
 
   return (
-    <div className="pet-strip">
+    // The browser's own menu (Reload, Inspect) never shows over the pet.
+    <div className="pet-strip" onContextMenu={(event) => event.preventDefault()}>
       {visible?.type === 'bubble' && (
         <div
           ref={bubbleRef}
@@ -405,10 +436,27 @@ export function Pet() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onContextMenu={onContextMenu}
         role="img"
         aria-label={status.needsInput > 0 ? 'Desktop pet: an agent needs your answer' : 'Desktop pet'}
       >
-        {badge > 0 && <span className="pet-badge">{badge}</span>}
+        {badge > 0 && (
+          <button
+            ref={badgeRef}
+            type="button"
+            className="pet-badge"
+            aria-label={`${badge} unread`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => dispatch({ type: 'toggleList' })}
+          >
+            {badge}
+          </button>
+        )}
+        {say && (
+          <span key={say.at} className="pet-say" aria-live="polite">
+            {say.text}
+          </span>
+        )}
         {pose === 'alert' && <span className="pet-mark pet-mark--alert">!</span>}
         {pose === 'look' && <span className="pet-mark pet-mark--look">♪</span>}
         {pose === 'sleep' && <span className="pet-zzz">z z</span>}

@@ -116,17 +116,64 @@ describe('Pet', () => {
     expect(calls.some(([cmd]) => cmd === 'pet_open')).toBe(false)
   })
 
-  it('lists what it missed behind a badge, opened by clicking the pet', async () => {
+  it('lists what it missed behind a badge, opened by clicking the badge', async () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-notification', bubble({ id: 'a', title: 'First' }))
     emit('pet-notification', bubble({ id: 'b', title: 'Second' }))
-    expect(screen.getByText('1')).toHaveClass('pet-badge')
-    fireEvent.pointerDown(petEl(), { button: 0, clientX: 10 })
-    fireEvent.pointerUp(petEl(), { clientX: 10 })
+    const badge = screen.getByRole('button', { name: '1 unread' })
+    expect(badge).toHaveClass('pet-badge')
+    fireEvent.pointerDown(badge, { button: 0, clientX: 10 })
+    fireEvent.click(badge)
     expect(screen.getByText('1 unread')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'First' }))
     expect(calls).toContainEqual(['pet_open', { notificationId: 'a' }])
+  })
+
+  it('is only poked by a click on its body: it hops and meows, opening nothing', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble({ id: 'a', title: 'First' }))
+    emit('pet-notification', bubble({ id: 'b', title: 'Second' }))
+    fireEvent.pointerDown(petEl(), { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerUp(petEl(), { clientX: 10, clientY: 10 })
+    expect(screen.queryByText('1 unread')).toBeNull()
+    expect(petEl()).toHaveClass('pet--hop')
+    expect(screen.getByText('Meow!')).toBeInTheDocument()
+    expect(calls.filter(([cmd]) => cmd !== 'pet_fit' && cmd !== 'pet_state')).toEqual([])
+  })
+
+  it('opens its menu on a right-click, listing what it missed', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble({ id: 'a', title: 'First' }))
+    emit('pet-notification', bubble({ id: 'b', title: 'Second' }))
+    const shown = fireEvent.contextMenu(petEl(), { clientX: 30, clientY: 40 })
+    expect(shown).toBe(false)
+    expect(calls).toContainEqual(['pet_menu', { x: 30, y: 40, unread: [{ id: 'a', title: 'First' }] }])
+    expect(screen.queryByText('Meow!')).toBeNull()
+  })
+
+  it('never shows the browser menu over its bubbles', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble())
+    expect(fireEvent.contextMenu(screen.getByText('Fix the flaky login test'))).toBe(false)
+    expect(calls.some(([cmd]) => cmd === 'pet_menu')).toBe(false)
+  })
+
+  it('drops a notification opened from the menu, and clears them all on request', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble({ id: 'a', title: 'First' }))
+    emit('pet-notification', bubble({ id: 'b', title: 'Second' }))
+    emit('pet-notification', bubble({ id: 'c', title: 'Third' }))
+    expect(screen.getByRole('button', { name: '2 unread' })).toBeInTheDocument()
+    emit('pet-menu-action', { action: 'dismiss', id: 'a' })
+    expect(screen.getByRole('button', { name: '1 unread' })).toBeInTheDocument()
+    emit('pet-menu-action', { action: 'clear' })
+    expect(screen.queryByRole('button', { name: /unread/ })).toBeNull()
+    expect(screen.queryByText('Third')).toBeNull()
   })
 
   it('takes every click while dragged and reports where it was dropped', async () => {

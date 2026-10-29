@@ -733,8 +733,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     you. Notifications show in its speech bubble instead of the system
     banner: a question stays until it is answered (Answer opens it), and a
     finished turn, a failed one or a reminder hops, droops or looks up and
-    fades after 8 s into a count badge. Click the pet to list what it
-    missed. It never takes focus, clicks beside it reach the app behind,
+    fades after 8 s into a count badge. Click the badge to list what it
+    missed; a click on the pet itself is only a poke (it hops and meows)
+    and never brings OpenAgentd forward. Right-click it for a menu: what
+    it missed (open one, or clear them), Open OpenAgentd, New Session,
+    Movement, Pet Settings and Hide Pet. It never takes focus, clicks beside it reach the app behind,
     and you can drag it onto another display too; the spot (height
     included) is remembered. It replaces a banner only while it is on screen: hidden
     over a full-screen app, while OpenAgentd is in front, or on the lock

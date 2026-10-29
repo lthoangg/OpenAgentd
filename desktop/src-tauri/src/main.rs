@@ -632,7 +632,7 @@ fn main() {
         .manage(state)
         .manage(preview_relay::PreviewRelays::default())
         .on_menu_event(|app, event| {
-            if !island::handle_menu_event(app, event.id().as_ref()) {
+            if !island::handle_menu_event(app, event.id().as_ref()) && !pet::handle_menu_event(app, event.id().as_ref()) {
                 handle_desktop_menu(app, event.id().as_ref());
             }
         })
@@ -677,6 +677,7 @@ fn main() {
             pet::pet_fit,
             pet::pet_open,
             pet::pet_drag_end,
+            pet::pet_menu,
             pet::pet_settings,
             pet::pet_update_settings,
             updater::updater_check,

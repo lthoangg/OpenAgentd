@@ -202,6 +202,24 @@ button:focus-visible {
   color: var(--bg-page);
 }
 
+/* What it says when poked: a small, short-lived line above its head. */
+.pet-say {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 2;
+  width: max-content;
+  transform: translateX(-50%);
+  padding: 3px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: var(--pet-bubble-shadow);
+  font-size: 11.5px;
+  pointer-events: none;
+  animation: pet-pop var(--motion-base) var(--ease-spring-snappy);
+}
+
 /* A tiny laptop beside it while an agent works. */
 .pet-laptop {
   position: absolute;
@@ -418,7 +436,8 @@ button:focus-visible {
   .pet-mark,
   .pet-zzz,
   .pet-laptop i::after,
-  .pet-bubble {
+  .pet-bubble,
+  .pet-say {
     animation: none !important;
     transition: none !important;
   }

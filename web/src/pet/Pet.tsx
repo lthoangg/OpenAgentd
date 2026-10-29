@@ -129,6 +129,7 @@ export function Pet() {
   const [y, setY] = useState(0)
   const [facingLeft, setFacingLeft] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [say, setSay] = useState<{ text: string; at: number } | null>(null)
   const reducedMotion = useReducedMotion()
 
@@ -236,7 +237,7 @@ export function Pet() {
   const pose = petPose({
     status,
     reaction,
-    sitting: sitting || dragging || visible !== null,
+    sitting: sitting || dragging || menuOpen || visible !== null,
     idleMs: now - lastActivity,
     reducedMotion,
     movement: settings?.movement ?? 'calm',
@@ -353,7 +354,15 @@ export function Pet() {
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     const unread = bubbles.unread.map(({ id, title }) => ({ id, title }))
-    void invoke(MENU_COMMAND, { x: event.clientX, y: event.clientY, unread }).catch(() => {})
+    // It stands where it was clicked until the menu closes (the command
+    // returns then), and sits a while after.
+    setMenuOpen(true)
+    void invoke(MENU_COMMAND, { x: event.clientX, y: event.clientY, unread })
+      .catch(() => {})
+      .finally(() => {
+        setMenuOpen(false)
+        setSitting(true)
+      })
   }
 
   const open = (bubble: PetBubble) => {

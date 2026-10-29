@@ -2,16 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { DEFAULT_PET_SETTINGS, type PetBubble, type PetSettings, type PetView } from '@/pet/state'
+import { useFakeTimers } from '../fake-timers'
 
 type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let view: PetView
+let closeMenu: () => void = () => {}
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
 
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     calls.push([cmd, args])
     if (cmd === 'pet_state') return view
+    // The shell answers once the menu closes.
+    if (cmd === 'pet_menu') return new Promise<void>((resolve) => (closeMenu = resolve))
     return undefined
   },
 }))
@@ -220,5 +224,29 @@ describe('Pet', () => {
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     expect(petEl().style.width).toBe(`${64 * 1.4}px`)
     expect(petEl().querySelector('rect[fill="#5AA8E2"]')).not.toBeNull()
+  })
+
+  it('stands still while its right-click menu is open', async () => {
+    await mount({ settings: settings({ movement: 'playful' }) })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      // Fresh settings restart its sit timer on the fake clock.
+      emit('pet-state', { ...view, settings: settings({ movement: 'playful' }) })
+      act(() => timers.tick(4000))
+      expect(petEl()).toHaveClass('pet--walk')
+
+      fireEvent.contextMenu(petEl(), { clientX: 10, clientY: 10 })
+      expect(calls.some(([cmd]) => cmd === 'pet_menu')).toBe(true)
+      expect(petEl()).toHaveClass('pet--sit')
+      act(() => timers.tick(10_000))
+      expect(petEl()).toHaveClass('pet--sit')
+
+      await act(async () => closeMenu())
+      act(() => timers.tick(4000))
+      expect(petEl()).toHaveClass('pet--walk')
+    } finally {
+      timers.restore()
+    }
   })
 })

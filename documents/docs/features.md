@@ -722,6 +722,26 @@ run from the terminal (the native Rust binary since v3.0.0).
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
     existing window. Cancelling the menu leaves unread notifications intact.
+  - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel cat
+    walks along the bottom of the screen, above the Dock or taskbar (leaving
+    room for one that hides itself, so it never walks where it pops up), on
+    top of other apps. Its pose follows your agents: it wanders and sits when
+    nothing runs (and sleeps after five quiet minutes), types on a tiny
+    laptop while an agent works, and raises an orange "!" while one waits on
+    you. Notifications show in its speech bubble instead of the system
+    banner: a question stays until it is answered (Answer opens it), and a
+    finished turn, a failed one or a reminder hops, droops or looks up and
+    fades after 8 s into a count badge. Click the pet to list what it
+    missed. It never takes focus, clicks beside it reach the app behind,
+    and you can drag it along the edge or onto another display; the spot is
+    remembered. It replaces a banner only while it is on screen: hidden
+    over a full-screen app, while OpenAgentd is in front, or on the lock
+    screen, the banner shows as before. It follows the same servers as the
+    notch, so it works with every window closed. Settings → General →
+    Desktop pet turns it on (off by default) and sets its colour, size,
+    movement (stay put, calm or playful), which notifications use the
+    bubble, and whether it shows while OpenAgentd is in front or over
+    full-screen apps; the tray turns it on and off too.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

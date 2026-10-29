@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pet-drag-end"
+description = "Enables the pet_drag_end command without any pre-configured scope."
+commands.allow = ["pet_drag_end"]
+
+[[permission]]
+identifier = "deny-pet-drag-end"
+description = "Denies the pet_drag_end command without any pre-configured scope."
+commands.deny = ["pet_drag_end"]

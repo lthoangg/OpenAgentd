@@ -1,17 +1,20 @@
 /**
  * Settings → General — app-wide preferences that live on this device:
- * colour theme, transcript style and, in the macOS app, the notch status.
+ * colour theme, transcript style and, in the desktop app, the notch status
+ * (macOS) and the desktop pet (macOS and Windows).
  */
 import { type ComponentType, useEffect, useState } from 'react'
 
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsPage } from '@/components/settings/SettingsPage'
+import { PetSettingsSection } from '@/components/settings/PetSettingsSection'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { type IslandSettings, readIslandSettings, supportsIsland, updateIslandSettings } from '@/lib/island-setting'
+import { supportsPet } from '@/lib/pet-setting'
 import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 function SegmentedChoice<T extends string>({ label, options, value, onChange }: {
@@ -125,6 +128,7 @@ export function GeneralSettingsPage() {
         </PanelRow>
       </PanelSection>
       {supportsIsland() && <NotchStatusSection />}
+      {supportsPet() && <PetSettingsSection />}
     </SettingsPage>
   )
 }

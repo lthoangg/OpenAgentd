@@ -11,6 +11,7 @@ mod sidecar;
 mod usage;
 mod tray_popup;
 mod island;
+mod pet;
 mod watchdog;
 mod network_access;
 mod preview_relay;
@@ -672,6 +673,12 @@ fn main() {
             island::island_settings,
             island::island_update_settings,
             island::app_server_watch_states,
+            pet::pet_state,
+            pet::pet_fit,
+            pet::pet_open,
+            pet::pet_drag_end,
+            pet::pet_settings,
+            pet::pet_update_settings,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
@@ -733,6 +740,7 @@ fn main() {
             let watchdog_handle = app.handle().clone();
             tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
             island::start(app.handle());
+            pet::start(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -128,6 +128,18 @@ pub fn show_desktop_notification(
             return Ok(false);
         }
     }
+    // The desktop pet is on screen and shows this kind in its bubble
+    // instead (its own feed gets the same event; each shows once).
+    let bubble = crate::pet::bubble_from_request(
+        &payload.kind,
+        payload.notification_id.as_deref(),
+        payload.session_id.as_deref(),
+        &payload.title,
+        &payload.body,
+    );
+    if crate::pet::take_banner(&app, window.label(), bubble) {
+        return Ok(false);
+    }
     // Past the cap the notification is still delivered, just without the
     // "Open" action — with no actions `needs_response()` is false, so
     // `wait_for_action` sends and returns instead of parking the thread.

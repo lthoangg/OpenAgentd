@@ -944,14 +944,16 @@ static FOCUS_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
-/// Start the feed and build the island shortly after launch (macOS only).
+/// Start the feed, and build the island shortly after launch (macOS only).
+/// The feed runs on every platform: the desktop pet (`pet.rs`) follows it
+/// too. It does nothing while neither the island nor the pet is on.
 pub fn start(app: &AppHandle) {
+    refresh_saved(app);
+    tauri::async_runtime::spawn(run_feed(app.clone()));
     #[cfg(target_os = "macos")]
     {
         let settings = crate::config::load_island_settings(app);
         shared().lock().unwrap().settings = settings;
-        refresh_saved(app);
-        tauri::async_runtime::spawn(run_feed(app.clone()));
         tauri::async_runtime::spawn(run_pointer_watch(app.clone()));
         if settings.enabled {
             let app = app.clone();
@@ -966,8 +968,6 @@ pub fn start(app: &AppHandle) {
             });
         }
     }
-    #[cfg(not(target_os = "macos"))]
-    let _ = app;
 }
 
 /// The island window, built on first use. Main thread only.
@@ -1143,10 +1143,8 @@ fn refresh_geometry(_app: &AppHandle) -> Option<ScreenInfo> {
 
 /// An app window gained or lost focus: hide the island while OpenAgentd is
 /// frontmost, the way iOS hides a Live Activity while its app is open.
+/// The pet steps aside the same way.
 pub fn on_app_focus_changed(app: &AppHandle) {
-    if !cfg!(target_os = "macos") {
-        return;
-    }
     let generation = FOCUS_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -1172,9 +1170,15 @@ pub fn on_app_focus_changed(app: &AppHandle) {
             }
             if changed {
                 apply(&handle);
+                crate::pet::refresh(&handle);
             }
         });
     });
+}
+
+/// An OpenAgentd app window has focus (as last settled).
+pub fn app_frontmost() -> bool {
+    shared().lock().unwrap().frontmost
 }
 
 // ── Feed ────────────────────────────────────────────────────────────────────
@@ -1187,8 +1191,16 @@ fn stream_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+/// The feed runs while the island or the pet is on.
 fn is_enabled() -> bool {
-    shared().lock().unwrap().settings.enabled
+    // Never hold the island's lock while taking the pet's.
+    let island = shared().lock().unwrap().settings.enabled;
+    island || crate::pet::is_enabled()
+}
+
+/// The island or the pet was switched on or off: start or stop the feed now.
+pub fn wake_feed() {
+    feed_wake().notify_waiters();
 }
 
 /// Wait up to `duration`, or less if the feature is switched on or off.
@@ -1344,6 +1356,9 @@ async fn follow(
                 Some(bytes) => {
                     last_bytes = Instant::now();
                     for event in parser.push(&bytes) {
+                        if event.event == "desktop_notification" {
+                            crate::pet::on_feed_notification(app, server, &event.data);
+                        }
                         if memo.note(&event) {
                             refresh_at.get_or_insert(last_bytes + REFRESH_DEBOUNCE);
                         }
@@ -1448,7 +1463,13 @@ fn publish(app: &AppHandle, server: &ServerId, next: Vec<IslandSession>, memo: &
         status.unread.len(),
         server.key()
     );
-    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+    send_status(app, &status);
+}
+
+/// Send a new snapshot to the island and the pet.
+fn send_status(app: &AppHandle, status: &IslandStatus) {
+    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, status);
+    crate::pet::status_changed(app, status);
 }
 
 /// Change the feeds, and tell the island if that changed what it shows.
@@ -1463,7 +1484,7 @@ fn edit_feeds(app: &AppHandle, edit: impl FnOnce(&mut Feeds) -> bool) {
             None => return,
         }
     };
-    let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, &status);
+    send_status(app, &status);
 }
 
 /// Change the unread list, and tell the island if that changed it.
@@ -1481,7 +1502,7 @@ fn mark_read(app: &AppHandle, key: &str) {
 }
 
 /// The session on screen in the focused app window, while OpenAgentd is in front.
-fn viewed_session(app: &AppHandle) -> Option<String> {
+pub(crate) fn viewed_session(app: &AppHandle) -> Option<String> {
     let label = crate::window::target_window_label(app);
     let s = shared().lock().unwrap();
     if !s.frontmost {
@@ -1541,6 +1562,14 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
         mark_read(app, &id_key(session_id));
         return Ok(());
     }
+    open_session_on_server(app, server, session_id).await?;
+    mark_read(app, &id_key(session_id));
+    Ok(())
+}
+
+/// Open `session_id` in an app window on `server`, opening a window there
+/// if none is on it. Also used by the desktop pet.
+pub(crate) async fn open_session_on_server(app: &AppHandle, server: ServerId, session_id: &str) -> Result<()> {
     let windows = crate::servers::app_window_labels(app);
     let target = crate::servers::window_for_server(
         &server,
@@ -1562,7 +1591,6 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
             crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
         }
     }
-    mark_read(app, &id_key(session_id));
     Ok(())
 }
 

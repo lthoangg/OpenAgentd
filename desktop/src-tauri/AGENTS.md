@@ -34,6 +34,15 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   (`capabilities/island.json`, like the tray popup's `capabilities/tray.json`)
   and, like the tray popup, never gets the backend token
   (`window::is_overlay_window`).
+  The feed runs on every platform while the island or the pet is on.
+- `src/pet.rs`: the desktop pet (`web/pet.html`, macOS and Windows): a
+  transparent always-on-top strip along the bottom of a display's work
+  area. The page reports its clickable areas (`pet_fit`) and Rust polls the
+  pointer to switch click-through, like the island. It gets the island
+  feed's status and `desktop_notification` events, and
+  `show_desktop_notification` asks `pet::take_banner` first: the pet takes
+  a banner only while it is on screen. Its webview has its own capability
+  (`capabilities/pet.json`) and never gets the backend token.
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
 - `src/diagnostics.rs`: Help → Export Diagnostics: copies the desktop and

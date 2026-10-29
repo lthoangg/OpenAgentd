@@ -64,6 +64,9 @@ windows = { version = "0.62", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_JobObjects",
     "Win32_System_Threading",
+    # SHQueryUserNotificationState: the desktop pet steps aside for
+    # full-screen apps and presentations.
+    "Win32_UI_Shell",
 ] }
 
 [features]

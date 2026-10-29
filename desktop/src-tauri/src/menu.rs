@@ -426,6 +426,15 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let tray_new_window =
         MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, None::<&str>)?;
     let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
+    let tray_pet = tauri::menu::CheckMenuItem::with_id(
+        app,
+        crate::pet::MENU_TOGGLE_PET,
+        "Desktop Pet",
+        true,
+        crate::config::load_pet_settings(app.handle()).enabled,
+        None::<&str>,
+    )?;
+    tray_pet_item().lock().unwrap().replace(tray_pet.clone());
     let tray_open_config_dir = MenuItem::with_id(
         app,
         MENU_OPEN_CONFIG_DIR,
@@ -504,6 +513,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
             &tray_new_window,
             &PredefinedMenuItem::separator(app)?,
             &tray_settings,
+            &tray_pet,
             &tray_open_config_dir,
             &tray_reveal_desktop_log,
             &tray_reveal_backend_log,
@@ -641,9 +651,31 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
             });
         }
         MENU_USAGE_MANAGE => emit_frontend_command(app, "settings_providers"),
+        crate::pet::MENU_TOGGLE_PET => crate::pet::toggle(app),
         MENU_QUIT => crate::quit_app(app),
         _ => {}
     }
+}
+
+/// The native tray's "Desktop Pet" check item (Windows; the macOS tray
+/// popup reads the setting itself).
+#[cfg(not(target_os = "macos"))]
+fn tray_pet_item() -> &'static std::sync::Mutex<Option<tauri::menu::CheckMenuItem<tauri::Wry>>> {
+    static ITEM: std::sync::OnceLock<std::sync::Mutex<Option<tauri::menu::CheckMenuItem<tauri::Wry>>>> =
+        std::sync::OnceLock::new();
+    ITEM.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Tick or untick the tray's "Desktop Pet" item.
+pub fn update_tray_pet(app: &AppHandle, enabled: bool) {
+    #[cfg(not(target_os = "macos"))]
+    if let Some(item) = tray_pet_item().lock().unwrap().clone() {
+        let _ = app.run_on_main_thread(move || {
+            let _ = item.set_checked(enabled);
+        });
+    }
+    #[cfg(target_os = "macos")]
+    let _ = (app, enabled);
 }
 
 pub fn open_config_dir(app: &AppHandle) {

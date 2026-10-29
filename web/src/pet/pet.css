@@ -1,0 +1,414 @@
+/* Desktop pet (web/pet.html). The window is a transparent strip along the
+ * bottom of a display; the pet and its bubble move inside it. Clicks pass
+ * through everywhere except the pet and the bubble (the shell switches that
+ * from the pointer). Colours and motion come from styles/tokens.css; only
+ * the block below holds values of its own. pet-css.test.ts keeps it that way. */
+@import "../styles/tokens.css";
+
+/* ── Pet-only values ──────────────────────────────────────────────────── */
+:root {
+  /* One leg cycle while walking, and the bounces. */
+  --pet-step: 360ms;
+  --pet-hop: 550ms;
+  --pet-bob: 1s;
+  --pet-snooze: 2s;
+  /* Floating over any wallpaper needs a stronger shadow than the app's. */
+  --pet-bubble-shadow: 0 8px 22px rgba(26, 23, 20, 0.24), 0 1px 3px rgba(26, 23, 20, 0.16);
+  --pet-snooze-ink: rgba(255, 255, 255, 0.92);
+  --pet-snooze-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+/* ── End pet-only values ──────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.pet-strip {
+  position: fixed;
+  inset: 0;
+}
+
+/* ── The pet ──────────────────────────────────────────────────────────── */
+.pet {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.pet--dragging {
+  cursor: grabbing;
+}
+
+.pet-body {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+}
+
+.pet--left .pet-body {
+  transform: scaleX(-1);
+}
+
+.pet-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Two leg frames take turns while it walks. */
+.pet--walk .pet-frame--0 {
+  animation: pet-frame-a var(--pet-step) steps(1) infinite;
+}
+
+.pet--walk .pet-frame--1 {
+  animation: pet-frame-b var(--pet-step) steps(1) infinite;
+}
+
+@keyframes pet-frame-a {
+  0% { visibility: visible; }
+  50% { visibility: hidden; }
+}
+
+@keyframes pet-frame-b {
+  0% { visibility: hidden; }
+  50% { visibility: visible; }
+}
+
+.pet--hop .pet-body {
+  animation: pet-hop var(--pet-hop) var(--ease-out) 3;
+}
+
+.pet--left.pet--hop .pet-body {
+  animation-name: pet-hop-left;
+}
+
+@keyframes pet-hop {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-28%); }
+}
+
+@keyframes pet-hop-left {
+  0%, 100% { transform: scaleX(-1) translateY(0); }
+  40% { transform: scaleX(-1) translateY(-28%); }
+}
+
+.pet--droop .pet-body {
+  transform: translateY(6%) scaleY(0.9);
+  filter: saturate(0.45);
+  transition: transform var(--motion-base) var(--ease-out), filter var(--motion-base) var(--ease-out);
+}
+
+.pet--sleep .pet-body {
+  transform: scaleY(0.88);
+  transition: transform var(--motion-slow) var(--ease-in-out);
+}
+
+.pet--left.pet--sleep .pet-body {
+  transform: scaleX(-1) scaleY(0.88);
+}
+
+.pet-mark {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 50%;
+  color: var(--color-text-on-accent);
+  font: 700 12px/18px "Inter Variable", sans-serif;
+  text-align: center;
+  animation: pet-bob var(--pet-bob) var(--ease-in-out) infinite;
+}
+
+.pet-mark--alert {
+  background: var(--accent-orange);
+  color: var(--color-text);
+}
+
+.pet-mark--look {
+  background: var(--accent-blue);
+  color: var(--color-text);
+}
+
+.pet-zzz {
+  position: absolute;
+  right: -6px;
+  top: -16px;
+  font: 700 12px "JetBrains Mono Variable", ui-monospace, monospace;
+  color: var(--pet-snooze-ink);
+  text-shadow: var(--pet-snooze-shadow);
+  animation: pet-bob var(--pet-snooze) var(--ease-in-out) infinite;
+}
+
+@keyframes pet-bob {
+  50% { transform: translateY(-3px); }
+}
+
+.pet-badge {
+  position: absolute;
+  left: -6px;
+  top: -8px;
+  z-index: 1;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bg-send);
+  color: var(--color-text-on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+:root.dark .pet-badge {
+  background: var(--color-text);
+  color: var(--bg-page);
+}
+
+/* A tiny laptop beside it while an agent works. */
+.pet-laptop {
+  position: absolute;
+  right: -34%;
+  bottom: 0;
+  width: 38%;
+  height: 30%;
+}
+
+.pet--left .pet-laptop {
+  right: auto;
+  left: -34%;
+}
+
+.pet-laptop i {
+  position: absolute;
+  left: 8%;
+  bottom: 20%;
+  width: 76%;
+  height: 80%;
+  border-radius: 2px 2px 0 0;
+  background: var(--color-text-2);
+}
+
+.pet-laptop i::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: var(--accent-blue);
+  animation: pet-screen var(--pet-step) steps(2) infinite;
+}
+
+.pet-laptop b {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 20%;
+  border-radius: 1px;
+  background: var(--color-text);
+}
+
+@keyframes pet-screen {
+  50% { opacity: 0.5; }
+}
+
+/* ── Bubble ───────────────────────────────────────────────────────────── */
+.pet-bubble {
+  position: absolute;
+  width: 290px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: var(--pet-bubble-shadow);
+  transform-origin: 20px 100%;
+  animation: pet-pop var(--motion-base) var(--ease-spring-snappy);
+}
+
+.pet-bubble::after {
+  content: "";
+  position: absolute;
+  left: var(--tail-x, 20px);
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--bg-card);
+  transform: rotate(45deg);
+}
+
+@keyframes pet-pop {
+  from { opacity: 0; transform: scale(0.6); }
+}
+
+.pet-bubble-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--color-text-muted);
+}
+
+.pet-bubble-close:active {
+  background: var(--bg-key);
+}
+
+.pet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pet-chip--icon {
+  flex: none;
+  padding: 2px;
+}
+
+.pet-bubble--input .pet-chip,
+.pet-chip.pet-bubble--input {
+  background: var(--accent-orange-soft);
+  color: var(--accent-orange-text);
+}
+
+.pet-bubble--done .pet-chip,
+.pet-chip.pet-bubble--done {
+  background: var(--accent-green-soft);
+  color: var(--accent-green-text);
+}
+
+.pet-bubble--failed .pet-chip,
+.pet-chip.pet-bubble--failed {
+  background: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+.pet-bubble--remind .pet-chip,
+.pet-chip.pet-bubble--remind {
+  background: var(--accent-blue-soft);
+  color: var(--accent-blue-text);
+}
+
+.pet-bubble-title {
+  margin: 6px 20px 2px 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-bubble-title--list {
+  margin-top: 0;
+}
+
+.pet-bubble-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--color-text-2);
+}
+
+.pet-bubble-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.pet-button {
+  padding: 3px 12px;
+  border-radius: 6px;
+  background: var(--bg-send);
+  color: var(--color-text-on-accent);
+  font-weight: 500;
+}
+
+:root.dark .pet-button {
+  background: var(--color-text);
+  color: var(--bg-page);
+}
+
+.pet-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.pet-list-row:first-of-type {
+  border-top: 0;
+}
+
+.pet-list-open {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-list-dismiss {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-frame,
+  .pet-body,
+  .pet-mark,
+  .pet-zzz,
+  .pet-laptop i::after,
+  .pet-bubble {
+    animation: none !important;
+    transition: none !important;
+  }
+}

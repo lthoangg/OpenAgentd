@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "tray",
-  "description": "The macOS tray popup (web/tray.html): events, reading the usage summary, running a tray menu action, and sizing itself. No backend access, no access keys, no settings changes, and no general window commands.",
+  "description": "The macOS tray popup (web/tray.html): events, reading the usage summary, running a tray menu action, and sizing itself, and reading the desktop pet setting (its on/off item runs as a tray action). No backend access, no access keys, no settings changes, and no general window commands.",
   "windows": [
     "tray-popup"
   ],
@@ -10,6 +10,7 @@
     "core:event:default",
     "allow-get-tray-usage-summary",
     "allow-tray-action",
-    "allow-tray-fit"
+    "allow-tray-fit",
+    "allow-pet-settings"
   ]
 }

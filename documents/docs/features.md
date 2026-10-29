@@ -1839,7 +1839,8 @@ agent against it.
   reference; the backend auto-attaches only the selected file lines.
   Markdown files (`.md`, `.markdown`) open rendered like a chat answer, with
   tables, highlighted code, diagrams, maths and images relative to the file;
-  front matter is hidden there and shown only in Source `[v3.35.0]`. A **Rendered / Source** switch in the
+  front matter shows as a key/value table above the body (lists as chips,
+  nested YAML as source, collapsed past 8 fields) `[v3.36.0]`. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
   Links and file-named code spans in a rendered Markdown file open the

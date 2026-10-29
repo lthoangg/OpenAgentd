@@ -20,6 +20,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { isVideoSrc } from '@/utils/workspace'
 import { MarkdownBlock } from '@/utils/markdown'
 import { PdfThumbnail } from './PdfThumbnail'
+import { parseFrontmatter } from './file-viewer/frontmatter'
+import { FrontmatterTable } from './file-viewer/FrontmatterTable'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'])
@@ -82,17 +84,6 @@ function workspaceMediaResolver(workspace: string, filePath: string): (src: stri
     }
     return codingWorkspaceFileUrl(workspace, parts.join('/'))
   }
-}
-
-const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
-
-/**
- * Drop leading YAML front matter from the rendered view: it is metadata, and
- * unstripped it renders as a stray rule and heading. The Source view keeps it.
- */
-function stripFrontmatter(text: string): string {
-  const match = FRONTMATTER.exec(text)
-  return match ? text.slice(match[0].length) : text
 }
 
 export function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
@@ -440,7 +431,9 @@ function TextPreview({
   const highlightedLines = asyncLines && asyncLines.content === source ? asyncLines.lines : syncLines
 
   const resolveMediaSrc = useMemo(() => workspaceMediaResolver(workspace, file.path), [workspace, file.path])
-  const markdown = useMemo(() => (rendered && content !== null ? stripFrontmatter(content) : null), [rendered, content])
+  // Leading YAML frontmatter renders as a key/value table above the body,
+  // not as markdown (a stray rule and heading). The Source view keeps it.
+  const markdown = useMemo(() => (rendered && content !== null ? parseFrontmatter(content) : null), [rendered, content])
 
   // A clicked ``path:line`` or ``path:start-end`` selects those lines and
   // centres them, once loaded. A rendered markdown file leaves the request
@@ -484,7 +477,8 @@ function TextPreview({
         {/* `oa-reading` (index.css): the Plan tab's column, max-w-3xl and an
             88ch measure in a maximized dock, so prose never spans the dock. */}
         <div className="oa-reading mx-auto max-w-3xl">
-          <MarkdownBlock content={markdown} resolveMediaSrc={resolveMediaSrc} />
+          {markdown.raw !== null && <FrontmatterTable fields={markdown.fields} raw={markdown.raw} />}
+          <MarkdownBlock content={markdown.body} resolveMediaSrc={resolveMediaSrc} />
         </div>
       </div>
     )

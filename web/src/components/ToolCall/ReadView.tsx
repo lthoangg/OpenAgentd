@@ -61,7 +61,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   }
 
   return (
-    <div className="flex max-h-56 sm:max-h-80 flex-col overflow-hidden">
+    <div className="flex flex-col overflow-hidden">
       <div className="flex w-full items-center border-b border-(--color-border) bg-(--bg-key) pr-1.5 font-mono text-xs font-semibold text-(--color-text-2)">
         <button
           type="button"
@@ -103,7 +103,11 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
       </div>
 
       <Collapsible open={expanded}>
-        <div className="overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
+        {/* The height cap lives on the scroll body, not the card: Collapsible's
+         * grid grows to its content, so a cap on the card only clipped the
+         * body and its scrollbar never engaged. 48/72 = the card's former
+         * 56/80 minus the header bar. */}
+        <div className="max-h-48 sm:max-h-72 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
           <div className="min-w-0">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch text-(--color-text)">

@@ -509,6 +509,7 @@ export type SessionSlice = Pick<
   | 'loadAgentStatus'
   | 'loadSession'
   | 'reconcileTurnTail'
+  | 'fillAttachGap'
   | 'loadOlderMessages'
   | 'loadOlderUntilPrompt'
 >
@@ -1091,6 +1092,40 @@ export const createSessionSlice: StateCreator<
     })
     inflightLoadSession.set(inflightKey, promise)
     return promise
+  },
+
+  fillAttachGap: async (sessionId: string) => {
+    const state = get()
+    const since = state._syncedThrough
+    if (state.sessionId !== sessionId || since === null) return
+    const gen = state._sessionGeneration
+    let delta: Awaited<ReturnType<typeof sessionHistorySince>>
+    try {
+      delta = await sessionHistorySince(sessionId, since)
+    } catch {
+      return
+    }
+    const now = get()
+    if (now._sessionGeneration !== gen || now.sessionId !== sessionId) return
+    // Matched by tool-call id and user-row id: a confirmed step can carry its
+    // live block's id (``keepLiveIds``), so a block id says nothing here.
+    const shownToolCalls = new Set<string>()
+    const shownIds = new Set<string>()
+    for (const stream of Object.values(now.agentStreams)) {
+      for (const block of [...readBlocks(stream.blocks), ...readBlocks(stream.currentBlocks)]) {
+        shownIds.add(block.id)
+        if (block.toolCallId) shownToolCalls.add(block.toolCallId)
+      }
+    }
+    const rows = [...delta.lead.messages, ...delta.members.flatMap((member: { messages: MessageResponse[] }) => member.messages)]
+    const missing = delta.truncated || rows.some((row) => {
+      if (row.role === 'user') return row.kind !== 'queued' && row.extra?.queue_status !== 'queued' && !shownIds.has(row.id)
+      if (row.role === 'tool') return Boolean(row.tool_call_id) && !shownToolCalls.has(row.tool_call_id as string)
+      return (row.tool_calls ?? []).some((call: { id?: string }) => Boolean(call.id) && !shownToolCalls.has(call.id as string))
+    })
+    if (!missing) return
+    // The mid-turn reload keeps the live tail and adds the rows it lacks.
+    await get().loadSession(sessionId, now._workspace)
   },
 
   reconcileTurnTail: async (sessionId: string, workspace?: string | null) => {

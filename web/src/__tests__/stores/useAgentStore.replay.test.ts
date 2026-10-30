@@ -12,11 +12,17 @@
  * explicit: only the first chunk of each kind after an attach may be treated
  * as a snapshot.
  */
-import { describe, it, expect, beforeEach } from "bun:test"
+import { describe, it, expect, beforeEach, afterAll, mock } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
+
+const realLoadSession = useAgentStore.getState().loadSession
+afterAll(() => useAgentStore.setState({ loadSession: realLoadSession }))
 
 beforeEach(() => {
   useAgentStore.setState({
+    loadSession: mock(async () => {}),
+    _pendingMessages: [],
+    _attachReplay: false,
     agentStreams: {},
     agentNames: [],
     leadName: "lead",
@@ -50,6 +56,7 @@ function thinkingOf(agent = "lead"): string {
 /** Arm the replay guard exactly the way `connectStream` does on attach. */
 function simulateAttach() {
   useAgentStore.setState((state) => ({
+    _attachReplay: true,
     agentStreams: Object.fromEntries(
       Object.entries(state.agentStreams).map(([name, stream]) => [
         name,
@@ -200,6 +207,110 @@ describe("attach replay snapshots", () => {
     emit("message", { agent: "newcomer", text: "partial output" })
     expect(textOf("newcomer")).toBe("partial output")
   })
+
+/** Every block the transcript shows for an agent: confirmed rows, then live. */
+function shown(agent = "lead") {
+  const stream = useAgentStore.getState().agentStreams[agent]
+  return [...(stream?.blocks ?? []), ...(stream?.currentBlocks ?? [])]
+}
+
+/** The frames `attach` replays for a turn that injected a queued message. */
+function replayQueuedStep() {
+  emit("agent_status", { agent: "lead", status: "working" })
+  emit("queued_turn_start", {
+    agent: "lead",
+    message_ids: ["msg-steer"],
+    messages: [{ id: "msg-steer", content: "also say OK" }],
+  })
+  emit("message", { agent: "lead", text: "Noted, I will say OK." })
+  emit("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-2" })
+  emit("tool_start", { agent: "lead", name: "shell", tool_call_id: "tc-2", arguments: '{"command":"echo two"}' })
+}
+
+describe("attach replay of an injected queued message", () => {
+  it("shows the steer and the step after it once when the stream reattaches", () => {
+    emit("message", { agent: "lead", text: "Running the first command." })
+    emit("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-1" })
+    emit("tool_end", { agent: "lead", name: "shell", tool_call_id: "tc-1", result: "one" })
+    replayQueuedStep()
+
+    simulateAttach()
+    replayQueuedStep()
+
+    const blocks = shown()
+    expect(blocks.filter((b) => b.id === "msg-steer")).toHaveLength(1)
+    expect(blocks.filter((b) => b.type === "text" && b.content === "Noted, I will say OK.")).toHaveLength(1)
+    expect(blocks.filter((b) => b.toolCallId === "tc-2")).toHaveLength(1)
+    // The steer still sits before the reply it started.
+    const order = blocks.map((b) => b.id)
+    const replyIndex = blocks.findIndex((b) => b.content === "Noted, I will say OK.")
+    expect(order.indexOf("msg-steer")).toBeLessThan(replyIndex)
+  })
+
+  it("does not double the step when the steer is already a confirmed history row", () => {
+    // A resume reloaded history first: the steer is confirmed, the step after
+    // it is still the live tail.
+    useAgentStore.setState((s) => {
+      s.agentStreams.lead = {
+        ...(s.agentStreams.lead ?? {}),
+        blocks: [{ id: "msg-steer", type: "user", content: "also say OK" }],
+        currentBlocks: [
+          { id: "live-text", type: "text", content: "Noted, I will say OK." },
+          { id: "tc-2", type: "tool", toolName: "shell", toolCallId: "tc-2", toolArgs: '{"command":"echo two"}' },
+        ],
+        currentText: "",
+        currentThinking: "",
+        status: "working",
+        lastError: null,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+      } as never
+    })
+
+    simulateAttach()
+    replayQueuedStep()
+
+    const blocks = shown()
+    expect(blocks.filter((b) => b.id === "msg-steer")).toHaveLength(1)
+    expect(blocks.filter((b) => b.type === "text" && b.content === "Noted, I will say OK.")).toHaveLength(1)
+    expect(blocks.filter((b) => b.toolCallId === "tc-2")).toHaveLength(1)
+  })
+
+  it("still starts a new turn for a steer the client has not shown yet", () => {
+    emit("message", { agent: "lead", text: "Working on it." })
+    simulateAttach()
+    emit("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["msg-new"],
+      messages: [{ id: "msg-new", content: "one more thing" }],
+    })
+
+    const stream = useAgentStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.content)).toEqual(["Working on it."])
+    expect(stream.currentBlocks.map((b) => b.id)).toEqual(["msg-new"])
+  })
+
+  it("reloads history when a replay starts at a steer the loaded page has not reached", () => {
+    // The page was read just before the rows ahead of this steer were saved,
+    // and the replay only starts at the steer: those rows are on no screen.
+    const loadSession = mock(async () => {})
+    useAgentStore.setState({ loadSession, _workspace: "/repo" })
+    emit("message", { agent: "lead", text: "Working on it." })
+    simulateAttach()
+    replayQueuedStep()
+
+    expect(loadSession).toHaveBeenCalledTimes(1)
+    expect(loadSession).toHaveBeenCalledWith("s1", "/repo")
+  })
+
+  it("does not reload history for a live steer", () => {
+    const loadSession = mock(async () => {})
+    useAgentStore.setState({ loadSession, _workspace: "/repo" })
+    emit("message", { agent: "lead", text: "Working on it." })
+    replayQueuedStep()
+
+    expect(loadSession).not.toHaveBeenCalled()
+  })
+})
 
   it("retains single tool call block on reconnect replay", () => {
     emit("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-100" })

@@ -144,6 +144,16 @@ function markTurnStarted(draft: AgentStore, agent: string, startedAt = Date.now(
   if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = startedAt
 }
 
+/**
+ * A content frame ends an attach's replay window (``_attachReplay``): the
+ * server replays ``queued_turn_start`` ahead of every content frame of the
+ * step it started. Cleared inside updates that already run, so it costs no
+ * extra store notification.
+ */
+function endAttachReplay(draft: AgentStore) {
+  if (draft._attachReplay) draft._attachReplay = false
+}
+
 function appendStreamingText(
   draft: AgentStore,
   agent: string,
@@ -199,6 +209,7 @@ function findConfirmedTool(draft: AgentStore, agent: string, toolCallId: string 
 }
 
 function applyBufferedSSEDelta(draft: AgentStore, event: BufferedSSEDelta) {
+  endAttachReplay(draft)
   const d = event.data
   const agentName = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
   if (event.type === 'message' || event.type === 'thinking') {
@@ -263,6 +274,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'tool_call': {
         set((draft) => {
+          endAttachReplay(draft)
           const agent = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
           markTurnStarted(draft, agent)
           // Replay after a mid-turn reconcile: the card already lives in the
@@ -280,6 +292,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'tool_start': {
         set((draft) => {
+          endAttachReplay(draft)
           const agent = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
           markTurnStarted(draft, agent)
           const toolCallId = d.tool_call_id as string | undefined
@@ -495,6 +508,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               }]
             })
           : []
+        // Set when an attach replays an injection the loaded history has not
+        // reached; see below.
+        let historyBehindReplay = false
         set((draft) => {
           const targetAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
           ensureAgent(draft, targetAgent)
@@ -555,6 +571,28 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           if (messages.length === 0) return
           const now = Date.now()
           const stream = draft.agentStreams[targetAgent]
+          // An attach replays the injection of a message this client already
+          // shows, ahead of the snapshot of the step that followed it. Handled
+          // as a new injection, it sealed that step's live text into `blocks`,
+          // so the snapshot then had nothing to merge into and rendered the
+          // step a second time, below a re-ordered bubble (the phone app
+          // reattaches on every resume). A confirmed row is proof on its own;
+          // a live bubble counts only while the replay guard is armed.
+          const shownAsUser = (id: string, blocks: ContentBlock[]) =>
+            readBlocks(blocks).some((b) => b.type === 'user' && b.id === id)
+          const replaying = draft._attachReplay === true
+          const alreadyShown = messages.every((msg) =>
+            shownAsUser(msg.id, stream.blocks) || (replaying && shownAsUser(msg.id, stream.currentBlocks)),
+          )
+          if (alreadyShown) {
+            const shownIds = new Set(messages.map((msg) => msg.id))
+            draft._pendingMessages = draft._pendingMessages.filter((msg) => !shownIds.has(msg.id))
+            return
+          }
+          // The replay starts at this injection, so rows saved between the
+          // history read and the injection reach the client by no other path
+          // (a tool row stayed missing until the turn ended).
+          if (replaying) historyBehindReplay = true
           stream.currentBlocks = stampOpenTextBlocks(
             stream.currentBlocks,
             now,
@@ -652,6 +690,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           }
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !removedIds.has(msg.id))
         })
+        if (historyBehindReplay) {
+          // Mid-turn reload: keeps the live tail and adds the rows it lacks.
+          const { sessionId, _workspace: workspace } = get()
+          if (sessionId) void get().loadSession(sessionId, workspace)
+        }
         break
       }
 
@@ -814,6 +857,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'done': {
         set((draft) => {
+          endAttachReplay(draft)
           draft.isAgentWorking = false
           // An open question deliberately survives `done`. The suspension is
           // durable: the row stays `pending`, and a reload brings the card back

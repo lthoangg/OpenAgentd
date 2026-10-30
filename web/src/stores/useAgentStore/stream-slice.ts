@@ -21,6 +21,9 @@ export function clearReconnectTimer(state: Pick<AgentStore, '_reconnectTimer'>) 
 /** Controllers `connectStream` aborted to replace them; their stream lives on as the new one. */
 const replacedControllers = new WeakSet<AbortController>()
 
+/** Frames of the step in progress: the first one after an attach ends its replay. */
+const STEP_CONTENT_FRAMES = new Set(['message', 'thinking', 'tool_call', 'tool_start', 'tool_output_delta', 'tool_end'])
+
 /**
  * How long a feed may stay silent when it should be talking: right after it
  * attaches to a working turn (the server replays the agent status at once),
@@ -443,6 +446,7 @@ export const createStreamSlice: StateCreator<
       clearReconnectTimer(draft)
       draft.isConnected = true
       draft._abortController = abort
+      draft._attachReplay = true
       // The global stream may have patched the row while this one was down.
       draft._runningPatchedFor = null
       // Every attach replays the accumulated turn text as one snapshot chunk
@@ -525,6 +529,10 @@ export const createStreamSlice: StateCreator<
     // do it again, so an immediate retry becomes a request storm with no error
     // to trigger the backoff below.
     let receivedAnyEvent = false
+    // Once per attach, at the first frame of the step in progress (the
+    // replay is in by then): look for rows saved before it that this client
+    // never received. A fetch, not a store update.
+    let gapChecked = false
     const scheduleReconnect = () => {
       set((draft) => {
         draft.isConnected = false
@@ -563,6 +571,10 @@ export const createStreamSlice: StateCreator<
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
           receivedAnyEvent = true
           disarmWatch()
+          if (!gapChecked && STEP_CONTENT_FRAMES.has(type)) {
+            gapChecked = true
+            if (current.isAgentWorking) void current.fillAttachGap(sessionId)
+          }
           if (current._reconnectAttempts > 0 || current._silentStreamAttempts > 0) {
             set((draft) => {
               draft._reconnectAttempts = 0

@@ -35,6 +35,43 @@ export function confirmedIdSet(blocks: ContentBlock[]): Set<string> {
   return ids
 }
 
+/** Shorter text repeats legitimately ("Done.", "OK"), so it is never matched by content. */
+const MIN_DUPLICATE_TEXT = 20
+/** How far back the confirmed turn is scanned; a turn is rarely longer. */
+const TURN_SCAN_LIMIT = 400
+
+/**
+ * Tool-call ids and text of the confirmed rows since the last user row: the
+ * turn a live block can duplicate. A replay that re-sends a step the client
+ * already confirmed gives the copy a new id, so ids alone miss it.
+ */
+function confirmedTurnContent(blocks: ContentBlock[]): { toolCallIds: Set<string>; texts: Set<string> } {
+  const toolCallIds = new Set<string>()
+  const texts = new Set<string>()
+  const stop = Math.max(0, blocks.length - TURN_SCAN_LIMIT)
+  for (let i = blocks.length - 1; i >= stop; i -= 1) {
+    const block = blocks[i]
+    if (block.type === 'user') break
+    if (block.type === 'tool' && block.toolCallId) toolCallIds.add(block.toolCallId)
+    if ((block.type === 'text' || block.type === 'thinking') && block.content.length >= MIN_DUPLICATE_TEXT) {
+      texts.add(`${block.type}\u0000${block.content}`)
+    }
+  }
+  return { toolCallIds, texts }
+}
+
+const warnedDuplicates = new Set<string>()
+
+/**
+ * One warning per dropped copy, so a path that still makes duplicates shows
+ * up in the console (and a bug report) instead of only being hidden.
+ */
+function warnDuplicate(key: string, block: ContentBlock) {
+  if (warnedDuplicates.has(key)) return
+  warnedDuplicates.add(key)
+  console.warn('transcript_duplicate_block', { type: block.type, id: block.id, toolCallId: block.toolCallId })
+}
+
 /**
  * The live suffix of `currentBlocks` not yet folded into `blocks` — the
  * part `mergeBlocks` appends. Exposed separately so callers that only need
@@ -59,8 +96,17 @@ export function liveBlockTail(
 ): ContentBlock[] {
   if (currentBlocks.length === 0 || blocks.length === 0) return currentBlocks
   const confirmedIds = confirmedIdSet(blocks)
+  const turn = confirmedTurnContent(blocks)
   return currentBlocks.filter((b) => {
     if (confirmedIds.has(b.id)) return false
+    if (b.type === 'tool' && b.toolCallId && turn.toolCallIds.has(b.toolCallId)) {
+      warnDuplicate(b.toolCallId, b)
+      return false
+    }
+    if ((b.type === 'text' || b.type === 'thinking') && b.content.length >= MIN_DUPLICATE_TEXT && turn.texts.has(`${b.type}\u0000${b.content}`)) {
+      warnDuplicate(b.id, b)
+      return false
+    }
     if (b.type === 'user' && b.id.startsWith('user-')) {
       const existsInConfirmed = blocks.some(
         (confirmed) =>

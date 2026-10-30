@@ -308,6 +308,13 @@ export interface AgentStoreActions {
    * Falls back to ``loadSession`` whenever a delta cannot be applied safely.
    */
   reconcileTurnTail: (sessionId: string, workspace?: string | null) => Promise<void>
+  /**
+   * After an attach to a running turn: reload history when the server saved
+   * rows (a finished step, a steer) the client shows nowhere. The attach
+   * replays only the step in progress, so such rows fell into the gap
+   * between the history read and the attach.
+   */
+  fillAttachGap: (sessionId: string) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   /**
@@ -327,6 +334,13 @@ export interface AgentStoreActions {
   _handleSSEEvent: (type: string, data: unknown) => void
   _drainCacheInvalidations: () => CacheInvalidation[]
   _abortController: AbortController | null
+  /**
+   * True from a stream attach until its first content frame (text, thinking,
+   * a tool event or ``done``): the window in which the server replays the
+   * running turn, starting with ``queued_turn_start`` for a message it
+   * injected. Unset outside a stream.
+   */
+  _attachReplay?: boolean
   _reconnectTimer: ReturnType<typeof setTimeout> | null
 }
 

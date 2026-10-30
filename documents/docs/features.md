@@ -315,6 +315,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   bar; the pinned tool row closes them.
   Shell rows show only test counts or "no output" — no exit-code or error
   chip.
+- **No duplicate messages on resume** `[v3.37.0]` — reopening the phone app
+  or reloading mid-turn no longer repeats the reply or a steer message, and
+  a step saved during the reconnect shows up right away instead of at the
+  end of the turn.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

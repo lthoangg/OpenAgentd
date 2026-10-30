@@ -2,7 +2,7 @@ import { memo, useState, type Dispatch, type HTMLAttributes, type SetStateAction
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { ListTodo, PanelLeft, PanelRight } from 'lucide-react'
+import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -173,6 +173,13 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
         {isMobile ? (
           <>
+            {/* One tap to the model and thinking level (desktop has the status bar). */}
+            <MobileHeaderAction
+              Icon={SlidersHorizontal}
+              label="Session settings"
+              onClick={onToggleAgentCapabilities}
+              active={agentCapabilitiesOpen}
+            />
             <MobileHeaderAction
               Icon={PanelRight}
               label="Review panel"

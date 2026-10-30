@@ -44,10 +44,29 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
   })
 
-  it('keeps the mobile header to sidebar, title, Review panel and More', () => {
+  it('keeps the mobile header to sidebar, title, Session settings, Review panel and More', () => {
     const { container } = renderHeader({ isMobile: true })
     const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-    expect(names).toEqual(['Toggle sidebar', 'Review panel', 'More actions'])
+    expect(names).toEqual(['Toggle sidebar', 'Session settings', 'Review panel', 'More actions'])
+  })
+
+  it('opens Session settings in one tap from the mobile header', async () => {
+    const user = userEvent.setup()
+    const onToggleAgentCapabilities = mock(() => undefined)
+    renderHeader({ isMobile: true, onToggleAgentCapabilities })
+
+    await user.click(screen.getByRole('button', { name: 'Session settings' }))
+    expect(onToggleAgentCapabilities).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks the mobile Session settings button active while the panel is open', () => {
+    renderHeader({ isMobile: true, agentCapabilitiesOpen: true })
+    expect(screen.getByRole('button', { name: 'Session settings' }).className).toContain('bg-(--bg-key)')
+  })
+
+  it('keeps the Session settings button off the desktop header', () => {
+    renderHeader({ isMobile: false })
+    expect(screen.queryByRole('button', { name: 'Session settings' })).not.toBeInTheDocument()
   })
 
   it('keeps the desktop header on the page tone in light mode', () => {
@@ -89,7 +108,7 @@ describe('AgentChatHeader', () => {
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
-    for (const name of ['Toggle sidebar', 'Review panel', 'More actions']) {
+    for (const name of ['Toggle sidebar', 'Session settings', 'Review panel', 'More actions']) {
       expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
     }
   })

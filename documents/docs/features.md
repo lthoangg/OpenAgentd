@@ -290,9 +290,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     media, Data and safety, and About, with a search box; Providers is a
     list; Settings → Telemetry is now **Data retention**.
   - **Phones.** The header shows the session title with its workspace under
-    it, and keeps four controls: sidebar, title, Review panel and **More**.
-    The composer has a **Session settings** button beside Code / Plan, so
-    the model and thinking level are one tap away. The sidebar drawer's
+    it, and keeps five controls: sidebar, title, **Session settings**,
+    Review panel and **More**, so the model and thinking level are one tap
+    away. The sidebar drawer's
     footer is icons only: Settings, Usage, the server dot and the theme.
     More holds Tasks (with the open count and goal ring), Session settings,
     context use, prompt stepping, Find file, Terminal, Scheduled tasks and the

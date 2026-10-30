@@ -1,0 +1,87 @@
+# Vendored copy of anydoc 0.2.4 from crates.io (upstream git 42bf1c5e,
+# https://github.com/firecrawl/anydoc), MIT licensed (see LICENSE).
+#
+# The only change from the published crate: `zip` moves from 8.6.0 to 9.1.3.
+# zip < 9.0.5 is affected by GHSA-m665-v7pm-7grj, GHSA-9hj8-73fh-9963,
+# GHSA-hjqx-j4rw-g7xv, GHSA-q7v9-x93c-xqv3 and GHSA-8hxf-qr8p-62x4, which have
+# no 8.x backport. anydoc needs no source change for zip 9 (upstream PR
+# firecrawl/anydoc#213). Wired in by `[patch.crates-io]` in ../../Cargo.toml;
+# delete this directory and the patch once a released anydoc depends on
+# zip >= 9.0.5.
+
+[package]
+edition = "2024"
+rust-version = "1.88"
+name = "anydoc"
+version = "0.2.4"
+build = false
+include = [
+    "/src",
+    "/examples/convert.rs",
+    "/README.md",
+    "/LICENSE",
+]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Convert documents (doc, docx, odt, rtf, epub, pdf, presentations, spreadsheets, csv) to GitHub-Flavored Markdown"
+readme = "README.md"
+keywords = [
+    "markdown",
+    "docx",
+    "pdf",
+    "converter",
+    "document",
+]
+categories = [
+    "parser-implementations",
+    "text-processing",
+]
+license = "MIT"
+repository = "https://github.com/firecrawl/anydoc"
+
+[lib]
+name = "anydoc"
+path = "src/lib.rs"
+
+[[example]]
+name = "convert"
+path = "examples/convert.rs"
+
+[dependencies.cfb]
+version = "0.14.0"
+
+[dependencies.csv]
+version = "1.4.0"
+
+[dependencies.encoding_rs]
+version = "0.8.35"
+
+[dependencies.flate2]
+version = "1"
+
+[dependencies.log]
+version = "0.4"
+
+[dependencies.pdf-inspector]
+version = "1.14.2"
+
+[dependencies.quick-xml]
+version = "0.41.0"
+
+[dependencies.zip]
+version = "9.1.3"
+features = ["deflate"]
+default-features = false
+
+[dev-dependencies.insta]
+version = "1"
+
+[dev-dependencies.sha2]
+version = "0.11"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

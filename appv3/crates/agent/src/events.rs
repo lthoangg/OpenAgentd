@@ -143,8 +143,9 @@ pub fn message(agent: &str, text: &str, metadata: Option<Value>) -> Envelope {
     Envelope::typed(json!({"type": "message", "agent": agent, "text": text, "metadata": meta(metadata)}))
 }
 
-pub fn tool_call(agent: &str, tool_call_id: Option<&str>, name: &str) -> Envelope {
-    Envelope::typed(json!({"type": "tool_call", "agent": agent, "tool_call_id": tool_call_id, "name": name, "metadata": {}}))
+/// `metadata` names the `model` / `thinking_level` that called the tool.
+pub fn tool_call(agent: &str, tool_call_id: Option<&str>, name: &str, metadata: Option<Value>) -> Envelope {
+    Envelope::typed(json!({"type": "tool_call", "agent": agent, "tool_call_id": tool_call_id, "name": name, "metadata": meta(metadata)}))
 }
 
 pub fn tool_start(agent: &str, tool_call_id: Option<&str>, name: &str, arguments: Option<&str>) -> Envelope {
@@ -341,7 +342,7 @@ mod tests {
             session("s"),
             thinking("a", "t", None),
             message("a", "t", None),
-            tool_call("a", None, "read"),
+            tool_call("a", None, "read", None),
             tool_start("a", None, "read", None),
             tool_end("a", None, "read", None, None),
             tool_output_delta("a", None, "read", "x", 1),

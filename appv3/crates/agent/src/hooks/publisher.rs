@@ -213,7 +213,7 @@ impl Hook for StreamPublisherHook {
             if !self.resolver.lock().unwrap().register(&name, &id) {
                 continue;
             }
-            self.push(events::tool_call(&self.agent, Some(&id), &name));
+            self.push(events::tool_call(&self.agent, Some(&id), &name, Some(metadata.clone())));
         }
     }
 

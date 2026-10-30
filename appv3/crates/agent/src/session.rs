@@ -165,6 +165,30 @@ pub struct RuntimeProvider {
     pub thinking_level: Option<String>,
 }
 
+/// The model and thinking level a turn runs with, from the session's
+/// overrides (its row) over the agent's own. Shared by the provider a turn
+/// calls and the prompt row, which records what it was sent with.
+struct TurnSettings {
+    /// The session's model, else the agent's.
+    model: Option<String>,
+    thinking_level: Option<String>,
+    /// The overrides change something, so the turn needs its own provider.
+    needs_runtime: bool,
+}
+
+impl TurnSettings {
+    fn resolve(agent: &Agent, runtime_model: Option<&str>, runtime_thinking: Option<&str>) -> Self {
+        let runtime_model = runtime_model.filter(|m| !m.is_empty());
+        let model = runtime_model.map(String::from).or_else(|| agent.model_id.clone());
+        let overridden = runtime_model.is_some_and(|m| Some(m) != agent.model_id.as_deref()) || runtime_thinking.is_some();
+        let needs_runtime = overridden && model.as_deref().is_some_and(|m| !m.is_empty());
+        // A runtime provider carries only the session's level; the agent's
+        // own level applies only to the agent's own provider.
+        let thinking_level = if needs_runtime { runtime_thinking.map(String::from) } else { agent.thinking_level.clone() };
+        Self { model, thinking_level, needs_runtime }
+    }
+}
+
 impl RuntimeProvider {
     pub fn provider(&self, agent: &Agent) -> Arc<dyn LlmProvider> {
         self.runtime.clone().unwrap_or_else(|| agent.provider.clone())
@@ -276,24 +300,18 @@ impl AgentSession {
     /// The provider for the session's `model` / `thinking_level` overrides
     /// (from its row), or the agent's own when neither changes anything.
     pub fn resolve_runtime_provider(&self, agent: &Agent, runtime_model: Option<&str>, runtime_thinking: Option<&str>) -> Result<RuntimeProvider, ProviderError> {
-        let runtime_model = runtime_model.filter(|m| !m.is_empty());
-        let runtime_thinking = runtime_thinking.map(String::from);
-        let effective_model = runtime_model.map(String::from).or_else(|| agent.model_id.clone());
-        let overridden = runtime_model.is_some_and(|m| Some(m) != agent.model_id.as_deref()) || runtime_thinking.is_some();
+        let settings = TurnSettings::resolve(agent, runtime_model, runtime_thinking);
         let mut runtime = None;
-        if overridden {
-            if let Some(em) = effective_model.as_deref().filter(|m| !m.is_empty()) {
+        if settings.needs_runtime {
+            if let Some(em) = settings.model.as_deref() {
                 let mut kw = Kwargs::new();
-                if let Some(t) = &runtime_thinking {
+                if let Some(t) = runtime_thinking {
                     kw.insert("thinking_level".into(), json!(t));
                 }
                 runtime = Some((self.provider_factory)(Some(em), kw)?);
             }
         }
-        // A runtime provider carries only the session's level; the agent's
-        // own level applies only to the agent's own provider.
-        let thinking_level = if runtime.is_some() { runtime_thinking } else { agent.thinking_level.clone() };
-        Ok(RuntimeProvider { effective_model, runtime, thinking_level })
+        Ok(RuntimeProvider { effective_model: settings.model, runtime, thinking_level: settings.thinking_level })
     }
 
     /// `<openagentd_memory>` as of the session's first turn (frozen so the
@@ -785,6 +803,7 @@ impl AgentSession {
             if self.active_task_done() {
                 self.apply_pending_interaction_mode().await;
             }
+            let mut runtime = (m.model.clone().filter(|_| m.model_provided), m.thinking_level.clone().filter(|_| m.thinking_level_provided));
             if let Some(row) = db::get_session(&self.pool, &sid).await? {
                 let mode = interaction_mode::follow_lead(&self.pool, &sid, &row).await?;
                 if mode == "plan" {
@@ -797,23 +816,30 @@ impl AgentSession {
                 if m.thinking_level_provided {
                     upd.thinking_level = Some(m.thinking_level.clone());
                 }
-                db::update_session(&self.pool, &sid, upd).await?;
+                let row = db::update_session(&self.pool, &sid, upd).await?.unwrap_or(row);
+                runtime = (row.model, row.thinking_level);
             }
             db::cleanup_reverted_tail(&self.pool, &sid).await?;
-            Ok::<(), SessionError>(())
+            Ok::<_, SessionError>(TurnSettings::resolve(&self.agent(), runtime.0.as_deref(), runtime.1.as_deref()))
         };
         let (snapshot, prepared) = tokio::join!(crate::snapshot::track(&sid, &ws_dir), prepare);
-        prepared?;
+        let settings = prepared?;
 
         let mut extra = m.extra.clone().unwrap_or_default();
         if let Some(a) = m.attachment_metas.as_ref().filter(|a| !a.is_empty()) {
             extra.insert("attachments".into(), Value::Array(a.clone()));
         }
-        if m.model_provided {
-            extra.insert("model".into(), m.model.clone().map(Value::String).unwrap_or(Value::Null));
+        // The model and level this prompt runs with, whether or not this send
+        // changed them, so the transcript can name them after a reload.
+        if let Some(model) = settings.model.filter(|m| !m.is_empty()) {
+            extra.insert("model".into(), json!(model));
+        } else if m.model_provided {
+            extra.insert("model".into(), Value::Null);
         }
-        if m.thinking_level_provided {
-            extra.insert("thinking_level".into(), m.thinking_level.clone().map(Value::String).unwrap_or(Value::Null));
+        if let Some(level) = settings.thinking_level.filter(|t| !t.is_empty()) {
+            extra.insert("thinking_level".into(), json!(level));
+        } else if m.thinking_level_provided {
+            extra.insert("thinking_level".into(), Value::Null);
         }
         if let Some(t) = &m.service_tier {
             extra.insert("service_tier".into(), json!(t));

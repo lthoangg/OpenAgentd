@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { sumUsageFromMessages, parseAgentBlocks, applyOrphanToolResults } from "@/utils/messages";
 import type { OrphanToolResult } from "@/utils/messages";
+import { turnModel } from "@/utils/turns";
 import type { MessageResponse } from "@/api/types";
 
 // ---------------------------------------------------------------------------
@@ -238,6 +239,18 @@ describe("parseAgentBlocks", () => {
     ].map((msg) => parseAgentBlocks([msg])[0]);
     expect(withLevel.extra).toEqual({ model: "openai:gpt-5", thinking_level: "high" });
     expect(withoutLevel.extra).toEqual({ model: "openai:gpt-5" });
+  });
+
+  it("names the model on a reply that has no text, so its prompt still shows it", () => {
+    const blocks = parseAgentBlocks([makeMsg({
+      role: "assistant",
+      content: "",
+      reasoning_content: "let me ask",
+      tool_calls: [{ id: "call-1", type: "function", function: { name: "ask_user", arguments: "{}" } }],
+      extra: { model: "openai:gpt-5", thinking_level: "high" },
+    })]);
+    expect(blocks.map((b) => b.type)).toEqual(["thinking", "tool"]);
+    expect(turnModel(blocks)).toEqual({ model: "openai:gpt-5", thinkingLevel: "high" });
   });
 
   it("carries a message's output tokens and cost on exactly one of its blocks", () => {

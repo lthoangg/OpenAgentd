@@ -79,6 +79,12 @@ async fn turns_record_the_thinking_level_they_ran_with() {
         rows.iter().filter(|r| r.role == "assistant").map(|r| r.extra_json().unwrap().get("thinking_level").and_then(|v| v.as_str()).map(String::from)).collect();
     assert_eq!(levels, vec![Some("high".into()), Some("low".into()), None]);
 
+    // Each prompt records the model and level it was sent with, even when the
+    // send changed neither, so its bubble names them after a reload.
+    let str_of = |r: &appv3_db::SessionMessage, k: &str| r.extra_json().and_then(|e| e.get(k).and_then(|v| v.as_str()).map(String::from));
+    let prompts: Vec<(Option<String>, Option<String>)> = rows.iter().filter(|r| r.role == "user").map(|r| (str_of(r, "model"), str_of(r, "thinking_level"))).collect();
+    assert_eq!(prompts, vec![(Some("mock:mock".into()), Some("high".into())), (Some("mock:mock".into()), Some("low".into())), (Some("mock:other".into()), None),]);
+
     let delta_level = |metas: &[Value]| -> Vec<Option<String>> { metas.iter().map(|m| m.get("thinking_level").and_then(|v| v.as_str()).map(String::from)).collect() };
     assert!(!default_deltas.is_empty() && !override_deltas.is_empty() && !model_deltas.is_empty());
     assert!(delta_level(&default_deltas).iter().all(|l| l.as_deref() == Some("high")), "{default_deltas:?}");

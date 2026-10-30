@@ -25,7 +25,11 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 notify-rust = "4.18.0"
-tauri-plugin-updater = "2"
+# Default features minus `zip`: that feature only unpacks Tauri v1 `.zip` /
+# compressed-AppImage update bundles, which we do not publish
+# (`createUpdaterArtifacts: true`), and it pulls zip 4.x, which has unpatched
+# advisories. macOS `.app.tar.gz` updates do not depend on it.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -230,6 +230,11 @@ impl<S: Subscriber> Layer<S> for LoguruLayer {
         let meta = event.metadata();
         let mut v = MessageVisitor::default();
         event.record(&mut v);
+        // notify (bridged from `log`) warns `WatchNotFound` each time a
+        // watched directory is deleted; routine, so keep only its errors.
+        if meta.level() > &Level::ERROR && v.extra.contains("log.target=notify::") {
+            return;
+        }
         let message = format!("{}{}", v.message, v.extra);
         let (no, lname, icon) = level_info(meta.level());
         let name = meta.module_path().unwrap_or(meta.target()).replace("::", ".");
@@ -350,6 +355,23 @@ mod tests {
         assert_eq!(rec["level"]["name"], "INFO");
         assert!(rec["time"]["repr"].is_string() && rec["time"]["timestamp"].is_f64());
         assert!(v["text"].as_str().unwrap().contains(" | INFO     | "));
+    }
+
+    /// notify's inotify backend warns `WatchNotFound` whenever a watched
+    /// directory is deleted; routine noise at warning level.
+    #[test]
+    fn file_watcher_warnings_from_notify_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.log");
+        let layer = LoguruLayer { stderr_level: 100, files: vec![FileSink::new(path.clone(), 10, 7)], start: Instant::now(), env_filter: false };
+        let sub = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(sub, || {
+            tracing::warn!(target: "log", { log.target = "notify::inotify" }, "Unable to remove the path from the watches: WatchNotFound");
+            tracing::warn!(target: "appv3_test", "kept_warning");
+        });
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("WatchNotFound"), "{text}");
+        assert!(text.contains("kept_warning"), "{text}");
     }
 
     #[test]

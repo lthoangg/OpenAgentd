@@ -928,7 +928,8 @@ where
                 }
             }
             _ = tokio::time::sleep_until(deadline) => {
-                tracing::warn!("Timeout waiting for LSP diagnostics");
+                // Routine: a server may never publish for a file it finds clean.
+                tracing::debug!("lsp_diagnostics_timeout overall_s={}", overall);
                 return current();
             }
         }
@@ -938,7 +939,8 @@ where
 /// The first publish, then `settle` seconds without a newer one.
 async fn await_quiet(current: &impl Fn() -> Vec<Value>, event: &Event, deadline: tokio::time::Instant, settle: f64) -> Vec<Value> {
     if tokio::time::timeout_at(deadline, event.wait()).await.is_err() {
-        tracing::warn!("Timeout waiting for LSP diagnostics");
+        // Routine: a server may never publish for a file it finds clean.
+        tracing::debug!("lsp_diagnostics_timeout settle_s={}", settle);
         return current();
     }
     if !current().is_empty() {

@@ -49,6 +49,15 @@ function CheckItem({
   )
 }
 
+function ActionItem({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
+  return (
+    <button type="button" role="menuitem" className={CONTEXT_MENU_ITEM_CLASS} onClick={onSelect}>
+      <span className="size-3 shrink-0" aria-hidden="true" />
+      {children}
+    </button>
+  )
+}
+
 /**
  * The sidebar's View options: how sessions group, and whether rows
  * show their age and place; in Project view, which workspace group's
@@ -59,11 +68,17 @@ function CheckItem({
 export function SidebarViewMenu({
   at,
   workspaceGroups: groups = [],
+  onCollapseAll,
+  onOpenFolder,
   onDismiss,
 }: {
   at: { x: number; y: number }
-  /** Groups the Project view can be narrowed to. */
+  /** Groups the Workspace view can be narrowed to. */
   workspaceGroups?: readonly WorkspaceGroup[]
+  /** Folds every workspace (Workspace view only). */
+  onCollapseAll?: () => void
+  /** Adds a folder to the sidebar. */
+  onOpenFolder?: () => void
   onDismiss: () => void
 }) {
   const groupBy = useSidebarViewStore((s) => s.groupBy)
@@ -105,6 +120,9 @@ export function SidebarViewMenu({
         Show details
       </CheckItem>
       <ContextMenuSeparator />
+      {onCollapseAll && <ActionItem onSelect={() => { onCollapseAll(); onDismiss() }}>Collapse all workspaces</ActionItem>}
+      {onOpenFolder && <ActionItem onSelect={() => { onDismiss(); onOpenFolder() }}>Open folder…</ActionItem>}
+      {(onCollapseAll || onOpenFolder) && <ContextMenuSeparator />}
       <button
         type="button"
         role="menuitem"

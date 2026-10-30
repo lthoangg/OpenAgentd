@@ -489,10 +489,12 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::NO_CONTENT);
 
     history_paging_flow(&c, &pool, &ws).await;
+    history_missing_folder_flow(&c, &pool, root.path()).await;
     history_first_page_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     confirm_change_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
+    worktree_tree_flow(&c, root.path()).await;
     side_question_flow(&c, &pool, &sid).await;
 
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
@@ -972,6 +974,24 @@ async fn open_review(pool: &appv3_db::DbPool, sid: &str, call: &str, revision: u
     appv3_db::codec::api_uuid(&q.id)
 }
 
+/// A session whose folder was moved or deleted still reads its history: the
+/// rows live in the database and only a new turn needs the folder.
+async fn history_missing_folder_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
+    let gone = root.join("moved-away");
+    std::fs::create_dir_all(&gone).unwrap();
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: gone.display().to_string(), ..Default::default() }).await.unwrap();
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::assistant(Some("kept".into()))).await.unwrap();
+    std::fs::remove_dir_all(&gone).unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK, "{page}");
+    assert_eq!(page["lead"]["messages"][0]["content"], json!("kept"), "{page}");
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
 /// History pages for a lead with a member: the newest page carries the
 /// members and the session-wide usage totals; older pages carry only older
 /// lead rows. Member rows are shown from the newest page only, and a member's
@@ -1105,6 +1125,46 @@ async fn wait_idle(sid: &str) {
 /// The UI can ask for a session's agents while showing another workspace
 /// (it sent the previous chat's id). That must not start the session there,
 /// or a later plan approval resumes that copy and runs tools in the wrong repo.
+/// Opening a worktree made with `git worktree add`, or a subfolder, files it
+/// under its repository in the tree; a folder gone from disk is `missing`.
+async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    };
+    let repo = root.join("tree-repo");
+    std::fs::create_dir_all(repo.join("web")).unwrap();
+    git(&repo, &["init", "-q"]);
+    for (k, v) in [("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false")] {
+        git(&repo, &["config", k, v]);
+    }
+    std::fs::write(repo.join("web/a.txt"), "a\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "init"]);
+    let outside = root.join("tree-repo-fix");
+    git(&repo, &["worktree", "add", "-q", "-b", "fix", outside.to_str().unwrap()]);
+    let gone = root.join("tree-repo-gone");
+    git(&repo, &["worktree", "add", "-q", "-b", "gone", gone.to_str().unwrap()]);
+    let path = |p: &std::path::Path| appv3_db::resolve_path(&p.display().to_string());
+    for p in [&outside, &repo.join("web"), &gone] {
+        let (st, v) = c.json("PATCH", "/api/agent/workspace/visibility", Some(json!({"workspace": path(p), "hidden": false}))).await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+    }
+    let gone_path = path(&gone);
+    std::fs::remove_dir_all(&gone).unwrap();
+    let (_, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
+    let repos = v["repositories"].as_array().unwrap();
+    assert!(!repos.iter().any(|r| r["path"] == json!(path(&outside)) || r["path"] == json!(path(&repo.join("web")))), "no repository rows of their own: {v}");
+    let r = repos.iter().find(|r| r["path"] == json!(path(&repo))).expect("the repository is listed");
+    assert_eq!(r["missing"], json!(false));
+    let wts = r["worktrees"].as_array().unwrap();
+    let entry = |p: &std::path::Path| wts.iter().find(|w| w["path"] == json!(path(p))).cloned().unwrap_or_else(|| panic!("{} under the repository: {v}", p.display()));
+    assert_eq!(entry(&outside), json!({"path": path(&outside), "name": "tree-repo-fix", "managed": false, "kind": "worktree", "missing": false}));
+    assert_eq!(entry(&repo.join("web")), json!({"path": path(&repo.join("web")), "name": "web", "managed": false, "kind": "folder", "missing": false}));
+    let gone_entry = wts.iter().find(|w| w["path"] == json!(gone_path)).unwrap_or_else(|| panic!("the removed worktree stays listed: {v}"));
+    assert_eq!(gone_entry["missing"], json!(true));
+}
+
 async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path, other: &std::path::Path) {
     use appv3_agent::manager;
     use appv3_agent::plan::{self, PlanChange, PlanTarget};

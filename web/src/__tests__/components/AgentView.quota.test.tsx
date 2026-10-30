@@ -63,9 +63,10 @@ describe("AgentView — waiting_quota status rendering", () => {
       />
     )
 
-    expect(screen.getByText("Quota Limit Reached · Waiting for Reset")).toBeTruthy()
-    expect(screen.getByText("Resets in 2h 00m")).toBeTruthy()
-    expect(screen.getByText(customMsg)).toBeTruthy()
+    expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
+    expect(screen.getByText("2h 00m")).toBeTruthy()
+    // The provider's own wording stays one hover away.
+    expect(document.querySelector(`[title="${customMsg}"]`)).toBeTruthy()
   })
 
   it("renders default message when custom message is omitted", () => {
@@ -77,13 +78,10 @@ describe("AgentView — waiting_quota status rendering", () => {
       />
     )
 
-    expect(screen.getByText("Quota Limit Reached · Waiting for Reset")).toBeTruthy()
-    expect(screen.getByText("Resets in 2h 00m")).toBeTruthy()
-    expect(
-      screen.getByText(
-        "Provider quota exhausted for copilot:claude-sonnet-4. Waiting for reset. Agent will automatically resume work. You can stop anytime."
-      )
-    ).toBeTruthy()
+    expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
+    expect(screen.getByText("2h 00m")).toBeTruthy()
+    expect(screen.getByText("claude-sonnet-4")).toBeTruthy()
+    expect(screen.getByText(/Resumes automatically\. Stop anytime\./)).toBeTruthy()
   })
 
   it("updates the countdown every minute", () => {
@@ -106,12 +104,12 @@ describe("AgentView — waiting_quota status rendering", () => {
           isWorking={true}
         />,
       )
-      expect(screen.getByText("Resets in 2h 00m")).toBeTruthy()
+      expect(screen.getByText("2h 00m")).toBeTruthy()
 
       dateNow.mockReturnValue(start + 60_000)
       act(() => tick?.())
 
-      expect(screen.getByText("Resets in 1h 59m")).toBeTruthy()
+      expect(screen.getByText("1h 59m")).toBeTruthy()
     } finally {
       window.setInterval = nativeSetInterval
       window.clearInterval = nativeClearInterval
@@ -129,7 +127,7 @@ describe("AgentView — waiting_quota status rendering", () => {
       />,
     )
 
-    expect(screen.getByText("Resets in 2h 00m")).toBeTruthy()
+    expect(screen.getByText("2h 00m")).toBeTruthy()
     firstRender.unmount()
 
     render(
@@ -140,8 +138,8 @@ describe("AgentView — waiting_quota status rendering", () => {
       />,
     )
 
-    expect(screen.getByText("Quota Limit Reached · Waiting for Reset")).toBeTruthy()
-    expect(screen.getByText("Resets in 2h 00m")).toBeTruthy()
+    expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
+    expect(screen.getByText("2h 00m")).toBeTruthy()
   })
 
   it("does not render historical quota wait when the turn is no longer active", () => {
@@ -153,7 +151,7 @@ describe("AgentView — waiting_quota status rendering", () => {
       />,
     )
 
-    expect(screen.queryByText("Quota Limit Reached · Waiting for Reset")).toBeNull()
+    expect(screen.queryByText("Waiting for quota reset")).toBeNull()
   })
 
   it("does not keep the quota wait notice after chat activity resumes", () => {
@@ -165,7 +163,7 @@ describe("AgentView — waiting_quota status rendering", () => {
       />,
     )
 
-    expect(screen.queryByText("Quota Limit Reached · Waiting for Reset")).toBeNull()
+    expect(screen.queryByText("Waiting for quota reset")).toBeNull()
   })
 
   it("clears stored quota wait when no active wait is present", () => {
@@ -183,7 +181,7 @@ describe("AgentView — waiting_quota status rendering", () => {
       />,
     )
 
-    expect(screen.queryByText("Quota Limit Reached · Waiting for Reset")).toBeNull()
+    expect(screen.queryByText("Waiting for quota reset")).toBeNull()
     expect(localStorage.getItem("openagentd:quota-wait:quota-session")).toBeNull()
   })
 })

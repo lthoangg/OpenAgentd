@@ -236,7 +236,7 @@ function SessionRowView({
             {!isExpanded && hasActiveWork && (
               <SessionStatusMark
                 status={hasWaitingSubagent ? 'needs_input' : 'running'}
-                label={hasWaitingSubagent ? 'Subagent waiting for lead' : 'Subagent working'}
+                label={hasWaitingSubagent ? 'Subagent waiting for the main agent' : 'Subagent working'}
               />
             )}
             <span>{subagents.length}</span>
@@ -295,7 +295,8 @@ function SessionRowView({
                 e.stopPropagation()
                 onSessionPinToggle?.(session)
               }}
-              className={ROW_ACTION}
+              // Touch: Pin is in the row's More menu, so the title keeps the room.
+              className={`${ROW_ACTION} pointer-coarse:hidden`}
               aria-label={pinLabel}
               title={pinned ? 'Unpin' : 'Pin'}
             >
@@ -350,6 +351,11 @@ function SessionRowView({
                       aria-current={isSubCurrent ? 'page' : undefined}
                       {...(isSubCurrent ? {} : sessionPrefetchProps(sub.session_id, session.workspace))}
                       onKeyDown={(e) => {
+                        if (isMenuKey(e) && !mobileLongPressActions) {
+                          e.preventDefault()
+                          onSessionContextActions(subSessionPayload, menuPointFor(e.currentTarget))
+                          return
+                        }
                         if (!isDeleteKey(e)) return
                         e.preventDefault()
                         onSessionDelete(e, subSessionPayload)
@@ -370,7 +376,7 @@ function SessionRowView({
                     >
                       <SessionStatusMark
                         status={isSubWaiting ? 'needs_input' : isSubWorking ? 'running' : 'idle'}
-                        label={isSubWaiting ? 'Subagent waiting for lead' : 'Subagent working'}
+                        label={isSubWaiting ? 'Subagent waiting for the main agent' : 'Subagent working'}
                       />
                       {/* Capped: a handle can fall back to the session id. */}
                       <span className="max-w-[45%] shrink-0 truncate font-mono text-[11px] font-semibold text-(--color-text)">
@@ -384,7 +390,7 @@ function SessionRowView({
                 />
                 <TooltipContent>
                   {`${sub.member_id}: ${subTitle} · ${
-                    isSubWaiting ? 'Waiting for lead decision' : isSubWorking ? 'Working' : 'Completed'
+                    isSubWaiting ? 'Waiting for main agent' : isSubWorking ? 'Working' : 'Completed'
                   }`}
                 </TooltipContent>
               </Tooltip>
@@ -453,7 +459,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       onClick={() => { if (!loading) onLoadMore() }}
       disabled={loading}
       className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-(--spacing-list-row)"
-      aria-label={loading ? 'Loading more sessions' : 'Show more sessions'}
+      aria-busy={loading || undefined}
     >
       {/* The status-mark slot, so the label lines up with the titles. */}
       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">

@@ -301,7 +301,7 @@ describe("applyRevertBoundary", () => {
     applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
     expect(s.revertedMessages).toEqual([
       { role: "user", content: "undone-1" },
-      { role: "user", content: "Session compacted" },
+      { role: "user", content: "Earlier messages summarized" },
       { role: "user", content: "undone-2" },
     ])
   })

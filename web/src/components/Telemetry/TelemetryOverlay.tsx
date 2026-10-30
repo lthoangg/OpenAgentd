@@ -4,9 +4,9 @@
  * command palette, and ``/telemetry`` deep links all open the same surface
  * without leaving the current route.
  *
- * Escape steps back from a trace before it closes the overlay.
+ * Escape steps back one level: the open span, then the trace, then the overlay.
  */
-import { useCallback } from 'react'
+import { useCallback, type RefObject } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft } from 'lucide-react'
@@ -21,6 +21,18 @@ import { cn } from '@/lib/utils'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { TelemetryView } from './TelemetryView'
+import { modelName, workspaceName } from './model'
+
+/**
+ * Opening Usage lands on the selected time range (the first thing you would
+ * change), not on Close. Read at focus time; a trace view has no range, so
+ * focus falls back to the first control.
+ */
+const RANGE_FOCUS: RefObject<HTMLElement | null> = {
+  get current() {
+    return document.querySelector<HTMLElement>('[role="dialog"][aria-label="Usage"] [role="radiogroup"][aria-label="Time range"] [aria-checked="true"]')
+  },
+}
 
 /** Mirrors SettingsModal's panel motion; reduced motion keeps only the fade. */
 const PANEL_VARIANTS = {
@@ -32,11 +44,27 @@ const PANEL_VARIANTS_REDUCED = {
   visible: { opacity: 1 },
 } as const
 
+const RANGE_WORDS: Record<number, string> = { 1: 'Last 24 hours', 7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days' }
+
+/** "Last 7 days · all workspaces · all models": what the numbers cover. */
+function UsageScope() {
+  const days = useTelemetryStore((s) => s.days)
+  const workspace = useTelemetryStore((s) => s.workspace)
+  const model = useTelemetryStore((s) => s.model)
+  return (
+    <span className="max-sm:hidden">
+      {RANGE_WORDS[days] ?? `Last ${days} days`} · {workspace ? workspaceName(workspace) : 'all workspaces'} ·{' '}
+      {model ? modelName(model) : 'all models'}
+    </span>
+  )
+}
+
 export function TelemetryOverlay() {
   const open = useUIStore((s) => s.telemetryOpen)
   const close = useUIStore((s) => s.closeTelemetry)
   const traceId = useTelemetryStore((s) => s.traceId)
-  const closeTrace = useTelemetryStore((s) => s.closeTrace)
+  const spanId = useTelemetryStore((s) => s.spanId)
+  const stepBack = useTelemetryStore((s) => s.stepBack)
   const prefersReducedMotion = useReducedMotion()
   const panel = prefersReducedMotion ? PANEL_VARIANTS_REDUCED : PANEL_VARIANTS
   const navigate = useNavigate()
@@ -49,9 +77,8 @@ export function TelemetryOverlay() {
   )
 
   useModalFocus(open, () => {
-    if (useTelemetryStore.getState().traceId) closeTrace()
-    else close()
-  }, undefined, { kind: 'overlay' })
+    if (!useTelemetryStore.getState().stepBack()) close()
+  }, RANGE_FOCUS, { kind: 'overlay' })
 
   return (
     <AnimatePresence>
@@ -72,7 +99,7 @@ export function TelemetryOverlay() {
             key="telemetry-panel"
             role="dialog"
             aria-modal="true"
-            aria-label="Telemetry"
+            aria-label="Usage"
             data-modal-focus="true"
             data-swipe-ignore
             initial={panel.hidden}
@@ -85,21 +112,29 @@ export function TelemetryOverlay() {
             )}
           >
             <OverlayHeader
-              title={traceId ? 'Turn trace' : 'Telemetry'}
+              title={traceId ? 'Turn' : 'Usage'}
+              subtitle={traceId ? undefined : <UsageScope />}
               onClose={close}
-              closeLabel="Close telemetry"
+              closeLabel="Close usage"
               closeTooltip={traceId ? 'Close' : 'Close (Esc)'}
               leading={
                 traceId && (
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <Button type="button" variant="ghost" size="icon-sm" className="md:size-7" onClick={closeTrace} aria-label="Back to overview">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="md:size-7"
+                          onClick={() => void stepBack()}
+                          aria-label={spanId ? 'Back to the trace' : 'Back to usage'}
+                        >
                           <ArrowLeft size={14} aria-hidden="true" />
                         </Button>
                       }
                     />
-                    <TooltipContent>Back to overview (Esc)</TooltipContent>
+                    <TooltipContent>{spanId ? 'Back to the trace (Esc)' : 'Back to usage (Esc)'}</TooltipContent>
                   </Tooltip>
                 )
               }

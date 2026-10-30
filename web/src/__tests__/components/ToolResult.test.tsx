@@ -173,7 +173,7 @@ describe("ToolResult — read", () => {
     // active. We surface that as a quiet "lines 12-20 of 100" label so the
     // pre block shows only the actual file content.
     render(<ToolResult toolName="read" result={"[12-20/100]\nconst y = 2"} />)
-    expect(screen.getByText(/lines 12.20 of 100/)).toBeTruthy()
+    expect(screen.getByText(/Lines 12.20 of 100/)).toBeTruthy()
     // Raw bracketed header is no longer shown verbatim
     expect(screen.queryByText(/\[12-20\/100\]/)).toBeNull()
   })
@@ -197,6 +197,13 @@ describe("ToolResult — read", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolResult - bg", () => {
+  /** The Chip wrapping `text`: its tone and whether it carries the live dot. */
+  function chipOf(text: string) {
+    const chip = screen.getByText(text).closest('[data-slot="chip"]')
+    if (!chip) throw new Error(`no chip around "${text}"`)
+    return { tone: chip.getAttribute("data-tone"), dot: chip.querySelector('[aria-hidden="true"]') !== null }
+  }
+
   it("renders the process list as structured rows", () => {
     render(
       <ToolResult
@@ -205,11 +212,26 @@ describe("ToolResult - bg", () => {
       />,
     )
 
-    expect(screen.getByText("2 processes")).toBeTruthy()
-    expect(screen.getByText("PID 1234")).toBeTruthy()
-    expect(screen.getByText("running")).toBeTruthy()
+    expect(screen.getByText("2 background processes")).toBeTruthy()
+    // Rows are mono (the pid inherits it from the row)
+    expect(screen.getByText("pid 1234").closest("li")?.className).toContain("font-mono")
+    expect(screen.getByText("pid 5678")).toBeTruthy()
+    expect(screen.queryByText("PID 1234")).toBeNull()
     expect(screen.getByText("bun run dev")).toBeTruthy()
-    expect(screen.getByText("exited (1)")).toBeTruthy()
+    // Status is a chip: running is info with the live dot, exited is neutral
+    expect(chipOf("running")).toEqual({ tone: "info", dot: true })
+    expect(chipOf("exited (1)")).toEqual({ tone: "neutral", dot: false })
+  })
+
+  it("titles a single-process list in the singular", () => {
+    render(
+      <ToolResult
+        toolName="bg"
+        result={"PID     | Status  | Command\n--------|---------|--------\n1234    | running | bun run dev"}
+      />,
+    )
+
+    expect(screen.getByText("1 background process")).toBeTruthy()
   })
 
   it("renders a process status with command and buffered-line metadata", () => {
@@ -220,10 +242,19 @@ describe("ToolResult - bg", () => {
       />,
     )
 
-    expect(screen.getByText("PID 1234")).toBeTruthy()
-    expect(screen.getByText("running")).toBeTruthy()
+    expect(screen.getByText("pid 1234").className).toContain("font-mono")
+    expect(chipOf("running")).toEqual({ tone: "info", dot: true })
     expect(screen.getByText("bun run dev")).toBeTruthy()
-    expect(screen.getByText("18 buffered lines")).toBeTruthy()
+    const detail = screen.getByText("18 new lines")
+    expect(detail.className).toContain("font-sans")
+    expect(detail.className).toContain("text-(--color-text-muted)")
+    expect(screen.queryByText("18 buffered lines")).toBeNull()
+  })
+
+  it("reads a single buffered line in the singular", () => {
+    render(<ToolResult toolName="bg" result={"PID 1234: running\nCommand: bun run dev\nBuffered lines: 1"} />)
+
+    expect(screen.getByText("1 new line")).toBeTruthy()
   })
 
   it("keeps captured output in a scrollable terminal block", () => {
@@ -231,7 +262,10 @@ describe("ToolResult - bg", () => {
       <ToolResult toolName="bg" result={"PID 1234 output:\nfirst line\nsecond line"} />,
     )
 
-    expect(screen.getByText("PID 1234 output")).toBeTruthy()
+    // `pid 1234` with the detail "output" (there is no status to show)
+    expect(screen.getByText("pid 1234")).toBeTruthy()
+    expect(screen.getByText("output").className).toContain("text-(--color-text-muted)")
+    expect(screen.queryByText("PID 1234 output")).toBeNull()
     expect(screen.getByText(/first line/)).toBeTruthy()
     expect(container.querySelector("pre")?.className).toContain("overflow-y-auto")
   })
@@ -244,8 +278,8 @@ describe("ToolResult - bg", () => {
       />,
     )
 
-    expect(screen.getByText("PID 13601")).toBeTruthy()
-    expect(screen.getByText("still running")).toBeTruthy()
+    expect(screen.getByText("pid 13601")).toBeTruthy()
+    expect(chipOf("still running")).toEqual({ tone: "info", dot: true })
     expect(screen.getByText("after 120 seconds")).toBeTruthy()
     expect(screen.getByText("Use status or output to inspect it, wait again, or stop it.")).toBeTruthy()
     expect(document.querySelector("pre")).toBeNull()
@@ -259,9 +293,11 @@ describe("ToolResult - bg", () => {
       />,
     )
 
-    expect(screen.getByText("PID 33315")).toBeTruthy()
-    expect(screen.getByText("not found")).toBeTruthy()
-    expect(screen.getByText("Known PIDs: none")).toBeTruthy()
+    expect(screen.getByText("pid 33315")).toBeTruthy()
+    // Anything that is not running / exited / stopped reads as an error chip
+    expect(chipOf("not found")).toEqual({ tone: "error", dot: false })
+    expect(screen.getByText("known: none")).toBeTruthy()
+    expect(screen.queryByText("Known PIDs: none")).toBeNull()
     expect(screen.getByText("No tracked background process with PID 33315. Known PIDs: none.")).toBeTruthy()
     expect(document.querySelector("pre")).toBeNull()
   })
@@ -269,8 +305,34 @@ describe("ToolResult - bg", () => {
   it("renders an empty process list as a concise empty state", () => {
     render(<ToolResult toolName="bg" result="No background processes running." />)
 
-    expect(screen.getByText("No background processes running.")).toBeTruthy()
+    // The header carries the whole message; there is no body paragraph
+    expect(screen.getByText("No background processes")).toBeTruthy()
+    expect(screen.queryByText("No background processes running.")).toBeNull()
     expect(document.querySelector("pre")).toBeNull()
+  })
+
+  it("lists the known PIDs as detail when a process is not found", () => {
+    render(<ToolResult toolName="bg" result="Error: No tracked background process with PID 7. Known PIDs: 1, 2." />)
+
+    expect(screen.getByText("pid 7")).toBeTruthy()
+    expect(screen.getByText("known: 1, 2")).toBeTruthy()
+  })
+
+  it("shows a bare error chip when the error names no PID", () => {
+    render(<ToolResult toolName="bg" result="Error: Unknown action." />)
+
+    expect(chipOf("error")).toEqual({ tone: "error", dot: false })
+    expect(screen.queryByText(/^pid /)).toBeNull()
+  })
+
+  it("reads an exited process with captured output as a neutral chip with no output detail", () => {
+    render(<ToolResult toolName="bg" result={"PID 9: exited (code 0)\nFinal output:\ndone"} />)
+
+    expect(screen.getByText("pid 9")).toBeTruthy()
+    expect(chipOf("exited (code 0)")).toEqual({ tone: "neutral", dot: false })
+    // The "output" detail only shows when there is no status
+    expect(screen.queryByText("output")).toBeNull()
+    expect(screen.getByText(/done/)).toBeTruthy()
   })
 })
 
@@ -325,9 +387,9 @@ describe("ToolResult — LSP Diagnostics", () => {
     // Verify clean tool result
     expect(screen.getByText("Written 125 bytes to src/main.py")).toBeTruthy()
 
-    // Verify diagnostics labels (compact: ERR / WARN)
-    expect(screen.getByText("ERR")).toBeTruthy()
-    expect(screen.getByText("WARN")).toBeTruthy()
+    // Severity in words; only the error line is tinted.
+    expect(screen.getByText("Error").closest("div")?.className).toContain("bg-(--color-error-subtle)")
+    expect(screen.getByText("Warning").closest("div")?.className).not.toContain("bg-(--color-error-subtle)")
 
     // Verify diagnostic locations & messages
     expect(screen.getByText("10:5")).toBeTruthy()
@@ -390,7 +452,20 @@ describe("ToolResult — todo_manage", () => {
 
   it("shows dependency metadata", () => {
     render(<ToolResult toolName="todo_manage" result={boardResult} />)
-    expect(screen.getByText(/deps: task_1/)).toBeTruthy()
+    expect(screen.getByText("after task_1")).toBeTruthy()
+    expect(screen.queryByText(/deps: /)).toBeNull()
+  })
+
+  it("orders task meta as status, priority, agent, dependencies, then the task id", () => {
+    render(<ToolResult toolName="todo_manage" result={boardResult} />)
+    const meta = screen.getByText("task_2").parentElement as HTMLElement
+    expect(Array.from(meta.children).map((node) => node.textContent)).toEqual([
+      "pending",
+      "medium",
+      "executor#2",
+      "after task_1",
+      "task_2",
+    ])
   })
 
   it("renders instructions and result sub-lines including continuations", () => {
@@ -412,8 +487,11 @@ describe("ToolResult — todo_manage", () => {
     ].join("\n")
 
     render(<ToolResult toolName="todo_manage" result={claimResult} />)
-    expect(screen.getByText("claimed task_1")).toBeTruthy()
-    expect(screen.getByText(/Write a concurrency haiku/)).toBeTruthy()
+    // The outcome names the task's words first, its id trailing
+    expect(screen.getByText('claimed "Write a concurrency haiku" · task_1')).toBeTruthy()
+    expect(screen.queryByText("claimed task_1")).toBeNull()
+    // …and the task card itself still lists the content and the id
+    expect(screen.getAllByText(/Write a concurrency haiku/).length).toBe(2)
     expect(screen.getByText("task_1")).toBeTruthy()
     expect(screen.getByText("high")).toBeTruthy()
     expect(screen.getByText(/Create haiku\.txt and verify it exists\./)).toBeTruthy()
@@ -430,6 +508,11 @@ describe("ToolResult — todo_manage", () => {
     expect(screen.getByText("created task_1, task_2")).toBeTruthy()
     expect(screen.getByText("cleared 1 completed")).toBeTruthy()
     expect(screen.getByText("blocked task_3: waiting for task_1")).toBeTruthy()
+  })
+
+  it("leaves an outcome line unchanged when its task is not in the list", () => {
+    render(<ToolResult toolName="todo_manage" result={"claimed task_9\n[task_1] [pending] (low) Other work"} />)
+    expect(screen.getByText("claimed task_9")).toBeTruthy()
   })
 
   it("tolerates trailing newlines and blank lines", () => {
@@ -455,9 +538,20 @@ describe("ToolResult — team tools", () => {
       output: "Audit finished: 5 endpoints found.",
     })
     render(<ToolResult toolName="team_spawn" result={res} />)
-    expect(screen.getByText("explorer#1")).toBeTruthy()
-    expect(screen.getByText("completed")).toBeTruthy()
+    // The member id is an outline mono chip; the status is a success chip
+    const member = screen.getByText("explorer#1").closest('[data-slot="chip"]')
+    expect(member?.className).toContain("font-mono")
+    expect(member?.className).toContain("border")
+    expect(screen.getByText("completed").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
     expect(screen.getByText(/Audit finished: 5 endpoints found\./)).toBeTruthy()
+  })
+
+  it("labels a spawned subagent as running", () => {
+    const res = JSON.stringify({ status: "spawned", member_id: "explorer#3" })
+    render(<ToolResult toolName="team_spawn" result={res} />)
+    const status = screen.getByText("running").closest('[data-slot="chip"]')
+    expect(status?.getAttribute("data-tone")).toBe("info")
+    expect(screen.queryByText("spawned")).toBeNull()
   })
 
   it("renders waiting_lead pending question and discrete options", () => {
@@ -471,7 +565,11 @@ describe("ToolResult — team tools", () => {
     })
     render(<ToolResult toolName="team_send" result={res} />)
     expect(screen.getByText("explorer#2")).toBeTruthy()
-    expect(screen.getByText("waiting for lead decision")).toBeTruthy()
+    const status = screen.getByText("waiting for main agent").closest('[data-slot="chip"]')
+    expect(status?.getAttribute("data-tone")).toBe("warning")
+    expect(screen.queryByText("waiting for lead decision")).toBeNull()
+    expect(screen.getByText("Question for the main agent")).toBeTruthy()
+    expect(screen.queryByText("Clarification needed from lead:")).toBeNull()
     expect(screen.getByText("Should I include OAuth routes?")).toBeTruthy()
     expect(screen.getByText("yes")).toBeTruthy()
     expect(screen.getByText("no")).toBeTruthy()
@@ -501,9 +599,12 @@ describe("ToolResult — team tools", () => {
       ],
     })
     render(<ToolResult toolName="team_manage" result={res} />)
-    expect(screen.getByText("Subagent Roster")).toBeTruthy()
+    expect(screen.getByText("Subagents")).toBeTruthy()
+    expect(screen.queryByText("Subagent Roster")).toBeNull()
     expect(screen.getByText("explorer#1")).toBeTruthy()
-    expect(screen.getByText("working")).toBeTruthy()
+    // Roster statuses are chips; an unknown status keeps its raw text
+    expect(screen.getByText("working").closest('[data-slot="chip"]')).toBeTruthy()
+    expect(screen.getByText("completed").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
     expect(screen.getByText("researcher#1")).toBeTruthy()
   })
 })

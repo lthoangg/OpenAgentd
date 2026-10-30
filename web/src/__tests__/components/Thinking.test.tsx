@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { Thinking } from '@/components/Thinking'
 import { splitSections } from '@/utils/thinking'
@@ -72,7 +72,7 @@ describe('Thinking', () => {
 
   it('renders each section header as a separate styled run', () => {
     const text = '**One**\n\nfirst.\n\n**Two**\n\nsecond.'
-    const { container, getByText } = render(<Thinking content={text} />)
+    const { container, getByText } = render(<Thinking content={text} isStreaming />)
 
     expect(getByText('One')).toBeTruthy()
     expect(getByText('Two')).toBeTruthy()
@@ -84,22 +84,34 @@ describe('Thinking', () => {
 
   it('preserves double newlines in thinking content as-is', () => {
     const text = 'Line one.\n\nLine two.\n\n\nLine three.'
-    const { container } = render(<Thinking content={text} />)
+    const { container } = render(<Thinking content={text} isStreaming />)
 
     expect(container.textContent).toContain('Line one.\n\nLine two.\n\n\nLine three.')
   })
 
-  it('shows a finished trace in full, inline, with no toggle', () => {
-    render(<Thinking content={TRACE} />)
+  it('folds a finished trace behind a "Thought for" row that opens it', () => {
+    render(<Thinking content={TRACE} durationMs={12_000} />)
 
+    const row = screen.getByRole('button', { name: /Thought for 12.0 s/ })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('Read the config first.')).toBeNull()
+
+    fireEvent.click(row)
+
+    expect(row.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('Read the config first.')).toBeTruthy()
-    expect(screen.getByText('Then run the tests.')).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('shows a streaming trace in full rather than a window of it', () => {
+  it('says "Thought" when the server did not record how long', () => {
+    render(<Thinking content={TRACE} />)
+
+    expect(screen.getByRole('button', { name: 'Thought' })).toBeTruthy()
+  })
+
+  it('shows a streaming trace in full under a "Thinking…" row, with no toggle', () => {
     render(<Thinking content={TRACE} isStreaming />)
 
+    expect(screen.getByText('Thinking…')).toBeTruthy()
     expect(screen.getByText('Read the config first.')).toBeTruthy()
     expect(screen.getByText('Then run the tests.')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()

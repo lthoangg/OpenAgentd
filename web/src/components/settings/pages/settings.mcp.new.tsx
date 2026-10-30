@@ -59,7 +59,7 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
     if (!result.ok) { setSaveError(result.error); return }
     try {
       await createMut.mutateAsync({ name: draft.name, server: result.body })
-      push({ tone: 'success', title: `Created MCP server "${draft.name}"`, description: 'Available on next turn.' })
+      push({ tone: 'success', title: `Created MCP server "${draft.name}"`, description: 'Applies to your next message.' })
       onCreated(draft.name)
     } catch (err) {
       const msg = errorMessage(err)
@@ -79,6 +79,7 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
         error={saveError}
         validationHint={firstError}
         onSave={handleCreate}
+        saveLabel="Create server"
         onBack={onBack}
       />
 

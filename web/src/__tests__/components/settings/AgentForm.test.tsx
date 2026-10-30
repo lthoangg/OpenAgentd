@@ -7,7 +7,7 @@
  * introduced when MCP server membership moved into a dedicated picker.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { AgentForm } from '@/components/settings/AgentForm'
@@ -241,6 +241,33 @@ describe('AgentForm — Capabilities card', () => {
     expect(screen.getByText('0/2')).toBeTruthy()
   })
 
+  it('groups the model and thinking fields in one "Model and thinking" section', () => {
+    renderForm()
+    expect(screen.getByText('Model and thinking')).toBeTruthy()
+    expect(comboboxIn('Model')).toBeTruthy()
+    expect(comboboxIn('Thinking level')).toBeTruthy()
+  })
+
+  it('lists models under their provider heading, short id first, with the full id as title', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.clear(comboboxIn('Model'))
+    const options = screen.getAllByRole('option')
+    const gpt = options.find((o) => o.getAttribute('title') === 'openai:gpt-5.4')
+    expect(gpt?.textContent).toBe('gpt-5.4')
+    const headings = screen.getAllByRole('presentation').filter((node) => node.tagName === 'LI')
+    expect(headings.map((h) => h.textContent)).toContain('openai')
+  })
+
+  it('shows the raw file as an "Agent file source" textarea in source mode', () => {
+    render(<AgentForm initial={SAMPLE_RAW} onChange={() => {}} mode="raw" onModeChange={() => {}} />)
+    const source = screen.getByLabelText('Agent file source') as HTMLTextAreaElement
+    expect(source.tagName).toBe('TEXTAREA')
+    expect(source.value).toContain('name:')
+    expect(screen.queryByLabelText('Raw')).toBeNull()
+  })
+
   it('does not render an MCP server picker', () => {
     renderForm()
 
@@ -303,11 +330,11 @@ model: openai:gpt-5.4
 
     await user.click(comboboxIn('Thinking level'))
 
-    expect(screen.getAllByText('(default)').length).toBeGreaterThan(0)
-    expect(screen.getByText('none')).toBeTruthy()
-    expect(screen.queryByText('low')).toBeNull()
-    expect(screen.queryByText('medium')).toBeNull()
-    expect(screen.queryByText('high')).toBeNull()
+    expect(screen.getAllByText('Default').length).toBeGreaterThan(0)
+    expect(screen.getByText('None')).toBeTruthy()
+    expect(screen.queryByText('Low')).toBeNull()
+    expect(screen.queryByText('Medium')).toBeNull()
+    expect(screen.queryByText('High')).toBeNull()
   })
 
   it('uses per-model thinking levels when the selected model provides them', async () => {
@@ -325,12 +352,12 @@ model: openai:gpt-5.4
       renderForm()
       await user.click(comboboxIn('Thinking level'))
 
-      expect(screen.getAllByText('(default)').length).toBeGreaterThan(0)
-      expect(screen.getByText('none')).toBeTruthy()
-      expect(screen.getByText('low')).toBeTruthy()
-      expect(screen.getByText('medium')).toBeTruthy()
-      expect(screen.getByText('high')).toBeTruthy()
-      expect(screen.getByText('xhigh')).toBeTruthy()
+      expect(screen.getAllByText('Default').length).toBeGreaterThan(0)
+      expect(screen.getByText('None')).toBeTruthy()
+      expect(screen.getByText('Low')).toBeTruthy()
+      expect(screen.getByText('Medium')).toBeTruthy()
+      expect(screen.getByText('High')).toBeTruthy()
+      expect(screen.getByText('Xhigh')).toBeTruthy()
     } finally {
       registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
     }
@@ -373,7 +400,15 @@ System prompt here
       await user.clear(modelInput)
       await user.type(modelInput, 'openai:gpt-4o')
 
-      const option = await screen.findByText('openai:gpt-4o')
+      // Rows show the short model id with the full id in their title; once a
+      // query is typed each row also carries its provider as a chip.
+      const option = await waitFor(() => {
+        const found = screen.getAllByRole('option').find((o) => o.getAttribute('title') === 'openai:gpt-4o')
+        if (!found) throw new Error('option openai:gpt-4o not listed')
+        return found
+      })
+      expect(option.textContent).toContain('gpt-4o')
+      expect(within(option).getByText('openai').closest('[data-slot="chip"]')).toBeTruthy()
       await user.click(option)
 
       const lastCall = onChange.mock.calls.at(-1)

@@ -47,7 +47,7 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
     const current = !onExternal
     rows.push({
       id: 'server:bundled',
-      label: 'Builtin sidecar',
+      label: 'Built-in Server',
       description: current
         ? 'Current · runs inside this app'
         : status.sidecar_running
@@ -83,7 +83,7 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
     id: SERVER_COMMAND_ID,
     group: 'Navigation',
     label: 'Switch Server…',
-    description: 'Connect to the builtin backend or a saved remote server',
+    description: 'Connect to the built-in server or a saved remote server',
     keywords: 'backend remote builtin sidecar connection connect',
     page: { placeholder: 'Search servers…', commands: rows },
     onOpenPage: handlers.checkHealth,

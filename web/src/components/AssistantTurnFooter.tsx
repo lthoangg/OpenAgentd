@@ -10,6 +10,9 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Term } from '@/components/ui/term'
+import { formatMetaDuration } from '@/components/ui/meta-row'
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { turnModel } from '@/utils/turns'
@@ -17,6 +20,8 @@ import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
 import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
 import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
+import { useAgentStore } from '@/stores/useAgentStore'
+import { openTelemetry } from '@/stores/useTelemetryStore'
 
 export interface AssistantTurnFooterProps {
   /** Blocks belonging to a single assistant turn (no user blocks inside). */
@@ -25,16 +30,24 @@ export interface AssistantTurnFooterProps {
   size?: 'compact' | 'roomy'
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
-
-  const totalSeconds = Math.round(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}m ${seconds}s`
+/** One line of the turn-details popover: a label, then a right-aligned value. */
+function DetailRow({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-(--color-text-muted)">{label}</dt>
+      <dd className="min-w-0 truncate text-right font-mono tabular-nums">{children}</dd>
+    </div>
+  )
 }
 
+/**
+ * The meta line under a finished turn (DESIGN.md → Transcript rows):
+ * ``20:13 · claude-sonnet-4-6 · 12.0 s · $0.02`` in muted mono, no icons.
+ * The line is a button; its popover lists every number with a label
+ * (time, full model ID, thinking, duration, tokens in / cached / out, cost)
+ * and opens this session in Usage. A popover rather than a tooltip so it
+ * works on touch and can hold the link.
+ */
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
@@ -42,34 +55,40 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     const textContent = lastTurnText(turnBlocks)
     const lastBlock = turnBlocks[turnBlocks.length - 1]
     let responseDurationMs: number | undefined
-    let hasTool = false
     let outputTokens = 0
+    let inputTokens: number | undefined
+    let cachedTokens: number | undefined
     let costUsd = 0
     for (const block of turnBlocks) {
-      outputTokens += block.usage?.outputTokens ?? 0
-      costUsd += block.usage?.costUsd ?? 0
+      const usage = block.usage
+      if (!usage) continue
+      outputTokens += usage.outputTokens ?? 0
+      costUsd += usage.costUsd ?? 0
+      if (typeof usage.inputTokens === 'number') inputTokens = (inputTokens ?? 0) + usage.inputTokens
+      if (typeof usage.cachedTokens === 'number') cachedTokens = (cachedTokens ?? 0) + usage.cachedTokens
     }
     for (let i = turnBlocks.length - 1; i >= 0; i--) {
       const block = turnBlocks[i]
-      responseDurationMs ??= typeof block.responseDurationMs === 'number'
-        ? block.responseDurationMs
-        : undefined
-      hasTool ||= block.type === 'tool'
-      if (responseDurationMs !== undefined && hasTool) break
+      if (typeof block.responseDurationMs === 'number') {
+        responseDurationMs = block.responseDurationMs
+        break
+      }
     }
     const model = turnModel(turnBlocks)
     return {
       textContent,
       timestamp: lastBlock?.timestamp,
       responseDurationMs,
+      model: model?.model ?? null,
       modelName: shortModelName(model?.model),
       thinkingLevel: model?.thinkingLevel,
-      hasTool,
       outputTokens,
+      inputTokens,
+      cachedTokens,
       costUsd: Math.round(costUsd * 1e8) / 1e8,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, modelName, thinkingLevel, outputTokens, costUsd } = footerData
+  const { textContent, timestamp, responseDurationMs, model, modelName, thinkingLevel, outputTokens, inputTokens, cachedTokens, costUsd } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -79,10 +98,36 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     } catch { /* ignore */ }
   }, [textContent])
 
+  const openInUsage = useCallback(() => {
+    const session = useAgentStore.getState().sessionId
+    openTelemetry(session ? { session } : {})
+  }, [])
+
   if (!textContent && !timestamp && responseDurationMs === undefined && !modelName) return null
 
-  const wrapperClass = size === 'roomy' ? 'mt-1 flex items-center gap-1.5' : 'mt-0.5 flex items-center gap-1'
+  const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 items-center gap-1.5' : 'mt-0.5 flex min-w-0 items-center gap-1'
   const iconSize = size === 'roomy' ? 11 : 10
+  const hasUsage = outputTokens > 0 || costUsd > 0
+
+  const parts: ReactNode[] = []
+  // One line: the model ID truncates first; time, duration and cost never wrap.
+  if (timestamp) parts.push(<span key="time" className="shrink-0">{formatTime(timestamp)}</span>)
+  if (modelName) parts.push(<span key="model" data-turn-model className="min-w-0 truncate">{modelName}</span>)
+  if (responseDurationMs !== undefined) parts.push(<span key="dur" className="shrink-0">{formatMetaDuration(responseDurationMs)}</span>)
+  if (hasUsage) {
+    parts.push(
+      <span key="cost" className="shrink-0">{costUsd > 0 ? formatSpend(costUsd) : `${formatCompact(outputTokens)} tok`}</span>,
+    )
+  }
+  const summary = [
+    timestamp && formatTime(timestamp),
+    modelName && (thinkingLevel ? `${modelName} (thinking ${thinkingLevel})` : modelName),
+    responseDurationMs !== undefined && formatMetaDuration(responseDurationMs),
+    hasUsage && (costUsd > 0 ? formatSpend(costUsd) : `${formatInt(outputTokens)} output tokens`),
+  ].filter(Boolean).join(', ')
+  const cachePercent = inputTokens && cachedTokens !== undefined && inputTokens > 0
+    ? Math.round((cachedTokens / inputTokens) * 100)
+    : undefined
 
   return (
     <div className={wrapperClass}>
@@ -92,7 +137,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
             render={
               <button
                 onClick={handleCopy}
-                className="rounded-sm p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
+                className="rounded-sm p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:flex pointer-coarse:size-9 pointer-coarse:items-center pointer-coarse:justify-center pointer-coarse:p-0"
                 aria-label="Copy response"
               >
                 {copied
@@ -101,35 +146,46 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
               </button>
             }
           />
-          <TooltipContent>Copy</TooltipContent>
+          <TooltipContent>Copy response</TooltipContent>
         </Tooltip>
       )}
-      {modelName && (
-        <span
-          data-turn-model
-          className="font-mono text-[11px] text-(--color-text-muted)"
-          title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
-        >
-          {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
-        </span>
-      )}
-      {timestamp && (
-        <Tooltip className="text-[11px] text-(--color-text-muted)">
-          <TooltipTrigger render={<span className="text-[11px] text-(--color-text-muted)">{formatTime(timestamp)}</span>} />
-          <TooltipContent>{formatFullDateTime(timestamp)}</TooltipContent>
-        </Tooltip>
-      )}
-      {responseDurationMs !== undefined && (
-        <span className="font-mono text-[11px] text-(--color-text-muted)">{formatDuration(responseDurationMs)}</span>
-      )}
-      {(outputTokens > 0 || costUsd > 0) && (
-        <span
-          className="font-mono text-[11px] text-(--color-text-muted)"
-          aria-label={`${formatInt(outputTokens)} output tokens${costUsd > 0 ? `, $${costUsd.toFixed(4)}` : ''}`}
-          title={`${formatInt(outputTokens)} output tokens${costUsd > 0 ? ` · $${costUsd.toFixed(4)}` : ''}`}
-        >
-          {costUsd > 0 ? formatSpend(costUsd) : `${formatCompact(outputTokens)} tok`}
-        </span>
+      {parts.length > 0 && (
+        <Popover>
+          <PopoverTrigger
+            aria-label={`Turn details: ${summary}`}
+            aria-haspopup="dialog"
+            className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm px-1 font-mono text-[11px] tabular-nums text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+          >
+            {parts.flatMap((part, i) => (i === 0 ? [part] : [<span key={`sep-${i}`} aria-hidden className="shrink-0 opacity-60">·</span>, part]))}
+          </PopoverTrigger>
+          <PopoverContent align="start" side="top" role="dialog" aria-label="Turn details" className="w-[min(20rem,calc(100vw-1rem))]">
+            <dl className="flex flex-col gap-1.5">
+              {timestamp && <DetailRow label="Finished">{formatFullDateTime(timestamp)}</DetailRow>}
+              {model && <DetailRow label="Model"><span title={model}>{model}</span></DetailRow>}
+              {thinkingLevel && <DetailRow label="Thinking">{thinkingLevel}</DetailRow>}
+              {responseDurationMs !== undefined && (
+                <DetailRow label={<Term definition="turnDuration">Duration</Term>}>{formatMetaDuration(responseDurationMs)}</DetailRow>
+              )}
+              {inputTokens !== undefined && <DetailRow label="Input tokens">{formatInt(inputTokens)}</DetailRow>}
+              {cachedTokens !== undefined && (
+                <DetailRow label={<Term definition="cacheHit">Cached input</Term>}>
+                  {formatInt(cachedTokens)}{cachePercent !== undefined ? ` (${cachePercent}%)` : ''}
+                </DetailRow>
+              )}
+              {hasUsage && <DetailRow label="Output tokens">{formatInt(outputTokens)}</DetailRow>}
+              {costUsd > 0 && (
+                <DetailRow label={<Term definition="spendEstimate">Estimated cost</Term>}>${costUsd.toFixed(4)}</DetailRow>
+              )}
+            </dl>
+            <button
+              type="button"
+              onClick={openInUsage}
+              className="self-start rounded-sm text-xs font-medium text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+            >
+              Open session in Usage
+            </button>
+          </PopoverContent>
+        </Popover>
       )}
     </div>
   )

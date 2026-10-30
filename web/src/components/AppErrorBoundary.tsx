@@ -74,7 +74,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           <div className="flex flex-wrap justify-center gap-2">
             <Button onClick={this.handleReload}>Reload</Button>
             <Button variant="ghost" onClick={this.handleCopy}>
-              {copied ? 'Copied' : 'Copy Error Details'}
+              {copied ? 'Copied' : 'Copy error details'}
             </Button>
           </div>
         </div>

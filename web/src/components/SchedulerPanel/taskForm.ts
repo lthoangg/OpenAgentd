@@ -1,5 +1,6 @@
 import type { ScheduledTaskCreate, ScheduledTaskResponse } from '@/api/types'
 import { isoToWallClock, wallClockToISO } from '@/utils/format'
+import { isValidCron } from './cron'
 import { slugify } from './utils'
 
 export type SessionType = 'new' | 'auto' | 'current' | 'custom'
@@ -24,6 +25,7 @@ export function validateTaskValues(values: TaskFormValues, requireTitle = true):
   if (values.schedule_type === 'at' && !values.at_datetime) errors.at_datetime = 'Date/time is required for "at" schedule'
   if (values.schedule_type === 'every' && (!Number.isInteger(values.every_seconds) || values.every_seconds <= 0)) errors.every_seconds = 'Interval must be a positive integer'
   if (values.schedule_type === 'cron' && !values.cron_expression.trim()) errors.cron_expression = 'Cron expression is required'
+  else if (values.schedule_type === 'cron' && !isValidCron(values.cron_expression)) errors.cron_expression = "This isn't a valid cron expression. Use five fields: minute, hour, day of month, month, day of week."
   if (values.max_runs !== null && (!Number.isInteger(values.max_runs) || values.max_runs <= 0)) errors.max_runs = 'Max runs must be a positive integer'
   if (values.sessionType === 'custom') {
     if (!values.customSessionId.trim()) errors.customSessionId = 'Session UUID is required'

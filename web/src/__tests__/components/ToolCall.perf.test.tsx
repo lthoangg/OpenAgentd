@@ -141,6 +141,6 @@ describe("ToolCall — enter animation", () => {
   it("shows a row that mounts already finished without the enter animation", () => {
     const { container } = render(<ToolCall name="custom_tool" args='{"a":1}' done result="ok" />)
     expect(container.querySelector(".tool-row-enter")).toBeNull()
-    expect(container.textContent).toContain("Custom Tool")
+    expect(container.textContent).toContain("custom_tool")
   })
 })

@@ -431,7 +431,7 @@ function MarkdownImage({
       <button
         type="button"
         onClick={() => setLightboxOpen(true)}
-        className="block focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="block focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
         aria-label={alt ? `Open image preview: ${alt}` : 'Open image preview'}
       >
         <img

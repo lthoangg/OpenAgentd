@@ -68,6 +68,7 @@ import {
   type PlanSelection,
 } from '../PlanReview/plan-comments'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 /** Mirrors the server's limits (``PLAN_MAX_CHARS``, ``PLAN_REVIEW_MAX_ANSWER_CHARS``). */
 export const PLAN_MAX_CHARS = 100_000
@@ -302,6 +303,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   }, [compactFooter])
 
   const [copied, setCopied] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   useEffect(() => {
     if (!copied) return
     const timer = setTimeout(() => setCopied(false), 1500)
@@ -515,13 +517,23 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         </ToolbarAction>
         {onClearPlan && (
           <ToolbarAction
-            label="Clear plan"
+            label="Clear plan…"
             tooltip={review ? 'The plan is awaiting review.' : 'Stops using this plan in the session; the file stays.'}
-            onClick={onClearPlan}
+            onClick={() => setConfirmClear(true)}
             disabled={Boolean(review)}
           >
             <Unlink size={12} aria-hidden="true" />
           </ToolbarAction>
+        )}
+        {onClearPlan && (
+          <ConfirmDialog
+            open={confirmClear}
+            onOpenChange={setConfirmClear}
+            title="Clear this plan?"
+            description="The session stops following this plan and the agent no longer sees it. The plan file stays on disk."
+            confirmLabel="Clear plan"
+            onConfirm={onClearPlan}
+          />
         )}
       </div>
 
@@ -562,7 +574,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                     aria-controls={appendixId}
                     onClick={() => toggleAppendix(!appendixOpen)}
                     title={parts.sections.length ? parts.sections.join(' · ') : undefined}
-                    className="flex w-full min-w-0 items-center gap-1.5 rounded-sm py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                    className="flex w-full min-w-0 items-center gap-1.5 rounded-sm py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                   >
                     <ChevronRight
                       size={12}
@@ -698,7 +710,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                       onChange={(event) => setTurnsDraft(event.target.value)}
                       onFocus={() => setTurnsFocused(true)}
                       onBlur={() => setTurnsFocused(false)}
-                      className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-[11px] text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 aria-invalid:border-(--color-error)"
+                      className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-[11px] text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) aria-invalid:border-(--color-error)"
                     />
                     turns
                   </label>

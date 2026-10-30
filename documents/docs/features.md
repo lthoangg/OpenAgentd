@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-28
+updated: 2026-10-30
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.35.0 · October 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.35.0)
+**Latest release:** v3.36.0 · October 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.36.0)
 
 ---
 
@@ -80,8 +80,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   it. A turn you stopped stays stopped, a turn waiting on your answer keeps
   waiting, and each turn is continued at most once: cut off again, it stays
   stopped with a **Stopped by a server restart** divider. A subagent cut off
-  mid-task is not restarted; its lead gets a report that it was stopped, so
-  the lead can delegate the task again instead of waiting.
+  mid-task is not restarted on its own; its lead gets a report that it was
+  stopped, so the lead never waits for it. `[v3.36.0]` The lead can resume
+  that same member by its handle (`team(target='worker#1', task='continue')`):
+  it is rebuilt from its saved session and goes on with its full transcript
+  instead of a new member starting from nothing. `team(action='list')` shows
+  it as stopped by a server restart until then.
 - **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
   Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
   Grep is linear-time and parallel. The file tree, git status and diff refresh live
@@ -242,6 +246,60 @@ run from the terminal (the native Rust binary since v3.0.0).
   for intervals and run limits, and shows long workspace paths and session
   IDs in full. Task rows drop their inline buttons on touch screens; tap a
   task for every action, or long-press it in the app.
+- **Easier-to-read UI on desktop and phones** `[v3.36.0]` — every screen keeps
+  its technical detail (tool names, commands, exit codes, model IDs, token
+  counts, span names) but labels it, gives it a unit, and lines numbers up in
+  a right-hand column. Terms such as p50/p95, TTFT, tok/s, cache hit, stdio
+  and exit code are underlined with a dotted line and define themselves on
+  hover. Codebase words are gone from the UI (`builtin` reads **built-in**,
+  lead/member reads **main**/subagent, compaction reads **summarized**).
+  - **One set of parts.** Rows, chips (four tones) and cards are shared, so
+    the transcript, Settings, Usage and the scheduler look alike. Tool rows
+    show the real tool name, its target and a short result (`shell bun test
+    … · 1 failed, 11 passed` with `exit 1  2.4 s` aligned right). Each answer
+    ends with one muted line (`20:13 · claude-sonnet-4-6 · 12.0 s · $0.02`)
+    whose tooltip lists tokens, cache, TTFT and tok/s and links to the trace.
+    Goals use one card; retries say which attempt and when.
+  - **Asks before destroying.** Stop, Regenerate, Disconnect, clearing a
+    plan, deleting a task and shortening retention all confirm first. Memory
+    refuses to save over a page that failed to load, and every list has a
+    loading, empty and error state with **Retry**.
+  - **Right state.** A session whose folder is gone still opens its
+    transcript under a notice; a wrong session URL says **Session not
+    found**; Help opens the keyboard shortcuts; MCP never shows "Connect
+    required" for a running server; the browser build hides **Updates**.
+  - **Status bar** shows the server (`built-in`), the model ID with its
+    provider and thinking level as chips, and spend with its period
+    (`$0.55 · 24h`), each with a tooltip.
+  - **Review panel** (was the review dock) has one **Open…** button for
+    views, terminals, previews and files; Refresh appears only where it
+    reloads something and names what it reloads. Tab menus use sentence case
+    ("Close other tabs", "Move right"). Clearing a plan asks first.
+  - **Scheduled tasks** take an interval as `Every [1] [hours] = 3,600 s`
+    and preview the next runs of a cron expression (an invalid one cannot be
+    saved). Rows and the detail show the last run, its result and the next
+    run; a recurring task never reads "Completed".
+  - **Usage and traces.** Seven labeled tiles (spend, turns, turn duration
+    p50/p95, TTFT p50/p95, output speed p50/p5 in tok/s, tokens, cache hit),
+    tables with column headings and units. A trace lists each span with a
+    type chip (agent, llm, tool, goal, summary, title) beside its raw name,
+    a time ruler and legend, and a span panel that groups attributes by
+    namespace (`tool.*`, `session.*`) with copy per row. Esc steps back one
+    level: span, then trace, then the overlay.
+  - **Settings** groups pages as App, Agents and tools, Sessions, Models and
+    media, Data and safety, and About, with a search box; Providers is a
+    list; Settings → Telemetry is now **Data retention**.
+  - **Phones.** The header shows the session title with its workspace under
+    it, and keeps five controls: sidebar, title, **Session settings**,
+    Review panel and **More**, so the model and thinking level are one tap
+    away. The sidebar drawer's
+    footer is icons only: Settings, Usage, the server dot and the theme.
+    More holds Tasks (with the open count and goal ring), Session settings,
+    context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
+    command palette, grouped as Session, Workspace and App. Touch controls
+    and list rows share one compact 36 px size (40 px in the Android app),
+    and panels use tighter spacing, so an iPhone mini shows more at once;
+    Usage fits a 375 px screen.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -686,7 +744,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     ones with a × to dismiss, then running ones; click a row or the pill to
     open that session. The pill grows out of the notch, springs open on hover and
     shrinks back in, and clicks beside it still reach the menu bar. It never
-    takes focus and shows over full-screen apps. Settings → General →
+    takes focus and steps aside for full-screen apps. Settings → General →
     Desktop turns it off, and can also keep it up while OpenAgentd is in
     front (off by default), stop keeping finished sessions, or stop hover
     from expanding it.
@@ -718,6 +776,40 @@ run from the terminal (the native Rust binary since v3.0.0).
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
     existing window. Cancelling the menu leaves unread notifications intact.
+  - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel pet
+    (a cat, a duck that waddles, or a crab that walks sideways)
+    walks along the bottom of the screen by default, above the Dock or
+    taskbar (leaving room for one that hides itself, so it never walks where
+    it pops up), on top of other apps. Drag it anywhere on the screen and it
+    walks left and right at that height; near the top, its bubble opens
+    below it. Its pose follows your agents: it wanders and sits when
+    nothing runs (and sleeps after five quiet minutes), types on a tiny
+    laptop while an agent works, and raises an orange "!" while one waits on
+    you. Notifications show in its speech bubble instead of the system
+    banner: a question stays until it is answered (Answer opens it), and a
+    finished turn, a failed one or a reminder hops, droops or looks up and
+    fades after 8 s into a count badge. Click the badge to list what it
+    missed; a click on the pet itself is only a poke (it hops and meows,
+    quacks or snips)
+    and never brings OpenAgentd forward. Right-click it for a menu: what
+    it missed (open one, or clear them), Open OpenAgentd, New Session,
+    Movement, Character, Pet Settings and Hide Pet; it stands still while
+    the menu is open. It turns to look at the pointer nearby and pounces
+    at one resting beside it. Playful and Chaotic pets run about (zoomies)
+    when a turn finishes, Chaotic ones now and then too, and pant a moment
+    after; they also jump onto the top edge of the windows you have open,
+    walk along it, ride along when the window moves, and jump or fall back
+    down (no extra permission: only window frames are read). It never takes focus, clicks beside it reach the app behind,
+    and you can drag it onto another display too; the spot (height
+    included) is remembered. It replaces a banner only while it is on screen: hidden
+    over a full-screen app, while OpenAgentd is in front, or on the lock
+    screen, the banner shows as before. It follows the same servers as the
+    notch, so it works with every window closed. Settings → General →
+    Desktop pet turns it on (off by default) and sets its character,
+    colour, size, movement (stay put, calm, playful or chaotic), which
+    notifications use the bubble, whether it climbs on windows, and
+    whether it shows while OpenAgentd is in front (it always
+    steps aside for full-screen apps); the tray turns it on and off too.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -1332,6 +1424,16 @@ executes tools, manages its task list, and inspects workspace repositories.
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
   32,000 characters. **Settings → Workspaces → Messages** turns the
   tool off for every agent; replies already on their way still arrive.
+
+  **Worktrees from chat** `[v3.36.0]` — to run several features in one
+  repository at once, the agent can send work to another checkout of the same
+  repository by naming it in `worktree` (the workspace defaults to the current
+  one). An existing worktree is matched by name, `"main"` targets the main
+  checkout, and a new name creates a worktree on branch `oad/<name>` from the
+  sender's current commit and starts the session there, so you no longer create
+  and pick each worktree yourself. The tool card shows a **Created worktree**
+  chip and the checkout the message reached. Folders that are not git
+  repositories cannot have worktrees, and the agent is told so.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
   **Settings → Workspaces → Groups**: create a group, give it a
@@ -1531,6 +1633,12 @@ agent against it.
   Since `[v3.1.0]` these actions live in the repository's checkout menu (see
   **Compact coding sidebar**), where **New worktree…**, **Rename** and
   **Remove** act on the worktree the list is narrowed to.
+  Since `[v3.36.0]` workspaces are grouped by their git repository rather than
+  their path: a worktree created outside the app, or a subfolder of a
+  repository opened on its own, is listed under that repository instead of as a
+  separate one (existing workspaces are re-filed once at startup). A checkout
+  whose folder no longer exists shows a **Missing** badge. Removing a worktree
+  also deletes its `openagentd/` or `oad/` branch.
 - **Warm-paper workspace refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper
@@ -1692,6 +1800,8 @@ agent against it.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
+  Since `[v3.36.0]` the sidebar has no New session button in any mode: start
+  one from a folder's **+**, `⌘N`/`Ctrl+N` or the command palette.
   Since `[v3.21.0]` repository rows show a coloured dot per workspace group,
   and in Project mode **View options → Workspace group** shows one group's
   repositories (Chat stays), named in a row above the list with **Show all**.
@@ -1815,7 +1925,8 @@ agent against it.
   reference; the backend auto-attaches only the selected file lines.
   Markdown files (`.md`, `.markdown`) open rendered like a chat answer, with
   tables, highlighted code, diagrams, maths and images relative to the file;
-  front matter is hidden there and shown only in Source `[v3.35.0]`. A **Rendered / Source** switch in the
+  front matter shows as a key/value table above the body (lists as chips,
+  nested YAML as source, collapsed past 8 fields) `[v3.36.0]`. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
   Links and file-named code spans in a rendered Markdown file open the
@@ -2698,8 +2809,10 @@ Everything stays local. No third-party telemetry SaaS.
 - **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
   UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
   scroll-paginated traces, and trace waterfall details.
-- **Telemetry overlay** `[v3.0.0]` — telemetry opens over the current screen from
-  the status-bar spend, the mobile drawer, or **Open Telemetry** in the palette; `/telemetry`
+- **Usage overlay** `[v3.0.0]` — usage telemetry opens over the current screen from
+  the status-bar spend, the mobile drawer, or **Open Usage** in the palette (it
+  was named Telemetry until `[v3.36.0]`, and the palette still finds it by that
+  name); `/telemetry`
   links (`?days=`, `?traceId=`, `?session=`) open it too. It shows spend, turns
   (and how many failed), median turn time, tokens, and cache hit rate, per-day
   spend or turns, and spend by workspace, session, model, and tool. Filter by
@@ -2729,10 +2842,10 @@ Everything stays local. No third-party telemetry SaaS.
 - **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
   kept for 90 days by default (traces were previously kept for 30), so the
   90-day telemetry range shows full trace history. Older data is removed by a
-  daily sweep. Since `[v3.35.0]` the period is set in **Settings → Telemetry**;
+  daily sweep. Since `[v3.35.0]` the period is set in **Settings → Data retention** (named Telemetry before v3.36.0);
   the `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
   variables are no longer read.
-- **Telemetry retention setting** `[v3.35.0]` — **Settings → Telemetry**
+- **Telemetry retention setting** `[v3.35.0]` — **Settings → Data retention**
   sets how many days local traces and metrics are kept (0 to 3650, default
   90; 0 keeps them forever). Saving a shorter period deletes older telemetry
   right away instead of at the next daily sweep. This replaces

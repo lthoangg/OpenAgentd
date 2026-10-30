@@ -16,8 +16,6 @@ import { useEffect, useRef } from 'react'
 import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
 import { OVERLAY_BODY } from '@/components/ui/panel-tokens'
 import { Skeleton } from '@/components/ui/skeleton'
-import { usePlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { hasFinePointer } from '@/lib/pointer'
 import { cn } from '@/lib/utils'
 import { SessionModelSettings } from './SessionModelSettings'
@@ -45,7 +43,6 @@ export function SessionSettingsPanel({
   onSessionModelSettingsChange,
   onClose,
 }: SessionSettingsPanelProps) {
-  const { os } = usePlatform()
   const { data, isLoading, refetch } = useAgentsQuery(workspace)
   // Keyboard users land on the model field, not the close button. Touch users
   // don't: focusing it would pop the software keyboard over the settings.
@@ -87,7 +84,7 @@ export function SessionSettingsPanel({
         closeLabel="Close (Esc)"
       />
 
-      <div className={cn(OVERLAY_BODY, 'space-y-8')}>
+      <div className={cn(OVERLAY_BODY, 'space-y-6 md:space-y-8')}>
         {isLoading || !agent ? (
           <div role="status" aria-label="Loading session settings" className="space-y-8">
             {[16, 24].map((h) => (
@@ -122,12 +119,6 @@ export function SessionSettingsPanel({
         )}
       </div>
 
-      {/* Keyboard hints only: phones have neither Esc nor the shortcut. */}
-      <div className="hidden shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 md:block md:px-6">
-        <p className="text-[11px] text-(--color-text-muted)">
-          Esc or click outside to close · {shortcutLabel(APP_SHORTCUTS.sessionSettings, os)} to toggle
-        </p>
-      </div>
     </AppOverlay>
   )
 }

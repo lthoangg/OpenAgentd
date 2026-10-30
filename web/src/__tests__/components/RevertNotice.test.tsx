@@ -16,7 +16,7 @@ describe('RevertNotice', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Redo' }))
+    await user.click(screen.getByRole('button', { name: 'Redo next message' }))
 
     expect(onRedo).toHaveBeenCalledTimes(1)
   })
@@ -25,7 +25,7 @@ describe('RevertNotice', () => {
     const user = userEvent.setup()
     render(<RevertNotice count={2} onRedo={() => {}} onRedoAll={() => {}} />)
 
-    await user.hover(screen.getByRole('button', { name: 'Redo' }))
+    await user.hover(screen.getByRole('button', { name: 'Redo next message' }))
 
     expect((await screen.findByRole('tooltip')).textContent).toContain('next undone message')
   })

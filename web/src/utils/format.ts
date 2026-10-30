@@ -18,10 +18,28 @@ export function shortId(id: string): string {
   return id.slice(0, 8)
 }
 
-/** ``provider:vendor/model`` → ``model``. */
+/** Model families whose name a provider sometimes prefixes with its own. */
+const MODEL_FAMILY = /-(?=(?:claude|gpt|gemini|grok|llama|qwen|deepseek|mistral|kimi|glm|minimax|o\d)[-\w.]*$)/
+
+/**
+ * ``provider:vendor/model`` → ``{ provider, short }``. ``short`` drops the
+ * vendor path and a provider prefix repeated in the name
+ * (``agy:antigravity-claude-sonnet-4-6`` → ``claude-sonnet-4-6``, ``agy``),
+ * so the UI shows the ID a user would type, with the provider as a tag.
+ */
+export function modelParts(modelId: string): { provider: string | null; short: string } {
+  const colon = modelId.indexOf(':')
+  const provider = colon > 0 ? modelId.slice(0, colon) : null
+  let name = (colon > 0 ? modelId.slice(colon + 1) : modelId).split('/').at(-1) || modelId
+  const family = name.search(MODEL_FAMILY)
+  if (family > 0) name = name.slice(family + 1)
+  return { provider, short: name }
+}
+
+/** ``provider:vendor/model`` → ``model`` (see ``modelParts``). */
 export function shortModelName(modelId: string | null | undefined): string | null {
   if (!modelId) return null
-  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+  return modelParts(modelId).short
 }
 
 // Building an ``Intl`` formatter costs far more than using one, and the

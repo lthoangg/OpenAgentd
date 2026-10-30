@@ -144,7 +144,7 @@ describe('WorkspacesSettingsPage', () => {
     const toggle = await screen.findByRole('switch', { name: /let agents message other workspaces/i })
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
     // The switch sits in a 56px settings row whose label also toggles it.
-    expect(toggle.closest('.min-h-14')).not.toBeNull()
+    expect(toggle.closest('.min-h-11')).not.toBeNull()
     fireEvent.click(toggle)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
@@ -153,11 +153,19 @@ describe('WorkspacesSettingsPage', () => {
 })
 
 describe('TitlesSettingsPage', () => {
+  it('labels the rows "Wait for title (seconds)" and "Update title after summarizing"', async () => {
+    server.use(...baseHandlers(null))
+    renderPage(<TitlesSettingsPage />)
+
+    expect(await screen.findByText('Wait for title (seconds)')).toBeTruthy()
+    expect(screen.getByText('Update title after summarizing')).toBeTruthy()
+  })
+
   it('shows no save bar until something is edited', async () => {
     server.use(...baseHandlers())
     renderPage(<TitlesSettingsPage />)
 
-    await screen.findByLabelText('Wait timeout seconds')
+    await screen.findByLabelText('Wait for title (seconds)')
     expect(screen.queryByText('Unsaved changes')).toBeNull()
     expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
   })
@@ -167,10 +175,10 @@ describe('TitlesSettingsPage', () => {
     renderPage(<TitlesSettingsPage />)
 
     const enabled = await screen.findByRole('switch', { name: /generate titles automatically/i })
-    expect(enabled.closest('.min-h-14')).not.toBeNull()
+    expect(enabled.closest('.min-h-11')).not.toBeNull()
     expect(document.querySelector(`label[for="${enabled.id}"]`)?.textContent).toMatch(/generate titles automatically/i)
 
-    const waitTimeout = screen.getByLabelText('Wait timeout seconds')
+    const waitTimeout = screen.getByLabelText('Wait for title (seconds)')
     expect(waitTimeout.className).toContain('h-9')
 
     fireEvent.change(waitTimeout, { target: { value: '5' } })
@@ -179,7 +187,7 @@ describe('TitlesSettingsPage', () => {
     expect(save.className).toContain('min-h-9')
     expect(save.className).toContain('md:min-h-0')
 
-    const reset = screen.getByRole('button', { name: /reset/i })
+    const reset = screen.getByRole('button', { name: 'Discard…' })
     expect(reset.className).toContain('min-h-9')
     expect(reset.className).toContain('md:min-h-0')
   })
@@ -191,8 +199,8 @@ describe('TitlesSettingsPage', () => {
     const enabled = await screen.findByRole('switch', { name: /generate titles automatically/i })
     await waitFor(() => expect(enabled.getAttribute('aria-checked')).toBe('true'))
     fireEvent.click(enabled)
-    await waitFor(() => expect(screen.queryByLabelText('Wait timeout seconds')).toBeNull())
-    expect(screen.queryByRole('switch', { name: /update title after compaction/i })).toBeNull()
+    await waitFor(() => expect(screen.queryByLabelText('Wait for title (seconds)')).toBeNull())
+    expect(screen.queryByRole('switch', { name: /update title after summarizing/i })).toBeNull()
   })
 
   it('turns on retitling after compaction', async () => {
@@ -207,7 +215,7 @@ describe('TitlesSettingsPage', () => {
     )
     renderPage(<TitlesSettingsPage />)
 
-    const toggle = await screen.findByRole('switch', { name: /update title after compaction/i })
+    const toggle = await screen.findByRole('switch', { name: /update title after summarizing/i })
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
     fireEvent.click(toggle)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
@@ -240,6 +248,14 @@ describe('ContextSettingsPage', () => {
     expect(bodies).toEqual([{ prompt_token_threshold: 50_000, idle_compaction: false, idle_compaction_percent: null }])
   })
 
+  it('echoes the entered threshold as "Now N tokens."', async () => {
+    server.use(...baseHandlers(null))
+    renderPage(<ContextSettingsPage />)
+
+    fireEvent.change(await screen.findByLabelText('Token threshold'), { target: { value: '50000' } })
+    expect(await screen.findByText(/Now 50,000 tokens\./)).toBeTruthy()
+  })
+
   it('clears the threshold when the field is emptied', async () => {
     server.use(
       ...baseHandlers(80_000),
@@ -262,7 +278,7 @@ describe('ContextSettingsPage', () => {
     })
   })
 
-  it('discards edits when Reset is pressed', async () => {
+  it('discards edits after confirming Discard', async () => {
     server.use(...baseHandlers(80_000))
     renderPage(<ContextSettingsPage />)
 
@@ -272,7 +288,10 @@ describe('ContextSettingsPage', () => {
 
     await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeNull())
 
-    fireEvent.click(screen.getByRole('button', { name: /reset/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }))
+    // Nothing is lost until the confirmation.
+    expect((screen.getByLabelText('Token threshold') as HTMLInputElement).value).toBe('1234')
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Unsaved changes')).toBeNull()
@@ -304,7 +323,7 @@ describe('ContextSettingsPage', () => {
     server.use(...baseHandlers(null))
     renderPage(<ContextSettingsPage />)
 
-    const toggle = await screen.findByRole('switch', { name: /compact idle sessions/i })
+    const toggle = await screen.findByRole('switch', { name: /summarize idle sessions/i })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
     const percent = screen.getByLabelText('Idle trigger percent') as HTMLInputElement
     expect(percent.disabled).toBe(true)
@@ -327,7 +346,7 @@ describe('ContextSettingsPage', () => {
     )
     renderPage(<ContextSettingsPage />)
 
-    fireEvent.click(await screen.findByRole('switch', { name: /compact idle sessions/i }))
+    fireEvent.click(await screen.findByRole('switch', { name: /summarize idle sessions/i }))
     const percent = await screen.findByLabelText('Idle trigger percent')
     fireEvent.change(percent, { target: { value: '55' } })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
@@ -351,7 +370,7 @@ describe('ContextSettingsPage', () => {
     )
     renderPage(<ContextSettingsPage />)
 
-    fireEvent.click(await screen.findByRole('switch', { name: /compact idle sessions/i }))
+    fireEvent.click(await screen.findByRole('switch', { name: /summarize idle sessions/i }))
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
     await waitFor(() =>
       expect(bodies).toEqual([
@@ -371,7 +390,7 @@ describe('ContextSettingsPage', () => {
     )
     renderPage(<ContextSettingsPage />)
 
-    fireEvent.click(await screen.findByRole('switch', { name: /compact idle sessions/i }))
+    fireEvent.click(await screen.findByRole('switch', { name: /summarize idle sessions/i }))
     fireEvent.change(await screen.findByLabelText('Idle trigger percent'), { target: { value } })
 
     expect(await screen.findByText(/whole number from 1 to 100/i)).toBeTruthy()
@@ -383,6 +402,16 @@ describe('ContextSettingsPage', () => {
 })
 
 describe('MediaSettingsPage', () => {
+  it('is titled "Image and video" and names the two size rows by the models they apply to', async () => {
+    server.use(...baseHandlers(null))
+    renderPage(<MediaSettingsPage />)
+
+    await screen.findByLabelText('Image model')
+    expect(screen.getByRole('heading', { name: 'Image and video' })).toBeTruthy()
+    expect(screen.getByText('Size (other models)')).toBeTruthy()
+    expect(screen.getByText('Size (OpenAI models)')).toBeTruthy()
+  })
+
   it('shows image and video sections with touch-sized model inputs', async () => {
     server.use(...baseHandlers(null))
     renderPage(<MediaSettingsPage />)

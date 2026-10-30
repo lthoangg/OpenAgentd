@@ -80,6 +80,8 @@ export interface DropdownItemProps extends ComponentPropsWithRef<'button'> {
   onSelect?: () => void
   /** Set by Dropdown: this item is the keyboard's active option. */
   highlighted?: boolean
+  /** Set by Dropdown: a value picker renders options, an action menu menu items. */
+  selectMode?: boolean
 }
 
 function DropdownItem({
@@ -87,6 +89,7 @@ function DropdownItem({
   value: _value,
   onSelect,
   highlighted,
+  selectMode,
   className,
   children,
   ...props
@@ -95,7 +98,8 @@ function DropdownItem({
   return (
     <button
       type="button"
-      role="menuitem"
+      role={selectMode ? 'option' : 'menuitem'}
+      aria-selected={selectMode ? !!active : undefined}
       // Focus never enters the panel (see the module docstring), so the active
       // option is conveyed by attribute rather than by focus.
       tabIndex={-1}
@@ -127,6 +131,9 @@ export interface DropdownProps {
   children: ReactNode
   value?: string
   onValueChange?: (value: string) => void
+  /** Trigger text for the selected value, when it should differ from the
+   *  option's own label (e.g. "Workspace: site"). */
+  renderValue?: (value: string, label: ReactNode) => ReactNode
   className?: string
   panelClassName?: string
   /** Which trigger edge the panel lines up with; ``end`` suits triggers at a right edge. */
@@ -143,6 +150,7 @@ function Dropdown({
   children,
   value,
   onValueChange,
+  renderValue,
   className,
   panelClassName,
   align = 'start',
@@ -226,7 +234,8 @@ function Dropdown({
   const selectedChild = value !== undefined
     ? childrenArray.find((child) => isValidElement<DropdownItemProps>(child) && child.props.value === value)
     : undefined
-  const displayLabel: ReactNode = (isValidElement<DropdownItemProps>(selectedChild) ? selectedChild.props.children : null) ?? trigger
+  const selectedLabel: ReactNode = (isValidElement<DropdownItemProps>(selectedChild) ? selectedChild.props.children : null) ?? trigger
+  const displayLabel: ReactNode = renderValue && value !== undefined ? renderValue(value, selectedLabel) : selectedLabel
 
   /** Per-item keyboard metadata, rebuilt every render so the key handler below
    *  always closes over the current children. */
@@ -250,6 +259,7 @@ function Dropdown({
     if (value !== undefined) {
       return cloneElement(child, {
         ...shared,
+        selectMode: true,
         active: child.props.value === value,
         onSelect: () => {
           if (child.props.value !== undefined) onValueChange?.(child.props.value)
@@ -340,13 +350,13 @@ function Dropdown({
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
         aria-describedby={ariaDescribedby}
-        aria-haspopup="menu"
+        aria-haspopup={value !== undefined ? 'listbox' : 'menu'}
         aria-expanded={open}
         aria-activedescendant={open && highlight >= 0 ? meta[highlight]?.id : undefined}
         data-popup-open={open || undefined}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
-          'justify-between',
+          'justify-between pointer-coarse:min-h-9',
           open && 'border-(--focus-ring)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
@@ -371,7 +381,7 @@ function Dropdown({
       {panelMounted && createPortal(
         <div
           ref={panelRef}
-          role="menu"
+          role={value !== undefined ? 'listbox' : 'menu'}
           data-slot="dropdown-panel"
           className={cn(
             'fixed z-50 flex flex-col gap-0.5',

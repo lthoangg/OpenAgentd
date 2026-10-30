@@ -148,6 +148,7 @@ async fn steer_queue_and_stop_and_send_reach_a_busy_session() {
         reply: false,
         mode: None,
         delivery,
+        worktree: None,
     };
     let calls = || mock.calls.lock().unwrap().len();
 

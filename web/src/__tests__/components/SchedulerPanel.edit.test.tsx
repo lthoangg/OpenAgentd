@@ -13,7 +13,7 @@
  */
 
 import { afterEach, beforeEach, describe, it, expect, mock } from 'bun:test'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -50,6 +50,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   if (originalFetch) {
     globalThis.fetch = originalFetch
   }
@@ -127,10 +128,11 @@ describe('SchedulerPanel — Edit Task Form', () => {
       expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
-    // Create button should be visible (on desktop)
-    const createButton = screen.queryByRole('button', { name: /Create new task/i })
-    // May not be visible on all screen sizes, but the button should exist in the component
-    expect(createButton || screen.getByText('Scheduled tasks')).toBeInTheDocument()
+    // With no tasks the form is already open under a "New task" title, so the
+    // header needs no button for it (and the old "Create new task" is gone).
+    expect(await screen.findByRole('heading', { name: 'New task' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Create new task/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'New task' })).toBeNull()
   })
 
   it('has a close button in the header', async () => {
@@ -141,8 +143,9 @@ describe('SchedulerPanel — Edit Task Form', () => {
     })
 
     // Close button should be visible
-    const closeButton = screen.getByRole('button', { name: /Close scheduler panel/i })
+    const closeButton = screen.getByRole('button', { name: 'Close scheduled tasks' })
     expect(closeButton).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Close scheduler panel/i })).toBeNull()
   })
 
   it('displays search input for filtering tasks', async () => {
@@ -225,8 +228,8 @@ describe('SchedulerPanel — Edit Task Form', () => {
       expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
-    const closeButton = screen.getByRole('button', { name: /Close scheduler panel/i })
-    expect(closeButton).toHaveAttribute('aria-label', 'Close scheduler panel')
+    const closeButton = screen.getByRole('button', { name: 'Close scheduled tasks' })
+    expect(closeButton).toHaveAttribute('aria-label', 'Close scheduled tasks')
   })
 
   it('has accessible search input', async () => {
@@ -241,27 +244,27 @@ describe('SchedulerPanel — Edit Task Form', () => {
     expect(searchInput).toHaveAttribute('placeholder', 'Search tasks…')
   })
 
-  it('displays the all-tasks description in the header', async () => {
+  it('shows the task count as the header subtitle once the list has loaded', async () => {
     renderSchedulerPanel()
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/All scheduled tasks/i),
-      ).toBeInTheDocument()
-    })
+    expect(await screen.findByText('0 tasks')).toBeInTheDocument()
+    expect(screen.queryByText(/All scheduled tasks/i)).toBeNull()
   })
 
-  it('shows calendar icon in header', async () => {
+  it('hides the task count while the list is loading', () => {
+    globalThis.fetch = mock(() => new Promise(() => undefined)) as unknown as typeof fetch
     renderSchedulerPanel()
 
-    await waitFor(() => {
-      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
-    })
+    expect(screen.getByRole('heading', { name: 'Scheduled tasks' })).toBeInTheDocument()
+    expect(screen.queryByText(/^\d+ tasks?$/)).toBeNull()
+  })
 
-    // The calendar icon should be rendered (lucide-react CalendarClock)
-    // SVGs are rendered with aria-hidden="true"
-    const svgs = document.querySelectorAll('svg[aria-hidden="true"]')
-    expect(svgs.length).toBeGreaterThan(0)
+  it('has no icon or count pill beside the header title', async () => {
+    renderSchedulerPanel()
+
+    const header = await screen.findByRole('heading', { name: 'Scheduled tasks' })
+    expect(header.querySelector('svg')).toBeNull()
+    expect(header.textContent).toBe('Scheduled tasks')
   })
 
   it('maintains search input value when typing', async () => {
@@ -340,7 +343,8 @@ describe('SchedulerPanel — Edit Task Form', () => {
 
     const user = userEvent.setup({ delay: null })
     renderSchedulerPanel()
-    await screen.findByText('Daily report')
+    // The list row, plus the detail of the first task, which opens on its own.
+    await screen.findAllByText('Daily report')
     expect(screen.getByText('Weekly sync')).toBeInTheDocument()
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i)

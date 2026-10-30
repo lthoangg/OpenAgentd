@@ -161,7 +161,7 @@ export function CommentList({
               type="button"
               onClick={() => onShow(comment)}
               title="Show in the plan"
-              className="block w-full truncate border-l-2 border-(--color-border-strong) pl-1.5 text-left text-[11px] leading-relaxed text-(--color-text-subtle) hover:text-(--color-text-muted) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+              className="block w-full truncate border-l-2 border-(--color-border-strong) pl-1.5 text-left text-[11px] leading-relaxed text-(--color-text-subtle) hover:text-(--color-text-muted) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
             >
               {comment.quote}
             </button>

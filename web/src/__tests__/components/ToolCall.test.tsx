@@ -19,11 +19,12 @@ beforeEach(() => {
 // Test helpers
 // ---------------------------------------------------------------------------
 //
-// Header markup is `<span title="…">verb <span>arg</span></span>`.
-// These helpers find the header span by its `title` attribute (which mirrors
-// the full text) and assert the argument is rendered without italics.
+// The row is `<MetaRow title="<tool name>: <target>">` — the real tool name
+// in mono, then the target. These helpers find the row by its `title`
+// attribute (`name: headerTitle`, or just `name` when there is no target)
+// and assert the argument is rendered without italics.
 
-/** Find the header span via its title tooltip (matches the full header text). */
+/** Find the row via its title tooltip (`${name}: ${headerTitle}`). */
 function getHeader(fullText: string): HTMLElement {
   // Linear scan by attribute — Happy DOM rejects some CSS.escape outputs
   // (e.g. escaped spaces/quotes), so avoid attribute selectors entirely.
@@ -49,19 +50,24 @@ function expectPlainArg(header: HTMLElement, arg: string) {
 describe("ToolCall — header", () => {
   it("shows tool name when no custom display config", () => {
     render(<ToolCall name="custom_tool" args='{"path":"src/main.py"}' done={false} />)
-    expect(screen.getByText("Custom Tool")).toBeTruthy()
+    const name = screen.getByText("custom_tool")
+    expect(name.className).toContain("font-mono")
+    expect(screen.queryByText("Custom Tool")).toBeNull()
   })
 
   it("shows only the tool name when no args", () => {
     render(<ToolCall name="read" />)
-    expect(screen.getByText("Read")).toBeTruthy()
+    expect(screen.getByText("read")).toBeTruthy()
+    expect(screen.queryByText("Read")).toBeNull()
     expect(screen.queryByText("pending")).toBeNull()
   })
 
   it("shows the basename for a Windows file path", () => {
     const args = JSON.stringify({ path: String.raw`C:\repo\src\main.py` })
     render(<ToolCall name="read" args={args} done={false} />)
-    expect(getHeader("main.py")).toBeTruthy()
+    // The row shows the basename; its tooltip carries the full path.
+    expect(getHeader(`read: ${String.raw`C:\repo\src\main.py`}`)).toBeTruthy()
+    expect(screen.getByText("main.py")).toBeTruthy()
   })
 
   it("shows running state when args are set and result is not done", () => {
@@ -70,6 +76,10 @@ describe("ToolCall — header", () => {
     // Running state: no pending badge, no result section until expanded details exist
     const btn = screen.getByRole("button")
     expect(btn).toBeTruthy()
+    // Running is a blue dot and "running…" (no summary yet), never a pulse
+    expect(btn.querySelector("[data-running-dot]")).toBeTruthy()
+    expect(btn.querySelector(".animate-pulse")).toBeNull()
+    expect(btn.textContent).toContain("running…")
   })
 
   it("shows success state when done without failed result", () => {
@@ -78,11 +88,13 @@ describe("ToolCall — header", () => {
     // Success state: no pending badge
     const btn = screen.getByRole("button")
     expect(btn).toBeTruthy()
+    expect(btn.querySelector("[data-running-dot]")).toBeNull()
+    expect(btn.textContent).not.toContain("running…")
   })
 
   it("displays persisted duration_ms when done", () => {
     render(<ToolCall name="read" args='{"path":"x"}' done={true} durationMs={1234} />)
-    expect(screen.getByText("1.2s")).toBeTruthy()
+    expect(screen.getByText("1.2 s")).toBeTruthy()
   })
 
   it("displays long durations as minutes and seconds", () => {
@@ -93,7 +105,7 @@ describe("ToolCall — header", () => {
   it("displays realtime elapsed counting while running", async () => {
     render(<ToolCall name="read" args='{"path":"x"}' done={false} startedAt={Date.now() - 1500} />)
     await waitFor(() => {
-      expect(screen.getByText(/1\.[5-9]s|2\.0s/)).toBeTruthy()
+      expect(screen.getByText(/1\.[5-9] s|2\.0 s/)).toBeTruthy()
     })
   })
 })
@@ -117,12 +129,23 @@ describe("ToolCall — shell display", () => {
     expect(header.className).not.toContain("sticky")
   })
 
-  it("replaces tool name with plain description when present", () => {
+  it("shows the command as the target and keeps the description in the tooltip", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    const header = getHeader("Run unit tests")
-    expectPlainArg(header, "Run unit tests")
-    expect(screen.queryByText("shell")).toBeNull()
+    const header = getHeader("shell: npm test\nRun unit tests")
+    expectPlainArg(header, "npm test")
+    expect(screen.getByText("shell").className).toContain("font-mono")
+    expect(screen.getByText("npm test")).toBeTruthy()
+    // The description is tooltip-only, not visible row text
+    expect(screen.queryByText("Run unit tests")).toBeNull()
+  })
+
+  it("truncates a long multi-line command to one line of 80 chars", () => {
+    const command = `echo ${"x".repeat(100)}\necho second`
+    render(<ToolCall name="shell" args={JSON.stringify({ command })} done={false} />)
+    const oneLine = command.replace(/\s*\n\s*/g, " ")
+    expect(getHeader(`shell: ${oneLine}`)).toBeTruthy()
+    expect(screen.getByText(`${oneLine.slice(0, 80)}…`)).toBeTruthy()
   })
 
 
@@ -156,16 +179,29 @@ describe("ToolCall — shell display", () => {
     expect(document.body.textContent).toContain('<img src=x onerror=window.__pwned=true>')
   })
 
-  it("falls back to tool name when shell has no description", () => {
+  it("shows the tool name and the bare command when shell has no description", () => {
     const args = JSON.stringify({ command: "ls" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    expect(screen.getByText("Shell")).toBeTruthy()
+    expect(screen.getByText("shell")).toBeTruthy()
+    expect(screen.getByText("ls")).toBeTruthy()
+    expect(getHeader("shell: ls")).toBeTruthy()
+    expect(screen.queryByText("Shell")).toBeNull()
   })
 
-  it("falls back to tool name when shell description is empty", () => {
+  it("shows the tool name and the bare command when shell description is empty", () => {
     const args = JSON.stringify({ command: "ls", description: "" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    expect(screen.getByText("Shell")).toBeTruthy()
+    expect(screen.getByText("shell")).toBeTruthy()
+    expect(screen.getByText("ls")).toBeTruthy()
+    expect(getHeader("shell: ls")).toBeTruthy()
+    expect(screen.queryByText("Shell")).toBeNull()
+  })
+
+  it("falls back to the description as the target when shell has no command", () => {
+    const args = JSON.stringify({ description: "Run unit tests" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    expect(getHeader("shell: Run unit tests")).toBeTruthy()
+    expect(screen.getByText("Run unit tests")).toBeTruthy()
   })
 
   it("auto-expands live output before the final result arrives", () => {
@@ -289,18 +325,26 @@ describe("ToolCall — web_search display", () => {
   it("shows conversational header with query", () => {
     const args = JSON.stringify({ query: "latest python release" })
     render(<ToolCall name="web_search" args={args} done={false} />)
-    const header = getHeader('"latest python release"')
+    const header = getHeader('web_search: "latest python release"')
     expectPlainArg(header, '"latest python release"')
-    expect(screen.queryByText("web_search")).toBeNull()
+    expect(screen.getByText("web_search")).toBeTruthy()
   })
 
   it("hides redundant query args already shown in the header", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ query: "react hooks guide" })
-    render(<ToolCall name="web_search" args={args} done={false} />)
+    render(<ToolCall name="web_search" args={args} done result="1. A guide" />)
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
     expect(screen.queryByText(/"query"/)).toBeNull()
+  })
+
+  it("has nothing to expand while a web_search has no result yet", () => {
+    const args = JSON.stringify({ query: "react hooks guide" })
+    render(<ToolCall name="web_search" args={args} done={false} />)
+    const row = screen.getByLabelText("web_search (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
   })
 })
 
@@ -317,7 +361,7 @@ describe("ToolCall — diff stats", () => {
     await user.click(screen.getByRole("button", { name: "Expand read details" }))
 
     expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
-    expect(screen.getByText("lines 12-20 of 100")).toBeTruthy()
+    expect(screen.getByText("Lines 12–20 of 100")).toBeTruthy()
     expect(screen.getByLabelText("Copy read result")).toBeTruthy()
     expect(screen.getByText("12")).toBeTruthy()
     expect(screen.getByText("13")).toBeTruthy()
@@ -368,8 +412,10 @@ describe("ToolCall — file search display", () => {
     const args = JSON.stringify({ pattern: "web/src/**/*.tsx", directory: "web", match: "name" })
     render(<ToolCall name="glob" args={args} done={false} />)
 
-    expectPlainArg(getHeader("Finding web/src/**/*.tsx in web (by name)"), "web/src/**/*.tsx")
-    await user.click(screen.getByRole("button"))
+    expectPlainArg(getHeader("glob: web/src/**/*.tsx in web (by name)"), "web/src/**/*.tsx")
+    // No args, no result: nothing to open, so the row is not a button
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("glob (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -378,8 +424,9 @@ describe("ToolCall — file search display", () => {
     const args = JSON.stringify({ pattern: "useEffect", directory: "web/src", include: "*.tsx" })
     render(<ToolCall name="grep" args={args} done={false} />)
 
-    expectPlainArg(getHeader("Searching useEffect in web/src (*.tsx)"), "useEffect")
-    await user.click(screen.getByRole("button"))
+    expectPlainArg(getHeader('grep: "useEffect" in web/src (*.tsx)'), '"useEffect" in web/src (*.tsx)')
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("grep (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 })
@@ -392,60 +439,64 @@ describe("ToolCall — web_fetch display", () => {
   it("shows conversational header with domain and full path", () => {
     const args = JSON.stringify({ url: "https://docs.python.org/3/library/asyncio.html" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    const header = getHeader("docs.python.org/3/library/asyncio.html")
+    const header = getHeader("web_fetch: docs.python.org/3/library/asyncio.html")
     expectPlainArg(header, "docs.python.org/3/library/asyncio.html")
-    expect(screen.queryByText("web_fetch")).toBeNull()
+    expect(screen.getByText("web_fetch")).toBeTruthy()
   })
 
   it("strips www from domain but keeps the path", () => {
     const args = JSON.stringify({ url: "https://www.example.com/page" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    const header = getHeader("example.com/page")
+    const header = getHeader("web_fetch: example.com/page")
     expectPlainArg(header, "example.com/page")
   })
 
   it("keeps the query string", () => {
     const args = JSON.stringify({ url: "https://example.com/search?q=asyncio" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    expectPlainArg(getHeader("example.com/search?q=asyncio"), "example.com/search?q=asyncio")
+    expectPlainArg(getHeader("web_fetch: example.com/search?q=asyncio"), "example.com/search?q=asyncio")
   })
 
   it("elides a bare trailing slash", () => {
     const args = JSON.stringify({ url: "https://example.com/" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    expectPlainArg(getHeader("example.com"), "example.com")
+    expectPlainArg(getHeader("web_fetch: example.com"), "example.com")
   })
 
   it("truncates a long path at 60 chars but keeps the full URL in the tooltip", () => {
     const url = "https://www.nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html"
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
     // Tooltip carries the untruncated location (80 chars, www stripped)…
-    const header = getHeader("nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
+    const header = getHeader("web_fetch: nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
     // …while the visible text is capped at 60 chars + ellipsis.
     expectPlainArg(header, "nytimes.com/2024/03/15/technology/artificial-intelligence-re…")
+    expect(screen.getByText("nytimes.com/2024/03/15/technology/artificial-intelligence-re…")).toBeTruthy()
     expect(header.textContent).not.toContain("regulation-europe")
   })
 
   it("truncates a long URL carrying a fragment", () => {
     const url = "https://github.com/lthoangg/openagentd/blob/main/web/src/components/ToolCall/display.tsx#L193"
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
-    const header = getHeader("github.com/lthoangg/openagentd/blob/main/web/src/components/ToolCall/display.tsx#L193")
+    const header = getHeader("web_fetch: github.com/lthoangg/openagentd/blob/main/web/src/components/ToolCall/display.tsx#L193")
     expectPlainArg(header, "github.com/lthoangg/openagentd/blob/main/web/src/components/…")
+    expect(screen.getByText("github.com/lthoangg/openagentd/blob/main/web/src/components/…")).toBeTruthy()
   })
 
   it("does not truncate a long URL that fits within the cap", () => {
     // 59 chars once the scheme is stripped — exercises the boundary below 60.
     const url = "https://example.com/docs/guides/getting-started/installation"
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
-    const header = getHeader("example.com/docs/guides/getting-started/installation")
+    const header = getHeader("web_fetch: example.com/docs/guides/getting-started/installation")
     expectPlainArg(header, "example.com/docs/guides/getting-started/installation")
-    expect(header.textContent).not.toContain("…")
+    // The target span is the whole URL, uncut (the row's own "running…" is a separate span)
+    const target = screen.getByText("example.com/docs/guides/getting-started/installation")
+    expect(target.textContent).not.toContain("…")
   })
 
   it("hides redundant URL args", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ url: "https://docs.python.org/3/library/asyncio.html" })
-    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    render(<ToolCall name="web_fetch" args={args} done result="# Asyncio" />)
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
     expect(screen.queryByText("https://docs.python.org/3/library/asyncio.html")).toBeNull()
@@ -460,11 +511,11 @@ describe("ToolCall — remember display", () => {
   it("shows conversational header", () => {
     const args = JSON.stringify({ items: [{ category: "preference", key: "style", value: "concise" }] })
     render(<ToolCall name="remember" args={args} done={false} />)
-    // Header is a plain conversational string — no plain argument.
-    const header = getHeader("Saving to memory…")
-    expect(header.textContent).toBe("Saving to memory…")
-    expect(header.querySelector("em")).toBeNull()
-    expect(screen.queryByText("remember")).toBeNull()
+    // The target is the saved key; the real tool name leads the row.
+    const header = getHeader('remember: "style"')
+    expectPlainArg(header, '"style"')
+    expect(screen.getByText("remember")).toBeTruthy()
+    expect(header.textContent).not.toContain("Saving")
   })
 
   it("shows [category] key: value as args", async () => {
@@ -492,10 +543,10 @@ describe("ToolCall — forget display", () => {
   it("shows conversational header", () => {
     const args = JSON.stringify({ items: [{ category: "preference", key: "style" }] })
     render(<ToolCall name="forget" args={args} done={false} />)
-    const header = getHeader("Removing from memory…")
-    expect(header.textContent).toBe("Removing from memory…")
-    expect(header.querySelector("em")).toBeNull()
-    expect(screen.queryByText("forget")).toBeNull()
+    const header = getHeader('forget: "preference: style"')
+    expectPlainArg(header, '"preference: style"')
+    expect(screen.getByText("forget")).toBeTruthy()
+    expect(header.textContent).not.toContain("Removing")
   })
 
   it("shows category: key as args", async () => {
@@ -516,20 +567,25 @@ describe("ToolCall — forget display", () => {
 })
 
 describe("ToolCall — recall display", () => {
-  it("shows friendly pending header when no args", () => {
-    // Pending header keeps the start phase visible across the
-    // tool_call → tool_start gap (which is typically <50ms).
+  it("shows just the tool name when no args", () => {
+    // The tool_call → tool_start gap (typically <50ms) shows the real name only.
     render(<ToolCall name="recall" done={false} />)
-    expect(screen.getByText("Checking memory…")).toBeTruthy()
-    expect(screen.queryByText("recall")).toBeNull()
+    expect(screen.getByText("recall")).toBeTruthy()
+    expect(screen.queryByText("Checking memory…")).toBeNull()
   })
 
-  it("shows conversational header with args", () => {
+  it("shows the filter as the target when args are present", () => {
     const args = JSON.stringify({ category: "preference" })
     render(<ToolCall name="recall" args={args} done={false} />)
-    const header = getHeader("Checking memory…")
-    expect(header.textContent).toBe("Checking memory…")
-    expect(header.querySelector("em")).toBeNull()
+    const header = getHeader('recall: "preference"')
+    expectPlainArg(header, '"preference"')
+    expect(screen.getByText("recall")).toBeTruthy()
+    expect(header.textContent).not.toContain("Checking memory")
+  })
+
+  it("shows no target when recall has no filter", () => {
+    render(<ToolCall name="recall" args="{}" done={false} />)
+    expect(getHeader("recall")).toBeTruthy()
   })
 
   it("shows category filter as args when provided", async () => {
@@ -548,7 +604,8 @@ describe("ToolCall — recall display", () => {
 describe("ToolCall — default display", () => {
   it("shows tool name for uncustomised tools", () => {
     render(<ToolCall name="custom_tool" args='{"path":"x","value":"test"}' done={false} />)
-    expect(screen.getByText("Custom Tool")).toBeTruthy()
+    expect(screen.getByText("custom_tool")).toBeTruthy()
+    expect(screen.queryByText("Custom Tool")).toBeNull()
   })
 
   it("shows pretty-printed JSON args", async () => {
@@ -567,8 +624,12 @@ describe("ToolCall — expand/collapse", () => {
   it("is not expandable when no details", async () => {
     const user = userEvent.setup()
     render(<ToolCall name="date" />)
-    const btn = screen.getByRole("button")
-    await user.click(btn)
+    // A row with nothing to open is a plain div, not an empty Tab stop
+    const row = screen.getByLabelText("date (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
+    expect(row.hasAttribute("aria-expanded")).toBe(false)
+    await user.click(row)
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -666,44 +727,52 @@ describe("ToolCall — skill display", () => {
   it("shows conversational header with skill name", () => {
     const args = JSON.stringify({ skill_name: "web-design-guidelines" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    expectPlainArg(getHeader("web-design-guidelines"), "web-design-guidelines")
-    expect(screen.queryByText("skill")).toBeNull()
+    expectPlainArg(getHeader("skill: web-design-guidelines"), "web-design-guidelines")
+    expect(screen.getByText("skill")).toBeTruthy()
   })
 
   it("hides args section (formattedArgs is null)", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ skill_name: "backend-testing" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    await user.click(screen.getByRole("button"))
-    // Args section should not be rendered
+    // No args section and no result: nothing to open, so not a button
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("skill (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
-  it("shows fallback header when no skill_name", () => {
+  it("shows just the tool name when no skill_name", () => {
     const args = JSON.stringify({})
     render(<ToolCall name="skill" args={args} done={false} />)
-    expect(screen.getByText("Skill")).toBeTruthy()
+    expect(getHeader("skill")).toBeTruthy()
+    expect(screen.getByText("skill")).toBeTruthy()
+    expect(screen.queryByText("Skill")).toBeNull()
   })
 
-  it("shows fallback header when skill_name is empty string", () => {
+  it("shows just the tool name when skill_name is empty string", () => {
     const args = JSON.stringify({ skill_name: "" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    expect(screen.getByText("Skill")).toBeTruthy()
+    expect(getHeader("skill")).toBeTruthy()
+    expect(screen.getByText("skill")).toBeTruthy()
+    expect(screen.queryByText("Skill")).toBeNull()
   })
 
-  it("shows fallback header when skill_name is whitespace", () => {
+  it("shows just the tool name when skill_name is whitespace", () => {
     const args = JSON.stringify({ skill_name: "   " })
     render(<ToolCall name="skill" args={args} done={false} />)
-    expect(screen.getByText("Skill")).toBeTruthy()
+    expect(getHeader("skill")).toBeTruthy()
+    expect(screen.getByText("skill")).toBeTruthy()
+    expect(screen.queryByText("Skill")).toBeNull()
   })
 
   it("is not expandable (no details to show)", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ skill_name: "react-component" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    const btn = screen.getByRole("button")
+    const row = screen.getByLabelText("skill (no details)")
+    expect(row.tagName).toBe("DIV")
     // Verify clicking does not expand
-    await user.click(btn)
+    await user.click(row)
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -737,7 +806,7 @@ describe("ToolCall — todo_manage display", () => {
     })
     render(<ToolCall name="todo_manage" args={args} done={false} />)
 
-    expectPlainArg(getHeader("Creating todo: Audit backend tools"), "Audit backend tools")
+    expectPlainArg(getHeader('todo_manage: add "Audit backend tools"'), 'add "Audit backend tools"')
     await user.click(screen.getByRole("button"))
     expect(screen.getByText(/create \[pending\] \(high\).*Audit backend tools/)).toBeTruthy()
     expect(screen.queryByText(/"actions"/)).toBeNull()
@@ -753,7 +822,7 @@ describe("ToolCall — todo_manage display", () => {
     })
     render(<ToolCall name="todo_manage" args={args} done={false} />)
 
-    expectPlainArg(getHeader("Updating 2 todos…"), "2 todos")
+    expectPlainArg(getHeader("todo_manage: 2 actions"), "2 actions")
     await user.click(screen.getByRole("button"))
     expect(screen.getByText(/update task_1: status=completed/)).toBeTruthy()
     expect(screen.getByText(/claim task_2/)).toBeTruthy()
@@ -765,8 +834,10 @@ describe("ToolCall — todo_manage display", () => {
     const args = JSON.stringify({ actions: [{ action: "read" }] })
     render(<ToolCall name="todo_manage" args={args} done={false} />)
 
-    expect(getHeader("Reading todos…")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
+    expect(getHeader("todo_manage: list")).toBeTruthy()
+    // Nothing to open for a bare read: a plain row, not a button
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("todo_manage (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -775,27 +846,31 @@ describe("ToolCall — todo_manage display", () => {
     const args = JSON.stringify({ actions: [{ action: "clear", status: "finished" }] })
     render(<ToolCall name="todo_manage" args={args} done={false} />)
 
-    expect(getHeader("Clearing finished todos…")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
+    expect(getHeader("todo_manage: clear finished")).toBeTruthy()
+    // A clear carries no args to show, so the row has nothing to open
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("todo_manage (no details)"))
+    expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("reads a bare clear as clearing every todo", () => {
     const args = JSON.stringify({ actions: [{ action: "clear" }] })
     render(<ToolCall name="todo_manage" args={args} done={false} />)
 
-    expect(getHeader("Clearing all todos…")).toBeTruthy()
+    expect(getHeader("todo_manage: clear all")).toBeTruthy()
   })
 })
 
 describe("ToolCall — plan display", () => {
-  it("shows a write as the plan Markdown, and says when it finished", async () => {
+  it("shows a write as the plan Markdown, under the same target before and after it finishes", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ action: "write", content: "# Ship it\n\n1. Write the migration" })
     const { rerender } = render(<ToolCall name="plan" args={args} done={false} />)
 
-    expect(getHeader("Plan: Writing plan…")).toBeTruthy()
+    // The target reads the same while the call runs and after it finishes
+    expect(getHeader("plan: write")).toBeTruthy()
     rerender(<ToolCall name="plan" args={args} done result="Plan saved as revision 1 (3 lines) at plan.md." />)
-    expect(getHeader("Plan: Wrote plan")).toBeTruthy()
+    expect(getHeader("plan: write")).toBeTruthy()
 
     await user.click(screen.getByRole("button", { name: /Expand plan details/ }))
     expect(screen.getByText(/1\. Write the migration/)).toBeTruthy()
@@ -807,26 +882,27 @@ describe("ToolCall — plan display", () => {
     const args = JSON.stringify({ action: "edit", edits: [{ old: "1. Old step", new: "1. New step" }, { old: "2. B", new: "2. C" }] })
     const { container } = render(<ToolCall name="plan" args={args} done result="Plan saved as revision 2 (3 lines) at plan.md." />)
 
-    expect(getHeader("Plan: Edited plan · 2 changes")).toBeTruthy()
+    expect(getHeader("plan: edit · 2 changes")).toBeTruthy()
     await user.click(screen.getByRole("button", { name: /Expand plan details/ }))
     const pre = Array.from(container.querySelectorAll("pre")).find((node) => node.textContent?.includes("Old step"))
     expect(pre?.textContent).toBe("- 1. Old step\n+ 1. New step\n\n- 2. B\n+ 2. C")
   })
 
-  it("reads a running edit as in progress", () => {
+  it("reads a running edit by its change count, with a running dot", () => {
     const args = JSON.stringify({ action: "edit", edits: [{ old: "a", new: "b" }] })
     render(<ToolCall name="plan" args={args} done={false} />)
-    expect(getHeader("Plan: Editing plan…")).toBeTruthy()
+    expect(getHeader("plan: edit · 1 change")).toBeTruthy()
+    expect(document.querySelector("[data-running-dot]")).toBeTruthy()
   })
 
-  it("shows a new plan as its Markdown, and says it started one", async () => {
+  it("shows a new plan as its Markdown, under the same target before and after it finishes", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ action: "new", content: "# Next\n\n1. Fresh step" })
     const { rerender } = render(<ToolCall name="plan" args={args} done={false} />)
 
-    expect(getHeader("Plan: Starting a new plan…")).toBeTruthy()
+    expect(getHeader("plan: new")).toBeTruthy()
     rerender(<ToolCall name="plan" args={args} done result="Started a new plan as revision 1 (3 lines) at plan.md." />)
-    expect(getHeader("Plan: Started a new plan")).toBeTruthy()
+    expect(getHeader("plan: new")).toBeTruthy()
     await user.click(screen.getByRole("button", { name: /Expand plan details/ }))
     expect(screen.getByText(/1\. Fresh step/)).toBeTruthy()
   })
@@ -878,7 +954,7 @@ describe("ToolCall — schedule_task display", () => {
     })
     render(<ToolCall name="schedule_task" args={args} done={false} />)
 
-    expectPlainArg(getHeader("Scheduling daily-standup"), "daily-standup")
+    expectPlainArg(getHeader("schedule_task: create daily-standup"), "create daily-standup")
     await user.click(screen.getByRole("button"))
     expect(screen.getByText(/schedule: cron 0 8 \* \* 1-5 \(Asia\/Ho_Chi_Minh\)/)).toBeTruthy()
     expect(screen.getByText(/prompt: Draft the standup summary\./)).toBeTruthy()
@@ -890,8 +966,9 @@ describe("ToolCall — schedule_task display", () => {
     const args = JSON.stringify({ action: "list" })
     render(<ToolCall name="schedule_task" args={args} done={false} />)
 
-    expect(getHeader("Listing scheduled tasks…")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
+    expect(getHeader("schedule_task: list")).toBeTruthy()
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("schedule_task (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -918,7 +995,7 @@ describe("ToolCall — concise tool labels", () => {
 
     render(<ToolCall name="patch" args={args} done={false} />)
 
-    expect(getHeader("Patch: a.ts, b.ts")).toBeTruthy()
+    expect(getHeader("patch: a.ts, b.ts")).toBeTruthy()
     expect(screen.queryByText("src/a.ts")).toBeNull()
     expect(screen.queryByText("src/b.ts")).toBeNull()
   })
@@ -930,7 +1007,7 @@ describe("ToolCall — concise tool labels", () => {
 
     render(<ToolCall name="patch" args={args} done={false} />)
 
-    expect(getHeader("Patch: a.ts")).toBeTruthy()
+    expect(getHeader("patch: a.ts")).toBeTruthy()
   })
 
   it("truncates a long patch file list in the header", () => {
@@ -945,7 +1022,7 @@ describe("ToolCall — concise tool labels", () => {
 
     const title = Array.from(document.querySelectorAll("[title]"))
       .map((node) => node.getAttribute("title"))
-      .find((t) => t?.startsWith("Patch: "))
+      .find((t) => t?.startsWith("patch: "))
     expect(title).toBeTruthy()
     expect(title!.endsWith("…")).toBe(true)
     expect(title!.length).toBeLessThan(80)
@@ -958,128 +1035,125 @@ describe("ToolCall — concise tool labels", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — bg display", () => {
-  // Plain-string headers (no decorated argument):
-  //   Listing background processes…
-  //   Checking process status…
-  //   Reading process output…
-  //   Stopping process…
-  //   Managing background process…
-  // PID-bearing headers include the pid as plain text.
+  // The row leads with the real tool name `bg`, then `<action> pid <n>`
+  // (or just the action, or just `list`), worded the same running or done.
 
-  it("shows 'Listing background processes…' for action=list", () => {
+  it("shows 'list' after the tool name for action=list", () => {
     const args = JSON.stringify({ action: "list" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Listing background processes…")
-    expect(header.textContent).toBe("Listing background processes…")
+    const header = getHeader("bg: list")
     expect(header.querySelector("em")).toBeNull()
-    expect(screen.queryByText("bg")).toBeNull()
+    expect(screen.getByText("bg").className).toContain("font-mono")
+    expect(screen.getByText("list")).toBeTruthy()
+    expect(header.textContent).not.toContain("Listing")
   })
 
-  it("shows 'Checking process {pid}…' for action=status with pid", () => {
+  it("shows '<action> pid <n>' for action=status with pid", () => {
     const args = JSON.stringify({ action: "status", pid: 1234 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectPlainArg(getHeader("Checking process 1234…"), "1234")
+    expectPlainArg(getHeader("bg: status pid 1234"), "status pid 1234")
   })
 
-  it("shows 'Checking process status…' for action=status without pid", () => {
+  it("shows just the action for action=status without pid", () => {
     const args = JSON.stringify({ action: "status" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Checking process status…")
-    expect(header.textContent).toBe("Checking process status…")
+    const header = getHeader("bg: status")
     expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("status")).toBeTruthy()
   })
 
-  it("shows 'Reading output of process {pid}…' for action=output with pid", () => {
+  it("shows '<action> pid <n>' for action=output with pid", () => {
     const args = JSON.stringify({ action: "output", pid: 5678 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectPlainArg(getHeader("Reading output of process 5678…"), "5678")
+    expectPlainArg(getHeader("bg: output pid 5678"), "output pid 5678")
   })
 
-  it("shows 'Reading process output…' for action=output without pid", () => {
+  it("shows just the action for action=output without pid", () => {
     const args = JSON.stringify({ action: "output" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Reading process output…")
-    expect(header.textContent).toBe("Reading process output…")
+    const header = getHeader("bg: output")
     expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("output")).toBeTruthy()
   })
 
   // `wait` was removed from the bg tool (it duplicated foreground shell while
   // capping at 300s). Stored transcripts still contain it, so the generic
   // fallback has to stay readable rather than render blank.
-  it("falls back to a generic header for the retired wait action", () => {
+  it("keeps the retired wait action readable as '<action> pid <n>'", () => {
     const args = JSON.stringify({ action: "wait", pid: 2468 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectPlainArg(getHeader("bg: wait"), "wait")
+    expectPlainArg(getHeader("bg: wait pid 2468"), "wait pid 2468")
   })
 
-  it("shows 'Stopping process {pid}…' for action=stop with pid", () => {
+  it("shows '<action> pid <n>' for action=stop with pid", () => {
     const args = JSON.stringify({ action: "stop", pid: 9999 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectPlainArg(getHeader("Stopping process 9999…"), "9999")
+    expectPlainArg(getHeader("bg: stop pid 9999"), "stop pid 9999")
   })
 
-  it("shows 'Stopping process…' for action=stop without pid", () => {
+  it("shows just the action for action=stop without pid", () => {
     const args = JSON.stringify({ action: "stop" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Stopping process…")
-    expect(header.textContent).toBe("Stopping process…")
+    const header = getHeader("bg: stop")
     expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("stop")).toBeTruthy()
   })
 
-  it("shows 'Managing background process…' when no action", () => {
+  it("shows just the pid when there is no action", () => {
     const args = JSON.stringify({ pid: 1234 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Managing background process…")
-    expect(header.textContent).toBe("Managing background process…")
+    const header = getHeader("bg: pid 1234")
     expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("pid 1234")).toBeTruthy()
   })
 
-  it("shows 'Managing background process…' when action is empty", () => {
+  it("shows only the tool name when action is empty", () => {
     const args = JSON.stringify({ action: "" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Managing background process…")
-    expect(header.textContent).toBe("Managing background process…")
+    const header = getHeader("bg")
     expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("bg")).toBeTruthy()
   })
 
-  it("shows 'Managing background process…' when action is whitespace", () => {
+  it("shows only the tool name when action is whitespace", () => {
     const args = JSON.stringify({ action: "   " })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const header = getHeader("Managing background process…")
-    expect(header.textContent).toBe("Managing background process…")
+    const header = getHeader("bg")
     expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("bg")).toBeTruthy()
   })
 
   it("hides args section (formattedArgs is null)", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ action: "list" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    await user.click(screen.getByRole("button"))
-    // Args section should not be rendered
+    // Args section is not rendered and there is nothing to open: not a button
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("bg (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("handles action case-insensitively", () => {
     const args = JSON.stringify({ action: "LIST" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    // Header is a plain string (no argument), located via title attribute.
-    expect(getHeader("Listing background processes…")).toBeTruthy()
+    expect(getHeader("bg: list")).toBeTruthy()
   })
 
   it("handles mixed case action", () => {
     const args = JSON.stringify({ action: "Status", pid: 42 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    // Pid is plain in status headers.
-    expectPlainArg(getHeader("Checking process 42…"), "42")
+    expectPlainArg(getHeader("bg: status pid 42"), "status pid 42")
   })
 
   it("is not expandable (no details to show)", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ action: "list" })
     render(<ToolCall name="bg" args={args} done={false} />)
-    const btn = screen.getByRole("button")
+    const row = screen.getByLabelText("bg (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
     // Verify clicking does not expand
-    await user.click(btn)
+    await user.click(row)
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -1207,6 +1281,9 @@ describe("ToolCall — shell terminal label and formatting", () => {
     expect(pre!.textContent).toContain("all tests passed")
     expect(screen.getByText("terminal")).toBeTruthy()
     expect(screen.queryByText("result")).toBeNull()
+    // The `[Succeeded]` status line is not output: the exit chip carries it
+    expect(pre!.textContent).not.toContain("[Succeeded]")
+    expect(screen.getByText("exit 0").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
   })
 
   it("$ prefix is non-selectable (select-none class)", async () => {
@@ -1312,9 +1389,11 @@ describe("ToolCall — shell syntax highlighting", () => {
     // formattedArgs is falsy → isShellTerminal is false; no terminal block rendered
     const args = JSON.stringify({ command: "", description: "Empty" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    // No expand button — nothing to show
-    const btn = screen.getByRole("button")
-    expect(btn).toBeTruthy()
+    // No expand button — nothing to show; the row falls back to the description
+    expect(screen.queryByRole("button")).toBeNull()
+    expect(screen.getByLabelText("shell (no details)")).toBeTruthy()
+    expect(screen.getByText("Empty")).toBeTruthy()
+    expect(document.querySelector("pre")).toBeNull()
   })
 })
 
@@ -1322,7 +1401,7 @@ describe("ToolCall — copy formattedArgs instead of raw JSON", () => {
   it("does not show a copy button for hidden web_search args", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ query: "python async", other: "ignored" })
-    render(<ToolCall name="web_search" args={args} done={false} />)
+    render(<ToolCall name="web_search" args={args} done result="1. Python async" />)
     await user.click(screen.getByRole("button"))
     expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
@@ -1330,7 +1409,7 @@ describe("ToolCall — copy formattedArgs instead of raw JSON", () => {
   it("does not show a copy button for hidden web_fetch args", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ url: "https://example.com", timeout: 30 })
-    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    render(<ToolCall name="web_fetch" args={args} done result="# Example" />)
     await user.click(screen.getByRole("button"))
     expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
@@ -1463,15 +1542,17 @@ describe("ToolCall — empty args {} show no args section", () => {
   it("hides args section when args is empty object", async () => {
     const user = userEvent.setup()
     render(<ToolCall name="custom_tool" args="{}" done={false} />)
-    const btn = screen.getByRole("button")
-    await user.click(btn)
+    // Nothing to show: a plain row, not a button
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("custom_tool (no details)"))
     // No args section should appear
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("shows tool name when args is empty object", () => {
     render(<ToolCall name="custom_tool" args="{}" done={false} />)
-    expect(screen.getByText("Custom Tool")).toBeTruthy()
+    expect(screen.getByText("custom_tool")).toBeTruthy()
+    expect(screen.queryByText("Custom Tool")).toBeNull()
   })
 
   it("shows result section even when args is empty", async () => {
@@ -1492,28 +1573,35 @@ describe("ToolCall — empty args {} show no args section", () => {
         name="shell"
         args={JSON.stringify({ command: "pytest" })}
         done={true}
-        result="[Failed — exit code 1]\n\nAssertionError"
+        result={"[Failed — exit code 1]\n\nAssertionError"}
       />,
     )
 
+    // Collapsed: the exit code rides in the meta column as an error chip
+    const chip = screen.getByText("exit 1").closest('[data-slot="chip"]')
+    expect(chip?.getAttribute("data-tone")).toBe("error")
+
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText(/Failed/)).toBeTruthy()
-    expect(screen.getByText(/AssertionError/)).toBeTruthy()
+    // Expanded: the status line is gone from the output, its body is kept
+    const pre = document.querySelector("pre")
+    expect(pre!.textContent).toContain("AssertionError")
+    expect(pre!.textContent).not.toContain("Failed")
+    expect(screen.queryByText(/\[Failed/)).toBeNull()
   })
 
   it("date tool with no args shows no args section", async () => {
     const user = userEvent.setup()
     render(<ToolCall name="date" done={false} />)
-    const btn = screen.getByRole("button")
-    await user.click(btn)
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("date (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("date tool with empty args shows no args section", async () => {
     const user = userEvent.setup()
     render(<ToolCall name="date" args="{}" done={false} />)
-    const btn = screen.getByRole("button")
-    await user.click(btn)
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(screen.getByLabelText("date (no details)"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
 })
@@ -1549,7 +1637,7 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
   it("does not expose hidden web_search args to the copy handler", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ query: "typescript generics" })
-    render(<ToolCall name="web_search" args={args} done={false} />)
+    render(<ToolCall name="web_search" args={args} done result="1. Generics" />)
     await user.click(screen.getByRole("button"))
     expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
@@ -1557,7 +1645,7 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
   it("does not expose hidden web_fetch args to the copy handler", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ url: "https://docs.python.org" })
-    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    render(<ToolCall name="web_fetch" args={args} done result="# Python" />)
     await user.click(screen.getByRole("button"))
     expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
@@ -1633,7 +1721,7 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     const user = userEvent.setup()
     const partialArgs = '{"patch_text": "*** Begin Patch\\n*** Update File: src/components/ToolResult.tsx\\n@@ -1,1 +1,2 @@\\n hello\\n+world'
     render(<ToolCall name="patch" args={partialArgs} done={false} />)
-    expect(getHeader("Patch: ToolResult.tsx")).toBeTruthy()
+    expect(getHeader("patch: ToolResult.tsx")).toBeTruthy()
     await user.click(screen.getByRole("button"))
     expect(screen.getAllByText("src/components/ToolResult.tsx").length).toBeGreaterThan(0)
   })

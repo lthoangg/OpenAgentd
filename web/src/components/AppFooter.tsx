@@ -14,12 +14,12 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   GitBranch,
   Settings,
-  Sparkles,
   Zap,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
+import { Chip } from '@/components/ui/chip'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -29,6 +29,7 @@ import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQ
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
 import { sessionsSpending } from '@/lib/active-sessions'
 import { formatSpend } from '@/utils/telemetryFormat'
+import { modelParts } from '@/utils/format'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -98,9 +99,9 @@ export interface AppFooterProps {
 
 /** Shared status-bar item: 20px tall, 11px text, keycap hover. */
 const ITEM =
-  'flex h-5 min-w-0 items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+  'flex h-5 min-w-0 items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 const ICON_ITEM =
-  'flex h-5 w-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+  'flex h-5 w-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
 function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
@@ -160,6 +161,13 @@ export const AppFooter = memo(function AppFooter({
     dirtyTotal > 0 ? `${dirtyTotal} changed files` : null,
     sync,
   ].filter(Boolean).join(' · ')
+  const branchLabel = [
+    `Git branch ${branch}`,
+    dirtyTotal > 0 ? `${dirtyTotal} changed files` : null,
+    sync,
+  ].filter(Boolean).join(', ')
+  const model = activeModel ? modelParts(activeModel) : null
+  const showThinking = Boolean(activeThinkingLevel) && activeThinkingLevel !== 'off'
 
   return (
     <footer
@@ -167,8 +175,7 @@ export const AppFooter = memo(function AppFooter({
         'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-[11px] text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
         className,
       )}
-      role="status"
-      aria-label="Application status"
+      aria-label="Status bar"
     >
       {/* Left cluster — workspace scope: connection, repository state. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
@@ -184,6 +191,7 @@ export const AppFooter = memo(function AppFooter({
                     type="button"
                     onClick={onOpenGitChanges}
                     className={cn(ITEM, 'max-w-[240px] font-mono')}
+                    aria-label={branchLabel}
                   >
                     <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                     <span className="truncate">{branch}</span>
@@ -195,7 +203,10 @@ export const AppFooter = memo(function AppFooter({
                   </button>
                 }
               />
-              <TooltipContent>{branchTooltip}</TooltipContent>
+              <TooltipContent>
+                <span className="block">{branchTooltip}</span>
+                <span className="block opacity-70">Open Git</span>
+              </TooltipContent>
             </Tooltip>
           </>
         )}
@@ -203,7 +214,7 @@ export const AppFooter = memo(function AppFooter({
 
       {/* Right cluster — session scope, then app utilities. */}
       <div className="flex min-w-0 shrink items-center justify-end gap-0.5">
-        {activeModel && (
+        {activeModel && model && (
           <Tooltip className="min-w-0">
             <TooltipTrigger
               className="min-w-0"
@@ -211,17 +222,20 @@ export const AppFooter = memo(function AppFooter({
                 <button
                   type="button"
                   onClick={onToggleSessionSettings}
-                  className={cn(ITEM, 'max-w-[320px] font-mono lg:max-w-[440px]')}
+                  className={cn(ITEM, 'max-w-[320px] gap-1.5 lg:max-w-[440px]')}
+                  aria-label={`Model ${activeModel}${showThinking ? `, thinking ${activeThinkingLevel}` : ''}. Change model`}
                 >
-                  <Sparkles size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                  <span className="truncate">{activeModel}</span>
-                  {activeThinkingLevel && activeThinkingLevel !== 'off' && (
-                    <span className="shrink-0 text-(--color-text-subtle)">({activeThinkingLevel})</span>
-                  )}
+                  <span className="truncate font-mono">{model.short}</span>
+                  {model.provider && <Chip variant="outline" mono>{model.provider}</Chip>}
+                  {showThinking && <Chip mono>{activeThinkingLevel}</Chip>}
                 </button>
               }
             />
-            <TooltipContent>{`Active Model: ${activeModel}${activeThinkingLevel ? ` (thinking: ${activeThinkingLevel})` : ''} (${sessionSettingsShortcut})`}</TooltipContent>
+            <TooltipContent>
+              <span className="block font-mono">{activeModel}</span>
+              {showThinking && <span className="block">{`Thinking: ${activeThinkingLevel}`}</span>}
+              <span className="block opacity-70">{`Change model · ${sessionSettingsShortcut}`}</span>
+            </TooltipContent>
           </Tooltip>
         )}
 
@@ -235,7 +249,7 @@ export const AppFooter = memo(function AppFooter({
                 </span>
               }
             />
-            <TooltipContent>Fast mode active</TooltipContent>
+            <TooltipContent>Fast mode is on: the provider's faster, pricier tier</TooltipContent>
           </Tooltip>
         )}
 
@@ -252,11 +266,14 @@ export const AppFooter = memo(function AppFooter({
                   aria-label={`Spend in the last 24 hours: ${spendLabel}`}
                 >
                   <span>{spendLabel}</span>
-                  <span className="text-(--color-text-subtle)">24h</span>
+                  <span className="text-(--color-text-subtle)">· 24h</span>
                 </button>
               }
             />
-            <TooltipContent>Spend in the last 24 hours · Open Telemetry</TooltipContent>
+            <TooltipContent>
+              <span className="block">Estimated spend, last 24 hours</span>
+              <span className="block opacity-70">Open Usage</span>
+            </TooltipContent>
           </Tooltip>
         )}
 

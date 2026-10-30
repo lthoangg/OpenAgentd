@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
 let agentsLoading = false
+let workspaceTree: unknown = undefined
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
 
@@ -13,7 +14,10 @@ mock.module('@tanstack/react-router', () => ({
 
 mock.module('@tanstack/react-query', () => ({
   useQueryClient: () => ({}),
-  useQuery: () => ({ data: undefined, isLoading: false }),
+  useQuery: (options: { queryKey?: readonly unknown[] }) => ({
+    data: options?.queryKey?.[0] === 'coding-workspace-tree' ? workspaceTree : undefined,
+    isLoading: false,
+  }),
   useInfiniteQuery: () => ({ data: undefined, isLoading: false }),
   QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
@@ -57,12 +61,14 @@ mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () 
 mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () => {}, prependWorkspaceSession: () => {} }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
+  getCodingWorkspaceTree: async () => ({ repositories: [], groups: [] }),
+  setCodingWorkspaceVisibility: async () => ({}),
   renderCommand: async () => ({ content: '' }),
   renderSnippet: async () => ({ content: '' }),
   resolveApiUrl: () => null,
   resolveSession: async () => ({ id: 'new-session', created: true }),
 }))
-mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, removeWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => <div data-testid="transcript" /> }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
@@ -139,6 +145,7 @@ afterEach(cleanup)
 
 beforeEach(() => {
   agentsLoading = false
+  workspaceTree = undefined
   useAgentStore.setState({ sessionId: null, _workspace: null })
 })
 
@@ -174,5 +181,32 @@ describe('AgentChatView — switching sessions', () => {
     render(<AgentChatView workspace="/repo/b" />)
 
     expect(screen.getByText('Opening workspace…')).toBeTruthy()
+  })
+
+  it('says the session is not found instead of asking for a workspace', () => {
+    render(<AgentChatView sessionId="gone" workspace={null} sessionNotFound />)
+
+    expect(screen.getByText('Session not found')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
+    expect(screen.queryByText('No workspace attached')).toBeNull()
+  })
+
+  it('keeps the transcript of a session whose folder is gone, under a banner', () => {
+    workspaceTree = { repositories: [{ path: '/repo/gone', name: 'gone', worktrees: [], missing: true }], groups: [] }
+    useAgentStore.setState({ sessionId: 'session-g', _workspace: '/repo/gone' })
+    render(<AgentChatView sessionId="session-g" workspace="/repo/gone" />)
+
+    expect(screen.getByTestId('transcript')).toBeTruthy()
+    expect(screen.getByText("This session's folder was moved or deleted.")).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open folder…' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Hide workspace' })).toBeTruthy()
+  })
+
+  it('shows no folder banner while the folder exists', () => {
+    workspaceTree = { repositories: [{ path: '/repo/b', name: 'b', worktrees: [] }], groups: [] }
+    useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
+
+    expect(screen.queryByText("This session's folder was moved or deleted.")).toBeNull()
   })
 })

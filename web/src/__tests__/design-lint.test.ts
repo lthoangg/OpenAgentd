@@ -100,6 +100,32 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'faint-focus-ring',
+    why: 'keyboard focus is a solid 2px ring or outline in --focus-ring; a 40% one is hard to see',
+    pattern: /focus-visible:(?:ring|outline)-\(--focus-ring\)\/\d+/g,
+    allow: {
+      // The composer's attachment strip: the composer stays exactly as it is.
+      'components/FilePreviewStrip.tsx': 5,
+    },
+  },
+  {
+    name: 'pulsing-text',
+    why: 'pulse only a live dot, a mark or a skeleton; pulsing words are hard to read (state goes in a chip or a static "…")',
+    pattern: /(?<![\w-])animate-pulse(?![\w-])/g,
+    allow: {
+      // Skeleton blocks.
+      'components/ui/skeleton.tsx': 1,
+      // Live dots and marks, not text.
+      'components/ui/goal-ring.tsx': 1,
+      'components/AgentChatView/index.tsx': 1,
+      'components/AppBackendPanel.tsx': 1,
+      'components/WorkSummary.tsx': 1,
+      'components/WorkspacePanel/GoalTabView.tsx': 1,
+      // The running tool's dot, not its label.
+      'components/ToolCall/index.tsx': 1,
+    },
+  },
+  {
     name: 'bracket-z-index',
     why: 'write numeric z-index as z-60, not z-[60]',
     pattern: /(?<![\w-])z-\[\d+\]/g,

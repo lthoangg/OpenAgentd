@@ -138,7 +138,7 @@ function RouteLoadingFallback() {
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
       <div className="flex flex-col items-center gap-4 text-center">
         <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
-        <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Loading OpenAgentd…</p>
+        <p role="status" className="text-sm font-medium text-(--color-text-muted)">Loading OpenAgentd…</p>
       </div>
     </div>
   )

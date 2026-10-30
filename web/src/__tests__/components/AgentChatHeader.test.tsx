@@ -36,11 +36,37 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
 }
 
 describe('AgentChatHeader', () => {
-  it('shows only the workspace title for mobile coding sessions', () => {
+  it('shows the session title with its workspace under it on mobile', () => {
     renderHeader()
 
+    const header = document.querySelector('header') as HTMLElement
+    expect(header).toHaveTextContent('Fix updater restart')
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
-    expect(screen.queryByText('Fix updater restart')).not.toBeInTheDocument()
+  })
+
+  it('keeps the mobile header to sidebar, title, Session settings, Review panel and More', () => {
+    const { container } = renderHeader({ isMobile: true })
+    const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
+    expect(names).toEqual(['Toggle sidebar', 'Session settings', 'Review panel', 'More actions'])
+  })
+
+  it('opens Session settings in one tap from the mobile header', async () => {
+    const user = userEvent.setup()
+    const onToggleAgentCapabilities = mock(() => undefined)
+    renderHeader({ isMobile: true, onToggleAgentCapabilities })
+
+    await user.click(screen.getByRole('button', { name: 'Session settings' }))
+    expect(onToggleAgentCapabilities).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks the mobile Session settings button active while the panel is open', () => {
+    renderHeader({ isMobile: true, agentCapabilitiesOpen: true })
+    expect(screen.getByRole('button', { name: 'Session settings' }).className).toContain('bg-(--bg-key)')
+  })
+
+  it('keeps the Session settings button off the desktop header', () => {
+    renderHeader({ isMobile: false })
+    expect(screen.queryByRole('button', { name: 'Session settings' })).not.toBeInTheDocument()
   })
 
   it('keeps the desktop header on the page tone in light mode', () => {
@@ -82,18 +108,19 @@ describe('AgentChatHeader', () => {
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
-    for (const name of ['Tasks', 'Workspace files', 'Session settings']) {
+    for (const name of ['Toggle sidebar', 'Session settings', 'Review panel', 'More actions']) {
       expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
     }
   })
 
-  it('renders token meter on mobile when headerTokens has zero usage', () => {
+  it('shows context use in the mobile More sheet, even with zero usage', () => {
     renderHeader({
       isMobile: true,
+      showMobileActions: true,
       headerTokens: { input: 0, output: 0, cached: 0 },
     })
 
-    expect(screen.getByRole('button', { name: /Input: 0/i })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'More actions' })).toHaveTextContent('Context (tokens)')
   })
 
   it('hides token meter when headerTokens is undefined', () => {
@@ -111,7 +138,7 @@ describe('AgentChatHeader', () => {
       onCloseMobileActionsMenu,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Open terminal' }))
+    await user.click(screen.getByRole('button', { name: 'Terminal' }))
 
     expect(onOpenTerminal).toHaveBeenCalledTimes(1)
     expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(1)
@@ -129,7 +156,7 @@ describe('AgentChatHeader', () => {
 
       await user.click(screen.getByRole('button', { name: 'Previous prompt' }))
       await user.click(screen.getByRole('button', { name: 'Next prompt' }))
-      await user.click(screen.getByRole('button', { name: 'Search files' }))
+      await user.click(screen.getByRole('button', { name: 'Find file' }))
       await user.click(screen.getByRole('button', { name: 'Command palette' }))
 
       expect(jumpToPrompt.mock.calls).toEqual([[-1], [1]])
@@ -256,14 +283,14 @@ describe('AgentChatHeader', () => {
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the live goal as a ring on the Task list button, desktop and phone, and nothing without one', () => {
+  it('shows the live goal as a ring on the Task list button (More on phones), and nothing without one', () => {
     const goalState = { tone: 'wait' as const, text: 'Goal · Waiting for your answer' }
     const { unmount } = renderHeader({ isMobile: false, goalState })
     expect(screen.getByRole('button', { name: 'Task list' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
     unmount()
 
     const phone = renderHeader({ isMobile: true, goalState })
-    expect(screen.getByRole('button', { name: 'Tasks' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'More actions' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
     phone.unmount()
 
     renderHeader({ isMobile: false })
@@ -275,12 +302,14 @@ describe('AgentChatHeader', () => {
     expect(screen.getByRole('button', { name: 'Task list' })).toBeDisabled()
   })
 
-  it('toggles tasks from the mobile header through the same handler', async () => {
+  it('opens tasks from the mobile More sheet through the same handler, then closes the sheet', async () => {
     const user = userEvent.setup()
     const onToggleTasks = mock(() => {})
-    renderHeader({ isMobile: true, onToggleTasks })
+    const onCloseMobileActionsMenu = mock(() => {})
+    renderHeader({ isMobile: true, showMobileActions: true, onToggleTasks, onCloseMobileActionsMenu })
 
-    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+    await user.click(screen.getByRole('button', { name: 'Tasks' }))
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
+    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(1)
   })
 })

@@ -40,7 +40,7 @@ describe('SessionTools', () => {
     renderTools()
 
     expect(toggle().getAttribute('aria-expanded')).toBe('true')
-    expect(within(toggle()).getByText('2')).toBeTruthy()
+    expect(within(toggle()).getByText('· 2')).toBeTruthy()
     expect(screen.getByText('read')).toBeTruthy()
     expect(screen.getByText('patch')).toBeTruthy()
   })
@@ -59,7 +59,7 @@ describe('SessionTools', () => {
     renderTools(BUILTINS, [], false)
 
     expect(toggle().getAttribute('aria-expanded')).toBe('false')
-    expect(within(toggle()).getByText('2')).toBeTruthy()
+    expect(within(toggle()).getByText('· 2')).toBeTruthy()
     expect(screen.queryByText('read')).toBeNull()
   })
 
@@ -73,21 +73,43 @@ describe('SessionTools', () => {
       ['github'],
     )
 
-    const builtinGroup = screen.getByRole('group', { name: /built-in/i })
+    const builtinGroup = screen.getByRole('group', { name: 'Built-in tools' })
+    expect(within(builtinGroup).getByText('· 2')).toBeTruthy()
     expect(within(builtinGroup).getByText('read')).toBeTruthy()
     expect(within(builtinGroup).queryByText('github_create_issue')).toBeNull()
 
-    const mcpGroup = screen.getByRole('group', { name: /github/i })
+    const mcpGroup = screen.getByRole('group', { name: 'MCP server github' })
+    expect(within(mcpGroup).getByRole('heading', { name: /MCP server github/ })).toBeTruthy()
+    expect(within(mcpGroup).getByText('· 2')).toBeTruthy()
     expect(within(mcpGroup).getByText('github_create_issue')).toBeTruthy()
     expect(within(mcpGroup).getByText('github_list_prs')).toBeTruthy()
   })
 
-  it('keeps a tool description hidden until its row is opened', async () => {
+  it('shows the first sentence of a description inline, and the full text only once the row is opened', async () => {
+    renderTools([
+      { name: 'read', description: 'Read a file from the workspace. Supports offsets and limits.' },
+      { name: 'patch', description: 'Apply a patch.' },
+    ])
+
+    // Inline: the first sentence; the rest stays hidden
+    expect(screen.getByText('Read a file from the workspace.')).toBeTruthy()
+    expect(screen.queryByText(/Supports offsets and limits/)).toBeNull()
+
+    const row = screen.getByRole('button', { name: /^read/ })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    await userEvent.click(row)
+    expect(row.getAttribute('aria-expanded')).toBe('true')
+    // Opened: the full description (the inline summary gives way to it)
+    expect(await screen.findByText(/Supports offsets and limits/)).toBeTruthy()
+    expect(screen.getByText(/Read a file from the workspace\. Supports offsets and limits\./)).toBeTruthy()
+  })
+
+  it('keeps a one-sentence description hidden from the expanded body until the row is opened', async () => {
     renderTools()
 
-    expect(screen.queryByText('Read a file from the workspace.')).toBeNull()
-
-    await userEvent.click(screen.getByRole('button', { name: /read/i }))
+    // Only the inline summary exists before opening
+    expect(screen.getAllByText('Read a file from the workspace.')).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: /^read/ }))
     expect(await screen.findByText('Read a file from the workspace.')).toBeTruthy()
   })
 
@@ -139,8 +161,9 @@ describe('SessionTools', () => {
   it('shows a configured server that has contributed no tools', () => {
     renderTools(BUILTINS, ['figma'])
 
-    const mcpGroup = screen.getByRole('group', { name: /figma/i })
-    expect(within(mcpGroup).getByText(/no tools available/i)).toBeTruthy()
+    const mcpGroup = screen.getByRole('group', { name: 'MCP server figma' })
+    expect(within(mcpGroup).getByText('The server is not ready, so it has no tools yet.')).toBeTruthy()
+    expect(within(mcpGroup).getByText('· 0')).toBeTruthy()
   })
 
   it('renders nothing at all when there are no tools and no servers', () => {

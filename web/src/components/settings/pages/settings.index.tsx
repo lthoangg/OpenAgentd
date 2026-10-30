@@ -12,9 +12,11 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { checkForUpdates, downloadUpdate, installUpdate, type UpdateStatus } from '@/lib/updater'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
 import { useHealthQuery } from '@/queries'
@@ -47,6 +49,7 @@ function IdentityCard({ version }: { version?: string }) {
 function UpdatesSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [pending, setPending] = useState(false)
+  const [confirmRestart, setConfirmRestart] = useState(false)
 
   async function onCheck() {
     setPending(true)
@@ -80,7 +83,7 @@ function UpdatesSection() {
         installUpdate(),
         new Promise<never>((_, reject) =>
           setTimeout(
-            () => reject(new Error('Restart timed out — please quit and reopen OpenAgentd.')),
+            () => reject(new Error('Restart timed out. Quit and reopen OpenAgentd.')),
             RESTART_TIMEOUT_MS,
           ),
         ),
@@ -122,30 +125,39 @@ function UpdatesSection() {
           </Button>
         ) : null}
         {status?.status === 'downloaded' ? (
-          <Button size="sm" variant="primary" disabled={pending} onClick={() => void onInstall()}>
-            Install and restart
+          <Button size="sm" variant="primary" disabled={pending} onClick={() => setConfirmRestart(true)}>
+            Install and restart…
           </Button>
         ) : null}
       </PanelRow>
+      <ConfirmDialog
+        open={confirmRestart}
+        onOpenChange={setConfirmRestart}
+        tone="default"
+        title="Install and restart OpenAgentd?"
+        description="OpenAgentd restarts to finish the update. Running agents stop."
+        confirmLabel="Install and restart"
+        onConfirm={() => { void onInstall() }}
+      />
     </PanelSection>
   )
 }
 
 function statusTitle(status: UpdateStatus | null): string {
-  if (!status) return 'Manual'
-  if (status.status === 'checking') return 'Checking'
-  if (status.status === 'available') return 'Available'
-  if (status.status === 'downloaded') return 'Ready'
-  if (status.status === 'installing') return 'Installing'
-  if (status.status === 'up_to_date') return 'Current'
-  if (status.status === 'error') return 'Error'
-  return 'Manual'
+  if (!status) return 'not checked'
+  if (status.status === 'checking') return 'checking'
+  if (status.status === 'available') return 'update available'
+  if (status.status === 'downloaded') return 'ready to install'
+  if (status.status === 'installing') return 'installing'
+  if (status.status === 'up_to_date') return 'up to date'
+  if (status.status === 'error') return 'error'
+  return 'not checked'
 }
 
 function statusDescription(status: UpdateStatus | null): string {
   if (!status) return 'Check for desktop app updates from here. Automatic checks also run in the background.'
   if (status.message) return status.message
-  if (status.status === 'checking') return 'Checking the desktop update feed...'
+  if (status.status === 'checking') return 'Checking for updates…'
   if (status.status === 'available') return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.`
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} has been downloaded and is ready to install.`
   if (status.status === 'installing') return 'Installing the update. OpenAgentd will restart when installation completes.'
@@ -171,7 +183,7 @@ function CommunityLink({ href, icon: Icon, tint, title, body }: {
       className={cn(
         'flex items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-4 text-left',
         'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
       )}
     >
       <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-sm', tint)} aria-hidden="true">
@@ -197,11 +209,12 @@ export function AboutSettingsPage() {
     <SettingsPage title="About OpenAgentd">
       <IdentityCard version={version} />
 
-      <UpdatesSection />
+      {/* Updates come from the desktop shell; the browser build has none. */}
+      {isDesktopShell() && <UpdatesSection />}
 
       <section aria-labelledby="settings-community-heading" className="space-y-3">
         <div className="select-none">
-          <h2 id="settings-community-heading" className={TEXT.title}>Community &amp; Support</h2>
+          <h2 id="settings-community-heading" className={TEXT.title}>Community and support</h2>
           <p className={cn('mt-1', TEXT.hint)}>Ask questions, share what you built, and follow along.</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -216,14 +229,14 @@ export function AboutSettingsPage() {
             href="https://discord.gg/cz6GQHQUMg"
             icon={MessageSquare}
             tint="bg-[#5865F2]/10 text-[#5865F2]"
-            title="Discord Server"
+            title="Discord server"
             body="Join the chat, ask questions, and get help from the community."
           />
           <CommunityLink
             href="https://www.facebook.com/groups/1256361676707935"
             icon={Users}
             tint="bg-[#1877F2]/10 text-[#1877F2]"
-            title="Facebook Group"
+            title="Facebook group"
             body="Connect with other OpenAgentd users and maintainers on Facebook."
           />
         </div>

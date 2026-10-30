@@ -42,8 +42,10 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
         checked && 'border-(--accent-blue) bg-(--accent-blue)',
         // Transitions
         'transition-colors duration-(--motion-base)',
+        // Touch: a 44px hit area around the 40×22 track, without moving the layout.
+        "pointer-coarse:before:absolute pointer-coarse:before:-inset-x-0.5 pointer-coarse:before:-inset-y-[11px] pointer-coarse:before:content-['']",
         // Focus ring
-        'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:ring-offset-1 outline-none',
+        'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1 outline-none',
         // Disabled
         disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
         className,

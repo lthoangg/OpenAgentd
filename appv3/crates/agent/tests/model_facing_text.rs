@@ -160,7 +160,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// reply line were tightened to pay for most of it.
 /// Raised by 185 for the Replying rule to name .md and .html files as Markdown
 /// links instead of code spans, so they open in the viewer from the transcript.
-const LEAD_ALWAYS_ON_CHARS: usize = 39_131;
+/// Raised by 590 for the `workspace` tool's `worktree` argument and the
+/// Delegating rule to give each independent feature its own worktree.
+const LEAD_ALWAYS_ON_CHARS: usize = 39_721;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

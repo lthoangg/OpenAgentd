@@ -82,6 +82,11 @@ async function renderDock() {
 }
 
 const tab = (name: string) => screen.getByRole('button', { name })
+/** New terminals open from the strip's "Open…" menu. */
+const newTerminal = async () => {
+  await act(async () => { tab('Open in the review panel').click() })
+  await act(async () => { screen.getByRole('menuitem', { name: 'Terminal' }).click() })
+}
 const order = () => Array.from(document.querySelectorAll('[data-dock-tab]')).map((node) => node.textContent)
 const frame = () => act(async () => { await new Promise((resolve) => requestAnimationFrame(() => resolve(null))) })
 
@@ -108,7 +113,7 @@ describe('dock tab order', () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
     act(() => tab('Terminal 1').click())
-    await act(async () => { tab('New terminal').click() })
+    await newTerminal()
     await waitFor(() => expect(order()).toEqual(['Terminal 1', 'Git', 'Terminal 2', 'Terminal 3']))
   })
 
@@ -119,7 +124,7 @@ describe('dock tab order', () => {
 
     const [first] = useTerminalStore.getState().sessionsForContext(WORKSPACE)
     act(() => useTerminalStore.getState().rename(first.id, 'Server'))
-    await act(async () => { tab('New terminal').click() })
+    await newTerminal()
     await waitFor(() => expect(order()).toEqual(['Terminal 2', 'Server', 'Terminal 3']))
   })
 })
@@ -147,11 +152,11 @@ describe('moving tabs from the keyboard and the menu', () => {
   it('Move Left and Move Right in the tab menu', async () => {
     await renderDock()
     fireEvent.contextMenu(tab('Terminal 1'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Move Right' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move right' }).click() })
     expect(order()).toEqual(['Terminal 2', 'Terminal 1'])
 
     fireEvent.contextMenu(tab('Terminal 1'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Move Left' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move left' }).click() })
     expect(order()).toEqual(['Terminal 1', 'Terminal 2'])
   })
 })

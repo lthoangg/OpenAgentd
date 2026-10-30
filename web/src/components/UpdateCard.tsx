@@ -254,14 +254,14 @@ export function UpdateCard() {
               title="Drag to move · Double-click to reset"
               onPointerDown={(e) => dragControls.start(e)}
               onDoubleClick={resetPosition}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
               <GripVertical className="size-3.5" />
             </button>
 
             <button
               type="button"
-              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 rounded-xs px-1"
+              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-xs px-1"
               onClick={() => setMinimized(false)}
               title="Click to expand update details"
             >
@@ -316,7 +316,7 @@ export function UpdateCard() {
                   title="Drag to move · Double-click to reset"
                   onPointerDown={(e) => dragControls.start(e)}
                   onDoubleClick={resetPosition}
-                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 mt-0.5"
+                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) mt-0.5"
                 >
                   <GripVertical className="size-3.5" />
                 </button>

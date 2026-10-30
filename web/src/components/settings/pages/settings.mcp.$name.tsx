@@ -24,6 +24,10 @@ import { Button } from '@/components/ui/button'
 import { PanelSection } from '@/components/ui/panel-section'
 import { PanelRow } from '@/components/ui/panel-row'
 import { Callout } from '@/components/ui/callout'
+import { Chip } from '@/components/ui/chip'
+import { TERMS } from '@/components/ui/term'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { McpStatusChip } from '@/components/McpStatusChip'
 import {
   Dialog,
   DialogContent,
@@ -58,6 +62,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
   const [draft, setDraft] = useState<McpServerDraft | null>(seedDraft)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState<'back' | 'discard' | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const [seededFor, setSeededFor] = useState<string | null>(null)
@@ -120,6 +125,11 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
   }
 
   const server = serverQ.data
+  // Back goes through the same unsaved-changes check as closing Settings.
+  const guardedBack = () => {
+    if (dirty) setConfirmLeave('back')
+    else onBack()
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -133,13 +143,22 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
         error={saveError}
         validationHint={firstError}
         onSave={handleSave}
-        onBack={onBack}
+        onBack={guardedBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={`${EDITOR_BODY} flex flex-col gap-8`}>
           {serverQ.isLoading && <SettingsSkeleton label="Loading server" />}
-          {serverQ.isError && <p className="text-sm text-(--color-error)">Failed to load: {String(serverQ.error)}</p>}
+          {serverQ.isError && (
+            <Callout
+              tone="error"
+              role="alert"
+              title={`Couldn't load ${name}`}
+              action={<Button size="sm" onClick={() => { void serverQ.refetch() }}>Retry</Button>}
+            >
+              {errorMessage(serverQ.error)}
+            </Callout>
+          )}
 
           {server && (
             <>
@@ -154,15 +173,17 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               {server.state === 'auth_required' && (
                 <Callout
                   tone="warning"
-                  title="OAuth needed to connect"
+                  title="Needs sign-in"
                   action={
                     <Button variant="default" size="sm" className="min-h-9 md:min-h-0"
                       onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
-                      {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
+                      {connectOAuthMut.isPending ? 'Signing in…' : 'Sign in'}
                     </Button>
                   }
                 >
-                  Authorize this server to let agents use its tools.
+                  {server.enabled
+                    ? 'Sign in with the server (OAuth) so agents can use its tools.'
+                    : 'Turn the server on and save before you sign in.'}
                 </Callout>
               )}
 
@@ -179,9 +200,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               {dirty && (
                 <div className="flex items-center gap-2 text-xs text-(--color-text-muted)">
                   <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                    onClick={() => seedDraft && setDraft(seedDraft)}>Discard changes</Button>
-                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                    onClick={onBack}>Leave without saving</Button>
+                    onClick={() => setConfirmLeave('discard')}>Discard changes…</Button>
                 </div>
               )}
 
@@ -189,6 +208,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 onRestart={handleRestart}
                 pending={restartMut.isPending}
                 enabled={server.enabled}
+                dirty={dirty}
                 onDelete={() => setDeleteOpen(true)}
                 deletePending={deleteMut.isPending}
               />
@@ -198,50 +218,52 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       </div>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent showCloseButton={false}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete MCP server</DialogTitle>
-            <DialogDescription>Delete `{name}` from mcp.json. This cannot be undone.</DialogDescription>
+            <DialogTitle>Delete &ldquo;{name}&rdquo;?</DialogTitle>
+            <DialogDescription>It is removed from mcp.json and its tools stop working. This can&apos;t be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete server</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmLeave !== null}
+        onOpenChange={(open) => { if (!open) setConfirmLeave(null) }}
+        title={confirmLeave === 'back' ? 'Leave without saving?' : 'Discard your changes?'}
+        description={`Your edits to ${name} go back to the last saved version.`}
+        confirmLabel={confirmLeave === 'back' ? 'Leave without saving' : 'Discard changes'}
+        onConfirm={() => {
+          if (seedDraft) setDraft(seedDraft)
+          if (confirmLeave === 'back') onBack()
+        }}
+      />
     </div>
   )
 }
 
 // ── Status ───────────────────────────────────────────────────────────────────
 
-const STATE_TONE: Record<string, string> = {
-  ready: 'text-(--accent-green-text)',
-  starting: 'text-(--accent-orange-text)',
-  auth_required: 'text-(--accent-orange-text)',
-  error: 'text-(--color-error)',
-}
-
 function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpServerQuery>['data']> }) {
   return (
-    <PanelSection title="Status" description="Live state of the running connection." flush>
+    <PanelSection title="Status" description="The running connection, not your unsaved edits." flush>
       <PanelRow label="State">
-        <span className={cn('text-xs font-medium', STATE_TONE[server.state] ?? 'text-(--color-text-muted)')}>{server.state}</span>
+        <McpStatusChip server={server} />
       </PanelRow>
       <PanelRow label="Transport">
-        <span className="font-mono text-xs text-(--color-text)">{server.transport}</span>
-      </PanelRow>
-      <PanelRow label="Enabled">
-        <span className="text-xs text-(--color-text)">{server.enabled ? 'Yes' : 'No'}</span>
+        <Chip mono variant="outline" title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
       </PanelRow>
       <PanelRow label="Started">
-        <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : '—'}</span>
+        <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : 'Not running'}</span>
       </PanelRow>
       {server.tool_names.length > 0 && (
-        <PanelRow label={`Tools (${server.tool_names.length})`} stack>
+        <PanelRow label={`Tools · ${server.tool_names.length}`} stack>
           <div className="flex flex-wrap gap-1.5">
             {server.tool_names.map((tool) => (
-              <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-muted)">{tool}</span>
+              <Chip key={tool} mono variant="outline">{tool}</Chip>
             ))}
           </div>
         </PanelRow>
@@ -253,11 +275,12 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
 // ── Manage ───────────────────────────────────────────────────────────────────
 
 function RestartCard({
-  onRestart, pending, enabled, onDelete, deletePending,
+  onRestart, pending, enabled, dirty, onDelete, deletePending,
 }: {
   onRestart: () => void
   pending: boolean
   enabled: boolean
+  dirty: boolean
   onDelete: () => void
   deletePending: boolean
 }) {
@@ -265,7 +288,13 @@ function RestartCard({
     <PanelSection title="Manage" flush>
       <PanelRow
         label="Restart server"
-        description={enabled ? 'Reconnect to pick up changes or recover from an error.' : 'Enable and save first to restart.'}
+        description={
+          !enabled
+            ? 'Turn the server on and save first.'
+            : dirty
+              ? 'Restart uses the saved settings. Save first to apply your edits.'
+              : 'Reconnect to pick up changes or recover from an error.'
+        }
       >
         <Button
           variant="default" size="sm"
@@ -276,10 +305,10 @@ function RestartCard({
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
       </PanelRow>
-      <PanelRow label="Delete server" description="Removes it from mcp.json. This cannot be undone.">
+      <PanelRow label="Delete server" description="Removes it from mcp.json. This can't be undone.">
         <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
           <Trash2 size={12} aria-hidden="true" />
-          {deletePending ? 'Deleting…' : 'Delete server'}
+          {deletePending ? 'Deleting…' : 'Delete server…'}
         </Button>
       </PanelRow>
     </PanelSection>

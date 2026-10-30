@@ -287,8 +287,8 @@ describe('WorkspacePanel – commit actions (undo/revert)', () => {
 
     // Verify context menu is open and shows "Undo commit" and "Revert commit"
     await waitFor(() => {
-      expect(screen.getByText('Undo commit')).toBeTruthy()
-      expect(screen.getByText('Revert commit')).toBeTruthy()
+      expect(screen.getByText('Undo commit…')).toBeTruthy()
+      expect(screen.getByText('Revert commit…')).toBeTruthy()
     })
   })
 
@@ -316,8 +316,8 @@ describe('WorkspacePanel – commit actions (undo/revert)', () => {
 
     // Verify dialog is open and shows "Undo commit" and "Revert commit"
     await waitFor(() => {
-      expect(screen.getByText('Undo commit')).toBeTruthy()
-      expect(screen.getByText('Revert commit')).toBeTruthy()
+      expect(screen.getByText('Undo commit…')).toBeTruthy()
+      expect(screen.getByText('Revert commit…')).toBeTruthy()
     })
   })
 
@@ -341,8 +341,11 @@ describe('WorkspacePanel – commit actions (undo/revert)', () => {
     const commitButton = screen.getByText('fix: handle null session').closest('button')!
     fireEvent.contextMenu(commitButton)
 
-    await waitFor(() => expect(screen.getByText('Undo commit')).toBeTruthy())
-    await user.click(screen.getByText('Undo commit'))
+    await waitFor(() => expect(screen.getByText('Undo commit…')).toBeTruthy())
+    await user.click(screen.getByText('Undo commit…'))
+    // Nothing runs until the confirmation is accepted.
+    expect(undoMock).not.toHaveBeenCalled()
+    await user.click(await screen.findByRole('button', { name: 'Undo commit' }))
 
     await waitFor(() => {
       expect(undoMock).toHaveBeenCalled()
@@ -369,8 +372,10 @@ describe('WorkspacePanel – commit actions (undo/revert)', () => {
     const commitButton = screen.getByText('fix: handle null session').closest('button')!
     fireEvent.contextMenu(commitButton)
 
-    await waitFor(() => expect(screen.getByText('Revert commit')).toBeTruthy())
-    await user.click(screen.getByText('Revert commit'))
+    await waitFor(() => expect(screen.getByText('Revert commit…')).toBeTruthy())
+    await user.click(screen.getByText('Revert commit…'))
+    expect(revertMock).not.toHaveBeenCalled()
+    await user.click(await screen.findByRole('button', { name: 'Revert commit' }))
 
     await waitFor(() => {
       expect(revertMock).toHaveBeenCalled()

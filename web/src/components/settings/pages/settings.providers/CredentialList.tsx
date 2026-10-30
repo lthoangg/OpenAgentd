@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 import type { ProviderInfo, StoredCredential } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/chip'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import {
   useDeleteProviderCredentialMutation,
@@ -15,13 +18,6 @@ import { useToastStore } from '@/stores/useToastStore'
 import { errorMessage } from '@/utils/errors'
 import { UsagePanel } from './UsagePanel'
 import { supportsCredentialUsage } from './providerUtils'
-
-const PILL = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium'
-const PILL_MUTED = `${PILL} border-(--color-border) bg-(--bg-key) text-(--color-text-muted)`
-const PILL_OK = `${PILL} border-(--color-success)/15 bg-(--color-success-subtle) text-(--color-success)`
-const PILL_INFO = `${PILL} border-transparent bg-(--accent-blue-soft) text-(--accent-blue-text)`
-const PILL_WARN = `${PILL} border-transparent bg-(--accent-orange-soft) text-(--accent-orange-text)`
-const PILL_ERROR = `${PILL} border-(--color-error)/15 bg-(--color-error-subtle) text-(--color-error)`
 
 /** `1h 42m`, `12m`, `40s` until `untilS` (unix seconds). */
 export function formatCountdown(untilS: number, nowMs: number): string {
@@ -49,21 +45,21 @@ function CooldownPill({ reason, until }: { reason: string | null; until: number 
     return () => window.clearInterval(t)
   }, [until])
   return (
-    <span className={PILL_WARN}>
+    <Chip tone="warning">
       {COOLDOWN_LABEL[reason ?? ''] ?? 'Cooling down'}
       {until ? ` · resets in ${formatCountdown(until, now)}` : ''}
-    </span>
+    </Chip>
   )
 }
 
 function StatusPills({ credential, pinned }: { credential: StoredCredential; pinned: boolean }) {
-  if (pinned) return <span className={PILL_MUTED}>Standby</span>
+  if (pinned) return <Chip title="Not used while the environment variable is set">Standby</Chip>
   return (
     <>
-      {credential.in_use && credential.status !== 'disabled' && <span className={PILL_INFO}>In use</span>}
-      {credential.status === 'ready' && <span className={PILL_OK}>Ready</span>}
-      {credential.status === 'disabled' && <span className={PILL_MUTED}>Disabled</span>}
-      {credential.status === 'needs_reconnect' && <span className={PILL_ERROR}>Reconnect required</span>}
+      {credential.in_use && credential.status !== 'disabled' && <Chip tone="info">In use</Chip>}
+      {credential.status === 'ready' && <Chip tone="success">Ready</Chip>}
+      {credential.status === 'disabled' && <Chip>Disabled</Chip>}
+      {credential.status === 'needs_reconnect' && <Chip tone="error">Reconnect required</Chip>}
       {credential.status === 'cooling_down' && <CooldownPill reason={credential.cooldown_reason} until={credential.cooldown_until} />}
     </>
   )
@@ -148,11 +144,11 @@ export function CredentialList({
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs font-semibold text-(--color-text)">From environment</span>
               {provider.env_var && <span className="font-mono text-[11px] text-(--color-text-muted)">{provider.env_var}</span>}
-              <span className={PILL_INFO}>In use</span>
-              <span className={PILL_MUTED}>Read-only</span>
+              <Chip tone="info">In use</Chip>
+              <Chip>Read-only</Chip>
             </div>
             <p className="mt-0.5 text-[11px] leading-relaxed text-(--color-text-muted)">
-              Exported where OpenAgentd was started. Stored {noun}s are not used while it is set.
+              Set in the environment when OpenAgentd started. Stored {noun}s are on standby while it is set.
             </p>
           </div>
         </div>
@@ -216,57 +212,66 @@ export function CredentialList({
                   Reconnect
                 </Button>
               )}
-              {supportsCredentialUsage(provider) && credentials.length > 1 && c.status !== 'needs_reconnect' && (
-                <Button type="button" size="xs" variant="ghost" aria-expanded={usageOpen === c.id} onClick={() => setUsageOpen(usageOpen === c.id ? null : c.id)}>
-                  Usage
-                </Button>
-              )}
-              {credentials.length > 1 && (
-                <>
-                  <Button type="button" size="icon-xs" variant="ghost" aria-label={`Move ${c.label} up`} disabled={i === 0 || order.isPending} onClick={() => move(i, -1)}>
-                    <ArrowUp size={12} aria-hidden="true" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={`Move ${c.label} down`}
-                    disabled={i === credentials.length - 1 || order.isPending}
-                    onClick={() => move(i, 1)}
-                  >
-                    <ArrowDown size={12} aria-hidden="true" />
-                  </Button>
-                </>
-              )}
               <Button type="button" size="xs" variant="ghost" onClick={() => setRenaming({ id: c.id, value: c.label })}>
                 Rename
               </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost"
-                onClick={() =>
-                  update.mutate(
-                    { providerId: provider.id, credentialId: c.id, body: { disabled: !c.disabled } },
-                    { onError: (err) => fail(c.disabled ? 'Could not enable' : 'Could not disable', err) },
-                  )
-                }
-              >
-                {c.disabled ? 'Enable' : 'Disable'}
+              <Button type="button" size="xs" variant="ghost" className="text-(--color-error) hover:text-(--color-error)" onClick={() => setConfirmRemove(c.id)}>
+                Remove…
               </Button>
-              {confirmRemove === c.id ? (
-                <Button type="button" size="xs" variant="ghost" className="text-(--color-error) hover:text-(--color-error)" onClick={() => void doRemove(c)}>
-                  Confirm remove
-                </Button>
-              ) : (
-                <Button type="button" size="xs" variant="ghost" className="text-(--color-error) hover:text-(--color-error)" onClick={() => setConfirmRemove(c.id)}>
-                  Remove
-                </Button>
-              )}
+              <Dropdown
+                aria-label={`More actions for ${c.label || c.id}`}
+                trigger="More"
+                align="end"
+                className="h-6 min-w-0 gap-1 border-transparent bg-transparent px-2 text-xs font-normal text-(--color-text-muted) shadow-none hover:bg-(--bg-key) hover:text-(--color-text)"
+              >
+                {[
+                  supportsCredentialUsage(provider) && credentials.length > 1 && c.status !== 'needs_reconnect' ? (
+                    <DropdownItem key="usage" onSelect={() => setUsageOpen(usageOpen === c.id ? null : c.id)}>
+                      {usageOpen === c.id ? 'Hide usage' : 'Show usage'}
+                    </DropdownItem>
+                  ) : null,
+                  credentials.length > 1 ? (
+                    <DropdownItem key="up" disabled={i === 0 || order.isPending} onSelect={() => move(i, -1)}>
+                      Try earlier
+                    </DropdownItem>
+                  ) : null,
+                  credentials.length > 1 ? (
+                    <DropdownItem key="down" disabled={i === credentials.length - 1 || order.isPending} onSelect={() => move(i, 1)}>
+                      Try later
+                    </DropdownItem>
+                  ) : null,
+                  <DropdownItem
+                    key="toggle"
+                    onSelect={() =>
+                      update.mutate(
+                        { providerId: provider.id, credentialId: c.id, body: { disabled: !c.disabled } },
+                        { onError: (err) => fail(c.disabled ? 'Could not enable' : 'Could not disable', err) },
+                      )
+                    }
+                  >
+                    {c.disabled ? 'Enable' : 'Disable'}
+                  </DropdownItem>,
+                ].filter(Boolean)}
+              </Dropdown>
             </div>
           </div>
         )
       })}
+      {(() => {
+        const target = credentials.find((c) => c.id === confirmRemove)
+        return (
+          <ConfirmDialog
+            open={target !== undefined}
+            onOpenChange={(open) => { if (!open) setConfirmRemove(null) }}
+            title={isOauth ? `Remove the account “${target?.label ?? ''}”?` : `Remove the key “${target?.label ?? ''}”?`}
+            description={isOauth
+              ? 'OpenAgentd signs out of this account. Sign in again to use it.'
+              : 'The key is deleted from this computer. Add it again to use it.'}
+            confirmLabel={isOauth ? 'Remove account' : 'Remove key'}
+            onConfirm={() => (target ? doRemove(target) : undefined)}
+          />
+        )
+      })()}
     </div>
   )
 }

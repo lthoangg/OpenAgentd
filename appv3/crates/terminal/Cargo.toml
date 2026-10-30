@@ -13,4 +13,4 @@ uuid.workspace = true
 portable-pty.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["signal", "process"] }

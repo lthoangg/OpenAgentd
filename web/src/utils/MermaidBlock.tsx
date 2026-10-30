@@ -47,7 +47,7 @@ function reason(cause: unknown): string {
 
 type View = 'diagram' | 'code'
 
-const TOGGLE_CLASS = 'h-5 rounded-xs px-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-text) aria-pressed:bg-(--bg-card) aria-pressed:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+const TOGGLE_CLASS = 'h-5 rounded-xs px-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-text) aria-pressed:bg-(--bg-card) aria-pressed:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
 const HEADER_BUTTON_CLASS = 'flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
 
@@ -102,7 +102,7 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
           onClick={onClose}
           aria-label="Close full screen"
           title="Close (Esc)"
-          className="flex h-9 w-9 items-center justify-center rounded-md bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+          className="flex h-9 w-9 items-center justify-center rounded-md bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
         >
           <X size={16} />
         </button>

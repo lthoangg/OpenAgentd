@@ -16,7 +16,9 @@ describe('AgentEditorPage — load failure', () => {
   it('shows the error message without the "Error:" type prefix', () => {
     render(<AgentEditorPage name="reviewer" onBack={() => {}} />)
 
-    expect(screen.getByText('Failed to load: agent not found')).toBeTruthy()
+    expect(screen.getByText("Couldn't load reviewer")).toBeTruthy()
+    expect(screen.getByText('agent not found')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.queryByText(/Error: agent not found/)).toBeNull()
   })
 })

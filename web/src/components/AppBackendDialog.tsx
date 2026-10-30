@@ -30,7 +30,7 @@ export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBack
         title="Backend connection"
         icon={<Server size={14} />}
         onClose={() => onOpenChange(false)}
-        closeLabel="Close backend connection"
+        closeLabel="Close server settings"
       />
 
       <div className={OVERLAY_BODY}>

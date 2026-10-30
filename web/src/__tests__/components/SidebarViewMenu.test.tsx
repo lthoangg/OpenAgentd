@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SidebarSectionHeader } from '@/components/Sidebar/SidebarSectionHeader'
@@ -11,46 +11,48 @@ beforeEach(() => {
   useSidebarViewStore.setState({ ...SIDEBAR_VIEW_DEFAULTS })
 })
 
-function renderHeader(groupBy: SidebarGroupBy = 'project', showNewSession = false, workspaceGroups: Array<{ id: string; name: string; brief: string | null }> = []) {
-  const onNewSession = mock(() => {})
+function renderHeader(groupBy: SidebarGroupBy = 'project', workspaceGroups: Array<{ id: string; name: string; brief: string | null }> = []) {
   render(
     <SidebarSectionHeader
       groupBy={groupBy}
       workspaceGroups={workspaceGroups}
-      showNewSession={showNewSession}
-      newSessionShortcut="⌘N"
       searchOpen={false}
-      onNewSession={onNewSession}
       onToggleSearch={() => {}}
       onCollapseAll={() => {}}
       onOpenFolder={() => {}}
     />,
   )
-  return { onNewSession }
 }
 
 describe('SidebarSectionHeader', () => {
-  it('names the tree Workspaces and keeps Collapse all to it', () => {
+  it('names the tree Workspaces and keeps Collapse all to it, in View options', async () => {
+    const user = userEvent.setup()
     renderHeader('project')
     expect(screen.getByText('Workspaces')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Collapse all workspaces' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'View options' }))
+    const menu = screen.getByRole('menu', { name: 'View options' })
+    expect(within(menu).getByRole('menuitem', { name: 'Collapse all workspaces' })).toBeTruthy()
+    expect(within(menu).getByRole('menuitem', { name: 'Open folder…' })).toBeTruthy()
+  })
+
+  it('has no New session button: sessions start from a folder, ⌘N or the palette', () => {
+    renderHeader('project')
     expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
   })
 
-  it('names a flat view Sessions and offers New session when asked', async () => {
+  it('names a flat view Sessions, with no Collapse all', async () => {
     const user = userEvent.setup()
-    const { onNewSession } = renderHeader('date', true)
+    renderHeader('date')
     expect(screen.getByText('Sessions')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Collapse all workspaces' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'New session' }))
-    expect(onNewSession).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'View options' }))
+    expect(screen.queryByRole('menuitem', { name: 'Collapse all workspaces' })).toBeNull()
   })
 })
 
 describe('SidebarViewMenu', () => {
   it('narrows the Project view to one workspace group', async () => {
     const user = userEvent.setup()
-    renderHeader('project', false, [{ id: 'g-acme', name: 'acme', brief: null }])
+    renderHeader('project', [{ id: 'g-acme', name: 'acme', brief: null }])
     await user.click(screen.getByRole('button', { name: 'View options' }))
     const filter = within(screen.getByRole('menu', { name: 'View options' })).getByRole('group', { name: 'Workspace group' })
     expect(within(filter).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['All workspaces', 'acme'])
@@ -62,7 +64,7 @@ describe('SidebarViewMenu', () => {
   it('offers no group filter without groups or outside Project view', async () => {
     const user = userEvent.setup()
     useSidebarViewStore.setState({ groupBy: 'date' })
-    renderHeader('date', false, [{ id: 'g-acme', name: 'acme', brief: null }])
+    renderHeader('date', [{ id: 'g-acme', name: 'acme', brief: null }])
     await user.click(screen.getByRole('button', { name: 'View options' }))
     expect(within(screen.getByRole('menu', { name: 'View options' })).queryByRole('group', { name: 'Workspace group' })).toBeNull()
   })
@@ -77,8 +79,8 @@ describe('SidebarViewMenu', () => {
     const menu = screen.getByRole('menu', { name: 'View options' })
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
     const groupBy = within(menu).getByRole('group', { name: 'Group by' })
-    expect(within(groupBy).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['Project', 'Status', 'Date', 'None'])
-    expect(within(groupBy).getByRole('menuitemradio', { name: 'Project' }).getAttribute('aria-checked')).toBe('true')
+    expect(within(groupBy).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['Workspace', 'Status', 'Date', 'None'])
+    expect(within(groupBy).getByRole('menuitemradio', { name: 'Workspace' }).getAttribute('aria-checked')).toBe('true')
     // Sessions are always in activity order: there is nothing to sort by.
     expect(within(menu).queryByRole('group', { name: 'Sort by' })).toBeNull()
     expect(within(menu).getByRole('menuitemcheckbox', { name: 'Show details' }).getAttribute('aria-checked')).toBe('true')
@@ -102,7 +104,7 @@ describe('SidebarViewMenu', () => {
   it('resets to the defaults and closes', async () => {
     const user = userEvent.setup()
     useSidebarViewStore.setState({ groupBy: 'none', showDetails: false })
-    renderHeader('none', true)
+    renderHeader('none')
     await user.click(screen.getByRole('button', { name: 'View options' }))
     await user.click(screen.getByRole('menuitem', { name: 'Reset to defaults' }))
 
@@ -116,7 +118,7 @@ describe('SidebarViewMenu', () => {
     const trigger = screen.getByRole('button', { name: 'View options' })
     await user.click(trigger)
 
-    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Project' }))
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Workspace' }))
     await user.keyboard('{ArrowDown}')
     expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Status' }))
     await user.keyboard('{ArrowUp}{ArrowUp}')

@@ -117,11 +117,11 @@ function stateLabel(state: PlanReviewState): string {
     case 'closed':
       return (state.reason && CLOSED_LABEL[state.reason]) ?? 'Closed without a review'
     case 'not_submitted':
-      return 'Not submitted — the agent asked a question first'
+      return 'Not submitted · the agent asked a question first'
     case 'merged':
       return 'Merged into the other plan review'
     case 'failed':
-      return state.message ? `Not submitted — ${state.message}` : 'Not submitted'
+      return state.message ? `Not submitted · ${state.message}` : 'Not submitted'
   }
 }
 
@@ -225,7 +225,7 @@ export function PlanReviewCard({
               'text-[11px] leading-relaxed font-medium',
               waiting && 'text-(--accent-orange-text)',
               state.kind === 'approved' && 'text-(--accent-green-text)',
-              state.kind === 'submitting' && 'animate-pulse text-(--color-text-muted)',
+              state.kind === 'submitting' && 'text-(--color-text-muted)',
               !waiting && state.kind !== 'approved' && state.kind !== 'submitting' && 'text-(--color-text-muted)',
             )}
           >

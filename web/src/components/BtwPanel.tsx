@@ -61,7 +61,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex h-7 origin-bottom-right items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
       >
         <MessageCircleQuestion size={13} aria-hidden="true" />
-        <span className="font-medium">BTW</span>
+        <span className="font-medium">Side questions</span>
         <span className="tabular-nums text-(--color-text-subtle)">{btw.total}</span>
       </button>
     )
@@ -93,7 +93,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
 
   return (
     <section
-      aria-label="Side question"
+      aria-label="Side questions"
       data-swipe-ignore
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -109,8 +109,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
       className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)"
     >
       <header className="flex h-8 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) pl-2.5 pr-1">
-        <MessageCircleQuestion size={13} aria-hidden="true" className="mr-1 shrink-0 text-(--color-text-subtle)" />
-        <span className="font-medium text-(--color-text)">Side question</span>
+        <span className="font-medium text-(--color-text)">Side questions</span>
         <span className="ml-1.5 hidden truncate text-(--color-text-subtle) sm:inline">Not added to the chat</span>
         <span className="flex-1" />
         {count > 1 && (
@@ -140,7 +139,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
           <Trash2 />
           {confirmClear && <span>Clear all</span>}
         </Button>
-        <Button size="icon-xs" variant="ghost" aria-label="Close side question" title="Close (Esc)" onClick={() => store.dismiss(sessionId)}>
+        <Button size="icon-xs" variant="ghost" aria-label="Close side questions" title="Close (Esc)" onClick={() => store.dismiss(sessionId)}>
           <X />
         </Button>
       </header>
@@ -176,7 +175,7 @@ export function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; s
       {exchange.answer ? (
         <MarkdownBlock content={exchange.answer} sessionId={sessionId} isStreaming={streaming && exchange.live} />
       ) : streaming ? (
-        <p className="animate-pulse text-(--color-text-subtle) motion-reduce:animate-none">Thinking…</p>
+        <p role="status" className="text-(--color-text-subtle)">Thinking…</p>
       ) : null}
       {exchange.status === 'error' && (
         <p role="alert" className="text-(--color-error)">{exchange.error || 'The side question failed.'}</p>

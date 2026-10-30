@@ -11,6 +11,7 @@ import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateAgentDraft } from '@/components/settings/schema'
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,8 @@ import {
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 import { errorMessage } from '@/utils/errors'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 
 interface AgentEditorPageProps {
   name?: string
@@ -38,6 +41,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [mode, setMode] = useState<'form' | 'raw'>('form')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [confirmLeave, setConfirmLeave] = useState<'back' | 'discard' | null>(null)
 
   // Re-seed draft when navigating to a different agent or when the query
   // first resolves. Using the agent name as the sentinel means switching
@@ -53,6 +57,12 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
   const draftErrors = dirty ? validateAgentDraft(draft) : null
   const invalid = draftErrors !== null
   const firstDraftError = draftErrors ? Object.values(draftErrors)[0] : null
+  useUnsavedSettings(dirty || updateMut.isPending)
+  // Back goes through the same unsaved-changes check as closing Settings.
+  const guardedBack = () => {
+    if (dirty) setConfirmLeave('back')
+    else onBack()
+  }
 
   const handleSave = async () => {
     setSaveError(null)
@@ -62,7 +72,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
     }
     try {
       const res = await updateMut.mutateAsync({ content: draft })
-      push({ tone: 'success', title: `Saved "${name}"`, description: 'Active on next turn.' })
+      push({ tone: 'success', title: `Saved "${name}"`, description: 'Applies to your next message.' })
       setDraft(res.content)
       refetch()
     } catch (err) {
@@ -75,7 +85,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
   const handleDelete = async () => {
     try {
       await deleteMut.mutateAsync(name)
-      push({ tone: 'success', title: `Deleted agent "${name}"` })
+      push({ tone: 'success', title: `Deleted subagent "${name}"` })
       setDeleteOpen(false)
       onBack()
     } catch (err) {
@@ -87,7 +97,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
     <div className="flex h-full flex-col">
       <EditorSubHeader
         kind="agent"
-        name={name === 'code' ? 'Coding agent' : `Member: ${name}`}
+        name={name}
         path={data?.path}
         dirty={dirty}
         invalid={invalid}
@@ -97,13 +107,22 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
         mode={mode}
         onModeChange={setMode}
         onSave={handleSave}
-        onBack={onBack}
+        onBack={guardedBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
           {isLoading && <SettingsSkeleton label="Loading agent" />}
-          {isError && <p className="text-sm text-(--color-error)">Failed to load: {errorMessage(error)}</p>}
+          {isError && (
+            <Callout
+              tone="error"
+              role="alert"
+              title={`Couldn't load ${name}`}
+              action={<Button size="sm" onClick={() => { void refetch() }}>Retry</Button>}
+            >
+              {errorMessage(error)}
+            </Callout>
+          )}
           {data && (
             <AgentForm
               initial={data.content}
@@ -119,16 +138,10 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
           <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
             <div className="flex items-center gap-2">
               {dirty && (
-                <>
-                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                    onClick={() => data && setDraft(data.content)}>
-                    Discard changes
-                  </Button>
-                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                    onClick={onBack}>
-                    Leave without saving
-                  </Button>
-                </>
+                <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
+                  onClick={() => setConfirmLeave('discard')}>
+                  Discard changes…
+                </Button>
               )}
             </div>
             {name !== 'code' && (
@@ -139,7 +152,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
                 onClick={() => setDeleteOpen(true)}
               >
                 <Trash2 size={12} className="mr-1" />
-                Delete profile
+                Delete subagent…
               </Button>
             )}
           </div>
@@ -149,9 +162,9 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete profile &ldquo;{name}&rdquo;?</DialogTitle>
+            <DialogTitle>Delete subagent &ldquo;{name}&rdquo;?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the agent profile from your configuration directory. This cannot be undone.
+              Its file is deleted from your configuration folder. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -163,11 +176,23 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
               onClick={handleDelete}
               disabled={deleteMut.isPending}
             >
-              {deleteMut.isPending ? 'Deleting…' : 'Delete profile'}
+              {deleteMut.isPending ? 'Deleting…' : 'Delete subagent'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmLeave !== null}
+        onOpenChange={(open) => { if (!open) setConfirmLeave(null) }}
+        title={confirmLeave === 'back' ? 'Leave without saving?' : 'Discard your changes?'}
+        description={`Your edits to ${name} go back to the last saved version.`}
+        confirmLabel={confirmLeave === 'back' ? 'Leave without saving' : 'Discard changes'}
+        onConfirm={() => {
+          if (data) setDraft(data.content)
+          if (confirmLeave === 'back') onBack()
+        }}
+      />
     </div>
   )
 }

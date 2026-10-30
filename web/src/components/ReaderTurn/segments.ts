@@ -15,15 +15,16 @@
  *
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
- * An ``ask_user`` or plan review card stays out only while it waits on the
- * user; once answered or closed it is one more step of the work. A goal
+ * An ``ask_user``, plan review or change-confirmation card stays out only
+ * while it waits on the user; once answered or closed it is one more step
+ * of the work. A goal
  * claim stays out when it is the goal's outcome (checking, achieved, blocked,
  * or paused); a rejected claim the agent keeps working past folds.
  */
 import type { ContentBlock } from '@/api/types'
 import { isGoalOutcome, UPDATE_GOAL_TOOL } from '@/lib/goal'
 import { isAgentReport } from '@/utils/turns'
-import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
+import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 
 import { patchFileStats } from '../ToolCall/diffUtils'
 import { isFailedResult } from '../ToolCall/toolResultStatus'
@@ -39,7 +40,7 @@ export type AwaitsUser = (block: ContentBlock) => boolean
 
 /** Calls that pause the turn on the user; see ``useQuestionAwaitsUser``. */
 function isUserGated(block: ContentBlock): boolean {
-  return block.toolName === 'ask_user' || isPlanSubmission(block.toolName, block.toolArgs)
+  return block.toolName === 'ask_user' || isPlanSubmission(block.toolName, block.toolArgs) || opensConfirmation(block.toolName, block.toolArgs)
 }
 
 function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {

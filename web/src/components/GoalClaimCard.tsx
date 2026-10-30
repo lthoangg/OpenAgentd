@@ -1,16 +1,17 @@
 /**
  * The ``update_goal`` call as a goal-check card, in the transcript's card
- * family (plan reviews, questions): a caps header strip, then what the check
- * made of the claim, then the evidence the agent claimed.
+ * family (plan reviews, questions): a caps "Goal check" strip with the
+ * outcome chip, then what the check made of the claim, then the evidence
+ * the agent claimed.
  *
- * Colour carries the outcome only. The achieved and blocked cards tint their
- * header strip (the blue accent, error); a claim being checked or not yet accepted
- * stays neutral, with an orange "Not yet" as its one accent. The evidence
- * starts open on an achieved goal, since it is what the user judges, and
- * closed while the agent keeps working.
+ * Colour carries the outcome only, on the chip: blue while checking or once
+ * achieved, orange for "not yet", red for blocked. The evidence starts open
+ * on an achieved goal, since it is what the user judges, and closed while
+ * the agent keeps working.
  */
 import { memo, useId, useMemo, useState } from 'react'
-import { ChevronRight, CircleAlert, CircleCheck, Target } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { Chip, type ChipTone } from '@/components/ui/chip'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Collapsible } from '@/components/ui/collapsible'
 import { parseGoalClaim, type GoalClaim } from '@/lib/goal'
@@ -29,7 +30,7 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         onClick={() => setToggled(!open)}
         aria-expanded={open}
         aria-controls={listId}
-        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:min-h-9"
+        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
       >
         <ChevronRight
           size={12}
@@ -49,22 +50,17 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
 
 type CardKind = Exclude<GoalClaim['kind'], 'other'>
 
-const FRAME: Record<CardKind, { title: string; icon: typeof Target; border: string; header: string }> = {
-  checking: { title: 'Goal check', icon: Target, border: 'border-(--color-border)', header: 'border-(--color-border) text-(--color-text-muted)' },
-  rejected: { title: 'Goal check', icon: Target, border: 'border-(--color-border)', header: 'border-(--color-border) text-(--color-text-muted)' },
-  unchecked: { title: 'Goal check', icon: Target, border: 'border-(--color-border)', header: 'border-(--color-border) text-(--color-text-muted)' },
-  achieved: {
-    title: 'Goal achieved',
-    icon: CircleCheck,
-    border: 'border-(--accent-blue)/35',
-    header: 'border-(--accent-blue)/35 bg-(--accent-blue-soft) text-(--accent-blue-text)',
-  },
-  blocked: {
-    title: 'Goal blocked',
-    icon: CircleAlert,
-    border: 'border-(--color-error)/25',
-    header: 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)',
-  },
+/**
+ * One card frame for every outcome (DESIGN.md → Transcript cards): a caps
+ * "Goal check" strip with the outcome as a chip on its right. Colour sits
+ * on the chip only; the frame stays neutral.
+ */
+const OUTCOME: Record<CardKind, { label: string; tone: ChipTone; dot?: boolean }> = {
+  checking: { label: 'checking…', tone: 'info', dot: true },
+  rejected: { label: 'not yet', tone: 'warning' },
+  unchecked: { label: 'check failed', tone: 'neutral' },
+  achieved: { label: 'achieved', tone: 'info' },
+  blocked: { label: 'blocked', tone: 'error' },
 }
 
 export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, animatesIn = false }: {
@@ -80,50 +76,46 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
   if (claim.kind === 'other') {
     return (
       <p className="my-2 py-1 font-mono text-xs text-(--color-text-muted)">
-        <span className="font-semibold text-(--color-text)">Update Goal</span>: {claim.text.split('\n')[0]}
+        <span className="font-medium text-(--color-text)">update_goal</span> {claim.text.split('\n')[0]}
       </p>
     )
   }
 
-  const frame = FRAME[claim.kind]
-  const Icon = frame.icon
+  const outcome = OUTCOME[claim.kind]
+  const outcomeLabel = claim.kind === 'rejected' && claim.paused ? 'not met' : outcome.label
 
   return (
     <section
-      aria-label={frame.title}
+      aria-label={`Goal check: ${outcomeLabel}`}
       data-goal-claim={claim.kind}
-      className={cn('my-2 overflow-hidden rounded-md border bg-(--bg-card)', frame.border, animatesIn && 'tool-row-enter')}
+      className={cn('my-2 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)', animatesIn && 'tool-row-enter')}
     >
-      <div className={cn('flex items-center gap-1.5 border-b px-3 py-1.5 label-caps', frame.header)}>
-        <Icon size={12} aria-hidden className={cn(claim.kind === 'checking' && 'animate-pulse motion-reduce:animate-none')} />
-        {frame.title}
+      <div className="flex items-center justify-between gap-2 border-b border-(--color-border) px-3 py-1.5">
+        <span className="label-caps text-(--color-text-muted)">Goal check</span>
+        <Chip tone={outcome.tone} dot={outcome.dot} role={claim.kind === 'checking' ? 'status' : undefined}>{outcomeLabel}</Chip>
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 px-3 py-2">
         {claim.kind === 'checking' && (
-          <span role="status" className="text-[11px] leading-relaxed font-medium text-(--color-text-muted)">
-            <span className="animate-pulse motion-reduce:animate-none">Checking the claim…</span>
-          </span>
+          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">A separate check is reviewing the claim.</span>
         )}
         {claim.kind === 'rejected' && (
-          <span className="text-[11px] leading-relaxed">
-            <span className="font-medium text-(--accent-orange-text)">{claim.paused ? 'Not met' : 'Not yet'}</span>
-            <span className="text-(--color-text-muted)">{claim.paused ? ' · goal paused until you resume it' : ' · the agent keeps working'}</span>
+          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            {claim.paused ? 'Goal paused until you resume it.' : 'The agent keeps working.'}
           </span>
         )}
         {claim.kind === 'unchecked' && (
-          <span className="text-[11px] leading-relaxed">
-            <span className="font-medium text-(--color-text-2)">Check failed</span>
-            <span className="text-(--color-text-muted)">{claim.paused ? ' · goal paused until you resume it' : ' · the agent can claim again'}</span>
+          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            {claim.paused ? 'The check could not run. Goal paused until you resume it.' : 'The check could not run. The agent can claim again.'}
           </span>
         )}
         {claim.kind !== 'checking' && claim.reason && (
           <p className="text-xs leading-relaxed break-words text-(--color-text) selectable-text"><InlineCodeText text={claim.reason} /></p>
         )}
         {claim.kind === 'blocked' && (
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">Paused until you resume it</span>
+          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">Goal paused until you resume it.</span>
         )}
         {claim.kind !== 'blocked' && claim.evidence.length > 0 && (
-          <Evidence items={claim.evidence} label={claim.kind === 'achieved' ? 'Evidence' : 'Claimed evidence'} defaultOpen={claim.kind === 'achieved'} />
+          <Evidence items={claim.evidence} label="Evidence" defaultOpen={claim.kind === 'achieved'} />
         )}
       </div>
     </section>

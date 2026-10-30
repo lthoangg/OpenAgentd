@@ -32,12 +32,12 @@ export function ConnectionBanner() {
     <>
       {health.isError && (
         <div
-          role="status"
+          role="alert"
           className="flex min-h-8 shrink-0 items-center gap-2 border-b border-(--color-warning)/30 bg-(--color-warning-subtle) py-1 pr-2 pl-3 text-xs text-(--accent-orange-text)"
         >
           <span className="size-1.5 shrink-0 rounded-full bg-(--color-error)" aria-hidden="true" />
           <p className="min-w-0 flex-1">
-            Can't reach {label === 'builtin' ? 'the builtin backend' : <span className="font-mono">{label}</span>}. Retrying…
+            Can't reach {label === 'built-in' ? 'the built-in server' : <span className="font-mono">{label}</span>}. Retrying…
           </p>
           <Button type="button" size="xs" onClick={() => setDialogOpen(true)}>
             Change server

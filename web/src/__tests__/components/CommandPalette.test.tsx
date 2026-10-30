@@ -312,7 +312,7 @@ describe("CommandPalette", () => {
       />,
     )
 
-    expect(screen.getByPlaceholderText("Search files…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Find a file…")).toBeTruthy()
     expect(screen.getByText("App.tsx")).toBeTruthy()
     expect(screen.queryByText("New Chat")).toBeNull()
   })
@@ -320,7 +320,7 @@ describe("CommandPalette", () => {
   it("keeps the Quick Open file-search affordance when the workspace is empty", () => {
     render(<QuickOpen workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} />)
 
-    expect(screen.getByPlaceholderText("Search files…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Find a file…")).toBeTruthy()
     expect(screen.getByText(/No files match/)).toBeTruthy()
   })
 
@@ -332,7 +332,7 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    const input = screen.getByPlaceholderText("Search files…")
+    const input = screen.getByPlaceholderText("Find a file…")
     expect(input).toBeTruthy()
     expect(input.className).toContain("focus:outline-none")
     expect(input.className).toContain("focus-visible:outline-none")
@@ -381,7 +381,7 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    await user.type(screen.getByPlaceholderText("Search files…"), "App")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "App")
     expect(screen.getByText("App.tsx")).toBeTruthy()
     expect(screen.queryByText("config.ts")).toBeNull()
   })
@@ -395,7 +395,7 @@ describe("CommandPalette", () => {
     render(
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Search files…"), "lib")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "lib")
     expect(screen.getByText("utils.ts")).toBeTruthy()
     expect(screen.queryByText("App.tsx")).toBeNull()
   })
@@ -413,7 +413,7 @@ describe("CommandPalette", () => {
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
     // "dockcom" is not a substring of the path, only an ordered subsequence.
-    await user.type(screen.getByPlaceholderText("Search files…"), "dockcom")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "dockcom")
     expect(screen.getByText("docker-compose.yml")).toBeTruthy()
     expect(screen.queryByText("README.md")).toBeNull()
   })
@@ -427,7 +427,7 @@ describe("CommandPalette", () => {
     render(
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Search files…"), "index.ts")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "index.ts")
     // Both contain the subsequence; the exact match must rank first.
     const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('.ts'))
     expect(rows[0].textContent).toContain('index.ts')
@@ -442,7 +442,7 @@ describe("CommandPalette", () => {
     render(
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Search files…"), "clip")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "clip")
     const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('clip.mp4'))
     expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('assets/media/'), expect.stringContaining('dist/')])
   })
@@ -475,7 +475,7 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    await user.type(screen.getByPlaceholderText("Search files…"), "xyznotfound")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "xyznotfound")
     expect(screen.getByText(/No files match/)).toBeTruthy()
   })
 
@@ -908,7 +908,7 @@ describe("QuickOpen — > command mode", () => {
     render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
 
     expect(screen.queryByText("New Chat")).toBeNull()
-    await user.type(screen.getByPlaceholderText("Search files…"), ">side")
+    await user.type(screen.getByPlaceholderText("Find a file…"), ">side")
 
     expect(screen.getByText("Toggle Sidebar")).toBeTruthy()
     expect(screen.queryByText("New Chat")).toBeNull()
@@ -922,7 +922,7 @@ describe("QuickOpen — > command mode", () => {
     const commands: Command[] = [{ id: "c1", label: "Run Me", action: () => { ran = true } }]
     render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => { opened = true }} onClose={() => {}} />)
 
-    await user.type(screen.getByPlaceholderText("Search files…"), ">")
+    await user.type(screen.getByPlaceholderText("Find a file…"), ">")
     await user.keyboard("{Enter}")
 
     expect(ran).toBe(true)
@@ -946,7 +946,7 @@ describe("QuickOpen — > command mode", () => {
     ]
     render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => {}} onClose={() => {}} />)
 
-    await user.type(screen.getByPlaceholderText("Search files…"), ">switch")
+    await user.type(screen.getByPlaceholderText("Find a file…"), ">switch")
     await user.keyboard("{ArrowRight}")
 
     expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
@@ -963,7 +963,7 @@ describe("QuickOpen — a query with a line", () => {
   it("opens already searching for its initial query, the query selected", () => {
     render(<QuickOpen workspaceFiles={files} initialQuery="Button.tsx" onFileOpen={() => {}} onClose={() => {}} />)
 
-    const input = screen.getByPlaceholderText("Search files…") as HTMLInputElement
+    const input = screen.getByPlaceholderText("Find a file…") as HTMLInputElement
     expect(input.value).toBe("Button.tsx")
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Button.tsx".length])
     expect(screen.getAllByText("Button.tsx")).toHaveLength(2)
@@ -1009,7 +1009,7 @@ describe("QuickOpen — a query with a line", () => {
     let opened: { path: string; line?: number } | null = null
     render(<QuickOpen workspaceFiles={files} onFileOpen={(file, line) => { opened = { path: file.path, line } }} onClose={() => {}} />)
 
-    await user.type(screen.getByPlaceholderText("Search files…"), "App.tsx")
+    await user.type(screen.getByPlaceholderText("Find a file…"), "App.tsx")
     await user.keyboard("{Enter}")
 
     expect(opened as { path: string; line?: number } | null).toEqual({ path: 'web/src/App.tsx', line: undefined })

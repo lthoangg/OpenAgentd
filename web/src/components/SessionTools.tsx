@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S } from '@/lib/motion'
-import { ChevronDown, Plug, Wrench } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 import type { AgentInfo } from '@/api/types'
 import { TEXT } from '@/components/ui/panel-tokens'
@@ -56,10 +56,17 @@ function groupTools(tools: AgentInfo['tools'], mcpServers: string[]): ToolGroup[
 
 function CountBadge({ count }: { count: number }) {
   return (
-    <span className="rounded-full bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] font-normal text-(--color-text-subtle)">
-      {count}
+    <span className="text-[11px] font-normal tabular-nums text-(--color-text-subtle)">
+      · {count}
     </span>
   )
+}
+
+/** The first sentence of a tool description, as plain text, for the row. */
+function summaryLine(description: string): string {
+  const text = description.trim().split(/\n\s*\n/)[0].replace(/[`*_#>]/g, '').replace(/\s+/g, ' ')
+  const end = text.search(/[.!?](\s|$)/)
+  return end > 0 ? text.slice(0, end + 1) : text
 }
 
 function ToolRow({ name, description }: { name: string; description: string }) {
@@ -72,12 +79,14 @@ function ToolRow({ name, description }: { name: string; description: string }) {
         type="button"
         onClick={() => hasDesc && setOpen((v) => !v)}
         aria-expanded={hasDesc ? open : undefined}
-        className={`flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left md:min-h-10 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`flex min-h-9 w-full items-center gap-3 px-4 py-2 text-left md:min-h-10 md:py-2.5 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
       >
-        <Wrench size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden />
-        <code className="flex-1 truncate font-mono text-xs font-medium text-(--color-text)">
+        <code className="shrink-0 font-mono text-xs font-medium text-(--color-text)">
           {name}
         </code>
+        <span className={cn('min-w-0 flex-1 truncate', TEXT.hint)}>
+          {hasDesc && !open ? summaryLine(description) : ''}
+        </span>
         {hasDesc && (
           <ChevronDown
             size={12}
@@ -95,7 +104,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
             transition={{ duration: reduceMotion ? 0 : DURATIONS_S.fast }}
             className="overflow-hidden"
           >
-            <div className="tool-desc pr-4 pb-3 pl-10 text-(--color-text-muted)">
+            <div className="tool-desc px-4 pb-3 text-(--color-text-muted)">
               <MarkdownBlock content={description.trim()} />
             </div>
           </motion.div>
@@ -106,21 +115,18 @@ function ToolRow({ name, description }: { name: string; description: string }) {
 }
 
 function ToolGroupSection({ server, tools }: ToolGroup) {
-  const label = server === null ? 'Built-in' : `MCP · ${server}`
+  const label = server === null ? 'Built-in tools' : `MCP server ${server}`
   return (
     <div role="group" aria-label={label}>
-      <div className="flex items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-key)/20 px-4 py-2">
-        {server !== null && (
-          <Plug size={11} className="text-(--color-text-subtle)" aria-hidden />
-        )}
+      <div className="flex items-center gap-1 border-b border-(--color-border-subtle) bg-(--bg-key)/20 px-4 py-2">
         <h3 className={cn('font-medium', TEXT.subtle)}>
-          {label}
+          {server === null ? 'Built-in tools' : <>MCP server <span className="font-mono">{server}</span></>}
         </h3>
         <CountBadge count={tools.length} />
       </div>
       {tools.length === 0 ? (
         <p className={cn('px-4 py-3', TEXT.hint)}>
-          Server not ready — no tools available.
+          The server is not ready, so it has no tools yet.
         </p>
       ) : (
         <div className="divide-y divide-(--color-border-subtle)">
@@ -170,7 +176,7 @@ export function SessionTools({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="-mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] items-center gap-2 rounded-sm px-1.5 text-left transition-colors hover:bg-(--bg-key)/40 md:min-h-7"
+          className="-mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] items-center gap-2 rounded-sm px-1.5 text-left transition-colors hover:bg-(--bg-key)/40 md:min-h-7 pointer-coarse:min-h-9"
         >
           <span className={TEXT.title}>Tools</span>
           <CountBadge count={tools.length} />

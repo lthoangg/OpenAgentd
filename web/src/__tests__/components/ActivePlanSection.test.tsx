@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ActivePlanSection } from '@/components/ActivePlanSection'
 import type { SessionPlan } from '@/api/types'
 
@@ -37,11 +37,27 @@ describe('ActivePlanSection', () => {
     expect(revoke).toHaveBeenCalledWith('blob:plan')
   })
 
-  it('clears the plan', () => {
+  it('asks before clearing the plan, and clears it on confirm', async () => {
     const onClear = mock(() => {})
     render(<ActivePlanSection plan={PLAN} onClear={onClear} />)
+    const clear = screen.getByRole('button', { name: 'Clear plan…' })
+    expect(clear.textContent).toBe('Clear…')
+    fireEvent.click(clear)
+
+    expect(await screen.findByText('Clear this plan?')).toBeTruthy()
+    expect(onClear).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Clear plan' }))
-    expect(onClear).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClear).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the plan when the clear confirmation is cancelled', async () => {
+    const onClear = mock(() => {})
+    render(<ActivePlanSection plan={PLAN} onClear={onClear} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear plan…' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    // Give a (wrongly) confirming click time to land before asserting it did not
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(onClear).not.toHaveBeenCalled()
   })
 
   it('opens the Plan tab instead of a document when it can', () => {

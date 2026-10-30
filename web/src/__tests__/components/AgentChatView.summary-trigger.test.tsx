@@ -43,7 +43,7 @@ mock.module('@/hooks/use-tauri-drag', () => ({ useTauriDrag: () => ({}) }))
 mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () => {} }))
 mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () => {} }) }))
 mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () => {}, prependWorkspaceSession: () => {} }))
-mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (w: string) => w, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, removeWorkspace: () => {}, workspaceLabel: (w: string) => w, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
@@ -54,6 +54,8 @@ mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentComm
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
+  getCodingWorkspaceTree: async () => ({ repositories: [], groups: [] }),
+  setCodingWorkspaceVisibility: async () => ({}),
   renderCommand: async () => ({ content: '' }),
   renderSnippet: async () => ({ content: '' }),
   resolveApiUrl: () => null,

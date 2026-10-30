@@ -319,7 +319,7 @@ export function WorkspacePanel({
     onCommit: (width: number) => useLayoutStore.getState().setDockRatio(ratioFromWidth(width, center)),
     onReset: () => useLayoutStore.getState().resetDockRatio(),
     disabled: mobile || overlay || !open,
-    label: 'Resize review dock',
+    label: 'Resize review panel',
   }
   // Desktop always animates width (instantly while dragging or under reduced
   // motion) so the aside is sized even when motion is off. Closed, it tweens
@@ -660,7 +660,7 @@ export function WorkspacePanel({
 
   return (
     <ResizableAside
-      aria-label="Review dock"
+      aria-label="Review panel"
       initial={mobile ? { opacity: 0 } : { width: 0 }}
       exit={mobile ? { opacity: 0 } : { width: 0 }}
       resize={dockResize}
@@ -710,9 +710,14 @@ export function WorkspacePanel({
           onCloseOthers={closeOtherTabs}
           onCloseToRight={closeTabsToRight}
           onMove={moveTab}
-          onNewTerminal={openTerminal}
-          onNewPreview={canPreview ? openNewPreview : undefined}
           onRefresh={handleRefresh}
+          refreshLabel={
+            activeTab?.type === 'review' || activeTab?.type === 'diff' || activeTab?.type === 'commit'
+              ? chatWorkspace ? 'Refresh files' : 'Refresh Git status'
+              : activeTab?.type === 'file'
+                ? 'Refresh files'
+                : null
+          }
           openItems={openItems}
           maximized={maximizeState}
           onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}

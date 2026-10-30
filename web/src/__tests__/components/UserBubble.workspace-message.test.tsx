@@ -55,7 +55,7 @@ describe("AgentView — workspace messages", () => {
     render(<AgentView blocks={[reply("completed")]} currentBlocks={[]} isWorking={false} onOpenSession={onOpenSession} />)
 
     expect(screen.getByText("Workspace reply")).toBeTruthy()
-    expect(screen.queryByText("Subagent report")).toBeNull()
+    expect(screen.queryByText("Report from")).toBeNull()
     await userEvent.setup().click(screen.getByRole("button", { name: "Open the replying session in infra" }))
     expect(onOpenSession).toHaveBeenCalledWith("infra-session", "/r/infra")
   })

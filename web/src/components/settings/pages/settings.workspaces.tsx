@@ -31,7 +31,7 @@ export function WorkspacesSettingsPage() {
   return (
     <SettingsPage
       title="Workspaces"
-      description="Let agents in one workspace ask sessions in another, such as an infrastructure repo."
+      description="Let agents in one workspace ask sessions in another, such as your infrastructure workspace."
       draft={draft}
       loading={messagesQ.isLoading}
       error={messagesQ.error}
@@ -52,7 +52,7 @@ export function WorkspacesSettingsPage() {
 
       <PanelSection
         title="Groups"
-        description="Repositories in the same group can message each other; Chat reaches every one. Changes save right away."
+        description="Workspaces in the same group can message each other. Chat, the workspace for sessions without a folder, reaches every one. Changes save right away."
         flush
       >
         <WorkspaceGroupsSettings />

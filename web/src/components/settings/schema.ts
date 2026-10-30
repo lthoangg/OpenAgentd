@@ -163,7 +163,7 @@ export function validateModel(
   // value that isn't one of them. (The list is omitted while the registry
   // is loading, in which case we only enforce the shape.)
   if (opts.validValues && opts.validValues.length > 0 && !opts.validValues.includes(raw)) {
-    return 'Not in the provider model list'
+    return "This model isn't in your provider's model list"
   }
   return null
 }

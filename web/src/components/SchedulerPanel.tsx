@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, CalendarClock, ArrowLeft } from 'lucide-react'
+import { Plus, ArrowLeft } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   useScheduledTasksQuery,
@@ -33,6 +33,9 @@ export function SchedulerPanel({
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
+  // Desktop shows a task, not an empty form: the first one until the user
+  // picks another or asks for "New task".
+  const [creating, setCreating] = useState(false)
 
   const tasksQuery = useScheduledTasksQuery()
   const { refetch: refetchTasks } = tasksQuery
@@ -47,6 +50,13 @@ export function SchedulerPanel({
 
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null
 
+  // Desktop opens on the first task's detail rather than an empty form.
+  const firstTaskId = tasks[0]?.id ?? null
+  useEffect(() => {
+    if (!open || isMobile || creating || selectedTask || firstTaskId === null) return
+    setSelectedTaskId(firstTaskId)
+  }, [open, isMobile, creating, selectedTask, firstTaskId])
+
   const focusTaskId = useUIStore((s) => s.scheduledTaskFocus)
   useEffect(() => {
     if (!open || !focusTaskId) return
@@ -56,12 +66,14 @@ export function SchedulerPanel({
   }, [focusTaskId, isMobile, open])
 
   const handleSelectTask = (id: string) => guard(() => {
+    setCreating(false)
     setSelectedTaskId(id)
     if (isMobile) setMobilePane('detail')
   })
 
   const handleCloseDetail = () => {
     setSelectedTaskId(null)
+    setCreating(true)
     if (isMobile) setMobilePane('list')
   }
 
@@ -70,6 +82,7 @@ export function SchedulerPanel({
   }
 
   const handleOpenCreate = () => guard(() => {
+    setCreating(true)
     setSelectedTaskId(null)
     if (isMobile) setMobilePane('create')
   })
@@ -94,22 +107,20 @@ export function SchedulerPanel({
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">
               {isMobile && mobilePane === 'create'
-                ? 'Create task'
+                ? 'New task'
                 : isMobile && mobilePane === 'detail'
                   ? (selectedTask?.name ?? 'Task')
                   : 'Scheduled tasks'}
             </span>
-            {tasks.length > 0 && (!isMobile || mobilePane === 'list') && (
-              <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] font-normal text-(--color-text-subtle)">
-                {tasks.length}
-              </span>
-            )}
           </span>
         }
-        icon={<CalendarClock size={14} />}
-        subtitle={!isMobile || mobilePane === 'list' ? 'All scheduled tasks' : undefined}
+        subtitle={
+          (!isMobile || mobilePane === 'list') && !tasksQuery.isLoading
+            ? `${tasks.length} task${tasks.length === 1 ? '' : 's'}`
+            : undefined
+        }
         onClose={close}
-        closeLabel="Close scheduler panel"
+        closeLabel="Close scheduled tasks"
         leading={
           isMobile && mobilePane !== 'list' && (
             <Tooltip>
@@ -126,7 +137,7 @@ export function SchedulerPanel({
         }
         actions={
           <>
-            {selectedTaskId !== null && !isMobile && (
+            {!isMobile && tasks.length > 0 && (selectedTaskId !== null || !creating) && (
               <Button size="sm" className="md:h-7" onClick={handleOpenCreate}>
                 <Plus size={12} aria-hidden="true" />
                 New task
@@ -136,12 +147,12 @@ export function SchedulerPanel({
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Button size="icon-sm" className="md:size-7" onClick={handleOpenCreate} aria-label="Create new task">
+                    <Button size="icon-sm" className="md:size-7" onClick={handleOpenCreate} aria-label="New task">
                       <Plus size={13} />
                     </Button>
                   }
                 />
-                <TooltipContent>Create task</TooltipContent>
+                <TooltipContent>New task</TooltipContent>
               </Tooltip>
             )}
           </>

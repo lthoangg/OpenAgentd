@@ -731,13 +731,16 @@ buttons never shift size between states.
 | `icon-dense` | **28×28px** | `p-0` | 14px | — | `rounded-sm` (6px) | Panel-header and detail-pane actions (close, back) |
 | `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
-**Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
+**Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), chosen so small phones (iPhone mini, 375px) still show a useful amount of content, while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
-- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 44px` on `[data-slot="button"]` (48px in the Android app, Material's minimum). Prefer `Button` over a bare `<button>` for icon actions.
-- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-11`. Full-width rows stay easy to hit at 36px; 44px left 12px text looking sparse. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row.
+- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
+- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px (no `pointer-coarse:*-11`; a test guards it); the composer keeps its own sizes.
+- `--spacing-tab-bar` (the review panel's tab strip) grows to 39px on coarse pointers, so each tab and its close control are 36px inside the strip's 2px top edge and 1px bottom border.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
-- Controls inside the 36px app header and tab bar grow only to that height (`pointer-coarse:size-9`, tab close `pointer-coarse:size-8`), because overlays are positioned from `--spacing-app-header`.
-- Grow the control itself. Do not stretch hit areas with pseudo-elements: adjacent actions would steal each other's taps.
+- On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
+- Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
+- The phone drawer footer is icons only (Settings, Usage, the server dot, theme), each with an accessible name, so all four fit any phone width. The phone header has a Session settings button beside Review panel, so model and thinking level are one tap away; desktop opens them from the status bar. The composer stays free of it.
+- Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers (`.touch-hit` on a positioned element, 36×36 around it). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
 **Inputs** use `bg-input` (matching the page, not the card) with a 1px border.
@@ -766,7 +769,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
-- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 44px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, never grown on touch, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
+- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, never grown on touch, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height on `bg-sidebar`; tabs scroll horizontally, actions stay pinned right.
@@ -779,6 +782,37 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Agent / Status Chip**: `rounded-full`, 20px height, `px-2 py-0.5`, `label-sm` (11px).
 - **Counter / Sync Badge**: `rounded-full`, `bg-(--bg-key)`, `text-(--color-text-subtle)`, JetBrains Mono 11px, `px-1.5 py-0.5`.
 - **Kbd Shortcut Badge**: `rounded-xs`, 1px `border-(--color-border)`, `bg-(--bg-card)` (or `bg-key`), JetBrains Mono 10–11px, `px-1.5 py-0.5`.
+
+**Chips** (`ui/chip.tsx`): the one small label for states, identifiers and
+tags. 18px, `rounded-xs`, 11px, tones `neutral | info | success | warning |
+error`, styles `soft` (states) and `outline` (tags such as a provider `agy`
+or a transport `stdio`). Mono for identifiers and numbers (`exit 1`,
+`429 rate_limit`), sans for words (`not yet`, `Vision`). A status chip always
+carries text, never colour alone; `dot` adds a leading dot for live states.
+Do not hand-roll pills; reach for `Chip` (agent identity chips keep their
+full-radius triplet).
+
+**Transcript rows** (`ui/meta-row.tsx`): tool calls, reader steps and file
+operations share one row: the content on the left and a right-aligned 96px
+meta column of tabular mono numbers (`33 ms`, `2.4 s`, `exit 1`), so values
+line up down the transcript. 28px, 36px on touch. No icon gutter: the real
+tool name in mono leads (`shell`, `grep`, `team_spawn`), then the target in
+mono, then a short result summary in muted sans. A running row has a 6px
+blue dot before the name and a live timer in the meta column; text never
+blinks. A failed row shows its summary in error colour and an `exit 1` or
+`error` chip. Rows without details render as a `div`, not a button.
+
+**Confirmations** (`ui/confirm-dialog.tsx`): every action that cannot be
+undone (stop a server, regenerate a key, delete, discard edits, revert a
+commit, cut retention) asks first. The title says what happens, the
+description what is lost, Cancel sits before the `danger` action, and its
+menu item ends in "…".
+
+**Icons: as few as possible.** Icons stay where they already are (icon
+buttons such as copy, edit, close; chevrons that expand and collapse; the
+header and composer). Do not add icons to transcript rows, meta lines,
+dividers or card headers, and do not put an icon before a label that is
+already clear. State is carried by words and chips.
 
 **Section cards** are the dominant grouping pattern and come in two variants:
 
@@ -796,9 +830,10 @@ The sidebar keeps its own caps section headers (below).
 **Sidebar sections** stack Pinned, Needs you, the session list and Scheduled
 in one scroller. Each section header is a `label-caps` label with a count; a
 header (32px) or group header (24px) folds its list. The list's header row
-holds the icon actions (`md:` 24px, 36px on touch): New session (only where
-there is no per-folder **+**, i.e. the flat views, and always on phones),
-Search, **View options**, Collapse all (folder tree only) and Open folder.
+holds the icon actions (`md:` 24px, 36px on touch): Search and **View
+options** (which holds Collapse all and Open folder…). There is no New
+session button in the sidebar: sessions start from a folder's **+**, ⌘N or
+the command palette.
 View options is a context menu of `menuitemradio` groups (Group by, Sort by)
 and a `menuitemcheckbox` (Show details); it stays open while choices apply.
 Rows in flat views and Pinned name their workspace in mono 11px subtle text,
@@ -808,7 +843,8 @@ which gives way first when the row is narrow.
 24px, borderless, `rounded-xs`, subtle glyph, keycap wash on hover, the
 global focus ring, 36px on touch. They take the place of the row's meta (age,
 tags) on hover or keyboard focus and hold no room at rest, so titles and
-folder names keep the row; touch shows them always. Session rows offer **Pin**
+folder names keep the row; touch shows them always, except Pin, which stays
+in More on touch so the title keeps the room. Session rows offer **Pin**
 and **More**, subagent rows **More**, folder rows **+** and **More**. More
 opens the same menu as right-click, so destructive actions are never one
 click from a row. Text actions in rows ("Show all") use `ROW_TEXT_ACTION`
@@ -892,6 +928,21 @@ primitives in `components/ui/`:
   docs, not on the page. Command palette commands are the exception: they
   stay Title Case ("Scheduled Tasks", "Toggle Sidebar"), like editor
   commands.
+- **Technical but legible.** Users are developers, so industry terms stay:
+  p50/p95, TTFT, tok/s, cache hit, stdio, OAuth, PID, exit code, cron, glob,
+  tool names, model IDs and span names keep their real strings. What they
+  need is a label, a unit and a definition: every number has a named label
+  and a unit (`p95 35.2 s`, `in 55.8K · out 268`), every column a header,
+  and every term a dotted-underline `Term` whose tooltip defines it.
+  Words that only exist inside this codebase never reach the UI: say
+  "built-in server" not "builtin", "main agent / subagent" not
+  "lead / member", "summarize" not "compact", `exit 0` not `[Succeeded]`.
+  Model IDs show short and mono (`claude-sonnet-4-6`) with a provider tag
+  (`agy`); the full ID is in the tooltip.
+- **One name per thing.** Workspace (not project or repo), Worktree,
+  Rename, Tasks, Scheduled tasks, Review panel, Side questions, Find file,
+  Session, Built-in server, Main agent / Subagent, Run now, Usage (the
+  spend and trace overlay), Data retention (its Settings page).
 
 Settings adds its own shell on top:
 
@@ -904,7 +955,21 @@ Settings adds its own shell on top:
   settings' Tools list is the one collapsible panel section: a long
   reference list at the bottom of an overlay.)
 - **Phones.** Settings opens on a grouped list of sections. Each section
-  opens full-screen, with Back in the overlay header.
+  opens full-screen, with Back in the overlay header. An editor (agent,
+  skill, MCP server) brings its own Back, so the overlay's Back hides while
+  one is open: one Back on screen.
+- **Nav.** Groups in sentence case (App, Agents and tools, Sessions, Models
+  and media, Data and safety, About), no icons, counts in words ("4 skills",
+  "1 needs sign-in"), a "Search settings" box on top.
+- **One save rule.** A page of fields keeps a draft and saves from the save
+  bar (Save, ⌘S, "Discard…" asks first); when Save is blocked the bar says
+  why. A lone switch or a list action (add a group, hide a provider) saves at
+  once and confirms with a toast. An editor (agent, skill, MCP server,
+  memory page) saves from its header; Discard and Back with unsaved edits
+  ask first. Loading is a skeleton; a load error is a Callout with Retry.
+- **Long lists are rows, not cards.** Providers is one bordered list of
+  rows (name, a subline such as "API key · 1 key · 13 models", a status
+  chip); a row opens in place. Secondary row actions go in a "More" menu.
 - **Backend connection.** The same `AppBackendPanel` appears as Settings →
   Connection and as the Backend connection dialog. The dialog is used before
   the app is ready, from the footer health dot, and for scanned connect links.

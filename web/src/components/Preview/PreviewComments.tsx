@@ -75,10 +75,10 @@ export function PreviewCommentComposer({
         className="max-h-40 min-h-16 text-xs"
       />
       <div className="mt-1.5 flex items-center justify-end gap-1.5">
-        <Button type="button" variant="ghost" size="xs" className="pointer-coarse:h-11" onClick={onCancel}>
+        <Button type="button" variant="ghost" size="xs" className="pointer-coarse:h-9" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" variant="primary" size="xs" className="pointer-coarse:h-11" onClick={() => onAdd(text.trim())} disabled={!text.trim()}>
+        <Button type="button" variant="primary" size="xs" className="pointer-coarse:h-9" onClick={() => onAdd(text.trim())} disabled={!text.trim()}>
           Add comment
         </Button>
       </div>
@@ -110,10 +110,10 @@ export function PreviewCommentList({
         <p className="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">
           {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
         </p>
-        <Button type="button" variant="ghost" size="xs" className="pointer-coarse:h-11" onClick={onClear}>
+        <Button type="button" variant="ghost" size="xs" className="pointer-coarse:h-9" onClick={onClear}>
           Clear
         </Button>
-        <Button type="button" variant="primary" size="xs" className="gap-1 pointer-coarse:h-11" onClick={onSend}>
+        <Button type="button" variant="primary" size="xs" className="gap-1 pointer-coarse:h-9" onClick={onSend}>
           <Send size={11} aria-hidden="true" />
           Send to agent ({comments.length})
         </Button>
@@ -146,10 +146,10 @@ export function PreviewCommentList({
                     className="max-h-32 min-h-12 text-xs"
                   />
                   <div className="mt-1 flex justify-end gap-1.5">
-                    <Button type="button" variant="ghost" size="xs" className="pointer-coarse:h-11" aria-label="Cancel edit" onClick={() => setEditing(null)}>
+                    <Button type="button" variant="ghost" size="xs" className="pointer-coarse:h-9" aria-label="Cancel edit" onClick={() => setEditing(null)}>
                       Cancel
                     </Button>
-                    <Button type="button" variant="primary" size="xs" className="pointer-coarse:h-11" onClick={save} disabled={!editing.text.trim()}>
+                    <Button type="button" variant="primary" size="xs" className="pointer-coarse:h-9" onClick={save} disabled={!editing.text.trim()}>
                       Save
                     </Button>
                   </div>
@@ -159,11 +159,11 @@ export function PreviewCommentList({
               )}
             </div>
             {editing?.id !== comment.id && (
-              <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-11" aria-label={`Edit comment ${comment.n}`} onClick={() => setEditing({ id: comment.id, text: comment.text })}>
+              <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label={`Edit comment ${comment.n}`} onClick={() => setEditing({ id: comment.id, text: comment.text })}>
                 <Pencil size={11} aria-hidden="true" />
               </Button>
             )}
-            <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-11" aria-label={`Remove comment ${comment.n}`} onClick={() => onRemove(comment.id)}>
+            <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label={`Remove comment ${comment.n}`} onClick={() => onRemove(comment.id)}>
               <X size={11} aria-hidden="true" />
             </Button>
           </li>

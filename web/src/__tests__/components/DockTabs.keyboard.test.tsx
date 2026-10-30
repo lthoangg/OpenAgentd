@@ -162,7 +162,7 @@ describe('dock tab menu', () => {
   it('Close Others keeps only the chosen tab, and makes it active', async () => {
     await renderDock({ exited: true })
     fireEvent.contextMenu(tab('Terminal 2'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Close Others' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close other tabs' }).click() })
     expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
@@ -179,15 +179,15 @@ describe('dock tab menu', () => {
     expect(screen.getByRole('menu', { name: 'Actions for Git' })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Close' })).toBeTruthy()
     // Git is the last tab: nothing to its right.
-    expect((screen.getByRole('menuitem', { name: 'Close to the Right' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('menuitem', { name: 'Move Right' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('menuitem', { name: 'Move Left' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('menuitem', { name: 'Close tabs to the right' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('menuitem', { name: 'Move right' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('menuitem', { name: 'Move left' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('Close to the Right asks before stopping running shells', async () => {
     await renderDock()
     fireEvent.contextMenu(tab('Terminal 1'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Close to the Right' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close tabs to the right' }).click() })
     expect(await screen.findByRole('dialog', { name: 'Close 2 terminals?' })).toBeTruthy()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(3)
 

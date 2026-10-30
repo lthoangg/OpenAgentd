@@ -14,7 +14,6 @@ import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import type { GoalHeaderState } from '@/lib/work'
-import { TokenMeter } from '@/components/ui/token-meter'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { workspaceLabel } from '@/utils/workspace'
@@ -118,7 +117,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     onSidebarToggle()
                   }}
                   aria-label="Toggle sidebar"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 max-md:pointer-coarse:size-9"
                 >
                   <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
                 </button>
@@ -151,11 +150,17 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         {/* Center: mobile title, or the desktop command-center search. */}
         <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1 md:justify-center">
           {isMobile ? (
-            <div className="min-w-0 flex items-baseline gap-1 text-sm">
-              {workspace ? (
-                <span className="truncate font-semibold text-(--color-text)">{workspaceName}</span>
+            // Phones: the session first, its workspace under it.
+            <div className="flex min-w-0 flex-col justify-center leading-tight">
+              {!workspace ? (
+                <span className="truncate text-sm font-semibold text-(--color-text)">Choose a workspace</span>
               ) : (
-                <span className="truncate font-semibold text-(--color-text)">Choose a workspace</span>
+                <>
+                  <span className="truncate text-sm font-semibold text-(--color-text)">
+                    {sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'}
+                  </span>
+                  <span className="truncate text-[11px] text-(--color-text-muted)">{workspaceName}</span>
+                </>
               )}
             </div>
           ) : onOpenPalette ? (
@@ -168,46 +173,32 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
         {isMobile ? (
           <>
-            {headerTokens && (
-              <TokenMeter
-                input={headerTokens.input}
-                output={headerTokens.output}
-                cached={headerTokens.cached}
-                cachedPercent={headerTokens.cachedPercent}
-                sessionCostUsd={headerTokens.sessionCostUsd}
-                trigger={headerTokens.trigger}
-                pulsing={headerTokens.pulsing}
-                className="mr-0.5"
-              />
-            )}
-            <MobileHeaderAction
-              Icon={ListTodo}
-              label="Tasks"
-              onClick={onToggleTasks}
-              disabled={!sessionId}
-              badge={activeTodoCount}
-              active={tasksViewActive}
-              goalTone={goalState?.tone}
-              tooltip={goalState ? `Tasks · ${goalState.text}` : undefined}
-            />
-            <MobileHeaderAction
-              Icon={PanelRight}
-              label="Workspace files"
-              onClick={workspace ? onWorkspaceFiles : undefined}
-              active={workspacePanel !== null}
-              disabled={!workspace}
-            />
+            {/* One tap to the model and thinking level (desktop has the status bar). */}
             <MobileHeaderAction
               Icon={SlidersHorizontal}
               label="Session settings"
               onClick={onToggleAgentCapabilities}
               active={agentCapabilitiesOpen}
             />
+            <MobileHeaderAction
+              Icon={PanelRight}
+              label="Review panel"
+              onClick={workspace ? onWorkspaceFiles : undefined}
+              active={workspacePanel !== null}
+              disabled={!workspace}
+            />
             <MobileChatActions
               open={showMobileActions}
               onOpenChange={setShowMobileActions}
               dragOffset={mobileActionsDragOffset}
-              workspace={workspace}
+              title={workspace ? (sessionTitle ?? (sessionId ? 'Untitled session' : 'New session')) : 'Choose a workspace'}
+              subtitle={workspace ? workspaceName : null}
+              onTasks={sessionId ? () => { onCloseMobileActionsMenu(); if (!tasksViewActive) onToggleTasks() } : undefined}
+              openTasks={activeTodoCount}
+              goalTone={goalState?.tone}
+              goalText={goalState?.text ?? null}
+              onSessionSettings={() => { onCloseMobileActionsMenu(); if (!agentCapabilitiesOpen) onToggleAgentCapabilities() }}
+              tokens={headerTokens}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
               onPreviousPrompt={jumpToPrompt ? () => { jumpToPrompt(-1); onCloseMobileActionsMenu() } : undefined}

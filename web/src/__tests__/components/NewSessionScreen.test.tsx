@@ -10,7 +10,6 @@ mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import {
   NewSessionScreen,
-  recentFolders,
 } from '@/components/NewSession/NewSessionScreen'
 
 const realFetch = globalThis.fetch
@@ -95,41 +94,34 @@ describe('NewSessionScreen', () => {
     expect(screen.getByText('main')).toBeTruthy()
   })
 
-  it('asks anything in Chat, without a branch or a Chat chip', () => {
+  it('asks anything in Chat, without a branch', () => {
     renderScreen({ workspace: CHAT.path, isChat: true })
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Ask anything')
     expect(screen.queryByText('main')).toBeNull()
-    const folders = screen.getByRole('region', { name: 'Recent folders' })
-    expect(within(folders).queryByRole('button', { name: 'Chat' })).toBeNull()
   })
 
-  it('offers recent folders, Chat and Open folder… as one-click switches', async () => {
-    const user = userEvent.setup()
-    const { onSelectWorkspace, onOpenFolder } = renderScreen({
-      everywhere: [session('a', 'Landing copy', '/work/agent-sdk'), session('b', 'Here', REPO)],
-    })
-    const folders = screen.getByRole('region', { name: 'Recent folders' })
-    // Recently active first, then the sidebar's order; never the current one.
-    expect(within(folders).getAllByRole('button').map((chip) => chip.textContent)).toEqual([
-      'agent-sdk',
-      'web-landing',
-      'Chat',
-      'Open folder…',
-    ])
+  it('labels the folder picker with "in", so it reads as a place, not a mode', () => {
+    renderScreen()
+    expect(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' }).textContent).toContain('in')
+  })
 
-    await user.click(within(folders).getByRole('button', { name: 'web-landing' }))
-    expect(onSelectWorkspace).toHaveBeenCalledWith('/work/web-landing')
-    await user.click(within(folders).getByRole('button', { name: 'Chat' }))
-    expect(onSelectWorkspace).toHaveBeenLastCalledWith(CHAT.path)
-    await user.click(within(folders).getByRole('button', { name: 'Open folder…' }))
-    expect(onOpenFolder).toHaveBeenCalledTimes(1)
+  it('has no second folder list: other folders live in the picker', () => {
+    renderScreen({ everywhere: [session('a', 'Landing copy', '/work/agent-sdk')] })
+    expect(screen.queryByRole('region', { name: 'Recent folders' })).toBeNull()
+  })
+
+  it('lists at most three sessions under Continue', () => {
+    renderScreen({ here: ['1', '2', '3', '4', '5'].map((id) => session(`s-${id}`, `Session ${id}`, REPO)) })
+    const recent = screen.getByRole('region', { name: 'Continue' })
+    expect(within(recent).queryByText('Session 3')).toBeTruthy()
+    expect(within(recent).queryByText('Session 4')).toBeNull()
   })
 
   it("lists this folder's recent sessions and opens one", async () => {
     const user = userEvent.setup()
     renderScreen({ here: [session('s-1', 'Sidebar redesign', REPO), session('s-2', 'Fix tray label', REPO)] })
 
-    const recent = screen.getByRole('region', { name: 'Recent sessions in openagentd' })
+    const recent = screen.getByRole('region', { name: 'Continue' })
     await user.click(within(recent).getByText('Sidebar redesign'))
     expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 's-1' } })
   })
@@ -161,7 +153,7 @@ describe('NewSessionScreen', () => {
     expect(screen.queryByRole('textbox', { name: 'Composer' })).toBeNull()
     expect(screen.queryByText(/Start typing/)).toBeNull()
     expect(screen.queryByLabelText('Shortcuts')).toBeNull()
-    expect(screen.getByRole('region', { name: 'Recent sessions' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Continue' })).toBeTruthy()
   })
 
   it('fades out as an inert copy that holds the composer’s place while leaving', () => {
@@ -176,17 +168,6 @@ describe('NewSessionScreen', () => {
   })
 })
 
-describe('recentFolders', () => {
-  it('dedupes, skips the current folder and Chat, and caps the list', () => {
-    const sessions = [
-      session('1', 'a', '/work/b'),
-      session('2', 'b', REPO),
-      session('3', 'c', '/work/b'),
-      session('4', 'd', CHAT.path),
-    ]
-    expect(recentFolders(sessions, tree.repositories, REPO, CHAT.path, 3)).toEqual(['/work/b', '/work/web-landing', '/work/agent-sdk'])
-  })
-})
 
 describe('WorkspacePicker', () => {
   it('filters folders and picks one with the keyboard', async () => {

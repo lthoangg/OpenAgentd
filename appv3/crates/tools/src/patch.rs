@@ -479,8 +479,7 @@ fn snapshot(p: &Path) -> Result<Option<Snap>, ToolError> {
 fn flush_staged(f: &std::fs::File, full: bool) -> std::io::Result<()> {
     #[cfg(target_vendor = "apple")]
     if !full {
-        use std::os::fd::AsRawFd;
-        return nix::unistd::fsync(f.as_raw_fd()).map_err(std::io::Error::from);
+        return nix::unistd::fsync(f).map_err(std::io::Error::from);
     }
     let _ = full;
     f.sync_all()

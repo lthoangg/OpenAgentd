@@ -36,7 +36,7 @@ export const DOCK_TAB_LIFTED_CLASS = 'shadow-(--shadow-depth) bg-(--bg-card) tex
 /** Inline close control; always shown on the active tab and on touch. */
 export function dockTabCloseClass(active: boolean): string {
   return [
-    'mr-1.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:size-8',
+    'mr-1.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:mr-0 pointer-coarse:size-9',
     active ? 'opacity-100' : 'opacity-70 md:opacity-0 md:group-hover/tab:opacity-100 md:group-focus-within/tab:opacity-100',
   ].join(' ')
 }

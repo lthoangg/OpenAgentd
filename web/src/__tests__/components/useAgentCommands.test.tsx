@@ -69,21 +69,32 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(result.current.find((c) => c.id === "go-home")).toBeUndefined()
   })
 
-  it("lists Maximize Review Dock only when a dock handler is provided", () => {
+  it("describes what each view command opens", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPreview: () => {} })))
+    expect(byId(result.current, "agent-info").description).toBe("Model, thinking level and tools for this session")
+    expect(byId(result.current, "scheduled-tasks").description).toBe("Create, pause and run scheduled agent tasks")
+    expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the review panel")
+    expect(byId(result.current, "go-settings").description).toBe("Agents, skills, providers and more")
+  })
+
+  it("lists Maximize Review Panel only when a dock handler is provided", () => {
     const noDock = renderHook(() => useAgentCommands(makeArgs()))
     expect(noDock.result.current.find((c) => c.id === "maximize-dock")).toBeUndefined()
 
     const toggle = mock(() => {})
     const withDock = renderHook(() => useAgentCommands(makeArgs({ handleToggleDockMaximized: toggle })))
     const cmd = byId(withDock.result.current, "maximize-dock")
+    expect(cmd.label).toBe("Maximize Review Panel")
     expect(cmd.shortcut).toBe("Ctrl+Shift+D")
     cmd.action()
     expect(toggle).toHaveBeenCalledTimes(1)
   })
 
-  it("Task List runs the shared tasks toggle (dock tab or popover)", () => {
+  it("Tasks runs the shared tasks toggle (dock tab or popover)", () => {
     const toggleTasks = mock(() => {})
     const { result } = renderHook(() => useAgentCommands(makeArgs({ toggleTasks })))
+    expect(byId(result.current, "todos").label).toBe("Tasks")
+    expect(byId(result.current, "todos").description).toBe("The agent's task list and progress")
     byId(result.current, "todos").action()
     expect(toggleTasks).toHaveBeenCalledTimes(1)
   })
@@ -106,9 +117,10 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "open-plan").description).toMatch(/^Waiting for your review/)
   })
 
-  it("names Ctrl+D Toggle Review Dock and lists Open Git only for project workspaces", () => {
+  it("names Ctrl+D Toggle Review Panel and lists Open Git only for project workspaces", () => {
     const noGit = renderHook(() => useAgentCommands(makeArgs()))
-    expect(byId(noGit.result.current, "workspace-files").label).toBe("Toggle Review Dock")
+    expect(byId(noGit.result.current, "workspace-files").label).toBe("Toggle Review Panel")
+    expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the review panel and its open tabs")
     expect(noGit.result.current.find((c) => c.id === "open-git")).toBeUndefined()
 
     const handleOpenGit = mock(() => {})
@@ -219,8 +231,10 @@ describe("useAgentCommands — navigation", () => {
     expect(openSettings).toHaveBeenCalledWith("agents")
   })
 
-  it("go-telemetry opens the telemetry overlay", () => {
+  it("go-telemetry opens the Usage overlay", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(byId(result.current, "go-telemetry").label).toBe("Open Usage")
+    expect(byId(result.current, "go-telemetry").description).toBe("Spend, turns and traces by workspace and model")
     byId(result.current, "go-telemetry").action()
     expect(useUIStore.getState().telemetryOpen).toBe(true)
     useUIStore.getState().closeTelemetry()
@@ -232,6 +246,7 @@ describe("useAgentCommands — navigation", () => {
 
     const theme = () => byId(result.current, "theme")
     expect(theme().label).toBe("Theme…")
+    expect(theme().description).toBe("Switch between System, Light and Dark. Now: System")
     expect(theme().keywords).toContain("dark")
     expect(theme().page?.commands.map((c) => c.label)).toEqual(["System", "Light", "Dark"])
     expect(byId(theme().page!.commands, "theme-system").description).toMatch(/· Current$/)
@@ -239,7 +254,7 @@ describe("useAgentCommands — navigation", () => {
     act(() => byId(theme().page!.commands, "theme-dark").action())
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
-    expect(theme().description).toMatch(/^Dark now/)
+    expect(theme().description).toBe("Switch between System, Light and Dark. Now: Dark")
     expect(byId(theme().page!.commands, "theme-dark").description).toMatch(/· Current$/)
     localStorage.removeItem(THEME_STORAGE_KEY)
   })

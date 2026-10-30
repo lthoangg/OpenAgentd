@@ -8,10 +8,10 @@ import { apiBaseUrl } from '@/api/base-url'
 import { cn } from '@/lib/utils'
 
 /**
- * Small connected/disconnected indicator dot.
- * - Green when connected
- * - Red when error
- * - Pulsing gray during initial load
+ * The connected server, as a dot plus its name (`built-in`, a saved server's
+ * name, or its host). The dot is green when connected, red on error and grey
+ * while connecting; the tooltip says the same in words, with the address and
+ * the server's version.
  */
 export function HealthDot({
   className,
@@ -27,25 +27,28 @@ export function HealthDot({
   const connectionLabel = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
 
   let bgColor = 'bg-(--color-text-muted)'
-  let pulseClass = 'animate-pulse'
 
   if (health.isSuccess) {
     bgColor = 'bg-(--color-success)'
-    pulseClass = ''
   } else if (health.isError) {
     bgColor = 'bg-(--color-error)'
-    pulseClass = ''
   }
 
-  const label = health.isSuccess
-    ? 'Connected. Change backend connection'
+  const state = health.isSuccess ? 'connected' : health.isError ? 'not reachable' : 'connecting…'
+  const serverName = connectionLabel === 'built-in' ? 'Built-in server' : connectionLabel
+  const address = backendStatus.data?.base_url || apiBaseUrl()
+  const version = health.data?.version
+  const status = health.isSuccess
+    ? 'Connected. Change server'
     : health.isError
-      ? 'Backend error. Change backend connection'
-      : 'Connecting. Change backend connection'
+      ? 'Server not reachable. Change server'
+      : 'Connecting. Change server'
+  // A bare dot (the phone drawer) has no visible name, so the label carries it.
+  const label = labeled ? status : `${serverName}. ${status}`
 
   const defaultClasses = labeled
-    ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
-    : 'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-8 md:w-8'
+    ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+    : 'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-8 md:w-8'
 
   return (
     <>
@@ -58,12 +61,15 @@ export function HealthDot({
               className={cn(defaultClasses, className)}
               aria-label={label}
             >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor} ${pulseClass}`} aria-hidden="true" />
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor}`} aria-hidden="true" />
               {labeled ? <span className="min-w-0 truncate">{connectionLabel}</span> : null}
             </button>
           }
         />
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent>
+          <span className="block">{`${serverName} · ${state}`}</span>
+          <span className="block font-mono opacity-70">{version ? `${address} · v${version}` : address}</span>
+        </TooltipContent>
       </Tooltip>
       <AppBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </>

@@ -20,6 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
 import { Callout } from '@/components/ui/callout'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
@@ -50,7 +51,7 @@ import {
   type ServerWatchState,
 } from '@/lib/app-backend'
 
-const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local CLI server' }]
+const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local server' }]
 
 /** How often the background connection states refresh while the panel is open. */
 const WATCH_POLL_MS = 3000
@@ -89,6 +90,7 @@ interface AppBackendPanelProps {
 export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
+  const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
   const [testedBaseUrl, setTestedBaseUrl] = useState<string | null>(null)
@@ -291,10 +293,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     ? servers.find((s) => normalizeServerBaseUrl(s.base_url) === normalizeServerBaseUrl(currentUrl))
     : undefined
   const currentTitle = !status
-    ? 'Connected to this server'
+    ? 'Current: this server'
     : onExternal
-      ? `Connected to ${activeServer?.name || hostnameOf(currentUrl) || 'a saved server'}`
-      : 'Connected to the builtin backend'
+      ? `Current: ${activeServer?.name || hostnameOf(currentUrl) || 'a saved server'}`
+      : 'Current: built-in server'
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
 
   return (
@@ -307,13 +309,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             <p className="truncate text-sm font-semibold text-(--color-text)">{currentTitle}</p>
             <p className={cn('mt-0.5 truncate font-mono', TEXT.hint)}>{currentUrl}</p>
           </div>
-          {status ? <Badge>{onExternal ? 'Saved server' : 'Builtin'}</Badge> : null}
+          {status ? <Badge>{onExternal ? 'Saved server' : 'Built in'}</Badge> : null}
         </div>
       </SectionCard>
 
       {scanned ? (
         <Callout tone="info" role="status">
-          Scanned from another device. Check the server, then Save &amp; Connect.
+          Scanned from another device. Check the server, then save and connect.
         </Callout>
       ) : null}
 
@@ -326,7 +328,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         {status?.supports_bundled !== false ? (
           <ServerRow
             health={status?.sidecar_running ? 'online' : undefined}
-            title="Builtin sidecar"
+            title="Built-in server"
             subtitle="Runs inside this app"
             active={!status?.external}
             onSelect={() => editServer('', '')}
@@ -339,13 +341,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     Connect
                   </Button>
                 ) : null}
-                <Button type="button" variant="danger-subtle" size="sm" onClick={() => { void stopBundled() }} disabled={pending}>
-                  Stop
+                <Button type="button" variant="danger-subtle" size="sm" onClick={() => setConfirm({ kind: 'stop' })} disabled={pending}>
+                  Stop…
                 </Button>
               </>
             ) : (
               <Button type="button" variant="subtle" size="sm" onClick={() => { void connectBundled() }} disabled={pending}>
-                Use builtin
+                Use built-in server
               </Button>
             )}
           </ServerRow>
@@ -405,15 +407,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                       variant="ghost"
                       size="icon-sm"
                       className="text-(--color-text-muted) hover:text-(--color-error)"
-                      onClick={() => { void removeServer(server.base_url) }}
+                      onClick={() => setConfirm({ kind: 'remove', baseUrl: server.base_url, label })}
                       disabled={pending}
-                      aria-label={`Remove ${label}`}
+                      aria-label={`Remove ${label}…`}
                     >
                       <Trash2 size={ICON_SIZE_INLINE} aria-hidden="true" />
                     </Button>
                   }
                 />
-                <TooltipContent>Remove</TooltipContent>
+                <TooltipContent>Remove server…</TooltipContent>
               </Tooltip>
             </ServerRow>
           )
@@ -423,7 +425,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {/* Add / edit */}
       <PanelSection
         title={editing ? `Edit ${editing}` : 'Add a server'}
-        description="Test it first; Save & Connect stores the server and switches to it."
+        description="Test the connection first. Save and connect stores the server and switches to it."
         actions={
           editing ? (
             <Button type="button" size="sm" variant="ghost" onClick={() => editServer('', '')} disabled={pending}>
@@ -442,13 +444,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               inputMode="url"
               value={baseUrl}
               onChange={(event) => { setBaseUrl(event.target.value); setTestedBaseUrl(null) }}
-              placeholder="http://<backend-host>:4082"
+              placeholder="http://<server-host>:4082"
               autoComplete="off"
               spellCheck={false}
               className="h-9 font-mono"
             />
           </Field>
-          <Field label="Access key" htmlFor="app-backend-key" hint="Needed when the server was started with --key.">
+          <Field label="Access key" htmlFor="app-backend-key" hint="Needed if the server was started with an access key.">
             <Input
               id="app-backend-key"
               value={accessKey}
@@ -464,7 +466,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               id="app-backend-name"
               value={serverName}
               onChange={(event) => setServerName(event.target.value)}
-              placeholder="Work laptop, Home server, Local CLI"
+              placeholder="Work laptop, Home server"
               autoComplete="off"
               className="h-9"
             />
@@ -477,7 +479,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             ) : tested ? (
               <p role="status" className="font-medium text-(--color-success)">Connection successful.</p>
             ) : (
-              <p className="text-(--color-text-muted)">Not tested yet.</p>
+              <p className="text-(--color-text-muted)">Test the connection to enable saving.</p>
             )}
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -491,11 +493,25 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               onClick={() => void saveAndConnect()}
               disabled={pending || !tested}
             >
-              Save & Connect
+              Save and connect
             </Button>
           </div>
         </div>
       </PanelSection>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        title={confirm?.kind === 'stop' ? 'Stop the built-in server?' : `Remove ${confirm?.kind === 'remove' ? confirm.label : 'server'}?`}
+        description={confirm?.kind === 'stop'
+          ? 'Running agents stop and this app disconnects until you start it again or connect to another server.'
+          : 'The server is removed from this list. The server itself keeps running.'}
+        confirmLabel={confirm?.kind === 'stop' ? 'Stop server' : 'Remove server'}
+        onConfirm={async () => {
+          if (confirm?.kind === 'stop') await stopBundled()
+          else if (confirm?.kind === 'remove') await removeServer(confirm.baseUrl)
+        }}
+      />
 
       {showNetworkAccess && isDesktopShell() && status?.supports_bundled !== false ? <NetworkAccessCard /> : null}
     </div>
@@ -526,12 +542,12 @@ function ServerRow({
   children: React.ReactNode
 }) {
   return (
-    <div className={cn('flex min-h-14 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4', ROW_PAD)}>
+    <div className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
       <button
         type="button"
         onClick={onSelect}
         disabled={disabled}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-xs text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-xs text-left pointer-coarse:min-h-9 focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
       >
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">

@@ -134,10 +134,11 @@ describe('ProvidersSettingsPage', () => {
 
     expect(await screen.findByText('Codex')).toBeTruthy()
     expect(screen.getAllByText('Connected').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Unreachable')).toBeNull()
     expect(screen.queryByText('Failed')).toBeNull()
     // A saved OAuth token whose listing failed must stay retryable — the
     // daemon re-uses the stored token, there is nothing for the user to retype.
-    expect(screen.getByRole('button', { name: 'List models' }).getAttribute('disabled')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Test sign-in' }).getAttribute('disabled')).toBeNull()
   })
 
   it('shows GitHub device-code copy for Copilot OAuth', async () => {
@@ -266,8 +267,8 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('OpenAI')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText(/1 models available/)).toBeTruthy())
-    const toggle = screen.getByRole('button', { name: /1 models available/i })
+    await waitFor(() => expect(screen.getByText(/· 1 available/)).toBeTruthy())
+    const toggle = screen.getByRole('button', { name: /Models · 1 available/i })
     expect(toggle.className).toContain('min-h-9')
     expect(toggle.className).toContain('md:min-h-0')
 
@@ -314,8 +315,8 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('OpenAI')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText(/1 models available/i)).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /1 models available/i }))
+    await waitFor(() => expect(screen.getByText(/· 1 available/i)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /Models · 1 available/i }))
     expect(await screen.findByText('openai:new-model')).toBeTruthy()
   })
 
@@ -360,10 +361,10 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('OpenAI')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText(/2 models available/i)).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /2 models available/i }))
+    await waitFor(() => expect(screen.getByText(/· 2 available/i)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /Models · 2 available/i }))
     expect(await screen.findByText('openai:gpt-5')).toBeTruthy()
-    expect(screen.getByText('$1.25 / $10 / 1M')).toBeTruthy()
+    expect(screen.getByText('$1.25 in · $10 out / 1M')).toBeTruthy()
     expect(screen.getByText('Free')).toBeTruthy()
   })
 
@@ -400,8 +401,9 @@ describe('ProvidersSettingsPage', () => {
 
     expect(await screen.findByText('OpenCode Zen')).toBeTruthy()
     expect(screen.queryByText(/Free models are available without an API key/i)).toBeNull()
-    const listModels = screen.getByRole('button', { name: 'List models' })
-    expect(listModels.getAttribute('disabled')).not.toBeNull()
+    const testKey = screen.getByRole('button', { name: 'Test key' })
+    expect(testKey.getAttribute('disabled')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'List models' })).toBeNull()
   })
 
   it('refreshes models for a saved api-key provider without retyping the key', async () => {
@@ -445,15 +447,15 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Anthropic')).toBeTruthy()
-    const listModels = screen.getByRole('button', { name: 'List models' })
-    expect(listModels.getAttribute('disabled')).toBeNull()
+    const testKey = screen.getByRole('button', { name: 'Test key' })
+    expect(testKey.getAttribute('disabled')).toBeNull()
 
-    fireEvent.click(listModels)
+    fireEvent.click(testKey)
 
     // The daemon re-uses the stored key when the request carries none.
     await waitFor(() => expect(requestBodies).toContainEqual({ api_key: '' }))
     // A successful listing auto-expands the models panel.
-    expect(await screen.findByRole('button', { name: /1 models available/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /Models · 1 available/i })).toBeTruthy()
     expect(await screen.findByText('anthropic:fresh-model')).toBeTruthy()
   })
 
@@ -498,14 +500,14 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Anthropic')).toBeTruthy()
-    const listModels = screen.getByRole('button', { name: 'List models' })
-    expect(listModels.getAttribute('disabled')).toBeNull()
+    const testKey = screen.getByRole('button', { name: 'Test key' })
+    expect(testKey.getAttribute('disabled')).toBeNull()
 
-    fireEvent.click(listModels)
+    fireEvent.click(testKey)
 
     await waitFor(() => expect(requestBodies).toContainEqual({ api_key: '' }))
     // A successful listing auto-expands the models panel.
-    expect(await screen.findByRole('button', { name: /1 models available/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /Models · 1 available/i })).toBeTruthy()
     expect(await screen.findByText('anthropic:fresh-model')).toBeTruthy()
   })
 
@@ -556,7 +558,7 @@ describe('ProvidersSettingsPage', () => {
     )
 
     expect(await screen.findByText('OpenCode Go')).toBeTruthy()
-    expect(screen.queryByText('1 models available')).toBeNull()
+    expect(screen.queryByText(/Models · \d+ available/)).toBeNull()
   })
 
   it('shows active usage for any connected OAuth provider', async () => {
@@ -664,6 +666,127 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.getByText('Pay-as-you-go')).toBeTruthy()
   })
 
+  describe('Provider rows', () => {
+    const provider = (
+      id: string,
+      overrides: Partial<ProvidersListBody['providers'][number]> = {},
+    ): ProvidersListBody['providers'][number] => ({
+      id, label: id, description: `${id} provider`, kind: 'api_key', credentials: [],
+      saved_credentials: {}, env_var: '', env_vars: [], oauth_command: '', docs_url: '',
+      is_configured: true, is_saved: true, is_reachable: true, cached_models: [],
+      visible_models: [], is_disconnected: false, supports_fast_mode: false, public_access: false,
+      ...overrides,
+    })
+
+    function useProviders(list: ProvidersListBody['providers']) {
+      server.use(
+        http.get('http://localhost/api/settings/providers', () => HttpResponse.json({ has_any_configured: true, providers: list })),
+      )
+    }
+
+    it('lists several providers collapsed, and opens one on demand', async () => {
+      useProviders([
+        provider('Alpha', { description: 'Alpha blurb' }),
+        provider('Bravo', { description: 'Bravo blurb', is_configured: false, is_saved: false, is_reachable: null }),
+      ])
+      renderPage()
+      const alpha = await screen.findByRole('button', { name: /Alpha/ })
+      expect(alpha.getAttribute('aria-expanded')).toBe('false')
+      expect(screen.queryByText('Alpha blurb')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Test key' })).toBeNull()
+
+      fireEvent.click(alpha)
+      expect(alpha.getAttribute('aria-expanded')).toBe('true')
+      expect(screen.getByText('Alpha blurb')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Test key' })).toBeTruthy()
+      // Bravo stays closed
+      expect(screen.getByRole('button', { name: /Bravo/ }).getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('opens the row by itself when the list holds only one provider', async () => {
+      useProviders([provider('Alpha', { description: 'Alpha blurb' })])
+      renderPage()
+      const alpha = await screen.findByRole('button', { name: /Alpha/ })
+      expect(alpha.getAttribute('aria-expanded')).toBe('true')
+      expect(screen.getByText('Alpha blurb')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Test key' })).toBeTruthy()
+    })
+
+    it('shows status chips and sublines in the row header', async () => {
+      useProviders([
+        provider('Alpha', { cached_models: ['m1', 'm2'] }),
+        provider('Bravo', { is_configured: false, is_saved: true, is_reachable: false }),
+        provider('Charlie', { is_disconnected: true }),
+        provider('Delta', { is_configured: false, is_saved: false, is_reachable: null }),
+        provider('Echo', { kind: 'oauth' }),
+        provider('Foxtrot', { kind: 'local', is_configured: false, is_saved: false, is_reachable: null }),
+      ])
+      renderPage()
+      const header = async (name: string) => screen.findByRole('button', { name: new RegExp(name) })
+      const chipText = (el: HTMLElement) => el.querySelector('[data-slot="chip"]')?.textContent
+
+      const alpha = await header('Alpha')
+      expect(chipText(alpha)).toBe('Connected')
+      expect(alpha.textContent).toContain('API key · 2 models')
+      expect(chipText(await header('Bravo'))).toBe('Unreachable')
+      expect(chipText(await header('Charlie'))).toBe('Hidden from pickers')
+      expect(chipText(await header('Delta'))).toBe('Not connected')
+      const echo = await header('Echo')
+      expect(echo.textContent).toContain('Sign-in')
+      expect(chipText(await header('Foxtrot'))).toBe('Not detected')
+      expect((await header('Foxtrot')).textContent).toContain('Local server')
+    })
+
+    it('filters by type from the dropdown', async () => {
+      useProviders([
+        provider('Alpha'),
+        provider('Bravo'),
+        provider('Echo', { kind: 'oauth' }),
+      ])
+      renderPage()
+      expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Filter by type' }))
+      expect(screen.getByRole('option', { name: 'Any type' })).toBeTruthy()
+      expect(screen.getByRole('option', { name: /^API key\s*2$/ })).toBeTruthy()
+      expect(screen.getByRole('option', { name: /^Sign-in\s*1$/ })).toBeTruthy()
+      expect(screen.queryByRole('option', { name: /Local server/ })).toBeNull()
+
+      fireEvent.click(screen.getByRole('option', { name: /^Sign-in/ }))
+      expect(screen.getByRole('button', { name: /Echo/ })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull()
+    })
+
+    it('shows a loading skeleton while the providers load', async () => {
+      server.use(
+        http.get('http://localhost/api/settings/providers', async () => {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          return HttpResponse.json({ has_any_configured: true, providers: [provider('Alpha')] })
+        }),
+      )
+      renderPage()
+      expect(screen.getByRole('status', { name: 'Loading providers' })).toBeTruthy()
+      expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
+      expect(screen.queryByRole('status', { name: 'Loading providers' })).toBeNull()
+    })
+
+    it('shows an error callout with Retry when the providers fail to load, and recovers', async () => {
+      let calls = 0
+      server.use(
+        http.get('http://localhost/api/settings/providers', () => {
+          calls += 1
+          if (calls === 1) return HttpResponse.json({ detail: 'boom' }, { status: 500 })
+          return HttpResponse.json({ has_any_configured: true, providers: [provider('Alpha')] })
+        }),
+      )
+      renderPage()
+      expect(await screen.findByText("Couldn't load providers")).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
+      expect(screen.queryByText("Couldn't load providers")).toBeNull()
+    })
+  })
+
   describe('Hidden status filter', () => {
     const provider = (
       id: string,
@@ -690,17 +813,21 @@ describe('ProvidersSettingsPage', () => {
       )
     }
 
+    // The status filter is a segmented control: radios named "Label N".
     const chip = (label: string) =>
-      screen.getByRole('button', { name: new RegExp(`^${label}\\s*\\d+$`) })
+      screen.getByRole('radio', { name: new RegExp(`^${label}\\s*\\d+$`) })
 
     it('counts each provider under exactly one status', async () => {
       useMixedProviders()
       renderPage()
       expect(await screen.findByText('Alpha')).toBeTruthy()
 
+      expect(screen.getByRole('radiogroup', { name: 'Filter by status' })).toBeTruthy()
+      expect(chip('All').textContent).toContain('4')
       expect(chip('Connected').textContent).toContain('1')
       expect(chip('Hidden').textContent).toContain('2')
       expect(chip('Not connected').textContent).toContain('1')
+      expect(chip('All').getAttribute('aria-checked')).toBe('true')
       expect(screen.getByText('1 connected')).toBeTruthy()
     })
 
@@ -710,12 +837,14 @@ describe('ProvidersSettingsPage', () => {
       expect(await screen.findByText('Alpha')).toBeTruthy()
 
       fireEvent.click(chip('Hidden'))
+      expect(chip('Hidden').getAttribute('aria-checked')).toBe('true')
       expect(screen.queryByText('Alpha')).toBeNull()
       expect(screen.queryByText('Delta')).toBeNull()
       expect(screen.getByText('Bravo')).toBeTruthy()
       expect(screen.getByText('Charlie')).toBeTruthy()
 
-      fireEvent.click(chip('Hidden'))
+      // A radio does not toggle off; "All" brings every provider back
+      fireEvent.click(chip('All'))
       expect(screen.getByText('Alpha')).toBeTruthy()
       expect(screen.getByText('Delta')).toBeTruthy()
     })

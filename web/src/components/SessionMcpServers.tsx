@@ -13,17 +13,16 @@
  * declare aren't part of this session and aren't listed; the Settings link
  * covers them.
  */
-import { Plug } from 'lucide-react'
-
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
+import { Chip } from '@/components/ui/chip'
+import { McpStatusChip } from '@/components/McpStatusChip'
 import { PanelSection } from '@/components/ui/panel-section'
 import { COMPACT_ROW, TEXT } from '@/components/ui/panel-tokens'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { McpStatusDot } from './McpStatusDot'
 import {
   useConnectMcpOAuthMutation,
   useMcpServersQuery,
@@ -31,27 +30,11 @@ import {
 } from '@/queries/useMcpQuery'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
-/** Human-readable status. `auth_required` is phrased as an instruction because
- *  that's the one state with an action attached. */
-function statusLabel(server: ServerStatus): string {
-  if (!server.enabled) return 'Disabled'
-  if (server.state === 'auth_required') return 'Connect required'
-  if (server.state === 'ready') return 'Ready'
-  if (server.state === 'starting') return 'Starting…'
-  if (server.state === 'error') return 'Error'
-  return 'Stopped'
-}
-
-function toolCountLabel(count: number): string {
-  return `${count} ${count === 1 ? 'tool' : 'tools'}`
-}
-
 /**
- * OAuth connect applies to any HTTP server configured with an oauth block, not
- * just one currently reporting `auth_required`: re-authorizing a ready server
- * (expired grant, changed scopes) and retrying a failed one are both on-demand
- * actions. Gating on `auth_required` strands those cases with no way to
- * re-trigger the flow.
+ * The one action a row offers besides its switch: sign in when the server asks
+ * for it, reconnect when it failed. Only for HTTP servers with an oauth block,
+ * and only while the server is on (an off server has nothing to connect).
+ * Re-authorizing a server that works lives in Settings › MCP servers.
  */
 function supportsOAuthConnect(server: ServerStatus): boolean {
   return (
@@ -59,6 +42,13 @@ function supportsOAuthConnect(server: ServerStatus): boolean {
     server.config?.transport === 'http' &&
     !!server.config.oauth
   )
+}
+
+function rowAction(server: ServerStatus): string | null {
+  if (!server.enabled || !supportsOAuthConnect(server)) return null
+  if (server.state === 'auth_required') return 'Sign in'
+  if (server.state === 'error') return 'Reconnect'
+  return null
 }
 
 function ServerRow({
@@ -83,14 +73,14 @@ function ServerRow({
         aria-label={name}
         className={cn(COMPACT_ROW, 'min-h-12')}
       >
-        <Plug size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden />
-        <span className={cn('min-w-0 flex-1 truncate', TEXT.label)}>{name}</span>
-        <span className={TEXT.hint}>Not configured</span>
+        <span className={cn('min-w-0 flex-1 truncate font-mono', TEXT.label)}>{name}</span>
+        <Chip tone="warning" title="The agent lists this server, but mcp.json does not define it.">Not configured</Chip>
       </li>
     )
   }
 
   const toggleable = !!server.config && !busy
+  const action = rowAction(server)
 
   return (
     <li
@@ -98,33 +88,21 @@ function ServerRow({
       aria-busy={busy || undefined}
       className={cn(COMPACT_ROW, 'min-h-12 flex-wrap')}
     >
-      <McpStatusDot server={server} />
-      <span className={cn('min-w-0 flex-1 truncate', TEXT.label)}>
+      <span className={cn('min-w-0 flex-1 truncate font-mono', TEXT.label)}>
         {name}
       </span>
-      <span className={TEXT.hint}>
-        {statusLabel(server)}
-        {server.enabled && server.tool_names.length > 0 && (
-          <> · {toolCountLabel(server.tool_names.length)}</>
-        )}
-      </span>
-      {supportsOAuthConnect(server) && (
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          // Nothing to authorize while the server is off.
-          disabled={!server.enabled || busy}
-          onClick={() => onConnect(server)}
-        >
-          {server.state === 'auth_required' ? 'Connect' : 'Reconnect'}
+      <McpStatusChip server={server} />
+      {action && (
+        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => onConnect(server)}>
+          {action}
         </Button>
       )}
       <Switch
         checked={server.enabled}
         disabled={!toggleable}
         onCheckedChange={() => onToggle(server)}
-        aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${name}`}
+        aria-label={name}
+        title="On or off for every session"
       />
       {server.error && server.state !== 'auth_required' && (
         <p className="w-full text-[11px] leading-relaxed text-(--color-error)">{server.error}</p>

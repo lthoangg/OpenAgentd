@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Users, Wrench } from 'lucide-react'
+import { Wrench } from 'lucide-react'
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
 import { useAgentFilesListQuery, useCreateAgentMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
@@ -15,34 +15,35 @@ import {
 import { Input } from '@/components/ui/input'
 import { AgentEditorPage } from './settings.agents.$name'
 import { errorMessage } from '@/utils/errors'
+import { shortModelName } from '@/utils/format'
+import { isUnconfiguredModel } from '@/lib/model-readiness'
 
 export function AgentsListPage() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [newProfileName, setNewProfileName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
-  const { data, isLoading, isError } = useAgentFilesListQuery()
+  const { data, isLoading, isError, error, refetch } = useAgentFilesListQuery()
   const createMut = useCreateAgentMutation()
   const push = useToastStore((s) => s.push)
 
   const rows = useMemo<ListViewRow[]>(() => {
     const agents = data?.agents ?? []
-    return agents.map((a) => {
+    return agents.map((a): ListViewRow => {
       const isLead = a.name === 'code' || a.role === 'lead'
       return {
         key: a.name,
         active: selectedAgent === a.name,
-        title: a.name === 'code' ? 'code (Coding Lead)' : a.name,
-        badge: isLead ? 'lead' : 'member',
-        description: [
-          a.description || (isLead ? 'Primary interactive agent' : 'Subagent team member'),
-          a.model || null,
-        ]
-          .filter(Boolean)
-          .join(' · '),
+        title: a.name,
+        titleMono: true,
+        badge: isLead ? 'main' : 'subagent',
+        badgeTone: isLead ? 'info' : 'neutral',
+        description: a.description || (isLead ? 'The agent you chat with' : 'Takes tasks from the main agent'),
+        ...(a.model && !isUnconfiguredModel(a.model)
+          ? { meta: shortModelName(a.model) ?? undefined }
+          : { metaChip: 'model not set' }),
         invalidReason: !a.valid ? (a.error ?? 'Invalid configuration') : undefined,
         onClick: () => setSelectedAgent(a.name),
-        icon: isLead ? <Wrench size={14} /> : <Users size={14} />,
       }
     })
   }, [data?.agents, selectedAgent])
@@ -60,7 +61,7 @@ export function AgentsListPage() {
   const submitCreate = async () => {
     const raw = newProfileName.trim()
     if (!raw) {
-      setCreateError('Profile name cannot be empty.')
+      setCreateError('Enter a name.')
       return
     }
     const cleanName = raw.toLowerCase().replace(/[^a-z0-9._-]/g, '-')
@@ -71,18 +72,18 @@ export function AgentsListPage() {
     const template = `---
 name: ${cleanName}
 role: member
-description: Specialized subagent team member.
+description: Specialized subagent.
 tools:
   - read
   - glob
   - grep
 ---
 
-You are **${cleanName}**, a specialized member agent.
+You are **${cleanName}**, a specialized subagent.
 `
     try {
       await createMut.mutateAsync({ name: cleanName, content: template })
-      push({ tone: 'success', title: `Created agent "${cleanName}"` })
+      push({ tone: 'success', title: `Created subagent "${cleanName}"`, description: cleanName !== raw ? `Saved as ${cleanName}` : undefined })
       setCreateOpen(false)
       setSelectedAgent(cleanName)
     } catch (err) {
@@ -94,13 +95,15 @@ You are **${cleanName}**, a specialized member agent.
     <>
     <SettingsListView
       title="Agents"
-      description="Prompts, models and tools for the lead agent and the members it delegates to."
-      newLabel="New member profile"
+      description="Prompts, models and tools for the main agent and the subagents it hands tasks to."
+      newLabel="New subagent"
       onNew={handleOpenCreate}
       filterPlaceholder="Filter agents…"
       rows={rows}
       isLoading={isLoading}
       isError={isError}
+      error={error}
+      onRetry={() => void refetch()}
       emptyTitle="No agents found"
       emptyBody="Agent profiles live in ~/.config/openagentd/agents/."
       emptyIcon={Wrench}
@@ -109,15 +112,15 @@ You are **${cleanName}**, a specialized member agent.
     <Dialog open={createOpen} onOpenChange={setCreateOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New member profile</DialogTitle>
+          <DialogTitle>New subagent</DialogTitle>
           <DialogDescription>
-            Create a specialized subagent profile that the lead agent can delegate tasks to.
+            A subagent the main agent can hand tasks to.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1">
             <label htmlFor="member-profile-name" className="text-xs font-medium text-(--color-text)">
-              Profile name
+              Name
             </label>
             <Input
               id="member-profile-name"
@@ -150,7 +153,7 @@ You are **${cleanName}**, a specialized member agent.
             onClick={submitCreate}
             disabled={createMut.isPending || !newProfileName.trim()}
           >
-            {createMut.isPending ? 'Creating…' : 'Create profile'}
+            {createMut.isPending ? 'Creating…' : 'Create subagent'}
           </Button>
         </DialogFooter>
       </DialogContent>

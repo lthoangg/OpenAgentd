@@ -28,7 +28,7 @@ export function ModeWorkspaceFields({
             <Dropdown
               value={workspace ?? ''}
               onValueChange={(v) => onChange(v || null)}
-              trigger={workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
+              trigger={workspace ? workspaceLabel(workspace) : 'Choose a workspace…'}
               className="h-9 w-full max-w-full rounded-sm border-(--color-border) bg-(--bg-page) px-2.5 text-xs"
               panelClassName="max-w-[min(22rem,calc(100vw-2rem))]"
               aria-label="Select workspace"

@@ -62,6 +62,7 @@ impl Tool for WorkspaceTool {
             }),
         };
         let mode = opt_str(&mut errs, &o, "mode");
+        let worktree = opt_str(&mut errs, &o, "worktree").filter(|w| !w.trim().is_empty());
         if let Some(m) = mode.as_deref().filter(|m| !["code", "plan"].contains(m)) {
             errs.push(format!("mode: Input should be 'code' or 'plan'; got '{m}'"));
         }
@@ -74,7 +75,7 @@ impl Tool for WorkspaceTool {
             }),
         };
         if errs.is_empty() && action == "send" {
-            if workspace.as_deref().unwrap_or("").trim().is_empty() {
+            if workspace.as_deref().unwrap_or("").trim().is_empty() && worktree.is_none() {
                 errs.push("workspace: Value error, workspace is required for action='send'".into());
             }
             if message.as_deref().unwrap_or("").trim().is_empty() {
@@ -113,15 +114,18 @@ impl Tool for WorkspaceTool {
         // Models that fill every enum send `mode` with `session_id` too; an
         // existing session keeps its mode, and the result says so.
         let mode_ignored = mode.is_some() && session_id.is_some();
+        // `worktree` alone picks a checkout of this workspace's repository.
+        let workspace = workspace.filter(|w| !w.trim().is_empty()).unwrap_or_else(|| current.clone());
         let req = SendRequest {
             source_session_id: self.session_id.clone(),
             source_workspace: current,
-            workspace: workspace.unwrap_or_default(),
+            workspace,
             message: message.unwrap_or_default(),
             session_id,
             reply,
             mode,
             delivery,
+            worktree,
         };
         let sent = match wm::send(&self.pool, req).await {
             Ok(s) => s,
@@ -140,6 +144,12 @@ impl Tool for WorkspaceTool {
         // The web tool card parses this line for its "Open in <workspace>"
         // button (`web/src/utils/workspace-messages.ts`, `parseSendResult`).
         let mut text = format!("Sent to '{}' ({}) — {how}.", sent.target.name, sent.target.path);
+        if let Some(created) = &sent.created_worktree {
+            match &created.branch {
+                Some(b) => text.push_str(&format!(" Created worktree '{}' on branch {b}.", created.name)),
+                None => text.push_str(&format!(" Created worktree '{}'.", created.name)),
+            }
+        }
         if reply {
             text.push_str(" Its final answer will arrive here as a message; do not poll.");
         }

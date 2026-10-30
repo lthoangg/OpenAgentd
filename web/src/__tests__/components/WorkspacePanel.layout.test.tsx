@@ -73,7 +73,7 @@ async function renderPanel({ centerWidth = 1000, mobile = false, git = false } =
       </QueryClientProvider>,
     )
   })
-  return { dock: screen.getByRole('complementary', { name: 'Review dock' }) }
+  return { dock: screen.getByRole('complementary', { name: 'Review panel' }) }
 }
 
 describe('Review dock layout', () => {
@@ -81,7 +81,7 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ centerWidth: 1000 })
 
     expect(dock.className).toContain('md:relative')
-    const separator = screen.getByRole('separator', { name: 'Resize review dock' })
+    const separator = screen.getByRole('separator', { name: 'Resize review panel' })
     // 45% of a 1000px center, capped so the chat keeps 400px.
     expect(separator.getAttribute('aria-valuenow')).toBe('450')
     expect(separator.getAttribute('aria-valuemax')).toBe('600')
@@ -104,15 +104,15 @@ describe('Review dock layout', () => {
     const user = userEvent.setup()
     const { dock } = await renderPanel({ centerWidth: 1000 })
 
-    await user.click(screen.getByRole('button', { name: /^Maximize review dock/ }))
+    await user.click(screen.getByRole('button', { name: /^Maximize review panel/ }))
 
     expect(useLayoutStore.getState().dockMaximized).toBe(true)
     expect(dock.className).toContain('md:absolute')
-    expect(screen.queryByRole('separator', { name: 'Resize review dock' })).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'Resize review panel' })).toBeNull()
     // Reading-column tabs widen off this marker.
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: /^Restore review dock/ }))
+    await user.click(screen.getByRole('button', { name: /^Restore review panel/ }))
     expect(useLayoutStore.getState().dockMaximized).toBe(false)
     expect(dock.className).toContain('md:relative')
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
@@ -122,7 +122,7 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ centerWidth: 600 })
 
     expect(dock.className).toContain('md:absolute')
-    expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review dock/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review panel/ })).toBeNull()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 
@@ -144,7 +144,7 @@ describe('Review dock layout', () => {
       )
     })
 
-    expect(screen.getByRole('complementary', { name: 'Review dock' }).className).toContain('md:absolute')
+    expect(screen.getByRole('complementary', { name: 'Review panel' }).className).toContain('md:absolute')
   })
 
   // Sized from the mid-tween center, the dock chased the sidebar a frame
@@ -175,7 +175,7 @@ describe('Review dock layout', () => {
     })
 
     // 45% of the 1100px center the sidebar leaves, not of the 1000px now.
-    expect(screen.getByRole('separator', { name: 'Resize review dock' }).getAttribute('aria-valuenow')).toBe('495')
+    expect(screen.getByRole('separator', { name: 'Resize review panel' }).getAttribute('aria-valuenow')).toBe('495')
   })
 
   it('takes focus stranded in the covered chat so keyboard users land on the active tab', async () => {
@@ -222,7 +222,7 @@ describe('Review dock layout', () => {
   it('leaves hiding to the header toggle: the tab bar has no hide button', async () => {
     await renderPanel()
 
-    expect(screen.queryByRole('button', { name: /^(Hide|Close) review dock/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Hide|Close) review panel/ })).toBeNull()
   })
 
   it('keeps mobile on the full-screen sheet without desktop window controls', async () => {
@@ -230,8 +230,10 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ mobile: true })
 
     expect(dock.className).toContain('mobile-safe-top')
-    expect(screen.queryByRole('separator', { name: 'Resize review dock' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /review dock/ })).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'Resize review panel' })).toBeNull()
+    // No window controls; the "Open…" button is the one control that stays
+    expect(screen.queryByRole('button', { name: /^(Maximize|Restore|Hide|Close) review panel/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open in the review panel' })).toBeTruthy()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 

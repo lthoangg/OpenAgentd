@@ -322,7 +322,7 @@ describe('App backend bootstrap', () => {
       backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
     })
 
-    expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy()
+    expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
@@ -339,7 +339,7 @@ describe('App backend bootstrap', () => {
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy()
+      expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy()
     })
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
@@ -355,7 +355,7 @@ describe('App backend bootstrap', () => {
       backendErrorListener?.({ payload: { message: 'The local backend stopped unexpectedly (exit status: 101).' } })
     })
 
-    expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy()
+    expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
@@ -387,7 +387,7 @@ describe('App backend bootstrap', () => {
 
     expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Choose Server' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Choose server' })).toBeTruthy()
     timers.restore()
   })
 
@@ -399,21 +399,21 @@ describe('App backend bootstrap', () => {
       backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy Backend Log Path' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy log path' }))
 
     await waitFor(() => expect(writeClipboardMock).toHaveBeenCalledWith('/tmp/openagentd/backend.log'))
-    expect(screen.getByRole('button', { name: 'Backend Log Path Copied' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Log path copied' })).toBeTruthy()
   })
 
   it('shows the backend log path when clipboard access fails', async () => {
     clipboardError = new Error('clipboard denied')
     statusPayload = { base_url: '', sidecar_running: false, external: false, backend_failed: true }
     render(<App />)
-    await waitFor(() => expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy Backend Log Path' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy log path' }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Copy Failed' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeTruthy())
     expect(screen.getByText('/tmp/openagentd/backend.log')).toBeTruthy()
   })
 
@@ -467,7 +467,7 @@ describe('App backend bootstrap', () => {
     expect(invokeMock).toHaveBeenCalled()
     await act(async () => { timers.tick(60_000) })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Choose Server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose server' }))
     expect(screen.getByRole('dialog').textContent).toBe('Server chooser')
 
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }

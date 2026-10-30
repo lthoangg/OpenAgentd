@@ -27,7 +27,7 @@ export function KeyboardShortcutsSheet() {
         onClose={close}
         closeLabel="Close keyboard shortcuts"
       />
-      <div className={cn(OVERLAY_BODY, 'space-y-8')}>
+      <div className={cn(OVERLAY_BODY, 'space-y-6 md:space-y-8')}>
         <p className={cn('max-w-prose', TEXT.body)}>
           Escape closes whatever is on top. While a dialog is open, app shortcuts wait; ⌘K, ⌘P and ⌘, can still switch to another overlay.
         </p>

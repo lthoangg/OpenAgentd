@@ -187,7 +187,7 @@ export function QuestionCard({
                 aria-current={index === step ? 'step' : undefined}
                 onClick={() => update({ step: index })}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:min-h-11 pointer-coarse:px-3',
+                  'flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:min-h-9 pointer-coarse:px-3',
                   index === step
                     ? 'bg-(--bg-key) text-(--color-text)'
                     : 'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
@@ -265,11 +265,7 @@ export function QuestionCard({
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--color-border) px-3 py-2.5">
         <span className="text-[11px] text-(--color-text-subtle)">
-          {questions.length > 1
-            ? `${answeredCount} of ${questions.length} answered`
-            : answeredCount === 0
-              ? 'Optional — send blank to skip'
-              : null}
+          {questions.length > 1 ? `${answeredCount} of ${questions.length} answered` : null}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {/* Past the first step the secondary action is "go back one", not
@@ -291,7 +287,8 @@ export function QuestionCard({
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? 'Sending…' : isLastStep ? 'Send answer' : 'Next question'}
+            {/* Nothing picked: sending is skipping, so the button says so. */}
+            {submitting ? 'Sending…' : !isLastStep ? 'Next question' : answeredCount === 0 ? 'Skip' : 'Send answer'}
           </Button>
         </div>
       </div>
@@ -327,7 +324,7 @@ function OptionRow({
   return (
     <label
       className={cn(
-        'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors pointer-coarse:min-h-11',
+        'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors pointer-coarse:min-h-9',
         checked
           ? 'border-(--color-border-strong) bg-(--bg-key)/50'
           : 'border-(--color-border) bg-(--bg-card) hover:bg-(--bg-key)/25',

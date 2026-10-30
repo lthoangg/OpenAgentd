@@ -48,14 +48,18 @@ export const TEXT = {
 } as const
 
 /** Padding for a row inside a panel card. */
-export const ROW_PAD = 'px-4 py-3.5'
+export const ROW_PAD = 'px-3 py-2.5 md:px-4 md:py-3.5'
 
 /**
  * Compact row for long reference lists (shortcuts, tools, servers): the same
- * left/right layout as `PanelRow`, 44px tall instead of 56px.
+ * left/right layout as `PanelRow`, 44px tall instead of 56px (36px on
+ * phones, so a small screen shows more of the list).
  */
-export const COMPACT_ROW = 'flex min-h-11 items-center gap-3 px-4 py-2.5'
+export const COMPACT_ROW = 'flex min-h-9 items-center gap-3 px-3 py-2 md:min-h-11 md:px-4 md:py-2.5'
 
-/** Scrolling body of a modal `AppOverlay`; stack sections with `space-y-8`. */
+/**
+ * Scrolling body of a modal `AppOverlay`; stack sections with
+ * `space-y-6 md:space-y-8` (tighter on phones).
+ */
 export const OVERLAY_BODY =
-  'relative min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 md:px-6 md:py-6'
+  'relative min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-3 py-4 md:px-6 md:py-6'

@@ -15,7 +15,7 @@ const BASE = [
   'inline-flex shrink-0 items-center justify-center gap-1.5',
   'border font-medium whitespace-nowrap select-none cursor-pointer',
   'transition-[color,background-color,border-color,box-shadow,opacity] duration-(--motion-instant) ease-(--ease-in-out) focus-visible:outline-none',
-  'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+  'focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
   'disabled:cursor-not-allowed disabled:opacity-50',
   '[&_svg]:pointer-events-none [&_svg]:shrink-0',
   "[&_svg:not([class*='size-'])]:size-3.5",

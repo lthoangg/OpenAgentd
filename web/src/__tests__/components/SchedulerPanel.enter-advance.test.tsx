@@ -118,14 +118,14 @@ describe('scheduler forms on a touch keyboard: Enter moves to the next field', (
     expect(title.getAttribute('enterkeyhint')).toBe('next')
     expect(title.getAttribute('autocapitalize')).toBe('sentences')
     expect(title.getAttribute('autocorrect')).toBe('on')
-    const interval = screen.getByLabelText('Interval (seconds)')
+    const interval = screen.getByLabelText('Every')
     expect(interval.getAttribute('enterkeyhint')).toBe('next')
   })
 
   it('EditTaskForm: Enter in the interval advances focus and does not submit', async () => {
     const user = userEvent.setup()
     renderWithQuery(<EditTaskForm task={TASK} onSuccess={() => {}} onCancel={() => {}} />)
-    const interval = screen.getByLabelText('Interval (seconds)') as HTMLInputElement
+    const interval = screen.getByLabelText('Every') as HTMLInputElement
 
     await user.click(interval)
     await user.keyboard('{Enter}')

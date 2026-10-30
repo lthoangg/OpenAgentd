@@ -356,7 +356,7 @@ export function applyRevertBoundary(
   stream.revertedMessages = userBlocks
     .map((b) => ({
       role: 'user',
-      content: b.type === 'compaction' ? 'Session compacted' : (b.content ?? ''),
+      content: b.type === 'compaction' ? 'Earlier messages summarized' : (b.content ?? ''),
       attachments: b.type === 'user' ? b.attachments : undefined,
     }))
     .filter((m) => m.content.trim().length > 0 || (m.attachments && m.attachments.length > 0))

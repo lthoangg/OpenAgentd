@@ -71,8 +71,9 @@ export function GoalsSettingsPage() {
   return (
     <SettingsPage
       title="Goals"
-      description="Approve a plan with Keep going until done, and the agent keeps taking turns until a check confirms the plan's Done when, it reports a blocker, or a limit pauses it."
+      description="The agent keeps working on an approved plan until it is done or a limit is reached."
       draft={{ ...draft, canSave: draft.canSave && !maxTurnsError && !tokenBudgetError }}
+      saveBlockedReason={maxTurnsError ? 'Fix turns per goal to save.' : tokenBudgetError ? 'Fix the token budget to save.' : null}
       loading={goalsQ.isLoading}
       error={goalsQ.error}
     >
@@ -111,7 +112,7 @@ export function GoalsSettingsPage() {
         <PanelRow
           label="Token budget per goal"
           htmlFor="goals-token-budget"
-          description={`Counts uncached input and output tokens across the goal's turns and checks. The goal pauses when it reaches the budget; Resume grants another. Empty means no budget. Applies to new goals.${budget !== null && !tokenBudgetError ? ` Now ${formatGoalTokens(budget)}.` : ''}`}
+          description={`Example: 2,000,000. Counts input (not cached) and output tokens across the goal. The goal pauses at the budget; Resume grants another. Applies to new goals.${budget !== null && !tokenBudgetError ? ` Now ≈ ${formatGoalTokens(budget)} tokens.` : ''}`}
           error={tokenBudgetError}
         >
           <Input
@@ -120,6 +121,7 @@ export function GoalsSettingsPage() {
             min={1}
             step={100000}
             aria-label="Token budget per goal"
+            placeholder="No limit"
             value={budget === null ? '' : Number.isFinite(budget) ? String(budget) : ''}
             onChange={(e) => draft.patch({ token_budget: e.target.value.trim() === '' ? null : parseInt(e.target.value, 10) })}
             className="h-9 w-32 font-mono"
@@ -129,7 +131,7 @@ export function GoalsSettingsPage() {
 
       <PanelSection title="While a goal runs" flush>
         <PanelRow
-          label="Let the agent ask me questions during a goal"
+          label="Allow questions during goals"
           htmlFor="goals-allow-questions"
           description="Off: goal turns run unattended, and the agent decides on its own and notes each choice. On: it may stop to ask, and the goal waits for your answer."
         >

@@ -16,7 +16,9 @@ import { useUIStore, _registerCloseSettings } from './useUIStore'
 
 export type SettingsSection =
   | 'general'
+  | 'desktop'
   | 'connection'
+  // Merged into Connection; kept so old links and persisted state resolve.
   | 'network'
   | 'about'
   | 'agents'
@@ -59,6 +61,8 @@ export function parentSection(section: SettingsSection): SettingsSection {
   }
   // Automation was split into Workspaces, Chat titles, Context and Media.
   if (persistedSection === 'automation') return 'workspaces'
+  // Network access moved onto the Connection page.
+  if (persistedSection === 'network') return 'connection'
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
 

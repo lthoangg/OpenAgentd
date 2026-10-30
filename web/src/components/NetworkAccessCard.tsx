@@ -11,6 +11,7 @@ import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Callout } from '@/components/ui/callout'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
@@ -68,6 +69,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
   const [customKey, setCustomKey] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmKey, setConfirmKey] = useState<{ next: string | null } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -163,15 +165,15 @@ export function NetworkAccessCard({ title = 'Network access' }: {
     <div className="space-y-8">
       <PanelSection
         title={title}
-        description="Let phones and other computers on your network use the builtin backend."
+        description="Let phones and other computers on your local network use the built-in server."
         flush
       >
         <PanelRow
           label="Allow devices on your network to connect"
           labelId="network-access-label"
           description={sidecarRunning
-            ? 'Phones and other computers connect to the builtin backend with the access key below.'
-            : 'Start the builtin backend first.'}
+            ? 'Phones and other computers connect to the built-in server with the access key below.'
+            : 'Start the built-in server first.'}
         >
           <Switch
             aria-labelledby="network-access-label"
@@ -182,7 +184,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
         </PanelRow>
 
         <PanelRow
-          label="Preferred port"
+          label="Port"
           htmlFor="network-access-port"
           description={
             status?.fallback && status.port ? (
@@ -204,9 +206,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
 
         {error ? (
           <div className="px-4 py-3">
-            <p className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) px-3 py-2.5 text-xs text-(--color-error)" role="alert">
-              {error}
-            </p>
+            <Callout tone="error" role="alert">{error}</Callout>
           </div>
         ) : null}
       </PanelSection>
@@ -230,7 +230,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
                   ))
                 ) : (
                   <p className={TEXT.hint}>
-                    Listening on port {status?.port}. No LAN address was found; use this computer&apos;s IP address.
+                    Listening on port {status?.port}. No local network address was found; use this computer&apos;s IP address.
                   </p>
                 )}
                 <Button
@@ -270,8 +270,8 @@ export function NetworkAccessCard({ title = 'Network access' }: {
                     <Button type="button" variant="subtle" size="sm" onClick={() => void copyKey()} disabled={pending} aria-label="Copy key">
                       Copy
                     </Button>
-                    <Button type="button" variant="danger-subtle" size="sm" onClick={() => replaceKey(null)} disabled={pending}>
-                      Regenerate
+                    <Button type="button" variant="danger-subtle" size="sm" onClick={() => setConfirmKey({ next: null })} disabled={pending}>
+                      Regenerate…
                     </Button>
                   </div>
                 </div>
@@ -290,10 +290,10 @@ export function NetworkAccessCard({ title = 'Network access' }: {
                     variant="default"
                     size="sm"
                     className="h-9"
-                    onClick={() => replaceKey(customKey)}
+                    onClick={() => setConfirmKey({ next: customKey })}
                     disabled={pending || customKey.trim().length === 0}
                   >
-                    Use key
+                    Use key…
                   </Button>
                 </div>
               </div>
@@ -301,7 +301,16 @@ export function NetworkAccessCard({ title = 'Network access' }: {
         </PanelSection>
       ) : null}
 
-      <Callout tone="warning">
+      <ConfirmDialog
+        open={confirmKey !== null}
+        onOpenChange={(open) => { if (!open) setConfirmKey(null) }}
+        title={confirmKey?.next === null ? 'Regenerate the access key?' : 'Replace the access key?'}
+        description="Every device that uses the old key disconnects and needs the new key to connect again."
+        confirmLabel={confirmKey?.next === null ? 'Regenerate key' : 'Use new key'}
+        onConfirm={() => { if (confirmKey) replaceKey(confirmKey.next) }}
+      />
+
+      <Callout tone="warning" title="Before you share access">
         <div className="space-y-2">
           {hint ? <p>{hint}</p> : null}
           <p>

@@ -23,8 +23,13 @@ describe('formatChord', () => {
 describe('shortcutHelp', () => {
   it('groups the app table and the keys that live in one area', () => {
     const groups = shortcutHelp('macos').map((group) => group.title)
-    expect(groups).toEqual(['App', 'Moving around', 'Chat', 'Review dock', 'Terminal', 'Preview', 'Dialogs and viewers'])
+    expect(groups).toEqual(['App', 'Moving around', 'Chat', 'Review panel', 'Terminal', 'Preview', 'Dialogs and viewers'])
     expect(find('macos', 'Close tab')?.keys).toEqual(['⌘W'])
+    // The file finder is "Find file", not "Quick Open"
+    expect(find('macos', 'Find file')?.keys).toEqual(['⌘P'])
+    expect(find('macos', 'Quick Open')).toBeUndefined()
+    expect(find('macos', 'Show or hide the review panel')?.keys).toEqual(['⌘D'])
+    expect(find('macos', 'Maximize the review panel')?.keys).toEqual(['⌘⇧D'])
     expect(find('windows', 'Close tab')?.keys).toEqual(['Ctrl+W'])
     expect(find('macos', 'Keyboard shortcuts')?.keys).toEqual(['⌘/'])
     expect(find('macos', 'Toggle Design picking')?.keys).toEqual(['⌥C'])

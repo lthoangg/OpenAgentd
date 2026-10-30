@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "3.35.0"
+version = "3.36.0"
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://openagentd.dev"
@@ -34,7 +34,7 @@ uuid = { version = "1", features = ["v5", "v4", "v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 directories = "6.0"
-sha2 = "0.10"
+sha2 = "0.11"
 # SQLite only (no TLS); migrations are replayed by hand and no query macros
 # are used, so only the `FromRow` derive is needed.
 sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "uuid", "derive"] }

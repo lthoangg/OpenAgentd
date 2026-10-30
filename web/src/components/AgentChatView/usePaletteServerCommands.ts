@@ -52,7 +52,7 @@ export function usePaletteServerCommands(): Command[] {
       {
         useBundled: () => {
           void connectBundledBackend(currentBackendOrigin(status)).then((result) => {
-            if (!finish(result)) fail('Could not switch to the builtin backend', result.ok ? '' : result.error)
+            if (!finish(result)) fail("Couldn't switch to the built-in server", result.ok ? '' : result.error)
           })
         },
         useExternal: (server) => {

@@ -20,7 +20,8 @@ describe("ToolCall — bg results", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Expand bg details" }))
 
-    expect(screen.getByText("No background processes running.")).toBeTruthy()
+    expect(screen.getByText("No background processes")).toBeTruthy()
+    expect(screen.queryByText("No background processes running.")).toBeNull()
     expect(screen.getByRole("button", { name: "Copy result" })).toBeTruthy()
   })
 
@@ -36,8 +37,9 @@ describe("ToolCall — bg results", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Expand bg details" }))
 
-    expect(screen.getByText("PID 1234")).toBeTruthy()
-    expect(screen.getByText("running")).toBeTruthy()
+    expect(screen.getByText("pid 1234")).toBeTruthy()
+    expect(screen.getByText("running").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("info")
+    expect(screen.getByText("4 new lines")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Copy result" })).toBeTruthy()
   })
 
@@ -54,8 +56,11 @@ describe("ToolCall — bg results", () => {
     fireEvent.click(screen.getByRole("button", { name: "Expand bg details" }))
 
     expect(screen.queryByText("result")).toBeNull()
-    expect(screen.getByText("PID 1234 output")).toBeTruthy()
-    expect(screen.getByText("exited (code 0)")).toBeTruthy()
+    expect(screen.getByText("pid 1234")).toBeTruthy()
+    expect(screen.getByText("exited (code 0)").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
+    // With a status shown there is no separate "output" detail
+    expect(screen.queryByText("output")).toBeNull()
+    expect(screen.getByText(/server ready/)).toBeTruthy()
     expect(screen.getByRole("button", { name: "Copy result" })).toBeTruthy()
   })
 })

@@ -87,10 +87,12 @@ pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.webview_windows().into_values().find(|window| !is_overlay_window(window.label()))
 }
 
-/// The tray popup and the notch island: shell surfaces, never app windows
+/// The tray popup, the notch island and the desktop pet: shell surfaces, never app windows
 /// that navigate, take commands, or hold a backend config.
 pub fn is_overlay_window(label: &str) -> bool {
-    label == crate::tray_popup::TRAY_POPUP_WINDOW || label == crate::island::ISLAND_WINDOW
+    label == crate::tray_popup::TRAY_POPUP_WINDOW
+        || label == crate::island::ISLAND_WINDOW
+        || label == crate::pet::PET_WINDOW
 }
 
 pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {

@@ -91,7 +91,7 @@ describe('GoalTabView', () => {
     renderTab(makeGoal())
 
     expect(now()?.dataset.goalNow).toBe('active')
-    expect(now()?.textContent).toBe('Working on turn 7 of 50')
+    expect(now()?.textContent).toBe('Working · turn 7/50')
     expect(screen.getByText('7 / 50')).toBeTruthy()
     expect(screen.getByText('412k')).toBeTruthy()
     expect(screen.getByText('12m 30s')).toBeTruthy()
@@ -152,7 +152,7 @@ describe('GoalTabView', () => {
 
     useAgentStore.setState({ isAgentWorking: true, sessionPendingInteractionMode: null, _pendingMessages: [{ id: 'm1', content: 'also fix lint' }] })
     renderTab(makeGoal())
-    expect(now()?.textContent).toBe("Working on turn 7 of 501 queued message runs before the goal's next turn.")
+    expect(now()?.textContent).toBe("Working · turn 7/501 queued message runs before the goal's next turn.")
   })
 
   it('waits for plan approval while a plan review is open', () => {

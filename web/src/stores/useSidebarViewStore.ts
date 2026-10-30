@@ -15,7 +15,7 @@ export const SIDEBAR_VIEW_STORAGE_KEY = 'oa.sidebarView.v1'
 export type SidebarGroupBy = 'project' | 'status' | 'date' | 'none'
 
 export const SIDEBAR_GROUP_BY: readonly { value: SidebarGroupBy; label: string }[] = [
-  { value: 'project', label: 'Project' },
+  { value: 'project', label: 'Workspace' },
   { value: 'status', label: 'Status' },
   { value: 'date', label: 'Date' },
   { value: 'none', label: 'None' },

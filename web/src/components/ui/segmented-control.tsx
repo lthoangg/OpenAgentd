@@ -24,18 +24,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 type SegmentedSize = 'sm' | 'default' | 'composer'
 
 const TRACK_SIZE: Record<SegmentedSize, string> = {
-  // 24px dense toolbar variant.
-  sm: 'h-6',
-  // 32px, growing to a 44px target on touch.
-  default: 'h-8 pointer-coarse:h-11',
+  // 24px dense toolbar variant, 44px on touch like every control.
+  sm: 'h-6 pointer-coarse:h-auto',
+  // 32px; on touch each segment is a 44px target.
+  default: 'h-8 pointer-coarse:h-auto',
   // Composer toolbar: matches the 32px attach/send buttons beside it on every
   // pointer (28px on desktop), so the row stays one height.
   composer: 'h-8 md:h-7',
 }
 
 const ITEM_SIZE: Record<SegmentedSize, string> = {
-  sm: 'px-2 text-xs [&_svg:not([class*=size-])]:size-3',
-  default: 'px-2.5 text-xs [&_svg:not([class*=size-])]:size-3.5',
+  sm: 'px-2 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
+  default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3.5',
   composer: 'px-2.5 text-xs [&_svg:not([class*=size-])]:size-3.5',
 }
 
@@ -66,7 +66,7 @@ export function segmentedItemClass({
   return cn(
     'inline-flex h-full items-center justify-center gap-1.5 rounded-xs border border-transparent font-medium whitespace-nowrap select-none',
     'transition-colors duration-(--motion-instant)',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
     dimDisabled ? 'disabled:cursor-not-allowed disabled:opacity-50' : 'disabled:cursor-default',
     '[&_svg]:pointer-events-none [&_svg]:shrink-0',
     ITEM_SIZE[size],

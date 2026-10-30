@@ -754,7 +754,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                     extra: {
                       type: 'provider_status',
                       status: 'error',
-                      title: errTitle || 'Provider Error',
+                      title: errTitle || 'Model error',
                       message: lastErr,
                       code: errCode,
                       category: 'provider',
@@ -900,7 +900,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                   extra: {
                     type: 'provider_status',
                     status: 'error',
-                    title: title || 'Provider Error',
+                    title: title || 'Model error',
                     message,
                     code,
                     category: 'provider',

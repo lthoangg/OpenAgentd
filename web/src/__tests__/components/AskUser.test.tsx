@@ -78,6 +78,9 @@ describe('AskUser — waiting state', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
+    // Nothing picked yet: sending blank skips the question.
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
   })
 
@@ -134,7 +137,7 @@ describe('AskUser — waiting state', () => {
     answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: false }))
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
 
     await waitFor(() => expect(pushToast).toHaveBeenCalledTimes(1))
   })
@@ -163,11 +166,11 @@ describe('AskUser — waiting state', () => {
     })
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
 
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByRole('button', { name: /send answer/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /send answer|skip/i })).toBeNull()
     expect(screen.queryByText(/needs your input/i)).toBeNull()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
     expect(pushToast).not.toHaveBeenCalled()

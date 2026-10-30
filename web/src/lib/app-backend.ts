@@ -46,11 +46,11 @@ export function formatBackendConnectionLabel(
 ): string {
   if (!status) {
     const fallback = fallbackBaseUrl.trim()
-    if (!fallback || fallback === '/api' || fallback.endsWith('://api')) return 'builtin'
+    if (!fallback || fallback === '/api' || fallback.endsWith('://api')) return 'built-in'
     return hostFromBaseUrl(fallback)
   }
   if (status.mode === 'bundled' || (!status.external && status.mode !== 'external')) {
-    return 'builtin'
+    return 'built-in'
   }
   const current = normalizeServerOrigin(status.base_url)
   const named = status.servers.find((server) => normalizeServerOrigin(server.base_url) === current)

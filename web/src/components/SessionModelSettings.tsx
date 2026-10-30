@@ -17,11 +17,11 @@
  * Everything else renders straight from props, the single source of truth.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Eye } from 'lucide-react'
 
 import { useRegistryQuery } from '@/queries'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { Chip } from '@/components/ui/chip'
 import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/ui/panel-tokens'
 import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
@@ -171,12 +171,7 @@ export function SessionModelSettings({
             {effectiveEntry?.vision && (
               <Tooltip>
                 <TooltipTrigger
-                  render={
-                    <span className="flex h-4 items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 text-xs md:text-[11px] font-normal leading-none text-(--color-text-muted)">
-                      <Eye size={11} aria-hidden />
-                      Vision
-                    </span>
-                  }
+                  render={<Chip className="h-4 font-normal">Vision</Chip>}
                 />
                 <TooltipContent>Accepts image input</TooltipContent>
               </Tooltip>

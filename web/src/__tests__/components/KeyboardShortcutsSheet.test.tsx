@@ -29,7 +29,9 @@ describe('KeyboardShortcutsSheet', () => {
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull()
     press({ key: '/', ...MOD })
     const sheet = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })
-    expect(sheet.textContent).toContain('Review dock')
+    expect(sheet.textContent).toContain('Review panel')
+    expect(sheet.textContent).not.toContain('Review dock')
+    expect(screen.getByText('Find file')).toBeTruthy()
     expect(screen.getByText('Close tab')).toBeTruthy()
   })
 

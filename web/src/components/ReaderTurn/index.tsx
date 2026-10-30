@@ -9,9 +9,9 @@
  * scroll under it (``useStickyFold``), and a Collapse row ends the steps. An
  * opened step pins its own header just below the row.
  *
- * While the agent works, the row reads "Working · 1m 12s · Shell: Run web
- * tests": how long the turn has run, then the step taking output (or the
- * counts so far). Only "Working" pulses, so the rest stays easy to read. A
+ * While the agent works, the row reads "Working · 1m 12s · shell bun test":
+ * how long the turn has run, then the step taking output (or the counts so
+ * far). A blue dot marks it live; no text blinks. A
  * turn waiting on the user is not working, so its row shows the counts.
  * A compaction divider ends the row before it, which then shows its counts;
  * the steps after the divider get a row of their own.
@@ -28,7 +28,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { FileRefContext } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
-import { formatToolLabel, subscribeLiveClock } from '../ToolCall'
+import { subscribeLiveClock } from '../ToolCall'
 import { getToolDisplay } from '../ToolCall/display'
 import { ChangeCounts } from '../WorkspacePanel/ChangeCounts'
 import type { ChangedFileInfo } from '../WorkspacePanel/diff-helpers'
@@ -43,8 +43,8 @@ function stepLabel(block: ContentBlock): string {
   const display = getToolDisplay(name, block.toolArgs)
   // A shell call without a description is known by its command.
   const command = name === 'shell' && typeof display.formattedArgs === 'string' ? display.formattedArgs.split('\n', 1)[0] : null
-  const detail = display.headerTitle ?? command
-  return detail ? `${formatToolLabel(name)}: ${detail}` : formatToolLabel(name)
+  const detail = (display.headerTitle ?? command)?.split('\n', 1)[0]
+  return detail ? `${name} ${detail}` : name
 }
 
 /** Whole seconds, then minutes, then hours: "59s", "1m 0s", "1h 1m". */
@@ -69,7 +69,7 @@ function useLiveNow(active: boolean): number {
 }
 
 /** Both of the fold's controls; each adds its own text tone. */
-const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40'
+const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
 /** The row's height (``ROW_CLASS``: one ``text-xs`` line plus ``py-1``, or ``min-h-9`` on touch), so an opened step pins below it. */
 const BELOW_ROW = '[--fold-top:1.5rem] pointer-coarse:[--fold-top:2.25rem]'
 
@@ -108,7 +108,8 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
         >
           {live ? (
             <>
-              <span className="shrink-0 font-semibold text-(--color-text) animate-pulse motion-reduce:animate-none">Working</span>
+              <span className="size-1.5 shrink-0 rounded-full bg-(--color-info)" aria-hidden="true" />
+              <span className="shrink-0 font-semibold text-(--color-text)">Working</span>
               {elapsed && <span className="shrink-0 text-(--color-text-muted)">{` · ${elapsed}`}</span>}
               {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}
             </>

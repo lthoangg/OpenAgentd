@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react'
-import { CalendarClock, Check, Copy, FolderOpen, Loader2, Pause, Pencil, Play, Terminal, Trash2, X, Zap } from 'lucide-react'
+import { Check, Copy, Loader2, Pause, Pencil, Play, Trash2, X, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
-import { formatRelativeDate, formatInTimezone } from '@/utils/format'
-import { formatScheduleLabel, slugify } from './utils'
+import { formatRelativeDate, formatInTimezone, isoToWallClock } from '@/utils/format'
+import { formatInterval, formatScheduleLabel, lastRunLabel, nextRunLabel, taskState } from './utils'
+import { previewCron } from './cron'
+import { Chip } from '@/components/ui/chip'
 import { EditTaskForm } from './EditTaskForm'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Button } from '@/components/ui/button'
@@ -84,21 +86,12 @@ export function TaskDetailView({
     )
   }
 
-  const statusColor = {
-    pending: 'text-(--color-text-muted)',
-    running: 'text-(--color-accent)',
-    paused: 'text-(--color-warning)',
-    completed: 'text-(--color-success)',
-    failed: 'text-(--color-error)',
-  }[task.status] ?? 'text-(--color-text-muted)'
-
-  const statusDotColor = {
-    pending: 'bg-(--color-text-muted)',
-    running: 'bg-(--color-info) animate-pulse',
-    paused: 'bg-(--color-warning)',
-    completed: 'bg-(--color-success)',
-    failed: 'bg-(--color-error)',
-  }[task.status] ?? 'bg-(--color-text-muted)'
+  const state = taskState(task)
+  const nextRun = nextRunLabel(task)
+  const cron =
+    task.schedule_type === 'cron' && task.cron_expression
+      ? previewCron(task.cron_expression, isoToWallClock(new Date().toISOString(), task.timezone))
+      : null
 
   const sessionLabel = !task.session_id
     ? 'New session for each run'
@@ -130,25 +123,24 @@ export function TaskDetailView({
               {!hostTitled && (
                 <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
               )}
-              <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle)">
-                slug: <span className="text-(--color-text-2)">{slugify(task.name)}</span>
-              </span>
+              {task.slug !== task.name && (
+                <Chip mono variant="outline" title="Slug: the name the agent's schedule tool uses">
+                  {task.slug}
+                </Chip>
+              )}
             </div>
-            <div className={cn('mt-1 flex items-center gap-1.5', TEXT.hint)}>
-              <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
-              <span>{formatScheduleLabel(task)}</span>
-            </div>
+            <p className="mt-1 font-mono text-xs text-(--color-text-2)">{formatScheduleLabel(task)}</p>
           </div>
           <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
             {!isMobile && (
               <>
-                <HeaderAction label="Trigger now" onClick={triggerTask} disabled={triggerMutation.isPending} icon={runIcon} />
+                <HeaderAction label="Run now" onClick={triggerTask} disabled={triggerMutation.isPending} icon={runIcon} />
                 <HeaderAction label={pauseLabel} onClick={togglePaused} disabled={pausePending} icon={pauseIcon} />
               </>
             )}
             <HeaderAction label="Edit task" onClick={() => setEditing(true)} icon={<Pencil size={ICON_SIZE} />} />
             <HeaderAction
-              label="Delete task"
+              label="Delete task…"
               danger
               onClick={() => setDeleteConfirmationOpen(true)}
               disabled={deleteMutation.isPending}
@@ -164,16 +156,20 @@ export function TaskDetailView({
       {/* Content */}
       <div className="flex-1 space-y-8 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
         {/* Status strip */}
-        <section aria-label="Status" className="grid grid-cols-3 gap-3">
+        <section aria-label="Status" className="grid grid-cols-2 gap-3 @xl:grid-cols-4">
           <StatTile label="Status">
-            <span className="flex items-center gap-1.5">
-              <span className={`size-2 shrink-0 rounded-full ${statusDotColor}`} aria-hidden="true" />
-              <span className={`capitalize ${statusColor}`}>{task.status}</span>
-            </span>
+            <Chip tone={state.tone} dot={state.dot}>
+              {state.label}
+            </Chip>
           </StatTile>
-          <StatTile label="Enabled">{task.enabled ? 'Yes' : 'No'}</StatTile>
+          <StatTile label="Last run" title={task.last_run_at ? formatRelativeDate(task.last_run_at) : undefined}>
+            {task.last_run_at ? lastRunLabel(task).replace('Last run ', '') : 'Not yet'}
+          </StatTile>
+          <StatTile label="Next run" title={task.next_fire_at ? formatRelativeDate(task.next_fire_at) : undefined}>
+            {nextRun ? nextRun.replace('Next run ', '') : 'None scheduled'}
+          </StatTile>
           <StatTile label="Runs">
-            {task.run_count}{task.max_runs ? ` / ${task.max_runs}` : ''}
+            {task.max_runs ? `${task.run_count} of ${task.max_runs}` : task.run_count}
           </StatTile>
         </section>
 
@@ -181,7 +177,6 @@ export function TaskDetailView({
           <DetailRow label="Agent" long>
             {task.workspace ? (
               <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
-                <FolderOpen size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                 <span className="shrink-0">Coding agent</span>
                 {isMobile ? (
                   // No hover on touch: show the whole path instead of a tooltip.
@@ -197,10 +192,7 @@ export function TaskDetailView({
                 )}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5">
-                <Terminal size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                Default agent
-              </span>
+              <span>Default agent</span>
             )}
           </DetailRow>
           <DetailRow label="Session" long>
@@ -212,19 +204,28 @@ export function TaskDetailView({
 
         <PanelSection title="Schedule" flush>
           <DetailRow label="Type">
-            <span className="capitalize">{task.schedule_type}</span>
+            {task.schedule_type === 'every' ? 'Repeats' : task.schedule_type === 'cron' ? 'Cron' : 'Once'}
           </DetailRow>
           {task.schedule_type === 'at' && task.at_datetime && (
             <DetailRow label="Date and time">{formatInTimezone(task.at_datetime, task.timezone)}</DetailRow>
           )}
           {task.schedule_type === 'every' && task.every_seconds && (
-            <DetailRow label="Interval">{task.every_seconds}s</DetailRow>
+            <DetailRow label="Every">
+              {formatInterval(task.every_seconds)}{' '}
+              <span className="font-mono text-(--color-text-muted)">({task.every_seconds.toLocaleString('en-US')} s)</span>
+            </DetailRow>
           )}
           {task.schedule_type === 'cron' && task.cron_expression && (
             <DetailRow label="Expression">
               <code className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs text-(--color-text)">
                 {task.cron_expression}
               </code>
+            </DetailRow>
+          )}
+          {cron?.valid && (
+            <DetailRow label="Means">
+              {cron.description ?? 'Custom schedule'}
+              {cron.next && <span className="text-(--color-text-muted)"> · next {cron.next}</span>}
             </DetailRow>
           )}
           <DetailRow label="Timezone">{task.timezone}</DetailRow>
@@ -243,21 +244,13 @@ export function TaskDetailView({
             </Button>
           }
         >
-          <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)">
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-(--color-text)">
             {task.prompt}
           </p>
         </PanelSection>
 
         <section className="space-y-3">
-          <PanelSection title="Runs" flush>
-            {task.last_run_at && (
-              <DetailRow label="Last run">{formatRelativeDate(task.last_run_at)}</DetailRow>
-            )}
-            {task.next_fire_at && (
-              <DetailRow label="Next run">
-                <span className="font-medium text-(--color-accent)">{formatRelativeDate(task.next_fire_at)}</span>
-              </DetailRow>
-            )}
+          <PanelSection title="History" flush>
             <DetailRow label="Created">{formatRelativeDate(task.created_at)}</DetailRow>
             <DetailRow label="Updated">{formatRelativeDate(task.updated_at)}</DetailRow>
           </PanelSection>
@@ -271,7 +264,7 @@ export function TaskDetailView({
 
       {isMobile && (
         <div className={cn('flex shrink-0 gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3', footerSafeArea)}>
-          <Button type="button" className="flex-1" onClick={triggerTask} disabled={triggerMutation.isPending} aria-label="Trigger now">
+          <Button type="button" className="flex-1" onClick={triggerTask} disabled={triggerMutation.isPending}>
             {runIcon}
             Run now
           </Button>
@@ -328,9 +321,9 @@ function DetailRow({ label, long = false, children }: { label: string; long?: bo
   )
 }
 
-function StatTile({ label, children }: { label: string; children: ReactNode }) {
+function StatTile({ label, title, children }: { label: string; title?: string; children: ReactNode }) {
   return (
-    <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3.5">
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3.5" title={title}>
       <p className={TEXT.hint}>{label}</p>
       <div className="mt-1 text-sm font-semibold text-(--color-text)">{children}</div>
     </div>

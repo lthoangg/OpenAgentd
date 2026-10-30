@@ -40,7 +40,7 @@ function task(overrides: Partial<ScheduledTaskResponse> = {}): ScheduledTaskResp
 
 async function chooseDropdown(triggerName: RegExp, optionLabel: RegExp) {
   fireEvent.click(screen.getByRole('button', { name: triggerName }))
-  fireEvent.click(await screen.findByRole('menuitem', { name: optionLabel }))
+  fireEvent.click(await screen.findByRole('option', { name: optionLabel }))
 }
 
 describe('scheduler TanStack Form mutations', () => {
@@ -73,24 +73,99 @@ describe('scheduler TanStack Form mutations', () => {
 
     fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Repeating task' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run repeatedly' } })
-    fireEvent.change(screen.getByLabelText('Interval (seconds)'), { target: { value: '120' } })
+    // The amount is in the chosen unit (hours by default): 2 hours is 7200 s
+    fireEvent.change(screen.getByLabelText('Every'), { target: { value: '2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
 
     expect(createMutate).toHaveBeenCalledTimes(1)
     const payload = createMutate.mock.calls[0][0] as Record<string, unknown>
     expect(payload).toEqual({
       name: 'Repeating task', workspace: '/repo/app', schedule_type: 'every', timezone: 'UTC',
-      prompt: 'Run repeatedly', session_id: null, max_runs: null, enabled: true, every_seconds: 120,
+      prompt: 'Run repeatedly', session_id: null, max_runs: null, enabled: true, every_seconds: 7200,
     })
     expect('at_datetime' in payload).toBe(false)
     expect('cron_expression' in payload).toBe(false)
+  })
+
+  it('shows the default interval as 1 hours, with the seconds it means', () => {
+    renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
+
+    expect(screen.getByLabelText('Every')).toHaveValue(1)
+    expect(screen.getByRole('button', { name: 'Interval unit' }).textContent).toContain('hours')
+    expect(screen.getByText('= 3,600 s')).toBeInTheDocument()
+    expect(screen.getByText('The first run is one interval after you save.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Interval (seconds)')).toBeNull()
+  })
+
+  it('offers days, hours, minutes and seconds, and changes what the typed number counts', async () => {
+    renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Interval unit' }))
+    expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual(['days', 'hours', 'minutes', 'seconds'])
+    fireEvent.click(screen.getByRole('option', { name: 'minutes' }))
+
+    // 1 hour re-expressed as the same amount of the new unit: 1 minute
+    await waitFor(() => expect(screen.getByLabelText('Every')).toHaveValue(1))
+    expect(screen.getByText('= 60 s')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Every'), { target: { value: '90' } })
+    expect(screen.getByText('= 5,400 s')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Minutes task' } })
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run often' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    expect((createMutate.mock.calls[0][0] as { every_seconds: number }).every_seconds).toBe(5400)
+  })
+
+  it('titles the form "New task" and writes the prompt in sans text', () => {
+    renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
+
+    expect(screen.getByRole('heading', { name: 'New task' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Daily standup report')).toBeInTheDocument()
+    const prompt = screen.getByLabelText('Prompt')
+    expect(prompt.className).toContain('text-sm')
+    expect(prompt.className).not.toContain('font-mono')
+  })
+
+  it('names the workspace picker "Choose a workspace…" until one is picked', () => {
+    renderWithQuery(<CreateTaskForm contextWorkspace={null} onSuccess={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Select workspace' }).textContent).toContain('Choose a workspace…')
+  })
+
+  it('previews a cron expression and rejects an invalid one', () => {
+    renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
+
+    fireEvent.click(screen.getByRole('radio', { name: /cron/i }))
+    const cron = screen.getByLabelText('Cron expression')
+    expect(cron).toHaveAttribute('placeholder', '0 9 * * 1-5')
+
+    fireEvent.change(cron, { target: { value: '0 9 * * 1-5' } })
+    expect(screen.getByText('Weekdays at 09:00')).toBeInTheDocument()
+    fireEvent.change(cron, { target: { value: '0 9 1 6 *' } })
+    expect(screen.getByText('Custom schedule')).toBeInTheDocument()
+    fireEvent.change(cron, { target: { value: '61 * * * *' } })
+    expect(screen.getByText(/Not a valid cron expression yet/)).toBeInTheDocument()
+    expect(cron).toHaveAttribute('aria-invalid', 'true')
+
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Cron task' } })
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run on a schedule' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    expect(createMutate).not.toHaveBeenCalled()
+    expect(screen.getByText(/This isn't a valid cron expression/)).toBeInTheDocument()
+
+    fireEvent.change(cron, { target: { value: '0 9 * * 1-5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    expect((createMutate.mock.calls[0][0] as { cron_expression: string }).cron_expression).toBe('0 9 * * 1-5')
   })
 
   it('hydrates Edit, updates every values, and sends an exact PUT body', async () => {
     renderWithQuery(<EditTaskForm task={task()} onSuccess={() => {}} onCancel={() => {}} />)
 
     expect(screen.getByLabelText('Prompt')).toHaveValue('Existing prompt')
-    fireEvent.change(screen.getByLabelText('Interval (seconds)'), { target: { value: '120' } })
+    // 3600 s hydrates as 1 hours
+    expect(screen.getByLabelText('Every')).toHaveValue(1)
+    expect(screen.getByRole('button', { name: 'Interval unit' }).textContent).toContain('hours')
+    await chooseDropdown(/Interval unit/, /^minutes$/)
+    fireEvent.change(screen.getByLabelText('Every'), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated prompt' } })
     await chooseDropdown(/Session Target/i, /Persistent Task Session/i)
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))

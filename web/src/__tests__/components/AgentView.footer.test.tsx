@@ -70,7 +70,8 @@ describe("AgentView — reader transcript", () => {
   it("shows every step in the default detailed transcript", () => {
     renderStream({ blocks })
 
-    expect(screen.getByText("Looking around.")).toBeTruthy()
+    // The finished thought is its own row, folded; nothing is grouped.
+    expect(screen.getByRole("button", { name: /^Thought/ })).toBeTruthy()
     expect(screen.queryByRole("button", { name: /^1 read/ })).toBeNull()
   })
 
@@ -85,7 +86,7 @@ describe("AgentView — reader transcript", () => {
       isWorking: true,
     })
 
-    expect(screen.getByRole("button", { name: /^Working · 1m 5s · Read/ })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /^Working · 1m 5s · read/ })).toBeTruthy()
   })
 
   describe("with a subagent report", () => {
@@ -338,7 +339,7 @@ describe("AgentView — AssistantFooter", () => {
       })
 
       expect(screen.getByText("what’s on your mind?")).toBeTruthy()
-      expect(screen.getByRole("region", { name: "Session compacted" })).toBeTruthy()
+      expect(screen.getByRole("region", { name: "Earlier messages summarized" })).toBeTruthy()
     })
 
     it("does not render footer when there is no text content and no timestamp", () => {
@@ -395,7 +396,7 @@ describe("AgentView — AssistantFooter", () => {
       })
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       await user.hover(copyBtn)
-      expect((await screen.findByRole("tooltip")).textContent).toBe("Copy")
+      expect((await screen.findByRole("tooltip")).textContent).toBe("Copy response")
     })
   })
 
@@ -621,12 +622,13 @@ describe("AgentView — AssistantFooter", () => {
       const footerText = footer?.textContent ?? ""
       const modelIndex = footerText.indexOf("claude-sonnet-4.5")
       const timeMatch = footerText.match(/\d+:\d+/)
-      const durationIndex = footerText.indexOf("1.2s")
+      const durationIndex = footerText.indexOf("1.2 s")
       expect(modelIndex).toBeGreaterThanOrEqual(0)
       expect(timeMatch).not.toBeNull()
       expect(durationIndex).toBeGreaterThanOrEqual(0)
-      expect(modelIndex).toBeLessThan(timeMatch?.index ?? -1)
-      expect(timeMatch?.index ?? -1).toBeLessThan(durationIndex)
+      // Time, then model, then duration: ``14:30 · claude-sonnet-4.5 · 1.2 s``.
+      expect(timeMatch?.index ?? -1).toBeLessThan(modelIndex)
+      expect(modelIndex).toBeLessThan(durationIndex)
     })
 
     it("renders footer with only timestamp when there is no text content", () => {
@@ -757,6 +759,7 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
+      fireEvent.click(screen.getByRole("button", { name: /^Thought/ }))
       expect(container.textContent).toContain("Reasoning line one\n\nReasoning line two")
     })
   })
@@ -772,7 +775,7 @@ describe("AgentView — footer and a forced compaction", () => {
     renderStream({ blocks: [makeUserBlock("u1", "Fix it"), reply, forcedCompaction("compacted")] })
 
     const copy = screen.getByRole("button", { name: /copy response/i })
-    const divider = screen.getByRole("region", { name: "Session compacted" })
+    const divider = screen.getByRole("region", { name: "Earlier messages summarized" })
     expect(copy.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
@@ -780,7 +783,7 @@ describe("AgentView — footer and a forced compaction", () => {
     renderStream({ blocks: [makeUserBlock("u1", "Fix it"), reply, forcedCompaction("compacting")], isWorking: true })
 
     expect(screen.getByRole("button", { name: /copy response/i })).toBeTruthy()
-    expect(screen.getByRole("region", { name: "Session compacting" })).toBeTruthy()
+    expect(screen.getByRole("region", { name: "Summarizing earlier messages…" })).toBeTruthy()
   })
 
   it("keeps an auto-compaction inside its run, under the run's one footer", () => {
@@ -790,7 +793,7 @@ describe("AgentView — footer and a forced compaction", () => {
 
     const copies = screen.getAllByRole("button", { name: /copy response/i })
     expect(copies).toHaveLength(1)
-    const divider = screen.getByRole("region", { name: "Session compacted" })
+    const divider = screen.getByRole("region", { name: "Earlier messages summarized" })
     expect(divider.compareDocumentPosition(copies[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
@@ -818,7 +821,7 @@ describe("AgentView — footer model label", () => {
     expect(labels).toEqual(["gpt-5", "gpt-5", "claude-opus-4"])
   })
 
-  it("names the thinking level beside the model on every answer that ran with one", () => {
+  it("names the thinking level in each answer's turn details", () => {
     const leveled = (id: string, model: string, level: string): ContentBlock => ({
       ...answer(id, model),
       extra: { model, thinking_level: level },
@@ -839,7 +842,9 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5 · high", "gpt-5 · high", "gpt-5 · low", "gpt-5"])
+    expect(labels).toEqual(["gpt-5", "gpt-5", "gpt-5", "gpt-5"])
+    const details = screen.getAllByRole("button", { name: /Turn details/ }).map((el) => el.getAttribute("aria-label"))
+    expect(details.map((d) => /thinking (\w+)/.exec(d ?? "")?.[1] ?? null)).toEqual(["high", "high", "low", null])
   })
 
   it("names on each prompt the model and thinking level that answered it", () => {

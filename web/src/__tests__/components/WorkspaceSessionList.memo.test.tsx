@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 /**
  * Sidebar re-renders often (agent status, queries, routing) and passes
  * inline callbacks. Session rows are memoized behind stable handlers, so a
@@ -39,8 +40,11 @@ afterEach(() => {
   rowRenders = 0
 })
 
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
 function list(currentSessionId: string, onEdit: (session: SessionResponse) => void) {
   return (
+    <QueryClientProvider client={queryClient}>
     <WorkspaceSessionList
       path="/repo"
       currentSessionId={currentSessionId}
@@ -50,6 +54,7 @@ function list(currentSessionId: string, onEdit: (session: SessionResponse) => vo
       onSessionLongPress={() => {}}
       onSessionContextActions={() => {}}
     />
+    </QueryClientProvider>
   )
 }
 

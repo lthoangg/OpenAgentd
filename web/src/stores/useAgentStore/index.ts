@@ -62,7 +62,7 @@ export function inferErrorTitle(message: string, category?: string): string {
     return 'Provider connection failed'
   }
   if (lower.includes('cannot undo') || lower.includes('failed to undo')) return 'Undo failed'
-  if (lower.includes('compact') || lower.includes('compaction')) return 'Compaction failed'
+  if (lower.includes('compact') || lower.includes('compaction')) return "Couldn't summarize earlier messages"
   if (lower.includes('redo')) return 'Redo failed'
   if (lower.includes('queue') || lower.includes('send message')) return 'Message failed'
   return 'Agent error'

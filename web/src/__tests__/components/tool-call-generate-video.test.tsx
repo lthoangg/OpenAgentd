@@ -7,25 +7,31 @@ import { ToolCall } from "@/components/ToolCall";
 afterEach(() => cleanup());
 
 describe("ToolCall generate_video display", () => {
-  it("shows 'Filming <filename>' header when filename is provided", () => {
+  it("shows the tool name in mono and the filename as a plain target when filename is provided", () => {
     const args = JSON.stringify({
       prompt: "Create a video of a spinning cube",
       filename: "cube_spin",
     });
     render(<ToolCall name="generate_video" args={args} done={true} />);
 
-    // Header should show "Filming cube_spin.mp4"
-    expect(screen.getByText(/Filming/i)).toBeInTheDocument();
-    expect(screen.getByText(/cube_spin\.mp4/i)).toBeInTheDocument();
+    // The row is the real tool name, then the sanitised filename
+    expect(screen.getByText("generate_video").className).toContain("font-mono");
+    expect(screen.getByText("cube_spin.mp4")).toBeInTheDocument();
+    expect(screen.queryByText(/Filming/i)).toBeNull();
+    expect(screen.queryByText(/Generate Video/)).toBeNull();
+    expect(document.querySelector('[title="generate_video: cube_spin.mp4"]')).not.toBeNull();
   });
 
-  it("shows 'Filming a video…' when filename is not provided", () => {
+  it("shows only the tool name when filename is not provided", () => {
     const args = JSON.stringify({
       prompt: "Create a video",
     });
     render(<ToolCall name="generate_video" args={args} done={true} />);
 
-    expect(screen.getByText(/Filming a video/i)).toBeInTheDocument();
+    expect(screen.getByText("generate_video")).toBeInTheDocument();
+    expect(screen.queryByText(/Filming/i)).toBeNull();
+    // No target: the row title is just the tool name
+    expect(document.querySelector('[title="generate_video"]')).not.toBeNull();
   });
 
   it("sanitizes filename by removing extension and adding .mp4", () => {
@@ -138,8 +144,9 @@ describe("ToolCall generate_video display", () => {
   it("renders without crashing when pending (no args, no done)", () => {
     render(<ToolCall name="generate_video" />);
 
-    // When no args, shows the readable tool label instead of a custom header.
-    expect(screen.getByText(/Generate Video/i)).toBeInTheDocument();
+    // When no args, shows the real tool name instead of a custom header.
+    expect(screen.getByText("generate_video")).toBeInTheDocument();
+    expect(screen.queryByText(/Generate Video/)).toBeNull();
     expect(screen.queryByText(/pending/i)).toBeNull();
   });
 
@@ -150,12 +157,14 @@ describe("ToolCall generate_video display", () => {
     });
     render(<ToolCall name="generate_video" args={args} />);
 
-    expect(screen.getByText(/Filming/i)).toBeInTheDocument();
+    expect(screen.getByText("generate_video")).toBeInTheDocument();
+    expect(screen.getByText("video.mp4")).toBeInTheDocument();
+    expect(screen.queryByText(/Filming/i)).toBeNull();
     // Should not show "pending" when args are present
     expect(screen.queryByText(/pending/i)).toBeNull();
   });
 
-  it("does not pulse header text when done=true", () => {
+  it("shows no pulse, running dot or 'running…' when done=true", () => {
     const args = JSON.stringify({
       prompt: "Create a video",
       filename: "video",
@@ -163,10 +172,12 @@ describe("ToolCall generate_video display", () => {
     render(<ToolCall name="generate_video" args={args} done={true} />);
 
     const btn = screen.getByRole("button");
-    expect(btn.querySelector("span.animate-pulse")).toBeNull();
+    expect(btn.querySelector(".animate-pulse")).toBeNull();
+    expect(btn.querySelector("[data-running-dot]")).toBeNull();
+    expect(btn.textContent).not.toContain("running…");
   });
 
-  it("shows running status when done=false", () => {
+  it("shows a running dot and 'running…' when done=false, never a pulse", () => {
     const args = JSON.stringify({
       prompt: "Create a video",
       filename: "video",
@@ -174,8 +185,10 @@ describe("ToolCall generate_video display", () => {
     render(<ToolCall name="generate_video" args={args} done={false} />);
 
     const btn = screen.getByRole("button");
-    const header = btn.querySelector("span.animate-pulse");
-    expect(header?.textContent).toContain("Filming video.mp4");
+    expect(btn.querySelector("[data-running-dot]")).not.toBeNull();
+    expect(btn.querySelector(".animate-pulse")).toBeNull();
+    expect(btn.textContent).toContain("video.mp4");
+    expect(btn.textContent).toContain("running…");
   });
 
   it("handles absent first_frame gracefully", async () => {

@@ -58,7 +58,7 @@ export function DeniedPathsSettingsPage() {
 
   return (
     <SettingsPage
-      title="Denied Paths"
+      title="Denied paths"
       draft={draft}
       loading={isLoading}
       error={error}
@@ -74,8 +74,8 @@ export function DeniedPathsSettingsPage() {
         title="Denied patterns"
         description={
           <>
-            Glob patterns: <code className="rounded-xs bg-(--bg-key) px-1 font-mono">**</code> matches any depth,{' '}
-            <code className="rounded-xs bg-(--bg-key) px-1 font-mono">*</code> one folder level. One match blocks access.
+            <code className="rounded-xs bg-(--bg-key) px-1 font-mono">**</code> matches any folder,{' '}
+            <code className="rounded-xs bg-(--bg-key) px-1 font-mono">*</code> matches one level.
           </>
         }
         actions={
@@ -164,7 +164,7 @@ function DeniedPathsHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex min-h-9 items-center gap-0.5 rounded-xs text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
+            className="inline-flex min-h-9 items-center gap-0.5 rounded-xs pointer-coarse:min-h-9 text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-0"
           >
             See examples
             <ChevronDown

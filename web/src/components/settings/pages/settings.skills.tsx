@@ -10,8 +10,16 @@ interface SkillsListPageProps {
   onNew: () => void
 }
 
+/** Where a skill file lives, in words. */
+export function skillSourceLabel(source: string, builtIn: boolean): string {
+  if (builtIn || source === 'builtin') return 'Built in'
+  if (source === 'project-agents') return 'From project'
+  if (source === 'global-agents') return 'From ~/.agents'
+  return 'From config'
+}
+
 export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPageProps) {
-  const { data, isLoading, isError } = useSkillFilesQuery()
+  const { data, isLoading, isError, error, refetch } = useSkillFilesQuery()
 
   const rows = useMemo<ListViewRow[]>(() => {
     const skills = data?.skills ?? []
@@ -27,23 +35,20 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
 
     const toRow = (s: (typeof skills)[number]): ListViewRow => {
       const slash = s.name.indexOf('/')
-      const title = slash === -1 ? s.name : s.name.replace('/', ':')
-      const badge = slash === -1 ? undefined : 'sub-skill'
       return {
         key: s.name,
         active: selectedName === s.name,
-        title,
-        badge,
+        title: s.name,
+        titleMono: true,
+        badge: skillSourceLabel(s.source, s.built_in),
         description: [
           s.description || 'No description',
-          s.built_in ? 'Built-in' : null,
-          !s.editable ? 'Read-only' : null,
-          s.source !== 'global-openagentd' ? s.source : null,
+          !s.editable && !s.built_in ? 'Read-only' : null,
         ].filter(Boolean).join(' · '),
-        meta: slash === -1 ? undefined : s.name,
+        descriptionLines: 2,
+        metaChip: slash === -1 ? undefined : `Sub-skill of ${s.name.slice(0, slash)}`,
         invalidReason: !s.valid ? (s.error ?? 'Invalid configuration') : undefined,
         onClick: () => onSelect(s.name),
-        icon: <Sparkles size={14} />,
       }
     }
 
@@ -65,8 +70,10 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
       rows={rows}
       isLoading={isLoading}
       isError={isError}
+      error={error}
+      onRetry={() => void refetch()}
       emptyTitle="No skills yet"
-      emptyBody="Skills are reusable instruction modules agents load on demand via the skill tool."
+      emptyBody="A skill is a folder with a SKILL.md file. Agents load it when a task needs it."
       emptyIcon={Sparkles}
     />
   )

@@ -35,7 +35,7 @@ describe('TodosPopover', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={[]} />)
 
     expect(screen.getByText('No tasks yet')).toBeTruthy()
-    expect(screen.queryByRole('list', { name: 'Task list' })).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Tasks' })).toBeNull()
   })
 
   it('shows the saved plan row even before there are tasks', () => {

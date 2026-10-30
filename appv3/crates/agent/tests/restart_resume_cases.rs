@@ -36,6 +36,7 @@ fn setup_roots(root: &Path) {
     let agents = appv3_core::settings::settings().agents_dir.clone();
     std::fs::create_dir_all(&agents).unwrap();
     std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:mock\ntools: []\n---\nYou are the coding agent.\n").unwrap();
+    std::fs::write(agents.join("worker.md"), "---\nname: worker\nrole: member\nmodel: mock:mock\ntools: []\n---\nYou run builds.\n").unwrap();
 }
 
 /// A session an earlier process saved: a prompt, then a tool call with no
@@ -132,6 +133,10 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     wait_for("the lead's turn on the report", async || rows(&pool, &lead).await.last().is_some_and(|r| r.role == "assistant" && r.content.as_deref() == Some("mock"))).await;
     let report_row = rows(&pool, &lead).await.into_iter().find(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1")).expect("member report");
     assert_eq!(report_row.content.as_deref(), Some(member_notice("worker#1").as_str()));
+    // It is listed again, stopped, and its cut-off call says a restart stopped it.
+    assert_eq!(appv3_agent::subagents::describe_subagents(&lead), "- worker#1: stopped by a server restart (send it a task to resume)");
+    let member_tool = rows(&pool, &member).await.into_iter().find(|r| r.role == "tool").expect("member's cut-off call healed");
+    assert_eq!(member_tool.content.as_deref(), Some(RESTART_TOOL_RESULT));
 
     // Between turns: the goal took its next turn instead of pausing.
     wait_for("the goal's next turn", async || appv3_db::latest_session_goal(&pool, &between).await.unwrap().unwrap().turns_used >= 1).await;

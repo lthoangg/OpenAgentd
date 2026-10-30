@@ -33,11 +33,11 @@ import {
 
 const NAME_MAX = 40
 const BRIEF_MAX = 500
-const BRIEF_PLACEHOLDER = 'Brief for agents, e.g. web = Next.js frontend, api = Rust backend'
+const BRIEF_PLACEHOLDER = 'For example: web = Next.js frontend, api = Rust backend'
 
 /** The native picker drawn as a round swatch instead of the browser's button. */
 const SWATCH_CLASS = cn(
-  'size-5 shrink-0 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0',
+  'size-5 shrink-0 cursor-pointer appearance-none rounded-full pointer-coarse:size-9 border-0 bg-transparent p-0',
   '[&::-webkit-color-swatch-wrapper]:p-0',
   '[&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border [&::-webkit-color-swatch]:border-(--color-border-strong)',
   '[&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border [&::-moz-color-swatch]:border-(--color-border-strong)',
@@ -103,7 +103,7 @@ function ColorField({ value, onChange, onValidChange }: {
           type="color"
           value={value}
           onChange={(e) => setTyped(e.target.value)}
-          aria-label="Pick group colour"
+          aria-label="Pick group color"
           className={SWATCH_CLASS}
         />
         <input
@@ -111,7 +111,7 @@ function ColorField({ value, onChange, onValidChange }: {
           value={text}
           onChange={(e) => setTyped(e.target.value)}
           onBlur={() => { if (!invalid) setText(value) }}
-          aria-label="Group colour"
+          aria-label="Group color"
           aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined}
           maxLength={9}
@@ -167,12 +167,12 @@ function GroupForm({
             className="h-9"
           />
         </Field>
-        <Field label="Colour">
+        <Field label="Color">
           <ColorField value={color} onChange={setColor} onValidChange={setColorValid} />
         </Field>
       </div>
-      <Field label="Brief for agents" hint="Agents in this group read this to know what each repository is for.">
-        <Textarea value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={BRIEF_MAX} placeholder={BRIEF_PLACEHOLDER} aria-label="Group brief" className="min-h-20" />
+      <Field label="Notes for agents" hint="Agents in this group read this to learn what each workspace is for.">
+        <Textarea value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={BRIEF_MAX} placeholder={BRIEF_PLACEHOLDER} aria-label="Notes for agents" className="min-h-20" />
       </Field>
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" size="sm" onClick={onCancel}>Cancel</Button>
@@ -314,7 +314,7 @@ export function WorkspaceGroupsSettings() {
                               type="button"
                               aria-label={`Remove ${repo.name} from ${group.name}`}
                               onClick={() => setMember(group, repo.path, false)}
-                              className="inline-flex size-5 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-7"
+                              className="inline-flex size-5 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-7"
                             >
                               <X size={ICON_SIZE_INLINE} aria-hidden="true" />
                             </button>
@@ -336,7 +336,7 @@ export function WorkspaceGroupsSettings() {
                       </Dropdown>
                     )}
                     {members.length === 0 && others.length === 0 && (
-                      <span className={TEXT.subtle}>Open a repository to add it here.</span>
+                      <span className={TEXT.subtle}>Open another workspace to add it here.</span>
                     )}
                   </div>
                 )}
@@ -363,9 +363,9 @@ export function WorkspaceGroupsSettings() {
           type="button"
           onClick={startCreating}
           className={cn(
-            'flex h-11 w-full cursor-pointer items-center gap-2 border-t border-(--color-border-subtle) px-4 text-left text-xs font-medium text-(--color-text-muted) md:h-10',
+            'flex h-9 w-full cursor-pointer items-center gap-2 border-t border-(--color-border-subtle) px-4 text-left text-xs font-medium text-(--color-text-muted) md:h-10',
             'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
-            'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none focus-visible:ring-inset',
+            'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none focus-visible:ring-inset',
           )}
         >
           <Plus size={ICON_SIZE} aria-hidden="true" />

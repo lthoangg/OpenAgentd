@@ -51,8 +51,9 @@ function PanelSection({
   // No aria-labelledby: a named region per group would add a landmark for
   // every card and make each title a second label for the field it contains.
   return (
-    <section className="space-y-3" {...props}>
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+    <section className="space-y-2 md:space-y-3" {...props}>
+      {/* A bare heading centres on its actions; a described one sits on their baseline. */}
+      <div className={cn('flex flex-wrap gap-x-4 gap-y-2', description ? 'items-end' : 'items-center')}>
         <div className="min-w-0 flex-1 select-none">
           <h2 className={TEXT.title}>{title}</h2>
           {description && <p className={cn('mt-1 max-w-prose', TEXT.hint)}>{description}</p>}
@@ -62,7 +63,7 @@ function PanelSection({
       <SectionCard className={className}>
         <div
           className={cn(
-            flush ? 'divide-y divide-(--color-border-subtle)' : 'px-4 py-4',
+            flush ? 'divide-y divide-(--color-border-subtle)' : 'px-3 py-3 md:px-4 md:py-4',
             contentClassName,
           )}
         >

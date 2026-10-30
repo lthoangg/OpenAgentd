@@ -169,16 +169,13 @@ const HIDE_ARGS_TOOLS = new Set([
 ])
 
 /**
- * ``done`` only matters to tools whose header reads differently once the call
- * finished (``plan``: "Writing plan…" → "Wrote plan").
+ * The row's target after the tool name. Worded to read the same while the
+ * call runs and after it finishes (`list`, `add "Add tests"`, a path, a
+ * command): the result summary, not the header, says how it went.
  */
-export function getToolDisplay(rawName: string, args: string | undefined, done = false): ToolDisplay {
+export function getToolDisplay(rawName: string, args: string | undefined): ToolDisplay {
   const name = canonicalToolName(rawName)
   if (!args) {
-    // recall with no args — conversational header, no args section
-    if (name === 'recall') {
-      return { header: 'Checking memory…', headerTitle: 'Checking memory…', formattedArgs: null }
-    }
     return { header: null, headerTitle: null, formattedArgs: null }
   }
 
@@ -191,7 +188,7 @@ export function getToolDisplay(rawName: string, args: string | undefined, done =
     parsed = parsePartialJSON(args)
   }
 
-  const resultDisplay = name === 'plan' ? planDisplay(parsed, done && isComplete) : getToolDisplayInternal(name, parsed)
+  const resultDisplay = name === 'plan' ? planDisplay(parsed) : getToolDisplayInternal(name, parsed)
   // A streaming plan reads better as its partial Markdown than as raw JSON.
   if (!isComplete && name !== 'plan') {
     const shouldHideArgs = HIDE_ARGS_TOOLS.has(name)
@@ -217,11 +214,11 @@ function diffLines(prefix: '-' | '+', text: string): string[] {
 }
 
 // ── plan: write and new show the Markdown, edit a -/+ diff of each replacement ──
-function planDisplay(parsed: Record<string, unknown>, done: boolean): ToolDisplay {
+function planDisplay(parsed: Record<string, unknown>): ToolDisplay {
   if (str(parsed, 'action') === 'edit') {
     const edits = planEdits(parsed)
     const count = edits.length
-    const header = done ? `Edited plan${count ? ` · ${count} ${count === 1 ? 'change' : 'changes'}` : ''}` : 'Editing plan…'
+    const header = count ? `edit · ${count} ${count === 1 ? 'change' : 'changes'}` : 'edit'
     return {
       header,
       headerTitle: header,
@@ -231,7 +228,7 @@ function planDisplay(parsed: Record<string, unknown>, done: boolean): ToolDispla
     }
   }
   const fresh = str(parsed, 'action') === 'new'
-  const header = fresh ? (done ? 'Started a new plan' : 'Starting a new plan…') : done ? 'Wrote plan' : 'Writing plan…'
+  const header = fresh ? 'new' : 'write'
   return { header, headerTitle: header, formattedArgs: typeof parsed.content === 'string' && parsed.content ? parsed.content : null }
 }
 
@@ -293,13 +290,16 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return { header: label ? <Arg>{label}</Arg> : null, headerTitle: label, formattedArgs: null }
   }
 
-  // ── shell: description as header, command as bash block ─────────────
+  // ── shell: the command itself is the target (the agent's description
+  //    rides in the tooltip), the full command in the bash block ────────
   if (name === 'shell') {
     const description = str(parsed, 'description')
+    const command = str(parsed, 'command')
+    const oneLine = command ? command.replace(/\s*\n\s*/g, ' ') : null
     return {
-      header: description ? <Arg>{description}</Arg> : null,
-      headerTitle: description,
-      formattedArgs: str(parsed, 'command'),
+      header: oneLine ? <Arg>{trunc(oneLine, 80)}</Arg> : description ? <Arg>{description}</Arg> : null,
+      headerTitle: oneLine && description ? `${oneLine}\n${description}` : oneLine ?? description,
+      formattedArgs: command,
       language: 'bash',
     }
   }
@@ -409,9 +409,10 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       const v = typeof it.value === 'string' ? it.value : ''
       return `[${cat}] ${k}: ${v}`
     })
+    const saved = items.length === 1 && typeof items[0].key === 'string' ? `"${items[0].key}"` : items.length > 1 ? `${items.length} items` : null
     return {
-      header: 'Saving to memory…',
-      headerTitle: 'Saving to memory…',
+      header: saved ? <Arg>{saved}</Arg> : null,
+      headerTitle: saved,
       formattedArgs: lines.length > 0 ? lines.join('\n') : null,
     }
   }
@@ -424,9 +425,10 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       const k = typeof it.key === 'string' ? it.key : null
       return k ? `${cat}: ${k}` : cat
     })
+    const removed = lines.length === 1 ? `"${lines[0]}"` : lines.length > 1 ? `${lines.length} items` : null
     return {
-      header: 'Removing from memory…',
-      headerTitle: 'Removing from memory…',
+      header: removed ? <Arg>{removed}</Arg> : null,
+      headerTitle: removed,
       formattedArgs: lines.length > 0 ? lines.join('\n') : null,
     }
   }
@@ -437,60 +439,18 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const key = str(parsed, 'key')
     const filter = [category, key].filter(Boolean).join(': ')
     return {
-      header: 'Checking memory…',
-      headerTitle: 'Checking memory…',
+      header: filter ? <Arg>{`"${trunc(filter)}"`}</Arg> : null,
+      headerTitle: filter ? `"${filter}"` : null,
       formattedArgs: filter || null,
     }
   }
 
-  // ── bg: action-based header, hide raw JSON ────────
+  // ── bg: `pid 4312` plus the action, hide raw JSON ────────
   if (name === 'bg') {
     const action = str(parsed, 'action')?.toLowerCase()
     const pid = parsed['pid'] != null ? String(parsed['pid']) : null
-    let header: ReactNode
-    let headerTitle: string
-    switch (action) {
-      case 'list':
-        header = 'Listing background processes…'
-        headerTitle = 'Listing background processes…'
-        break
-      case 'status':
-        if (pid) {
-          header = <>Checking process <Arg>{pid}</Arg>…</>
-          headerTitle = `Checking process ${pid}…`
-        } else {
-          header = 'Checking process status…'
-          headerTitle = 'Checking process status…'
-        }
-        break
-      case 'output':
-        if (pid) {
-          header = <>Reading output of process <Arg>{pid}</Arg>…</>
-          headerTitle = `Reading output of process ${pid}…`
-        } else {
-          header = 'Reading process output…'
-          headerTitle = 'Reading process output…'
-        }
-        break
-      case 'stop':
-        if (pid) {
-          header = <>Stopping process <Arg>{pid}</Arg>…</>
-          headerTitle = `Stopping process ${pid}…`
-        } else {
-          header = 'Stopping process…'
-          headerTitle = 'Stopping process…'
-        }
-        break
-      default:
-        if (action) {
-          header = <>bg: <Arg>{action}</Arg></>
-          headerTitle = `bg: ${action}`
-        } else {
-          header = 'Managing background process…'
-          headerTitle = 'Managing background process…'
-        }
-    }
-    return { header, headerTitle, formattedArgs: null }
+    const label = [action, pid ? `pid ${pid}` : null].filter(Boolean).join(' ') || null
+    return { header: label ? <Arg>{label}</Arg> : null, headerTitle: label, formattedArgs: null }
   }
 
   // ── skill: conversational header, result body shown on expand ──
@@ -506,37 +466,38 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── note: conversational header, note body as args ─────────────
   if (name === 'note') {
     return {
-      header: 'Recording note…',
-      headerTitle: 'Recording note…',
+      header: null,
+      headerTitle: null,
       formattedArgs: str(parsed, 'content'),
     }
   }
 
-  // ── todo: action summary in header, simplified action list ────────
+  // ── todo: the action as the target (`add "Add tests"`, `complete
+  //    task_1`), worded so it reads the same running or finished ─────────
   if (name === 'todo') {
     const actions = actionList(parsed)
     const first = actions[0]
     const firstAction = first ? str(first, 'action') : null
     if (actions.length === 1 && firstAction === 'read') {
-      return { header: 'Reading todos…', headerTitle: 'Reading todos…', formattedArgs: null }
+      return { header: <Arg>list</Arg>, headerTitle: 'list', formattedArgs: null }
     }
     if (actions.length === 1 && firstAction === 'clear') {
-      const header = `Clearing ${clearScope(first)} todos…`
-      return { header, headerTitle: header, formattedArgs: null }
+      const header = `clear ${clearScope(first)}`
+      return { header: <Arg>{header}</Arg>, headerTitle: header, formattedArgs: null }
     }
     if (actions.length === 1 && firstAction === 'claim') {
       const taskId = str(first, 'task_id')
       return {
-        header: taskId ? <>Claiming todo <Arg>{taskId}</Arg></> : 'Claiming todo…',
-        headerTitle: taskId ? `Claiming todo ${taskId}` : 'Claiming todo…',
+        header: <Arg>{taskId ? `claim ${taskId}` : 'claim'}</Arg>,
+        headerTitle: taskId ? `claim ${taskId}` : 'claim',
         formattedArgs: null,
       }
     }
     if (actions.length === 1 && firstAction === 'delete') {
       const taskId = str(first, 'task_id')
       return {
-        header: taskId ? <>Deleting todo <Arg>{taskId}</Arg></> : 'Deleting todo…',
-        headerTitle: taskId ? `Deleting todo ${taskId}` : 'Deleting todo…',
+        header: <Arg>{taskId ? `delete ${taskId}` : 'delete'}</Arg>,
+        headerTitle: taskId ? `delete ${taskId}` : 'delete',
         formattedArgs: null,
       }
     }
@@ -544,8 +505,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       const content = str(first, 'content')
       const truncated = content ? trunc(content) : null
       return {
-        header: truncated ? <>Creating todo: <Arg>{truncated}</Arg></> : 'Creating todo…',
-        headerTitle: truncated ? `Creating todo: ${truncated}` : 'Creating todo…',
+        header: <Arg>{truncated ? `add "${truncated}"` : 'add'}</Arg>,
+        headerTitle: truncated ? `add "${truncated}"` : 'add',
         formattedArgs: formatTodoAction(first),
       }
     }
@@ -554,21 +515,21 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       // Completion is the board's key transition (records the result and
       // wakes the agent and unblocked tasks) — label it precisely.
       const isCompleting = str(first, 'status') === 'completed'
-      const verb = isCompleting ? 'Completing' : 'Updating'
+      const verb = isCompleting ? 'complete' : 'update'
       return {
-        header: taskId ? <>{verb} todo <Arg>{taskId}</Arg></> : `${verb} todo…`,
-        headerTitle: taskId ? `${verb} todo ${taskId}` : `${verb} todo…`,
+        header: <Arg>{taskId ? `${verb} ${taskId}` : verb}</Arg>,
+        headerTitle: taskId ? `${verb} ${taskId}` : verb,
         formattedArgs: formatTodoAction(first),
       }
     }
     if (actions.length > 1) {
       return {
-        header: <>Updating <Arg>{actions.length} todos</Arg>…</>,
-        headerTitle: `Updating ${actions.length} todos…`,
+        header: <Arg>{`${actions.length} actions`}</Arg>,
+        headerTitle: `${actions.length} actions`,
         formattedArgs: actions.map(formatTodoAction).join('\n'),
       }
     }
-    return { header: 'Managing todos…', headerTitle: 'Managing todos…', formattedArgs: null }
+    return { header: null, headerTitle: null, formattedArgs: null }
   }
 
   // ── schedule: action summary in header, prompt/schedule as args ───
@@ -577,31 +538,24 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const taskName = str(parsed, 'name')
     const taskId = str(parsed, 'task_id')
     if (action === 'list') {
-      return { header: 'Listing scheduled tasks…', headerTitle: 'Listing scheduled tasks…', formattedArgs: null }
+      return { header: <Arg>list</Arg>, headerTitle: 'list', formattedArgs: null }
     }
     if (action === 'create') {
       const truncated = taskName ? trunc(taskName) : null
       return {
-        header: truncated ? <>Scheduling <Arg>{truncated}</Arg></> : 'Scheduling task…',
-        headerTitle: truncated ? `Scheduling ${truncated}` : 'Scheduling task…',
+        header: <Arg>{truncated ? `create ${truncated}` : 'create'}</Arg>,
+        headerTitle: truncated ? `create ${truncated}` : 'create',
         formattedArgs: formatSchedule(parsed),
       }
     }
     if (action === 'pause' || action === 'resume' || action === 'delete' || action === 'trigger') {
-      const verb = action === 'pause'
-        ? 'Pausing'
-        : action === 'resume'
-          ? 'Resuming'
-          : action === 'delete'
-            ? 'Deleting'
-            : 'Triggering'
       return {
-        header: taskId ? <>{verb} scheduled task <Arg>{taskId}</Arg></> : `${verb} scheduled task…`,
-        headerTitle: taskId ? `${verb} scheduled task ${taskId}` : `${verb} scheduled task…`,
+        header: <Arg>{taskId ? `${action} ${taskId}` : action}</Arg>,
+        headerTitle: taskId ? `${action} ${taskId}` : action,
         formattedArgs: null,
       }
     }
-    return { header: 'Managing scheduled tasks…', headerTitle: 'Managing scheduled tasks…', formattedArgs: null }
+    return { header: action ? <Arg>{action}</Arg> : null, headerTitle: action, formattedArgs: null }
   }
 
   // ── read: file name in header, custom result renderer shows content ──
@@ -610,7 +564,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const fileName = path ? pathBasename(path) : null
     return {
       header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
+      headerTitle: path ?? 'file',
       formattedArgs: null,
       suppressResult: true,
     }
@@ -639,12 +593,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const modeSuffix = match === 'name' ? ' (by name)' : ''
     const truncatedPattern = pattern ? trunc(pattern) : null
     return {
-      header: truncatedPattern
-        ? <>Finding <Arg>{truncatedPattern}</Arg>{scope}{modeSuffix}</>
-        : 'Finding files…',
-      headerTitle: truncatedPattern
-        ? `Finding ${truncatedPattern}${scope}${modeSuffix}`
-        : 'Finding files…',
+      header: truncatedPattern ? <Arg>{`${truncatedPattern}${scope}${modeSuffix}`}</Arg> : null,
+      headerTitle: truncatedPattern ? `${truncatedPattern}${scope}${modeSuffix}` : null,
       formattedArgs: null,
     }
   }
@@ -660,12 +610,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const filter = hasFilter ? ` (${include})` : ''
     const truncatedPattern = pattern ? trunc(pattern) : null
     return {
-      header: truncatedPattern
-        ? <>Searching <Arg>{truncatedPattern}</Arg>{scope}{filter}</>
-        : 'Searching files…',
-      headerTitle: truncatedPattern
-        ? `Searching ${truncatedPattern}${scope}${filter}`
-        : 'Searching files…',
+      header: truncatedPattern ? <Arg>{`"${truncatedPattern}"${scope}${filter}`}</Arg> : null,
+      headerTitle: truncatedPattern ? `"${truncatedPattern}"${scope}${filter}` : null,
       formattedArgs: null,
     }
   }
@@ -688,9 +634,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       : prompt
     return {
       header: filename
-        ? <>Painting <Arg>{filename}</Arg></>
-        : 'Painting an image…',
-      headerTitle: filename ? `Painting ${filename}` : 'Painting an image…',
+        ? <Arg>{filename}</Arg>
+        : null,
+      headerTitle: filename,
       formattedArgs: argsBody,
       suppressResult: true,
     }
@@ -721,12 +667,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       ? `${inputLines.join('\n')}\n\n${prompt}`
       : prompt
     return {
-      header: extendVideo
-        ? (filename ? <>Extending <Arg>{filename}</Arg></> : 'Extending a video…')
-        : (filename ? <>Filming <Arg>{filename}</Arg></> : 'Filming a video…'),
-      headerTitle: extendVideo
-        ? (filename ? `Extending ${filename}` : 'Extending a video…')
-        : (filename ? `Filming ${filename}` : 'Filming a video…'),
+      header: filename ? <Arg>{extendVideo ? `extend ${filename}` : filename}</Arg> : extendVideo ? <Arg>extend</Arg> : null,
+      headerTitle: filename ? (extendVideo ? `extend ${filename}` : filename) : extendVideo ? 'extend' : null,
       formattedArgs: argsBody,
       suppressResult: true,
     }
@@ -739,10 +681,10 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const task = str(parsed, 'task')
     const action = str(parsed, 'action')
     if (action === 'list') {
-      return { header: 'Checking subagents', headerTitle: 'Checking subagents', formattedArgs: null }
+      return { header: <Arg>list</Arg>, headerTitle: 'list', formattedArgs: null }
     }
     if (target && (action === 'stop' || action === 'interrupt')) {
-      const verb = action === 'stop' ? 'Stop' : 'Interrupt'
+      const verb = action === 'stop' ? 'stop' : 'interrupt'
       return {
         header: <>{verb} <Arg>{target}</Arg></>,
         headerTitle: `${verb} ${target}`,
@@ -750,8 +692,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       }
     }
     return {
-      header: target ? <>Reply to <Arg>{target}</Arg></> : <>Delegate to <Arg>{profile}</Arg></>,
-      headerTitle: target ? `Reply to ${target}` : `Delegate to ${profile}`,
+      header: target ? <>send <Arg>{target}</Arg></> : <>spawn <Arg>{profile}</Arg></>,
+      headerTitle: target ? `send ${target}` : `spawn ${profile}`,
       formattedArgs: task,
     }
   }
@@ -762,16 +704,26 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const label = workspace ? trunc(pathBasename(workspace) || workspace) : null
     if (str(parsed, 'action') === 'list') {
       return {
-        header: label ? <>Listing sessions in <Arg>{label}</Arg></> : 'Listing workspaces…',
-        headerTitle: label ? `Listing sessions in ${label}` : 'Listing workspaces…',
+        header: <Arg>{label ? `list ${label}` : 'list'}</Arg>,
+        headerTitle: label ? `list ${label}` : 'list',
         formattedArgs: null,
       }
     }
-    const waits = parsed.reply === true ? ' (awaiting reply)' : ''
+    const waits = parsed.reply === true ? ' · awaiting reply' : ''
+    const worktree = str(parsed, 'worktree')
+    const checkout = worktree ? (worktree.toLowerCase() === 'main' ? 'main checkout' : `worktree ${trunc(worktree)}`) : null
+    if (checkout) {
+      const where = label ? `${label} · ${checkout}` : checkout
+      return {
+        header: <>→ <Arg>{where}</Arg>{waits}</>,
+        headerTitle: `→ ${where}${waits}`,
+        formattedArgs: str(parsed, 'message'),
+      }
+    }
     const target = label ?? 'workspace'
     return {
-      header: <>Message to <Arg>{target}</Arg>{waits}</>,
-      headerTitle: `Message to ${target}${waits}`,
+      header: <>→ <Arg>{target}</Arg>{waits}</>,
+      headerTitle: `→ ${target}${waits}`,
       formattedArgs: str(parsed, 'message'),
     }
   }
@@ -791,8 +743,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const tool = str(parsed, 'tool')
     const label = server && tool ? `${server} · ${tool}` : tool ?? server
     return {
-      header: label ? <>MCP <Arg>{label}</Arg></> : 'MCP call',
-      headerTitle: label ? `MCP ${label}` : 'MCP call',
+      header: label ? <Arg>{label}</Arg> : null,
+      headerTitle: label,
       formattedArgs: mcpArguments(parsed.arguments),
     }
   }
@@ -804,8 +756,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const wait = parsed.wait !== false
     const label = subagentName || profile
     return {
-      header: <>Spawn subagent <Arg>{label}</Arg>{wait ? '' : ' (async)'}</>,
-      headerTitle: `Spawn subagent ${label}`,
+      header: <><Arg>{label}</Arg>{wait ? '' : ' · in background'}</>,
+      headerTitle: `${label}${wait ? '' : ' · in background'}`,
       formattedArgs: task,
     }
   }
@@ -814,8 +766,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const member = str(parsed, 'member_id') || str(parsed, 'to') || 'subagent'
     const message = str(parsed, 'message') || str(parsed, 'content')
     return {
-      header: <>Message to <Arg>{member}</Arg></>,
-      headerTitle: `Message to ${member}`,
+      header: <>→ <Arg>{member}</Arg></>,
+      headerTitle: `→ ${member}`,
       formattedArgs: message,
     }
   }
@@ -824,16 +776,16 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const action = str(parsed, 'action') || 'list'
     if (action === 'list') {
       return {
-        header: 'Listing team subagents…',
-        headerTitle: 'Listing team subagents…',
+        header: <Arg>list</Arg>,
+        headerTitle: 'list',
         formattedArgs: null,
       }
     }
     if (action === 'stop') {
       const member = str(parsed, 'member_id') || 'subagent'
       return {
-        header: <>Stopping subagent <Arg>{member}</Arg></>,
-        headerTitle: `Stopping subagent ${member}`,
+        header: <Arg>{`stop ${member}`}</Arg>,
+        headerTitle: `stop ${member}`,
         formattedArgs: null,
       }
     }
@@ -842,8 +794,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
         ? (parsed.member_ids as unknown[]).map(String).join(', ')
         : (str(parsed, 'member_id') || 'all')
       return {
-        header: <>Waiting for <Arg>{members}</Arg>…</>,
-        headerTitle: `Waiting for ${members}…`,
+        header: <Arg>{`wait ${members}`}</Arg>,
+        headerTitle: `wait ${members}`,
         formattedArgs: null,
       }
     }
@@ -851,8 +803,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
 
   if (name === 'team_list') {
     return {
-      header: 'Listing team subagents…',
-      headerTitle: 'Listing team subagents…',
+      header: null,
+      headerTitle: null,
       formattedArgs: null,
     }
   }
@@ -862,8 +814,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       ? (parsed.member_ids as unknown[]).map(String).join(', ')
       : 'all'
     return {
-      header: <>Waiting for <Arg>{members}</Arg>…</>,
-      headerTitle: `Waiting for ${members}…`,
+      header: <Arg>{members}</Arg>,
+      headerTitle: members,
       formattedArgs: null,
     }
   }
@@ -871,8 +823,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   if (name === 'team_stop') {
     const member = str(parsed, 'member_id') || 'subagent'
     return {
-      header: <>Stopping subagent <Arg>{member}</Arg></>,
-      headerTitle: `Stopping subagent ${member}`,
+      header: <Arg>{member}</Arg>,
+      headerTitle: member,
       formattedArgs: null,
     }
   }
@@ -881,8 +833,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const message = str(parsed, 'message') || str(parsed, 'content')
     const endTurn = parsed.end_turn === true
     return {
-      header: endTurn ? 'Reporting final deliverables to lead…' : 'Reporting progress to lead…',
-      headerTitle: endTurn ? 'Reporting final deliverables to lead' : 'Reporting progress to lead',
+      header: endTurn ? 'final report' : 'progress report',
+      headerTitle: endTurn ? 'Final report to the main agent' : 'Progress report to the main agent',
       formattedArgs: message,
     }
   }
@@ -890,8 +842,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   if (name === 'ask_lead') {
     const question = str(parsed, 'question')
     return {
-      header: question ? <>Asking lead: <Arg>{trunc(question, 50)}</Arg></> : 'Asking lead…',
-      headerTitle: question ? `Asking lead: ${question}` : 'Asking lead',
+      header: question ? <Arg>{`"${trunc(question, 50)}"`}</Arg> : null,
+      headerTitle: question ? `Question for the main agent: ${question}` : null,
       formattedArgs: question,
     }
   }

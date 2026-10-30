@@ -71,7 +71,7 @@ function usage(session_id: string, parent_session_id: string | null = null): Ses
 describe('telemetry model', () => {
   it('labels workspaces: unrecorded, chat root, and project basename', () => {
     setChatWorkspaceEntry({ path: '/home/me/.openagentd/chat', name: 'Chat' })
-    expect(workspaceName(null)).toBe('Not recorded')
+    expect(workspaceName(null)).toBe('Unknown workspace')
     expect(workspaceName('/home/me/.openagentd/chat')).toBe('Chat')
     expect(workspaceName('/home/me/code/site')).toBe('site')
   })

@@ -17,6 +17,10 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
 }))
 
+let desktopShell = true
+const realDesktopShell = await import('@/lib/desktop-shell')
+mock.module('@/lib/desktop-shell', () => ({ ...realDesktopShell, isDesktopShell: () => desktopShell }))
+
 import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
 
 function renderHub(health?: { status: string; version: string; capabilities?: string[] }) {
@@ -46,6 +50,7 @@ function renderHub(health?: { status: string; version: string; capabilities?: st
 let originalFetch: typeof fetch | undefined
 
 beforeEach(() => {
+  desktopShell = true
   originalFetch = globalThis.fetch
   globalThis.fetch = (() =>
     Promise.reject(new Error('network disabled in test'))) as typeof fetch
@@ -66,6 +71,14 @@ describe('AboutSettingsPage — desktop updates card', () => {
     expect(screen.getByRole('button', { name: /check for updates?/i })).toBeInTheDocument()
     expect(screen.queryByText(/application update/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /^install$/i })).toBeNull()
+  })
+
+  it('hides desktop updates in the browser build, where there is no updater', () => {
+    desktopShell = false
+    renderHub({ status: 'ok', version: '1.2.3' })
+
+    expect(screen.queryByText(/^updates$/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /check for updates?/i })).toBeNull()
   })
 })
 
@@ -96,7 +109,7 @@ describe('AboutSettingsPage — community links', () => {
   it('renders Discord Server and Facebook Group community buttons', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
-    expect(screen.getByText(/community & support/i)).toBeInTheDocument()
+    expect(screen.getByText(/community and support/i)).toBeInTheDocument()
     expect(screen.getByText(/discord server/i)).toBeInTheDocument()
     expect(screen.getByText(/facebook group/i)).toBeInTheDocument()
   })

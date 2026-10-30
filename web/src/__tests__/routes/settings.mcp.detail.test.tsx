@@ -80,7 +80,7 @@ describe('McpServerDetailPage', () => {
     expect((await screen.findAllByText(/Status/i)).length).toBeGreaterThan(0)
 
     expect(screen.getByRole('button', { name: /^save$/i })).toBeTruthy()
-    expect(screen.getByRole('radiogroup', { name: /server enabled state/i })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: /server status/i })).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: /mcp transport/i })).toBeTruthy()
     expect(screen.getByPlaceholderText('npx')).toBeTruthy()
     expect(screen.getByRole('button', { name: /add environment variables/i })).toBeTruthy()

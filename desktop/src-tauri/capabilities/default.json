@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the app windows. IPC is granted to the app origin only (the bundled UI, or devUrl in debug builds). The tray popup and the island have their own narrower sets.",
+  "description": "Default capability set for the app windows. IPC is granted to the app origin only (the bundled UI, or devUrl in debug builds). The tray popup, the island and the pet have their own narrower sets.",
   "windows": [
     "main",
     "main-*"
@@ -57,6 +57,8 @@
     "allow-island-update-settings",
     "allow-app-server-watch-states",
     "allow-island-viewing",
+    "allow-pet-settings",
+    "allow-pet-update-settings",
     "allow-updater-check",
     "allow-updater-download",
     "allow-updater-install",

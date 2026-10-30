@@ -35,6 +35,12 @@ function renderCard(provider: ProviderInfo) {
   )
 }
 
+/** Opens a credential's "More actions" menu and returns its menu items' names. */
+function openMore(label: string): string[] {
+  fireEvent.click(screen.getByRole('button', { name: `More actions for ${label}` }))
+  return screen.getAllByRole('menuitem').map((item) => item.textContent ?? '')
+}
+
 function credential(overrides: Partial<StoredCredential>): StoredCredential {
   return {
     id: 'cred_a',
@@ -100,7 +106,7 @@ describe('ProviderCard — multi-credential capability', () => {
     expect(screen.queryByRole('button', { name: 'Add key' })).toBeNull()
     expect(screen.queryByPlaceholderText('Name (e.g. Work)')).toBeNull()
     fireEvent.change(screen.getByPlaceholderText('Enter a new key to replace current key'), { target: { value: 'sk-test-only' } })
-    fireEvent.click(screen.getByRole('button', { name: 'List models' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
     const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
     await waitFor(() => expect(save.disabled).toBe(false))
     fireEvent.click(save)
@@ -113,7 +119,7 @@ describe('ProviderCard — multi-credential capability', () => {
     renderCard({ ...pluginKey, supports_multiple_credentials: true })
     expect(screen.getByRole('list', { name: 'PlugKey keys' })).toBeTruthy()
     fireEvent.change(screen.getByPlaceholderText('Paste another API key'), { target: { value: 'sk-test-more' } })
-    fireEvent.click(screen.getByRole('button', { name: 'List models' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
     const add = screen.getByRole('button', { name: 'Add key' }) as HTMLButtonElement
     await waitFor(() => expect(add.disabled).toBe(false))
     fireEvent.click(add)
@@ -128,11 +134,21 @@ describe('ProviderCard — multi-credential capability', () => {
     expect(screen.getByRole('button', { name: 'Add key' })).toBeTruthy()
   })
 
-  it('reconnects a non-opted-in oauth plugin as one connection, never with an account', () => {
+  it('reconnects a non-opted-in oauth plugin as one connection, never with an account', async () => {
     renderCard({ ...pluginOauth, supports_multiple_credentials: false })
     expect(screen.queryByRole('list', { name: 'PlugOauth accounts' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Add account' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
+    // Sign out is one provider-wide action behind a confirmation
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out…' }))
+    expect(mockDisconnectOauth).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await waitFor(() => expect(mockDisconnectOauth).toHaveBeenCalledTimes(1))
+    expect(mockDisconnectOauth.mock.calls[0][0]).toBe('plugoauth')
+    expect(mockDisconnectOauth.mock.calls[0][1]).toBeUndefined()
+    cleanup()
+
+    renderCard({ ...pluginOauth, supports_multiple_credentials: false })
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
     expect(screen.getByText('Connect PlugOauth')).toBeTruthy()
     expect(mockLoginStream).toHaveBeenCalledTimes(1)
@@ -154,19 +170,21 @@ describe('ProviderCard — multi-credential capability', () => {
     expect(mockLoginStream.mock.calls[0][4]).toBeUndefined()
   })
 
-  it('shows per-account Usage only when the backend says the provider has it', () => {
+  it('shows per-account usage in the More menu only when the backend says the provider has it', () => {
     const { unmount } = renderCard({ ...pluginOauth, id: 'codex', supports_multiple_credentials: true, supports_credential_usage: false })
     expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
+    expect(openMore('me@example.com')).not.toContain('Show usage')
     unmount()
     renderCard({ ...pluginOauth, supports_multiple_credentials: true, supports_credential_usage: true })
-    expect(screen.getAllByRole('button', { name: 'Usage' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
+    expect(openMore('me@example.com')).toContain('Show usage')
   })
 
   it('falls back to the built-in usage set when the flag is missing', () => {
     const { unmount } = renderCard({ ...pluginOauth, id: 'codex' })
-    expect(screen.getAllByRole('button', { name: 'Usage' }).length).toBeGreaterThan(0)
+    expect(openMore('me@example.com')).toContain('Show usage')
     unmount()
     renderCard(pluginOauth)
-    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
+    expect(openMore('me@example.com')).not.toContain('Show usage')
   })
 })

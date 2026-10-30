@@ -100,13 +100,13 @@ describe('QuestionCard', () => {
     expect(screen.queryAllByRole('radio', { name: /recommended/i })).toHaveLength(1)
   })
 
-  it('gives options and question steps a 44px touch target on coarse pointers', () => {
+  it('gives options and question steps a 36px touch target on coarse pointers', () => {
     renderCard({ question: TWO_QUESTIONS })
 
-    expect(screen.getByRole('radio', { name: /pnpm/ }).closest('label')?.className).toContain('pointer-coarse:min-h-11')
+    expect(screen.getByRole('radio', { name: /pnpm/ }).closest('label')?.className).toContain('pointer-coarse:min-h-9')
     const steps = within(screen.getByRole('group', { name: 'Questions' })).getAllByRole('button')
     expect(steps).toHaveLength(2)
-    for (const step of steps) expect(step.className).toContain('pointer-coarse:min-h-11')
+    for (const step of steps) expect(step.className).toContain('pointer-coarse:min-h-9')
   })
 
   it('replaces the selection for a single-answer question', () => {
@@ -114,7 +114,7 @@ describe('QuestionCard', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([['bun']])
   })
@@ -122,7 +122,7 @@ describe('QuestionCard', () => {
   it('offers a single question straight to submit', () => {
     renderCard()
 
-    expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /send answer|^skip$/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /next question/i })).toBeNull()
   })
 
@@ -132,7 +132,7 @@ describe('QuestionCard', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
     expect(screen.getByRole('button', { name: /next question/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /send answer/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /send answer|^skip$/i })).toBeNull()
 
     fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
     fireEvent.click(screen.getByRole('button', { name: /next question/i }))
@@ -147,7 +147,7 @@ describe('QuestionCard', () => {
     fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
     fireEvent.click(screen.getByRole('button', { name: /next question/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
   })
@@ -159,8 +159,8 @@ describe('QuestionCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
 
-    expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    expect(screen.getByRole('button', { name: /send answer|^skip$/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
     expect(onSubmit).toHaveBeenCalledWith([[], []])
   })
 
@@ -170,7 +170,7 @@ describe('QuestionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /build/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[], ['lint', 'build']])
   })
@@ -181,7 +181,7 @@ describe('QuestionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[], []])
   })
@@ -191,7 +191,7 @@ describe('QuestionCard', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /type your own answer/i }))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'yarn, actually' } })
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([['yarn, actually']])
   })
@@ -226,7 +226,7 @@ describe('QuestionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /next question/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /type your own answer/i }))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'typecheck' } })
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([['yarn'], ['typecheck']])
   })
@@ -236,7 +236,7 @@ describe('QuestionCard', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /type your own answer/i }))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[]])
   })
@@ -258,7 +258,7 @@ describe('QuestionCard', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
     fireEvent.click(screen.getByRole('button', { name: /next question/i }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[], []])
   })
@@ -291,7 +291,7 @@ describe('QuestionCard', () => {
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeChecked()
 
     fireEvent.click(screen.getByRole('button', { name: /next question/i }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
   })
@@ -324,7 +324,7 @@ describe('QuestionCard', () => {
     unmount()
 
     const { onSubmit } = renderCard()
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([['bun']])
   })
@@ -335,7 +335,7 @@ describe('QuestionCard', () => {
     unmount()
 
     const { onSubmit } = renderCard({ question: question({ id: 'q-2' }) })
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer|^skip$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[]])
   })

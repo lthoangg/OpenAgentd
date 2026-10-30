@@ -18,7 +18,7 @@ import { formatShortId } from '@/utils/telemetryFormat'
 import { ActivityChart } from './ActivityChart'
 import { ModelsCard, SessionsCard, ToolsCard, WorkspacesCard } from './Breakdowns'
 import { FilterBar } from './FilterBar'
-import { dailySeries, headline, sessionKey, sessionName } from './model'
+import { dailySeries, headline, sessionKey, sessionName, workspaceName } from './model'
 import { OverviewStats } from './OverviewStats'
 import { RecentTurns } from './RecentTurns'
 import { SessionHeader } from './SessionHeader'
@@ -28,7 +28,7 @@ import { TraceView } from './TraceView'
 const TURNS_PAGE_SIZE = 25
 
 const SECONDARY_BUTTON_CLASS =
-  'h-7 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 text-xs text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+  'h-7 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 text-xs text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9'
 
 export interface TelemetryViewProps {
   /** Navigate to a session (the overlay closes itself around this). */
@@ -82,8 +82,8 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
   if (!data) {
     body = summary.isError ? (
       <CenteredMessage
-        title="Could not load telemetry"
-        body="The server did not return usage data."
+        title="Couldn't load usage"
+        body="Check the server connection, then try again."
         action={
           <button type="button" onClick={() => void summary.refetch()} className={SECONDARY_BUTTON_CLASS}>
             Retry
@@ -105,7 +105,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
         }
       />
     ) : (
-      <CenteredMessage title="No telemetry yet" body="Spend, turns, and traces appear here after an agent runs." />
+      <CenteredMessage title="No usage yet" body="Spend, turns, and traces appear here after an agent runs." />
     )
   } else {
     const workspaces = data.by_workspace ?? []
@@ -114,6 +114,13 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
     // Under a session filter the rows are the session and its sub-agents.
     const showSessions = sessions.length > 1
     const subAgentCount = session === null ? 0 : sessions.filter((row) => sessionKey(row.session_id) !== sessionKey(session)).length
+    // A one-row breakdown says nothing, so its card is hidden; say why.
+    const hiddenNote = [
+      workspace === null && session === null && workspaces.length === 1
+        ? `All turns are in one workspace (${workspaceName(workspaces[0].workspace)}).`
+        : null,
+      session === null && sessions.length === 1 ? `All turns are in one session (${sessionName(sessions[0])}).` : null,
+    ].filter(Boolean).join(' ')
     body = (
       <div className="flex flex-col gap-4 p-3 sm:p-4">
         {session !== null && (
@@ -123,15 +130,17 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
           <p className="flex items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-2)">
             <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-(--color-accent)" />
             <span>
-              Spans are sampled at {Math.round(data.sample_ratio * 100)}%, so totals are approximate. Set{' '}
-              <code className="rounded-xs bg-(--bg-key) px-1 font-mono text-[11px]">OTEL_SPAN_SAMPLE_RATIO=1.0</code> to record
-              every span.
+              Totals are estimates: only {Math.round(data.sample_ratio * 100)}% of activity is recorded. To record all of it, set{' '}
+              <code className="rounded-xs bg-(--bg-key) px-1 font-mono text-[11px] select-all">OTEL_SPAN_SAMPLE_RATIO=1.0</code> and
+              restart OpenAgentd.
             </span>
           </p>
         )}
-        <OverviewStats data={headline(data)} />
-        {days > 1 && (
+        <OverviewStats data={headline(data)} onShowFailed={errorsOnly ? undefined : () => setErrorsOnly(true)} />
+        {days > 1 ? (
           <ActivityChart points={dailySeries(data)} hasCost={data.daily_turns.some((d) => d.estimated_cost_usd !== undefined)} />
+        ) : (
+          <p className="text-[11px] text-(--color-text-subtle)">Daily activity shows for 7 days or more.</p>
         )}
         {(showWorkspaces || showSessions) && (
           <div className={cn('grid items-start gap-4', showWorkspaces && showSessions && 'lg:grid-cols-2')}>
@@ -141,6 +150,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
             )}
           </div>
         )}
+        {hiddenNote && <p className="text-[11px] text-(--color-text-subtle)">{hiddenNote}</p>}
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <ModelsCard rows={data.by_model} filterable={filterableModels} onSelect={setModel} />
           <ToolsCard rows={data.by_tool} />
@@ -157,7 +167,6 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
           onRetry={() => void turns.refetch()}
           onOpen={openTrace}
           errorsOnly={errorsOnly}
-          onErrorsOnlyChange={setErrorsOnly}
           showWorkspace={workspace === null && session === null && workspaces.length > 1}
           showModel={model === null}
           showAgent={showAgent}
@@ -180,6 +189,8 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
         onSessionChange={setSession}
         facets={facets}
         onClear={clearFilters}
+        errorsOnly={errorsOnly}
+        onErrorsOnlyChange={setErrorsOnly}
         fetching={summary.isFetching || (turns.isFetching && !turns.isFetchingNextPage)}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>

@@ -658,9 +658,10 @@ mod cache_tests {
         value.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect()
     }
 
-    // The popup only reads usage, runs menu actions, and sizes itself. It
-    // must not share the main window's grant, which includes the access-key
-    // store, file saving, backend switching, and the updater.
+    // The popup only reads usage, runs menu actions, sizes itself, and reads
+    // whether the desktop pet is on (its item toggles it as a menu action).
+    // It must not share the main window's grant, which includes the
+    // access-key store, file saving, backend switching, and the updater.
     #[test]
     fn the_popup_gets_only_its_own_commands() {
         let default = capability(include_str!("../capabilities/default.json"));
@@ -671,7 +672,7 @@ mod cache_tests {
         assert!(tray.get("remote").is_none());
         assert_eq!(
             strings(&tray["permissions"]),
-            ["core:event:default", "allow-get-tray-usage-summary", "allow-tray-action", "allow-tray-fit"],
+            ["core:event:default", "allow-get-tray-usage-summary", "allow-tray-action", "allow-tray-fit", "allow-pet-settings"],
         );
     }
 }

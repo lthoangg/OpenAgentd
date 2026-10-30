@@ -53,6 +53,11 @@ pub fn provider_factory() -> ProviderFactory {
     mgr().factory.clone()
 }
 
+/// [`provider_factory`], or `None` before the manager starts (unit tests).
+pub fn try_provider_factory() -> Option<ProviderFactory> {
+    MANAGER.get().map(|m| m.factory.clone())
+}
+
 const BLOCKED: &[&str] = &["/etc", "/proc", "/sys", "/dev", "/run", "/boot", "/sbin", "/bin", "/usr/bin", "/usr/sbin", "/private/etc"];
 
 fn expanduser(p: &str) -> PathBuf {

@@ -37,7 +37,7 @@ describe('AgentView — restart notes', () => {
   it('shows a continued turn as a divider, not as the user’s words', () => {
     render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
 
-    expect(screen.getByRole('note', { name: 'Continued after a server restart' }).textContent).toBe('Continued after a server restart')
+    expect(screen.getByRole('note', { name: 'Server restarted · turn continued' }).textContent).toBe('Server restarted · turn continued')
     expect(screen.queryByText(NOTE)).toBeNull()
   })
 
@@ -45,7 +45,7 @@ describe('AgentView — restart notes', () => {
     const stopped: ContentBlock = { id: 'u3', type: 'user', content: 'not continued', extra: { restart_resume: { continued: false } } }
     render(<AgentView blocks={[...BLOCKS, stopped]} currentBlocks={[]} isWorking={false} />)
 
-    expect(screen.getByRole('note', { name: 'Stopped by a server restart · not continued again' })).toBeTruthy()
+    expect(screen.getByRole('note', { name: 'Server restarted · turn stopped' })).toBeTruthy()
   })
 
   it('never counts the note as a prompt the user wrote', () => {

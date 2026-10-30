@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import React from 'react'
-import { act, render, screen, cleanup } from '@testing-library/react'
+import { act, fireEvent, render, screen, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 
@@ -189,5 +189,39 @@ describe('SettingsModal — prefers-reduced-motion', () => {
     expect(panel.animate).toEqual({ opacity: 1 })
     expect(panel.exit).toEqual({ opacity: 0 })
     expect(panel.transition).toMatchObject({ duration: 0 })
+  })
+})
+
+describe('SettingsModal — nav search and groups', () => {
+  it('groups the nav in sentence case: App, Agents and tools, Sessions, Models and media, Data and safety', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const nav = screen.getByRole('navigation', { name: 'Settings categories' })
+    const groups = [...nav.querySelectorAll('[role=group]')].map((g) => g.getAttribute('aria-label'))
+    expect(groups).toEqual(['App', 'Agents and tools', 'Sessions', 'Models and media', 'Data and safety', 'About'])
+    expect(screen.getByRole('button', { name: 'Session titles' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Denied paths' })).toBeTruthy()
+  })
+
+  it('filters sections by name or description, and Enter opens the first match', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const search = screen.getByRole('searchbox', { name: 'Search settings' })
+    act(() => { fireEvent.change(search, { target: { value: 'api keys' } }) })
+    expect(screen.getByRole('button', { name: 'Providers' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Memory' })).toBeNull()
+
+    act(() => { fireEvent.keyDown(search, { key: 'Enter' }) })
+    expect(useSettingsStore.getState().section).toBe('providers')
+  })
+
+  it('says when nothing matches', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    act(() => { fireEvent.change(screen.getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'zzz' } }) })
+    expect(screen.getByText('No settings match “zzz”.')).toBeTruthy()
   })
 })

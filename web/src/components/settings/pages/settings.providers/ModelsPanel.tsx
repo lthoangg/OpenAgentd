@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
-import { Check, ChevronDown, Copy, EyeOff, Loader2 } from 'lucide-react'
+import { ChevronDown, Copy, Loader2 } from 'lucide-react'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Collapsible } from '@/components/ui/collapsible'
 import type { ModelCostInfo } from '@/api/client'
 import { SearchBar } from '@/components/ui/search-bar'
@@ -67,6 +68,16 @@ export function ModelsPanel({
     return new Set(visibleModels.filter((id) => inList.has(id)))
   }, [models, visibleModels])
   const allVisible = visibleSet.size === 0
+  // "Only selected" with nothing picked yet still shows every model (the
+  // backend treats an empty list as all), so the mode is kept locally until
+  // the first pick is saved.
+  const [onlySelected, setOnlySelected] = useState(!allVisible)
+  if (!allVisible && !onlySelected) setOnlySelected(true)
+  const pickerMode: 'all' | 'selected' = onlySelected ? 'selected' : 'all'
+  const setPickerMode = (mode: 'all' | 'selected') => {
+    setOnlySelected(mode === 'selected')
+    if (mode === 'all' && !allVisible) void onSaveVisibleModels([])
+  }
 
   const handleCopy = async (qualifiedId: string) => {
     try {
@@ -122,17 +133,17 @@ export function ModelsPanel({
           'flex min-h-9 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
           'text-xs md:text-[11px] text-(--color-text-muted) transition-colors',
           'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
           expanded && 'border-b border-(--color-border)',
         )}
       >
-        <span className="min-w-0 flex-1 space-y-0.5 font-mono">
-          <span className="block truncate text-[11px] text-(--color-text)">
-            {indexed.length} models available
+        <span className="min-w-0 flex-1 space-y-0.5">
+          <span className="block truncate text-xs font-medium text-(--color-text)">
+            Models <span className="font-normal text-(--color-text-muted) tabular-nums">· {indexed.length} available</span>
           </span>
-          <span className="block truncate text-xs md:text-[11px] text-(--color-text-muted)">
-            {allVisible ? 'All visible' : `${visibleCount} visible`}
-            {search ? ` · ${visible.length} shown` : ''}
+          <span className="block truncate text-xs md:text-[11px] text-(--color-text-muted) tabular-nums">
+            {allVisible ? 'All shown in pickers' : `${visibleCount} shown in pickers`}
+            {search ? ` · ${visible.length} match` : ''}
           </span>
         </span>
         <ChevronDown
@@ -151,10 +162,25 @@ export function ModelsPanel({
             placeholder="Filter models…"
           />
 
-          <p className="text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">
-            Use the visibility toggle to choose which models appear in pickers.
-            If none are selected, all models are visible.
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl
+              label="Models shown in pickers"
+              value={pickerMode}
+              onChange={setPickerMode}
+              size="sm"
+              options={[
+                { value: 'all', label: 'All models' },
+                { value: 'selected', label: allVisible ? 'Only selected' : `Only selected (${visibleSet.size})` },
+              ]}
+            />
+            <p className="min-w-0 flex-1 text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">
+              {pickerMode === 'all'
+                ? 'Every model below appears in model pickers.'
+                : allVisible
+                  ? 'Pick the models to show. Until you pick one, all of them show.'
+                  : 'Only the models marked Shown appear in model pickers.'}
+            </p>
+          </div>
 
           <ul className="-mx-0.5 max-h-[calc(var(--app-vh,100svh)*0.45)] overflow-y-auto md:max-h-56">
             {visible.length === 0 ? (
@@ -167,6 +193,7 @@ export function ModelsPanel({
                   key={qualifiedId}
                   qualifiedId={qualifiedId}
                   cost={cost}
+                  selectable={pickerMode === 'selected'}
                   selected={!allVisible && visibleSet.has(modelId)}
                   savingVisibleModels={savingVisibleModels}
                   onToggleVisible={() => toggleVisibleModel(modelId)}
@@ -179,7 +206,7 @@ export function ModelsPanel({
                 <button
                   type="button"
                   onClick={() => setShowAll(true)}
-                  className="w-full rounded-xs px-2 py-1.5 text-center text-xs md:text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                  className="w-full rounded-xs px-2 py-1.5 text-center text-xs md:text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                 >
                   Show all {visible.length} {search.trim() ? 'matches' : 'models'}
                 </button>
@@ -195,6 +222,7 @@ export function ModelsPanel({
 function ModelRow({
   qualifiedId,
   cost,
+  selectable,
   selected,
   savingVisibleModels,
   onToggleVisible,
@@ -202,6 +230,7 @@ function ModelRow({
 }: {
   qualifiedId: string
   cost?: ModelCostInfo
+  selectable: boolean
   selected: boolean
   savingVisibleModels: boolean
   onToggleVisible: () => void
@@ -261,7 +290,7 @@ function ModelRow({
         <TooltipContent>{qualifiedId}</TooltipContent>
       </Tooltip>
 
-      {/* Price badge — hidden on mobile to save space; full label on desktop */}
+      {/* Price per 1M tokens, on every width */}
       {priceBadge && (
         <Tooltip>
           <TooltipTrigger
@@ -269,7 +298,7 @@ function ModelRow({
             render={
               <span
                 className={cn(
-                  'hidden md:inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] tabular-nums select-none',
+                  'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] tabular-nums select-none',
                   priceBadge.isFree
                     ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
                     : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
@@ -283,37 +312,27 @@ function ModelRow({
         </Tooltip>
       )}
 
-      {/* Visibility toggle — icon-only on mobile, labelled on desktop */}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              onClick={onToggleVisible}
-              disabled={savingVisibleModels}
-              aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
-              className={cn(
-                'flex h-8 w-8 shrink-0 items-center justify-center gap-1 rounded-xs md:h-6 md:min-w-[3.5rem] md:w-auto md:px-1.5',
-                'text-xs md:text-[11px] font-medium transition-colors',
-                selected
-                  ? 'bg-(--color-success-subtle) text-(--color-success)'
-                  : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
-                savingVisibleModels && 'opacity-50 cursor-not-allowed',
-              )}
-            >
-              {savingVisibleModels ? (
-                <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-              ) : selected ? (
-                <Check size={11} aria-hidden="true" />
-              ) : (
-                <EyeOff size={11} className="md:hidden" aria-hidden="true" />
-              )}
-              <span className="hidden md:inline">{selected ? 'Visible' : 'Show'}</span>
-            </button>
-          }
-        />
-        <TooltipContent>{selected ? 'Remove from visible models' : 'Add to visible models'}</TooltipContent>
-      </Tooltip>
+      {/* Shown/hidden in pickers: only while choosing "Only selected" */}
+      {selectable && (
+        <button
+          type="button"
+          onClick={onToggleVisible}
+          disabled={savingVisibleModels}
+          aria-pressed={selected}
+          aria-label={`${selected ? 'Hide' : 'Show'} ${qualifiedId} ${selected ? 'from' : 'in'} model pickers`}
+          className={cn(
+            'flex h-8 min-w-16 shrink-0 items-center justify-center gap-1 rounded-xs px-1.5 md:h-6',
+            'text-xs md:text-[11px] font-medium transition-colors',
+            selected
+              ? 'bg-(--color-success-subtle) text-(--accent-green-text)'
+              : 'border border-(--color-border) text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+            savingVisibleModels && 'opacity-50 cursor-not-allowed',
+          )}
+        >
+          {savingVisibleModels && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+          {selected ? 'Shown' : 'Hidden'}
+        </button>
+      )}
 
       {/* Copy button — hidden on Tauri mobile (use long-press context menu instead) */}
       {!isTauriMobile && (

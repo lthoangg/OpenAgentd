@@ -101,6 +101,12 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     tokio::spawn(async move {
         appv3_agent::idle_compaction::resume_after_restart(&p).await;
     });
+    // File worktrees and subfolders registered as repositories before git's
+    // own link decided where a folder belongs.
+    let p = pool.clone();
+    tokio::spawn(async move {
+        appv3_agent::worktrees::reclassify_workspaces(&p).await;
+    });
     // Continue the turns the last server process left running, with their
     // goals; a member it cut off reports that to its lead.
     let p = pool.clone();

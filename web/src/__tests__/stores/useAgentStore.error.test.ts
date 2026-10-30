@@ -220,7 +220,7 @@ describe("inferErrorTitle", () => {
     expect(inferErrorTitle("Invalid API key provided")).toBe("Provider authentication failed");
     expect(inferErrorTitle("Failed to fetch stream")).toBe("Provider connection failed");
     expect(inferErrorTitle("Cannot undo while working")).toBe("Undo failed");
-    expect(inferErrorTitle("Failed to compact session")).toBe("Compaction failed");
+    expect(inferErrorTitle("Failed to compact session")).toBe("Couldn't summarize earlier messages");
   });
 });
 

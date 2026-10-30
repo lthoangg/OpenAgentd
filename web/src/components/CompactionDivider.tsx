@@ -3,8 +3,8 @@
  * compacts the session's context window.
  *
  * Two visual elements:
- *   1. A horizontal-rule + centred label ("Session compacting…" /
- *      "Session compacted" / "Compaction failed") so users see where in
+ *   1. A horizontal-rule + centred label ("Summarizing earlier messages…" /
+ *      "Earlier messages summarized" / "Couldn't summarize earlier messages") so users see where in
  *      the transcript context was trimmed.
  *   2. (Optional) the summary body itself rendered as Markdown beneath
  *      the divider — when ``summary`` is non-empty. The body is the
@@ -50,10 +50,10 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
   // Default: streaming is active whenever the block is still in the compacting state.
   const effectiveIsStreaming = isStreaming ?? state === 'compacting'
   const label = error
-    ? 'Compaction failed'
+    ? "Couldn't summarize earlier messages"
     : state === 'compacting'
-      ? 'Session compacting'
-      : 'Session compacted'
+      ? 'Summarizing earlier messages…'
+      : 'Earlier messages summarized'
 
   const tone = error
     ? 'text-(--color-error)'
@@ -66,14 +66,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
   const content = effectiveIsStreaming ? (summary ?? '') : trimmed
   const pinned = showBody && open
 
-  const labelContent = (
-    <>
-      {label}
-      {state === 'compacting' && !error && (
-        <span className="ml-1 inline-block animate-pulse">…</span>
-      )}
-    </>
-  )
+  const labelContent = label
 
   return (
     <div role="region" aria-label={label} className="my-4 space-y-3">
@@ -87,7 +80,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
             aria-expanded={open}
             aria-controls={bodyId}
             className={cn(
-              'inline-flex items-center gap-1 rounded-xs px-1 font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+              'inline-flex items-center gap-1 rounded-xs px-1 text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
               tone,
             )}
           >
@@ -99,7 +92,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
             />
           </button>
         ) : (
-          <span className={`font-mono text-xs ${tone}`}>{labelContent}</span>
+          <span role={state === 'compacting' ? 'status' : undefined} className={`text-xs ${tone}`}>{labelContent}</span>
         )}
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
       </div>
@@ -119,7 +112,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
             anchorRef.current?.focus({ preventScroll: true })
           }}
           aria-controls={bodyId}
-          className="mt-1 inline-flex items-center gap-1.5 py-1 font-mono text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+          className="mt-1 inline-flex items-center gap-1.5 py-1 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         >
           <ChevronUp size={13} aria-hidden className="shrink-0" />
           <span>Collapse</span>

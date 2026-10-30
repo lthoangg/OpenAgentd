@@ -66,7 +66,7 @@ export function doneWhen(
 
 export interface GoalHeaderState {
   tone: GoalTone
-  /** Tooltip text: "Goal · Working on turn 7 of 50 · Next: Docs". */
+  /** Tooltip text: "Goal · Working · turn 7/50 · Next: Docs". */
   text: string
 }
 

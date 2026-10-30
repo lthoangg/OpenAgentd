@@ -3,6 +3,7 @@ import { Outlet, useParams, useNavigate, useSearch } from '@tanstack/react-route
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentChatView } from '@/components/AgentChatView'
 import { getSession, validateWorkspace } from '@/api/client'
+import { ApiValidationError } from '@/api/client/_shared'
 import { latestTopLevelSession } from '@/components/Sidebar.workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
@@ -48,6 +49,8 @@ function AgentLayoutBase() {
     queryFn: () => getSession(sessionId as string),
     enabled: Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
+    // A session the server does not have will not appear on a retry.
+    retry: (failures, error) => !(error instanceof ApiValidationError && error.status === 404) && failures < 3,
   })
   // The session a draft's first message just created. The router lands on
   // its id before the session list refetch or `getSession` knows it, and a
@@ -236,6 +239,7 @@ function AgentLayoutBase() {
         sessionId={sessionId}
         workspace={workspace}
         sessionLoading={Boolean(sessionId) && !workspace && sessionQuery.isLoading}
+        sessionNotFound={Boolean(sessionId) && !workspace && sessionQuery.error instanceof ApiValidationError && sessionQuery.error.status === 404}
       />
       <Outlet />
     </>

@@ -12,7 +12,7 @@ import { useBackendSwitchStore, type BackendSwitchTarget } from '@/stores/useBac
 export function BackendSwitchMessage({ target }: { target: BackendSwitchTarget }) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">
+      <p role="status" className="text-sm font-medium text-(--color-text-muted)">
         Switching to <span className="text-(--color-text)">{target.name}</span>…
       </p>
       {target.detail && <p className="max-w-full break-all text-xs text-(--color-text-subtle)">{target.detail}</p>}

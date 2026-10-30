@@ -1,7 +1,9 @@
 import { Plug } from 'lucide-react'
 import { useMemo } from 'react'
 
-import { McpStatusDot } from '@/components/McpStatusDot'
+import { McpStatusChip } from '@/components/McpStatusChip'
+import { Chip } from '@/components/ui/chip'
+import { TERMS } from '@/components/ui/term'
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
 import { useMcpServersQuery } from '@/queries'
 
@@ -12,7 +14,7 @@ interface McpListPageProps {
 }
 
 export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps) {
-  const { data, isLoading, isError } = useMcpServersQuery()
+  const { data, isLoading, isError, error, refetch } = useMcpServersQuery()
 
   const rows = useMemo<ListViewRow[]>(
     () =>
@@ -20,11 +22,15 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
         key: srv.name,
         active: selectedName === srv.name,
         title: srv.name,
-        badge: srv.enabled ? undefined : 'disabled',
-        description: `${srv.transport === 'stdio' ? 'Local stdio process' : 'HTTP server'} · ${srv.tool_names.length} ${srv.tool_names.length === 1 ? 'tool' : 'tools'}`,
+        titleMono: true,
+        description: srv.transport === 'stdio' ? 'Runs a local process' : 'Connects to a URL',
         onClick: () => onSelect(srv.name),
-        icon: <Plug size={14} />,
-        trailing: <McpStatusDot server={srv} />,
+        trailing: (
+          <span className="flex items-center gap-1.5">
+            <Chip mono variant="outline" title={srv.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{srv.transport}</Chip>
+            <McpStatusChip server={srv} />
+          </span>
+        ),
       })),
     [data?.servers, selectedName, onSelect],
   )
@@ -39,6 +45,8 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
       rows={rows}
       isLoading={isLoading}
       isError={isError}
+      error={error}
+      onRetry={() => void refetch()}
       emptyTitle="No MCP servers yet"
       emptyBody="MCP servers expose tools and resources to your agents over stdio or HTTP."
       emptyIcon={Plug}

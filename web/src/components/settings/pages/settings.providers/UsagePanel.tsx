@@ -90,7 +90,7 @@ function UsageRow({
   const color = barColor(percent)
 
   return (
-    <div className="px-3 py-1.5 space-y-1">
+    <div className="py-1.5 space-y-1">
       <div className="flex items-center justify-between text-xs gap-2 min-w-0">
         <span className="font-medium truncate text-(--color-text)">{label}</span>
         <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
@@ -159,7 +159,7 @@ function SpendRow({
       : null
 
   return (
-    <div className="px-3 py-1.5 space-y-1">
+    <div className="py-1.5 space-y-1">
       <div className="flex items-center justify-between text-xs gap-2 min-w-0">
         <span className="font-medium truncate text-(--color-text)">{label}</span>
         <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
@@ -213,7 +213,7 @@ function CreditsRow({
         : 'No usage credits left'
   const showBalance = Boolean(credits.balance) && text !== credits.balance
   return (
-    <div className="px-3 py-1.5 space-y-1">
+    <div className="py-1.5 space-y-1">
       <div className="flex items-center justify-between text-xs gap-2 min-w-0">
         <span className="font-medium truncate text-(--color-text)">{label}</span>
         <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
@@ -234,7 +234,7 @@ function CreditsRow({
 function PeriodRow({ label, periodEndAt }: { label: string; periodEndAt?: number | null }) {
   const periodEnd = formatPeriodEndIn(periodEndAt)
   return (
-    <div className="px-3 py-1.5 space-y-1">
+    <div className="py-1.5 space-y-1">
       <div className="flex items-center justify-between text-xs gap-2 min-w-0">
         <span className="font-medium truncate text-(--color-text)">{label}</span>
         <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
@@ -352,11 +352,12 @@ export function UsagePanel({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
-      {/* Header strip */}
-      <div className="flex items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key)/30 px-3 py-1.5">
+    // A plain section inside the provider's details, not a card in a card.
+    <section aria-label="Usage">
+      {/* Header line */}
+      <div className="flex items-center justify-between gap-2 pb-1">
         <div className="flex items-center gap-1.5 min-w-0">
-          <p className="text-xs font-semibold leading-none text-(--color-text)">Usage</p>
+          <p className="text-xs font-medium leading-none text-(--color-text)">Usage</p>
           {updated && (
             <>
               <span className="text-[11px] text-(--color-text-subtle)">·</span>
@@ -367,7 +368,10 @@ export function UsagePanel({
         <div className="flex items-center gap-2 shrink-0">
           {typeof resetCredits === 'number' && resetCredits > 0 && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-(--accent-green)">
+              <span
+                className="text-[11px] font-medium text-(--accent-green)"
+                title="A reset clears this usage limit right away. Redeem one once you reach the limit."
+              >
                 {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
               </span>
               <Button
@@ -394,19 +398,10 @@ export function UsagePanel({
 
       {/* Rate-limit warning */}
       {primary?.rate_limit_reached_type && (
-        <div className="flex items-center justify-between gap-2 border-t border-(--color-error)/20 bg-(--color-error-subtle) px-3 py-1.5">
+        <div className="flex items-center justify-between gap-2 rounded-sm bg-(--color-error-subtle) px-3 py-1.5">
           <p className="text-[11px] font-medium text-(--color-error)">
             Limit reached · {primary.rate_limit_reached_type.replaceAll('_', ' ')}
           </p>
-          {typeof resetCredits === 'number' && resetCredits > 0 && (
-            <Button
-              variant="danger"
-              size="xs"
-              onClick={handleResetClick}
-            >
-              Redeem reset ({resetCredits})
-            </Button>
-          )}
         </div>
       )}
 
@@ -414,9 +409,9 @@ export function UsagePanel({
       <Dialog open={alertOpen} onOpenChange={setAlertOpen}>
         <DialogContent className="gap-3">
           <DialogHeader className="gap-1.5">
-            <DialogTitle>Cannot Redeem Reset Yet</DialogTitle>
+            <DialogTitle>Can&apos;t redeem a reset yet</DialogTitle>
             <DialogDescription className="text-xs text-(--color-text-muted)">
-              Your current usage is {Math.round(maxUsedPercent)}%. Reset credits can only be redeemed when usage reaches 99%–100% (or when the rate limit is reached) to avoid wasting valuable reset credits.
+              Your current usage is {Math.round(maxUsedPercent)}%. A reset can be redeemed once usage reaches 99% or the limit is hit, so a credit is not spent early.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="justify-end pt-2">
@@ -431,9 +426,9 @@ export function UsagePanel({
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="gap-3">
           <DialogHeader className="gap-1.5">
-            <DialogTitle>Redeem Rate Limit Reset?</DialogTitle>
+            <DialogTitle>Redeem a usage reset?</DialogTitle>
             <DialogDescription className="text-xs text-(--color-text-muted)">
-              This will consume 1 of your {resetCredits} available reset credit{resetCredits === 1 ? '' : 's'} to reset your rate limit window immediately. This action cannot be undone.
+              Uses 1 of your {resetCredits} reset credit{resetCredits === 1 ? '' : 's'} to clear the usage limit now. This can't be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-row justify-end gap-2 pt-2">
@@ -441,11 +436,11 @@ export function UsagePanel({
               Cancel
             </Button>
             <Button variant="primary" onClick={handleConfirmReset} disabled={resetMutation.isPending}>
-              {resetMutation.isPending ? 'Redeeming…' : 'Confirm reset'}
+              {resetMutation.isPending ? 'Redeeming…' : 'Redeem reset'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   )
 }

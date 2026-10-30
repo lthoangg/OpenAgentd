@@ -192,8 +192,8 @@ export function AgentForm({
         />
       ) : (
         <PanelSection
-          title="Raw .md"
-          description={<>Edit the frontmatter and body directly. Useful for fields the form doesn&rsquo;t expose (e.g. custom hook configuration).</>}
+          title="Source"
+          description={<>Edit the settings block and instructions directly. Use this for fields the form doesn&rsquo;t show.</>}
         >
           <Textarea
             value={raw}
@@ -201,7 +201,7 @@ export function AgentForm({
             disabled={disabled}
             rows={28}
             spellCheck={false}
-            aria-label="Raw agent file"
+            aria-label="Agent file source"
             className="min-h-72 font-mono text-[13px] leading-relaxed"
           />
         </PanelSection>

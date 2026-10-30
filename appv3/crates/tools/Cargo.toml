@@ -27,7 +27,7 @@ futures.workspace = true
 async-trait.workspace = true
 sha2.workspace = true
 base64 = "0.23"
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 fancy-regex = "0.19"
 memchr = "2"
 globset = "0.4"
@@ -57,7 +57,7 @@ urlencoding = "2"
 toml = "1.1"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process", "fs"] }
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

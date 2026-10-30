@@ -1,19 +1,19 @@
 import { useRef, useState } from 'react'
-import { AlertCircle, CalendarClock, Clock, Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
+import { Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { CONTEXT_MENU_ITEM_CLASS, CONTEXT_MENU_ITEM_DANGER_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
-import { formatRelativeDate } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { listRowSurface } from '@/components/ui/list-row'
 import { TEXT } from '@/components/ui/panel-tokens'
-import { formatScheduleLabel, slugify, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
+import { formatScheduleLabel, lastRunLabel, nextRunLabel, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
+import { Chip } from '@/components/ui/chip'
 import { WorkspaceBadge } from './ModeBadge'
 
 export function TaskListItem({
@@ -59,29 +59,8 @@ export function TaskListItem({
     })
   }
 
-  const statusColor = {
-    pending: 'text-(--color-text-muted)',
-    running: 'text-(--color-accent)',
-    paused: 'text-(--color-warning)',
-    completed: 'text-(--color-success)',
-    failed: 'text-(--color-error)',
-  }[task.status] ?? 'text-(--color-text-muted)'
-
-  const statusBadgeStyle = {
-    pending: 'bg-(--bg-key)/80 text-(--color-text-muted) border-(--color-border-subtle)',
-    running: 'bg-(--color-info-subtle) text-(--color-info) border-(--color-info)/30',
-    paused: 'bg-(--color-warning-subtle) text-(--color-warning) border-(--color-warning)/30',
-    completed: 'bg-(--color-success-subtle) text-(--color-success) border-(--color-success)/30',
-    failed: 'bg-(--color-error-subtle) text-(--color-error) border-(--color-error)/30',
-  }[task.status] ?? 'bg-(--bg-key)/80 text-(--color-text-muted) border-(--color-border-subtle)'
-
-  const statusDotColor = {
-    pending: 'bg-(--color-text-muted)',
-    running: 'bg-(--color-info) animate-pulse',
-    paused: 'bg-(--color-warning)',
-    completed: 'bg-(--color-success)',
-    failed: 'bg-(--color-error)',
-  }[task.status] ?? 'bg-(--color-text-muted)'
+  const state = taskState(task)
+  const nextRun = nextRunLabel(task)
 
   return (
     <>
@@ -124,44 +103,39 @@ export function TaskListItem({
       onPointerLeave={clearLongPress}
       aria-current={isSelected || undefined}
       className={cn(
-        'group relative min-h-16 w-full px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+        'group relative min-h-16 w-full px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)',
         listRowSurface(isSelected),
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <p className={cn('truncate', TEXT.label, isSelected && 'font-semibold')}>{task.name}</p>
-            <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle) break-all">
-              {slugify(task.name)}
-            </span>
+            {task.slug !== task.name && (
+              <Chip mono variant="outline" title="Slug: the name the agent's schedule tool uses">
+                {task.slug}
+              </Chip>
+            )}
           </div>
 
-          <div className={cn('mt-1 flex items-center gap-1.5', TEXT.hint)}>
-            <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
-            <span className="truncate">{formatScheduleLabel(task)}</span>
-          </div>
+          <p className="mt-1 truncate font-mono text-[11px] text-(--color-text-2)">{formatScheduleLabel(task)}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${statusBadgeStyle}`}>
-              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${statusDotColor}`} aria-hidden="true" />
-              <span className={statusColor}>{task.status}</span>
-            </span>
+            <Chip tone={state.tone} dot={state.dot}>
+              {state.label}
+            </Chip>
           </div>
 
-          {task.last_error && (
-            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-(--color-error)">
-              <AlertCircle size={11} className="shrink-0" aria-hidden="true" />
-              <p className="truncate">{task.last_error}</p>
-            </div>
-          )}
+          <p className={cn('mt-1.5 truncate', TEXT.hint)}>
+            {lastRunLabel(task)}
+            {nextRun && ` · ${nextRun.replace('Next run', 'next')}`}
+          </p>
 
-          {task.next_fire_at && (
-            <div className={cn('mt-1.5 flex items-center gap-1', TEXT.hint)}>
-              <Clock size={11} className="shrink-0" aria-hidden="true" />
-              <span>Next: {formatRelativeDate(task.next_fire_at)}</span>
-            </div>
+          {task.last_error && (
+            <p className="mt-1 truncate text-[11px] text-(--color-error)" title={task.last_error}>
+              {task.last_error}
+            </p>
           )}
         </div>
 
@@ -180,7 +154,7 @@ export function TaskListItem({
                     triggerTask()
                   }}
                   disabled={triggerMutation.isPending}
-                  aria-label="Trigger now"
+                  aria-label="Run now"
                   className="text-(--color-text-muted) hover:text-(--color-text)"
                 >
                   {triggerMutation.isPending ? (
@@ -191,7 +165,7 @@ export function TaskListItem({
                 </Button>
               }
             />
-            <TooltipContent>Trigger now</TooltipContent>
+            <TooltipContent>Run now</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -219,30 +193,6 @@ export function TaskListItem({
             />
             <TooltipContent>{task.status === 'paused' ? 'Resume' : 'Pause'}</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setDeleteConfirmationOpen(true)
-                  }}
-                  disabled={deleteMutation.isPending}
-                  aria-label="Delete"
-                  className="text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
-                >
-                  {deleteMutation.isPending ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={12} />
-                  )}
-                </Button>
-              }
-            />
-            <TooltipContent>Delete</TooltipContent>
-          </Tooltip>
         </div>
       </div>
     </div>
@@ -264,7 +214,7 @@ export function TaskListItem({
             }}
           >
             <Zap size={12} aria-hidden="true" />
-            Trigger now
+            Run now
           </button>
           <button
             type="button"
@@ -288,7 +238,7 @@ export function TaskListItem({
             }}
           >
             <Trash2 size={12} aria-hidden="true" />
-            Delete task
+            Delete task…
           </button>
       </ContextMenu>
     )}

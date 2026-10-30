@@ -118,7 +118,7 @@ function ToolbarButton({
             disabled={disabled}
             aria-label={label}
             aria-pressed={pressed}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'pointer-coarse:size-11', pressed && 'bg-(--bg-key) text-(--color-text)', className)}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'pointer-coarse:size-9', pressed && 'bg-(--bg-key) text-(--color-text)', className)}
           >
             {children}
           </button>

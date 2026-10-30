@@ -48,6 +48,20 @@ function isUnsettledResult(result: string | undefined): boolean {
 }
 
 /**
+ * Whether a call that asks the user to confirm a change (``confirm_change``)
+ * shows this card: while its question is open, after it was answered here,
+ * or while its row still holds the server's placeholder. Otherwise the call
+ * never opened a card (refused, deferred) or has settled with the outcome as
+ * its result, and stays an ordinary tool row.
+ */
+export function useShowsConfirmationCard(enabled: boolean, toolCallId: string | undefined, result: string | undefined): boolean {
+  const ownsCard = useAgentStore((state) =>
+    enabled && !!toolCallId && (selectOpenQuestionCallId(state) === toolCallId || !!state.resolvedQuestions[toolCallId]),
+  )
+  return enabled && (ownsCard || (!!result?.trim() && isUnsettledResult(result)))
+}
+
+/**
  * Whether an ``ask_user`` block's card still reads "Needs your input": it holds
  * the open question, or nothing has closed it yet. Reader mode keeps such a
  * card out of the work fold and folds it once it settles.

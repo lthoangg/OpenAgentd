@@ -27,7 +27,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
       <button
         type="button"
         onClick={() => open(null)}
-        aria-label="Open scheduler"
+        aria-label="Open scheduled tasks"
         className="flex h-8 w-full items-center gap-1.5 pl-3 pr-1.5 text-left text-[11px] leading-none transition-colors hover:text-(--color-text-2)"
       >
         <span className="label-caps text-(--color-text-subtle)">Scheduled</span>

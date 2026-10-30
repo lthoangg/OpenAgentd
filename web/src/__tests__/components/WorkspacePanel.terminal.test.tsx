@@ -2,7 +2,7 @@
  * Terminal tabs in WorkspacePanel — multi-instance + persistence.
  *
  * Sessions live in useTerminalStore (module-level), so tabs must:
- *  - open a numbered session per "New terminal" action,
+ *  - open a numbered session per "Open…" → Terminal action,
  *  - focus the existing terminal on terminalOpenKey bumps (VS Code style),
  *  - close the *session* when the tab is closed,
  *  - be re-adopted from the store when the panel remounts (panel close /
@@ -89,12 +89,15 @@ describe('WorkspacePanel terminal tabs', () => {
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 
-  it('"New terminal" button opens additional numbered sessions', async () => {
+  it('"Open…" → Terminal opens additional numbered sessions', async () => {
     await renderPanel(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
 
     await act(async () => {
-      screen.getByRole('button', { name: 'New terminal' }).click()
+      screen.getByRole('button', { name: 'Open in the review panel' }).click()
+    })
+    await act(async () => {
+      screen.getByRole('menuitem', { name: 'Terminal' }).click()
     })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 2' })).toBeTruthy())
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(2)

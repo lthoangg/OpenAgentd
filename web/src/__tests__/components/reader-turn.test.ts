@@ -61,6 +61,14 @@ describe('readerSegments — what folds behind the work summary', () => {
     expect(readerSegments(blocks, settled)).toEqual([{ kind: 'work', indices: [0, 1, 2, 3] }, { kind: 'block', index: 4 }])
   })
 
+  it('keeps a change waiting on confirmation out of the fold, and folds it once settled', () => {
+    const blocks = [tool('r1', 'read'), tool('c1', 'mcp', { action: 'save', server: 'x' }), text('a1')]
+    const waiting = (block: ContentBlock) => block.id === 'c1'
+
+    expect(readerSegments(blocks, waiting)).toEqual([{ kind: 'work', indices: [0] }, { kind: 'block', index: 1 }, { kind: 'block', index: 2 }])
+    expect(readerSegments(blocks, settled)).toEqual([{ kind: 'work', indices: [0, 1] }, { kind: 'block', index: 2 }])
+  })
+
   it('folds text a live turn has since followed with more work', () => {
     expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
   })

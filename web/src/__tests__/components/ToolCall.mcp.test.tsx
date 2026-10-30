@@ -14,7 +14,7 @@ describe('mcp display', () => {
 
   it('names the server and tool of a call and shows its arguments', () => {
     const d = display({ action: 'call', server: 'github', tool: 'create_issue', arguments: { title: 'Bug' } })
-    expect(d.headerTitle).toBe('MCP github · create_issue')
+    expect(d.headerTitle).toBe('github · create_issue')
     expect(d.formattedArgs).toBe(JSON.stringify({ title: 'Bug' }, null, 2))
   })
 
@@ -22,10 +22,10 @@ describe('mcp display', () => {
     expect(display({ action: 'call', server: 's', tool: 't', arguments: '{"a":1}' }).formattedArgs).toBe(JSON.stringify({ a: 1 }, null, 2))
     expect(display({ action: 'call', server: 's', tool: 't', arguments: {} }).formattedArgs).toBeNull()
     expect(display({ action: 'call', server: 's', tool: 't' }).formattedArgs).toBeNull()
-    expect(display({ action: 'call' }).headerTitle).toBe('MCP call')
+    expect(display({ action: 'call' }).headerTitle).toBeNull()
   })
 
   it('reads partial (streaming) arguments', () => {
-    expect(getToolDisplay('mcp', '{"action": "call", "server": "github", "tool": "list_issues", "argu').headerTitle).toBe('MCP github · list_issues')
+    expect(getToolDisplay('mcp', '{"action": "call", "server": "github", "tool": "list_issues", "argu').headerTitle).toBe('github · list_issues')
   })
 })

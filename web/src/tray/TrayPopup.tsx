@@ -12,13 +12,15 @@ const USAGE_COMMAND = 'get_tray_usage_summary'
 const ACTION_COMMAND = 'tray_action'
 const FIT_COMMAND = 'tray_fit'
 const TRAY_REFRESH_EVENT = 'tray-popup-refresh'
+const PET_SETTINGS_COMMAND = 'pet_settings'
+const PET_SETTINGS_EVENT = 'pet-settings-changed'
 /** "Checked 2m ago" is re-read this often while the popup is up. */
 const CHECKED_TICK_MS = 30_000
 /** Stable empty list, so hooks keyed on the servers don't rerun every render. */
 const NO_SERVERS: TrayServerOption[] = []
 
 /** Native menu commands (desktop/src-tauri/src/menu.rs), plus the popup's own ``hide``. */
-type TrayAction = 'show' | 'settings' | 'quit' | 'usage_manage' | 'hide'
+type TrayAction = 'show' | 'settings' | 'quit' | 'usage_manage' | 'toggle_pet' | 'hide'
 
 const ACTIONS: Array<{ action: TrayAction; label: string; keys?: string; key?: string }> = [
   { action: 'show', label: 'Open OpenAgentd' },
@@ -34,6 +36,31 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/** Whether the desktop pet is on, as the shell says; null until known. */
+function usePetEnabled(): boolean | null {
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+    void invoke<{ enabled?: unknown } | null>(PET_SETTINGS_COMMAND)
+      .then((settings) => {
+        if (!cancelled && typeof settings?.enabled === 'boolean') setEnabled(settings.enabled)
+      })
+      .catch(() => {})
+    void listen<{ enabled?: unknown }>(PET_SETTINGS_EVENT, (event) => {
+      if (typeof event.payload?.enabled === 'boolean') setEnabled(event.payload.enabled)
+    }).then((stop) => {
+      if (cancelled) stop()
+      else unlisten = stop
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+  return enabled
+}
+
 export function TrayPopup() {
   const [result, setResult] = useState<TrayUsageResult | null>(null)
   /** The IPC call itself failed (the command answers server errors in ``result.error``). */
@@ -44,6 +71,7 @@ export function TrayPopup() {
   const [refreshing, setRefreshing] = useState(false)
   const [, setClock] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const petEnabled = usePetEnabled()
 
   const load = useCallback(async (force = false, targetServer?: string) => {
     try {
@@ -265,7 +293,13 @@ export function TrayPopup() {
             {item.label}
             {item.keys && <span className="action-keys">{item.keys}</span>}
           </button>
-        ))}
+        )).flatMap((button, i) => (i === 0 && petEnabled !== null
+          ? [button, (
+              <button key="toggle_pet" type="button" className="action" onClick={() => runAction('toggle_pet')}>
+                {petEnabled ? 'Hide Desktop Pet' : 'Show Desktop Pet'}
+              </button>
+            )]
+          : [button]))}
       </nav>
     </div>
   )

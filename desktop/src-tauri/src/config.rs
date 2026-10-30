@@ -185,6 +185,27 @@ pub fn save_island_settings(app: &AppHandle, settings: &crate::island::IslandSet
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
+/// The desktop pet's settings (`desktop-pet.json`). A missing or unreadable
+/// file, or a missing key, takes the default (the pet off).
+fn pet_settings_from(bytes: Option<&[u8]>) -> crate::pet::PetSettings {
+    bytes
+        .and_then(|b| serde_json::from_slice(b).ok())
+        .unwrap_or_default()
+}
+
+pub fn load_pet_settings(app: &AppHandle) -> crate::pet::PetSettings {
+    let bytes = app_config_file(app, "desktop-pet.json")
+        .ok()
+        .and_then(|path| std::fs::read(path).ok());
+    pet_settings_from(bytes.as_deref())
+}
+
+pub fn save_pet_settings(app: &AppHandle, settings: &crate::pet::PetSettings) -> Result<()> {
+    let path = app_config_file(app, "desktop-pet.json")?;
+    let bytes = serde_json::to_vec_pretty(settings).context("serialize pet settings")?;
+    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
 /// Each app window's explicit theme pick (`desktop-window-theme.json`, label
 /// → `"light"` / `"dark"`). The page keeps its preference in webview
 /// storage, which the shell cannot read before the page loads; this copy
@@ -277,6 +298,23 @@ mod tests {
         assert_eq!(old, crate::island::IslandSettings { enabled: false, ..defaults });
         let opted_in = island_settings_from(Some(br#"{"showWhenFrontmost": true}"#));
         assert!(opted_in.enabled && opted_in.show_when_frontmost);
+    }
+
+    #[test]
+    fn pet_settings_survive_a_round_trip_and_default_per_key() {
+        use crate::pet::{PetColour, PetPosition, PetSettings};
+        let defaults = PetSettings::default();
+        assert_eq!(pet_settings_from(None), defaults);
+        assert_eq!(pet_settings_from(Some(b"not json")), defaults);
+        let partial = pet_settings_from(Some(br#"{"enabled": true, "colour": "bark"}"#));
+        assert_eq!(partial, PetSettings { enabled: true, colour: PetColour::Bark, ..PetSettings::default() });
+        let saved = PetSettings {
+            enabled: true,
+            position: Some(PetPosition { display: "LG".into(), x: 0.4, y: 0.6 }),
+            ..PetSettings::default()
+        };
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        assert_eq!(pet_settings_from(Some(&bytes)), saved);
     }
 
     #[test]

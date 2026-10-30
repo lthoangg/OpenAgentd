@@ -258,6 +258,15 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   min-height: var(--spacing-app-header);
 }
 
+/* Phones: a 40px header, tall enough for the 36px touch buttons and the
+   session name over its workspace. Everything placed under the header
+   reads the same variable. */
+@media (max-width: 767px) {
+  :root {
+    --spacing-app-header: 2.5rem;
+  }
+}
+
 html[data-mobile-shell] .mobile-safe-header {
   min-height: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
   padding-top: env(safe-area-inset-top, 0px);
@@ -881,7 +890,9 @@ html[data-app-hidden="true"] *::after {
   padding: 0.15em 0.4em;
   font-size: 0.85em;
   font-family: var(--font-mono);
-  color: var(--color-syn-string);
+  /* Inline code is prose, not syntax: plain text colour on the key tint
+   * (DESIGN.md → Colour: colour carries meaning only). */
+  color: var(--color-text);
   /* A span that wraps keeps its border and padding on every line instead of
    * leaving an open-ended box at the break (narrow panes, long commands). */
   -webkit-box-decoration-break: clone;
@@ -1126,29 +1137,51 @@ html[data-app-hidden="true"] *::after {
 }
 @media (pointer: coarse) {
   [data-slot="button"] {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 36px;
+    min-width: 36px;
   }
-  /* Material's minimum touch target is 48dp; 44pt is Apple's. */
+  /* Android gets 4px more: Material sizes its touch controls larger. */
   html[data-mobile-shell="android"] [data-slot="button"] {
-    min-height: 48px;
-    min-width: 48px;
+    min-height: 40px;
+    min-width: 40px;
   }
 }
 
-/* Touch density (DESIGN.md): list rows are 36px on touch. Full-width rows are
-   easy to hit at that height, and 44px left 12px text floating in air. Rows
-   sized from the token (sidebar sessions, sub-sessions, group headers,
-   workspaces, dock lists) follow; their inline actions keep their own
-   ``pointer-coarse:`` sizes (36px fits the row). Line height tightens too:
-   UI text (``leading-relaxed``) and chat/plan prose read denser on a phone. */
+/* Touch density (DESIGN.md): one compact touch size, 36px, for list rows
+   and every other control, so small phones (iPhone mini) still show a
+   useful amount of content. A row and its inline actions (also 36px, via
+   their ``pointer-coarse:`` sizes) line up. Rows sized from the token
+   (sidebar sessions, sub-sessions, group headers, workspaces, dock lists)
+   follow. Line height tightens too: UI text (``leading-relaxed``) and
+   chat/plan prose read denser on a phone. */
 @media (pointer: coarse) {
   :root {
     --spacing-list-row: 2.25rem;
     --leading-relaxed: 1.5;
+    --spacing-tab-bar: 2.4375rem; /* 36px tab plus its 2px top and 1px bottom edge */
   }
   .oa-prose {
     line-height: 1.6;
+  }
+  /* Links and file references inside prose stay inline (resizing them would
+     reflow the text), so their touch target grows invisibly to 36px tall. */
+  .oa-prose a,
+  [data-file-ref] {
+    position: relative;
+  }
+  .oa-prose a::before,
+  [data-file-ref]::before {
+    content: "";
+    position: absolute;
+    inset: calc((100% - 36px) / 2) 0;
+  }
+  /* Small icon buttons inside dense strips (code-block and tool-detail
+     headers, chips) keep their drawn size; the hit area grows to 36px
+     around them. The element must be positioned (``relative`` or more). */
+  .touch-hit::before {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 36px) / 2));
   }
 }
 

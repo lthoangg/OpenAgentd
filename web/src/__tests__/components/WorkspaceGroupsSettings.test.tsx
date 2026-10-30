@@ -83,8 +83,8 @@ async function renderSettings(ready = 'acme') {
 const members = (group: string) =>
   within(screen.getByRole('list', { name: `Members of ${group}` })).getAllByRole('listitem').map((li) => li.textContent)
 const puts = () => calls.filter((c) => c.method === 'PUT').map((c) => c.body)
-const colorInput = () => screen.getByLabelText('Group colour') as HTMLInputElement
-const colorPicker = () => screen.getByLabelText('Pick group colour') as HTMLInputElement
+const colorInput = () => screen.getByLabelText('Group color') as HTMLInputElement
+const colorPicker = () => screen.getByLabelText('Pick group color') as HTMLInputElement
 
 describe('WorkspaceGroupsSettings', () => {
   it('lists every group with its brief and member workspaces', async () => {
@@ -153,7 +153,7 @@ describe('WorkspaceGroupsSettings', () => {
     await user.click(screen.getByRole('button', { name: /new group/i }))
     expect(colorInput().value).toBe(suggestedGroupColor(2))
     await user.type(screen.getByLabelText('Group name'), 'billing')
-    await user.type(screen.getByLabelText('Group brief'), 'invoices')
+    await user.type(screen.getByLabelText('Notes for agents'), 'invoices')
     await user.click(screen.getByRole('button', { name: 'Create group' }))
     await screen.findByText('billing')
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ name: 'billing', brief: 'invoices', color: suggestedGroupColor(2) })
@@ -227,7 +227,7 @@ describe('WorkspaceGroupsSettings', () => {
     const user = userEvent.setup()
     await renderSettings()
     await user.click(screen.getByRole('button', { name: 'Edit group acme' }))
-    await user.clear(screen.getByLabelText('Group brief'))
+    await user.clear(screen.getByLabelText('Notes for agents'))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     // acme has no picked colour; saving must not pin the derived one.
     await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ name: 'acme', brief: null }))

@@ -112,6 +112,8 @@ export function WorkspacePicker({
         aria-label={`Folder: ${label}. Change folder`}
         className="h-6 max-w-full items-center gap-1.5 rounded-full border border-(--color-border) bg-(--bg-card) pl-2 pr-1.5 text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-3"
       >
+        {/* "in": reads as where the session runs, not as a mode switch. */}
+        <span className="shrink-0 text-xs text-(--color-text-subtle)" aria-hidden="true">in</span>
         {isChat
           ? <MessageCircle size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
           : <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />}

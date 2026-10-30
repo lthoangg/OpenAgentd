@@ -4,14 +4,16 @@
  * Navigation is entirely callback-driven; no router Links are used so this
  * component works correctly inside the overlay without any URL changes.
  */
-import { AlertCircle, FolderOpen, Plus, type LucideIcon } from 'lucide-react'
+import { FolderOpen, Plus, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
+import { Chip, type ChipTone } from '@/components/ui/chip'
+import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SearchBar } from '@/components/ui/search-bar'
 import { SectionCard } from '@/components/ui/section-card'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
@@ -27,12 +29,22 @@ export interface ListViewRow {
   kind?: 'item' | 'group'
   /** Main label of the card. */
   title: string
+  /** Render the title in mono: it is an identifier (agent name, server id). */
+  titleMono?: boolean
+  /** Secondary words beside the title (an agent's display name). */
+  subtitle?: string
   /** Optional secondary inline tag (e.g. role badge). */
   badge?: string
+  /** Tone of the badge chip. */
+  badgeTone?: ChipTone
+  /** Let the description run to two lines instead of one. */
+  descriptionLines?: 1 | 2
   /** Short description rendered below the title. */
   description?: string
   /** File path or other monospace meta line shown under the description. */
   meta?: string
+  /** A word tag on the meta line instead of mono text (e.g. "session model"). */
+  metaChip?: string
   /** Icon rendered in the left icon-well. Replaces the generic trailing icon slot. */
   icon?: ReactNode
   /** Validation error message. When set, an error icon is shown next to the title. */
@@ -58,6 +70,10 @@ export interface SettingsListViewProps {
   rows: ListViewRow[]
   isLoading: boolean
   isError: boolean
+  /** Load error detail shown under the error title. */
+  error?: unknown
+  /** Refetch after a load error. */
+  onRetry?: () => void
   /** Empty-state body when there are no rows at all (before filtering). */
   emptyTitle: string
   emptyBody: string
@@ -78,6 +94,8 @@ export function SettingsListView({
   rows,
   isLoading,
   isError,
+  error,
+  onRetry,
   emptyTitle,
   emptyBody,
   emptyIcon = FolderOpen,
@@ -119,10 +137,26 @@ export function SettingsListView({
         )}
 
         {isLoading && (
-          <p className="py-10 text-center font-mono text-xs text-(--color-text-muted)">Loading…</p>
+          <SectionCard role="status" aria-label={`Loading ${title.toLowerCase()}`}>
+            <div className="divide-y divide-(--color-border-subtle)">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex min-h-14 flex-col justify-center gap-1.5 px-4 py-3">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="h-3 w-64 max-w-full" />
+                </div>
+              ))}
+            </div>
+          </SectionCard>
         )}
         {isError && (
-          <p className="py-10 text-center font-mono text-xs text-(--color-error)">Failed to load.</p>
+          <Callout
+            tone="error"
+            role="alert"
+            title={`Couldn't load ${title.toLowerCase()}`}
+            action={onRetry ? <Button size="xs" onClick={onRetry}>Retry</Button> : undefined}
+          >
+            {error instanceof Error ? error.message : 'Check the server connection, then try again.'}
+          </Callout>
         )}
         {!isLoading && !isError && total === 0 && (
           <SectionCard className="border-dashed">
@@ -130,7 +164,7 @@ export function SettingsListView({
           </SectionCard>
         )}
         {!isLoading && !isError && total > 0 && filtered.length === 0 && (
-          <p className="py-10 text-center font-mono text-xs text-(--color-text-muted)">
+          <p className="py-10 text-center text-xs text-(--color-text-muted)">
             No matches for &ldquo;{query}&rdquo;.
           </p>
         )}
@@ -155,7 +189,7 @@ export function SettingsListView({
 function ListRow({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="bg-(--bg-key)/25 px-4 pt-3 pb-1.5 label-caps text-(--color-text-subtle) select-none">
+      <div className="bg-(--bg-key)/25 px-4 pt-3 pb-1.5 text-xs font-medium text-(--color-text-muted) select-none">
         {row.title}
       </div>
     )
@@ -169,7 +203,7 @@ function ListRow({ row }: { row: ListViewRow }) {
       className={cn(
         'group flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left',
         'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
         row.active && 'bg-(--bg-key)/60',
       )}
     >
@@ -184,30 +218,22 @@ function ListRow({ row }: { row: ListViewRow }) {
 
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
-          <span className={cn('truncate', TEXT.label)}>{row.title}</span>
-          {row.badge && (
-            <span className="shrink-0 rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-px text-[11px] font-medium text-(--color-text-muted) select-none">
-              {row.badge}
-            </span>
-          )}
-          {row.invalidReason && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="shrink-0 text-(--color-error)">
-                    <AlertCircle size={ICON_SIZE_INLINE} aria-label="Invalid configuration" />
-                  </span>
-                }
-              />
-              <TooltipContent>{row.invalidReason}</TooltipContent>
-            </Tooltip>
-          )}
+          <span className={cn('truncate', TEXT.label, row.titleMono && 'font-mono')}>{row.title}</span>
+          {row.subtitle && <span className={cn('truncate', TEXT.hint)}>{row.subtitle}</span>}
+          {row.badge && <Chip tone={row.badgeTone}>{row.badge}</Chip>}
+          {row.invalidReason && <Chip tone="error">Invalid</Chip>}
         </span>
+        {row.invalidReason && (
+          <span className="mt-0.5 line-clamp-2 text-xs text-(--color-error)">{row.invalidReason}</span>
+        )}
         {row.description && (
-          <span className={cn('mt-0.5 block line-clamp-1', TEXT.hint)}>{row.description}</span>
+          <span className={cn('mt-0.5', row.descriptionLines === 2 ? 'line-clamp-2' : 'line-clamp-1', TEXT.hint)}>{row.description}</span>
         )}
         {row.meta && (
           <span className="mt-0.5 block truncate font-mono text-[11px] text-(--color-text-subtle)">{row.meta}</span>
+        )}
+        {row.metaChip && (
+          <span className="mt-1 flex"><Chip variant="outline">{row.metaChip}</Chip></span>
         )}
       </span>
 

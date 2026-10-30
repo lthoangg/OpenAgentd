@@ -1,5 +1,5 @@
 /**
- * Settings → Chat titles — name each session from its first message with a
+ * Settings → Session titles — name each session from its first message with a
  * small model, and optionally rename it from its summary after compaction.
  */
 import { useMemo } from 'react'
@@ -56,19 +56,19 @@ export function TitlesSettingsPage() {
     normalize: normalizeTitles,
     hydrate: hydrateTitles,
     onSave: (value) => updateTitles.mutateAsync(value),
-    successTitle: 'Title generation settings saved',
+    successTitle: 'Session title settings saved',
   })
   const modelError = validateModel(draft.value.model, { validValues: textModels.map((m) => m.id) })
 
   return (
     <SettingsPage
-      title="Chat titles"
+      title="Session titles"
       description="Name each session from its first message."
       draft={{ ...draft, canSave: draft.canSave && !modelError }}
       loading={titlesQ.isLoading}
       error={titlesQ.error}
     >
-      <PanelSection title="Titles" flush>
+      <PanelSection title="Automatic titles" flush>
         <PanelRow
           label="Generate titles automatically"
           htmlFor="titles-enabled"
@@ -93,24 +93,24 @@ export function TitlesSettingsPage() {
               </div>
             </PanelRow>
             <PanelRow
-              label="Wait timeout"
+              label="Wait for title (seconds)"
               htmlFor="titles-wait"
-              description="Seconds the first reply waits for its title. 0 doesn't wait."
+              description="How long the first reply waits for its title. 0 doesn't wait."
             >
               <Input
                 id="titles-wait"
                 type="number"
                 min={0}
-                aria-label="Wait timeout seconds"
+                aria-label="Wait for title (seconds)"
                 value={draft.value.wait_timeout_seconds}
                 onChange={(e) => draft.patch({ wait_timeout_seconds: parseInt(e.target.value, 10) || 0 })}
                 className="h-9 w-24 font-mono"
               />
             </PanelRow>
             <PanelRow
-              label="Update title after compaction"
+              label="Update title after summarizing"
               htmlFor="titles-after-compaction"
-              description="Renames the session from its summary each time the conversation is compacted. Titles you renamed yourself are kept."
+              description="Renames the session from its summary each time earlier messages are summarized. Titles you renamed yourself are kept."
             >
               <Switch
                 id="titles-after-compaction"

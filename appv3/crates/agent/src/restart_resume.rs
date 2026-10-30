@@ -13,7 +13,9 @@
 //!   server down cannot restart it forever;
 //! - tells each lead whose member (subagent) was cut off, so the lead is
 //!   not left waiting for a report that never comes (members are tracked in
-//!   memory only, so they are not restarted themselves);
+//!   memory only, so they are not restarted themselves). Each such member is
+//!   listed again as stopped, so a message from its lead resumes it with
+//!   its transcript (see [`crate::subagents::rehydrate_member`]);
 //! - keeps active goals running (see [`crate::goal::continue_after_restart`]).
 //!
 //! A turn the user stopped clears its row like any other ending, so it is
@@ -121,8 +123,22 @@ pub async fn resume_after_restart(pool: &DbPool) -> Report {
     // After the leads: a report to a lead that is running again joins its turn.
     for (sid, lead, handle) in members {
         clear(pool, &sid).await;
+        if let Err(e) = crate::history::heal_orphaned_tool_calls_with(pool, &sid, RESTART_TOOL_RESULT).await {
+            tracing::warn!("restart_resume_heal_failed session_id={} error={}", sid, e);
+        }
         let handle = handle.filter(|h| !h.is_empty()).unwrap_or_else(|| format!("subagent-{}", crate::util::head_chars(&sid, 8)));
-        match crate::subagents::deliver_message_to_lead(&lead, &handle, &member_notice(&handle), pool).await {
+        let resumable = match crate::manager::try_provider_factory() {
+            Some(factory) => match crate::subagents::rehydrate_member(&lead, &handle, pool, &factory, true).await {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::warn!("restart_member_rehydrate_failed lead={} handle={} error={}", lead, handle, e);
+                    false
+                }
+            },
+            None => false,
+        };
+        let notice = if resumable { member_notice(&handle) } else { member_lost_notice(&handle) };
+        match crate::subagents::deliver_message_to_lead(&lead, &handle, &notice, pool).await {
             Ok(()) => {
                 tracing::info!("restart_member_reported lead={} handle={} session_id={}", lead, handle, sid);
                 report.members_reported.push(sid);
@@ -137,10 +153,20 @@ pub async fn resume_after_restart(pool: &DbPool) -> Report {
     report
 }
 
-/// The report a lead gets for a member a restart stopped.
+/// The report a lead gets for a member a restart stopped: messaging it
+/// resumes it.
 pub fn member_notice(handle: &str) -> String {
     format!(
-        "{handle} was stopped by a server restart before it finished its task. Its session and work so far are kept, but it is no longer running and cannot be messaged. \
+        "{handle} was stopped by a server restart before it finished its task. Its work so far is kept. \
+To continue, send it a message: team(target='{handle}', task='continue')."
+    )
+}
+
+/// The report for a stopped member that cannot be resumed (its profile is
+/// gone, say).
+pub fn member_lost_notice(handle: &str) -> String {
+    format!(
+        "{handle} was stopped by a server restart before it finished its task, and it cannot be resumed. Its session and work so far are kept. \
 To finish its task, delegate it again (a new member starts)."
     )
 }

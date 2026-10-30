@@ -134,6 +134,8 @@ describe('categorizeSpan', () => {
     expect(categorizeSpan('summarization')).toBe('summarization')
     expect(categorizeSpan('summarization_llm_call')).toBe('summarization')
     expect(categorizeSpan('title_generation')).toBe('title')
+    expect(categorizeSpan('goal_check')).toBe('goal')
+    expect(categorizeSpan('goal_check lead')).toBe('goal')
   })
 
   it('falls back to "other" for unknown prefixes', () => {

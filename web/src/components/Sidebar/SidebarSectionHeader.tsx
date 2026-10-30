@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode, type Ref } from 'react'
-import { ChevronsDownUp, FolderPlus, ListFilter, Search, SquarePen } from 'lucide-react'
+import { ListFilter, Search } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspaceGroup } from '@/api/types'
 import type { SidebarGroupBy } from '@/stores/useSidebarViewStore'
@@ -51,32 +51,25 @@ function HeaderAction({
 }
 
 /**
- * The sessions section header: its name, then New session (when the list
- * has no per-folder "+": the flat views, and every view on phones, which
- * have no ⌘N), Search, View options, Collapse all (the folder tree only)
- * and Open folder. It stays put however long the list below is.
+ * The sessions section header: its name with Search and View options.
+ * Collapse all and Open folder… live in View options. New sessions start
+ * from a folder's "+", ⌘N or the command palette. It stays put however
+ * long the list below is.
  */
 export function SidebarSectionHeader({
   groupBy,
   workspaceGroups,
-  showNewSession,
-  newSessionShortcut,
   searchOpen,
   searchButtonRef,
-  onNewSession,
   onToggleSearch,
   onCollapseAll,
   onOpenFolder,
 }: {
   groupBy: SidebarGroupBy
-  /** Workspace groups for the View options filter (Project view). */
+  /** Workspace groups for the View options filter (Workspace view). */
   workspaceGroups?: readonly WorkspaceGroup[]
-  showNewSession: boolean
-  /** Shortcut hint for the New session tooltip, e.g. "⌘N". */
-  newSessionShortcut?: string
   searchOpen: boolean
   searchButtonRef?: Ref<HTMLButtonElement>
-  onNewSession: () => void
   onToggleSearch: () => void
   onCollapseAll: () => void
   onOpenFolder: () => void
@@ -85,50 +78,43 @@ export function SidebarSectionHeader({
   const project = groupBy === 'project'
 
   return (
-    <div className="flex h-8 shrink-0 items-center justify-between gap-2 pl-3 pr-1.5">
-      <span className="truncate label-caps leading-none text-(--color-text-subtle)">
-        {project ? 'Workspaces' : 'Sessions'}
-      </span>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {showNewSession && (
+    <div className="shrink-0">
+      <div className="flex h-8 items-center justify-between gap-2 pl-3 pr-1.5">
+        <span className="truncate text-xs font-medium text-(--color-text-muted)">
+          {project ? 'Workspaces' : 'Sessions'}
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5">
           <HeaderAction
-            label="New session"
-            tooltip={newSessionShortcut ? `New session (${newSessionShortcut})` : 'New session'}
-            onClick={onNewSession}
+            label="Search sessions"
+            active={searchOpen}
+            pressed={searchOpen}
+            buttonRef={searchButtonRef}
+            onClick={onToggleSearch}
           >
-            <SquarePen size={13} aria-hidden="true" />
+            <Search size={13} aria-hidden="true" />
           </HeaderAction>
-        )}
-        <HeaderAction
-          label="Search sessions"
-          active={searchOpen}
-          pressed={searchOpen}
-          buttonRef={searchButtonRef}
-          onClick={onToggleSearch}
-        >
-          <Search size={13} aria-hidden="true" />
-        </HeaderAction>
-        <HeaderAction
-          label="View options"
-          active={viewMenuAt !== null}
-          hasPopup
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            setViewMenuAt({ x: rect.left, y: rect.bottom + 4 })
-          }}
-        >
-          <ListFilter size={13} aria-hidden="true" />
-        </HeaderAction>
-        {project && (
-          <HeaderAction label="Collapse all workspaces" tooltip="Collapse all" onClick={onCollapseAll}>
-            <ChevronsDownUp size={13} aria-hidden="true" />
+          <HeaderAction
+            label="View options"
+            active={viewMenuAt !== null}
+            hasPopup
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setViewMenuAt({ x: rect.left, y: rect.bottom + 4 })
+            }}
+          >
+            <ListFilter size={13} aria-hidden="true" />
           </HeaderAction>
-        )}
-        <HeaderAction label="Open folder" tooltip="Open folder…" onClick={onOpenFolder}>
-          <FolderPlus size={13} aria-hidden="true" />
-        </HeaderAction>
+        </div>
       </div>
-      {viewMenuAt && <SidebarViewMenu at={viewMenuAt} workspaceGroups={workspaceGroups} onDismiss={() => setViewMenuAt(null)} />}
+      {viewMenuAt && (
+        <SidebarViewMenu
+          at={viewMenuAt}
+          workspaceGroups={workspaceGroups}
+          onCollapseAll={project ? onCollapseAll : undefined}
+          onOpenFolder={onOpenFolder}
+          onDismiss={() => setViewMenuAt(null)}
+        />
+      )}
     </div>
   )
 }

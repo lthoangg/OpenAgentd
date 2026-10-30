@@ -193,7 +193,7 @@ pub struct SaveOutcome {
 }
 
 fn sha(text: &str) -> String {
-    format!("{:x}", Sha256::digest(text.trim().as_bytes()))
+    Sha256::digest(text.trim().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn read_state(dir: &Path) -> Option<PlanState> {

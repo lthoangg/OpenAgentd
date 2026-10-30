@@ -2244,6 +2244,11 @@ agnostic by design.
 - **Chat-completions-only compatible routing** `[v1.44.3]` — OpenAI-compatible
   providers that do not expose OpenAI's Responses API stay on `/v1/chat/completions`
   even when session or agent thinking settings are enabled.
+- **OpenAI uses the Responses API by default** `[v3.37.0]` — the `openai`
+  provider sends every request to `/v1/responses`, so newer models that
+  reason by default can call tools (they reject tools on
+  `/v1/chat/completions` with HTTP 400). Set `responses_api: false` in a
+  model's settings to keep chat completions.
 - **AWS Bedrock Mantle-only routing** `[v1.110.0]` — Bedrock models use Mantle's
   Anthropic- or OpenAI-compatible route metadata and bearer-token auth; native
   Converse and the access-key/secret-key Settings path were removed. This is an

@@ -51,8 +51,11 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // surface that is not needed on the first screen belongs behind
 // `lazySurface`, not in a raised budget; `bundle-budget.test.js` keeps the
 // limits under the pre-split size. The gzip limit took 1 kB more for the
-// dependency bumps after v3.35.0 (measured 645.5 kB in CI).
-export const LIMITS = { eagerBytes: 2_030_000, eagerGzipBytes: 646_000, largestChunkBytes: 1_180_000 }
+// dependency bumps after v3.35.0 (measured 645.5 kB in CI). v3.36.0 took
+// 2.050 MB / 655.3 kB: the readability pass on the chat UI (shared chip,
+// term, meta-row and confirm-dialog primitives, tool-row summaries) and the
+// markdown frontmatter table, all on the first screen.
+export const LIMITS = { eagerBytes: 2_055_000, eagerGzipBytes: 657_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

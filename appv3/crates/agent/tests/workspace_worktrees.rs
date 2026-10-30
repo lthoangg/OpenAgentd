@@ -10,11 +10,19 @@ use appv3_agent::workspace_messages::{self as wm, Delivery, SendRequest};
 use appv3_agent::worktrees::{self as wt, Placement};
 use appv3_providers::mock::MockProvider;
 use appv3_providers::LlmProvider;
-use appv3_tools::{Tool, ToolContext};
+use appv3_tools::{Tool, ToolContext, ToolOutput};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// The tool's text. Not `{:?}`: Debug doubles the backslashes of Windows paths.
+fn text(out: ToolOutput) -> String {
+    match out {
+        ToolOutput::Text(s) => s,
+        other => panic!("expected text output, got {other:?}"),
+    }
+}
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -141,7 +149,7 @@ async fn worktrees_file_under_their_repo_and_leads_open_them() {
     let c = ctx(&app_ws, &app_sid);
     let mut sessions = vec![];
     for (feature, reply) in [("auth", "Auth done."), ("billing", "Billing done.")] {
-        let out = format!("{:?}", tool.run(&c, json!({"worktree": feature, "message": format!("Build {feature}."), "reply": true})).await.unwrap());
+        let out = text(tool.run(&c, json!({"worktree": feature, "message": format!("Build {feature}."), "reply": true})).await.unwrap());
         assert!(out.contains(&format!("Created worktree '{feature}' on branch oad/{feature}")), "{out}");
         let dir = appv3_db::list_visible_coding_workspaces(&pool).await.unwrap().into_iter().find(|r| r.name.as_deref() == Some(feature)).expect("registered");
         assert_eq!((dir.kind.as_str(), dir.source_path.as_deref(), dir.managed), ("worktree", Some(app_ws.as_str()), true));
@@ -184,7 +192,7 @@ async fn worktrees_file_under_their_repo_and_leads_open_them() {
 
     // ── a worktree session reaches the main checkout ────────────────────
     let wt_tool = WorkspaceTool::new(fix_sid.clone(), pool.clone());
-    let out = format!("{:?}", wt_tool.run(&ctx(&fix_ws, &fix_sid), json!({"worktree": "main", "message": "Merge fix."})).await.unwrap());
+    let out = text(wt_tool.run(&ctx(&fix_ws, &fix_sid), json!({"worktree": "main", "message": "Merge fix."})).await.unwrap());
     assert!(out.contains(&format!("Sent to 'app' ({app_ws})")) && !out.contains("Created worktree"), "{out}");
     let main_sid = appv3_db::list_sessions_page(&pool, None, 5, &appv3_db::SessionListFilter { workspaces: std::slice::from_ref(&app_ws), ..Default::default() })
         .await
@@ -201,7 +209,7 @@ async fn worktrees_file_under_their_repo_and_leads_open_them() {
     wt::register_workspace(&pool, &notes_ws).await.unwrap();
     let notes_sid = new_session(&pool, &notes_ws).await;
     let notes_tool = WorkspaceTool::new(notes_sid.clone(), pool.clone());
-    let out = format!("{:?}", notes_tool.run(&ctx(&notes_ws, &notes_sid), json!({"worktree": "x", "message": "y"})).await.unwrap());
+    let out = text(notes_tool.run(&ctx(&notes_ws, &notes_sid), json!({"worktree": "x", "message": "y"})).await.unwrap());
     assert!(out.contains("not a git repository, so it cannot have worktrees"), "{out}");
     let e = wm::send(
         &pool,

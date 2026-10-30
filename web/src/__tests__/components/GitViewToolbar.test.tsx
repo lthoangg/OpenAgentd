@@ -40,6 +40,13 @@ describe('GitViewToolbar on a phone', () => {
     expect(onSubTabChange).toHaveBeenCalledWith('commits')
   })
 
+  it('keeps the Changes / History tabs short enough for the 32px toolbar on touch', () => {
+    renderToolbar()
+    const tablist = screen.getByRole('tablist', { name: 'Git view' })
+    expect(tablist.className).toContain('pointer-coarse:data-[orientation=horizontal]:h-7')
+    expect(tablist.className).not.toContain('h-10.5')
+  })
+
   it('keeps the checkboxes on desktop', () => {
     renderToolbar({ mobile: false })
     expect(screen.getByRole('checkbox', { name: 'Graph view' })).toBeTruthy()

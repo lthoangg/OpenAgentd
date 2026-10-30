@@ -34,9 +34,10 @@ describe('coarse-pointer touch targets', () => {
     expect(css).toMatch(/\.touch-hit::before\s*\{\s*content:\s*"";\s*position:\s*absolute;\s*inset:\s*min\(0px, calc\(\(100% - 36px\) \/ 2\)\);/)
   })
 
-  it('makes every tab trigger 36px on touch', () => {
+  it('makes default tab triggers 36px on touch and keeps sm tabs inside the 32px toolbar', () => {
     const tabs = readFileSync(fileURLToPath(new URL('../../components/ui/tabs.tsx', import.meta.url)), 'utf8')
-    expect(tabs.match(/pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/g)?.length).toBe(2)
+    expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/)
+    expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7'/)
   })
 
   it('grows the small controls found in the phone audit to 36px on touch', () => {

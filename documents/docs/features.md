@@ -308,7 +308,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   review panel) move rare actions into a `⋯` menu; the composer's controls
   and the split Steer pill share one 36 px height; and in a phone browser a
   session's More button opens a sheet with its full title. Toasts sit below
-  the header.
+  the header. The Git Changes / History tabs stay inside their toolbar on a
+  phone, and a commit with several branch or tag labels keeps its date in
+  view.
 - **Quieter transcript** `[v3.37.0]` — reasoning stays open in full (no
   "Thought for" fold), tool rows drop the coloured running dot ("running…"
   and the timer remain), and long tool results no longer end in a Collapse

@@ -769,7 +769,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Container**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-key)` (or `bg-card`), `p-0.5`.
 - **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
-- **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
+- **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
 - **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):

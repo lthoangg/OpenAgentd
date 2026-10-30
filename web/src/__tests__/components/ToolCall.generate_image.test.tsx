@@ -470,8 +470,8 @@ describe("ToolCall — generate_image status indicators", () => {
     const args = JSON.stringify({ prompt: "a cloud", filename: "cloud" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    // Running is a blue dot plus "running…", not a pulsing label
-    expect(btn.querySelector("[data-running-dot]")).toBeTruthy()
+    // Running is the "running…" text: no coloured dot, no pulsing label
+    expect(btn.querySelector("[data-running-dot]")).toBeNull()
     expect(btn.querySelector(".animate-pulse")).toBeNull()
     expect(btn.textContent).toContain("cloud.png")
     expect(btn.textContent).toContain("running…")

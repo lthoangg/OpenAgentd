@@ -177,7 +177,7 @@ describe("ToolCall generate_video display", () => {
     expect(btn.textContent).not.toContain("running…");
   });
 
-  it("shows a running dot and 'running…' when done=false, never a pulse", () => {
+  it("shows 'running…' when done=false, with no dot or pulse", () => {
     const args = JSON.stringify({
       prompt: "Create a video",
       filename: "video",
@@ -185,7 +185,7 @@ describe("ToolCall generate_video display", () => {
     render(<ToolCall name="generate_video" args={args} done={false} />);
 
     const btn = screen.getByRole("button");
-    expect(btn.querySelector("[data-running-dot]")).not.toBeNull();
+    expect(btn.querySelector("[data-running-dot]")).toBeNull();
     expect(btn.querySelector(".animate-pulse")).toBeNull();
     expect(btn.textContent).toContain("video.mp4");
     expect(btn.textContent).toContain("running…");

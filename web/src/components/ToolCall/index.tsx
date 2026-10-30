@@ -350,11 +350,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // Only an open row shows these, and reopening a long run mounts hundreds of
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
-  // Long open details end with a Collapse row, so closing does not mean
-  // scrolling back up to the header (DESIGN.md → disclosure rows).
-  const longDetails =
-    expanded &&
-    [displayedArgs, shownLiveOutput, shownResult].reduce((n, text) => n + (text ? text.split('\n').length : 0), 0) > 12
   const displayName = name || 'tool'
   const title = headerTitle ? `${displayName}: ${headerTitle}` : displayName
   // Shell's exit status rides in the meta column as a chip, not as an
@@ -426,9 +421,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             </>
           }
         >
-          {state === 'running' && (
-            <span className="size-1.5 shrink-0 self-center rounded-full bg-(--color-info) motion-safe:animate-pulse" aria-hidden="true" data-running-dot="" />
-          )}
           <span className="shrink-0 font-mono font-medium text-(--color-text)">{displayName}</span>
           {visibleHeader && (
             <span className="min-w-0 truncate font-mono text-(--color-text-2)">{visibleHeader}</span>
@@ -440,7 +432,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             </span>
           )}
           {rowSummary ? (
-            <span className={cn('min-w-0 truncate', rowSummary.error ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
+            // The summary keeps up to 60% of the row; the target before it
+            // takes the truncation, so "3 matches" never clips to "3 m…".
+            <span className={cn('min-w-0 max-w-[60%] shrink-0 truncate', rowSummary.error ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
               {rowSummary.text}
             </span>
           ) : state === 'running' ? (
@@ -607,15 +601,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                     )
                   )}
                 </>
-              )}
-              {longDetails && (
-                <button
-                  type="button"
-                  onClick={(event) => collapse(event.currentTarget)}
-                  className="block w-full border-t border-(--color-border) bg-(--bg-key) py-1 text-center text-[11px] text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
-                >
-                  Collapse
-                </button>
               )}
             </section>
           </motion.div>

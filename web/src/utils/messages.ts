@@ -76,6 +76,7 @@ function assistantBlocks(
   const responseDurationMs = typeof extra?.duration_ms === 'number' ? extra.duration_ms : undefined
   const model = typeof extra?.model === 'string' ? extra.model : undefined
   const thinkingLevel = typeof extra?.thinking_level === 'string' ? extra.thinking_level : undefined
+  const modelExtra = model ? { model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) } : undefined
   if (typeof extra?.thinking_duration_ms === 'number' && blocks[0]?.type === 'thinking') {
     blocks[0].thinkingDurationMs = extra.thinking_duration_ms
   }
@@ -88,7 +89,7 @@ function assistantBlocks(
       content: msg.content,
       timestamp,
       responseDurationMs,
-      extra: model ? { model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) } : undefined,
+      extra: modelExtra,
     })
   }
 
@@ -118,6 +119,13 @@ function assistantBlocks(
     }
     blocks.push(block)
     if (tool.id) pendingToolBlocks.set(tool.id, block)
+  }
+
+  // The model names the turn under the prompt even when the reply has no
+  // text (it ends on ``ask_user`` or a tool call), so it rides on the first
+  // block then.
+  if (modelExtra && blocks.length > 0 && !blocks.some((b) => b.type === 'text')) {
+    blocks[0].extra = { ...(blocks[0].extra ?? {}), ...modelExtra }
   }
 
   if (extra?.usage && blocks.length > 0) {

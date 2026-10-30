@@ -26,4 +26,19 @@ describe('focusQuietly', () => {
     focusQuietly(a)
     expect(a.hasAttribute('data-quiet-focus')).toBe(false)
   })
+
+  it('keeps the flag when only the window loses focus', () => {
+    document.body.innerHTML = '<button id="a">a</button><button id="b">b</button>'
+    const a = document.getElementById('a') as HTMLButtonElement
+    const b = document.getElementById('b') as HTMLButtonElement
+
+    focusQuietly(a)
+    // Switching apps fires blur while the button stays the active element.
+    a.dispatchEvent(new FocusEvent('blur'))
+    expect(document.activeElement).toBe(a)
+    expect(a.hasAttribute('data-quiet-focus')).toBe(true)
+
+    b.focus()
+    expect(a.hasAttribute('data-quiet-focus')).toBe(false)
+  })
 })

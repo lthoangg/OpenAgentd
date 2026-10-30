@@ -225,6 +225,9 @@ impl StreamStore {
                 m.insert("agent".into(), Value::String(agent.into()));
                 m.insert("started".into(), Value::Bool(false));
                 m.insert("done".into(), Value::Bool(false));
+                if let Some(meta) = data.get("metadata").filter(|v| v.as_object().is_some_and(|o| !o.is_empty())) {
+                    m.insert("metadata".into(), meta.clone());
+                }
                 state.tool_calls.push(m);
             }
             "tool_start" => {
@@ -494,7 +497,7 @@ impl StreamStore {
             let agent = tc_str(tc, "agent").unwrap_or("");
             let id = tc_str(tc, "tool_call_id");
             let name = tc_str(tc, "name").unwrap_or("");
-            replay.push(events::tool_call(agent, id, name));
+            replay.push(events::tool_call(agent, id, name, tc.get("metadata").cloned()));
             if tc_bool(tc, "started") {
                 let mut e = events::tool_start(agent, id, name, None);
                 e.data.insert("arguments".into(), tc.get("arguments").cloned().unwrap_or(Value::Null));
@@ -587,7 +590,7 @@ mod tests {
         s.push_event("x", &events::thinking("a", "th", None), false);
         s.push_event("x", &events::message("a", "he", None), false);
         s.push_event("x", &events::message("a", "llo", None), false);
-        s.push_event("x", &events::tool_call("a", Some("t1"), "read"), false);
+        s.push_event("x", &events::tool_call("a", Some("t1"), "read", None), false);
         s.push_event("x", &events::tool_start("a", Some("t1"), "read", Some("{}")), false);
         let mut sub = s.attach("x").unwrap();
         let mut got = vec![];
@@ -604,6 +607,21 @@ mod tests {
         assert!(sub.next().await.is_none());
         drop(sub);
         assert!(s.attach("x").is_none());
+    }
+
+    /// A reconnect mid-tool still learns which model called the tool, so the
+    /// prompt above a tool-only reply can name it.
+    #[tokio::test]
+    async fn replay_keeps_the_model_that_called_a_tool() {
+        let s = leak();
+        s.init_turn("m", false);
+        let meta = json!({"model": "openai:gpt-5", "thinking_level": "high"});
+        s.push_event("m", &events::tool_call("a", Some("t1"), "ask_user", Some(meta.clone())), false);
+        let mut sub = s.attach("m").unwrap();
+        let e = sub.next().await.unwrap();
+        assert_eq!(e.event, "tool_call");
+        let data: Value = serde_json::from_str(&e.data).unwrap();
+        assert_eq!(data["metadata"], meta);
     }
 
     /// A reconnect during a `/compact` still learns it was forced.
@@ -671,7 +689,7 @@ mod tests {
         let s = leak();
         s.init_turn("q", false);
         s.push_event("q", &events::agent_status("a", "working", None), false);
-        s.push_event("q", &events::tool_call("a", Some("c1"), "submit_plan"), false);
+        s.push_event("q", &events::tool_call("a", Some("c1"), "submit_plan", None), false);
         s.push_event("q", &events::plan_review_asked("q1", "q", "c1", &[json!({"question": "Review plan revision 2."})], 2), false);
         s.push_event("q", &events::agent_status("a", "waiting_input", None), false);
 
@@ -760,9 +778,9 @@ mod tests {
     async fn tool_end_keeps_its_result_on_every_match_path() {
         let s = leak();
         s.init_turn("w", false);
-        s.push_event("w", &events::tool_call("a", Some("t1"), "read"), false);
+        s.push_event("w", &events::tool_call("a", Some("t1"), "read", None), false);
         s.push_event("w", &events::tool_end("a", Some("t1"), "read", Some("by-id"), None), false);
-        s.push_event("w", &events::tool_call("a", None, "grep"), false);
+        s.push_event("w", &events::tool_call("a", None, "grep", None), false);
         s.push_event("w", &events::tool_end("a", None, "grep", Some("by-name"), None), false);
         s.push_event("w", &events::tool_end("a", Some("t9"), "glob", Some("orphan"), None), false);
         let results: Vec<Value> = s.debug_state("w").unwrap()["tool_calls"].as_array().unwrap().iter().map(|tc| tc["result"].clone()).collect();

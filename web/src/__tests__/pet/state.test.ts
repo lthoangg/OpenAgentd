@@ -17,6 +17,8 @@ import {
   nextTarget,
   petPose,
   reactionFor,
+  readOnDismiss,
+  sitPause,
   startX,
   startY,
   visibleBubble,
@@ -55,9 +57,24 @@ describe('petPose', () => {
     expect(petPose({ ...base, sitting: true })).toBe('sit')
   })
 
-  it('works while an agent runs and raises an alert when one waits on you', () => {
-    expect(petPose({ ...base, status: { running: 1, needsInput: 0 } })).toBe('work')
+  it('works at its laptop while an agent runs and raises an alert when one waits on you', () => {
+    expect(petPose({ ...base, sitting: true, status: { running: 1, needsInput: 0 } })).toBe('work')
     expect(petPose({ ...base, status: { running: 1, needsInput: 1 }, reaction: 'hop' })).toBe('alert')
+  })
+
+  it('still walks about while an agent runs, carrying the laptop', () => {
+    const busy = { ...base, status: { running: 1, needsInput: 0 } }
+    expect(petPose(busy)).toBe('walk')
+    expect(petPose({ ...busy, movement: 'playful' })).toBe('walk')
+    // Never falls asleep at work.
+    expect(petPose({ ...busy, idleMs: SLEEP_AFTER_MS * 2 })).toBe('walk')
+  })
+
+  it('works sitting still when told to stay put, motion is reduced, or it is held', () => {
+    const busy = { ...base, status: { running: 1, needsInput: 0 } }
+    expect(petPose({ ...busy, movement: 'still' })).toBe('work')
+    expect(petPose({ ...busy, reducedMotion: true })).toBe('work')
+    expect(petPose({ ...busy, held: true })).toBe('work')
   })
 
   it('reacts to a notification before going back to work', () => {
@@ -95,8 +112,23 @@ describe('petPose', () => {
   })
 
   it('lets work, questions and sleep win over zoomies', () => {
-    expect(petPose({ ...base, zoom: 'run', status: { running: 1, needsInput: 0 } })).toBe('work')
+    expect(petPose({ ...base, zoom: 'run', status: { running: 1, needsInput: 0 } })).toBe('walk')
+    expect(petPose({ ...base, zoom: 'run', sitting: true, status: { running: 1, needsInput: 0 } })).toBe('work')
     expect(petPose({ ...base, zoom: 'run', status: { running: 0, needsInput: 1 } })).toBe('alert')
+  })
+})
+
+describe('sitPause', () => {
+  it('is the movement level’s pause when idle', () => {
+    expect(sitPause('calm', false)).toEqual([4000, 10000])
+    expect(sitPause('playful', false)).toEqual([1000, 3500])
+  })
+
+  it('is twice as long, and at least six seconds, while an agent runs', () => {
+    expect(sitPause('calm', true)).toEqual([8000, 20000])
+    expect(sitPause('playful', true)).toEqual([6000, 10000])
+    expect(sitPause('chaotic', true)).toEqual([6000, 10000])
+    expect(sitPause('still', true)[0]).toBe(Infinity)
   })
 })
 
@@ -113,6 +145,10 @@ describe('zoomies', () => {
     expect(zoomDelay('chaotic', 0)).toBe(60_000)
     expect(zoomDelay('chaotic', 0.999)).toBeLessThanOrEqual(120_000)
     for (const movement of ['still', 'calm', 'playful'] as const) expect(zoomDelay(movement, 0.5)).toBeNull()
+  })
+
+  it('never come on their own while an agent runs', () => {
+    expect(zoomDelay('chaotic', 0, true)).toBeNull()
   })
 
   it('celebrate a finished turn when playful or chaotic', () => {
@@ -211,6 +247,25 @@ describe('bubbleReducer', () => {
     state = bubbleReducer(state, { type: 'toggleList' })
     const cleared = bubbleReducer(state, { type: 'clearUnread' })
     expect(cleared).toEqual({ ...EMPTY_BUBBLES, questions: [bubble('q', 'input')] })
+  })
+
+  it('drops what a session read elsewhere left, whatever form its id takes', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('a', 'done', 'AA-bb'))
+    state = notify(state, bubble('b', 'done', 'cc'))
+    state = notify(state, bubble('r', 'remind', 'aabb'))
+    state = notify(state, bubble('q', 'input', 'aabb'))
+    state = bubbleReducer(state, { type: 'toggleList' })
+    state = bubbleReducer(state, { type: 'readSession', key: 'aabb' })
+    expect(state.unread.map((u) => u.id)).toEqual(['b'])
+    expect(state.questions.map((q) => q.id)).toEqual(['q'])
+    expect(state.listOpen).toBe(true)
+    state = bubbleReducer(state, { type: 'readSession', key: 'cc' })
+    expect(state.listOpen).toBe(false)
+    expect(bubbleReducer(state, { type: 'readSession', key: 'zz' })).toBe(state)
+  })
+
+  it('reads the sessions of dismissed finished turns and reminders, not questions', () => {
+    expect(readOnDismiss([bubble('a', 'done'), bubble('q', 'input'), bubble('r', 'remind'), bubble('x', 'failed', null)])).toEqual(['a', 'r'])
   })
 })
 

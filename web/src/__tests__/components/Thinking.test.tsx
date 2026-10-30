@@ -112,4 +112,16 @@ describe('Thinking', () => {
 
     expect(container.innerHTML).toBe('')
   })
+
+  for (const isStreaming of [true, false]) {
+    it(`renders the trace in italics, not as a quote (streaming=${isStreaming})`, () => {
+      const { container } = render(<Thinking content={TRACE} isStreaming={isStreaming} />)
+
+      const trace = screen.getByText('Read the config first.').closest('[data-thinking-trace]')
+      expect(trace?.className).toContain('italic')
+      expect(container.querySelector('.border-l')).toBeNull()
+      // Section headers stay upright so they scan as titles.
+      expect(screen.getByText('Planning').className).toContain('not-italic')
+    })
+  }
 })

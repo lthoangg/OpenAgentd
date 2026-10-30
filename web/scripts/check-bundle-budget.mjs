@@ -55,7 +55,9 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // 2.050 MB / 655.3 kB: the readability pass on the chat UI (shared chip,
 // term, meta-row and confirm-dialog primitives, tool-row summaries) and the
 // markdown frontmatter table, all on the first screen.
-export const LIMITS = { eagerBytes: 2_055_000, eagerGzipBytes: 657_000, largestChunkBytes: 1_180_000 }
+// v3.38.0 took 2.056 MB / 657.6 kB: cross-window unread sync, the model name
+// on text-less replies, and the web dependency bumps.
+export const LIMITS = { eagerBytes: 2_060_000, eagerGzipBytes: 659_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

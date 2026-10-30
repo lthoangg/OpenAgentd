@@ -14,9 +14,12 @@ members = [
     "crates/cli",
     "crates/preview",
 ]
+# Vendored crates are patched in below, not workspace members: keep them out of
+# this workspace's fmt/clippy rules.
+exclude = ["vendor/anydoc"]
 
 [workspace.package]
-version = "3.37.0"
+version = "3.38.0"
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://openagentd.dev"
@@ -91,3 +94,9 @@ opt-level = 2
 inherits = "release"
 lto = "fat"
 codegen-units = 1
+
+# anydoc 0.2.4 depends on zip 8, which has unpatched advisories (fixed only in
+# zip >= 9.0.5). The vendored copy changes nothing but that dependency; see
+# vendor/anydoc/Cargo.toml for when to drop it.
+[patch.crates-io]
+anydoc = { path = "vendor/anydoc" }

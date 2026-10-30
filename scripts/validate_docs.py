@@ -22,7 +22,12 @@ AGENTS_PATH_RE = re.compile(r"(?<![\w:/.-])([\w.\-/]+/AGENTS\.md)\b")
 
 
 def tracked_markdown_files(root: Path) -> list[Path]:
-    """Return tracked Markdown files in stable repository-relative order."""
+    """Return tracked Markdown files in stable repository-relative order.
+
+    Vendored third-party crates (any ``vendor/`` directory) keep their
+    upstream docs, whose links point into the upstream repository; they are
+    not ours to validate.
+    """
     result = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z", "--", "*.md"],
         check=False,
@@ -33,7 +38,8 @@ def tracked_markdown_files(root: Path) -> list[Path]:
     return [
         path
         for name in sorted(filter(None, result.stdout.decode().split("\0")))
-        if (path := root / Path(name)).is_file()
+        if "vendor" not in Path(name).parts[:-1]
+        and (path := root / Path(name)).is_file()
     ]
 
 

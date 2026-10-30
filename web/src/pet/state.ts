@@ -3,6 +3,7 @@
  * (desktop/src-tauri/src/pet.rs), and the pure decisions about what it does:
  * its pose, and which bubble shows.
  */
+import { sessionKey } from '@/lib/session-key'
 
 export type PetCharacter = 'cat' | 'duck' | 'crab'
 export type PetColour = 'orange' | 'paper' | 'bark' | 'blue'
@@ -118,6 +119,23 @@ export const SIT_PAUSE: Record<PetMovement, [number, number]> = {
   chaotic: [600, 2000],
 }
 
+/** While an agent runs it sits at its laptop at least this long between walks. */
+const BUSY_SIT_MIN = 6000
+
+/**
+ * How long it sits between walks, in ms: [min, max]. While an agent runs it
+ * mostly works, so the pause is twice as long and never short.
+ */
+export function sitPause(movement: PetMovement, busy: boolean): [number, number] {
+  const [min, max] = SIT_PAUSE[movement]
+  if (!busy) return [min, max]
+  const busyMin = Math.max(min * 2, BUSY_SIT_MIN)
+  return [busyMin, Math.max(max * 2, busyMin + 4000)]
+}
+
+/** Folding the laptop before a walk, or opening it after one (matches --pet-fold). */
+export const FOLD_MS = 2000
+
 // ── Zoomies ────────────────────────────────────────────────────────────────
 
 /** Running about: dashing back and forth, then standing a while panting. */
@@ -132,9 +150,12 @@ export const PANT_MS = 2500
 /** How long between bouts on its own, when chaotic: [min, max] in ms. */
 const ZOOM_EVERY: [number, number] = [60_000, 120_000]
 
-/** Ms until the next bout on its own, or null when it never runs about unasked. */
-export function zoomDelay(movement: PetMovement, random: number): number | null {
-  if (movement !== 'chaotic') return null
+/**
+ * Ms until the next bout on its own, or null when it never runs about
+ * unasked (not chaotic, or an agent is running: zoomies are for idle time).
+ */
+export function zoomDelay(movement: PetMovement, random: number, busy = false): number | null {
+  if (movement !== 'chaotic' || busy) return null
   const [min, max] = ZOOM_EVERY
   return min + random * (max - min)
 }
@@ -272,13 +293,14 @@ export interface PoseInput {
 
 /**
  * What the pet does: a waiting question first, then a fresh reaction,
- * then working while an agent runs; otherwise it runs about (zoomies),
- * wanders, sits, and sleeps after a long quiet spell.
+ * then working while an agent runs (at its laptop when sitting, carrying it
+ * when walking); otherwise it runs about (zoomies), wanders, sits, and
+ * sleeps after a long quiet spell.
  */
 export function petPose({ status, reaction, sitting, held = false, zoom = null, idleMs, reducedMotion, movement }: PoseInput): PetPose {
   if (status.needsInput > 0) return 'alert'
   if (reaction) return reaction
-  if (status.running > 0) return 'work'
+  if (status.running > 0) return reducedMotion || movement === 'still' || held || sitting ? 'work' : 'walk'
   if (idleMs >= SLEEP_AFTER_MS) return 'sleep'
   if (reducedMotion || movement === 'still' || held) return 'sit'
   if (zoom === 'run') return 'zoom'
@@ -306,6 +328,7 @@ export type BubbleAction =
   | { type: 'notify'; bubble: PetBubble }
   | { type: 'fade'; id: string }
   | { type: 'dismiss'; id: string }
+  | { type: 'readSession'; key: string }
   | { type: 'status'; status: PetStatus }
   | { type: 'toggleList' }
   | { type: 'clearUnread' }
@@ -344,6 +367,19 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
         listOpen: state.listOpen && unread.length > 0,
       }
     }
+    case 'readSession': {
+      // Read somewhere else: its finished turns and reminders go; a question
+      // still waits on the user until it is answered.
+      const about = (b: PetBubble | null) => Boolean(b?.sessionId && sessionKey(b.sessionId) === action.key)
+      if (!about(state.current) && !state.unread.some(about)) return state
+      const unread = state.unread.filter((u) => !about(u))
+      return {
+        ...state,
+        current: about(state.current) ? null : state.current,
+        unread,
+        listOpen: state.listOpen && unread.length > 0,
+      }
+    }
     case 'status':
       // Nothing waits on the user any more: the questions were answered.
       return action.status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [] } : state
@@ -373,6 +409,14 @@ export function visibleBubble(state: BubbleState): VisibleBubble {
 /** The badge count on the pet: unread bubbles plus questions behind the one on show. */
 export function badgeCount(state: BubbleState): number {
   return state.unread.length + Math.max(0, state.questions.length - 1)
+}
+
+/**
+ * The dismissed bubbles whose sessions are then read everywhere: finished
+ * turns and reminders about a session. Dismissing a question only hides it.
+ */
+export function readOnDismiss(bubbles: PetBubble[]): string[] {
+  return bubbles.filter((b) => b.sessionId && b.tone !== 'input').map((b) => b.id)
 }
 
 // ── Placement ──────────────────────────────────────────────────────────────

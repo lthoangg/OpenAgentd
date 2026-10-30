@@ -9,13 +9,13 @@ import {
   CHARACTER_TRAITS,
   CLIMB_CHANCE,
   EMPTY_BUBBLES,
+  FOLD_MS,
   JUMP_DOWN_CHANCE,
   JUMP_MS,
   PANT_MS,
   PET_HEIGHT,
   PET_WIDTH,
   POUNCE_AFTER_MS,
-  SIT_PAUSE,
   SIZE_SCALE,
   WALK_SPEED,
   ZOOM_DASHES,
@@ -28,10 +28,12 @@ import {
   clampY,
   dashTarget,
   followLedge,
+  readOnDismiss,
   ledges,
   nextTarget,
   petPose,
   reactionFor,
+  sitPause,
   startX,
   startY,
   visibleBubble,
@@ -54,11 +56,14 @@ import {
 const STATE_COMMAND = 'pet_state'
 const FIT_COMMAND = 'pet_fit'
 const OPEN_COMMAND = 'pet_open'
+const DISMISS_COMMAND = 'pet_dismiss'
 const DRAG_END_COMMAND = 'pet_drag_end'
 const MENU_COMMAND = 'pet_menu'
 const STATE_EVENT = 'pet-state'
 const NOTIFICATION_EVENT = 'pet-notification'
 const MENU_EVENT = 'pet-menu-action'
+/** A session was read somewhere (an app window, the notch, here). */
+const SESSION_READ_EVENT = 'pet-session-read'
 /** Where the pointer is while it is near the pet (CSS px), or null once it leaves. */
 const POINTER_EVENT = 'pet-pointer'
 /** Other apps' windows it can climb, front first (CSS px); empty when it may not. */
@@ -72,7 +77,15 @@ const FIT_EVERY_MS = 100
 const POKE_SAY_MS = 2500
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
+
+/** Dismissed finished turns and reminders: their sessions are read everywhere. */
+function reportDismissed(items: PetBubble[]): void {
+  const notificationIds = readOnDismiss(items)
+  if (notificationIds.length > 0) void invoke(DISMISS_COMMAND, { notificationIds }).catch(() => {})
+}
 type PointerAt = { x: number; y: number } | null
+/** The laptop being folded before a walk, or opened after one. */
+type Fold = 'folding' | 'unfolding'
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
 function useShellEvent<T>(event: string, onPayload: (payload: T) => void) {
@@ -143,6 +156,9 @@ function ToneMark({ tone }: { tone: BubbleTone }) {
 export function Pet() {
   const [view, setView] = useState<PetView | null>(null)
   const [bubbles, dispatch] = useReducer(bubbleReducer, EMPTY_BUBBLES)
+  // The menu's Clear arrives as an event: it reads what is up then.
+  const bubblesRef = useRef(bubbles)
+  bubblesRef.current = bubbles
   const [reaction, setReaction] = useState<PetReaction | null>(null)
   const [sitting, setSitting] = useState(true)
   const [lastActivity, setLastActivity] = useState(() => Date.now())
@@ -159,6 +175,7 @@ export function Pet() {
   const [windows, setWindows] = useState<OtherWindow[]>([])
   const [jumping, setJumping] = useState(false)
   const [say, setSay] = useState<{ text: string; at: number } | null>(null)
+  const [fold, setFold] = useState<Fold | null>(null)
   const reducedMotion = useReducedMotion()
 
   const petRef = useRef<HTMLDivElement>(null)
@@ -185,6 +202,7 @@ export function Pet() {
   const character: PetCharacter = settings && settings.character in CHARACTER_TRAITS ? settings.character : 'cat'
   const traits = CHARACTER_TRAITS[character]
   const status = view?.status ?? { running: 0, needsInput: 0 }
+  const busy = status.running > 0
   const scale = settings ? SIZE_SCALE[settings.size] : 1
   const petWidth = PET_WIDTH * scale
   const petHeight = PET_HEIGHT * scale
@@ -218,7 +236,17 @@ export function Pet() {
     MENU_EVENT,
     useCallback((payload: MenuAction) => {
       if (payload.action === 'dismiss') dispatch({ type: 'dismiss', id: payload.id })
-      else dispatch({ type: 'clearUnread' })
+      else {
+        const { current, unread } = bubblesRef.current
+        reportDismissed(current ? [current, ...unread] : unread)
+        dispatch({ type: 'clearUnread' })
+      }
+    }, []),
+  )
+  useShellEvent<{ sessionKey: string }>(
+    SESSION_READ_EVENT,
+    useCallback((payload: { sessionKey: string }) => {
+      if (typeof payload?.sessionKey === 'string') dispatch({ type: 'readSession', key: payload.sessionKey })
     }, []),
   )
   useShellEvent<PointerAt>(POINTER_EVENT, setPointer)
@@ -293,6 +321,14 @@ export function Pet() {
   })
   const zooming = pose === 'zoom'
   const walking = active && (pose === 'walk' || zooming)
+  /** An agent runs and it is on the move: the laptop rides folded on its back. */
+  const carrying = busy && (pose === 'walk' || jumping)
+  const heldRef = useRef(held)
+  heldRef.current = held
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  const reducedMotionRef = useRef(reducedMotion)
+  reducedMotionRef.current = reducedMotion
 
   // ── Zoomies ─────────────────────────────────────────────────────────────
   const startZoom = useCallback(() => {
@@ -303,24 +339,29 @@ export function Pet() {
     setZoom('run')
   }, [])
 
-  // Now and then on its own (chaotic only).
+  // Now and then on its own (chaotic only, and not while an agent runs).
   useEffect(() => {
     if (!settings || zoom !== null || reducedMotion) return
-    const delay = zoomDelay(settings.movement, Math.random())
+    const delay = zoomDelay(settings.movement, Math.random(), busy)
     if (delay === null) return
     const timer = window.setTimeout(startZoom, delay)
     return () => window.clearTimeout(timer)
-  }, [settings, zoom, reducedMotion, startZoom])
+  }, [settings, zoom, reducedMotion, startZoom, busy])
+
+  // A turn starting ends a bout: it goes back to work.
+  useEffect(() => {
+    if (busy) setZoom(null)
+  }, [busy])
 
   // After a finished turn, once its bubble and hop are over.
   useEffect(() => {
-    if (!zoomPendingRef.current || !active || zoom !== null || held || reaction) return
+    if (!zoomPendingRef.current || !active || zoom !== null || held || reaction || busy) return
     if (reducedMotion || !zoomsWhenDone(settings?.movement ?? 'calm')) {
       zoomPendingRef.current = false
       return
     }
     startZoom()
-  }, [active, zoom, held, reaction, reducedMotion, settings?.movement, startZoom])
+  }, [active, zoom, held, reaction, busy, reducedMotion, settings?.movement, startZoom])
 
   useEffect(() => {
     if (zoom !== 'pant') return
@@ -402,11 +443,10 @@ export function Pet() {
   }, [])
 
   // ── The pointer ─────────────────────────────────────────────────────────
-  // Standing about, it turns to look at the pointer nearby; when the pointer
-  // rests close beside it, it pounces (not when told to stay put).
+  // When the pointer rests close beside it, it pounces (not when told to
+  // stay put). It does not turn to follow the pointer.
   useEffect(() => {
     if (!pointer || walking || dragging) return
-    setFacingLeft(pointer.x < xRef.current + petWidth / 2)
     if (movement === 'still' || reducedMotion) return
     if (!withinPounce({ x: xRef.current, y: yRef.current, width: petWidth, height: petHeight }, pointer)) return
     const timer = window.setTimeout(() => setReaction('hop'), POUNCE_AFTER_MS)
@@ -484,14 +524,43 @@ export function Pet() {
     }
   }, [walking, zooming, settings, traits, petWidth, reportFit, walkRange])
 
-  // Sit a while between walks.
+  // Sit a while between walks. While an agent runs it works longer, and
+  // folds its laptop away before it sets off.
   useEffect(() => {
     if (!sitting || !settings) return
-    const [min, max] = SIT_PAUSE[settings.movement]
+    const [min, max] = sitPause(settings.movement, busy)
     if (!Number.isFinite(min)) return
-    const timer = window.setTimeout(afterSit, min + Math.random() * (max - min))
+    let foldTimer = 0
+    const timer = window.setTimeout(() => {
+      if (!busyRef.current || heldRef.current || reducedMotionRef.current) {
+        afterSit()
+        return
+      }
+      setFold('folding')
+      foldTimer = window.setTimeout(() => {
+        setFold(null)
+        afterSit()
+      }, FOLD_MS)
+    }, min + Math.random() * (max - min))
+    return () => {
+      window.clearTimeout(timer)
+      window.clearTimeout(foldTimer)
+      setFold((f) => (f === 'folding' ? null : f))
+    }
+  }, [sitting, settings, afterSit, busy])
+
+  // Back from a walk with the laptop: set it down and open it.
+  const wasCarryingRef = useRef(false)
+  useEffect(() => {
+    const was = wasCarryingRef.current
+    wasCarryingRef.current = carrying
+    if (was && !carrying && pose === 'work' && !reducedMotion) setFold('unfolding')
+  }, [carrying, pose, reducedMotion])
+  useEffect(() => {
+    if (fold !== 'unfolding') return
+    const timer = window.setTimeout(() => setFold(null), FOLD_MS)
     return () => window.clearTimeout(timer)
-  }, [sitting, settings, afterSit])
+  }, [fold])
 
   // ── Drag and click ──────────────────────────────────────────────────────
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -556,6 +625,11 @@ export function Pet() {
     dispatch({ type: 'dismiss', id: bubble.id })
   }
 
+  const dismiss = (bubble: PetBubble) => {
+    reportDismissed([bubble])
+    dispatch({ type: 'dismiss', id: bubble.id })
+  }
+
   if (!active || !settings || x === null) return null
 
   const left = walking ? xRef.current : x
@@ -568,6 +642,9 @@ export function Pet() {
     ? { left: bubbleX, top: top + petHeight + 16, ['--tail-x' as string]: tailX }
     : { left: bubbleX, bottom: height - top + 16, ['--tail-x' as string]: tailX }
   const bubbleSide = below ? ' pet-bubble--below' : ''
+  const showLaptop = carrying || pose === 'work' || pose === 'alert'
+  const laptopFold = !carrying && pose === 'work' ? fold : null
+  const laptopClass = carrying ? ' pet-laptop--carried' : laptopFold ? ` pet-laptop--${laptopFold}` : ''
 
   return (
     // The browser's own menu (Reload, Inspect) never shows over the pet.
@@ -580,7 +657,7 @@ export function Pet() {
           style={bubbleStyle}
           role="status"
         >
-          <button type="button" className="pet-bubble-close" aria-label="Dismiss" onClick={() => dispatch({ type: 'dismiss', id: visible.bubble.id })}>
+          <button type="button" className="pet-bubble-close" aria-label="Dismiss" onClick={() => dismiss(visible.bubble)}>
             <X size={13} aria-hidden="true" />
           </button>
           <span className="pet-chip">
@@ -616,7 +693,7 @@ export function Pet() {
               <button type="button" className="pet-list-open" onClick={() => open(item)} title={item.body}>
                 {item.title}
               </button>
-              <button type="button" className="pet-list-dismiss" aria-label="Dismiss" onClick={() => dispatch({ type: 'dismiss', id: item.id })}>
+              <button type="button" className="pet-list-dismiss" aria-label="Dismiss" onClick={() => dismiss(item)}>
                 <X size={12} aria-hidden="true" />
               </button>
             </div>
@@ -625,7 +702,7 @@ export function Pet() {
       )}
       <div
         ref={petRef}
-        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumping ? ' pet--jump' : ''}`}
+        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumping ? ' pet--jump' : ''}${busy ? ' pet--busy' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
         style={{ width: petWidth, height: petHeight, transform: `translate(${left}px, ${top}px)` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -659,10 +736,12 @@ export function Pet() {
         <div className="pet-body">
           <Sprite character={character} pose={pose} colour={settings.colour} />
         </div>
-        {(pose === 'work' || pose === 'alert') && (
-          <span className="pet-laptop" aria-hidden="true">
+        {showLaptop && (
+          <span className={`pet-laptop${laptopClass}`} aria-hidden="true">
             <i />
             <b />
+            <span className="pet-laptop-puff" />
+            <span className="pet-laptop-spark">✦</span>
           </span>
         )}
       </div>

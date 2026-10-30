@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.37.0 · October 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.37.0)
+**Latest release:** v3.38.0 · October 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.38.0)
 
 ---
 
@@ -271,7 +271,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Status bar** shows the server (`built-in`), the model ID with its
     provider and thinking level as chips, and spend with its period
     (`$0.55 · 24h`), each with a tooltip.
-  - **Review panel** (was the review dock) has one **Open…** button for
+  - **Review panel** (was the review dock) has one **+** (Open) button for
     views, terminals, previews and files; Refresh appears only where it
     reloads something and names what it reloads. Tab menus use sentence case
     ("Close other tabs", "Move right"). Clearing a plan asks first.
@@ -317,6 +317,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   bar; the pinned tool row closes them.
   Shell rows show only test counts or "no output" — no exit-code or error
   chip.
+- **Italic reasoning** `[v3.38.0]` — the thinking trace reads as muted
+  italic text inline in the transcript, with upright section headers,
+  instead of a quote with a bar down its left side.
 - **No duplicate messages on resume** `[v3.37.0]` — reopening the phone app
   or reloading mid-turn no longer repeats the reply or a steer message, and
   a step saved during the reconnect shows up right away instead of at the
@@ -797,6 +800,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
     existing window. Cancelling the menu leaves unread notifications intact.
+    Since `[v3.38.0]` reading a session is shared between the notch, the
+    desktop pet and the sidebar of every app window: opening or dismissing
+    it in any of them clears it from the others (the pet keeps a question
+    until it is answered). Turning off "keep finished sessions" only empties
+    the notch.
   - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel pet
     (a cat, a duck that waddles, or a crab that walks sideways)
     walks along the bottom of the screen by default, above the Dock or
@@ -806,7 +814,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     below it. Its pose follows your agents: it wanders and sits when
     nothing runs (and sleeps after five quiet minutes), types on a tiny
     laptop while an agent works, and raises an orange "!" while one waits on
-    you. Notifications show in its speech bubble instead of the system
+    you. While an agent works it keeps moving too `[v3.38.0]`: it types a
+    while (twice its idle pause, at least 6 s), dims the screen, folds the
+    lid with a clack and swings the laptop onto its back, walks or climbs
+    with it, then sets it down and opens it again; it never runs about on
+    its own mid-turn, and stays put at the open laptop when told to stay
+    put or with reduced motion. Notifications show in its speech bubble instead of the system
     banner: a question stays until it is answered (Answer opens it), and a
     finished turn, a failed one or a reminder hops, droops or looks up and
     fades after 8 s into a count badge. Click the badge to list what it
@@ -815,8 +828,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     and never brings OpenAgentd forward. Right-click it for a menu: what
     it missed (open one, or clear them), Open OpenAgentd, New Session,
     Movement, Character, Pet Settings and Hide Pet; it stands still while
-    the menu is open. It turns to look at the pointer nearby and pounces
-    at one resting beside it. Playful and Chaotic pets run about (zoomies)
+    the menu is open. It pounces at a pointer resting beside it, but no
+    longer turns to follow the pointer `[v3.38.0]`. Playful and Chaotic pets run about (zoomies)
     when a turn finishes, Chaotic ones now and then too, and pant a moment
     after; they also jump onto the top edge of the windows you have open,
     walk along it, ride along when the window moves, and jump or fall back

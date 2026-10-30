@@ -154,6 +154,11 @@ function endAttachReplay(draft: AgentStore) {
   if (draft._attachReplay) draft._attachReplay = false
 }
 
+/** The ``model`` / ``thinking_level`` a live event names, as a block's ``extra``. */
+function modelExtraFrom(model?: string | null, thinkingLevel?: string | null): Record<string, string> | null {
+  return model ? { model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) } : null
+}
+
 function appendStreamingText(
   draft: AgentStore,
   agent: string,
@@ -176,18 +181,15 @@ function appendStreamingText(
   if (!stream._replayPending) stream._replayPending = { message: false, thinking: false }
   const replayPossible = stream._replayPending[kind]
   if (replayPossible) stream._replayPending[kind] = false
-  if (kind === 'thinking') {
-    appendStreamedInto(stream.currentBlocks, 'thinking', text, replayPossible)
-  } else {
-    appendStreamedInto(stream.currentBlocks, 'text', text, replayPossible)
-    const last = stream.currentBlocks[stream.currentBlocks.length - 1]
-    if (last?.type === 'text') {
-      if (!last.startedAt) last.startedAt = Date.now()
-      if (model) {
-        last.extra = { ...(last.extra ?? {}), model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) }
-      }
-    }
-  }
+  const blockType = kind === 'thinking' ? 'thinking' : 'text'
+  appendStreamedInto(stream.currentBlocks, blockType, text, replayPossible)
+  const last = stream.currentBlocks[stream.currentBlocks.length - 1]
+  if (last?.type !== blockType) return
+  if (blockType === 'text' && !last.startedAt) last.startedAt = Date.now()
+  // Thinking names the model too: a reply with no text still names it
+  // under its prompt (see ``promptModels``).
+  const modelExtra = modelExtraFrom(model, thinkingLevel)
+  if (modelExtra) last.extra = { ...(last.extra ?? {}), ...modelExtra }
 }
 
 /**
@@ -280,12 +282,20 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // Replay after a mid-turn reconcile: the card already lives in the
           // confirmed rows — recreating it live would render a duplicate.
           if (findConfirmedTool(draft, agent, d.tool_call_id as string | undefined)) return
-          initToolInto(
-            draft.agentStreams[agent].currentBlocks,
+          const blocks = draft.agentStreams[agent].currentBlocks
+          const added = initToolInto(
+            blocks,
             d.name as string,
             d.tool_call_id as string | undefined,
             typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
           )
+          // A reply that only calls tools still names its model (see ``promptModels``).
+          const meta = d.metadata as Record<string, unknown> | undefined
+          const modelExtra = modelExtraFrom(
+            typeof meta?.model === 'string' ? meta.model : null,
+            typeof meta?.thinking_level === 'string' ? meta.thinking_level : null,
+          )
+          if (added && modelExtra) blocks[blocks.length - 1].extra = modelExtra
         })
         break
       }

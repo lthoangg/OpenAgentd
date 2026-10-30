@@ -10,6 +10,7 @@ import { installAndroidBackButton } from './lib/back-button'
 import { initBackgroundThrottle } from './lib/background-throttle'
 import { installDesktopShell } from './lib/desktop-shell'
 import { initTheme } from './lib/theme'
+import { installSessionReadSync } from './stores/useUnreadStore'
 
 // Install the desktop session token interceptor *before* any other module
 // has a chance to capture a reference to the original `window.fetch`.
@@ -17,6 +18,7 @@ installDesktopAuth()
 initBackgroundThrottle()
 initTheme()
 installDesktopShell()
+installSessionReadSync()
 installAndroidBackButton()
 if (!backgroundSuspendsSockets()) enableSharedStreams()
 

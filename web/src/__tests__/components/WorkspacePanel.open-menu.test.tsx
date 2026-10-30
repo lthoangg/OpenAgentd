@@ -130,14 +130,14 @@ describe('Review dock "+" menu', () => {
     expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
   })
 
-  it('has one "Open…" text button in the strip, and no New terminal / New preview buttons', async () => {
+  it('has one icon-only "+" open button in the strip, and no New terminal / New preview buttons', async () => {
     await renderPanel()
     await screen.findByRole('button', { name: 'Session plan' })
     expect(screen.queryByRole('button', { name: 'New terminal' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open in dock' })).toBeNull()
     const open = screen.getByRole('button', { name: 'Open in the review panel' })
-    expect(open.textContent).toBe('Open…')
+    expect(open.textContent).toBe('')
   })
 
   it('shows Refresh only for the tabs it reloads: Git gets "Refresh Git status"', async () => {

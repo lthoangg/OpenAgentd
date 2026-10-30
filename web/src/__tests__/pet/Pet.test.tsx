@@ -92,6 +92,77 @@ describe('Pet', () => {
     expect(petEl()).toHaveAttribute('aria-label', 'Desktop pet: an agent needs your answer')
   })
 
+  it('folds its laptop away before a walk, carries it, and opens it again when it stops', async () => {
+    const busy = { running: 1, needsInput: 0 }
+    await mount({ settings: settings({ movement: 'calm' }), status: busy })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const laptop = () => petEl().querySelector('.pet-laptop')
+    const timers = useFakeTimers()
+    // The longest sit, so the fold starts right at the end of the window.
+    const random = Math.random
+    Math.random = () => 0.999
+    try {
+      // Fresh settings restart its timers on the fake clock.
+      emit('pet-state', { ...view, settings: settings({ movement: 'calm' }), status: busy })
+      expect(petEl()).toHaveClass('pet--work')
+      expect(laptop()?.className).toBe('pet-laptop')
+
+      // Works at least twice the calm pause before folding up.
+      act(() => timers.tick(7_900))
+      expect(petEl()).not.toHaveClass('pet--folding')
+      act(() => timers.tick(12_100))
+      expect(petEl()).toHaveClass('pet--folding')
+      expect(laptop()).toHaveClass('pet-laptop--folding')
+      expect(petEl()).toHaveClass('pet--work')
+
+      act(() => timers.tick(2000))
+      expect(petEl()).toHaveClass('pet--walk')
+      expect(petEl()).toHaveClass('pet--busy')
+      expect(laptop()).toHaveClass('pet-laptop--carried')
+
+      // Told to stay put mid-walk: it sets the laptop down and opens it.
+      emit('pet-state', { ...view, settings: settings({ movement: 'still' }), status: busy })
+      expect(petEl()).toHaveClass('pet--work')
+      expect(petEl()).toHaveClass('pet--unfolding')
+      expect(laptop()).toHaveClass('pet-laptop--unfolding')
+      act(() => timers.tick(2000))
+      expect(petEl()).not.toHaveClass('pet--unfolding')
+      expect(laptop()?.className).toBe('pet-laptop')
+    } finally {
+      Math.random = random
+      timers.restore()
+    }
+  })
+
+  it('works sitting still at its laptop when told to stay put', async () => {
+    await mount({ status: { running: 1, needsInput: 0 } })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      emit('pet-state', { ...view, status: { running: 1, needsInput: 0 } })
+      act(() => timers.tick(120_000))
+      expect(petEl()).toHaveClass('pet--work')
+      expect(petEl()).not.toHaveClass('pet--folding')
+      expect(petEl().querySelector('.pet-laptop')?.className).toBe('pet-laptop')
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('never runs about on its own while an agent runs', async () => {
+    const busy = { running: 1, needsInput: 0 }
+    await mount({ settings: settings({ movement: 'chaotic' }), status: busy })
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    const timers = useFakeTimers()
+    try {
+      emit('pet-state', { ...view, settings: settings({ movement: 'chaotic' }), status: busy })
+      act(() => timers.tick(240_000))
+      expect(petEl()).not.toHaveClass('pet--zoom')
+    } finally {
+      timers.restore()
+    }
+  })
+
   it('shows a notification in its bubble and opens the session from it', async () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
@@ -123,6 +194,31 @@ describe('Pet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByText('Fix the flaky login test')).toBeNull()
     expect(calls.some(([cmd]) => cmd === 'pet_open')).toBe(false)
+    // Dismissed here is read everywhere: the notch and the sidebar clear it too.
+    expect(calls).toContainEqual(['pet_dismiss', { notificationIds: ['n1'] }])
+  })
+
+  it('only hides a dismissed question: it still waits on you elsewhere', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', bubble({ id: 'q1', kind: 'input_needed', tone: 'input', body: 'Keep v1?' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByText('Keep v1?')).toBeNull()
+    expect(calls.some(([cmd]) => cmd === 'pet_dismiss')).toBe(false)
+  })
+
+  it('drops the bubbles of a session read somewhere else, keeping its question', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble({ id: 'a', sessionId: 'aa-bb', title: 'First' }))
+    emit('pet-notification', bubble({ id: 'b', sessionId: 'cc', title: 'Second' }))
+    emit('pet-notification', bubble({ id: 'c', sessionId: 'AABB', title: 'Third' }))
+    expect(screen.getByRole('button', { name: '2 unread' })).toBeInTheDocument()
+    emit('pet-session-read', { sessionKey: 'aabb' })
+    expect(screen.queryByText('Third')).toBeNull()
+    expect(screen.getByRole('button', { name: '1 unread' })).toBeInTheDocument()
+    expect(calls.some(([cmd]) => cmd === 'pet_dismiss')).toBe(false)
   })
 
   it('lists what it missed behind a badge, opened by clicking the badge', async () => {
@@ -183,6 +279,7 @@ describe('Pet', () => {
     emit('pet-menu-action', { action: 'clear' })
     expect(screen.queryByRole('button', { name: /unread/ })).toBeNull()
     expect(screen.queryByText('Third')).toBeNull()
+    expect(calls).toContainEqual(['pet_dismiss', { notificationIds: ['c', 'b'] }])
   })
 
   it('takes every click while dragged and reports where it was dropped', async () => {
@@ -308,14 +405,15 @@ describe('Pet', () => {
     }
   })
 
-  it('turns to look at the pointer nearby', async () => {
+  it('does not turn to follow the pointer nearby', async () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     const { x, y } = petAt()
+    const before = petEl().classList.contains('pet--left')
     emit('pet-pointer', { x: x - 80, y })
-    expect(petEl()).toHaveClass('pet--left')
+    expect(petEl().classList.contains('pet--left')).toBe(before)
     emit('pet-pointer', { x: x + 150, y })
-    expect(petEl()).not.toHaveClass('pet--left')
+    expect(petEl().classList.contains('pet--left')).toBe(before)
   })
 
   it('pounces at a pointer that rests beside it', async () => {

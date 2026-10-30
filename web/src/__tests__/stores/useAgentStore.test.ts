@@ -572,6 +572,31 @@ describe("_handleSSEEvent: message", () => {
     const [block] = useAgentStore.getState().agentStreams.lead.currentBlocks;
     expect(block.extra).toEqual({ model: "openai:gpt-5", thinking_level: "high" });
   });
+
+  it("stamps live thinking with the model from the delta", () => {
+    useAgentStore.setState({ leadName: "lead", agentStreams: { lead: makeStream({ status: "working" }) } });
+    useAgentStore.getState()._handleSSEEvent("thinking", {
+      agent: "lead",
+      text: "hmm",
+      metadata: { model: "openai:gpt-5", thinking_level: "high" },
+    });
+    const [block] = useAgentStore.getState().agentStreams.lead.currentBlocks;
+    expect(block.type).toBe("thinking");
+    expect(block.extra).toEqual({ model: "openai:gpt-5", thinking_level: "high" });
+  });
+
+  it("stamps a live tool call with the model from its event", () => {
+    useAgentStore.setState({ leadName: "lead", agentStreams: { lead: makeStream({ status: "working" }) } });
+    useAgentStore.getState()._handleSSEEvent("tool_call", {
+      agent: "lead",
+      tool_call_id: "call-1",
+      name: "ask_user",
+      metadata: { model: "openai:gpt-5", thinking_level: "high" },
+    });
+    const [block] = useAgentStore.getState().agentStreams.lead.currentBlocks;
+    expect(block.type).toBe("tool");
+    expect(block.extra).toEqual({ model: "openai:gpt-5", thinking_level: "high" });
+  });
 });
 
 // ── _handleSSEEvent: usage ────────────────────────────────────────────────────

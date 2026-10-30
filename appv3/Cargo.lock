@@ -111,8 +111,6 @@ dependencies = [
 [[package]]
 name = "anydoc"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf0d78e4cfe3654eb3ea04422ec5a94352000ee56e97902125e68e51f7527062"
 dependencies = [
  "cfb",
  "csv",
@@ -121,7 +119,7 @@ dependencies = [
  "log",
  "pdf-inspector",
  "quick-xml",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
@@ -132,7 +130,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "appv3-agent"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -166,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-api"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -216,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-cli"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -250,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-core"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -274,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-db"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -293,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-jsplugin"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "appv3-core",
  "base64 0.23.1",
@@ -322,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-mcp"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -349,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-memory"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -367,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-preview"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -389,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-providers"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -420,7 +418,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-terminal"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -433,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-tools"
-version = "3.37.0"
+version = "3.38.0"
 dependencies = [
  "anydoc",
  "anyhow",
@@ -473,7 +471,7 @@ dependencies = [
  "unicode-normalization",
  "urlencoding",
  "uuid",
- "zip 9.1.3",
+ "zip",
 ]
 
 [[package]]
@@ -1452,7 +1450,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2131,7 +2129,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c91d8cffac8849493a82233811bd02b2b183b8cf39bf704de0fa0841b737595"
 dependencies = [
  "bstr",
- "hashbrown 0.17.1",
+ "hashbrown 0.15.5",
 ]
 
 [[package]]
@@ -3726,7 +3724,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4440,7 +4438,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4722,7 +4720,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5480,10 +5478,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5891,12 +5889,6 @@ dependencies = [
 
 [[package]]
 name = "typed-path"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ec2755506471f54baf5e4bb5499d8e510cc1caf271270e778a736bd2d7336c"
-
-[[package]]
-name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
@@ -6224,7 +6216,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6528,20 +6520,6 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap",
- "memchr",
- "typed-path 0.12.4",
- "zopfli",
-]
-
-[[package]]
-name = "zip"
 version = "9.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1156b39d142a34b999c2310a50455e0cb3760bf7efad0122f796d813bee26ccb"
@@ -6552,7 +6530,7 @@ dependencies = [
  "indexmap",
  "memchr",
  "nix 0.31.3",
- "typed-path 0.13.0",
+ "typed-path",
  "windows-sys 0.61.2",
  "zopfli",
 ]

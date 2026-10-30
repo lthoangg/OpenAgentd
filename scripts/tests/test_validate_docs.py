@@ -44,6 +44,23 @@ def test_tracked_markdown_files_excludes_removed_worktree_files(tmp_path, monkey
     assert module.tracked_markdown_files(tmp_path) == [existing]
 
 
+def test_tracked_markdown_files_skips_vendored_crates(tmp_path, monkeypatch):
+    module = _load_module()
+    existing = tmp_path / "README.md"
+    existing.write_text("# Home\n")
+    vendored = tmp_path / "appv3" / "vendor" / "anydoc" / "README.md"
+    vendored.parent.mkdir(parents=True)
+    vendored.write_text("[Bench](bench/README.md)\n")
+    output = b"README.md\0appv3/vendor/anydoc/README.md\0"
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, output, b""),
+    )
+
+    assert module.tracked_markdown_files(tmp_path) == [existing]
+
+
 def test_validate_repository_accepts_coherent_documentation_contract(tmp_path):
     module = _load_module()
     tracked = _write_repo(tmp_path)

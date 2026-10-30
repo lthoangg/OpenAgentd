@@ -14,7 +14,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub const MAX_AGENT_ITERATIONS: usize = 5000;
 pub const MAX_CONCURRENT_TOOLS: usize = 10;
@@ -619,20 +619,31 @@ impl Agent {
                     empty_retries += 1;
                     if empty_retries <= 3 {
                         tracing::warn!("agent_empty_response_retry agent={} iteration={} attempt={}/3 aborted={}", self.name, iteration, empty_retries, aborted);
+                        // Back off 0.5 s, 1 s, 2 s: an instant retry resends the
+                        // same request into the same state. Stop ends the wait.
+                        let backoff = Duration::from_millis(500 << (empty_retries - 1));
+                        match opts.interrupt.as_ref() {
+                            Some(stop) => {
+                                tokio::select! {
+                                    _ = tokio::time::sleep(backoff) => {}
+                                    _ = stop.wait() => {}
+                                }
+                            }
+                            None => tokio::time::sleep(backoff).await,
+                        }
+                        if interrupted() {
+                            tracing::info!("agent_iteration_interrupted agent={} iteration={}", self.name, iteration);
+                            break;
+                        }
                         continue;
                     }
-                    if aborted {
-                        let who = effective.clone().or_else(|| active_model.clone());
-                        return Err(AgentError::Request {
-                            message: format!(
-                                "{} returned an empty response {} times in a row, each time disconnecting before signalling end-of-turn.",
-                                opt_str(who.as_deref()),
-                                empty_retries
-                            ),
-                            status: None,
-                            provider: active_model.clone(),
-                        });
-                    }
+                    let who = effective.clone().or_else(|| active_model.clone());
+                    let how = if aborted { "each time disconnecting before signalling end-of-turn" } else { "after a tool result" };
+                    return Err(AgentError::Request {
+                        message: format!("{} returned an empty response {} times in a row, {}.", opt_str(who.as_deref()), empty_retries, how),
+                        status: None,
+                        provider: active_model.clone(),
+                    });
                 }
             } else if has_payload(&assistant) {
                 empty_retries = 0;
@@ -874,6 +885,7 @@ impl Agent {
 mod tests {
     use super::*;
     use appv3_providers::{ChunkStream, Kwargs, ProviderResult, ToolSpec};
+    use std::path::Path;
     use std::sync::Mutex;
 
     #[test]
@@ -957,5 +969,81 @@ mod tests {
         let text = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
         assert!(!text.contains("agent_empty_response_retry"), "{text}");
         assert!(text.contains("agent_iteration_interrupted"), "{text}");
+    }
+
+    fn run_opts(root: &Path, interrupt: Option<Event>) -> RunOptions<'_> {
+        RunOptions {
+            session_id: None,
+            metadata: Map::new(),
+            hooks: vec![],
+            injected_tools: vec![],
+            interrupt,
+            hard_cancel: None,
+            checkpointer: None,
+            provider: None,
+            model_id: None,
+            denied: Arc::new(DeniedPaths::new(root, None)),
+            workspace: None,
+        }
+    }
+
+    /// A response that ends the turn ("stop") with no text and no tool call.
+    fn empty_stop() -> appv3_providers::mock::MockTurn {
+        use appv3_providers::{ChatCompletionChunk, ChatCompletionDelta, Usage};
+        appv3_providers::mock::MockTurn::Chunks(vec![ChatCompletionChunk::delta(
+            "mock",
+            "mock",
+            ChatCompletionDelta::default(),
+            Some("stop".into()),
+            Some(Usage { prompt_tokens: 10, completion_tokens: 14, total_tokens: 24, ..Default::default() }),
+        )])
+    }
+
+    /// After a tool result the model kept answering empty; the turn used to
+    /// end with nothing shown and no error.
+    #[tokio::test(start_paused = true)]
+    async fn empty_answers_after_a_tool_end_the_turn_with_an_error() {
+        use appv3_providers::mock::MockProvider;
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::tool_call("c1", "missing_tool", "{}"), empty_stop(), empty_stop(), empty_stop(), empty_stop()]));
+        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
+        let root = tempfile::tempdir().unwrap();
+
+        let err = agent.run(vec![ChatMessage::user("check CI")], run_opts(root.path(), None)).await.unwrap_err();
+
+        assert!(err.to_string().contains("empty response 4 times"), "{err}");
+        assert_eq!(provider.calls.lock().unwrap().len(), 5);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn empty_answer_retries_back_off() {
+        use appv3_providers::mock::MockProvider;
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::tool_call("c1", "missing_tool", "{}"), empty_stop(), empty_stop(), MockProvider::text("CI is green.")]));
+        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
+        let root = tempfile::tempdir().unwrap();
+        let start = tokio::time::Instant::now();
+
+        agent.run(vec![ChatMessage::user("check CI")], run_opts(root.path(), None)).await.unwrap();
+
+        // Two retries: 0.5 s, then 1 s.
+        assert!(start.elapsed() >= Duration::from_millis(1500), "{:?}", start.elapsed());
+        assert_eq!(provider.calls.lock().unwrap().len(), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_during_an_empty_answer_backoff_ends_the_turn() {
+        use appv3_providers::mock::MockProvider;
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::tool_call("c1", "missing_tool", "{}"), empty_stop(), MockProvider::text("late")]));
+        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
+        let root = tempfile::tempdir().unwrap();
+        let stop = Event::new();
+        let s = stop.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            s.set();
+        });
+
+        agent.run(vec![ChatMessage::user("check CI")], run_opts(root.path(), Some(stop))).await.unwrap();
+
+        assert_eq!(provider.calls.lock().unwrap().len(), 2);
     }
 }

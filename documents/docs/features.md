@@ -1588,6 +1588,13 @@ executes tools, manages its task list, and inspects workspace repositories.
   quoting Anthropic's explanation when present. The refused response is not
   saved, so it does not trigger repeat refusals, and its truncated tool calls
   do not run. Before, the turn just ended with nothing shown.
+- **Empty model answers** `[v3.37.0]` — when a model answers with nothing
+  after a tool result, the agent retries up to three times with a short
+  backoff (0.5 s, 1 s, 2 s; Stop ends the wait), then ends the turn on an
+  error card instead of finishing silently. Responses-API replies whose text
+  arrives only in the finished item (no streamed deltas) are no longer read
+  as empty, and a truly empty reply logs `responses_empty_output` with the
+  events it carried.
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
   cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request

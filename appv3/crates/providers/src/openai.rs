@@ -1042,6 +1042,11 @@ pub struct ResponsesStreamParser {
     tool_names: HashMap<String, String>,
     had_deltas: HashSet<String>,
     reasoning_parts_seen: usize,
+    /// Message items whose text already streamed; `""` when a delta had no
+    /// `item_id`. Text in a finished item is emitted only when none streamed.
+    text_items: HashSet<String>,
+    /// Event counts, logged when a response ends with no text and no tools.
+    events: std::collections::BTreeMap<String, usize>,
 }
 
 impl ResponsesStreamParser {
@@ -1056,11 +1061,45 @@ impl ResponsesStreamParser {
             tool_names: HashMap::new(),
             had_deltas: HashSet::new(),
             reasoning_parts_seen: 0,
+            text_items: HashSet::new(),
+            events: std::collections::BTreeMap::new(),
         }
     }
 
     fn chunk(&self, delta: ChatCompletionDelta, finish: Option<&str>) -> ChatCompletionChunk {
         ChatCompletionChunk::delta(&self.response_id, &self.model, delta, finish.map(String::from), None)
+    }
+
+    /// Text for a message item that did not stream it, else `None`.
+    fn unstreamed_text(&mut self, item_id: &str, text: String) -> Option<ChatCompletionChunk> {
+        if text.is_empty() || self.text_items.contains(item_id) || self.text_items.contains("") {
+            return None;
+        }
+        self.text_items.insert(item_id.to_string());
+        Some(self.chunk(ChatCompletionDelta { content: Some(text), ..Default::default() }, None))
+    }
+
+    /// A response that produced neither text nor a tool call reads as an
+    /// empty answer and is retried; record what the stream did carry.
+    fn log_if_empty(&self, event: &Value) {
+        if !self.text_items.is_empty() || !self.tool_call_map.is_empty() {
+            return;
+        }
+        let response = event.get("response");
+        let status = response.and_then(|r| r.get("status")).and_then(|v| v.as_str()).unwrap_or("");
+        let reason = response.and_then(|r| r.pointer("/incomplete_details/reason")).and_then(|v| v.as_str()).unwrap_or("");
+        let outputs: Vec<&str> =
+            response.and_then(|r| r.get("output")).and_then(|v| v.as_array()).into_iter().flatten().filter_map(|i| i.get("type").and_then(|v| v.as_str())).collect();
+        let events: Vec<String> = self.events.iter().map(|(k, n)| format!("{k}={n}")).collect();
+        tracing::warn!(
+            "responses_empty_output model={} response_id={} status={} reason={} output_types=[{}] events=[{}]",
+            self.model,
+            self.response_id,
+            status,
+            reason,
+            outputs.join(","),
+            events.join(",")
+        );
     }
 
     fn resolve(&mut self, ev: &Value) -> (String, String) {
@@ -1098,6 +1137,8 @@ impl ResponsesStreamParser {
         let mut out = vec![];
         let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
         let delta_text = || event.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let item_id = event.get("item_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        *self.events.entry(etype.to_string()).or_default() += 1;
         match etype {
             "response.created" => {
                 self.response_id = event.pointer("/response/id").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -1138,6 +1179,21 @@ impl ResponsesStreamParser {
             }
             "response.output_item.done" => {
                 let item = &event["item"];
+                if item["type"] == "message" {
+                    let text: String = item
+                        .get("content")
+                        .and_then(|v| v.as_array())
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|part| match part.get("type").and_then(|v| v.as_str()) {
+                            Some("output_text") => part.get("text").and_then(|v| v.as_str()),
+                            Some("refusal") => part.get("refusal").and_then(|v| v.as_str()),
+                            _ => None,
+                        })
+                        .collect();
+                    let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    out.extend(self.unstreamed_text(&id, text));
+                }
                 if item["type"] == "reasoning" {
                     if let Some(enc) = item.get("encrypted_content").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
                         out.push(self.chunk(
@@ -1169,6 +1225,7 @@ impl ResponsesStreamParser {
             "response.output_text.delta" => {
                 let t = delta_text();
                 if !t.is_empty() {
+                    self.text_items.insert(item_id);
                     out.push(self.chunk(ChatCompletionDelta { content: Some(t), ..Default::default() }, None));
                 }
             }
@@ -1225,8 +1282,13 @@ impl ResponsesStreamParser {
                     None,
                 ));
             }
-            "response.output_text.done" => out.push(self.chunk(ChatCompletionDelta::default(), Some("stop"))),
-            "response.completed" => {
+            "response.output_text.done" => {
+                let text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                out.extend(self.unstreamed_text(&item_id, text));
+                out.push(self.chunk(ChatCompletionDelta::default(), Some("stop")));
+            }
+            "response.completed" | "response.incomplete" => {
+                self.log_if_empty(event);
                 if let Some(u) = event.pointer("/response/usage").filter(|u| u.as_object().map(|o| !o.is_empty()).unwrap_or(false)) {
                     out.push(ChatCompletionChunk::usage_only(&self.response_id, &self.model, ResponsesHandler::usage_of(u)));
                 }
@@ -1496,6 +1558,47 @@ mod tests {
         assert_eq!(d.function.as_ref().unwrap().name.as_deref(), Some("read"));
         let c = p.feed(&json!({"type": "response.function_call_arguments.done", "item_id": "fc_1", "arguments": "{\"a\":1}"}), "").unwrap();
         assert_eq!(c[0].choices[0].delta.tool_calls.as_ref().unwrap()[0].function.as_ref().unwrap().arguments, None);
+    }
+
+    fn streamed_text(chunks: &[ChatCompletionChunk]) -> String {
+        chunks.iter().filter_map(|c| c.choices.first()).filter_map(|ch| ch.delta.content.clone()).collect()
+    }
+
+    /// A message delivered only as a finished item (no `output_text.delta`)
+    /// used to read as an empty response and trigger retries.
+    #[test]
+    fn responses_stream_keeps_text_sent_only_in_the_finished_item() {
+        let mut p = ResponsesStreamParser::new("m".into());
+        p.feed(&json!({"type": "response.created", "response": {"id": "r1"}}), "").unwrap();
+        let item = json!({"type": "message", "id": "msg_1", "role": "assistant", "content": [{"type": "output_text", "text": "CI is still running."}]});
+        let c = p.feed(&json!({"type": "response.output_item.done", "output_index": 1, "item": item}), "").unwrap();
+        assert_eq!(streamed_text(&c), "CI is still running.");
+    }
+
+    #[test]
+    fn responses_stream_does_not_repeat_streamed_text_from_the_finished_item() {
+        let mut p = ResponsesStreamParser::new("m".into());
+        let mut all = vec![];
+        all.extend(p.feed(&json!({"type": "response.output_text.delta", "item_id": "msg_1", "delta": "Hello"}), "").unwrap());
+        all.extend(p.feed(&json!({"type": "response.output_text.done", "item_id": "msg_1", "text": "Hello"}), "").unwrap());
+        let item = json!({"type": "message", "id": "msg_1", "content": [{"type": "output_text", "text": "Hello"}]});
+        all.extend(p.feed(&json!({"type": "response.output_item.done", "item": item}), "").unwrap());
+        assert_eq!(streamed_text(&all), "Hello");
+    }
+
+    #[test]
+    fn responses_stream_keeps_text_sent_only_in_output_text_done() {
+        let mut p = ResponsesStreamParser::new("m".into());
+        let c = p.feed(&json!({"type": "response.output_text.done", "item_id": "msg_1", "text": "Done."}), "").unwrap();
+        assert_eq!(streamed_text(&c), "Done.");
+    }
+
+    #[test]
+    fn responses_stream_reads_usage_from_an_incomplete_response() {
+        let mut p = ResponsesStreamParser::new("m".into());
+        let ev = json!({"type": "response.incomplete", "response": {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "usage": {"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}}});
+        let c = p.feed(&ev, "").unwrap();
+        assert!(c.iter().any(|c| c.usage.is_some()), "usage chunk missing");
     }
 
     /// Local SSE server: records request heads, answers with a Codex-style

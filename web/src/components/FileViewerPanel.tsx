@@ -117,7 +117,7 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
             onClick={handleCopy}
             disabled={busy || tooLarge}
             aria-label={label}
-            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
+            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
           >
             {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
           </button>

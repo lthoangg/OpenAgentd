@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, mem
 import { Seal } from '@/components/brand/Logo'
 
 import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, Clock } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { lazySurface } from '@/lib/lazy-surface'
@@ -29,7 +29,10 @@ import { AssistantTurn, type AssistantTurnProps } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix } from '@/utils/format'
+import { extractSleepPrefix, shortModelName } from '@/utils/format'
+import { Callout } from '@/components/ui/callout'
+import { Chip } from '@/components/ui/chip'
+import { formatMetaDuration } from '@/components/ui/meta-row'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
@@ -218,21 +221,27 @@ function latestActiveQuotaWait(
   return null
 }
 
-function formatQuotaCountdown(resetsAt: number, now = Date.now()): string {
+/** Time left until a quota resets, for "resumes in …": ``2h 05m``. */
+function formatQuotaCountdown(resetsAt: number, now = Date.now()): string | null {
   const remainingSeconds = resetsAt - now / 1000
-  if (remainingSeconds <= 0) return 'Resetting now'
+  if (remainingSeconds <= 0) return null
 
   const totalMinutes = Math.ceil(remainingSeconds / 60)
-  if (totalMinutes < 1) return 'Resets in <1m'
+  if (totalMinutes < 1) return '<1m'
 
   const days = Math.floor(totalMinutes / (24 * 60))
   const hours = Math.floor((totalMinutes % (24 * 60)) / 60)
   const minutes = totalMinutes % 60
-  if (days > 0) return `Resets in ${days}d ${String(hours).padStart(2, '0')}h`
-  if (hours > 0) return `Resets in ${hours}h ${String(minutes).padStart(2, '0')}m`
-  return `Resets in ${minutes}m`
+  if (days > 0) return `${days}d ${String(hours).padStart(2, '0')}h`
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`
+  return `${minutes}m`
 }
 
+/**
+ * A provider quota ran out and the turn waits for it to reset (DESIGN.md →
+ * Notices). Calm on purpose: it resolves itself, so no pulse and no alarm
+ * words. The provider's own message stays one hover away.
+ */
 function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessionId?: string; persist: boolean }) {
   const [now, setNow] = useState(() => Date.now())
 
@@ -251,19 +260,66 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
     }
   }, [now, sessionId, wait.resetsAt])
 
-  const countdown = wait.resetsAt === undefined ? null : formatQuotaCountdown(wait.resetsAt, now)
-  const model = wait.model ?? 'model'
+  const countdown = wait.resetsAt === undefined ? undefined : formatQuotaCountdown(wait.resetsAt, now)
+  const model = shortModelName(wait.model)
 
   return (
-    <div className="my-2 rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle) px-3 py-2 text-xs">
-      <div className="flex items-center gap-1.5 font-medium text-(--color-warning)">
-        <Clock size={14} className="shrink-0 animate-pulse" />
-        <span>Quota Limit Reached · Waiting for Reset</span>
-        {countdown && <span className="ml-auto shrink-0 font-normal" aria-live="polite">{countdown}</span>}
-      </div>
-      <p className="mt-1 text-(--color-text-muted) leading-relaxed break-words">
-        {wait.message || `Provider quota exhausted for ${model}. Waiting for reset. Agent will automatically resume work. You can stop anytime.`}
-      </p>
+    <div className="my-2" title={wait.message || undefined}>
+      <Callout
+        tone="warning"
+        role="status"
+        title={
+          <>
+            Waiting for quota reset
+            {countdown !== undefined && (
+              <span className="font-normal text-(--color-text-muted)" aria-live="polite">
+                {countdown === null ? ' · resuming now' : <>{' · resumes in '}<span className="font-mono tabular-nums">{countdown}</span></>}
+              </span>
+            )}
+          </>
+        }
+      >
+        <span className="text-(--color-text-muted)">
+          {model ? <><span className="font-mono">{model}</span> used up its provider quota. </> : 'The provider quota is used up. '}
+          Resumes automatically. Stop anytime.
+        </span>
+      </Callout>
+    </div>
+  )
+}
+
+/**
+ * A provider call failed and is being retried: one line, the model ID in
+ * mono, the attempt and the wait with units, the raw error as a chip.
+ */
+function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode }: {
+  model?: string
+  attempt?: unknown
+  maxAttempts?: unknown
+  delay?: unknown
+  errorType?: unknown
+  statusCode?: unknown
+}) {
+  const short = shortModelName(model) ?? 'model'
+  // Dropped connections retry without a budget until the network is back.
+  const progress = typeof maxAttempts === 'number'
+    ? `${String(attempt ?? '?')}/${maxAttempts}`
+    : String(attempt ?? '?')
+  const error = [statusCode, errorType].filter((v) => v !== undefined && v !== null && v !== '').map(String).join(' ')
+  return (
+    <div
+      role="status"
+      data-provider-retry
+      className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-muted)"
+    >
+      <span>
+        {'Retrying '}
+        <span className="font-mono text-(--color-text-2)" title={model}>{short}</span>
+        {' · attempt '}
+        <span className="font-mono tabular-nums">{progress}</span>
+        {typeof delay === 'number' && <>{' · in '}<span className="font-mono tabular-nums">{formatMetaDuration(delay * 1000)}</span></>}
+      </span>
+      {error && <Chip tone="warning" mono>{error}</Chip>}
     </div>
   )
 }
@@ -311,6 +367,12 @@ interface AgentViewProps {
   jumpToLatestInComposer?: boolean
 }
 
+/** The server's error title, with its legacy Title Case default in plain words. */
+function providerErrorTitle(title: unknown): string {
+  if (typeof title !== 'string' || !title || title === 'Provider Error') return 'Model error'
+  return title
+}
+
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
   block: ContentBlock
   isStreaming: boolean
@@ -338,7 +400,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
-      return <Thinking content={block.content} isStreaming={isStreaming} />
+      return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
     case 'compaction': {
       const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
       const error = Boolean(block.extra?.error)
@@ -359,7 +421,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (isProviderErrorBlock(block)) {
         return (
           <ErrorCard
-            title={(block.extra?.title as string) || 'Provider Error'}
+            title={providerErrorTitle(block.extra?.title)}
             message={customMsg || block.content}
             onRetry={onRetry}
             onSwitchModel={onSwitchModel}
@@ -373,24 +435,23 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
         return wait ? <QuotaWaitNotice wait={wait} sessionId={sessionId} persist /> : null
       }
 
-      const model = block.extra?.model
-      const attempt = block.extra?.attempt
-      const maxAttempts = block.extra?.max_attempts
-      const delay = block.extra?.delay_seconds
-      const errorType = block.extra?.error_type
-      const statusCode = block.extra?.status_code
-      let message = 'Provider status updated.'
+      const model = typeof block.extra?.model === 'string' ? block.extra.model : undefined
       if (status === 'retrying') {
-        const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
-        const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
-        // Dropped connections retry without a budget until the network is back.
-        const progress = typeof maxAttempts === 'number'
-          ? `${String(attempt ?? '?')}/${maxAttempts}`
-          : `attempt ${String(attempt ?? '?')}`
-        message = `Retrying ${String(model ?? 'model')} (${progress})${errorText}.${delayText}`
-      } else if (status === 'switched_credential') {
+        return (
+          <RetryNotice
+            model={model}
+            attempt={block.extra?.attempt}
+            maxAttempts={block.extra?.max_attempts}
+            delay={block.extra?.delay_seconds}
+            errorType={block.extra?.error_type}
+            statusCode={block.extra?.status_code}
+          />
+        )
+      }
+      let message = 'Provider status updated.'
+      if (status === 'switched_credential') {
         // A key or account hit its limit; the same turn continues on the next one.
-        message = customMsg || `Switched ${String(model ?? 'model')} to another credential.`
+        message = customMsg || `Switched ${shortModelName(model) ?? 'model'} to another credential.`
       }
       return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
@@ -424,7 +485,11 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
         return (
           <div>
             {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
-            <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
+            <div className="my-3 flex items-center gap-3 text-xs text-(--color-text-muted)" role="note">
+              <span aria-hidden className="h-px flex-1 bg-(--color-border)" />
+              Agent idle
+              <span aria-hidden className="h-px flex-1 bg-(--color-border)" />
+            </div>
           </div>
         )
       }
@@ -1077,7 +1142,7 @@ export function AgentView({
           onClick={() => scrollToBottom('smooth')}
           // Centred by margin rather than a percentage translate (DESIGN.md:
           // no transform-based layout).
-          className="absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
+          className="touch-hit absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={14} />

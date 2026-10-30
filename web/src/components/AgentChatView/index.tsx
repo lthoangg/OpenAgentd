@@ -81,6 +81,7 @@ import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
+import { MissingFolderBanner, useFolderMissing } from './MissingFolderBanner'
 import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
@@ -154,9 +155,11 @@ interface AgentChatViewProps {
   sessionId?: string
   workspace?: string | null
   sessionLoading?: boolean
+  /** The URL names a session the server does not have. */
+  sessionNotFound?: boolean
 }
 
-export function AgentChatView({ sessionId, workspace = null, sessionLoading = false }: AgentChatViewProps) {
+export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false }: AgentChatViewProps) {
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
   const pushToast = useToastStore((s) => s.push)
@@ -404,6 +407,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = workspace
   const hasWorkspace = Boolean(workspace)
+  const folderMissing = useFolderMissing(sessionId ? workspace : null)
   const isSessionLoading = sessionLoading
   const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasWorkspace)
   const leadAgent = agentRegistryData?.agents?.[0]
@@ -796,7 +800,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             draftWorkspace={sessionId ? null : workspace}
             onCollapse={() => setSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={handleTogglePalette}
             desktopCollapsed={sidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
@@ -824,7 +827,21 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             onDismiss={dismissSetupRequired}
           />
         )}
-        {isSessionLoading && !chatOnScreen ? (
+        {sessionId && workspace && folderMissing && (
+          <MissingFolderBanner workspace={workspace} onOpenFolder={handleOpenWorkspaceDialog} />
+        )}
+        {sessionNotFound && !workspace ? (
+          <EmptyState
+            icon={FolderCode}
+            title="Session not found"
+            body="It may have been deleted, or the link is wrong."
+            action={
+              <Button type="button" onClick={() => navigate({ to: '/', replace: true })}>
+                New session
+              </Button>
+            }
+          />
+        ) : isSessionLoading && !chatOnScreen ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
@@ -857,7 +874,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             body="Choose a local project folder from the sidebar to start a session."
             action={
               <Button type="button" onClick={handleOpenWorkspaceDialog}>
-                Open workspace
+                Open folder…
               </Button>
             }
           />
@@ -936,7 +953,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
                 <span className="shrink-0 rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
                   {leadName}
                 </span>
-                <span className="truncate">Subagents are orchestrated by the lead agent. Switch to the lead session to send instructions.</span>
+                <span className="truncate">The main agent directs this subagent. Open the main agent's session to send instructions.</span>
               </div>
               <Button
                 size="xs"

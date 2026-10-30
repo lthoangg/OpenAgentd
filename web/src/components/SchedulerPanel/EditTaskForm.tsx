@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
-import { Loader2, Pencil, X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -16,6 +16,7 @@ import { editTaskDefaults, toUpdatePayload } from './taskForm'
 import { useTaskFieldErrors } from './useTaskFieldErrors'
 import { taskValuesChanged, useReportSchedulerDraft } from './draftGuard'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
+import { CronField, IntervalField } from './ScheduleFields'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
@@ -77,9 +78,6 @@ export function EditTaskForm({
       <div className={headerClass}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
-              <Pencil size={12} />
-            </div>
             <div>
               <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Edit task</h2>
               {!hostTitled && <p className="text-[11px] leading-relaxed text-(--color-text-muted)">{task.name}</p>}
@@ -130,25 +128,12 @@ export function EditTaskForm({
                     onChange={(v) => form.setFieldValue('schedule_type', v)}
                   />
                 </div>
-                <div>
-                  <label htmlFor="edit-task-every-seconds" className={FIELD_LABEL}>Interval (seconds)</label>
-                  <Input
-                    id="edit-task-every-seconds"
-                    enterKeyHint="next"
-                    className={`h-9 w-full ${FIELD_CLASS}`}
-                    type="number"
-                    inputMode="numeric"
-                    min="1"
-                    value={values.every_seconds ?? 3600}
-                    onChange={(e) =>
-                      form.setFieldValue('every_seconds', parseInt(e.target.value) || 0)
-                    }
-                    aria-invalid={!!fieldErrors.every_seconds}
-                    aria-describedby={fieldErrors.every_seconds ? 'edit-task-every-seconds-error' : 'edit-task-every-seconds-help'}
-                  />
-                  {fieldErrors.every_seconds && <p id="edit-task-every-seconds-error" className={FIELD_ERROR}>{fieldErrors.every_seconds}</p>}
-                  <p id="edit-task-every-seconds-help" className={FIELD_HINT}>e.g., 3600 = 1 hour, 86400 = 1 day</p>
-                </div>
+                <IntervalField
+                  id="edit-task-every-seconds"
+                  seconds={values.every_seconds ?? 3600}
+                  onChange={(n) => form.setFieldValue('every_seconds', n)}
+                  error={fieldErrors.every_seconds}
+                />
               </div>
             ) : (
               <div>
@@ -188,21 +173,13 @@ export function EditTaskForm({
 
                 {values.schedule_type === 'cron' && (
                   <div className="mt-5 grid gap-x-4 gap-y-5 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
-                    <div>
-                      <label htmlFor="edit-task-cron-expression" className={FIELD_LABEL}>Cron expression</label>
-                      <Input
-                        id="edit-task-cron-expression"
-                        enterKeyHint="next"
-                        className={`h-9 ${FIELD_CLASS}`}
-                        value={values.cron_expression ?? ''}
-                        onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
-                        placeholder="e.g., 0 9 * * MON-FRI"
-                        aria-invalid={!!fieldErrors.cron_expression}
-                        aria-describedby={fieldErrors.cron_expression ? 'edit-task-cron-expression-error' : undefined}
-                      />
-                      {fieldErrors.cron_expression && <p id="edit-task-cron-expression-error" className={FIELD_ERROR}>{fieldErrors.cron_expression}</p>}
-                      <p className={FIELD_HINT}>Standard 5-field cron format (e.g. 0 9 * * MON-FRI)</p>
-                    </div>
+                    <CronField
+                      id="edit-task-cron-expression"
+                      value={values.cron_expression ?? ''}
+                      onChange={(v) => form.setFieldValue('cron_expression', v)}
+                      timezone={values.timezone || localTz}
+                      error={fieldErrors.cron_expression}
+                    />
                     <div>
                       <label htmlFor="edit-task-timezone" className={FIELD_LABEL}>Timezone</label>
                       <Input
@@ -226,7 +203,7 @@ export function EditTaskForm({
               <label htmlFor="edit-task-prompt" className="sr-only">Prompt</label>
               <Textarea
                 id="edit-task-prompt"
-                className={`font-mono text-xs leading-relaxed ${FIELD_CLASS}`}
+                className={`text-sm leading-relaxed ${FIELD_CLASS}`}
                 value={values.prompt}
                 onChange={(e) => form.setFieldValue('prompt', e.target.value)}
                 placeholder="Message to deliver to the agent when the task fires."

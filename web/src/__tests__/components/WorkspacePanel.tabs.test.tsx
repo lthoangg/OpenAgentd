@@ -258,22 +258,22 @@ describe('Git view toolbar', () => {
     await waitFor(() => expect(screen.getByText('docs: refresh readme')).toBeTruthy())
     const history = screen.getByRole('tab', { name: 'History' })
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
-    const graph = screen.getByRole('checkbox', { name: 'Graph' }) as HTMLInputElement
+    const graph = screen.getByRole('checkbox', { name: 'Graph view' }) as HTMLInputElement
     expect(graph.checked).toBe(false)
     expect(screen.queryByRole('checkbox', { name: 'All branches' })).toBeNull()
 
     await user.click(graph)
 
     expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('tree')
-    expect((screen.getByRole('checkbox', { name: 'Graph' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('checkbox', { name: 'Graph view' }) as HTMLInputElement).checked).toBe(true)
     expect(screen.getByRole('checkbox', { name: 'All branches' })).toBeTruthy()
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
   })
 
-  it('leaves file search to Quick Open and keeps Refresh in the dock actions', async () => {
+  it('leaves file search to Quick Open and names what Refresh reloads on the Git tab', async () => {
     await renderPanel()
     expect(screen.queryByRole('button', { name: /Search files/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Refresh Git status' })).toBeTruthy()
   })
 
   it('expand-all toggles every changed-file diff open and closed', async () => {

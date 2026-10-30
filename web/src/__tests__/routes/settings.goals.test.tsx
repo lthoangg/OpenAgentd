@@ -61,7 +61,7 @@ describe('GoalsSettingsPage', () => {
     )
     renderPage()
 
-    const questions = await screen.findByRole('switch', { name: /let the agent ask me questions during a goal/i })
+    const questions = await screen.findByRole('switch', { name: /allow questions during goals/i })
     await waitFor(() => expect(questions.getAttribute('aria-checked')).toBe('false'))
     fireEvent.click(questions)
     fireEvent.change(screen.getByLabelText('Turns per goal'), { target: { value: '20' } })
@@ -106,8 +106,9 @@ describe('GoalsSettingsPage', () => {
 
     const budget = await screen.findByLabelText('Token budget per goal') as HTMLInputElement
     expect(budget.value).toBe('')
+    expect(budget.placeholder).toBe('No limit')
     fireEvent.change(budget, { target: { value: '2000000' } })
-    expect(await screen.findByText(/Now 2M\./)).toBeTruthy()
+    expect(await screen.findByText(/Now ≈ 2M tokens\./)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     await waitFor(() => expect(bodies).toEqual([2_000_000]))
 

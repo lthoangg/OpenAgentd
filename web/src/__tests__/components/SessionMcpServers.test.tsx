@@ -94,11 +94,10 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['github', 'postgres'] })
 
     const github = await waitFor(() => row('github'))
-    expect(within(github).getByText(/ready/i)).toBeTruthy()
-    expect(within(github).getByText(/2 tools/i)).toBeTruthy()
+    expect(within(github).getByText('Ready · 2 tools')).toBeTruthy()
 
     const postgres = row('postgres')
-    expect(within(postgres).getByText(/disabled/i)).toBeTruthy()
+    expect(within(postgres).getByText('Off')).toBeTruthy()
   })
 
   it('reflects enabled state on each row switch', async () => {
@@ -148,7 +147,7 @@ describe('SessionMcpServers', () => {
     await userEvent.click(within(row('github')).getByRole('switch'))
 
     await waitFor(() => expect(within(row('github')).getByRole('switch').getAttribute('aria-checked')).toBe('false'))
-    expect(within(row('github')).getByText(/disabled/i)).toBeTruthy()
+    expect(within(row('github')).getByText('Off')).toBeTruthy()
     expect(row('github').getAttribute('aria-busy')).toBe('true')
   })
 
@@ -169,9 +168,7 @@ describe('SessionMcpServers', () => {
     expect(within(row('github')).getByRole('switch').getAttribute('aria-checked')).toBe('true')
   })
 
-  it('offers OAuth connect on every HTTP server configured for it', async () => {
-    // Not only `auth_required`: re-authorizing a server that is already ready,
-    // or retrying one that failed, are both things you do on demand.
+  it('offers one action per row: sign in when asked, reconnect when failed', async () => {
     mockServerList([
       makeServer({
         name: 'linear',
@@ -182,28 +179,38 @@ describe('SessionMcpServers', () => {
       makeServer({
         name: 'notion',
         transport: 'http',
+        state: 'error',
+        error: 'token expired',
+        config: HTTP_OAUTH_CONFIG,
+      }),
+      makeServer({
+        name: 'asana',
+        transport: 'http',
         state: 'ready',
         config: HTTP_OAUTH_CONFIG,
       }),
       makeServer({ name: 'github', state: 'ready' }),
     ])
 
-    renderSection({ agentServers: ['linear', 'notion', 'github'] })
+    renderSection({ agentServers: ['linear', 'notion', 'asana', 'github'] })
 
     const linear = await waitFor(() => row('linear'))
-    expect(within(linear).getByRole('button', { name: /connect/i })).toBeTruthy()
-    expect(within(row('notion')).getByRole('button', { name: /connect/i })).toBeTruthy()
+    expect(within(linear).getByText('Needs sign-in')).toBeTruthy()
+    expect(within(linear).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(row('notion')).getByRole('button', { name: 'Reconnect' })).toBeTruthy()
+    // A working server needs nothing.
+    expect(within(row('asana')).queryByRole('button')).toBeNull()
     // stdio server: nothing to authorize.
-    expect(within(row('github')).queryByRole('button', { name: /connect/i })).toBeNull()
+    expect(within(row('github')).queryByRole('button')).toBeNull()
   })
 
-  it('cannot connect OAuth while the server is disabled', async () => {
+  it('offers no connect action while the server is off', async () => {
     mockServerList([
       makeServer({
         name: 'linear',
         transport: 'http',
         enabled: false,
-        state: 'stopped',
+        state: 'error',
         config: HTTP_OAUTH_CONFIG,
       }),
     ])
@@ -211,8 +218,8 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['linear'] })
 
     const linear = await waitFor(() => row('linear'))
-    const connect = within(linear).getByRole('button', { name: /connect/i }) as HTMLButtonElement
-    expect(connect.disabled).toBe(true)
+    expect(within(linear).getByText('Off')).toBeTruthy()
+    expect(within(linear).queryByRole('button')).toBeNull()
   })
 
   it('starts the OAuth flow when connect is pressed', async () => {
@@ -235,7 +242,7 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['linear'] })
 
     const linear = await waitFor(() => row('linear'))
-    await userEvent.click(within(linear).getByRole('button', { name: /connect/i }))
+    await userEvent.click(within(linear).getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => expect(connectCalled).toBe(true))
   })

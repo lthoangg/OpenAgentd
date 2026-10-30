@@ -69,26 +69,26 @@ describe('McpServerForm — Identity section', () => {
     const draft = { ...emptyDraft(), enabled: true }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    const enabledBtn = screen.getByRole('radio', { name: /enabled/i })
+    const enabledBtn = screen.getByRole('radio', { name: /^on$/i })
     expect(enabledBtn).toBeTruthy()
   })
 
-  it('calls onChange with enabled=true when Enabled button is clicked', async () => {
+  it('calls onChange with enabled=true when On is clicked', async () => {
     const user = userEvent.setup()
     const draft = { ...emptyDraft(), enabled: false }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    const enabledBtn = screen.getByRole('radio', { name: /enabled/i })
+    const enabledBtn = screen.getByRole('radio', { name: /^on$/i })
     await user.click(enabledBtn)
     expect(onChange).toHaveBeenCalled()
   })
 
-  it('calls onChange with enabled=false when Disabled button is clicked', async () => {
+  it('calls onChange with enabled=false when Off is clicked', async () => {
     const user = userEvent.setup()
     const draft = { ...emptyDraft(), enabled: true }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    const disabledBtn = screen.getByRole('radio', { name: /disabled/i })
+    const disabledBtn = screen.getByRole('radio', { name: /^off$/i })
     await user.click(disabledBtn)
     expect(onChange).toHaveBeenCalled()
   })
@@ -120,7 +120,7 @@ describe('McpServerForm — Transport tabs', () => {
     const draft = { ...emptyDraft(), transport: 'stdio' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    expect(screen.getByText(/Transport — Stdio/i)).toBeTruthy()
+    expect(screen.getByText(/Runs a local process and talks to it over stdin and stdout/i)).toBeTruthy()
     expect(screen.getByPlaceholderText('npx')).toBeTruthy()
   })
 
@@ -128,7 +128,7 @@ describe('McpServerForm — Transport tabs', () => {
     const draft = { ...emptyDraft(), transport: 'http' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    expect(screen.getByText(/Transport — HTTP/i)).toBeTruthy()
+    expect(screen.getByText(/Connects to a URL \(Streamable HTTP\)/i)).toBeTruthy()
     expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
   })
 

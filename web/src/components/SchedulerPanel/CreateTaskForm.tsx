@@ -13,6 +13,7 @@ import { createTaskDefaults, toCreatePayload } from './taskForm'
 import { useTaskFieldErrors } from './useTaskFieldErrors'
 import { taskValuesChanged, useReportSchedulerDraft } from './draftGuard'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
+import { CronField, IntervalField } from './ScheduleFields'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
@@ -88,10 +89,7 @@ export function CreateTaskForm({
         <div className={headerClass}>
           <div className="flex items-center gap-2">
             {onBack && <SchedulerBackButton onClick={onBack} />}
-            <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
-              <Plus size={13} />
-            </div>
-            <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Create task</h2>
+            <h2 className="text-base font-semibold tracking-tight text-(--color-text)">New task</h2>
           </div>
         </div>
       )}
@@ -111,7 +109,7 @@ export function CreateTaskForm({
                 className={`h-9 ${FIELD_CLASS}`}
                 value={values.title}
                 onChange={(e) => form.setFieldValue('title', e.target.value)}
-                placeholder="e.g., Daily Standup Report"
+                placeholder="Daily standup report"
                 maxLength={100}
                 aria-invalid={!!fieldErrors.title}
                 aria-describedby={fieldErrors.title ? 'task-title-error' : undefined}
@@ -147,25 +145,12 @@ export function CreateTaskForm({
                     onChange={(v) => form.setFieldValue('schedule_type', v)}
                   />
                 </div>
-                <div>
-                  <label htmlFor="task-every-seconds" className={FIELD_LABEL}>Interval (seconds)</label>
-                  <Input
-                    id="task-every-seconds"
-                    enterKeyHint="next"
-                    className={`h-9 w-full ${FIELD_CLASS}`}
-                    type="number"
-                    inputMode="numeric"
-                    min="1"
-                    value={values.every_seconds ?? 3600}
-                    onChange={(e) =>
-                      form.setFieldValue('every_seconds', parseInt(e.target.value) || 0)
-                    }
-                    aria-invalid={!!fieldErrors.every_seconds}
-                    aria-describedby={fieldErrors.every_seconds ? 'task-every-seconds-error' : 'task-every-seconds-help'}
-                  />
-                  {fieldErrors.every_seconds && <p id="task-every-seconds-error" className={FIELD_ERROR}>{fieldErrors.every_seconds}</p>}
-                  <p id="task-every-seconds-help" className={FIELD_HINT}>e.g., 3600 = 1 hour, 86400 = 1 day</p>
-                </div>
+                <IntervalField
+                  id="task-every-seconds"
+                  seconds={values.every_seconds ?? 3600}
+                  onChange={(n) => form.setFieldValue('every_seconds', n)}
+                  error={fieldErrors.every_seconds}
+                />
               </div>
             ) : (
               <div>
@@ -205,21 +190,13 @@ export function CreateTaskForm({
 
                 {values.schedule_type === 'cron' && (
                   <div className="mt-5 grid gap-x-4 gap-y-5 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
-                    <div>
-                      <label htmlFor="task-cron-expression" className={FIELD_LABEL}>Cron expression</label>
-                      <Input
-                        id="task-cron-expression"
-                        enterKeyHint="next"
-                        className={`h-9 ${FIELD_CLASS}`}
-                        value={values.cron_expression ?? ''}
-                        onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
-                        placeholder="e.g., 0 9 * * MON-FRI"
-                        aria-invalid={!!fieldErrors.cron_expression}
-                        aria-describedby={fieldErrors.cron_expression ? 'task-cron-expression-error' : undefined}
-                      />
-                      {fieldErrors.cron_expression && <p id="task-cron-expression-error" className={FIELD_ERROR}>{fieldErrors.cron_expression}</p>}
-                      <p className={FIELD_HINT}>Standard 5-field cron format (e.g. 0 9 * * MON-FRI)</p>
-                    </div>
+                    <CronField
+                      id="task-cron-expression"
+                      value={values.cron_expression ?? ''}
+                      onChange={(v) => form.setFieldValue('cron_expression', v)}
+                      timezone={values.timezone || localTz}
+                      error={fieldErrors.cron_expression}
+                    />
                     <div>
                       <label htmlFor="task-timezone" className={FIELD_LABEL}>Timezone</label>
                       <Input
@@ -243,7 +220,7 @@ export function CreateTaskForm({
               <label htmlFor="task-prompt" className="sr-only">Prompt</label>
               <Textarea
                 id="task-prompt"
-                className={`font-mono text-xs leading-relaxed ${FIELD_CLASS}`}
+                className={`text-sm leading-relaxed ${FIELD_CLASS}`}
                 value={values.prompt}
                 onChange={(e) => form.setFieldValue('prompt', e.target.value)}
                 placeholder="Message to deliver to the agent when the task fires."

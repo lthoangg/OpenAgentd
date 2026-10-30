@@ -28,9 +28,10 @@ afterEach(cleanup)
 // Test helpers
 // ---------------------------------------------------------------------------
 //
-// Header markup is `<span title="full text">verb <span>arg</span></span>`.
-// These helpers locate the outer header span via its `title` attribute and
-// assert the argument is rendered without italics.
+// The row carries `title="generate_image: <file>.png"` (the real tool name,
+// then the target), or just `title="generate_image"` when there is no
+// filename. These helpers locate the row via its `title` attribute and assert
+// the argument is rendered without italics.
 
 function getHeader(fullText: string): HTMLElement {
   // Linear scan by attribute — Happy DOM rejects some CSS.escape outputs
@@ -54,17 +55,18 @@ function expectPlainArg(header: HTMLElement, arg: string) {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image header", () => {
-  it("shows 'Painting' with plain filename when filename provided without extension", () => {
+  it("shows the plain .png filename after the tool name when filename provided without extension", () => {
     const args = JSON.stringify({ prompt: "a red cube", filename: "red-cube" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting red-cube.png")
+    const header = getHeader("generate_image: red-cube.png")
     expectPlainArg(header, "red-cube.png")
+    expect(header.textContent).not.toContain("Painting")
   })
 
   it("normalises filename ending in .png (case insensitive) to avoid double extension", () => {
     const args = JSON.stringify({ prompt: "a chart", filename: "chart.PNG" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting chart.png")
+    const header = getHeader("generate_image: chart.png")
     expectPlainArg(header, "chart.png")
     // Ensure no double extension like "chart.PNG.png"
     expect(header.textContent).not.toContain("chart.PNG.png")
@@ -73,7 +75,7 @@ describe("ToolCall — generate_image header", () => {
   it("normalises filename ending in .png (lowercase) correctly", () => {
     const args = JSON.stringify({ prompt: "a diagram", filename: "diagram.png" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting diagram.png")
+    const header = getHeader("generate_image: diagram.png")
     expectPlainArg(header, "diagram.png")
   })
 
@@ -82,42 +84,47 @@ describe("ToolCall — generate_image header", () => {
     render(<ToolCall name="generate_image" args={args} done={false} />)
     // Backend always saves as PNG regardless of input extension, so the UI
     // must show the true on-disk filename, not ``photo.jpg.png``.
-    const header = getHeader("Painting photo.png")
+    const header = getHeader("generate_image: photo.png")
     expectPlainArg(header, "photo.png")
     expect(header.textContent).not.toContain("photo.jpg.png")
   })
 
-  it("shows 'Painting an image…' when filename is omitted", () => {
+  it("shows only the tool name, with no target, when filename is omitted", () => {
     const args = JSON.stringify({ prompt: "a cat" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting an image…")
-    // No <em> in this case — the entire header is plain text
+    const header = getHeader("generate_image")
+    // No target at all: the row is just the tool name, never a "Painting…" phrase
     expect(header.querySelector("em")).toBeNull()
+    expect(header.textContent).not.toContain("Painting")
   })
 
-  it("shows 'Painting an image…' when filename is empty string", () => {
+  it("shows only the tool name, with no target, when filename is empty string", () => {
     const args = JSON.stringify({ prompt: "a cat", filename: "" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting an image…")
+    const header = getHeader("generate_image")
     expect(header.querySelector("em")).toBeNull()
   })
 
-  it("shows 'Painting an image…' when filename is whitespace-only", () => {
+  it("shows only the tool name, with no target, when filename is whitespace-only", () => {
     const args = JSON.stringify({ prompt: "a cat", filename: "   " })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting an image…")
+    const header = getHeader("generate_image")
     expect(header.querySelector("em")).toBeNull()
   })
 
-  it("does not render raw tool name 'generate_image' when args provided", () => {
+  it("shows the real tool name in mono next to the filename when args provided", () => {
     const args = JSON.stringify({ prompt: "a cube", filename: "cube" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    expect(screen.queryByText("generate_image")).toBeNull()
+    const name = screen.getByText("generate_image")
+    expect(name.className).toContain("font-mono")
+    expect(screen.getByText("cube.png")).toBeTruthy()
+    expect(screen.queryByText("Generate Image")).toBeNull()
   })
 
-  it("shows humanized tool name when args is undefined (pending state)", () => {
+  it("shows the real tool name when args is undefined (pending state)", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("Generate Image")).toBeTruthy()
+    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.queryByText("Generate Image")).toBeNull()
   })
 
   it("does not show a stale pending badge when args is undefined", () => {
@@ -152,10 +159,11 @@ describe("ToolCall — generate_image args display", () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ filename: "foo" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    // Should not be expandable (no args, no result)
-    expect(btn.className).toContain("cursor-default")
-    await user.click(btn)
+    // Should not be expandable (no args, no result): a plain row, not a button
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(row)
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -163,9 +171,10 @@ describe("ToolCall — generate_image args display", () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ prompt: "", filename: "foo" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
-    await user.click(btn)
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(row)
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -173,9 +182,10 @@ describe("ToolCall — generate_image args display", () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ prompt: "   ", filename: "foo" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
-    await user.click(btn)
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
+    await user.click(row)
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -353,10 +363,9 @@ describe("ToolCall — generate_image result suppression", () => {
         result="![tree](tree.png)"
       />
     )
-    const btn = screen.getByRole("button")
     // Should be expandable because formattedArgs (prompt) is truthy
-    expect(btn.className).not.toContain("cursor-default")
-    expect(btn.className).toContain("cursor-pointer")
+    const btn = screen.getByRole("button", { name: "Expand generate_image details" })
+    expect(btn.getAttribute("aria-expanded")).toBe("false")
   })
 
   it("is not expandable when both args and result are absent", () => {
@@ -369,9 +378,10 @@ describe("ToolCall — generate_image result suppression", () => {
         result="something"
       />
     )
-    const btn = screen.getByRole("button")
-    // No args, result is suppressed → not expandable
-    expect(btn.className).toContain("cursor-default")
+    // No args, result is suppressed → not expandable: a plain row, not a button
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
   })
 
   it("does not show result copy button when result is suppressed", async () => {
@@ -400,7 +410,7 @@ describe("ToolCall — generate_image expand/collapse", () => {
     const args = JSON.stringify({ prompt: "a mountain", filename: "mountain" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    expect(btn.className).not.toContain("cursor-default")
+    expect(btn.getAttribute("aria-expanded")).toBe("false")
     await user.click(btn)
     expect(screen.getByText("arguments")).toBeTruthy()
   })
@@ -408,24 +418,27 @@ describe("ToolCall — generate_image expand/collapse", () => {
   it("is not expandable when no prompt and no result", () => {
     const args = JSON.stringify({ filename: "foo" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
   })
 
   it("shows chevron when expandable", () => {
     const args = JSON.stringify({ prompt: "a river", filename: "river" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    // When expandable, the header button is interactive
-    expect(btn.className).toContain("cursor-pointer")
-    expect(btn.className).not.toContain("cursor-default")
+    // When expandable, the row is an interactive disclosure button
+    const btn = screen.getByRole("button", { name: "Expand generate_image details" })
+    expect(btn.getAttribute("aria-expanded")).toBe("false")
   })
 
   it("does not show chevron when not expandable", () => {
     const args = JSON.stringify({ filename: "foo" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
+    // Not expandable: no button, no disclosure state
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(row.hasAttribute("aria-expanded")).toBe(false)
+    expect(screen.queryByRole("button")).toBeNull()
   })
 
   it("toggles expanded state on click", async () => {
@@ -446,9 +459,10 @@ describe("ToolCall — generate_image expand/collapse", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image status indicators", () => {
-  it("shows start state as just the humanized tool name when no args", () => {
+  it("shows start state as just the real tool name when no args", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("Generate Image")).toBeTruthy()
+    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.queryByText("Generate Image")).toBeNull()
     expect(screen.queryByText("pending")).toBeNull()
   })
 
@@ -456,8 +470,11 @@ describe("ToolCall — generate_image status indicators", () => {
     const args = JSON.stringify({ prompt: "a cloud", filename: "cloud" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    const header = btn.querySelector("span.animate-pulse")
-    expect(header?.textContent).toContain("Painting cloud.png")
+    // Running is a blue dot plus "running…", not a pulsing label
+    expect(btn.querySelector("[data-running-dot]")).toBeTruthy()
+    expect(btn.querySelector(".animate-pulse")).toBeNull()
+    expect(btn.textContent).toContain("cloud.png")
+    expect(btn.textContent).toContain("running…")
   })
 
   it("shows done indicator when done", () => {
@@ -478,7 +495,7 @@ describe("ToolCall — generate_image edge cases", () => {
   it("handles filename with multiple dots (only strips final .png)", () => {
     const args = JSON.stringify({ prompt: "a file", filename: "my.image.file.png" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting my.image.file.png")
+    const header = getHeader("generate_image: my.image.file.png")
     expectPlainArg(header, "my.image.file.png")
   })
 
@@ -487,14 +504,14 @@ describe("ToolCall — generate_image edge cases", () => {
     render(<ToolCall name="generate_image" args={args} done={false} />)
     // Regex strips only the final trailing extension — ``.file`` is treated
     // as one, so output is ``my.image.png``.
-    const header = getHeader("Painting my.image.png")
+    const header = getHeader("generate_image: my.image.png")
     expectPlainArg(header, "my.image.png")
   })
 
   it("handles special characters in filename", () => {
     const args = JSON.stringify({ prompt: "a scene", filename: "my-image_v2" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting my-image_v2.png")
+    const header = getHeader("generate_image: my-image_v2.png")
     expectPlainArg(header, "my-image_v2.png")
   })
 
@@ -518,22 +535,23 @@ describe("ToolCall — generate_image edge cases", () => {
   it("handles extra fields in args (ignored)", () => {
     const args = JSON.stringify({ prompt: "a scene", filename: "scene", model: "dall-e-3", quality: "hd" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting scene.png")
+    const header = getHeader("generate_image: scene.png")
     expectPlainArg(header, "scene.png")
   })
 
   it("handles null prompt", () => {
     const args = JSON.stringify({ prompt: null, filename: "foo" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    // null prompt is treated as missing
-    expect(btn.className).toContain("cursor-default")
+    // null prompt is treated as missing: nothing to expand, so not a button
+    const row = screen.getByLabelText("generate_image (no details)")
+    expect(row.tagName).toBe("DIV")
+    expect(screen.queryByRole("button")).toBeNull()
   })
 
-  it("handles null filename", () => {
+  it("handles null filename (tool name only)", () => {
     const args = JSON.stringify({ prompt: "a scene", filename: null })
     render(<ToolCall name="generate_image" args={args} done={false} />)
-    const header = getHeader("Painting an image…")
+    const header = getHeader("generate_image")
     expect(header.querySelector("em")).toBeNull()
   })
 })

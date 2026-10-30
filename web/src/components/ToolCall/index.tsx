@@ -40,6 +40,10 @@ import { parseImageRead } from './imageRead'
 import { TOOL_CHIP_CLASS } from './chipStyles'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
+import { parseShellOutcome, toolRowSummary } from './summary'
+import { MetaRow, formatMetaDuration } from '@/components/ui/meta-row'
+import { Chip } from '@/components/ui/chip'
+import { Term } from '@/components/ui/term'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
@@ -69,41 +73,6 @@ interface ToolCallProps {
   isCurrentStep?: boolean
 }
 
-function formatShellResult(result: string | undefined): { statusLine: string | null; body: string | null } {
-  if (!result) return { statusLine: null, body: null }
-
-  const firstNewline = result.indexOf('\n')
-  const firstLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
-  const hasStatusLine = /^\[(Succeeded|Failed|Error|Timed out)/i.test(firstLine)
-
-  if (!hasStatusLine) {
-    return { statusLine: null, body: result }
-  }
-
-  const body = firstNewline >= 0 ? result.slice(firstNewline + 1).trimStart() : ''
-  return { statusLine: firstLine, body: body || null }
-}
-
-/** A tool's display name, e.g. ``web_fetch`` → "Web Fetch". */
-export function formatToolLabel(name: string): string {
-  if (!name) return 'Tool'
-  if (name === 'lsp') return 'LSP'
-  return name
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
-
-  const totalSeconds = Math.round(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}m ${seconds}s`
-}
 
 function tryParseJSON(raw: string): unknown | null {
   try {
@@ -252,7 +221,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
   const { header, headerTitle, formattedArgs, language, suppressResult } =
-    useMemo(() => getToolDisplay(name, args, done), [name, args, done])
+    useMemo(() => getToolDisplay(name, args), [name, args])
   const toolOperation = useMemo(() => {
     if (name !== 'lsp' || !args) return undefined
     const parsed = tryParseJSON(args)
@@ -292,8 +261,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const isScheduleTaskList = canonicalToolName(name) === 'schedule' && shownResult?.startsWith('Scheduled tasks (')
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
-  const shellResult = isShell ? formatShellResult(shownResult) : null
-  const shellOutput = shellResult?.body ?? shownLiveOutput
+  // The `[Succeeded]` / `[Failed — exit code 1]` status line is protocol, not
+  // output: the row's exit chip carries it.
+  const shellParsed = isShell ? parseShellOutcome(shownResult) : null
+  const shellBody = shellParsed ? shellParsed.body || null : isShell ? shownResult || null : null
+  const shellOutput = shellBody ?? shownLiveOutput
 
   useEffect(() => {
     if (done || !startedAt) return
@@ -347,7 +319,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         render={
           <button
             onClick={handleCopyResult}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
             aria-label="Copy result"
           >
             {copiedResult ? (
@@ -378,16 +350,26 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // Only an open row shows these, and reopening a long run mounts hundreds of
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
+  // Long open details end with a Collapse row, so closing does not mean
+  // scrolling back up to the header (DESIGN.md → disclosure rows).
+  const longDetails =
+    expanded &&
+    [displayedArgs, shownLiveOutput, shownResult].reduce((n, text) => n + (text ? text.split('\n').length : 0), 0) > 12
   const displayName = name || 'tool'
-  const toolLabel = formatToolLabel(displayName)
-  const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
-  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${
-    state === 'running'
-      ? 'animate-pulse text-(--color-marker-orange)'
-      : state === 'failed'
-        ? 'text-(--color-error)'
-        : ''
-  }`
+  const title = headerTitle ? `${displayName}: ${headerTitle}` : displayName
+  // Shell's exit status rides in the meta column as a chip, not as an
+  // `[Succeeded]` line in the output.
+  const shellOutcome = isShell && done ? parseShellOutcome(result) : null
+  const rowSummary = done ? toolRowSummary(name, result, state === 'failed') : null
+  const exitChip = shellOutcome
+    ? shellOutcome.timedOut
+      ? <Chip tone="error" mono>timeout</Chip>
+      : shellOutcome.exitCode !== null
+        ? <Term definition="exitCode"><Chip tone={shellOutcome.exitCode === 0 ? 'neutral' : 'error'} mono>{`exit ${shellOutcome.exitCode}`}</Chip></Term>
+        : <Chip tone="error" mono>error</Chip>
+    : state === 'failed'
+      ? <Chip tone="error" mono>error</Chip>
+      : null
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
   // ``ask_user`` owns its whole card — frame and label included, since
@@ -408,65 +390,65 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }
 
   return (
-    <div className={animatesIn ? 'tool-row-enter my-2' : 'my-2'}>
-      {/* Header row — separate from the details container so collapsed tools stay lightweight. */}
+    <div className={animatesIn ? 'tool-row-enter my-0.5' : 'my-0.5'}>
+      {/* The row: real tool name, target, result summary, and a right-aligned
+          meta column (exit code, duration). A row with nothing to open is a
+          plain div, so it adds no empty Tab stop. */}
       <div className={cn(pinned && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
-        <button
-          ref={headerRef}
-          type="button"
-          onClick={(event) => {
-            if (!hasDetails) return
-            if (expanded) collapse(event.currentTarget)
-            else setManualExpanded(true)
-          }}
-          className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 ${
-            hasDetails
-              ? 'cursor-pointer text-(--color-text) hover:text-(--color-text)'
-              : 'cursor-default'
-          }`}
-          aria-expanded={expanded}
-          aria-label={
-            hasDetails
-              ? expanded
-                ? `Collapse ${displayName} details`
-                : `Expand ${displayName} details`
-              : `${displayName} (no details)`
+        <MetaRow
+          {...(hasDetails
+            ? {
+                as: 'button' as const,
+                ref: headerRef,
+                onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+                  if (expanded) collapse(event.currentTarget)
+                  else setManualExpanded(true)
+                },
+                'aria-expanded': expanded,
+                'aria-label': `${expanded ? 'Collapse' : 'Expand'} ${displayName} details`,
+              }
+            : { 'aria-label': `${displayName} (no details)` })}
+          title={title}
+          className="group"
+          meta={
+            <>
+              {exitChip}
+              {elapsedMs !== undefined && <span>{formatMetaDuration(elapsedMs)}</span>}
+              {hasDetails ? (
+                <ChevronRight
+                  size={12}
+                  className={`shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
+                  aria-hidden
+                />
+              ) : (
+                <span className="w-3 shrink-0" aria-hidden="true" />
+              )}
+            </>
           }
         >
-          {/* Header content: tool-specific summary or fallback to tool name.
-              Mono+600 per pencil dqwZw. */}
-          <span className={headerClassName} title={title}>
-            <span className="font-semibold">{toolLabel}</span>
-            {visibleHeader && (
-              <>
-                <span>: </span>
-                <span title={headerTitle ?? undefined}>{visibleHeader}</span>
-              </>
-            )}
-            {diffStats && (
-              <span className="ml-2 inline-flex items-center gap-1 font-semibold select-none">
-                {diffStats.additions > 0 && (
-                  <span className="text-(--color-diff-add-text)">+{diffStats.additions}</span>
-                )}
-                {diffStats.deletions > 0 && (
-                  <span className="text-(--color-diff-del-text)">-{diffStats.deletions}</span>
-                )}
-              </span>
-            )}
-          </span>
-
-          {elapsedMs !== undefined && (
-            <span className="shrink-0 font-mono text-xs md:text-[11px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
+          {state === 'running' && (
+            <span className="size-1.5 shrink-0 self-center rounded-full bg-(--color-info) motion-safe:animate-pulse" aria-hidden="true" data-running-dot="" />
           )}
-
-          {hasDetails && (
-            <ChevronRight
-              size={13}
-              className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
-              aria-hidden
-            />
+          <span className="shrink-0 font-mono font-medium text-(--color-text)">{displayName}</span>
+          {visibleHeader && (
+            <span className="min-w-0 truncate font-mono text-(--color-text-2)">{visibleHeader}</span>
           )}
-        </button>
+          {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (
+            <span className="inline-flex shrink-0 items-center gap-1 font-mono select-none">
+              {diffStats.additions > 0 && <span className="text-(--color-diff-add-text)">+{diffStats.additions}</span>}
+              {diffStats.deletions > 0 && <span className="text-(--color-diff-del-text)">−{diffStats.deletions}</span>}
+            </span>
+          )}
+          {rowSummary ? (
+            <span className={cn('min-w-0 truncate', rowSummary.error ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
+              {rowSummary.text}
+            </span>
+          ) : state === 'running' ? (
+            <span className="shrink-0 text-(--color-text-muted)">running…</span>
+          ) : null}
+        </MetaRow>
+        {(previewTarget || planLink || imageRead || sentSession) && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1">
         {previewTarget && (
           <button
             type="button"
@@ -493,7 +475,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             type="button"
             onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
             title={`Switch to the session in ${sentSession.workspace}`}
-            className="ml-2 inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
+            className="inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:py-2"
           >
             <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
             <span className="truncate">Open in {sentSession.workspaceName}</span>
@@ -501,7 +483,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         )}
         {sentSession?.createdWorktree && (
           <span
-            className="ml-2 inline-flex max-w-[60%] items-center gap-1 align-middle text-[11px] text-(--color-text-muted)"
+            className="inline-flex max-w-[60%] items-center gap-1 align-middle text-[11px] text-(--color-text-muted)"
             data-created-worktree=""
           >
             <GitBranch size={11} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
@@ -510,6 +492,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
               {sentSession.createdWorktree.branch && <> on <span className="font-mono">{sentSession.createdWorktree.branch}</span></>}
             </span>
           </span>
+        )}
+          </div>
         )}
       </div>
 
@@ -544,7 +528,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   {formattedArgs && (
                     <div>
                       <div onClick={(event) => collapse(event.currentTarget)} className="group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
-                        <span className="font-mono label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
+                        <span className="label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
                         <Tooltip>
@@ -552,7 +536,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                             render={
                               <button
                                 onClick={handleCopyArgs}
-                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                                 aria-label="Copy arguments"
                               >
                                 {copiedArgs ? (
@@ -575,17 +559,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                           >
                             <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
                           </pre>
-                          {shellResult?.statusLine && (
-                            <span
-                              className={`font-mono text-[11px] font-medium ${
-                                shellResult.statusLine.startsWith('[Succeeded')
-                                  ? 'text-(--color-success)'
-                                  : 'text-(--color-error)'
-                              }`}
-                            >
-                              {shellResult.statusLine}
-                            </span>
-                          )}
                         </div>
                       ) : (
                         <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
@@ -598,7 +571,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
                       <div onClick={(event) => collapse(event.currentTarget)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
-                        <span className="font-mono label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
+                        <span className="label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           output
                         </span>
                       </div>
@@ -622,7 +595,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                     ) : (
                       <div>
                         <div onClick={(event) => collapse(event.currentTarget)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
-                          <span className="font-mono label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
+                          <span className="label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                             result
                           </span>
                           {resultCopyButton}
@@ -634,6 +607,15 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                     )
                   )}
                 </>
+              )}
+              {longDetails && (
+                <button
+                  type="button"
+                  onClick={(event) => collapse(event.currentTarget)}
+                  className="block w-full border-t border-(--color-border) bg-(--bg-key) py-1 text-center text-[11px] text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+                >
+                  Collapse
+                </button>
               )}
             </section>
           </motion.div>

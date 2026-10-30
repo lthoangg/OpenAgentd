@@ -12,6 +12,7 @@ import { Loader2, X } from 'lucide-react'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { TELEMETRY_RANGES, type TelemetryRange } from '@/stores/useTelemetryStore'
+import { cn } from '@/lib/utils'
 import { modelName, workspaceName } from './model'
 
 const ALL = '__all__'
@@ -39,6 +40,9 @@ export interface FilterBarProps {
   facets: { workspaces: string[]; models: string[] } | null
   onClear: () => void
   fetching: boolean
+  /** Recent turns show failed turns only. */
+  errorsOnly?: boolean
+  onErrorsOnlyChange?: (errorsOnly: boolean) => void
 }
 
 function withSelection(options: string[], selected: string | null): string[] {
@@ -58,13 +62,16 @@ export function FilterBar({
   facets,
   onClear,
   fetching,
+  errorsOnly = false,
+  onErrorsOnlyChange,
 }: FilterBarProps) {
   const workspaces = facets ? withSelection(facets.workspaces, workspace) : []
   const models = facets ? withSelection(facets.models, model) : []
-  const filtered = workspace !== null || model !== null || session !== null
+  const filtered = workspace !== null || model !== null || session !== null || errorsOnly
 
   return (
-    <div className="scrollbar-none flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-(--color-border) px-3 sm:px-4">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--color-border) px-3 py-2 sm:px-4">
+      <span className="text-[11px] text-(--color-text-subtle) max-sm:sr-only" aria-hidden="true">Range</span>
       <SegmentedControl
         label="Time range"
         size="sm"
@@ -79,13 +86,23 @@ export function FilterBar({
         }))}
       />
 
+      {facets === null ? (
+        <span className="text-[11px] text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
+      ) : null}
+
       {workspaces.length > 0 && (
         <Dropdown
           aria-label="Workspace"
           value={workspace ?? ALL}
           onValueChange={(value) => onWorkspaceChange(value === ALL ? null : value)}
+          renderValue={(value, label) => (
+            <>
+              <span className="text-(--color-text-muted)">Workspace:</span>
+              <span className="min-w-0 truncate">{value === ALL ? 'All' : label}</span>
+            </>
+          )}
           trigger="All workspaces"
-          className="h-7 max-w-52 shrink-0 text-xs"
+          className="h-7 max-w-60 shrink-0 text-xs pointer-coarse:min-h-11"
         >
           <DropdownItem value={ALL}>All workspaces</DropdownItem>
           {workspaces.map((path) => (
@@ -101,8 +118,14 @@ export function FilterBar({
           aria-label="Model"
           value={model ?? ALL}
           onValueChange={(value) => onModelChange(value === ALL ? null : value)}
+          renderValue={(value, label) => (
+            <>
+              <span className="text-(--color-text-muted)">Model:</span>
+              <span className="min-w-0 truncate">{value === ALL ? 'All' : label}</span>
+            </>
+          )}
           trigger="All models"
-          className="h-7 max-w-60 shrink-0 text-xs"
+          className="h-7 max-w-64 shrink-0 text-xs pointer-coarse:min-h-11"
         >
           <DropdownItem value={ALL}>All models</DropdownItem>
           {models.map((pm) => (
@@ -121,18 +144,35 @@ export function FilterBar({
             type="button"
             onClick={() => onSessionChange(null)}
             aria-label="Remove session filter"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-11"
           >
             <X size={12} aria-hidden="true" />
           </button>
         </span>
       )}
 
+      {onErrorsOnlyChange && (
+        <button
+          type="button"
+          aria-pressed={errorsOnly}
+          onClick={() => onErrorsOnlyChange(!errorsOnly)}
+          className={cn(
+            'h-7 shrink-0 rounded-sm border px-2.5 text-xs transition-colors pointer-coarse:min-h-11',
+            'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--focus-ring)',
+            errorsOnly
+              ? 'border-(--color-error)/45 bg-(--color-error-subtle) text-(--color-error)'
+              : 'border-(--color-border) bg-(--bg-card) text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)',
+          )}
+        >
+          Failed only
+        </button>
+      )}
+
       {filtered && (
         <button
           type="button"
           onClick={onClear}
-          className="h-7 shrink-0 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          className="h-7 shrink-0 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:min-h-11"
         >
           Clear filters
         </button>

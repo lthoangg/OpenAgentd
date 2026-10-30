@@ -40,7 +40,7 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
       <button
         type="button"
         className={cn(
-          'cursor-pointer text-xs font-medium text-(--color-accent) underline-offset-4 transition-colors hover:text-(--color-accent)/80 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+          'inline-flex cursor-pointer items-center text-xs font-medium pointer-coarse:min-h-11 text-(--color-accent) underline-offset-4 transition-colors hover:text-(--color-accent)/80 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
           className,
         )}
         onClick={() => void openNotes()}

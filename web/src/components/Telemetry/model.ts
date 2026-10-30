@@ -9,7 +9,7 @@ import { pathBasename } from '@/utils/workspace'
 
 /** Label for a workspace root; ``null`` is a turn recorded before v3.0.0. */
 export function workspaceName(path: string | null): string {
-  if (path === null) return 'Not recorded'
+  if (path === null) return 'Unknown workspace'
   if (isChatWorkspacePath(path)) return 'Chat'
   return pathBasename(path)
 }

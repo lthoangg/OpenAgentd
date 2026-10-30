@@ -136,7 +136,7 @@ export function goalNow(goal: SessionGoal | null | undefined, s: GoalSessionStat
     : null
   if (s.waitingForUser) return { tone: 'wait', text: 'Waiting for your answer', note: 'The agent asked you something. The goal goes on once you answer.' }
   if (s.planReview) return { tone: 'wait', text: 'Waiting for plan approval', note: 'The goal goes on once you review the plan.' }
-  if (s.running) return { tone: 'active', text: `Working on turn ${goalTurnNumber(goal, true)} of ${goal.max_turns}`, note: queued }
+  if (s.running) return { tone: 'active', text: `Working · turn ${goalTurnNumber(goal, true)}/${goal.max_turns}`, note: queued }
   if (s.planMode) return { tone: 'wait', text: 'Waiting for Code mode', note: 'The goal starts its next turn when the session switches to Code mode.' }
   if (s.subagentsRunning > 0) {
     return { tone: 'active', text: `Waiting for ${plural(s.subagentsRunning, 'subagent')}`, note: 'Their reports start the next turn.' }
@@ -204,13 +204,13 @@ export function goalTurnInfo(block: ContentBlock): GoalTurnInfo | null {
 export function goalTurnReason(info: GoalTurnInfo): { short: string | null; text: string } {
   switch (info.why) {
     case 'rejected':
-      return { short: 'check said not yet', text: info.check ?? "The check did not accept the agent's claim that the goal was met." }
+      return { short: 'not yet', text: info.check ?? "The check did not accept the agent's claim that the goal was met." }
     case 'check_failed':
       return { short: 'check failed', text: 'The agent said the goal was met, but the check gave no verdict, so the goal went on.' }
     case 'resumed':
       return { short: 'resumed', text: 'You resumed the goal.' }
     case 'unclaimed':
-      return { short: 'not done yet', text: 'The last turn ended without the agent saying the goal was met, so the goal went on.' }
+      return { short: 'continuing', text: 'The last turn ended without the agent saying the goal was met, so the goal went on.' }
     default:
       return { short: null, text: 'The last turn ended before the goal was met, so the goal went on.' }
   }

@@ -104,7 +104,8 @@ describe('NetworkAccessCard', () => {
   it('regenerates the key', async () => {
     status = listening()
     render(<NetworkAccessCard />)
-    await userEvent.click(await screen.findByRole('button', { name: 'Regenerate' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Regenerate…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Regenerate key' }))
     await waitFor(() => expect(calls.find((c) => c.command === 'app_set_network_access_key')?.args).toEqual({ key: null }))
   })
 
@@ -124,10 +125,10 @@ describe('NetworkAccessCard', () => {
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
   })
 
-  it('is disabled while the builtin backend is stopped', async () => {
+  it('is disabled while the built-in server is stopped', async () => {
     status = base({ sidecar_running: false })
     render(<NetworkAccessCard />)
-    expect(await screen.findByText('Start the builtin backend first.')).toBeTruthy()
+    expect(await screen.findByText('Start the built-in server first.')).toBeTruthy()
     expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -160,7 +161,8 @@ describe('NetworkAccessCard', () => {
     render(<NetworkAccessCard />)
     await userEvent.click(await screen.findByRole('button', { name: 'Show QR' }))
     await screen.findByRole('img', { name: 'Connection QR code' })
-    await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Regenerate…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Regenerate key' }))
     await waitFor(() => expect(screen.queryByRole('img', { name: 'Connection QR code' })).toBeNull())
   })
 

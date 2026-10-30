@@ -235,7 +235,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
   // `role: 'user'` for RevertNotice's rendering — so `.find(m => m.role ===
   // 'user')` always matches the first entry regardless of its real type. If
   // an undo boundary lands right before a compaction, that first entry is
-  // the "Session compacted" placeholder, and the composer must not be
+  // the "Earlier messages summarized" placeholder, and the composer must not be
   // pre-filled with it instead of the human's actual undone text.
   it('skips a leading reverted compaction block and restores the real undone user text', async () => {
     const inputRef = createRef<InputComposerHandle>()
@@ -260,7 +260,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
             ...createDefaultAgentStream(),
             revertedCount: 2,
             revertedMessages: [
-              { role: 'user', content: 'Session compacted' },
+              { role: 'user', content: 'Earlier messages summarized' },
               { role: 'user', content: 'the real undone message' },
             ],
             _revertedSuffix: [
@@ -291,7 +291,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
     await waitFor(() => expect(setValueMock).toHaveBeenCalledWith('the real undone message'))
 
     expect(setValueMock).toHaveBeenCalledWith('the real undone message')
-    expect(setValueMock).not.toHaveBeenCalledWith('Session compacted')
+    expect(setValueMock).not.toHaveBeenCalledWith('Earlier messages summarized')
   })
 })
 

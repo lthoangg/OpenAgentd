@@ -67,8 +67,10 @@ const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
 // Height lives in the size map (not the base) because ``cn`` is a plain join:
 // a caller's ``h-*`` cannot override a base height it does not replace.
 const TABS_LIST_SIZE: Record<TabsSize, string> = {
-  default: 'rounded-md data-[orientation=horizontal]:h-8',
-  sm: 'rounded-sm data-[orientation=horizontal]:h-6',
+  // On touch a list is 50px so each trigger (inside 2px padding and a 1px
+  // border) is 44px.
+  default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-12.5',
+  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-12.5',
 }
 const TABS_TRIGGER_SIZE: Record<TabsSize, string> = {
   default: 'px-3 py-1 text-sm [&_svg:not([class*=size-])]:size-4',
@@ -128,7 +130,7 @@ function TabsTrigger({ className, value, id, type = 'button', onClick, onKeyDown
       className={cn(
         'relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-xs border border-transparent font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
         TABS_TRIGGER_SIZE[size],
-        'hover:bg-(--bg-card)/40 hover:text-(--color-text) active:bg-(--bg-card)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:pointer-events-none disabled:opacity-50',
+        'hover:bg-(--bg-card)/40 hover:text-(--color-text) active:bg-(--bg-card)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:pointer-events-none disabled:opacity-50',
         'data-active:bg-(--bg-card) data-active:text-(--color-text)',
         '[&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,

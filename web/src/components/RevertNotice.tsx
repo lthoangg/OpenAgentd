@@ -19,7 +19,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
     if (count === 0) setExpanded(false)
   }, [count])
   if (count <= 0) return null
-  const label = count === 1 ? '1 message reverted' : `${count} messages reverted`
+  const label = count === 1 ? '1 message undone' : `${count} messages undone`
 
   return (
     <div className="my-2 flex justify-center">
@@ -53,14 +53,14 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                 <button
                   type="button"
                   onClick={onRedo}
-                  className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text)"
+                  className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
                 >
                   <Redo2 size={13} aria-hidden="true" className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
-                  <span>Redo</span>
+                  <span>Redo next message</span>
                 </button>
               }
             />
-            <TooltipContent>Restore the next undone message (/redo)</TooltipContent>
+            <TooltipContent>Restore the next undone message and its file changes</TooltipContent>
           </Tooltip>
           {count > 1 && onRedoAll && (
             <Tooltip>
@@ -69,13 +69,13 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                   <button
                     type="button"
                     onClick={onRedoAll}
-                    className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text)"
+                    className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
                   >
                     <span>Redo all</span>
                   </button>
                 }
               />
-              <TooltipContent>Restore every undone message and return the workspace to the live tip (/redo-all)</TooltipContent>
+              <TooltipContent>Restore every undone message and its file changes</TooltipContent>
             </Tooltip>
           )}
         </div>

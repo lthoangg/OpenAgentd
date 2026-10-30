@@ -65,7 +65,8 @@ describe('CommitTabView — load failure', () => {
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-    await waitFor(() => expect(screen.queryByText('Failed to load commit changes.')).toBeNull())
+    // A boolean: a failing toBeNull pretty-prints the element on every retry.
+    await waitFor(() => expect(screen.queryByText('Failed to load commit changes.') === null).toBe(true))
     expect(screen.getByRole('button', { name: /a\.ts/ })).toBeTruthy()
   })
 })

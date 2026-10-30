@@ -1,5 +1,5 @@
 /**
- * Settings → General: the macOS notch status settings.
+ * Settings → Desktop: the macOS notch status settings (moved off General).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -23,6 +23,7 @@ mock.module('@/lib/island-setting', () => ({
   },
 }))
 
+const { DesktopSettingsPage } = await import('@/components/settings/pages/settings.desktop')
 const { GeneralSettingsPage } = await import('@/components/settings/pages/settings.general')
 
 const toggle = (name: string) => screen.findByRole('switch', { name })
@@ -35,9 +36,9 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-describe('GeneralSettingsPage notch status', () => {
+describe('DesktopSettingsPage notch status', () => {
   it('shows the saved settings, with showing in front off by default', async () => {
-    render(<GeneralSettingsPage />)
+    render(<DesktopSettingsPage />)
     expect(await toggle('Agent status in the notch')).toHaveAttribute('aria-checked', 'true')
     expect(await toggle('Show while OpenAgentd is in front')).toHaveAttribute('aria-checked', 'false')
     expect(await toggle('Keep finished sessions until opened')).toHaveAttribute('aria-checked', 'true')
@@ -46,7 +47,7 @@ describe('GeneralSettingsPage notch status', () => {
   })
 
   it('saves only the option that changed', async () => {
-    render(<GeneralSettingsPage />)
+    render(<DesktopSettingsPage />)
     fireEvent.click(await toggle('Show while OpenAgentd is in front'))
     await waitFor(() => expect(patches).toEqual([{ showWhenFrontmost: true }]))
     expect(await toggle('Show while OpenAgentd is in front')).toHaveAttribute('aria-checked', 'true')
@@ -54,7 +55,7 @@ describe('GeneralSettingsPage notch status', () => {
 
   it('disables the options while the island is off', async () => {
     stored = { ...DEFAULT_ISLAND_SETTINGS, enabled: false }
-    render(<GeneralSettingsPage />)
+    render(<DesktopSettingsPage />)
     expect(await toggle('Expand on hover')).toBeDisabled()
     fireEvent.click(await toggle('Agent status in the notch'))
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Expand on hover' })).not.toBeDisabled())
@@ -62,7 +63,7 @@ describe('GeneralSettingsPage notch status', () => {
 
   it('puts the switch back and says why when saving fails', async () => {
     failWrite = true
-    render(<GeneralSettingsPage />)
+    render(<DesktopSettingsPage />)
     const main = await toggle('Agent status in the notch')
 
     fireEvent.click(main)
@@ -72,8 +73,21 @@ describe('GeneralSettingsPage notch status', () => {
 
   it('has no notch section outside the macOS app', async () => {
     supported = false
+    render(<DesktopSettingsPage />)
+    await screen.findByText('Desktop')
+    expect(screen.queryByText('Agent status in the notch')).toBeNull()
+  })
+
+  it('keeps General to theme and transcript', async () => {
     render(<GeneralSettingsPage />)
     await screen.findByText('Theme')
     expect(screen.queryByText('Agent status in the notch')).toBeNull()
+  })
+
+  it('says why the options are off', async () => {
+    stored = { ...DEFAULT_ISLAND_SETTINGS, enabled: false }
+    render(<DesktopSettingsPage />)
+    await toggle('Expand on hover')
+    expect(screen.getAllByText('Turn on Agent status to change this.').length).toBe(3)
   })
 })

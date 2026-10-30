@@ -49,8 +49,10 @@ describe('scheduler overlay on phones', () => {
     useUIStore.getState().focusScheduledTask('t1')
     renderPanel()
 
-    const runNow = await screen.findByRole('button', { name: 'Trigger now' })
+    const runNow = await screen.findByRole('button', { name: 'Run now' })
     expect(runNow).toHaveTextContent('Run now')
+    expect(screen.queryByRole('button', { name: 'Trigger now' })).toBeNull()
+    expect(runNow).not.toHaveAttribute('aria-label')
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveTextContent('Pause')
     expect(screen.getByRole('button', { name: 'Edit task' })).toBeInTheDocument()
     // The overlay header holds the title and Back; the pane repeats neither.
@@ -74,11 +76,13 @@ describe('scheduler overlay on phones', () => {
   it('opens the create form without a second header', async () => {
     renderPanel()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Create new task' }))
+    // The list's "+" is named for what it opens
+    fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
+    expect(screen.queryByRole('button', { name: 'Create new task' })).toBeNull()
 
     await waitFor(() => expect(screen.getByRole('button', { name: /Create task/ })).toBeInTheDocument())
     // Only the overlay header's title; the pane no longer repeats it.
-    expect(screen.getAllByRole('heading', { name: 'Create task' })).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { name: 'New task' })).toHaveLength(1)
     expect(screen.getByLabelText('Max runs (optional)')).toHaveAttribute('inputmode', 'numeric')
     // The overlay already pads the safe area; only the dock sheet adds it.
     expect(screen.getByRole('button', { name: /Create task/ }).parentElement).not.toHaveClass('pb-safe')
@@ -88,7 +92,7 @@ describe('scheduler overlay on phones', () => {
     useUIStore.getState().focusScheduledTask('t1')
     renderPanel(<SchedulerDockView contextWorkspace={null} />)
 
-    const runNow = await screen.findByRole('button', { name: 'Trigger now' })
+    const runNow = await screen.findByRole('button', { name: 'Run now' })
     expect(runNow.parentElement).toHaveClass('pb-safe')
   })
 })

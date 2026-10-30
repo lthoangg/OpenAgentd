@@ -39,6 +39,11 @@ function renderCard(provider: ProviderInfo) {
   )
 }
 
+/** Opens a key's "More actions" menu (Try earlier / Try later / Disable …). */
+function openMore(label: string) {
+  fireEvent.click(screen.getByRole('button', { name: `More actions for ${label}` }))
+}
+
 function credential(overrides: Partial<StoredCredential>): StoredCredential {
   return {
     id: 'cred_a',
@@ -123,20 +128,50 @@ describe('ProviderCard — several API keys', () => {
     expect(container.textContent).not.toContain('sk-')
   })
 
-  it('moves a key down with the keyboard-reachable button', async () => {
+  it('keeps only Reconnect / Rename / Remove… as visible per-key buttons, the rest in a More menu', () => {
     renderCard(openai)
-    fireEvent.click(screen.getByRole('button', { name: 'Move Personal down' }))
+    const rows = within(screen.getByRole('list', { name: 'OpenAI keys' })).getAllByRole('listitem')
+    expect(within(rows[0]).getByRole('button', { name: 'Rename' })).toBeTruthy()
+    expect(within(rows[0]).getByRole('button', { name: 'Remove…' })).toBeTruthy()
+    expect(within(rows[0]).getByRole('button', { name: 'More actions for Personal' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Move Personal down' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Move Personal up' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Disable' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
+  })
+
+  it('shows key statuses as chips', () => {
+    renderCard(openai)
+    const rows = within(screen.getByRole('list', { name: 'OpenAI keys' })).getAllByRole('listitem')
+    expect(within(rows[0]).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('info')
+    expect(within(rows[0]).getByText('Ready').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(rows[1]).getByText(/Usage limit reached/).closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('warning')
+  })
+
+  it('moves a key down from the More menu, and offers no earlier slot to the first key', async () => {
+    renderCard(openai)
+    openMore('Personal')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Try later' }))
     await waitFor(() => expect(mockOrder).toHaveBeenCalledTimes(1))
     expect(mockOrder.mock.calls[0]).toEqual(['openai', ['cred_b', 'cred_a']])
-    expect((screen.getByRole('button', { name: 'Move Personal up' }) as HTMLButtonElement).disabled).toBe(true)
+
+    openMore('Personal')
+    expect((screen.getByRole('menuitem', { name: 'Try earlier' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('disables a key from the More menu', async () => {
+    renderCard(openai)
+    openMore('Work')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Disable' }))
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('openai', 'cred_b', { disabled: true }))
   })
 
   it('asks for confirmation before removing a key', async () => {
     renderCard(openai)
     const rows = within(screen.getByRole('list', { name: 'OpenAI keys' })).getAllByRole('listitem')
-    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Remove' }))
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Remove…' }))
     expect(mockDelete).not.toHaveBeenCalled()
-    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Confirm remove' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove key' }))
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('openai', 'cred_b'))
   })
 
@@ -156,7 +191,7 @@ describe('ProviderCard — several API keys', () => {
     fireEvent.change(screen.getByPlaceholderText('Name (e.g. Work)'), { target: { value: 'Backup' } })
     fireEvent.change(screen.getByPlaceholderText('Paste another API key'), { target: { value: 'sk-test-third' } })
     expect(add.disabled).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'List models' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
     await waitFor(() => expect(add.disabled).toBe(false))
     fireEvent.click(add)
     await waitFor(() => expect(mockAdd).toHaveBeenCalledTimes(1))
@@ -207,8 +242,9 @@ describe('ProviderCard — several OAuth accounts', () => {
   it('removes only the chosen account', async () => {
     renderCard(codex)
     const rows = within(screen.getByRole('list', { name: 'Codex accounts' })).getAllByRole('listitem')
-    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Remove' }))
-    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Confirm remove' }))
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Remove…' }))
+    expect(mockDisconnectOauth).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove account' }))
     await waitFor(() => expect(mockDisconnectOauth).toHaveBeenCalledWith('codex', 'cred_me'))
   })
 })

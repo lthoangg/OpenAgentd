@@ -35,7 +35,12 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
   const metric: Metric = hasCost ? chosen : 'turns'
   const value = (p: DayPoint) => (metric === 'spend' ? p.cost : p.turns)
   const max = Math.max(0, ...points.map(value))
-  const peak = metric === 'spend' ? formatSpend(max) : `${formatCompact(max)} turns`
+  const fmt = (v: number) => (metric === 'spend' ? formatSpend(v) : `${formatCompact(v)} ${v === 1 ? 'turn' : 'turns'}`)
+  const peakPoint = max > 0 ? points.find((p) => value(p) === max) : undefined
+  // Tapping a bar shows its numbers under the chart: touch has no hover.
+  const [picked, setPicked] = useState<string | null>(null)
+  const pickedPoint = picked === null ? undefined : points.find((p) => p.day === picked)
+  const mid = points.length > 2 ? points[Math.floor((points.length - 1) / 2)] : undefined
   // Roving tab stop: the chart is one Tab stop (a 90-day range would
   // otherwise add 90); arrow keys walk the days and focus shows the tooltip.
   const listRef = useRef<HTMLDivElement>(null)
@@ -58,7 +63,7 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
   return (
     <SectionCard>
       <SectionCardHeader className="flex items-center justify-between gap-2 py-1">
-        <span>Activity</span>
+        <span>{metric === 'spend' ? 'Spend per day' : 'Turns per day'}</span>
         {hasCost && (
           <SegmentedControl
             label="Chart metric"
@@ -73,7 +78,13 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
       <div className="px-3 pt-2 pb-2.5">
         <div className="mb-1 flex items-baseline justify-between text-[11px] text-(--color-text-subtle)">
           <span>
-            Peak <span className="font-mono text-(--color-text-muted)">{peak}</span>
+            {peakPoint ? (
+              <>
+                Busiest day: <span className="font-mono text-(--color-text-muted)">{fmt(max)}</span> on {dayLabel(peakPoint.day)}
+              </>
+            ) : (
+              'No activity in this range'
+            )}
           </span>
           {metric === 'turns' && points.some((p) => p.failed > 0) && (
             <span className="flex items-center gap-1">
@@ -82,11 +93,16 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
             </span>
           )}
         </div>
+        <div className="flex gap-2">
+        <div aria-hidden="true" className="flex h-28 w-12 shrink-0 flex-col justify-between text-right font-mono text-[11px] text-(--color-text-subtle)">
+          <span>{metric === 'spend' ? formatSpend(max) : formatCompact(max)}</span>
+          <span>{metric === 'spend' ? '$0' : '0'}</span>
+        </div>
         <div
           ref={listRef}
           role="list"
           aria-label={metric === 'spend' ? 'Spend per day' : 'Turns per day'}
-          className="flex h-28 items-end gap-px border-b border-(--color-border-subtle)"
+          className="flex h-28 min-w-0 flex-1 items-end gap-px border-b border-(--color-border-subtle)"
           onKeyDown={handleKeyDown}
         >
           {points.map((point, index) => {
@@ -103,7 +119,8 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
                       aria-label={barLabel(point)}
                       tabIndex={index === focusIndex ? 0 : -1}
                       onFocus={() => setFocusDay(point.day)}
-                      className="group flex h-full min-w-0 flex-1 items-end rounded-t-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                      onClick={() => setPicked((d) => (d === point.day ? null : point.day))}
+                      className="group flex h-full min-w-0 flex-1 items-end rounded-t-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                     >
                       <div
                         className="flex w-full flex-col-reverse overflow-hidden rounded-t-xs bg-(--color-text-subtle)/45 transition-colors duration-(--motion-instant) group-hover:bg-(--color-accent)/70 group-focus-visible:bg-(--color-accent)/70"
@@ -119,12 +136,18 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
             )
           })}
         </div>
+        </div>
         {points.length > 0 && (
-          <div className="mt-1 flex justify-between font-mono text-[11px] text-(--color-text-subtle)">
+          <div className="mt-1 ml-14 flex justify-between font-mono text-[11px] text-(--color-text-subtle)">
             <span>{dayLabel(points[0].day)}</span>
+            {mid && <span>{dayLabel(mid.day)}</span>}
             {points.length > 1 && <span>{dayLabel(points[points.length - 1].day)}</span>}
           </div>
         )}
+        <p className="mt-1.5 flex justify-between gap-2 text-[11px] text-(--color-text-subtle)" aria-live="polite">
+          <span className="text-(--color-text-muted)">{pickedPoint ? barLabel(pickedPoint) : 'Select a bar for its numbers.'}</span>
+          <span>Days in UTC</span>
+        </p>
       </div>
     </SectionCard>
   )

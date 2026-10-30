@@ -11,6 +11,7 @@ import { Field } from '@/components/ui/field'
 import { type AgentFrontmatter } from '../frontmatter'
 import { validateDescription, validateModel } from '../schema'
 import { ModelCombobox, type ModelOption } from './ModelCombobox'
+import { isUnconfiguredModel } from '@/lib/model-readiness'
 
 const FALLBACK_THINKING_LEVELS = ['none']
 
@@ -84,7 +85,9 @@ export function FormFields({
     () => currentModelOptions.map((m) => m.id),
     [currentModelOptions],
   )
-  const modelError = validateModel(fm.model ?? '', {
+  // A fresh install seeds a placeholder id; show it as "not set", never raw.
+  const modelUnset = isUnconfiguredModel(fm.model)
+  const modelError = modelUnset ? null : validateModel(fm.model ?? '', {
     required: true,
     validValues: validModelIds,
   })
@@ -123,7 +126,7 @@ export function FormFields({
             label="Description"
             error={descriptionError}
             className="md:col-span-2"
-            hint="One-line summary shown in the agent registry."
+            hint="One line, shown in the agents list and to the main agent."
           >
             <Input
               type="text"
@@ -142,12 +145,18 @@ export function FormFields({
         </div>
       </PanelSection>
 
-      {/* Model & behaviour ─────────────────────────────────────── */}
-      <PanelSection title="Model & behaviour" description="Which model runs this agent, and how deeply it reasons.">
+      {/* Model and thinking ─────────────────────────────────────── */}
+      <PanelSection title="Model and thinking" description="Which model runs this agent, and how deeply it reasons.">
         <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-          <Field label="Model" required error={modelError} className="md:col-span-2">
+          <Field
+            label="Model"
+            required
+            error={modelError}
+            className="md:col-span-2"
+            hint={modelUnset ? 'Not set yet. It is filled in when you connect a provider, or pick one here.' : undefined}
+          >
             <ModelCombobox
-              value={fm.model ?? ''}
+              value={modelUnset ? '' : (fm.model ?? '')}
               options={currentModelOptions}
               onChange={(v) => {
                 const nextFm = { ...fm, model: v }
@@ -180,9 +189,9 @@ export function FormFields({
               className="min-h-9 w-full"
               disabled={disabled}
             >
-              <DropdownItem value="__none__">(default)</DropdownItem>
+              <DropdownItem value="__none__">Default</DropdownItem>
               {thinkingLevels.map((lvl) => (
-                <DropdownItem key={lvl} value={lvl}>{lvl}</DropdownItem>
+                <DropdownItem key={lvl} value={lvl}>{lvl.charAt(0).toUpperCase() + lvl.slice(1)}</DropdownItem>
               ))}
             </Dropdown>
           </Field>
@@ -221,7 +230,7 @@ export function FormFields({
       {/* System prompt ─────────────────────────────────────────── */}
       <PanelSection
         title="System prompt"
-        description={isLead ? 'Custom instructions for the lead agent.' : "Instructions that define this agent's behavior."}
+        description={isLead ? 'Custom instructions for the main agent.' : "Instructions that define this agent's behavior."}
       >
         <div className="flex flex-col gap-3">
           {isLead && !body.trim() && (

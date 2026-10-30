@@ -306,10 +306,57 @@ describe("DiffView — LSP Diagnostics integration", () => {
     expect(screen.getByText("src/main.py")).toBeTruthy()
     expect(screen.getByText("def foo(")).toBeTruthy()
 
-    // Verify LSP diagnostics are rendered (compact label)
-    expect(screen.getByText("ERR")).toBeTruthy()
+    // Verify LSP diagnostics are rendered: severity in words, in sans
+    const label = screen.getByText("Error")
+    expect(label.className).toContain("font-sans")
+    expect(screen.queryByText("ERR")).toBeNull()
+    // An error line carries the error tint
+    expect(label.closest("div")?.className).toContain("bg-(--color-error-subtle)")
     expect(screen.getByText("1:9")).toBeTruthy()
     expect(screen.getByText("unexpected EOF while parsing")).toBeTruthy()
+  })
+
+  it("labels a warning diagnostic 'Warning' and tints only error lines", () => {
+    const result =
+      "Written 8 bytes to src/main.py\n\n[LSP Diagnostics]\n- src/main.py:1:9: error: bad syntax (Ruff)\n- src/main.py:2:1: warning: unused import (Ruff)"
+
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: "*** Begin Patch\n*** Update File: src/main.py\n@@\n-foo\n+def foo(\n*** End Patch" })} result={result} />)
+
+    expect(screen.queryByText("WARN")).toBeNull()
+    expect(screen.getByText("Error").closest("div")?.className).toContain("bg-(--color-error-subtle)")
+    expect(screen.getByText("Warning").closest("div")?.className).not.toContain("bg-(--color-error-subtle)")
+  })
+
+  it("labels each file with a word chip: New file, Deleted, Moved, Moved and edited, Edited", () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Add File: added.txt",
+      "+hello",
+      "*** Delete File: removed.txt",
+      "*** Update File: renamed.txt",
+      "*** Move to: moved.txt",
+      "*** Update File: renamed-edit.txt",
+      "*** Move to: moved-edit.txt",
+      "@@",
+      "-a",
+      "+b",
+      "*** Update File: edited.txt",
+      "@@",
+      "-x",
+      "+y",
+      "*** End Patch",
+    ].join("\n")
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: patchText })} />)
+
+    const chip = (text: string) => screen.getByText(text).closest('[data-slot="chip"]')
+    expect(chip("New file")?.getAttribute("data-tone")).toBe("success")
+    expect(chip("Deleted")?.getAttribute("data-tone")).toBe("error")
+    expect(chip("Moved")?.getAttribute("data-tone")).toBe("neutral")
+    expect(chip("Moved and edited")?.getAttribute("data-tone")).toBe("neutral")
+    expect(chip("Edited")?.getAttribute("data-tone")).toBe("neutral")
+    for (const old of ["CREATE", "DELETE", "MOVE", "MOVE & EDIT", "UPDATE"]) {
+      expect(screen.queryByText(old)).toBeNull()
+    }
   })
 
   it("caps a long inline diff and expands on request", () => {

@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUIStore } from '@/stores/useUIStore'
 
 afterEach(() => {
-  useTelemetryStore.setState({ days: 7, workspace: null, model: null, session: null, errorsOnly: false, traceId: null })
+  useTelemetryStore.setState({ days: 7, workspace: null, model: null, session: null, errorsOnly: false, traceId: null, spanId: null })
   useUIStore.setState({ telemetryOpen: false, schedulerOpen: false })
   useSettingsStore.getState().closeSettings()
   localStorage.removeItem('oa.telemetry.v1')
@@ -22,6 +22,49 @@ describe('useTelemetryStore', () => {
     useTelemetryStore.setState({ workspace: '/w/app', traceId: 'old-trace' })
     openTelemetry()
     expect(useTelemetryStore.getState()).toMatchObject({ workspace: '/w/app', traceId: null })
+  })
+
+  it('openTelemetry, openTrace and closeTrace reset the open span', () => {
+    useTelemetryStore.setState({ traceId: 'trace-1', spanId: 'span-1' })
+    openTelemetry({ traceId: 'trace-2' })
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: 'trace-2', spanId: null })
+
+    useTelemetryStore.getState().selectSpan('span-2')
+    useTelemetryStore.getState().openTrace('trace-3')
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: 'trace-3', spanId: null })
+
+    useTelemetryStore.getState().selectSpan('span-3')
+    useTelemetryStore.getState().closeTrace()
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: null, spanId: null })
+
+    useTelemetryStore.setState({ traceId: 'trace-4', spanId: 'span-4' })
+    openTelemetry()
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: null, spanId: null })
+  })
+
+  it('selectSpan opens and clears a span without touching the trace', () => {
+    useTelemetryStore.getState().openTrace('trace-1')
+    useTelemetryStore.getState().selectSpan('span-1')
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: 'trace-1', spanId: 'span-1' })
+    useTelemetryStore.getState().selectSpan(null)
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: 'trace-1', spanId: null })
+  })
+
+  it('stepBack leaves the open span first, then the trace, and reports false when nothing is open', () => {
+    useTelemetryStore.setState({ traceId: 'trace-1', spanId: 'span-1' })
+    expect(useTelemetryStore.getState().stepBack()).toBe(true)
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: 'trace-1', spanId: null })
+
+    expect(useTelemetryStore.getState().stepBack()).toBe(true)
+    expect(useTelemetryStore.getState()).toMatchObject({ traceId: null, spanId: null })
+
+    expect(useTelemetryStore.getState().stepBack()).toBe(false)
+  })
+
+  it('does not persist the open span', () => {
+    useTelemetryStore.setState({ days: 30, traceId: 'trace-1', spanId: 'span-1' })
+    const saved = JSON.parse(localStorage.getItem('oa.telemetry.v1') ?? '{}') as { state?: Record<string, unknown> }
+    expect(saved.state).toEqual({ days: 30 })
   })
 
   it('openTelemetry closes Settings (overlays are mutually exclusive)', () => {

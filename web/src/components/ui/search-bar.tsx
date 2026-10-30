@@ -139,7 +139,7 @@ function SearchBar({
               'mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm md:h-5 md:w-5',
               'text-(--color-text-subtle) transition-colors',
               'hover:bg-(--bg-key) hover:text-(--color-text)',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
             )}
           >
             <X size={11} aria-hidden="true" />

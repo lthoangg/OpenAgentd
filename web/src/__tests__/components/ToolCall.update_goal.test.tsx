@@ -16,9 +16,9 @@ describe('update_goal card', () => {
   it('says the claim is being checked, with its evidence one click away', () => {
     render(<ToolCall name="update_goal" args={CLAIM} done={false} />)
 
-    const card = screen.getByRole('region', { name: 'Goal check' })
-    expect(within(card).getByRole('status').textContent).toContain('Checking the claim')
-    const evidence = within(card).getByRole('button', { name: /Claimed evidence · 2/ })
+    const card = screen.getByRole('region', { name: 'Goal check: checking…' })
+    expect(within(card).getByRole('status').textContent).toContain('checking…')
+    const evidence = within(card).getByRole('button', { name: /Evidence · 2/ })
     expect(evidence.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(evidence)
     expect(evidence.getAttribute('aria-expanded')).toBe('true')
@@ -29,7 +29,7 @@ describe('update_goal card', () => {
     const result = 'The check confirmed the goal is met: Both commands pass.\nThe goal is achieved. Stop goal work and give the user a short summary.'
     render(<ToolCall name="update_goal" args={CLAIM} result={result} done />)
 
-    const card = screen.getByRole('region', { name: 'Goal achieved' })
+    const card = screen.getByRole('region', { name: 'Goal check: achieved' })
     expect(card.dataset.goalClaim).toBe('achieved')
     expect(card.textContent).toContain('Both commands pass.')
     expect(card.textContent).not.toContain('Stop goal work')
@@ -41,12 +41,12 @@ describe('update_goal card', () => {
   it('shows a rejected claim with the check reason, and says the goal goes on', () => {
     render(<ToolCall name="update_goal" args={CLAIM} result={REJECTED} done />)
 
-    const card = screen.getByRole('region', { name: 'Goal check' })
+    const card = screen.getByRole('region', { name: 'Goal check: not yet' })
     expect(card.dataset.goalClaim).toBe('rejected')
-    expect(card.textContent).toContain('Not yet')
+    expect(card.textContent).toContain('The agent keeps working.')
     expect(card.textContent).toContain('No test output is shown.')
     expect(card.textContent).not.toContain('Keep working on what')
-    expect(within(card).getByRole('button', { name: /Claimed evidence · 2/ }).getAttribute('aria-expanded')).toBe('false')
+    expect(within(card).getByRole('button', { name: /Evidence · 2/ }).getAttribute('aria-expanded')).toBe('false')
   })
 
   it('opens the evidence when a live claim is accepted', () => {
@@ -54,24 +54,24 @@ describe('update_goal card', () => {
     const { rerender } = render(<ToolCall name="update_goal" args={CLAIM} done={false} />)
     rerender(<ToolCall name="update_goal" args={CLAIM} result={result} done />)
 
-    const card = screen.getByRole('region', { name: 'Goal achieved' })
+    const card = screen.getByRole('region', { name: 'Goal check: achieved' })
     expect(within(card).getByRole('button', { name: /Evidence · 2/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('keeps the evidence the way the user left it once they toggle it', () => {
     const { rerender } = render(<ToolCall name="update_goal" args={CLAIM} done={false} />)
-    fireEvent.click(screen.getByRole('button', { name: /Claimed evidence · 2/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Evidence · 2/ }))
     rerender(<ToolCall name="update_goal" args={CLAIM} result={REJECTED} done />)
 
-    expect(screen.getByRole('button', { name: /Claimed evidence · 2/ }).getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('button', { name: /Evidence · 2/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('says when rejected claims paused the goal', () => {
     const result = 'The check did not accept the claim: tsc still fails.\nIt rejected 3 claims in a row, so the goal is paused until the user resumes it.'
     render(<ToolCall name="update_goal" args={CLAIM} result={result} done />)
 
-    const card = screen.getByRole('region', { name: 'Goal check' })
-    expect(card.textContent).toContain('Not met · goal paused until you resume it')
+    const card = screen.getByRole('region', { name: 'Goal check: not met' })
+    expect(card.textContent).toContain('Goal paused until you resume it.')
     expect(card.textContent).toContain('tsc still fails.')
   })
 
@@ -79,21 +79,21 @@ describe('update_goal card', () => {
     const result = 'The completion check failed: The check replied without a verdict.\nThe claim was neither accepted nor rejected, and the goal stays active.'
     render(<ToolCall name="update_goal" args={CLAIM} result={result} done />)
 
-    const card = screen.getByRole('region', { name: 'Goal check' })
+    const card = screen.getByRole('region', { name: 'Goal check: check failed' })
     expect(card.dataset.goalClaim).toBe('unchecked')
-    expect(card.textContent).toContain('Check failed · the agent can claim again')
+    expect(card.textContent).toContain('The agent can claim again.')
     expect(card.textContent).toContain('The check replied without a verdict.')
-    expect(card.textContent).not.toContain('Not yet')
+    expect(card.textContent).not.toContain('not yet')
   })
 
   it('shows a blocker and that the goal waits for the user', () => {
     const args = JSON.stringify({ status: 'blocked', reason: 'The staging key is missing.' })
     render(<ToolCall name="update_goal" args={args} result="The goal is paused as blocked until the user resumes it." done />)
 
-    const card = screen.getByRole('region', { name: 'Goal blocked' })
+    const card = screen.getByRole('region', { name: 'Goal check: blocked' })
     expect(card.dataset.goalClaim).toBe('blocked')
     expect(card.textContent).toContain('The staging key is missing.')
-    expect(card.textContent).toContain('Paused until you resume it')
+    expect(card.textContent).toContain('Goal paused until you resume it.')
     expect(within(card).queryByRole('button')).toBeNull()
   })
 })

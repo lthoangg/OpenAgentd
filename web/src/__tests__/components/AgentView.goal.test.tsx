@@ -46,7 +46,7 @@ describe('AgentView — goal markers', () => {
     render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
 
     const divider = screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' })
-    expect(divider.textContent).toBe('Goal · turn 2 of 50 · not done yet')
+    expect(divider.textContent).toBe('Goal · turn 2/50 · continuing')
     // The hidden reminder is never shown as the user's words.
     expect(screen.queryByText(/goal_reminder/)).toBeNull()
   })
@@ -56,7 +56,7 @@ describe('AgentView — goal markers', () => {
 
     const divider = screen.getByRole('group', { name: 'Goal continues: turn 3 of 50' })
     const toggle = divider.querySelector('button')!
-    expect(toggle.textContent).toBe('Goal · turn 3 of 50 · check said not yet')
+    expect(toggle.textContent).toBe('Goal · turn 3/50 · not yet')
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
 
     fireEvent.click(toggle)
@@ -71,7 +71,7 @@ describe('AgentView — goal markers', () => {
     const user = userEvent.setup()
     render(<AgentView blocks={[...BLOCKS, REJECTED]} currentBlocks={[]} isWorking={false} />)
 
-    await user.hover(screen.getByRole('button', { name: /turn 3 of 50/ }))
+    await user.hover(screen.getByRole('button', { name: /turn 3\/50/ }))
 
     const tip = await screen.findByRole('tooltip', undefined, { timeout: 2000 })
     expect(tip.textContent).toBe('No bun test run after the last patch is shown.')
@@ -82,7 +82,7 @@ describe('AgentView — goal markers', () => {
     render(<AgentView blocks={[...BLOCKS, last]} currentBlocks={[]} isWorking={false} />)
 
     // A turn from before the reason was recorded has no reason in its label.
-    expect(screen.getByRole('group', { name: 'Goal continues: turn 50 of 50, the last one' }).textContent).toBe('Goal · turn 50 of 50 · last')
+    expect(screen.getByRole('group', { name: 'Goal continues: turn 50 of 50, the last one' }).textContent).toBe('Goal · turn 50/50 · last')
   })
 
   it('shows the goal markers and the achieved card in reader mode, with the work folded', () => {
@@ -98,8 +98,8 @@ describe('AgentView — goal markers', () => {
     ]
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    expect(screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' }).textContent).toBe('Goal · turn 2 of 50 · not done yet')
-    expect(screen.getByRole('region', { name: 'Goal achieved' }).textContent).toContain('The run shows 0 failures.')
+    expect(screen.getByRole('group', { name: 'Goal continues: turn 2 of 50' }).textContent).toBe('Goal · turn 2/50 · continuing')
+    expect(screen.getByRole('region', { name: 'Goal check: achieved' }).textContent).toContain('The run shows 0 failures.')
     expect(screen.getByRole('button', { name: /^1 command/ }).getAttribute('aria-expanded')).toBe('false')
   })
 

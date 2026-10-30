@@ -26,9 +26,9 @@ export const GOAL_TAB_ID = 'goal'
 export type DockTab =
   | { id: typeof REVIEW_TAB_ID; type: 'review'; title: 'Git' }
   | { id: typeof TASKS_TAB_ID; type: 'tasks'; title: 'Tasks' }
-  | { id: typeof SCHEDULE_TAB_ID; type: 'schedule'; title: 'Schedule' }
+  | { id: typeof SCHEDULE_TAB_ID; type: 'schedule'; title: 'Scheduled tasks' }
   | { id: typeof PLAN_TAB_ID; type: 'plan'; title: 'Plan' }
-  | { id: typeof BTW_TAB_ID; type: 'btw'; title: 'BTW' }
+  | { id: typeof BTW_TAB_ID; type: 'btw'; title: 'Side questions' }
   /** The title follows the goal ("Goal 7/50", "Goal paused"); see ``goalTabTitle``. */
   | { id: typeof GOAL_TAB_ID; type: 'goal'; title: string }
   | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo }
@@ -96,9 +96,9 @@ export interface AttachmentTabRequest {
 
 export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Git' }
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
-export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Schedule' }
+export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Scheduled tasks' }
 export const PLAN_TAB: DockTabOf<'plan'> = { id: PLAN_TAB_ID, type: 'plan', title: 'Plan' }
-export const BTW_TAB: DockTabOf<'btw'> = { id: BTW_TAB_ID, type: 'btw', title: 'BTW' }
+export const BTW_TAB: DockTabOf<'btw'> = { id: BTW_TAB_ID, type: 'btw', title: 'Side questions' }
 export const GOAL_TAB: DockTabOf<'goal'> = { id: GOAL_TAB_ID, type: 'goal', title: 'Goal' }
 
 const VIEW_TABS: Record<DockView, DockTab> = { review: REVIEW_TAB, tasks: TASKS_TAB, schedule: SCHEDULE_TAB, plan: PLAN_TAB, btw: BTW_TAB, goal: GOAL_TAB }

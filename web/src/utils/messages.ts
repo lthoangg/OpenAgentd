@@ -66,15 +66,19 @@ function assistantBlocks(
 
   const extra = msg.extra as {
     duration_ms?: number
+    thinking_duration_ms?: number
     model?: unknown
     thinking_level?: unknown
-    usage?: { output?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }
+    usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }
     cost?: { estimated_usd?: number }
     estimated_cost_usd?: number
   } | null
   const responseDurationMs = typeof extra?.duration_ms === 'number' ? extra.duration_ms : undefined
   const model = typeof extra?.model === 'string' ? extra.model : undefined
   const thinkingLevel = typeof extra?.thinking_level === 'string' ? extra.thinking_level : undefined
+  if (typeof extra?.thinking_duration_ms === 'number' && blocks[0]?.type === 'thinking') {
+    blocks[0].thinkingDurationMs = extra.thinking_duration_ms
+  }
 
   // Me text before tools — LLM emits content first, then tool_calls
   if (msg.content) {
@@ -121,6 +125,8 @@ function assistantBlocks(
     const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? extra.cost?.estimated_usd ?? 0
     const owner = blocks.find((b) => b.type === 'text') ?? blocks[0]
     owner.usage = { outputTokens: extra.usage.output ?? 0, costUsd }
+    if (typeof extra.usage.input === 'number') owner.usage.inputTokens = extra.usage.input
+    if (typeof extra.usage.cache === 'number') owner.usage.cachedTokens = extra.usage.cache
   }
 
   return blocks

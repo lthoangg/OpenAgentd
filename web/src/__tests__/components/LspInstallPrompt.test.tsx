@@ -32,8 +32,8 @@ it('asks before installing TypeScript tooling on the backend and installs after 
   render(<LspInstallPrompt />)
 
   expect(screen.getByRole('dialog')).toHaveTextContent('Install TypeScript language tools?')
-  expect(screen.getByText(/installed on the backend/i)).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: /install on backend/i }))
+  expect(screen.getByText(/installed on the server/i)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^install$/i }))
 
   await waitFor(() => expect(installTypeScriptLsp).toHaveBeenCalledTimes(1))
   expect(await screen.findByText(/ready/i)).toBeInTheDocument()
@@ -41,7 +41,7 @@ it('asks before installing TypeScript tooling on the backend and installs after 
 
 it('does not carry completed install state into a later backend request', async () => {
   render(<LspInstallPrompt />)
-  fireEvent.click(screen.getByRole('button', { name: /install on backend/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^install$/i }))
   expect(await screen.findByText(/ready/i)).toBeInTheDocument()
 
   act(() => {
@@ -54,7 +54,7 @@ it('does not carry completed install state into a later backend request', async 
     })
   })
 
-  expect(await screen.findByRole('button', { name: /install on backend/i })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: /^install$/i })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /^close$/i })).toBeNull()
 })
 
@@ -62,7 +62,7 @@ it('keeps the prompt open and shows an install failure', async () => {
   installError = new Error('download failed')
   render(<LspInstallPrompt />)
 
-  fireEvent.click(screen.getByRole('button', { name: /install on backend/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^install$/i }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('download failed')
   expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -71,7 +71,7 @@ it('keeps the prompt open and shows an install failure', async () => {
 it('dismisses without installing', () => {
   render(<LspInstallPrompt />)
 
-  fireEvent.click(screen.getByRole('button', { name: /not now/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^later$/i }))
 
   expect(installTypeScriptLsp).not.toHaveBeenCalled()
   expect(useLspInstallStore.getState().request).toBeNull()

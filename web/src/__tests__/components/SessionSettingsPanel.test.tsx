@@ -151,6 +151,14 @@ describe('SessionSettingsPanel — keyboard entry', () => {
     expect(screen.getByText('read')).toBeTruthy()
   })
 
+  it('has no "Esc or click outside" footer hint', async () => {
+    renderPanel()
+
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    expect(screen.queryByText(/Esc or click outside to close/i)).toBeNull()
+    expect(screen.queryByText(/to toggle/i)).toBeNull()
+  })
+
   it('closes on its own toggle shortcut, even with focus in the model field', async () => {
     const onClose = mock(() => {})
     renderPanel(onClose)

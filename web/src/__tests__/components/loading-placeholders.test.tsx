@@ -35,7 +35,7 @@ describe('loading placeholders wait a beat', () => {
 
   it('telemetry skeleton', () => {
     const { container } = render(<TelemetrySkeleton />)
-    expect(waitsABeat(container.querySelector('[aria-label="Loading telemetry"]'))).toBe(true)
+    expect(waitsABeat(container.querySelector('[aria-label="Loading usage"]'))).toBe(true)
   })
 
   it('scheduler task list spinner', () => {

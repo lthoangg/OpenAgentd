@@ -1,6 +1,6 @@
 /**
  * Review dock web preview tabs: opened by a keyed shell request or the tab
- * bar's New preview action, kept mounted across tab switches, and closing
+ * bar's Open… → Preview action, kept mounted across tab switches, and closing
  * their listener with the last tab that uses it.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -116,10 +116,11 @@ describe('Review dock preview tabs', () => {
     expect(frame?.closest('.hidden')).toBeNull()
   })
 
-  it('opens the last dev server from New preview and closes its listener with the tab', async () => {
+  it('opens the last dev server from Open… → Preview and closes its listener with the tab', async () => {
     localStorage.setItem(`oa-preview-last-url:${WORKSPACE}`, 'http://localhost:3000/app')
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'New preview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in the review panel' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }))
     await screen.findByRole('button', { name: 'Preview localhost:3000' })
     await waitFor(() => expect(posts()[0]?.body).toEqual({ workspace: WORKSPACE, url: 'http://localhost:3000/app' }))
 

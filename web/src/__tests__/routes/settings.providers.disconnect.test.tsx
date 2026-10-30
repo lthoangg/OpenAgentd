@@ -2,10 +2,10 @@
  * Tests for provider disconnect/reconnect in ProviderCard and ProvidersSettingsPage.
  *
  * Covers:
- * - Disconnect button appears only for connected providers
- * - Clicking Disconnect calls PUT /providers/{id}/disconnect and shows "Disconnected" badge
- * - Clicking Reconnect calls the endpoint with disconnected=false and restores "Connected"
- * - Models panel is hidden while disconnected
+ * - "Hide from pickers" appears only for connected (or unreachable) providers
+ * - Clicking it calls PUT /providers/{id}/disconnect and shows a "Hidden from pickers" chip
+ * - Clicking "Show in pickers" calls the endpoint with disconnected=false and restores "Connected"
+ * - Models panel is hidden while hidden from pickers
  * - Pre-fetch skips disconnected providers
  */
 
@@ -21,6 +21,9 @@ import { ProvidersSettingsPage } from '@/components/settings/pages/settings.prov
 import { useToastStore } from '@/stores/useToastStore'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
+
+/** The status chip texts currently on the page. */
+const chipTexts = () => Array.from(document.querySelectorAll('[data-slot="chip"]')).map((chip) => chip.textContent)
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -87,17 +90,18 @@ afterEach(() => {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('ProviderCard — hide / show', () => {
-  it('shows Hide button for a connected provider', async () => {
+  it('shows Hide from pickers button for a connected provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({ has_any_configured: true, providers: [makeProvider()] }),
       ),
     )
     renderPage()
-    expect(await screen.findByRole('button', { name: /Hide/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Hide from pickers' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull()
   })
 
-  it('shows Hide button for a failed (unreachable) provider', async () => {
+  it('shows Hide from pickers button for an unreachable provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({
@@ -107,12 +111,13 @@ describe('ProviderCard — hide / show', () => {
       ),
     )
     renderPage()
-    // "Failed" badge + Hide button must both be present
-    expect(await screen.findByText('Failed')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Hide/i })).toBeTruthy()
+    // "Unreachable" chip + Hide from pickers button must both be present
+    expect(await screen.findByText('Unreachable')).toBeTruthy()
+    expect(screen.queryByText('Failed')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Hide from pickers' })).toBeTruthy()
   })
 
-  it('does not show Hide button for an unconfigured provider', async () => {
+  it('does not show Hide from pickers button for an unconfigured provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({
@@ -123,7 +128,8 @@ describe('ProviderCard — hide / show', () => {
     )
     renderPage()
     await screen.findByText('OpenAI')
-    expect(screen.queryByRole('button', { name: /Hide/i })).toBeNull()
+    expect(chipTexts()).toContain('Not connected')
+    expect(screen.queryByRole('button', { name: /Hide from pickers/i })).toBeNull()
   })
 
   it('calls PUT /disconnect with disconnected=true on click', async () => {
@@ -146,14 +152,14 @@ describe('ProviderCard — hide / show', () => {
     )
 
     renderPage()
-    const btn = await screen.findByRole('button', { name: /Hide/i })
+    const btn = await screen.findByRole('button', { name: 'Hide from pickers' })
     fireEvent.click(btn)
 
     await waitFor(() => expect(disconnectRequests).toHaveLength(1))
     expect(disconnectRequests[0]).toEqual({ disconnected: true })
   })
 
-  it('shows Hidden badge after hiding', async () => {
+  it('shows the Hidden from pickers chip after hiding', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({ has_any_configured: true, providers: [makeProvider()] }),
@@ -171,11 +177,13 @@ describe('ProviderCard — hide / show', () => {
     )
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Hide/i }))
-    expect(await screen.findByText('Hidden')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'Hide from pickers' }))
+    // (the success toast carries the same words, so look at the status chip)
+    await waitFor(() => expect(chipTexts()).toContain('Hidden from pickers'))
+    expect(chipTexts()).not.toContain('Connected')
   })
 
-  it('shows Show button when provider is hidden', async () => {
+  it('shows Show in pickers button when provider is hidden', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({
@@ -185,10 +193,11 @@ describe('ProviderCard — hide / show', () => {
       ),
     )
     renderPage()
-    expect(await screen.findByRole('button', { name: /Show/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Show in pickers' })).toBeTruthy()
+    expect(chipTexts()).toContain('Hidden from pickers')
   })
 
-  it('calls PUT /disconnect with disconnected=false on Show click', async () => {
+  it('calls PUT /disconnect with disconnected=false on Show in pickers click', async () => {
     const reconnectRequests: unknown[] = []
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
@@ -210,7 +219,7 @@ describe('ProviderCard — hide / show', () => {
     )
 
     renderPage()
-    const btn = await screen.findByRole('button', { name: /Show/i })
+    const btn = await screen.findByRole('button', { name: 'Show in pickers' })
     fireEvent.click(btn)
 
     await waitFor(() => expect(reconnectRequests).toHaveLength(1))
@@ -228,8 +237,8 @@ describe('ProviderCard — hide / show', () => {
     )
     renderPage()
     await screen.findByText('OpenAI')
-    // The "N models available" toggle must not appear
-    expect(screen.queryByRole('button', { name: /models available/i })).toBeNull()
+    // The "Models · N available" toggle must not appear
+    expect(screen.queryByRole('button', { name: /Models · \d+ available/i })).toBeNull()
   })
 
   it('shows models panel when provider is connected', async () => {
@@ -246,7 +255,7 @@ describe('ProviderCard — hide / show', () => {
     )
     renderPage()
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /models available/i })).toBeTruthy(),
+      expect(screen.queryByRole('button', { name: /Models · 1 available/i })).toBeTruthy(),
     )
   })
 
@@ -269,8 +278,11 @@ describe('ProviderCard — hide / show', () => {
     )
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Hide/i }))
-    expect(await screen.findByText('Provider hidden')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'Hide from pickers' }))
+    // The toast title; the status chip says the same once the list refetches
+    expect((await screen.findAllByText('Hidden from pickers')).length).toBeGreaterThan(0)
+    expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('Hidden from pickers')
+    expect(screen.queryByText('Provider hidden')).toBeNull()
   })
 
   it('shows a success toast after showing', async () => {
@@ -296,7 +308,9 @@ describe('ProviderCard — hide / show', () => {
     )
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Show/i }))
-    expect(await screen.findByText('Provider visible')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'Show in pickers' }))
+    expect(await screen.findByText('Shown in pickers')).toBeTruthy()
+    expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('Shown in pickers')
+    expect(screen.queryByText('Provider visible')).toBeNull()
   })
 })

@@ -85,19 +85,19 @@ describe('AppFooter', () => {
 
   it('names the connected backend even when it is the healthy bundled one', () => {
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Connected\. Change backend connection/ }).textContent).toBe('builtin')
+    expect(screen.getByLabelText('Status bar')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Connected\. Change server/ }).textContent).toBe('built-in')
   })
 
   it('shows the backend indicator for an external server', () => {
     backendExternal = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Connected\. Change backend connection/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Connected\. Change server/ })).toBeTruthy()
   })
 
   it('keeps every status item in Tab order', () => {
     renderWithQueryClient(<AppFooter />)
-    const footer = screen.getByRole('status', { name: 'Application status' })
+    const footer = screen.getByLabelText('Status bar')
     const buttons = Array.from(footer.querySelectorAll<HTMLElement>('button'))
     expect(buttons.length).toBeGreaterThan(1)
     expect(buttons.every((el) => el.tabIndex === 0)).toBe(true)
@@ -106,7 +106,7 @@ describe('AppFooter', () => {
   it('shows the backend indicator when the backend is unhealthy', () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Backend error\. Change backend connection/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Server not reachable\. Change server/ })).toBeTruthy()
   })
 
   it('shows the git branch for a coding workspace', async () => {
@@ -126,14 +126,14 @@ describe('AppFooter', () => {
   it('skips the git branch and its probe for the chat workspace', () => {
     renderWithQueryClient(<AppFooter workspace="/Users/name" chatWorkspace />)
 
-    expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
+    expect(screen.getByLabelText('Status bar')).toBeTruthy()
     expect(screen.queryByText('main')).toBeNull()
     expect(requested.some((url) => url.includes('/workspace/status'))).toBe(false)
   })
 
   it('sits on the page tone in light mode and the recessed rail only in dark', () => {
     renderWithQueryClient(<AppFooter />)
-    const footer = screen.getByRole('status', { name: 'Application status' })
+    const footer = screen.getByLabelText('Status bar')
     expect(footer.className).toContain('bg-(--bg-page)')
     expect(footer.className).toContain('dark:bg-(--bg-sidebar)')
     expect(footer.className.split(' ')).not.toContain('bg-(--bg-sidebar)')
@@ -151,11 +151,11 @@ describe('AppFooter', () => {
     )
     const modelButton = screen.getByRole('button', { name: /anthropic\/claude-3-7-sonnet/i })
     expect(modelButton).toBeTruthy()
-    expect(screen.getByText('anthropic/claude-3-7-sonnet')).toBeTruthy()
-    expect(screen.getByText('(high)')).toBeTruthy()
+    expect(screen.getByText('claude-3-7-sonnet')).toBeTruthy()
+    expect(screen.getByText('high')).toBeTruthy()
 
     await user.hover(modelButton)
-    expect((await screen.findByRole('tooltip')).textContent).toMatch(/Active Model: anthropic\/claude-3-7-sonnet/i)
+    expect((await screen.findByRole('tooltip')).textContent).toMatch(/anthropic\/claude-3-7-sonnet.*Thinking: high.*Change model/)
 
     fireEvent.click(modelButton)
     expect(onToggleSessionSettings).toHaveBeenCalledTimes(1)
@@ -174,26 +174,26 @@ describe('AppFooter', () => {
       <AppFooter sessionModel={null} defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
     )
     const button = screen.getByRole('button', { name: /openai\/gpt-5/i })
-    expect(screen.getByText('(high)')).toBeTruthy()
+    expect(screen.getByText('high')).toBeTruthy()
 
     await user.hover(button)
-    expect((await screen.findByRole('tooltip')).textContent).toMatch(/Active Model: openai\/gpt-5 \(thinking: high\)/)
+    expect((await screen.findByRole('tooltip')).textContent).toMatch(/openai\/gpt-5Thinking: high/)
   })
 
   it('drops the agent thinking level once the session picks another model', () => {
     renderWithQueryClient(
       <AppFooter sessionModel="anthropic/claude-sonnet" defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
     )
-    expect(screen.getByText('anthropic/claude-sonnet')).toBeTruthy()
-    expect(screen.queryByText('(high)')).toBeNull()
+    expect(screen.getByText('claude-sonnet')).toBeTruthy()
+    expect(screen.queryByText('high')).toBeNull()
   })
 
   it('prefers the session thinking level over the agent one', () => {
     renderWithQueryClient(
       <AppFooter sessionModel={null} sessionThinkingLevel="low" defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
     )
-    expect(screen.getByText('(low)')).toBeTruthy()
-    expect(screen.queryByText('(high)')).toBeNull()
+    expect(screen.getByText('low')).toBeTruthy()
+    expect(screen.queryByText('high')).toBeNull()
   })
 
   it('renders fast mode pill when fast mode is enabled', async () => {
@@ -203,7 +203,7 @@ describe('AppFooter', () => {
     )
     expect(screen.getByText('fast')).toBeTruthy()
     await user.hover(screen.getByText('fast'))
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Fast mode active')
+    expect((await screen.findByRole('tooltip')).textContent).toMatch(/^Fast mode is on/)
   })
 
 

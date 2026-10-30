@@ -51,14 +51,14 @@ export function SidebarConfirmDialogs({
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Delete session</DialogTitle>
+            <DialogTitle>Delete this session?</DialogTitle>
             <DialogDescription>
-              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; will be permanently deleted. This cannot be undone.
+              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; and its messages are deleted for good. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={onConfirmSessionDelete}>Delete</Button>
+            <Button type="button" variant="danger" onClick={onConfirmSessionDelete}>Delete session</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -69,15 +69,15 @@ export function SidebarConfirmDialogs({
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Remove workspace from sidebar</DialogTitle>
+            <DialogTitle>Hide this workspace from the sidebar?</DialogTitle>
             <DialogDescription>
               &ldquo;{removeWorkspaceTarget ? workspaceLabel(removeWorkspaceTarget) : ''}&rdquo; will be hidden from
-              the sidebar. Its sessions stay on disk — reopening this folder later restores the list.
+              the sidebar. Its sessions are kept: open the folder again to bring them back.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={onConfirmRemoveWorkspace}>Remove from sidebar</Button>
+            <Button type="button" variant="primary" onClick={onConfirmRemoveWorkspace}>Hide from sidebar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -88,7 +88,7 @@ export function SidebarConfirmDialogs({
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Remove worktree</DialogTitle>
+            <DialogTitle>Delete this worktree?</DialogTitle>
             <DialogDescription>
               &ldquo;{removeWorktreeTarget ? workspaceLabel(removeWorktreeTarget.directory) : ''}&rdquo; will be
               deleted from disk. Any uncommitted changes in this worktree will be lost. This cannot be undone.
@@ -96,7 +96,7 @@ export function SidebarConfirmDialogs({
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setRemoveWorktreeTarget(null)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={onConfirmRemoveWorktree}>Remove worktree</Button>
+            <Button type="button" variant="danger" onClick={onConfirmRemoveWorktree}>Delete worktree</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

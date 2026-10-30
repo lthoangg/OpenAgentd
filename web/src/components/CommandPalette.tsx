@@ -419,7 +419,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
     }
   }
 
-  const searchLabel = page ? page.title : commandMode ? 'Search commands' : 'Search files'
+  const searchLabel = page ? page.title : commandMode ? 'Search commands' : 'Find file'
   const activeRow = byIdx.get(activeIdx)
   const activeOpensPage = activeRow?.type === 'cmd' && Boolean(activeRow.cmd.page)
   const emptyLabel = !query.trim() && page
@@ -447,7 +447,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
                 type="button"
                 onClick={() => showPage(null)}
                 aria-label={trail.length > 1 ? `Back to ${trail[trail.length - 2].title}` : 'Back to all commands'}
-                className="inline-flex min-w-0 max-w-[60%] items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-[11px] font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                className="inline-flex min-w-0 max-w-[60%] items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-[11px] font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 <ChevronLeft size={12} className="shrink-0" aria-hidden="true" />
                 <span className="truncate">{trail.map((t) => t.title).join(' › ')}</span>
@@ -457,7 +457,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
               ref={inputRef}
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder={page ? page.page.placeholder : hasFiles ? 'Search files…' : 'Search commands…'}
+              placeholder={page ? page.page.placeholder : hasFiles ? 'Find a file…' : 'Search commands…'}
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
@@ -468,7 +468,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
             {query && (
               <button
                 onClick={() => handleQueryChange('')}
-                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 Clear
               </button>

@@ -52,19 +52,22 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   view('goal', 'Goal', <Target size={14} aria-hidden="true" />, actions.onOpenGoal)
   view('plan', 'Plan', <FileText size={14} aria-hidden="true" />, actions.onOpenPlan)
   view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))
-  view('btw', 'Side Questions', <MessageCircleQuestion size={14} aria-hidden="true" />, actions.onOpenSideQuestions)
-  view('schedule', 'Schedule', <CalendarClock size={14} aria-hidden="true" />, actions.onOpenSchedule)
+  view('btw', 'Side questions', <MessageCircleQuestion size={14} aria-hidden="true" />, actions.onOpenSideQuestions)
+  view('schedule', 'Scheduled tasks', <CalendarClock size={14} aria-hidden="true" />, actions.onOpenSchedule)
   tool('terminal', 'Terminal', <TerminalSquare size={14} aria-hidden="true" />, actions.onOpenTerminal, shortcutLabel(APP_SHORTCUTS.terminal, os))
   tool('preview', 'Preview', <Globe size={14} aria-hidden="true" />, actions.onOpenPreview)
-  tool('file', 'Open File', <Search size={14} aria-hidden="true" />, actions.onOpenFile, shortcutLabel(APP_SHORTCUTS.quickOpen, os))
+  tool('file', 'Find file…', <Search size={14} aria-hidden="true" />, actions.onOpenFile, shortcutLabel(APP_SHORTCUTS.quickOpen, os))
   return rows
 }
 
 export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActions, 'onOpenGit' | 'onOpenGoal' | 'onOpenTerminal' | 'onOpenPreview' | 'onOpenFile'>) {
   const rows = dockOpenItems(os, actions)
   return (
-    <div data-dock-launcher className="flex h-full items-center justify-center px-4">
-      <div role="group" aria-label="Open in the dock" className="flex w-full max-w-60 flex-col gap-0.5">
+    <div data-dock-launcher className="flex h-full flex-col px-4 pt-[12vh] md:items-center">
+      <div role="group" aria-labelledby="dock-launcher-title" className="flex w-full max-w-64 flex-col gap-0.5">
+        <h2 id="dock-launcher-title" className="mb-2 px-2 text-xs font-medium text-(--color-text-2)">
+          Open in the review panel
+        </h2>
         {rows.map((row) => (
           <button
             key={row.label}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, Trash2, PlusCircle, ChevronRight, FileEdit } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Chip, type ChipTone } from '@/components/ui/chip'
 import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { isFailedResult } from './toolResultStatus'
@@ -111,7 +112,7 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="w-full border-t border-(--color-border) bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+          className="w-full border-t border-(--color-border) bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs text-(--color-text-muted) pointer-coarse:min-h-11 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         >
           Show {hidden.toLocaleString()} more {hidden === 1 ? 'line' : 'lines'}
         </button>
@@ -139,21 +140,19 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
       ? 'text-(--color-success)'
       : kind === 'delete'
         ? 'text-(--color-error)'
-        : moveTo
-          ? 'text-(--color-accent)'
-          : 'text-(--color-text-muted)'
+        : 'text-(--color-text-muted)'
 
-  let badgeLabel = 'UPDATE'
-  let badgeClass = 'bg-(--bg-key) text-(--color-text-2) border border-(--color-border)/50'
+  // Words, not codes; colour only where it means added or removed.
+  let badgeLabel = 'Edited'
+  let badgeTone: ChipTone = 'neutral'
   if (kind === 'add') {
-    badgeLabel = 'CREATE'
-    badgeClass = 'bg-(--color-diff-add-bg) text-(--color-diff-add-text) border border-(--color-success)/20'
+    badgeLabel = 'New file'
+    badgeTone = 'success'
   } else if (kind === 'delete') {
-    badgeLabel = 'DELETE'
-    badgeClass = 'bg-(--color-diff-del-bg) text-(--color-diff-del-text) border border-(--color-error)/20'
+    badgeLabel = 'Deleted'
+    badgeTone = 'error'
   } else if (moveTo) {
-    badgeLabel = additions > 0 || deletions > 0 ? 'MOVE & EDIT' : 'MOVE'
-    badgeClass = 'bg-(--accent-purple-soft) text-(--accent-purple) border border-(--accent-purple)/20'
+    badgeLabel = additions > 0 || deletions > 0 ? 'Moved and edited' : 'Moved'
   }
 
   return (
@@ -168,7 +167,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-11 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
@@ -181,7 +180,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           <>
             <ArrowRight size={12} className="shrink-0 text-(--color-text-muted)" />
             <Tooltip className="min-w-0">
-              <TooltipTrigger className="min-w-0" render={<span className="truncate font-semibold text-(--color-accent)">{moveTo}</span>} />
+              <TooltipTrigger className="min-w-0" render={<span className="truncate font-semibold">{moveTo}</span>} />
               <TooltipContent>{moveTo}</TooltipContent>
             </Tooltip>
           </>
@@ -192,9 +191,9 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
             {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
           </span>
         )}
-        <span className={`rounded-xs px-1 py-px text-[11px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
+        <Chip tone={badgeTone} className={`font-sans select-none ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
           {badgeLabel}
-        </span>
+        </Chip>
         <ChevronRight
           size={12}
           className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}

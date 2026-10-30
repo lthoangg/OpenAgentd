@@ -7,6 +7,9 @@
  * rendered the requested diff as if it had landed, and the +/- stat badge in
  * the collapsed header counted lines that were never written. See
  * `ToolCall.failure.test.tsx` for the sibling header-level regression.
+ *
+ * The error now shows twice by design: as the red one-line summary on the
+ * collapsed row, and in full in the expanded body.
  */
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, screen, cleanup } from "@testing-library/react"
@@ -49,7 +52,13 @@ describe("DiffView — failed patch call", () => {
 
     await user.click(screen.getByRole("button"))
 
-    expect(screen.getByText(/Could not find patch context/)).toBeTruthy()
+    // Red summary on the row, plus the full message in the expanded body
+    expect(screen.getAllByText(/Could not find patch context/)).toHaveLength(2)
+    const summary = screen.getByText("Could not find patch context in src/utils.py.")
+    expect(summary.className).toContain("text-(--color-error)")
+    const body = document.querySelector("section pre")
+    expect(body?.textContent).toBe(ERROR_RESULT)
+    expect(body?.className).toContain("text-(--color-error)")
     // Not rendered as an applied change — the line the model wanted removed
     // must not show up dressed as a "-old line" diff row.
     expect(screen.queryByText("old line")).toBeNull()

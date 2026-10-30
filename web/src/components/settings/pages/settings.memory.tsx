@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   Save,
-  Trash2,
 } from 'lucide-react'
 
 import {
@@ -25,6 +24,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import { Button } from '@/components/ui/button'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -34,9 +34,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 import { Callout } from '@/components/ui/callout'
+import { Skeleton } from '@/components/ui/skeleton'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { settingsRoot } from '@/components/settings/settings-root'
 import { useShortcut } from '@/lib/keyboard/hooks'
@@ -58,12 +58,15 @@ export function MemorySettingsPage() {
   const {
     data: treeData,
     isLoading: treeLoading,
+    isError: treeError,
     refetch: refetchTree,
   } = useMemoryTreeQuery()
 
   const {
     data: fileData,
     isLoading: fileLoading,
+    isError: fileError,
+    error: fileErrorValue,
     refetch: refetchFile,
   } = useMemoryFileQuery(selectedPath)
 
@@ -84,16 +87,18 @@ export function MemorySettingsPage() {
     }
   }, [fileData])
 
-  const isDirty = fileData ? draftContent !== fileData.content : draftContent.length > 0
+  // Only a loaded page can be dirty: while a page loads or fails to load the
+  // editor holds no content of its own, so Save must never write it back.
+  const isDirty = fileData ? draftContent !== fileData.content : false
   useUnsavedSettings(isDirty)
 
   const handleSave = async () => {
-    if (!selectedPath) return
+    if (!selectedPath || !fileData) return
     try {
       await saveMut.mutateAsync({
         path: selectedPath,
         content: draftContent,
-        ifMatch: fileData?.etag,
+        ifMatch: fileData.etag,
       })
       push({ tone: 'success', title: `Saved "${selectedPath}"` })
       refetchTree()
@@ -168,7 +173,7 @@ export function MemorySettingsPage() {
       setLintFindings(report.findings)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      push({ tone: 'error', title: 'Lint check failed', description: msg })
+      push({ tone: 'error', title: 'Could not check links', description: msg })
     } finally {
       setIsLinting(false)
     }
@@ -186,7 +191,7 @@ export function MemorySettingsPage() {
             className={cn('shrink-0', isLinting && 'animate-spin')}
             aria-hidden="true"
           />
-          {isLinting ? 'Linting…' : 'Run lint'}
+          {isLinting ? 'Checking…' : 'Check links'}
         </Button>
       }
     >
@@ -201,12 +206,12 @@ export function MemorySettingsPage() {
               <span>
                 {lintFindings.length === 0
                   ? 'All memory pages and wikilinks are valid.'
-                  : `${lintFindings.length} issue(s) found:`}
+                  : `${lintFindings.length} ${lintFindings.length === 1 ? 'problem' : 'problems'} found`}
               </span>
               <button
                 type="button"
                 onClick={() => setLintFindings(null)}
-                className="cursor-pointer text-xs font-normal underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                className="inline-flex cursor-pointer items-center text-xs font-normal underline hover:no-underline pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 Dismiss
               </button>
@@ -234,31 +239,31 @@ export function MemorySettingsPage() {
         {/* Left pane: File list */}
         <div className="flex max-h-44 w-full shrink-0 flex-col border-b border-(--color-border) bg-(--bg-sidebar) lg:max-h-none lg:w-64 lg:border-r lg:border-b-0">
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-(--color-border-subtle) pr-2 pl-3 select-none">
-            <span className="label-caps text-(--color-text-subtle)">
-              Pages ({treeData?.pages.length ?? 0})
+            <span className="text-xs font-medium text-(--color-text-muted)">
+              Pages <span className="tabular-nums text-(--color-text-subtle)">· {treeData?.pages.length ?? 0}</span>
             </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => setNewFileOpen(true)}
-                    className="h-6 w-6 text-(--color-text-muted) hover:text-(--color-text)"
-                    aria-label="New Page"
-                  >
-                    <Plus size={12} aria-hidden="true" />
-                  </Button>
-                }
-              />
-              <TooltipContent>New Page</TooltipContent>
-            </Tooltip>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setNewFileOpen(true)}
+              className="text-(--color-text-muted) hover:text-(--color-text)"
+            >
+              <Plus size={12} aria-hidden="true" />
+              New page
+            </Button>
           </div>
           <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
             {treeLoading ? (
-              <p className="p-3 text-center font-mono text-xs text-(--color-text-muted)">
-                Loading pages…
-              </p>
+              <div className="space-y-1.5 p-1" role="status" aria-label="Loading pages">
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-6 w-2/3" />
+                <Skeleton className="h-6 w-1/2" />
+              </div>
+            ) : treeError ? (
+              <div className="flex flex-col items-center gap-2 p-4 text-center" role="alert">
+                <p className="text-xs text-(--color-error)">Couldn&apos;t load memory pages.</p>
+                <Button variant="default" size="xs" onClick={() => { void refetchTree() }}>Retry</Button>
+              </div>
             ) : treeData?.pages.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-6 text-center">
                 <p className="text-xs text-(--color-text-muted)">No memory pages yet.</p>
@@ -282,8 +287,8 @@ export function MemorySettingsPage() {
                     onClick={() => setSelectedPath(p.path)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+                      'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-11 pointer-coarse:text-sm',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
                       active
                         ? 'bg-(--bg-key) font-medium text-(--color-text)'
                         : 'text-(--color-text-muted) hover:bg-(--bg-key)/50 hover:text-(--color-text)',
@@ -315,18 +320,10 @@ export function MemorySettingsPage() {
                   <span className="truncate font-mono text-xs font-semibold text-(--color-text)">
                     {selectedPath}
                   </span>
-                  {fileData?.etag && (
-                    <span
-                      title={`ETag: ${fileData.etag}`}
-                      className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle) select-none"
-                    >
-                      {fileData.etag.slice(1, 9)}...
-                    </span>
-                  )}
                   {isDirty && (
                     <span className="hidden items-center gap-1 font-mono text-xs md:text-[11px] text-(--color-text-muted) sm:inline-flex">
                       <span
-                        className="h-1.5 w-1.5 rounded-full bg-(--color-text) animate-pulse"
+                        className="h-1.5 w-1.5 rounded-full bg-(--color-text)"
                         aria-hidden="true"
                       />
                       Unsaved
@@ -334,20 +331,23 @@ export function MemorySettingsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDeleteOpen(true)}
-                    className="text-(--color-error) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
+                  <Dropdown
+                    aria-label={`More actions for ${selectedPath}`}
+                    trigger="More"
+                    align="end"
+                    disabled={!fileData}
+                    className="h-7 min-w-0 gap-1 border-transparent bg-transparent px-2 text-xs font-normal text-(--color-text-muted) shadow-none hover:bg-(--bg-key) hover:text-(--color-text)"
                   >
-                    <Trash2 size={11} aria-hidden="true" />
-                    <span>Delete</span>
-                  </Button>
+                    <DropdownItem onSelect={() => setDeleteOpen(true)} className="text-(--color-error)">
+                      Delete page…
+                    </DropdownItem>
+                  </Dropdown>
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={handleSave}
-                    disabled={!isDirty || saveMut.isPending}
+                    disabled={!fileData || !isDirty || saveMut.isPending}
+                    title="Save (⌘S)"
                   >
                     <Save size={11} aria-hidden="true" />
                     <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
@@ -356,9 +356,22 @@ export function MemorySettingsPage() {
               </div>
               <div className="relative flex min-h-0 flex-1 flex-col">
                 {fileLoading ? (
-                  <p className="p-4 text-center font-mono text-xs text-(--color-text-muted)">
-                    Loading content…
-                  </p>
+                  <div className="space-y-2 p-4" role="status" aria-label="Loading page">
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-3 w-5/6" />
+                    <Skeleton className="h-3 w-2/3" />
+                  </div>
+                ) : fileError || !fileData ? (
+                  <div className="p-4">
+                    <Callout
+                      tone="error"
+                      role="alert"
+                      title={`Couldn't load ${selectedPath}`}
+                      action={<Button size="sm" onClick={() => { void refetchFile() }}>Retry</Button>}
+                    >
+                      {fileErrorValue instanceof Error ? fileErrorValue.message : 'The page could not be read. Editing is off until it loads, so nothing is overwritten.'}
+                    </Callout>
+                  </div>
                 ) : (
                   <textarea
                     value={draftContent}
@@ -390,15 +403,15 @@ export function MemorySettingsPage() {
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
         <DialogContent size="md">
           <DialogHeader>
-            <DialogTitle>Conflict Detected</DialogTitle>
+            <DialogTitle>This page changed elsewhere</DialogTitle>
             <DialogDescription>
-              This memory file was modified externally or by the agent. Reload to see the latest
-              changes?
+              The agent or another program saved this page after you opened it. Reloading shows
+              the latest version and discards your edits.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4 flex justify-end gap-2">
             <Button onClick={() => setConflictOpen(false)}>
-              Keep My Draft
+              Keep my draft
             </Button>
             <Button
               variant="primary"
@@ -411,7 +424,7 @@ export function MemorySettingsPage() {
                 push({ tone: 'info', title: 'Reloaded file from disk' })
               }}
             >
-              Reload File
+              Reload and discard edits
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -421,13 +434,13 @@ export function MemorySettingsPage() {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent size="md">
           <DialogHeader>
-            <DialogTitle>Delete Memory Page</DialogTitle>
+            <DialogTitle>Delete this memory page?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{' '}
+              Agents lose{' '}
               <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
                 {selectedPath}
               </code>
-              ? This action cannot be undone.
+ and its notes. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4 flex justify-end gap-2">
@@ -435,7 +448,7 @@ export function MemorySettingsPage() {
               Cancel
             </Button>
             <Button variant="danger" onClick={handleDelete}>
-              Delete
+              Delete page
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -445,7 +458,7 @@ export function MemorySettingsPage() {
       <Dialog open={newFileOpen} onOpenChange={setNewFileOpen}>
         <DialogContent size="md">
           <DialogHeader>
-            <DialogTitle>New Memory Page</DialogTitle>
+            <DialogTitle>New memory page</DialogTitle>
             <DialogDescription>
               Enter the page path relative to global memory (e.g.{' '}
               <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">

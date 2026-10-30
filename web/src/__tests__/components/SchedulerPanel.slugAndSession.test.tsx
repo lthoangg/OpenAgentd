@@ -63,7 +63,7 @@ function getSessionTargetTrigger() {
 
 async function chooseSessionTarget(label: RegExp) {
   fireEvent.click(getSessionTargetTrigger())
-  fireEvent.click(await screen.findByRole('menuitem', { name: label }))
+  fireEvent.click(await screen.findByRole('option', { name: label }))
 }
 
 describe('SchedulerPanel — Title Slugification and Session Target Selector', () => {

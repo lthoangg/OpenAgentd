@@ -20,10 +20,10 @@ function header(title: string): HTMLElement | undefined {
 describe('preview tool card', () => {
   it('names the page or the console it reads', () => {
     render(<ToolCall name="preview" args={JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })} />)
-    expect(header('Preview: localhost:5173/pricing')).toBeTruthy()
+    expect(header('preview: localhost:5173/pricing')).toBeTruthy()
     cleanup()
     render(<ToolCall name="preview" args={JSON.stringify({ action: 'logs', level: 'error' })} />)
-    expect(header('Preview: Console errors')).toBeTruthy()
+    expect(header('preview: Console errors')).toBeTruthy()
   })
 
   it('names page actions and offers no Open button for them', () => {
@@ -40,7 +40,7 @@ describe('preview tool card', () => {
     ]
     for (const [args, label] of cases) {
       render(<ToolCall name="preview" args={JSON.stringify(args)} done result="Clicked <button>. Page is now /." />)
-      expect(header(`Preview: ${label}`)).toBeTruthy()
+      expect(header(`preview: ${label}`)).toBeTruthy()
       expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
       cleanup()
     }
@@ -49,7 +49,7 @@ describe('preview tool card', () => {
   it('shortens long chains in the header and keeps every step in its title', () => {
     const steps = [{ action: 'fill', ref: 'e1' }, { action: 'fill', ref: 'e2' }, { action: 'click', ref: 'e4' }, { action: 'wait', text: 'Saved' }, { action: 'snapshot' }]
     render(<ToolCall name="preview" args={JSON.stringify({ action: 'chain', steps })} />)
-    const node = header('Preview: Fill e1 → Fill e2 → Click e4 → Wait for "Saved" → Page snapshot')
+    const node = header('preview: Fill e1 → Fill e2 → Click e4 → Wait for "Saved" → Page snapshot')
     expect(node?.textContent).toContain('Fill e1 → Fill e2 → Click e4 +2 more')
   })
 

@@ -14,7 +14,9 @@
  * in the header.
  */
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, type LucideIcon } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import { SearchBar } from '@/components/ui/search-bar'
 
 import { Button } from '@/components/ui/button'
 import { OverlayHeader } from '@/components/ui/app-overlay'
@@ -53,7 +55,7 @@ import { TelemetrySettingsPage } from '@/components/settings/pages/settings.tele
 import { TitlesSettingsPage } from '@/components/settings/pages/settings.titles'
 import { ContextSettingsPage } from '@/components/settings/pages/settings.context'
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
-import { NetworkSettingsPage } from '@/components/settings/pages/settings.network'
+import { DesktopSettingsPage } from '@/components/settings/pages/settings.desktop'
 import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -68,31 +70,27 @@ function SidebarRow({
   onClick,
 }: {
   item: SettingsSectionDef
-  count?: number | null
+  /** What the section holds, in words ("4 skills"). */
+  count?: string | null
   active: boolean
   onClick: () => void
 }) {
-  const Icon: LucideIcon = item.icon
   return (
     <button
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
+      title={item.description}
       className={cn(
-        'group flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-xs transition-colors duration-(--motion-instant) focus:outline-none',
+        'group flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-xs transition-colors duration-(--motion-instant)',
         'text-(--color-text-2) hover:bg-(--bg-key)/50 hover:text-(--color-text)',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
         active && 'bg-(--bg-key) font-medium text-(--color-text) hover:bg-(--bg-key)',
       )}
     >
-      <Icon
-        size={ICON_SIZE}
-        className={cn('shrink-0', active ? 'text-(--color-text)' : 'text-(--color-text-muted)')}
-        aria-hidden="true"
-      />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      {count !== undefined && count !== null && (
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">
+      {count && (
+        <span className="shrink-0 text-[11px] tabular-nums text-(--color-text-subtle)">
           {count}
         </span>
       )}
@@ -102,10 +100,17 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-2.5 pt-4 pb-1.5 label-caps text-(--color-text-subtle) select-none">
+    <p className="px-2.5 pt-4 pb-1 text-xs font-medium text-(--color-text-muted) select-none">
       {children}
     </p>
   )
+}
+
+/** Whether a section matches the nav search, by its label or description. */
+function matchesSearch(item: SettingsSectionDef, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return item.label.toLowerCase().includes(q) || item.description.toLowerCase().includes(q)
 }
 
 function ModalSidebar({
@@ -118,17 +123,34 @@ function ModalSidebar({
   const sections = useVisibleSettingsSections()
   const counts = useSettingsSectionCounts()
   const active = parentSection(section)
+  const [query, setQuery] = useState('')
+  const matches = sections.filter((s) => matchesSearch(s, query))
 
   return (
     <nav
       aria-label="Settings categories"
-      className="hidden h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) px-2 pt-1 pb-4 select-none md:flex"
+      className="hidden h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) px-2 pt-2 pb-4 select-none md:flex"
     >
+      <SearchBar
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search settings"
+        onKeyDown={(event) => {
+          // Enter opens the first match, so typing a word then Enter jumps there.
+          if (event.key === 'Enter' && matches[0]) {
+            event.preventDefault()
+            onSelect(matches[0].id)
+          }
+        }}
+      />
+      {matches.length === 0 && (
+        <p className="px-2.5 pt-4 text-xs text-(--color-text-muted)">No settings match “{query.trim()}”.</p>
+      )}
       {SETTINGS_GROUPS.map((group) => {
-        const items = sections.filter((s) => s.group === group.id)
+        const items = matches.filter((s) => s.group === group.id)
         if (items.length === 0) return null
         return (
-          <div key={group.id}>
+          <div key={group.id} role="group" aria-label={group.label}>
             <GroupLabel>{group.label}</GroupLabel>
             <div className="flex flex-col gap-0.5">
               {items.map((item) => (
@@ -168,7 +190,10 @@ function SectionContent({
   switch (section) {
     case 'general':
       return <GeneralSettingsPage />
+    case 'desktop':
+      return <DesktopSettingsPage />
     case 'connection':
+    case 'network':
       return <ConnectionSettingsPage />
     case 'agents':
       return <AgentsListPage />
@@ -220,7 +245,6 @@ function SectionContent({
     case 'titles':       return <TitlesSettingsPage />
     case 'context':      return <ContextSettingsPage />
     case 'media':        return <MediaSettingsPage />
-    case 'network':      return <NetworkSettingsPage />
     case 'about':
     default:             return <AboutSettingsPage />
   }
@@ -302,7 +326,9 @@ export function SettingsModal() {
             transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
             data-swipe-ignore
             className={cn(
-              'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
+              // `group/settings`: an open editor brings its own Back, so the
+              // overlay's mobile Back hides while one is shown (one Back only).
+              'group/settings settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
               'border border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
             )}
           >
@@ -324,7 +350,7 @@ export function SettingsModal() {
                     type="button"
                     size="icon-sm"
                     variant="ghost"
-                    className="md:hidden"
+                    className="md:hidden group-has-[[data-editor-kind]]/settings:hidden"
                     onClick={goBack}
                     aria-label={mobileBackTarget(section) === 'index' ? 'Back to settings' : 'Back to list'}
                   >

@@ -28,7 +28,7 @@ describe("ToolCall - LSP operation display", () => {
       />,
     )
 
-    expect(getHeader("LSP: Definition at app/services/lsp/manager.py:668:9")).toBeTruthy()
+    expect(getHeader("lsp: Definition at app/services/lsp/manager.py:668:9")).toBeTruthy()
   })
 
   it("shows the references path and position", () => {
@@ -44,7 +44,7 @@ describe("ToolCall - LSP operation display", () => {
       />,
     )
 
-    expect(getHeader("LSP: References at web/src/components/ToolResult.tsx:857:10")).toBeTruthy()
+    expect(getHeader("lsp: References at web/src/components/ToolResult.tsx:857:10")).toBeTruthy()
   })
 
   it("shows the document symbol source", () => {
@@ -58,7 +58,7 @@ describe("ToolCall - LSP operation display", () => {
       />,
     )
 
-    expect(getHeader("LSP: Symbols in app/agent/tools/builtin/lsp.py")).toBeTruthy()
+    expect(getHeader("lsp: Symbols in app/agent/tools/builtin/lsp.py")).toBeTruthy()
   })
 
   it("shows the hover position", () => {
@@ -74,7 +74,7 @@ describe("ToolCall - LSP operation display", () => {
       />,
     )
 
-    expect(getHeader("LSP: Hover at app/services/lsp/manager.py:668:9")).toBeTruthy()
+    expect(getHeader("lsp: Hover at app/services/lsp/manager.py:668:9")).toBeTruthy()
   })
 
   it("shows the implementations path and position", () => {
@@ -90,7 +90,7 @@ describe("ToolCall - LSP operation display", () => {
       />,
     )
 
-    expect(getHeader("LSP: Implementations at app/services/lsp/manager.py:668:9")).toBeTruthy()
+    expect(getHeader("lsp: Implementations at app/services/lsp/manager.py:668:9")).toBeTruthy()
   })
 
   it("shows the document symbol kind filter", () => {
@@ -105,7 +105,7 @@ describe("ToolCall - LSP operation display", () => {
       />,
     )
 
-    expect(getHeader("LSP: Function symbols in app/agent/tools/builtin/lsp.py")).toBeTruthy()
+    expect(getHeader("lsp: Function symbols in app/agent/tools/builtin/lsp.py")).toBeTruthy()
   })
 
   it("shows the workspace symbol query and representative source", () => {
@@ -121,7 +121,7 @@ describe("ToolCall - LSP operation display", () => {
     )
 
     expect(
-      getHeader('LSP: Workspace symbols "navigation" via app/services/lsp/manager.py'),
+      getHeader('lsp: Workspace symbols "navigation" via app/services/lsp/manager.py'),
     ).toBeTruthy()
   })
 
@@ -139,7 +139,7 @@ describe("ToolCall - LSP operation display", () => {
     )
 
     expect(
-      getHeader('LSP: Workspace symbols "navigation" (class) via app/services/lsp/manager.py'),
+      getHeader('lsp: Workspace symbols "navigation" (class) via app/services/lsp/manager.py'),
     ).toBeTruthy()
   })
 

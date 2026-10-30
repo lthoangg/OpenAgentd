@@ -26,12 +26,14 @@ let mockTreeData = {
   ],
 }
 
-let mockFileData = {
+type FileData = { path: string; content: string; etag: string; frontmatter: null }
+let mockFileData: FileData | undefined = {
   path: 'preferences.md',
   content: '# Preferences\nInitial text\n',
   etag: '"etag-123"',
   frontmatter: null,
 }
+let mockFileError: Error | null = null
 
 mock.module('@/queries', () => ({
   useMemoryTreeQuery: () => ({
@@ -42,6 +44,8 @@ mock.module('@/queries', () => ({
   useMemoryFileQuery: () => ({
     data: mockFileData,
     isLoading: false,
+    isError: mockFileError !== null,
+    error: mockFileError,
     refetch: mock(() => Promise.resolve({ data: mockFileData })),
   }),
   useSaveMemoryFileMutation: () => ({
@@ -65,6 +69,13 @@ describe('MemorySettingsPage', () => {
   afterEach(() => {
     cleanup()
     mockSaveMutate.mockClear()
+    mockFileError = null
+    mockFileData = {
+      path: 'preferences.md',
+      content: '# Preferences\nInitial text\n',
+      etag: '"etag-123"',
+      frontmatter: null,
+    }
   })
 
   it('renders memory header and lists pages', () => {
@@ -72,6 +83,8 @@ describe('MemorySettingsPage', () => {
     expect(screen.getByText('Memory')).toBeDefined()
     expect(screen.getAllByText('preferences.md').length).toBeGreaterThan(0)
     expect(screen.getByText('topics/db.md')).toBeDefined()
+    // The list header counts the pages
+    expect(screen.getByText('Pages', { selector: 'span' }).textContent).toBe('Pages · 2')
   })
 
   it('loads file content into textarea and saves with If-Match', async () => {
@@ -105,19 +118,33 @@ describe('MemorySettingsPage', () => {
     fireEvent.click(saveBtn)
 
     await waitFor(() => {
-      expect(screen.getByText('Conflict Detected')).toBeDefined()
-      expect(screen.getByText('Keep My Draft')).toBeDefined()
-      expect(screen.getByText('Reload File')).toBeDefined()
+      expect(screen.getByText('This page changed elsewhere')).toBeDefined()
+      expect(screen.getByText('Keep my draft')).toBeDefined()
+      expect(screen.getByText('Reload and discard edits')).toBeDefined()
     })
+  })
+
+  it('never saves when the page failed to load', () => {
+    mockFileData = undefined
+    mockFileError = new Error('read failed')
+    render(<MemorySettingsPage />)
+
+    expect(screen.queryByPlaceholderText('Markdown content...')).toBeNull()
+    expect(screen.getByText("Couldn't load preferences.md")).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()
+    const saveBtn = screen.getByRole('button', { name: /Save/ }) as HTMLButtonElement
+    expect(saveBtn.disabled).toBe(true)
+    fireEvent.click(saveBtn)
+    expect(mockSaveMutate).not.toHaveBeenCalled()
   })
 
   it('runs lint and displays findings banner', async () => {
     render(<MemorySettingsPage />)
-    const lintBtn = screen.getByText('Run lint')
+    const lintBtn = screen.getByText('Check links')
     fireEvent.click(lintBtn)
 
     await waitFor(() => {
-      expect(screen.getByText('1 issue(s) found:')).toBeDefined()
+      expect(screen.getByText('1 problem found')).toBeDefined()
       expect(screen.getByText(/Target \[\[missing\]\] not found/)).toBeDefined()
     })
   })
@@ -141,15 +168,16 @@ describe('MemorySettingsPage', () => {
 
   it('opens delete confirmation dialog and deletes file', async () => {
     render(<MemorySettingsPage />)
-    const deleteBtn = screen.getByText('Delete')
-    fireEvent.click(deleteBtn)
+    // Delete lives in the page's "More actions" menu, not as a visible button
+    expect(screen.queryByText('Delete…')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for preferences.md' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page…' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Delete Memory Page')).toBeDefined()
+      expect(screen.getByText('Delete this memory page?')).toBeDefined()
     })
 
-    // Inside dialog, there's another Delete button in the footer
-    const confirmBtn = screen.getAllByRole('button', { name: 'Delete' }).pop()!
+    const confirmBtn = screen.getByRole('button', { name: 'Delete page' })
     fireEvent.click(confirmBtn)
 
     await waitFor(() => {
@@ -161,11 +189,13 @@ describe('MemorySettingsPage', () => {
 
   it('opens new memory page dialog and creates page', async () => {
     render(<MemorySettingsPage />)
-    const newPageBtn = screen.getByLabelText('New Page')
+    // A visible text button now (its name is still "New page")
+    const newPageBtn = screen.getByRole('button', { name: 'New page' })
+    expect(newPageBtn.textContent).toBe('New page')
     fireEvent.click(newPageBtn)
 
     await waitFor(() => {
-      expect(screen.getByText('New Memory Page')).toBeDefined()
+      expect(screen.getByText('New memory page')).toBeDefined()
     })
 
     const input = screen.getByPlaceholderText('topics/new-page.md') as HTMLInputElement

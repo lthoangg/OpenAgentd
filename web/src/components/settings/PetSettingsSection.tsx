@@ -10,6 +10,8 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
+import { Callout } from '@/components/ui/callout'
+import { Skeleton } from '@/components/ui/skeleton'
 import { listenPetSettings, readPetSettings, updatePetSettings, type PetSettings } from '@/lib/pet-setting'
 import { BODY_COLOURS } from '@/pet/sprites'
 import { CHARACTER_TRAITS, type BubbleKinds, type PetCharacter, type PetColour, type PetMovement, type PetSize } from '@/pet/state'
@@ -40,7 +42,7 @@ const MOVEMENTS: ReadonlyArray<{ value: PetMovement; label: string }> = [
 
 const KINDS: ReadonlyArray<{ key: keyof BubbleKinds; label: string; description: string }> = [
   { key: 'inputNeeded', label: 'Questions', description: 'An agent stopped to ask you something. Stays until answered.' },
-  { key: 'assistantDone', label: 'Finished turns', description: 'A turn finished or failed. Fades after a few seconds.' },
+  { key: 'assistantDone', label: 'Finished replies', description: 'A reply finished or failed. Fades after a few seconds.' },
   { key: 'reminderFired', label: 'Reminders', description: 'A reminder went off. Fades after a few seconds.' },
 ]
 
@@ -67,7 +69,16 @@ export function PetSettingsSection() {
     }
   }, [])
 
-  if (settings === null) return null
+  if (settings === null) {
+    return (
+      <PanelSection title="Desktop pet" flush>
+        <div role="status" aria-label="Loading pet settings" className="space-y-2 px-4 py-3">
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      </PanelSection>
+    )
+  }
 
   const change = (patch: Patch) => {
     const previous = settings
@@ -82,19 +93,24 @@ export function PetSettingsSection() {
 
   return (
     <PanelSection title="Desktop pet" flush>
+      {error && (
+        <div className="px-4 py-3">
+          <Callout tone="error" role="alert" title="Couldn't save the pet setting">{error}</Callout>
+        </div>
+      )}
       <PanelRow
         label="Show a desktop pet"
         htmlFor="pet-enabled"
-        description={error ?? 'A small pet walks along the bottom of your screen and reacts to your agents. It never takes focus, and clicks beside it reach the app behind.'}
+        description="A small pet walks along the bottom of your screen and reacts to your agents. It never takes focus."
       >
         <Switch id="pet-enabled" checked={settings.enabled} onCheckedChange={(enabled) => change({ enabled })} />
       </PanelRow>
       <PanelRow label="Character" description="Each walks its own way.">
         <SegmentedControl label="Character" value={settings.character} disabled={off} onChange={(character) => change({ character })} options={CHARACTERS} />
       </PanelRow>
-      <PanelRow label="Colour">
+      <PanelRow label="Color">
         <SegmentedControl
-          label="Colour"
+          label="Color"
           value={settings.colour}
           disabled={off}
           onChange={(colour) => change({ colour })}
@@ -107,7 +123,7 @@ export function PetSettingsSection() {
       <PanelRow label="Size">
         <SegmentedControl label="Size" value={settings.size} disabled={off} onChange={(size) => change({ size })} options={SIZES} />
       </PanelRow>
-      <PanelRow label="Movement" description="Stay put keeps it where you drop it. Playful and Chaotic run about when a turn finishes; Chaotic also does now and then. Drag it anywhere, or onto another display.">
+      <PanelRow label="Movement" description="How much it runs about. Drag it anywhere, or onto another display.">
         <SegmentedControl label="Movement" value={settings.movement} disabled={off} onChange={(movement) => change({ movement })} options={MOVEMENTS} />
       </PanelRow>
       <PanelRow
@@ -128,7 +144,7 @@ export function PetSettingsSection() {
         </PanelRow>
       ))}
       <PanelRow
-        label="Show while OpenAgentd is in front"
+        label="Show pet while OpenAgentd is in front"
         htmlFor="pet-front"
         description="By default it steps aside while you use the app."
       >

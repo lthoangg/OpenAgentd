@@ -47,14 +47,14 @@ describe('PetSettingsSection', () => {
     render(<PetSettingsSection />)
     expect(await toggle('Show a desktop pet')).toHaveAttribute('aria-checked', 'false')
     expect(await toggle('Show notifications in its bubble')).toBeDisabled()
-    expect(await toggle('Show while OpenAgentd is in front')).toBeDisabled()
+    expect(await toggle('Show pet while OpenAgentd is in front')).toBeDisabled()
     expect(screen.getByRole('radio', { name: 'Playful' })).toBeDisabled()
   })
 
   it('offers no full-screen switch: the pet always steps aside for full-screen apps', async () => {
     stored = { ...DEFAULT_PET_SETTINGS, enabled: true }
     render(<PetSettingsSection />)
-    await toggle('Show while OpenAgentd is in front')
+    await toggle('Show pet while OpenAgentd is in front')
     expect(screen.queryByRole('switch', { name: /full-screen/i })).toBeNull()
   })
 
@@ -73,9 +73,9 @@ describe('PetSettingsSection', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Duck' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Large' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Chaotic' }))
-    fireEvent.click(await toggle('Show while OpenAgentd is in front'))
+    fireEvent.click(await toggle('Show pet while OpenAgentd is in front'))
     fireEvent.click(await toggle('Climb on windows'))
-    fireEvent.click(await toggle('Finished turns'))
+    fireEvent.click(await toggle('Finished replies'))
     await waitFor(() =>
       expect(patches).toEqual([
         { colour: 'blue' },

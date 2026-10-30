@@ -20,18 +20,26 @@ const OPTIONS = [
 ]
 
 let escapes: number
+let removeOuterEscape: (() => void) | null = null
 
 beforeEach(() => {
   escapes = 0
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  // Even when an assertion throws, the document-level listener must not leak
+  // into the next test.
+  removeOuterEscape?.()
+  removeOuterEscape = null
+  cleanup()
+})
 
 function renderBox(onChange = mock(() => undefined), value = '') {
   const onOuterEscape = (e: KeyboardEvent) => {
     if (e.key === 'Escape') escapes += 1
   }
   document.addEventListener('keydown', onOuterEscape)
+  removeOuterEscape = () => document.removeEventListener('keydown', onOuterEscape)
   const result = render(
     <ModelCombobox
       value={value}
@@ -54,7 +62,11 @@ describe('ModelCombobox — keyboard', () => {
 
     const id = input().getAttribute('aria-activedescendant')
     expect(id).toBeTruthy()
-    expect(document.getElementById(id!)?.textContent).toContain('openai:o3-mini')
+    // The row shows the short model id; the full id rides in its title
+    const row = document.getElementById(id!)
+    expect(row?.getAttribute('role')).toBe('option')
+    expect(row?.textContent).toBe('o3-mini')
+    expect(row?.getAttribute('title')).toBe('openai:o3-mini')
 
     cleanupOuter()
   })
@@ -83,6 +95,56 @@ describe('ModelCombobox — keyboard', () => {
     // With the list closed, Escape belongs to the modal again.
     await userEvent.keyboard('{Escape}')
     expect(escapes).toBe(1)
+
+    cleanupOuter()
+  })
+})
+
+describe('ModelCombobox — option rows', () => {
+  it('groups rows under a provider heading while the query is empty', async () => {
+    const { cleanupOuter } = renderBox()
+    await userEvent.click(input())
+
+    const options = screen.getAllByRole('option')
+    expect(options.map((o) => o.textContent)).toEqual(['gpt-4oVision', 'o3-mini'])
+    // One non-option heading for the provider, before its first row
+    const headings = screen.getAllByRole('presentation').filter((node) => node.tagName === 'LI')
+    expect(headings.map((h) => h.textContent)).toEqual(['openai'])
+    expect(headings[0].nextElementSibling?.contains(options[0])).toBe(true)
+    // Option ids are unchanged by the heading
+    expect(options[0].id.endsWith('-option-0')).toBe(true)
+    expect(options[1].id.endsWith('-option-1')).toBe(true)
+    // No per-row provider chip while headings carry the provider
+    expect(options[0].querySelector('[data-slot="chip"][data-tone]')?.textContent).toBe('Vision')
+    expect(options[0].querySelectorAll('[data-slot="chip"]')).toHaveLength(1)
+
+    cleanupOuter()
+  })
+
+  it('titles each row with its full id and marks vision models with a Vision chip', async () => {
+    const { cleanupOuter } = renderBox()
+    await userEvent.click(input())
+
+    const gpt = screen.getByRole('option', { name: /gpt-4o/ })
+    expect(gpt.getAttribute('title')).toBe('openai:gpt-4o')
+    expect(gpt.textContent).toContain('Vision')
+    expect(screen.getByRole('option', { name: /o3-mini/ }).textContent).not.toContain('Vision')
+
+    cleanupOuter()
+  })
+
+  it('drops the headings and shows a provider chip on each row once a query is typed', async () => {
+    const { cleanupOuter } = renderBox()
+    await userEvent.click(input())
+    await userEvent.keyboard('o3')
+
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0].getAttribute('title')).toBe('openai:o3-mini')
+    expect(screen.queryAllByRole('presentation').filter((node) => node.tagName === 'LI')).toHaveLength(0)
+    const chip = options[0].querySelector('[data-slot="chip"]')
+    expect(chip?.textContent).toBe('openai')
+    expect(chip?.className).toContain('font-mono')
 
     cleanupOuter()
   })

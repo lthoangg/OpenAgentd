@@ -20,6 +20,7 @@ import type { FileRef } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
 import { canonicalToolName } from '@/utils/tool-names'
+import { Chip, type ChipTone } from '@/components/ui/chip'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,12 +95,12 @@ function WebSearchResult({ result }: { result: string }) {
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0 flex-1 font-mono text-xs font-semibold leading-snug break-words text-(--color-accent) underline-offset-2 hover:underline"
+                  className="touch-hit relative min-w-0 flex-1 text-xs font-medium leading-snug break-words text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
                 >
                   {title}
                 </a>
               ) : (
-                <span className="min-w-0 flex-1 font-mono text-xs font-semibold leading-snug break-words text-(--color-text)">
+                <span className="min-w-0 flex-1 text-xs font-medium leading-snug break-words text-(--color-text)">
                   {title}
                 </span>
               )}
@@ -117,7 +118,7 @@ function WebSearchResult({ result }: { result: string }) {
 
             {/* Snippet */}
             {summary && (
-              <p className="pl-5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+              <p className="pl-5 text-xs leading-relaxed text-(--color-text-2)">
                 {truncate(summary, 200)}
               </p>
             )}
@@ -204,11 +205,11 @@ function FileReadResult({ result }: { result: string }) {
   // range was requested. Promote it to quiet metadata so the code block shows
   // only the actual file content.
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  const rangeLabel = match ? `lines ${match[1]}-${match[2]} of ${match[3]}` : ''
+  const rangeLabel = match ? `Lines ${match[1]}–${match[2]} of ${match[3]}` : ''
   const body = truncateForDisplay(match ? match[4] : result)
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+    <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
       <div className="flex min-h-8 items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-0 font-mono label-caps text-(--color-text-muted)">
         <FileText size={12} className="shrink-0" aria-hidden />
         <span className="truncate">read</span>
@@ -233,10 +234,21 @@ interface BackgroundProcess {
   command: string
 }
 
-function statusColor(status: string): string {
-  if (status === 'running' || status.includes('running')) return 'text-(--color-success)'
-  if (status.startsWith('exited') || status.startsWith('stopped') || status.startsWith('no output')) return 'text-(--color-text-muted)'
-  return 'text-(--color-error)'
+function statusTone(status: string): ChipTone {
+  if (status === 'running' || status.includes('running')) return 'info'
+  if (status.startsWith('exited') || status.startsWith('stopped') || status.startsWith('no output')) return 'neutral'
+  return 'error'
+}
+
+/** One header for every ``bg`` result: ``pid 4312`` · status chip · detail. */
+function BgStatus({ pid, status, detail }: { pid?: string | null; status?: string; detail?: string }) {
+  return (
+    <>
+      {pid && <span className="font-mono text-(--color-text)">pid {pid}</span>}
+      {status && <Chip tone={statusTone(status)} dot={statusTone(status) === 'info'}>{status}</Chip>}
+      {detail && <span className="font-sans text-(--color-text-muted)">{detail}</span>}
+    </>
+  )
 }
 
 function BackgroundOutputBlock({
@@ -259,10 +271,8 @@ function BackgroundOutputBlock({
   return (
     <div className="min-w-0 overflow-hidden">
       <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-        <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
-          <span className="text-(--color-text)">PID {pid}{outputLabel ? ' output' : ''}</span>
-          {status && <span className={statusColor(status)}>{status}</span>}
-          {detail && <span className="text-(--color-text-muted)">{detail}</span>}
+        <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+          <BgStatus pid={pid} status={status} detail={[outputLabel && !status ? 'output' : null, detail].filter(Boolean).join(' · ') || undefined} />
         </button>
         {headerAction}
       </div>
@@ -278,13 +288,11 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
-            <span>0 processes</span>
-            <span className="hidden sm:block">background processes</span>
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
+            <span className="font-sans">No background processes</span>
           </button>
           {headerAction}
         </div>
-        <p className="px-2.5 py-2 font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
       </div>
     )
   }
@@ -300,17 +308,16 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
-            <span>{listRows.length} {listRows.length === 1 ? 'process' : 'processes'}</span>
-            <span className="hidden sm:block">background processes</span>
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
+            <span className="font-sans">{listRows.length} background {listRows.length === 1 ? 'process' : 'processes'}</span>
           </button>
           {headerAction}
         </div>
         <ul className="max-h-40 overflow-y-auto sm:max-h-64">
           {listRows.map((process) => (
             <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-[11px] last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
-              <span className="text-(--color-text)">PID {process.pid}</span>
-              <span className={statusColor(process.status)}>{process.status}</span>
+              <span className="text-(--color-text)">pid {process.pid}</span>
+              <span><Chip tone={statusTone(process.status)} dot={statusTone(process.status) === 'info'}>{process.status}</Chip></span>
               <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
             </li>
           ))}
@@ -335,10 +342,8 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
-            <span className="text-(--color-text)">PID {pid}</span>
-            <span className={statusColor(status)}>{status}</span>
-            {bufferedLines && <span className="text-(--color-text-muted)">{bufferedLines} buffered lines</span>}
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+            <BgStatus pid={pid} status={status} detail={bufferedLines ? `${bufferedLines} new ${bufferedLines === '1' ? 'line' : 'lines'}` : undefined} />
           </button>
           {headerAction}
         </div>
@@ -362,10 +367,8 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
-            <span className="text-(--color-text)">PID {pid}</span>
-            <span className={statusColor(status)}>{status}</span>
-            {detail && <span className="text-(--color-text-muted)">{detail}</span>}
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+            <BgStatus pid={pid} status={status} detail={detail} />
           </button>
           {headerAction}
         </div>
@@ -384,15 +387,13 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     const pidMatch = body.match(/PID (\d+)/)
     const pid = pidMatch ? pidMatch[1] : null
     const knownMatch = body.match(/Known PIDs: ([^\n.]+)/)
-    const known = knownMatch ? `Known PIDs: ${knownMatch[1]}` : undefined
+    const known = knownMatch ? `known: ${knownMatch[1]}` : undefined
 
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
-            <span className="text-(--color-text)">{pid ? `PID ${pid}` : 'error'}</span>
-            <span className="text-(--color-error)">{pid ? 'not found' : 'error'}</span>
-            {known && <span className="text-(--color-text-muted)">{known}</span>}
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+            <BgStatus pid={pid} status={pid ? 'not found' : 'error'} detail={known} />
           </button>
           {headerAction}
         </div>
@@ -596,6 +597,14 @@ function parseTodoList(result: string): ParsedTodoList | null {
   return tasks.length > 0 || outcomes.length > 0 ? { outcomes, tasks } : null
 }
 
+/** ``created task_1`` → ``created "Add tests" · task_1``: the task's words first. */
+function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
+  const m = outcome.match(/^(\w+) (task_\w+)(.*)$/)
+  if (!m) return outcome
+  const task = tasks.find((t) => t.taskId === m[2])
+  return task ? `${m[1]} "${task.content}"${m[3]} · ${m[2]}` : outcome
+}
+
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
     return <div className="text-[11px] text-(--color-text-muted)">No todos.</div>
@@ -618,7 +627,7 @@ function TodoListResult({ result }: { result: string }) {
                   isError ? 'text-(--color-warning)' : 'text-(--color-text-muted)'
                 }`}
               >
-                {outcome}
+                {describeTodoOutcome(outcome, tasks)}
               </div>
             )
           })}
@@ -648,12 +657,13 @@ function TodoListResult({ result }: { result: string }) {
                   >
                     {task.content}
                   </div>
+                  {/* What the task is reads first; its ID trails, muted. */}
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
-                    <span>{task.taskId}</span>
                     <span>{task.status}</span>
                     {task.priority && <span>{task.priority}</span>}
                     {agent && <span>{agent}</span>}
-                    {task.deps && <span>deps: {task.deps}</span>}
+                    {task.deps && <span>after {task.deps}</span>}
+                    <span className="text-(--color-text-subtle)">{task.taskId}</span>
                   </div>
                   {task.instructions && (
                     <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
@@ -839,6 +849,22 @@ const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 const SCHEDULE_TOOLS = new Set(['schedule'])
 const TEAM_TOOLS = new Set(['team', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
 
+/** Subagent states as chips: blue while it runs, orange when it waits on you, green once done. */
+const TEAM_STATUS_TONE: Record<string, ChipTone> = {
+  completed: 'success',
+  done: 'success',
+  spawned: 'info',
+  running: 'info',
+  waiting_lead: 'warning',
+  stopped: 'neutral',
+  idle: 'neutral',
+}
+const TEAM_STATUS_LABEL: Record<string, string> = {
+  completed: 'completed',
+  spawned: 'running',
+  waiting_lead: 'waiting for main agent',
+}
+
 function TeamToolResult({ result }: { result: string }) {
   const parsed = tryParseJSON(result)
   if (!parsed || typeof parsed !== 'object') {
@@ -861,44 +887,17 @@ function TeamToolResult({ result }: { result: string }) {
   return (
     <div className="flex flex-col gap-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
       <div className="flex flex-wrap items-center gap-1.5 font-sans">
-        {memberId && (
-          <span className="rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
-            {memberId}
-          </span>
-        )}
+        {memberId && <Chip mono variant="outline">{memberId}</Chip>}
         {status && (
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs md:text-[11px] font-medium ${
-            status === 'completed'
-              ? 'bg-(--color-success-subtle) text-(--color-success)'
-              : status === 'waiting_lead'
-                ? 'bg-(--color-warning-subtle) text-(--color-warning) font-semibold animate-pulse'
-                : status === 'spawned'
-                  ? 'bg-(--color-info-subtle) text-(--color-accent)'
-                  : status === 'stopped'
-                    ? 'bg-(--bg-key) text-(--color-text-muted)'
-                    : 'bg-(--color-error-subtle) text-(--color-error)'
-          }`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${
-              status === 'completed'
-                ? 'bg-(--color-success)'
-                : status === 'waiting_lead'
-                  ? 'bg-(--color-warning)'
-                  : status === 'spawned'
-                    ? 'bg-(--color-accent)'
-                    : status === 'stopped'
-                      ? 'bg-(--color-text-subtle)'
-                      : 'bg-(--color-error)'
-            }`} />
-            {status === 'waiting_lead' ? 'waiting for lead decision' : status}
-          </span>
+          <Chip tone={TEAM_STATUS_TONE[status] ?? 'error'} dot={status === 'spawned' || status === 'waiting_lead'} data-team-status={status}>
+            {TEAM_STATUS_LABEL[status] ?? status}
+          </Chip>
         )}
       </div>
 
       {pendingQuestion?.question && (
-        <div className="rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle)/50 p-2.5 font-sans text-xs text-(--color-text)">
-          <div className="font-semibold text-(--color-warning) mb-1 flex items-center gap-1.5">
-            <span>Clarification needed from lead:</span>
-          </div>
+        <div className="rounded-sm border border-(--color-warning)/30 bg-(--color-warning-subtle)/50 p-2.5 font-sans text-xs text-(--color-text)">
+          <div className="mb-1 font-medium text-(--accent-orange-text)">Question for the main agent</div>
           <div className="text-(--color-text) mb-1.5">{pendingQuestion.question}</div>
           {pendingQuestion.options && pendingQuestion.options.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
@@ -933,7 +932,7 @@ function TeamToolResult({ result }: { result: string }) {
               <div key={handle} className="rounded-xs border border-(--color-border-subtle) bg-(--bg-card)/40 p-2 font-sans">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <span className="font-mono text-[11px] font-semibold text-(--color-text)">{handle}</span>
-                  <span className="text-xs md:text-[11px] rounded-xs px-1.5 py-px bg-(--bg-key)/50 text-(--color-text-muted)">{resStatus}</span>
+                  <Chip tone={TEAM_STATUS_TONE[resStatus] ?? 'neutral'}>{TEAM_STATUS_LABEL[resStatus] ?? resStatus}</Chip>
                 </div>
                 {resOutput && (
                   <div className="max-h-48 overflow-y-auto text-xs">
@@ -948,12 +947,12 @@ function TeamToolResult({ result }: { result: string }) {
 
       {liveMembers && liveMembers.length > 0 && (
         <div className="space-y-1 font-sans">
-          <div className="label-caps text-(--color-text-muted)">Subagent Roster</div>
+          <div className="label-caps text-(--color-text-muted)">Subagents</div>
           <div className="grid gap-1">
             {liveMembers.map((m, idx) => (
               <div key={idx} className="flex items-center justify-between rounded-xs bg-(--bg-key)/30 px-2 py-1 text-xs">
                 <span className="font-mono font-medium text-(--color-text)">{String(m.member_id || m.profile)}</span>
-                <span className="text-xs md:text-[11px] text-(--color-text-muted)">{String(m.status)}</span>
+                <Chip tone={TEAM_STATUS_TONE[String(m.status)] ?? 'neutral'}>{TEAM_STATUS_LABEL[String(m.status)] ?? String(m.status)}</Chip>
               </div>
             ))}
           </div>
@@ -1028,16 +1027,17 @@ export function LspDiagnosticsView({
   if (diagnostics.length === 0) return null
 
   return (
-    <div className="flex flex-col border-t border-(--color-error)/20 bg-(--color-error-subtle) px-2.5 py-1">
+    // Only error lines get a tint; a warning is not an error.
+    <div className="flex flex-col border-t border-(--color-border) py-1">
       {diagnostics.map((d, i) => {
         const isError = d.severity === 'error'
-        const label = isError ? 'ERR' : 'WARN'
-        const labelColor = isError ? 'text-(--color-error)' : 'text-(--color-warning)'
-        const locationColor = isError ? 'text-(--color-error)/70' : 'text-(--color-warning)/70'
+        const label = isError ? 'Error' : 'Warning'
+        const labelColor = isError ? 'text-(--color-error)' : 'text-(--accent-orange-text)'
+        const locationColor = 'text-(--color-text-muted)'
 
         return (
-          <div key={i} className="flex items-baseline gap-1.5 font-mono text-xs md:text-[11px] leading-tight">
-            <span className={`${labelColor} shrink-0 font-semibold tracking-wider uppercase`}>
+          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs md:text-[11px] leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
+            <span className={`${labelColor} shrink-0 font-sans font-medium`}>
               {label}
             </span>
             <span className={`${locationColor} shrink-0`}>

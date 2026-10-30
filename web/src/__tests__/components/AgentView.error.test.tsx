@@ -269,12 +269,14 @@ describe("AgentView — provider retry notice", () => {
 
   it("counts attempts without a budget while waiting for the network", () => {
     render(<AgentView blocks={[]} currentBlocks={[retrying({ max_attempts: null })]} isWorking />)
-    expect(screen.getByText("Retrying openai:gpt (attempt 3) after RemoteProtocolError. Waiting 4.2s.")).toBeTruthy()
+    const notice = screen.getByRole("status")
+    expect(notice.textContent).toBe("Retrying gpt · attempt 3 · in 4.2 sRemoteProtocolError")
+    expect(screen.getByText("RemoteProtocolError").closest("[data-slot=chip]")).toBeTruthy()
   })
 
   it("shows the budget when the retries have one", () => {
     render(<AgentView blocks={[]} currentBlocks={[retrying({ max_attempts: 5, error_type: "HTTPStatusError", status_code: 503 })]} isWorking />)
-    expect(screen.getByText("Retrying openai:gpt (3/5) after HTTPStatusError 503. Waiting 4.2s.")).toBeTruthy()
+    expect(screen.getByRole("status").textContent).toBe("Retrying gpt · attempt 3/5 · in 4.2 s503 HTTPStatusError")
   })
 
   it("says which credential the turn moved to when one hits its limit", () => {

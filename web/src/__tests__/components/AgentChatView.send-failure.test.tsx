@@ -62,12 +62,14 @@ mock.module('@/stores/useToastStore', () => ({
 mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () => {}, prependWorkspaceSession: () => {} }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
+  getCodingWorkspaceTree: async () => ({ repositories: [], groups: [] }),
+  setCodingWorkspaceVisibility: async () => ({}),
   renderCommand: async () => ({ content: '' }),
   renderSnippet: async () => ({ content: '' }),
   resolveApiUrl: () => null,
   resolveSession: async () => ({ id: 'new-session', created: true }),
 }))
-mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, removeWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))

@@ -143,7 +143,12 @@ describe('FlatSessionGroups', () => {
     const draft = document.querySelector('[data-draft-session]')
     expect(draft?.textContent).toContain('New session')
     expect(draft?.getAttribute('aria-current')).toBe('page')
-    expect(screen.getAllByRole('button', { name: 'Show more sessions' })).toHaveLength(1)
+    // The button's accessible name is its visible text; it is busy only while loading
+    const showMore = screen.getAllByRole('button', { name: 'Show more' })
+    expect(showMore).toHaveLength(1)
+    expect(showMore[0].hasAttribute('aria-label')).toBe(false)
+    expect(showMore[0].hasAttribute('aria-busy')).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Show more sessions' })).toBeNull()
   })
 
   it('says so when there are no sessions', () => {

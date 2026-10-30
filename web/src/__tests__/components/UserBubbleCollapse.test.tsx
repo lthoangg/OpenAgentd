@@ -562,15 +562,15 @@ describe("AgentView — UserBubble collapse feature", () => {
     const user = userEvent.setup()
     const longReport = "Found:\n" + Array.from({ length: 8 }, (_, i) => `- Item ${i + 1}`).join("\n")
     render(<AgentView blocks={[{ id: "r1", type: "user", content: longReport, extra: { from_agent: "explorer#1" } }]} currentBlocks={[]} isWorking={false} />)
-    const header = screen.getByText("Subagent report").parentElement as HTMLElement
+    const header = screen.getByText("Report from").parentElement as HTMLElement
     expect(header.className).not.toContain("sticky")
-    expect(screen.queryByRole("button", { name: "Minimize report" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Collapse report" })).toBeNull()
 
-    await user.click(screen.getByRole("button", { name: /Show full report/i }))
+    await user.click(screen.getByRole("button", { name: /^Expand$/ }))
 
     expect(header.className).toContain("sticky")
-    await user.click(screen.getByRole("button", { name: "Minimize report" }))
-    expect(screen.getByRole("button", { name: /Show full report/i })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Collapse report" }))
+    expect(screen.getByRole("button", { name: /^Expand$/ })).toBeTruthy()
     expect(header.className).not.toContain("sticky")
   })
 
@@ -587,11 +587,11 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
     expect(screen.getByText("explorer#1")).toBeTruthy()
-    expect(screen.getByText("Subagent report")).toBeTruthy()
+    expect(screen.getByText("Report from")).toBeTruthy()
     expect(screen.getByText(/Here are the 4 verified auth routes/)).toBeTruthy()
   })
 
-  it("minimizes long subagent report by default with a Show full report button", async () => {
+  it("minimizes long subagent report by default with an Expand button", async () => {
     const user = userEvent.setup()
     const longReport = "Found following items in repository:\n" + Array.from({ length: 8 }, (_, i) => `- Item ${i + 1}: /src/path/to/module_${i + 1}.py`).join("\n")
     const blocks: ContentBlock[] = [
@@ -612,7 +612,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")).toBeTruthy()
 
     // Toggle button initially says "Show full report"
-    const toggleBtn = screen.getByRole("button", { name: /Show full report/i })
+    const toggleBtn = screen.getByRole("button", { name: /^Expand$/ })
     expect(toggleBtn).toBeTruthy()
     expect(toggleBtn.getAttribute("aria-expanded")).toBe("false")
 
@@ -624,13 +624,13 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")).toBeNull()
 
     // Toggle button now says "Minimize"
-    const minimizeBtn = screen.getByRole("button", { name: "Minimize" })
+    const minimizeBtn = screen.getByRole("button", { name: "Collapse" })
     expect(minimizeBtn).toBeTruthy()
     expect(minimizeBtn.getAttribute("aria-expanded")).toBe("true")
 
     // Click minimize to collapse again
     await user.click(minimizeBtn)
-    expect(screen.getByRole("button", { name: /Show full report/i })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /^Expand$/ })).toBeTruthy()
   })
 
   it("copies subagent report content to clipboard when copy button is clicked", async () => {

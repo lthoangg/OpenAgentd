@@ -52,7 +52,7 @@ describe('goalTabTitle', () => {
 
 describe('goalNow', () => {
   it('says which turn runs, and that queued messages go first', () => {
-    expect(goalNow(makeGoal(), { ...IDLE, running: true })).toEqual({ tone: 'active', text: 'Working on turn 7 of 50', note: null })
+    expect(goalNow(makeGoal(), { ...IDLE, running: true })).toEqual({ tone: 'active', text: 'Working · turn 7/50', note: null })
     expect(goalNow(makeGoal(), { ...IDLE, running: true, queuedMessages: 2 })?.note).toBe("2 queued messages run before the goal's next turn.")
   })
 
@@ -96,12 +96,12 @@ describe('transcript markers', () => {
     const turn = (goal_turn: Record<string, unknown>): ContentBlock => ({ id: 'u2', type: 'user', content: '<goal_reminder …>', extra: { goal_turn } })
     const rejected = goalTurnInfo(turn({ id: 'g1', turn: 3, max_turns: 50, why: 'rejected', check: ' No `bun test` output. ', tokens_used: 412_000 }))!
     expect(rejected).toEqual({ turn: 3, maxTurns: 50, why: 'rejected', check: 'No `bun test` output.' })
-    expect(goalTurnReason(rejected)).toEqual({ short: 'check said not yet', text: 'No `bun test` output.' })
+    expect(goalTurnReason(rejected)).toEqual({ short: 'not yet', text: 'No `bun test` output.' })
     // A rejection whose words were not recorded still says what happened.
     expect(goalTurnReason(goalTurnInfo(turn({ turn: 3, why: 'rejected' }))!).text).toBe("The check did not accept the agent's claim that the goal was met.")
 
     const unclaimed = goalTurnInfo(turn({ turn: 2, max_turns: 50, why: 'unclaimed' }))!
-    expect(goalTurnReason(unclaimed).short).toBe('not done yet')
+    expect(goalTurnReason(unclaimed).short).toBe('continuing')
     expect(goalTurnReason(goalTurnInfo(turn({ turn: 2, why: 'check_failed' }))!).short).toBe('check failed')
     expect(goalTurnReason(goalTurnInfo(turn({ turn: 2, why: 'resumed' }))!).short).toBe('resumed')
   })

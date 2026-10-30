@@ -3,9 +3,10 @@
  *
  * Nothing is saved until the first message: this screen names the folder
  * the session will run in (a chip that switches it), hosts the composer on
- * desktop (phones dock it at the bottom), and offers the way back to earlier work —
- * recent folders and this folder's recent sessions. No starter prompts:
- * the composer is the call to action.
+ * desktop (phones dock it at the bottom), and offers the way back to earlier work:
+ * this folder's three latest sessions, under Continue. Other folders are one
+ * click away in the folder picker, so there is no second folder list. No
+ * starter prompts: the composer is the call to action.
  *
  * ``setup``: until a message could run (no model, or its provider is not
  * connected), the model setup card sits above the composer.
@@ -15,63 +16,21 @@
  * glides to the bottom; ``composerPlaceholderHeight`` holds the composer's
  * place so the copy does not reflow as it fades.
  */
-import { useMemo, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useQuery } from '@tanstack/react-query'
-import { Folder, FolderPlus, GitBranch, MessageCircle } from 'lucide-react'
+import { GitBranch } from 'lucide-react'
 import { getCodingWorkspaceStatus, getCodingWorkspaceTree } from '@/api/client'
-import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository, SessionResponse } from '@/api/types'
+import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
-import { useAllSessionsQuery, useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
+import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { usePlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { pathBasename, sameWorkspacePath } from '@/utils/workspace'
 import { RecentSessionsList } from '../WorkspaceInfoCard'
 import { WorkspacePicker } from './WorkspacePicker'
 
-const RECENT_FOLDERS = 5
-const RECENT_SESSIONS = 5
+const RECENT_SESSIONS = 3
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
-
-/**
- * Up to ``limit`` folders to switch to: the workspaces of the most recently
- * active sessions first, then the sidebar's order. Leaves out ``current`` and
- * Chat (which has a chip of its own).
- */
-export function recentFolders(
-  sessions: readonly SessionResponse[],
-  repositories: readonly CodingWorkspaceTreeRepository[],
-  current: string,
-  chatPath: string | null,
-  limit = RECENT_FOLDERS,
-): string[] {
-  const out: string[] = []
-  const add = (path: string | null | undefined) => {
-    if (!path || out.length >= limit) return
-    if (sameWorkspacePath(path, current) || sameWorkspacePath(path, chatPath)) return
-    if (out.some((seen) => sameWorkspacePath(seen, path))) return
-    out.push(path)
-  }
-  for (const session of sessions) add(session.workspace)
-  for (const repo of repositories) add(repo.path)
-  return out
-}
-
-function FolderChip({ icon, label, mono = true, onClick, title }: { icon: ReactNode; label: string; mono?: boolean; onClick: () => void; title?: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className="inline-flex h-6 max-w-48 items-center gap-1.5 rounded-full border border-(--color-border) px-2 text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-3"
-    >
-      {icon}
-      <span className={`min-w-0 truncate text-[11px] ${mono ? 'font-mono' : ''}`}>{label}</span>
-    </button>
-  )
-}
 
 export function NewSessionScreen({
   workspace,
@@ -104,7 +63,6 @@ export function NewSessionScreen({
   onOpenFolder: () => void
 }) {
   const reducedMotion = useReducedMotion()
-  const { os } = usePlatform()
   const { data: tree } = useQuery({
     queryKey: queryKeys.coding.tree(),
     queryFn: getCodingWorkspaceTree,
@@ -119,31 +77,11 @@ export function NewSessionScreen({
     staleTime: 10_000,
   })
   const branch = !isChat && status?.is_git_repo ? status.branch : null
-  const everywhere = useAllSessionsQuery()
   const { data: here } = useWorkspaceSessionsQuery(workspace)
 
-  const folders = useMemo(
-    () => recentFolders(everywhere.data?.pages.flatMap((page) => page.data) ?? [], repositories, workspace, chatWorkspace?.path ?? null),
-    [everywhere.data, repositories, workspace, chatWorkspace],
-  )
-  const folderLabel = (path: string) => {
-    for (const repo of repositories) {
-      if (sameWorkspacePath(repo.path, path)) return repo.name
-      const worktree = repo.worktrees.find((item) => sameWorkspacePath(item.path, path))
-      if (worktree) return worktree.name
-    }
-    return pathBasename(path)
-  }
   const recentSessions = (here?.pages.flatMap((page) => page.data) ?? [])
     .filter((session) => !session.parent_session_id)
     .slice(0, RECENT_SESSIONS)
-
-  const hints = [
-    ['/', 'commands'],
-    ['@', 'files'],
-    [shortcutLabel(APP_SHORTCUTS.commandPalette, os), 'palette'],
-    [shortcutLabel(APP_SHORTCUTS.newSession, os), 'new session'],
-  ] as const
 
   return (
     <motion.div
@@ -192,52 +130,19 @@ export function NewSessionScreen({
             <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
           )}
           {!isMobile && (
-            <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-(--color-text-subtle)" aria-label="Shortcuts">
-              {hints.map(([key, label], index) => (
-                <span key={label} className="inline-flex items-center gap-1">
-                  {index > 0 && <span aria-hidden="true">·</span>}
-                  <kbd className="font-mono text-(--color-text-muted)">{key}</kbd>
-                  {label}
-                </span>
-              ))}
+            <p className="text-[11px] text-(--color-text-subtle)" aria-label="Shortcuts">
+              Type <kbd className="font-mono text-(--color-text-muted)">/</kbd> for commands,{' '}
+              <kbd className="font-mono text-(--color-text-muted)">@</kbd> to mention a file
             </p>
           )}
         </div>
 
         <div className={`mx-auto mt-8 flex w-full flex-col gap-6 ${isMobile ? 'mt-6' : 'max-w-[640px]'}`}>
-          <section aria-label="Recent folders">
-            <h2 className="mb-1.5 px-1.5 label-caps text-(--color-text-subtle)">Recent folders</h2>
-            <div className="flex flex-wrap gap-1.5 px-1.5">
-              {folders.map((path) => (
-                <FolderChip
-                  key={path}
-                  icon={<Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />}
-                  label={folderLabel(path)}
-                  title={path}
-                  onClick={() => onSelectWorkspace(path)}
-                />
-              ))}
-              {chatWorkspace && !isChat && (
-                <FolderChip
-                  icon={<MessageCircle size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />}
-                  label={chatWorkspace.name}
-                  mono={false}
-                  onClick={() => onSelectWorkspace(chatWorkspace.path)}
-                />
-              )}
-              <FolderChip
-                icon={<FolderPlus size={11} className="shrink-0" aria-hidden="true" />}
-                label="Open folder…"
-                mono={false}
-                onClick={onOpenFolder}
-              />
-            </div>
-          </section>
           {recentSessions.length > 0 && (
             <RecentSessionsList
               sessions={recentSessions}
               workspace={workspace}
-              label={isMobile ? 'Recent sessions' : `Recent sessions in ${workspaceName}`}
+              label="Continue"
               headingLevel={2}
             />
           )}

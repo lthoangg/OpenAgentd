@@ -165,7 +165,7 @@ describe('PlanReviewCard', () => {
       />,
     )
 
-    expect(screen.getByText('Not submitted — the agent asked a question first')).toBeTruthy()
+    expect(screen.getByText('Not submitted · the agent asked a question first')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
@@ -178,12 +178,12 @@ describe('PlanReviewCard', () => {
       />,
     )
 
-    expect(screen.getByText('Not submitted — a scheduled task started this turn')).toBeTruthy()
+    expect(screen.getByText('Not submitted · a scheduled task started this turn')).toBeTruthy()
   })
 
   it('shows a failed submit', () => {
     render(<PlanReviewCard toolCallId="call-1" result="Error: submit_plan is only available in Plan mode." done />)
-    expect(screen.getByText('Not submitted — submit_plan is only available in Plan mode.')).toBeTruthy()
+    expect(screen.getByText('Not submitted · submit_plan is only available in Plan mode.')).toBeTruthy()
   })
 
   it('shows the plan being submitted while the call streams', () => {

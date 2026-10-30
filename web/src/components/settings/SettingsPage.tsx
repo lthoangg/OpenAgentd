@@ -13,11 +13,13 @@
  * that appears only when the draft is dirty, with Reset, Save, and a Cmd/Ctrl+S
  * binding. Pages pass the `useSettingsDraft` result and stop worrying about it.
  */
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { RotateCcw, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { PAGE_BODY, TEXT } from '@/components/settings/tokens'
@@ -44,7 +46,17 @@ interface SettingsPageProps {
   loading?: boolean
   /** Renders the error state instead of children. */
   error?: unknown
+  /** Why Save is disabled while the draft is dirty, shown on the save bar. */
+  saveBlockedReason?: string | null
+  /** Ask before saving when the save deletes data (e.g. a shorter retention). */
+  confirmSave?: { when: boolean; title: string; description: string; confirmLabel: string }
   children: ReactNode
+}
+
+/** Save-bar options a page passes through to the bar. */
+interface SaveBarOptions {
+  saveBlockedReason?: string | null
+  confirmSave?: SettingsPageProps['confirmSave']
 }
 
 export function SettingsPage({
@@ -55,8 +67,19 @@ export function SettingsPage({
   draft,
   loading = false,
   error,
+  saveBlockedReason,
+  confirmSave,
   children,
 }: SettingsPageProps) {
+  const [confirmingSave, setConfirmingSave] = useState(false)
+  const confirmSaveRef = useRef(confirmSave)
+  confirmSaveRef.current = confirmSave
+  const requestSave = () => {
+    const current = draftRef.current
+    if (!current?.canSave) return
+    if (confirmSaveRef.current?.when) setConfirmingSave(true)
+    else void current.save()
+  }
   useUnsavedSettings(Boolean(draft?.dirty || draft?.isSaving))
   // Read through a ref inside the handler so the listener is bound once per
   // page rather than re-bound on every keystroke: `draft.save` and `canSave`
@@ -70,8 +93,24 @@ export function SettingsPage({
   useShortcut({ key: 'S', mod: true }, () => {
     const current = draftRef.current
     if (!current?.canSave) return false
-    void current.save()
+    requestSave()
   }, { within: settingsRoot })
+
+  const saveBar = draft && (
+    <>
+      <SaveBar draft={draft} onSave={requestSave} saveBlockedReason={saveBlockedReason} />
+      {confirmSave && (
+        <ConfirmDialog
+          open={confirmingSave}
+          onOpenChange={setConfirmingSave}
+          title={confirmSave.title}
+          description={confirmSave.description}
+          confirmLabel={confirmSave.confirmLabel}
+          onConfirm={() => draft.save()}
+        />
+      )}
+    </>
+  )
 
   const body = loading ? <SettingsSkeleton /> : error ? <SettingsError error={error} /> : children
   const header = <SettingsPageHeader title={title} description={description} actions={actions} />
@@ -83,7 +122,7 @@ export function SettingsPage({
           <div className="w-full shrink-0 px-4 md:px-8">{header}</div>
           <div className="flex min-h-0 flex-1 flex-col">{body}</div>
         </div>
-        {draft && <SaveBar draft={draft} />}
+        {saveBar}
       </>
     )
   }
@@ -97,7 +136,7 @@ export function SettingsPage({
         </div>
       </div>
 
-      {draft && <SaveBar draft={draft} />}
+      {saveBar}
     </>
   )
 }
@@ -149,8 +188,10 @@ const SAVE_BAR_MOTION_REDUCED = {
   exit: { opacity: 0 },
 } as const
 
-function SaveBar({ draft }: { draft: DraftControls }) {
+function SaveBar({ draft, onSave, saveBlockedReason }: { draft: DraftControls; onSave: () => void } & SaveBarOptions) {
   const prefersReducedMotion = useReducedMotion()
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const blocked = !draft.canSave && !draft.isSaving ? saveBlockedReason : null
   const slide = prefersReducedMotion ? SAVE_BAR_MOTION_REDUCED : SAVE_BAR_MOTION
 
   return (
@@ -168,28 +209,37 @@ function SaveBar({ draft }: { draft: DraftControls }) {
           role="region"
           aria-label="Unsaved changes"
         >
-          <span className={cn('flex-1', TEXT.hint)} aria-live="polite">
-            Unsaved changes
+          <span className={cn('flex-1', TEXT.hint, blocked && 'text-(--color-error)')} aria-live="polite">
+            {blocked || 'Unsaved changes'}
           </span>
           <Button
             size="sm"
             variant="ghost"
             className="min-h-9 md:min-h-0"
-            onClick={draft.reset}
+            onClick={() => setConfirmDiscard(true)}
             disabled={draft.isSaving}
           >
             <RotateCcw size={12} aria-hidden="true" />
-            Reset
+            Discard…
           </Button>
           <Button
             size="sm"
             className="min-h-9 md:min-h-0"
-            onClick={() => void draft.save()}
+            onClick={onSave}
             disabled={!draft.canSave}
+            title="Save (⌘S)"
           >
             <Save size={12} aria-hidden="true" />
             {draft.isSaving ? 'Saving…' : 'Save'}
           </Button>
+          <ConfirmDialog
+            open={confirmDiscard}
+            onOpenChange={setConfirmDiscard}
+            title="Discard your changes?"
+            description="The edits on this page go back to the last saved values."
+            confirmLabel="Discard changes"
+            onConfirm={draft.reset}
+          />
         </motion.div>
       )}
     </AnimatePresence>
@@ -221,8 +271,18 @@ export function SettingsSkeleton({ label = 'Loading settings' }: { label?: strin
 }
 
 function SettingsError({ error }: { error: unknown }) {
+  const queryClient = useQueryClient()
   return (
-    <Callout tone="error" role="alert">
+    <Callout
+      tone="error"
+      role="alert"
+      title="Couldn't load these settings"
+      action={
+        <Button size="sm" variant="default" onClick={() => { void queryClient.refetchQueries({ type: 'active' }) }}>
+          Retry
+        </Button>
+      }
+    >
       {error instanceof Error ? error.message : String(error)}
     </Callout>
   )

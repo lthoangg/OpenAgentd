@@ -15,7 +15,7 @@ function status(overrides: Partial<AppBackendStatus> = {}): AppBackendStatus {
 
 describe('formatBackendConnectionLabel', () => {
   it('labels a bundled sidecar as builtin', () => {
-    expect(formatBackendConnectionLabel(status({ mode: 'bundled' }), '/api')).toBe('builtin')
+    expect(formatBackendConnectionLabel(status({ mode: 'bundled' }), '/api')).toBe('built-in')
   })
 
   it('uses the saved server name for an external backend', () => {
@@ -48,6 +48,6 @@ describe('formatBackendConnectionLabel', () => {
   })
 
   it('treats a relative /api fallback as builtin when status is unavailable', () => {
-    expect(formatBackendConnectionLabel(null, '/api')).toBe('builtin')
+    expect(formatBackendConnectionLabel(null, '/api')).toBe('built-in')
   })
 })

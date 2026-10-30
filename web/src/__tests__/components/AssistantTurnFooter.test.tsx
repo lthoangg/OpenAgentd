@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { AssistantTurn, AssistantTurnFooter } from "@/components/AssistantTurnFooter"
 import type { ContentBlock } from "@/api/types"
 
@@ -123,7 +123,7 @@ describe("AssistantTurnFooter", () => {
 
     expect(screen.getByLabelText("Copy response")).toBeTruthy()
     expect(screen.getByText("12:34")).toBeTruthy()
-    expect(screen.getByText("1.2s")).toBeTruthy()
+    expect(screen.getByText("1.2 s")).toBeTruthy()
   })
 
   it("shows long response durations as minutes and seconds", () => {
@@ -147,8 +147,24 @@ describe("AssistantTurnFooter", () => {
 
     render(<AssistantTurnFooter turnBlocks={blocks} />)
 
-    const cost = screen.getByText("$0.02")
-    expect(cost.getAttribute("aria-label")).toBe("1,500 output tokens, $0.0200")
+    expect(screen.getByText("$0.02")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: /Turn details/ }))
+    expect(screen.getByText("1,500")).toBeTruthy()
+    expect(screen.getByText("$0.0200")).toBeTruthy()
+  })
+
+  it("lists input, cached and output tokens with labels in the details popover", () => {
+    const blocks: ContentBlock[] = [
+      { id: "b1", type: "text", content: "Answer", usage: { outputTokens: 200, costUsd: 0.01, inputTokens: 10_000, cachedTokens: 8_000 } },
+    ]
+
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
+    fireEvent.click(screen.getByRole("button", { name: /Turn details/ }))
+
+    expect(screen.getByText("Input tokens")).toBeTruthy()
+    expect(screen.getByText("10,000")).toBeTruthy()
+    expect(screen.getByText("8,000 (80%)")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Open session in Usage" })).toBeTruthy()
   })
 
   it("shows output tokens when the provider reports no cost", () => {
@@ -194,13 +210,13 @@ describe("AssistantTurn — a turn suspended on a question", () => {
   it("shows no response duration while the turn is still open", () => {
     renderTurn(true)
 
-    expect(screen.queryByText("1.2s")).toBeNull()
+    expect(screen.queryByText("1.2 s")).toBeNull()
   })
 
   it("restores response duration once the turn actually ends", () => {
     renderTurn(false)
 
-    expect(screen.getByText("1.2s")).toBeTruthy()
+    expect(screen.getByText("1.2 s")).toBeTruthy()
   })
 })
 

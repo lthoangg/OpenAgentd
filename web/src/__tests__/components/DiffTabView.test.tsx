@@ -26,7 +26,8 @@ describe('DiffTabView — load failure', () => {
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-    await waitFor(() => expect(screen.queryByText('Failed to load the diff.')).toBeNull())
+    // A boolean: a failing toBeNull pretty-prints the element on every retry.
+    await waitFor(() => expect(screen.queryByText('Failed to load the diff.') === null).toBe(true))
     expect(screen.getByText('No uncommitted changes in this file.')).toBeTruthy()
   })
 })

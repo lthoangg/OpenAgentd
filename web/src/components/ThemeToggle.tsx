@@ -52,7 +52,7 @@ export function ThemeToggle({
               onClick={() => setPreference(NEXT[preference])}
               aria-label={`Theme: ${current.label}. Click to cycle.`}
               className={cn(
-                'interactive-weight flex text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+                'interactive-weight flex text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
                 compact
                   ? 'h-5 w-5 items-center justify-center rounded-sm'
                   : 'h-8 w-8 items-center justify-center rounded-md md:h-8 md:w-8',

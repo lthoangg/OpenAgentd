@@ -107,6 +107,12 @@ describe('validateModel', () => {
   it('good → null', () => {
     expect(validateModel('openai:gpt-5.4', { required: true })).toBeNull()
   })
+  it('well-formed but not in the provider model list → plain-language message', () => {
+    expect(validateModel('openai:nope', { validValues: ['openai:gpt-5.4'] })).toBe(
+      "This model isn't in your provider's model list",
+    )
+    expect(validateModel('openai:gpt-5.4', { validValues: ['openai:gpt-5.4'] })).toBeNull()
+  })
 })
 
 describe('validateDescription', () => {

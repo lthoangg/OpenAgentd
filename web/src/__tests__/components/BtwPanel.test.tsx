@@ -85,7 +85,7 @@ describe('BtwPanel', () => {
     act(() => useBtwStore.getState().reopen(S))
     renderPanel(true, { chipOnly: true, onReopen })
     const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
-    expect(screen.queryByRole('region', { name: 'Side question' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Side questions' })).toBeNull()
     fireEvent.click(chip)
     expect(onReopen).toHaveBeenCalledTimes(1)
   })
@@ -132,12 +132,12 @@ describe('BtwPanel', () => {
   it('Escape and Close hide the panel without deleting anything', async () => {
     renderPanel(false)
     open()
-    const panel = await screen.findByRole('region', { name: 'Side question' })
+    const panel = await screen.findByRole('region', { name: 'Side questions' })
     fireEvent.keyDown(panel, { key: 'Escape' })
     expect(state().open).toBe(false)
 
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Close side question' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Close side questions' }))
     expect(state().open).toBe(false)
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
   })

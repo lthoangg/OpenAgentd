@@ -47,7 +47,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
     if (invalid) { setSaveError(firstDraftError ?? 'Form has validation errors.'); return }
     try {
       await createMut.mutateAsync({ name, content })
-      push({ tone: 'success', title: `Created skill "${name}"`, description: 'Active on next turn.' })
+      push({ tone: 'success', title: `Created skill "${name}"`, description: 'Applies to your next message.' })
       onCreated(name)
     } catch (err) {
       const msg = errorMessage(err)
@@ -67,17 +67,17 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
         error={saveError}
         validationHint={firstDraftError}
         onSave={handleCreate}
+        saveLabel="Create skill"
         onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
-          <PanelSection title="Skill source" description="Frontmatter and body, loaded by agents on demand.">
+          <PanelSection title="Skill file" description="SKILL.md, loaded by an agent when a task needs it.">
             <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
-              Frontmatter (<span className="font-mono">name</span>,{' '}
-              <span className="font-mono">description</span>) is required;
-              use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
-              The body is the instruction the agent loads on demand.
+              The settings block at the top needs <span className="font-mono">name</span> and{' '}
+              <span className="font-mono">description</span>. Name a sub-skill{' '}
+              <span className="font-mono">parent/sub</span>. The text below is what the agent reads.
             </p>
             <Textarea
               value={content}
@@ -88,6 +88,9 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
               aria-invalid={invalid || undefined}
               className="min-h-96 font-mono text-[13px] leading-relaxed"
             />
+            <p className="mt-2 text-xs text-(--color-text-muted)">
+              Saved as <span className="font-mono text-(--color-text)">{name}</span>, from the <span className="font-mono">name</span> line.
+            </p>
           </PanelSection>
         </div>
       </div>

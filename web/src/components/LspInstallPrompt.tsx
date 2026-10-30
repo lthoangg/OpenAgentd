@@ -63,7 +63,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
       if (status.typescript.state === 'error') {
         setError(status.typescript.detail ?? 'TypeScript language tools could not be installed.')
       } else if (status.typescript.state !== 'ready') {
-        setError('TypeScript language tools did not finish installing. Try again or check the backend logs.')
+        setError('TypeScript language tools did not finish installing. Try again or check the server logs.')
       } else {
         setInstalled(true)
       }
@@ -107,14 +107,14 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
               title="Drag to move · Double-click to reset"
               onPointerDown={(e) => dragControls.start(e)}
               onDoubleClick={resetPosition}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
               <GripVertical className="size-3.5" />
             </button>
 
             <button
               type="button"
-              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 rounded-xs px-1"
+              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-xs px-1"
               onClick={() => setMinimized(false)}
               title="Click to expand TypeScript tools details"
             >
@@ -172,14 +172,14 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
                   title="Drag to move · Double-click to reset"
                   onPointerDown={(e) => dragControls.start(e)}
                   onDoubleClick={resetPosition}
-                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 mt-0.5"
+                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) mt-0.5"
                 >
                   <GripVertical className="size-3.5" />
                 </button>
                 <div>
                   <div className="font-medium">Install TypeScript language tools?</div>
                   <div className="mt-1 text-xs text-(--color-text-muted)">
-                    TypeScript language tools are needed for this workspace. They will be downloaded and installed on the backend, not on this device.
+                    TypeScript language tools are needed for this workspace. They will be downloaded and installed on the server, not on this device.
                   </div>
                 </div>
               </div>
@@ -195,16 +195,6 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
                 >
                   <Minus className="size-3.5" />
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  onClick={close}
-                  disabled={installing}
-                  title="Remind me later"
-                >
-                  Later
-                </Button>
               </div>
             </div>
 
@@ -214,11 +204,11 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
             </div>
 
             {error && <p role="alert" className="mt-3 pl-6 text-sm text-(--color-error)">{error}</p>}
-            {installed && <p role="status" className="mt-3 pl-6 text-sm text-(--color-text-muted)">TypeScript language tools are ready on the backend.</p>}
+            {installed && <p role="status" className="mt-3 pl-6 text-sm text-(--color-text-muted)">TypeScript language tools are ready on the server.</p>}
 
             <div className="mt-4 flex justify-end gap-2">
               <Button type="button" variant="default" size="sm" onClick={close} disabled={installing}>
-                {installed ? 'Close' : 'Not now'}
+                {installed ? 'Close' : 'Later'}
               </Button>
               {!installed && (
                 <Button
@@ -236,7 +226,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
                   ) : error ? (
                     'Try again'
                   ) : (
-                    'Install on backend'
+                    'Install'
                   )}
                 </Button>
               )}

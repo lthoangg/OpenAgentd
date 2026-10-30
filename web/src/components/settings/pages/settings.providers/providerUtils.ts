@@ -53,7 +53,7 @@ export function formatModelPriceBadge(cost?: ModelCostInfo): { label: string; is
 
   if (hasInput && hasOutput) {
     return {
-      label: `${formatTokenPrice(input)} / ${formatTokenPrice(output)} / 1M`,
+      label: `${formatTokenPrice(input)} in · ${formatTokenPrice(output)} out / 1M`,
       isFree: false,
     }
   }

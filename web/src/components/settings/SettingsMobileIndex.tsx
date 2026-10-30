@@ -25,7 +25,6 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
           return (
             <PanelSection key={group.id} title={group.label} flush>
               {items.map((item) => {
-                const Icon = item.icon
                 const count = counts[item.id]
                 return (
                   <button
@@ -35,21 +34,15 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
                     className={cn(
                       'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left',
                       'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40 active:bg-(--bg-key)/60',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+                      'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
                     )}
                   >
-                    <span
-                      className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
-                      aria-hidden="true"
-                    >
-                      <Icon size={ICON_SIZE} />
-                    </span>
                     <span className="min-w-0 flex-1">
                       <span className={cn('block truncate', TEXT.label)}>{item.label}</span>
-                      <span className={cn('block truncate', TEXT.hint)}>{item.description}</span>
+                      <span className={cn('line-clamp-2', TEXT.hint)}>{item.description}</span>
                     </span>
                     {count !== undefined && count !== null && (
-                      <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">
+                      <span className="shrink-0 text-[11px] tabular-nums text-(--color-text-subtle)">
                         {count}
                       </span>
                     )}

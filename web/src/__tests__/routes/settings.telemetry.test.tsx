@@ -58,10 +58,15 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep telemetry') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value: '30' } })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    // A shorter window deletes history, so it asks first and saves nothing yet.
+    expect(await screen.findByText('Delete history older than 30 days?')).toBeTruthy()
+    expect(bodies).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Delete and save' }))
 
     await waitFor(() => expect(bodies).toEqual([{ retention_days: 30 }]))
   })
@@ -78,12 +83,42 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep telemetry') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value: '0' } })
-    expect(await screen.findByText(/kept forever/i)).toBeTruthy()
+    expect(await screen.findByText(/everything is kept/i)).toBeTruthy()
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
+    await waitFor(() => expect(bodies).toEqual([{ retention_days: 0 }]))
+  })
+
+  it('keeps everything from the Keep forever switch, and turning it off restores the default', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.get(TELEMETRY_URL, () => HttpResponse.json(TELEMETRY)),
+      http.put(TELEMETRY_URL, async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json({ ...TELEMETRY, ...(body as object) })
+      }),
+    )
+    renderPage()
+
+    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    await waitFor(() => expect(input.value).toBe('90'))
+    const keep = screen.getByRole('switch', { name: 'Keep forever' })
+    expect(keep.getAttribute('aria-checked')).toBe('false')
+
+    fireEvent.click(keep)
+    expect(screen.getByRole('switch', { name: 'Keep forever' }).getAttribute('aria-checked')).toBe('true')
+    expect(input.disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Keep forever' }))
+    expect(input.disabled).toBe(false)
+    expect(input.value).toBe('90')
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Keep forever' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
     await waitFor(() => expect(bodies).toEqual([{ retention_days: 0 }]))
   })
 
@@ -98,10 +133,10 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep telemetry') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value } })
-    expect(await screen.findByText(/whole number from 0 to 3650/i)).toBeTruthy()
+    expect((await screen.findAllByText(/whole number from 0 to 3650/i)).length).toBeGreaterThan(0)
     const save = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement
     expect(save.disabled).toBe(true)
     fireEvent.click(save)

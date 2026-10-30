@@ -115,7 +115,7 @@ export function GitViewToolbar({
               className={CHECKBOX_CLASS}
               checkClassName="peer-checked:text-(--color-text)"
             />
-            <span className="whitespace-nowrap">Graph</span>
+            <span className="whitespace-nowrap">Graph view</span>
           </label>
         )}
         {subTab === 'tree' && (

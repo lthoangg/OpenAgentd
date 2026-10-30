@@ -12,8 +12,11 @@ describe('CloseTerminalDialog', () => {
     render(<CloseTerminalDialog open title="Terminal 1" onConfirm={() => {}} onCancel={() => {}} />)
 
     // Not even for the first frame, before the modal's focus pass runs.
-    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Close terminal' }))
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' })))
+    // Compare as booleans: a failing toBe on DOM nodes pretty-prints both
+    // elements on every waitFor retry, which alone can outlast the timeout.
+    expect(document.activeElement === screen.getByRole('button', { name: 'Close terminal' })).toBe(false)
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    await waitFor(() => expect(document.activeElement === cancel).toBe(true))
   })
 
   it('still stops the shell when Close terminal is clicked', () => {

@@ -103,7 +103,7 @@ export function TaskChecklist({ todos, overflow = 'truncate', className }: TaskC
     [todos],
   )
   return (
-    <ul aria-label="Task list" className={className}>
+    <ul aria-label="Tasks" className={className}>
       {sortedTodos.map((todo) => {
         const Icon = STATUS_ICON[todo.status]
         const isStruck = todo.status === 'completed' || todo.status === 'cancelled'

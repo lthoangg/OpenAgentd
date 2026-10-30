@@ -9,21 +9,12 @@
  * The Form/Raw toggle is optional; the skill editor (which has only a raw
  * mode) hides it by passing ``mode={undefined}``.
  */
-import {
-  AlertCircle,
-  ArrowLeft,
-  Code2,
-  FormInput,
-  Plug,
-  Save,
-  Sparkles,
-  Wrench,
-} from 'lucide-react'
+import { ArrowLeft, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 
@@ -51,6 +42,8 @@ interface EditorSubHeaderProps {
   saveDisabledReason?: string | null
   /** Save handler; the button manages its own disabled state. */
   onSave: () => void
+  /** Label of the save button ("Create skill" on a new item). */
+  saveLabel?: string
   /** Called when the back arrow is clicked. */
   onBack: () => void
 }
@@ -69,9 +62,9 @@ export function EditorSubHeader({
   onModeChange,
   onSave,
   onBack,
+  saveLabel = 'Save',
 }: EditorSubHeaderProps) {
   useUnsavedSettings(dirty || saving)
-  const KindIcon = kind === 'agent' ? Wrench : kind === 'skill' ? Sparkles : Plug
   const showToggle = mode != null && onModeChange != null
 
   // Save is disabled when there is nothing to save, when the draft is
@@ -83,10 +76,11 @@ export function EditorSubHeader({
       ? (validationHint ?? 'Fix validation errors')
       : !dirty
         ? 'No unsaved changes'
-        : null
+        : 'Save (⌘S)'
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-2 sm:gap-3 sm:px-4 md:px-6">
+    <div className="sticky top-0 z-10 shrink-0 border-b border-(--color-border) bg-(--bg-page)" data-editor-kind={kind}>
+    <header className="flex h-14 items-center gap-2 px-2 sm:gap-3 sm:px-4 md:px-6">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
         <TooltipTrigger
@@ -105,13 +99,6 @@ export function EditorSubHeader({
         <TooltipContent>Back</TooltipContent>
       </Tooltip>
 
-      <span
-        className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
-        aria-hidden="true"
-      >
-        <KindIcon size={14} />
-      </span>
-
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold leading-tight text-(--color-text)">{name}</p>
         {path && (
@@ -125,13 +112,11 @@ export function EditorSubHeader({
       {showToggle && (
         <Tabs value={mode} onValueChange={(v) => onModeChange(v as 'form' | 'raw')}>
           <TabsList className="h-7">
-            <TabsTrigger value="form" className="px-2 text-xs" aria-label="Form mode">
-              <FormInput size={11} aria-hidden="true" />
-              <span className="hidden sm:inline">Form</span>
+            <TabsTrigger value="form" className="px-2 text-xs">
+              Form
             </TabsTrigger>
-            <TabsTrigger value="raw" className="px-2 text-xs" aria-label="Raw mode">
-              <Code2 size={11} aria-hidden="true" />
-              <span className="hidden sm:inline">Raw</span>
+            <TabsTrigger value="raw" className="px-2 text-xs">
+              Source
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -139,41 +124,9 @@ export function EditorSubHeader({
 
       {/* Status + Save ──────────────────────────────────────────── */}
       <div className="flex items-center gap-2">
-        {error && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
-                  <AlertCircle size={11} />
-                  Error
-                </span>
-              }
-            />
-            <TooltipContent>{error}</TooltipContent>
-          </Tooltip>
-        )}
-        {!error && invalid && validationHint && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
-                  <AlertCircle size={11} />
-                  Invalid
-                </span>
-              }
-            />
-            <TooltipContent>{validationHint}</TooltipContent>
-          </Tooltip>
-        )}
         {!error && !invalid && dirty && (
           <span className="hidden items-center gap-1.5 text-xs text-(--color-text-muted) sm:flex">
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full bg-(--color-text)',
-                saving ? 'animate-pulse' : '',
-              )}
-              aria-hidden="true"
-            />
+            <span className="h-1.5 w-1.5 rounded-full bg-(--color-text)" aria-hidden="true" />
             Unsaved
           </span>
         )}
@@ -187,10 +140,10 @@ export function EditorSubHeader({
                   className="min-h-9 md:min-h-0"
                   onClick={onSave}
                   disabled={saveDisabled}
-                  aria-label={saving ? 'Saving' : 'Save'}
+                  aria-label={saving ? 'Saving' : saveLabel}
                 >
                   <Save size={12} aria-hidden="true" />
-                  {saving ? 'Saving…' : 'Save'}
+                  {saving ? 'Saving…' : saveLabel}
                 </Button>
               }
             />
@@ -199,10 +152,18 @@ export function EditorSubHeader({
         ) : (
           <Button size="sm" className="min-h-9 md:min-h-0" onClick={onSave} disabled={saveDisabled}>
             <Save size={12} aria-hidden="true" />
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving…' : saveLabel}
           </Button>
         )}
       </div>
     </header>
+    {(error || (invalid && validationHint)) && (
+      <div className="px-2 pb-2 sm:px-4 md:px-6">
+        <Callout tone="error" role="alert" title={error ? "Couldn't save" : 'Fix this to save'}>
+          {error ?? validationHint}
+        </Callout>
+      </div>
+    )}
+    </div>
   )
 }

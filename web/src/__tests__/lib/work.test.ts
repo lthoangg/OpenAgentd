@@ -77,7 +77,7 @@ describe('goalHeaderState', () => {
   })
 
   it('names the working goal and its next task', () => {
-    expect(goalHeaderState(goal(), SESSION, OPEN)).toEqual({ tone: 'active', text: 'Goal · Working on turn 7 of 50 · Next: Task 2' })
+    expect(goalHeaderState(goal(), SESSION, OPEN)).toEqual({ tone: 'active', text: 'Goal · Working · turn 7/50 · Next: Task 2' })
   })
 
   it('shows paused, waiting and blocked in their tones, with no next task', () => {

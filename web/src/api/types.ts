@@ -500,12 +500,13 @@ export interface ContentBlock {
   serverDurationMs?: number   // server-measured execution time from tool_end duration_ms
   startedAt?: number          // client timestamp when block was first created (for live elapsed display)
   responseDurationMs?: number // assistant response duration shown in turn footer
+  thinkingDurationMs?: number // how long the model reasoned (``extra.thinking_duration_ms``), thinking blocks only
   /**
    * The persisted message's own usage, carried on exactly one of the blocks
    * that message produced so a turn can sum it without double counting.
    * Absent on live blocks until the post-turn reconcile adopts the rows.
    */
-  usage?: { outputTokens: number; costUsd: number }
+  usage?: { outputTokens: number; costUsd: number; inputTokens?: number; cachedTokens?: number }
   /** Variant-specific metadata. ``user`` inbox blocks carry ``from_agent``;
    *  ``compaction`` blocks carry ``state: 'compacting' | 'compacted'`` and
    *  optional ``error: true``. Keeping this generic avoids one typed field

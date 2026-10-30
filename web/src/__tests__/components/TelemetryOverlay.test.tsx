@@ -69,7 +69,7 @@ afterEach(() => {
   originalFetch = undefined
   server.close()
   useUIStore.setState({ telemetryOpen: false })
-  useTelemetryStore.setState({ days: 7, workspace: null, model: null, session: null, errorsOnly: false, traceId: null })
+  useTelemetryStore.setState({ days: 7, workspace: null, model: null, session: null, errorsOnly: false, traceId: null, spanId: null })
   localStorage.removeItem('oa.telemetry.v1')
 })
 
@@ -88,14 +88,30 @@ describe('TelemetryOverlay', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
 
     act(() => openTelemetry())
-    expect(screen.getByRole('dialog', { name: 'Telemetry' })).toBeTruthy()
-    expect(await screen.findByText('No telemetry yet')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Usage' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Usage' })).toBeTruthy()
+    // The subtitle says what the numbers cover
+    expect(screen.getByText('Last 7 days · all workspaces · all models')).toBeTruthy()
+    expect(await screen.findByText('No usage yet')).toBeTruthy()
+    expect(screen.queryByText('No telemetry yet')).toBeNull()
+  })
+
+  it('puts focus on the selected time range when it opens, not on Close', async () => {
+    renderOverlay()
+    act(() => openTelemetry())
+
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement | null
+      expect(active?.getAttribute('role')).toBe('radio')
+      expect(active?.getAttribute('aria-checked')).toBe('true')
+      expect(active?.closest('[role="radiogroup"]')?.getAttribute('aria-label')).toBe('Time range')
+    })
   })
 
   it('Escape closes the overview', async () => {
     renderOverlay()
     act(() => openTelemetry())
-    await screen.findByText('No telemetry yet')
+    await screen.findByText('No usage yet')
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(useUIStore.getState().telemetryOpen).toBe(false)
@@ -105,23 +121,50 @@ describe('TelemetryOverlay', () => {
     const user = userEvent.setup()
     renderOverlay()
     act(() => openTelemetry({ traceId: 'trace-9' }))
-    expect(screen.getByRole('heading', { name: 'Turn trace' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Turn' })).toBeTruthy()
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(useTelemetryStore.getState().traceId).toBeNull()
     expect(useUIStore.getState().telemetryOpen).toBe(true)
 
     act(() => useTelemetryStore.getState().openTrace('trace-9'))
-    await user.click(screen.getByRole('button', { name: 'Back to overview' }))
+    await user.click(screen.getByRole('button', { name: 'Back to usage' }))
     expect(useTelemetryStore.getState().traceId).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Telemetry' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Usage' })).toBeTruthy()
+  })
+
+  it('Escape and Back step out of an open span, then the trace, then close', async () => {
+    const user = userEvent.setup()
+    renderOverlay()
+    act(() => openTelemetry({ traceId: 'trace-9' }))
+    await screen.findByRole('button', { name: 'Open session' })
+    act(() => useTelemetryStore.getState().selectSpan('run'))
+
+    // With a span open, Back goes to the trace, not the usage overview
+    expect(screen.getByRole('button', { name: 'Back to the trace' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Back to usage' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Back to the trace' }))
+    expect(useTelemetryStore.getState()).toMatchObject({ spanId: null, traceId: 'trace-9' })
+    expect(screen.getByRole('button', { name: 'Back to usage' })).toBeTruthy()
+
+    act(() => useTelemetryStore.getState().selectSpan('run'))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(useTelemetryStore.getState()).toMatchObject({ spanId: null, traceId: 'trace-9' })
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(useTelemetryStore.getState().traceId).toBeNull()
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(useUIStore.getState().telemetryOpen).toBe(false)
   })
 
   it('the close button closes from any view', async () => {
     const user = userEvent.setup()
     renderOverlay()
     act(() => openTelemetry({ traceId: 'trace-9' }))
-    await user.click(screen.getByRole('button', { name: 'Close telemetry' }))
+    await user.click(screen.getByRole('button', { name: 'Close usage' }))
     expect(useUIStore.getState().telemetryOpen).toBe(false)
   })
 

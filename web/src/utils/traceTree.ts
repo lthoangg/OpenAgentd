@@ -113,7 +113,7 @@ export function spanBarPosition(
  * Classify spans by name prefix so the UI can color-code them consistently.
  * Falls back to "other" for unknown kinds.
  */
-export type SpanCategory = 'agent_run' | 'chat' | 'tool' | 'summarization' | 'title' | 'other'
+export type SpanCategory = 'agent_run' | 'chat' | 'tool' | 'summarization' | 'title' | 'goal' | 'other'
 
 export function categorizeSpan(name: string): SpanCategory {
   if (name.startsWith('agent_run')) return 'agent_run'
@@ -121,5 +121,6 @@ export function categorizeSpan(name: string): SpanCategory {
   if (name.startsWith('execute_tool')) return 'tool'
   if (name.startsWith('summarization')) return 'summarization'
   if (name.startsWith('title_generation')) return 'title'
+  if (name.startsWith('goal_check')) return 'goal'
   return 'other'
 }

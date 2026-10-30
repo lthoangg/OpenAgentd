@@ -97,8 +97,8 @@ export function useAgentCommands({
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
-    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
-    { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
+    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Model, thinking level and tools for this session', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
+    { id: 'todos',            group: 'View',       label: 'Tasks',          description: "The agent's task list and progress", keywords: 'todos task list progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     ...(handleOpenPlan
       ? [{
           id: 'open-plan',
@@ -109,7 +109,7 @@ export function useAgentCommands({
           action: handleOpenPlan,
         }]
       : []),
-    { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Dock', description: 'Show or hide the dock with its open tabs', keywords: 'changed files dock panel', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
+    { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Panel', description: 'Show or hide the review panel and its open tabs', keywords: 'changed files dock panel review', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleOpenSideQuestions
       ? [{
           id: 'side-questions',
@@ -121,32 +121,32 @@ export function useAgentCommands({
         }]
       : []),
     ...(handleOpenGit
-      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the review dock', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
+      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
       : []),
     ...(handleToggleDockMaximized
-      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Dock', description: 'Give the review dock the full width for diffs, files, and terminals', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
+      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
       : []),
     { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.sidebar, os), action: handleSidebarToggle },
-    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', action: toggleScheduler },
+    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Create, pause and run scheduled agent tasks', keywords: 'scheduler schedule cron', action: toggleScheduler },
     ...(handleOpenPreview
       ? [{
           id: 'open-preview',
           group: 'View' as const,
           label: 'Open Preview',
-          description: 'Show a local dev server or HTML file in the review dock, with design comments',
+          description: 'Show a local dev server or HTML file in the review panel',
           keywords: 'browser web view localhost dev server design inspect',
           action: handleOpenPreview,
         }]
       : []),
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
-    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
-    { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'Spend, turns, and traces by workspace and model', action: () => openTelemetry() },
+    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
+    { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
     {
       id: 'theme',
       group: 'View',
       label: 'Theme…',
-      description: `${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'} now · switch between System, Light, and Dark`,
+      description: `Switch between System, Light and Dark. Now: ${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'}`,
       keywords: 'appearance color mode system light dark',
       page: {
         placeholder: 'Search themes…',

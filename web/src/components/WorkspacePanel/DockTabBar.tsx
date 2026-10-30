@@ -1,10 +1,10 @@
 /**
  * DockTabBar — the review dock's editor-tab strip.
  *
- * One row: scrolling tabs on the left, a fixed action cluster on the right
- * ("+" to open any view or tool, new preview, new terminal, refresh, and on
- * desktop maximize; file search is Quick Open, ⌘P). Phones keep only "+" and
- * refresh, so the tabs keep their room; the "+" menu holds the rest. Hiding the
+ * One row: scrolling tabs on the left, a fixed action cluster on the right:
+ * "Open…" (every view and tool, including Terminal and Preview), refresh
+ * while a Git or file tab shows, and maximize on desktop.  File search is
+ * Find file, ⌘P. Hiding the
  * dock lives on the header's review-dock toggle (and ⌘D), which is always
  * visible because the dock never covers the header.
  *
@@ -17,7 +17,7 @@
  * focused tab, or Move Left / Move Right in the tab menu.
  */
 import { Fragment, useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, Check, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, Target, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, Check, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, Target, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -56,10 +56,9 @@ export interface DockTabBarProps {
   onCloseToRight?: (id: string) => void
   /** Moves a tab to an index of ``tabs``; omitted, tabs stay put. */
   onMove?: (id: string, toIndex: number) => void
-  onNewTerminal: () => void
-  /** Opens a web preview tab; omitted when previews are unavailable. */
-  onNewPreview?: () => void
   onRefresh: () => void
+  /** What refresh reloads for the active tab ("Refresh Git status"); null hides it. */
+  refreshLabel?: string | null
   /** The "+" menu's rows (see ``dockOpenItems``); empty hides the button. */
   openItems?: DockOpenItem[]
   /** ``null`` hides the toggle (mobile, or a forced narrow-window overlay). */
@@ -164,11 +163,11 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   return (
     <>
       {onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />)}
-      {onCloseOthers && item('Close Others', () => onCloseOthers(tab.id), undefined, !hasOthers)}
-      {onCloseToRight && item('Close to the Right', () => onCloseToRight(tab.id), undefined, !hasRight)}
-      {onMove && item('Move Left', () => onMove(tab.id, index - 1), undefined, index <= 0)}
-      {onMove && item('Move Right', () => onMove(tab.id, index + 1), undefined, !hasRight)}
-      {path && item('Copy Path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />)}
+      {onCloseOthers && item('Close other tabs', () => onCloseOthers(tab.id), undefined, !hasOthers)}
+      {onCloseToRight && item('Close tabs to the right', () => onCloseToRight(tab.id), undefined, !hasRight)}
+      {onMove && item('Move left', () => onMove(tab.id, index - 1), undefined, index <= 0)}
+      {onMove && item('Move right', () => onMove(tab.id, index + 1), undefined, !hasRight)}
+      {path && item('Copy path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />)}
     </>
   )
 }
@@ -192,9 +191,8 @@ export function DockTabBar({
   onCloseOthers,
   onCloseToRight,
   onMove,
-  onNewTerminal,
-  onNewPreview,
   onRefresh,
+  refreshLabel = null,
   openItems = [],
   maximized,
   onToggleMaximized,
@@ -240,6 +238,12 @@ export function DockTabBar({
         onKeyDown={handleStripKeyDown}
         {...drag.handlers}
       >
+        {tabs.length === 0 && (
+          // An empty strip still says what this panel is.
+          <span className="flex shrink-0 items-center border-b border-(--color-border) px-3 text-xs font-medium text-(--color-text-2)">
+            Review panel
+          </span>
+        )}
         {tabs.map((tab) => {
           const active = activeTabId === tab.id
           const dragging = drag.draggingId === tab.id
@@ -316,33 +320,39 @@ export function DockTabBar({
       </div>
       <div className="flex shrink-0 items-center gap-0.5 border-b border-(--color-border) px-1">
         {openItems.length > 0 && (
-          <ActionButton
-            label="Open in dock"
-            expanded={openMenuAt !== null}
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect()
-              setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
-            }}
-          >
-            <Plus size={14} aria-hidden="true" />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
+                  }}
+                  className={cn(
+                    'flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:px-1.5 pointer-coarse:h-11 pointer-coarse:px-3',
+                    openMenuAt !== null && 'bg-(--bg-key) text-(--color-text)',
+                  )}
+                  aria-label="Open in the review panel"
+                  aria-haspopup="menu"
+                  aria-expanded={openMenuAt !== null}
+                >
+                  <Plus size={13} aria-hidden="true" />
+                  Open…
+                </button>
+              }
+            />
+            <TooltipContent side="bottom">Open a view, terminal, preview or file</TooltipContent>
+          </Tooltip>
+        )}
+        {refreshLabel && (
+          <ActionButton label={refreshLabel} onClick={onRefresh}>
+            <RefreshCw size={14} aria-hidden="true" />
           </ActionButton>
         )}
-        {!mobile && onNewPreview && (
-          <ActionButton label="New preview" onClick={onNewPreview}>
-            <Globe size={14} aria-hidden="true" />
-          </ActionButton>
-        )}
-        {!mobile && (
-          <ActionButton label="New terminal" onClick={onNewTerminal}>
-            <TerminalSquare size={14} aria-hidden="true" />
-          </ActionButton>
-        )}
-        <ActionButton label="Refresh" onClick={onRefresh}>
-          <RefreshCw size={14} aria-hidden="true" />
-        </ActionButton>
         {!mobile && maximized !== null && (
           <ActionButton
-            label={`${maximized ? 'Restore' : 'Maximize'} review dock (${shortcutLabel(APP_SHORTCUTS.maximizeDock, os)})`}
+            label={`${maximized ? 'Restore' : 'Maximize'} review panel (${shortcutLabel(APP_SHORTCUTS.maximizeDock, os)})`}
             onClick={onToggleMaximized}
           >
             {maximized
@@ -352,7 +362,7 @@ export function DockTabBar({
         )}
       </div>
       {openMenuAt && (
-        <ContextMenu at={openMenuAt} label="Open in dock" onDismiss={() => setOpenMenuAt(null)} className="w-48">
+        <ContextMenu at={openMenuAt} label="Open in the review panel" onDismiss={() => setOpenMenuAt(null)} className="w-48">
           {openItems.map((item, index) => (
             <Fragment key={item.id}>
               {index > 0 && openItems[index - 1].group !== item.group && <ContextMenuSeparator />}

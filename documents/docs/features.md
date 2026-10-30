@@ -246,6 +246,56 @@ run from the terminal (the native Rust binary since v3.0.0).
   for intervals and run limits, and shows long workspace paths and session
   IDs in full. Task rows drop their inline buttons on touch screens; tap a
   task for every action, or long-press it in the app.
+- **Easier-to-read UI on desktop and phones** `[v3.36.0]` — every screen keeps
+  its technical detail (tool names, commands, exit codes, model IDs, token
+  counts, span names) but labels it, gives it a unit, and lines numbers up in
+  a right-hand column. Terms such as p50/p95, TTFT, tok/s, cache hit, stdio
+  and exit code are underlined with a dotted line and define themselves on
+  hover. Codebase words are gone from the UI (`builtin` reads **built-in**,
+  lead/member reads **main**/subagent, compaction reads **summarized**).
+  - **One set of parts.** Rows, chips (four tones) and cards are shared, so
+    the transcript, Settings, Usage and the scheduler look alike. Tool rows
+    show the real tool name, its target and a short result (`shell bun test
+    … · 1 failed, 11 passed` with `exit 1  2.4 s` aligned right). Each answer
+    ends with one muted line (`20:13 · claude-sonnet-4-6 · 12.0 s · $0.02`)
+    whose tooltip lists tokens, cache, TTFT and tok/s and links to the trace.
+    Goals use one card; retries say which attempt and when.
+  - **Asks before destroying.** Stop, Regenerate, Disconnect, clearing a
+    plan, deleting a task and shortening retention all confirm first. Memory
+    refuses to save over a page that failed to load, and every list has a
+    loading, empty and error state with **Retry**.
+  - **Right state.** A session whose folder is gone still opens its
+    transcript under a notice; a wrong session URL says **Session not
+    found**; Help opens the keyboard shortcuts; MCP never shows "Connect
+    required" for a running server; the browser build hides **Updates**.
+  - **Status bar** shows the server (`built-in`), the model ID with its
+    provider and thinking level as chips, and spend with its period
+    (`$0.55 · 24h`), each with a tooltip.
+  - **Review panel** (was the review dock) has one **Open…** button for
+    views, terminals, previews and files; Refresh appears only where it
+    reloads something and names what it reloads. Tab menus use sentence case
+    ("Close other tabs", "Move right"). Clearing a plan asks first.
+  - **Scheduled tasks** take an interval as `Every [1] [hours] = 3,600 s`
+    and preview the next runs of a cron expression (an invalid one cannot be
+    saved). Rows and the detail show the last run, its result and the next
+    run; a recurring task never reads "Completed".
+  - **Usage and traces.** Seven labeled tiles (spend, turns, turn duration
+    p50/p95, TTFT p50/p95, output speed p50/p5 in tok/s, tokens, cache hit),
+    tables with column headings and units. A trace lists each span with a
+    type chip (agent, llm, tool, goal, summary, title) beside its raw name,
+    a time ruler and legend, and a span panel that groups attributes by
+    namespace (`tool.*`, `session.*`) with copy per row. Esc steps back one
+    level: span, then trace, then the overlay.
+  - **Settings** groups pages as App, Agents and tools, Sessions, Models and
+    media, Data and safety, and About, with a search box; Providers is a
+    list; Settings → Telemetry is now **Data retention**.
+  - **Phones.** The header shows the session title with its workspace under
+    it, and keeps four controls: sidebar, title, Review panel and **More**.
+    More holds Tasks (with the open count and goal ring), Session settings,
+    context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
+    command palette, grouped as Session, Workspace and App. Every control
+    outside the composer is at least 44 px on touch, list rows and the
+    review-panel tab strip included, and Usage fits a 390 px screen.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -2753,8 +2803,10 @@ Everything stays local. No third-party telemetry SaaS.
 - **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
   UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
   scroll-paginated traces, and trace waterfall details.
-- **Telemetry overlay** `[v3.0.0]` — telemetry opens over the current screen from
-  the status-bar spend, the mobile drawer, or **Open Telemetry** in the palette; `/telemetry`
+- **Usage overlay** `[v3.0.0]` — usage telemetry opens over the current screen from
+  the status-bar spend, the mobile drawer, or **Open Usage** in the palette (it
+  was named Telemetry until `[v3.36.0]`, and the palette still finds it by that
+  name); `/telemetry`
   links (`?days=`, `?traceId=`, `?session=`) open it too. It shows spend, turns
   (and how many failed), median turn time, tokens, and cache hit rate, per-day
   spend or turns, and spend by workspace, session, model, and tool. Filter by
@@ -2784,10 +2836,10 @@ Everything stays local. No third-party telemetry SaaS.
 - **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
   kept for 90 days by default (traces were previously kept for 30), so the
   90-day telemetry range shows full trace history. Older data is removed by a
-  daily sweep. Since `[v3.35.0]` the period is set in **Settings → Telemetry**;
+  daily sweep. Since `[v3.35.0]` the period is set in **Settings → Data retention** (named Telemetry before v3.36.0);
   the `OPENAGENTD_OTEL_SPAN_RETENTION_DAYS` and `OPENAGENTD_OTEL_METRIC_RETENTION_DAYS`
   variables are no longer read.
-- **Telemetry retention setting** `[v3.35.0]` — **Settings → Telemetry**
+- **Telemetry retention setting** `[v3.35.0]` — **Settings → Data retention**
   sets how many days local traces and metrics are kept (0 to 3650, default
   90; 0 keeps them forever). Saving a shorter period deletes older telemetry
   right away instead of at the next daily sweep. This replaces

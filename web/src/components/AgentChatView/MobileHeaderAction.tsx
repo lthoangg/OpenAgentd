@@ -32,7 +32,7 @@ export function MobileHeaderAction({
             type="button"
             onClick={onClick}
             disabled={disabled || !onClick}
-            className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45 pointer-coarse:size-9 ${
+            className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-45 pointer-coarse:size-11 ${
               active
                 ? 'bg-(--bg-key) text-(--color-text)'
                 : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)'

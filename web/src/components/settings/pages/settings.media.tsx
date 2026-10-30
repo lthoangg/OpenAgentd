@@ -25,6 +25,8 @@ const IMAGE_OUTPUT_FORMATS = ['png', 'jpeg', 'webp']
 const IMAGE_QUALITIES = ['auto', 'low', 'medium', 'high']
 const VIDEO_ASPECT_RATIOS = ['16:9', '9:16']
 const VIDEO_RESOLUTIONS = ['720p', '1080p', '4k']
+/** Display words for raw option values; the value saved stays the raw one. */
+const OPTION_LABEL: Record<string, string> = { '4k': '4K', '0.5K': '0.5K (512 px)', '1K': '1K (1024 px)', '2K': '2K (2048 px)', '4K': '4K (4096 px)' }
 const VIDEO_DURATIONS = ['4', '6', '8']
 const PROVIDER_DEFAULT = '__provider_default__'
 
@@ -99,7 +101,7 @@ export function MediaSettingsPage() {
     normalize: normalizeMultimodal,
     hydrate: hydrateMultimodal,
     onSave: (value) => updateMultimodal.mutateAsync(value),
-    successTitle: 'Multimodal settings saved',
+    successTitle: 'Image and video settings saved',
   })
   const mm = draft.value
   const setImage = (key: string, value: string) =>
@@ -116,9 +118,10 @@ export function MediaSettingsPage() {
 
   return (
     <SettingsPage
-      title="Media generation"
+      title="Image and video"
       description="The models and defaults agents use when they create images and videos."
       draft={{ ...draft, canSave: draft.canSave && !imageModelError && !videoModelError }}
+      saveBlockedReason={imageModelError ? 'Pick an image model from the list to save.' : videoModelError ? 'Pick a video model from the list to save.' : null}
       loading={multimodalQ.isLoading}
       error={multimodalQ.error}
     >
@@ -136,10 +139,10 @@ export function MediaSettingsPage() {
           </div>
         </PanelRow>
         <ListRow label="Aspect ratio" value={String(mm.image.aspect_ratio ?? '')} onChange={(v) => setImage('aspect_ratio', v)} options={IMAGE_ASPECT_RATIOS} />
-        <ListRow label="Image size" value={String(mm.image.image_size ?? '')} onChange={(v) => setImage('image_size', v)} options={IMAGE_SIZES} />
+        <ListRow label="Size (other models)" value={String(mm.image.image_size ?? '')} onChange={(v) => setImage('image_size', v)} options={IMAGE_SIZES} />
         <ListRow
-          label="OpenAI size"
-          description="Used by OpenAI image models instead of Image size."
+          label="Size (OpenAI models)"
+          description="OpenAI image models use this size instead."
           value={optionalValue(mm.image.size)}
           onChange={(v) => setImage('size', optionalSettingValue(v))}
           options={IMAGE_OPENAI_SIZES}
@@ -178,7 +181,7 @@ export function MediaSettingsPage() {
         <ListRow label="Resolution" value={String(mm.video.resolution ?? '')} onChange={(v) => setVideo('resolution', v)} options={VIDEO_RESOLUTIONS} />
         <ListRow
           label="Duration"
-          description="Seconds."
+          description="In seconds."
           value={String(mm.video.duration_seconds ?? '')}
           onChange={(v) => setVideo('duration_seconds', v)}
           options={VIDEO_DURATIONS}
@@ -210,14 +213,16 @@ function ListRow({
         value={value}
         onValueChange={(next) => next && onChange(next)}
         trigger={label}
-        className="h-9 w-full font-mono sm:w-44"
+        className="h-9 w-full sm:w-44"
       >
-        {optional ? <DropdownItem value={PROVIDER_DEFAULT}>Provider default</DropdownItem> : null}
-        {options.map((option) => (
-          <DropdownItem key={option} value={option} className="font-mono">
-            {option}
-          </DropdownItem>
-        ))}
+        {[
+          ...(optional ? [<DropdownItem key={PROVIDER_DEFAULT} value={PROVIDER_DEFAULT}>Provider default</DropdownItem>] : []),
+          ...options.map((option) => (
+            <DropdownItem key={option} value={option}>
+              {OPTION_LABEL[option] ?? option}
+            </DropdownItem>
+          )),
+        ]}
       </Dropdown>
     </PanelRow>
   )

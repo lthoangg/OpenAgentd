@@ -6,6 +6,7 @@ import fuzzysort from 'fuzzysort'
 import { Input } from '@/components/ui/input'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
+import { Chip } from '@/components/ui/chip'
 import { getVisibleViewport, onVisibleViewportChange, type VisibleViewport } from '@/lib/visible-viewport'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 
@@ -234,7 +235,7 @@ export function ModelCombobox({
           aria-invalid={invalid || undefined}
           autoComplete="off"
           spellCheck={false}
-          className="min-h-9 pr-9 font-mono"
+          className="min-h-9 pr-9 font-mono pointer-coarse:min-h-11 pointer-coarse:pr-11"
         />
         {query && (
           <button
@@ -252,7 +253,7 @@ export function ModelCombobox({
               setOpen(true)
             }}
             disabled={disabled}
-            className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
+            className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7 pointer-coarse:size-11"
           >
             <X size={13} aria-hidden="true" />
           </button>
@@ -291,10 +292,13 @@ export function ModelCombobox({
                 No matching models
               </li>
             ) : (
-              filtered.map((o, i) => {
+              filtered.flatMap((o, i) => {
                 const isHi = i === highlight
                 const isSel = o.id === value
-                return (
+                // Group under a provider heading while the list is in provider
+                // order (no query); ranked results stay flat.
+                const showHeading = !query.trim() && (i === 0 || filtered[i - 1].provider !== o.provider)
+                const row = (
                   <li key={o.id}>
                     <button
                       type="button"
@@ -307,20 +311,28 @@ export function ModelCombobox({
                       {...hoverIntent(() => setHighlight(i))}
                       className={cn(
                         MENU_ITEM_CLASS,
-                        'justify-between font-mono transition-colors',
+                        'justify-between gap-2 transition-colors',
                         isHi ? 'bg-(--bg-key)' : '',
                         isSel ? 'text-(--color-text)' : 'text-(--color-text-2)',
                       )}
+                      title={o.id}
                     >
-                      <span className="min-w-0 truncate">{o.id}</span>
-                      {o.vision && (
-                        <span className="shrink-0 text-xs md:text-[11px] text-(--color-text-muted)">
-                          vision
-                        </span>
-                      )}
+                      <span className="min-w-0 truncate font-mono">{o.model}</span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        {o.vision && <Chip title="Accepts image input">Vision</Chip>}
+                        {query.trim() && <Chip mono variant="outline">{o.provider}</Chip>}
+                      </span>
                     </button>
                   </li>
                 )
+                return showHeading
+                  ? [
+                      <li key={`h:${o.provider}`} role="presentation" className="px-2.5 pt-2 pb-1 font-mono text-[11px] text-(--color-text-subtle) select-none">
+                        {o.provider}
+                      </li>,
+                      row,
+                    ]
+                  : [row]
               })
             )}
           </ul>,

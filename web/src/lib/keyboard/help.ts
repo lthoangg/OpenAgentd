@@ -37,7 +37,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       entries: [
         app('newSession', 'New session'),
         app('commandPalette', 'Command palette'),
-        app('quickOpen', 'Quick Open'),
+        app('quickOpen', 'Find file'),
         app('switchWorkspace', 'Switch workspace or session'),
         app('workspaceSessions', 'Sessions in this workspace'),
         app('settings', 'Settings'),
@@ -73,15 +73,15 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Minimize the input', { key: 'Escape' }),
         app('previousPrompt', 'Previous prompt'),
         app('nextPrompt', 'Next prompt'),
-        app('tasks', 'Task list'),
+        app('tasks', 'Tasks'),
       ],
     },
     {
-      title: 'Review dock',
+      title: 'Review panel',
       entries: [
-        app('workspaceFiles', 'Show or hide the review dock'),
+        app('workspaceFiles', 'Show or hide the review panel'),
         app('openGit', 'Open Git'),
-        app('maximizeDock', 'Maximize the review dock'),
+        app('maximizeDock', 'Maximize the review panel'),
         app('closeTab', 'Close tab'),
         keys(appOnly('Dock tab 1 to 8, and the last'), chordOf(APP_SHORTCUTS.dockTab1), chordOf(APP_SHORTCUTS.dockTab9)),
         keys(appOnly('Next and previous dock tab'), NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD),

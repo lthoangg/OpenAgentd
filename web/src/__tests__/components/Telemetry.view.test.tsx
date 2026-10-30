@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
@@ -192,7 +192,7 @@ beforeEach(() => {
   }) as typeof fetch
   summaryRequests = []
   traceRequests = []
-  useTelemetryStore.setState({ days: 7, workspace: null, model: null, session: null, errorsOnly: false, traceId: null })
+  useTelemetryStore.setState({ days: 7, workspace: null, model: null, session: null, errorsOnly: false, traceId: null, spanId: null })
 })
 
 afterEach(() => {
@@ -210,15 +210,63 @@ describe('TelemetryView overview', () => {
     renderView()
 
     const overview = await screen.findByLabelText('Overview')
+    const labels = Array.from(overview.querySelectorAll('dt')).map((dt) => dt.textContent)
+    expect(labels).toEqual(['Spend (est.)', 'Turns', 'Turn duration', 'First token (TTFT)', 'Output speed', 'Tokens', 'Cache hit'])
     expect(within(overview).getByText('$0.42')).toBeTruthy()
-    expect(within(overview).getByText('1 failed')).toBeTruthy()
-    expect(screen.getByText('Activity')).toBeTruthy()
+    expect(within(overview).getByText('per turn')).toBeTruthy()
+    expect(within(overview).getByText(/^1 failed · /)).toBeTruthy()
+    // The chart is titled by what it plots, with its peak spelled out
+    expect(screen.getByText('Spend per day', { selector: 'span' })).toBeTruthy()
+    expect(screen.getByText(/Busiest day:/)).toBeTruthy()
     expect(screen.getByText('Workspaces')).toBeTruthy()
-    expect(screen.getByText('Not recorded')).toBeTruthy()
-    expect(screen.getByText('Workspace unknown: older telemetry from a deleted session, or work outside a session')).toBeTruthy()
+    expect(screen.getByText('Unknown workspace')).toBeTruthy()
+    expect(screen.queryByText('Not recorded')).toBeNull()
+    expect(screen.getByText('Turns from before workspaces were tracked, or from deleted sessions')).toBeTruthy()
     expect(screen.getByText('Models')).toBeTruthy()
-    expect(await screen.findAllByRole('button', { name: /^Open turn from/ })).toHaveLength(2)
-    expect(screen.getByRole('button', { name: /failed$/ })).toBeTruthy()
+
+    // Recent turns: a table row and a phone card per turn (both are in the DOM)
+    expect(await screen.findAllByRole('button', { name: /^Open turn from/ })).toHaveLength(4)
+    const table = screen.getByRole('table')
+    expect(within(table).getAllByRole('button', { name: /^Open turn from/ })).toHaveLength(2)
+    expect(within(table).getAllByRole('button', { name: /failed$/ })).toHaveLength(1)
+    const cards = screen.getByRole('list', { name: 'Recent turns' })
+    expect(within(cards).getAllByRole('button', { name: /^Open turn from/ })).toHaveLength(2)
+    expect(screen.getByText('Showing 2 of 2 turns')).toBeTruthy()
+  })
+
+  it('titles each breakdown with column headers', async () => {
+    useHandlers()
+    renderView()
+    await screen.findByLabelText('Overview')
+
+    const card = (title: string) => screen.getByText(title, { selector: 'span' }).closest('div[class*="rounded-sm"]') as HTMLElement
+    const headers = (title: string) =>
+      Array.from(card(title).querySelectorAll('[aria-hidden="true"].hidden > span')).map((node) => node.textContent)
+
+    expect(headers('Workspaces')).toEqual(['Workspace', 'Turns', 'Failed', 'Spend', ''])
+    expect(headers('Sessions')).toEqual(['Session', 'Turns', 'Failed', 'From cache', 'Spend', ''])
+    expect(headers('Models')).toEqual(['Model', 'Calls', 'TTFT p50', 'tok/s', 'From cache', 'Spend', ''])
+    expect(headers('Tools')).toEqual(['Tool', 'Calls', 'p95', 'Errors'])
+  })
+
+  it('lists recent turns with a When column, tokens in / out, a model id with its provider, and a status chip', async () => {
+    useHandlers()
+    renderView()
+
+    const table = await screen.findByRole('table')
+    const headers = within(table).getAllByRole('columnheader').map((th) => th.textContent)
+    expect(headers).toEqual(['When', 'Workspace', 'Model', 'Duration', 'Tokens in / out', 'Cost', 'Status', 'Open'])
+
+    const [ok, failed] = within(table).getAllByRole('row').slice(1)
+    // The date, then how long ago
+    expect(within(ok).getByText(/^\d+s ago$|^\d+m ago$/)).toBeTruthy()
+    expect(within(ok).getByText('12K / 800')).toBeTruthy()
+    // Short model id in mono, provider as an outline chip, full id in the title
+    const model = within(ok).getByTitle('openai:gpt-5')
+    expect(model.querySelector('.font-mono')?.textContent).toBe('gpt-5')
+    expect(model.querySelector('[data-slot="chip"]')?.textContent).toBe('openai')
+    expect(within(ok).getByText('ok').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(failed).getByText('failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
   })
 
   it('shows time to first token and output speed, overall and per model', async () => {
@@ -226,19 +274,36 @@ describe('TelemetryView overview', () => {
     renderView()
 
     const overview = await screen.findByLabelText('Overview')
-    expect(within(overview).getByText('First token')).toBeTruthy()
-    expect(within(overview).getByText('850 ms')).toBeTruthy()
-    expect(within(overview).getByText('p95 3.2 s')).toBeTruthy()
-    expect(within(overview).getByText('Output speed')).toBeTruthy()
-    expect(within(overview).getByText('62 tok/s')).toBeTruthy()
-    expect(within(overview).getByText('5% under 21 tok/s')).toBeTruthy()
+    // Each tile: label, the "p50" key before the number, the unit after it, then a detail line
+    const tile = (label: string) => within(overview).getByText(label).closest('div') as HTMLElement
+    const ttft = tile('First token (TTFT)')
+    expect(within(ttft).getByText('p50')).toBeTruthy()
+    expect(within(ttft).getByText('850')).toBeTruthy()
+    expect(within(ttft).getByText('ms')).toBeTruthy()
+    expect(within(ttft).getByText('p95')).toBeTruthy()
+    expect(within(ttft).getByText('3.2 s')).toBeTruthy()
 
+    const speed = tile('Output speed')
+    expect(within(speed).getByText('p50')).toBeTruthy()
+    expect(within(speed).getByText('62')).toBeTruthy()
+    expect(within(speed).getByText('tok/s')).toBeTruthy()
+    expect(within(speed).getByText('p5')).toBeTruthy()
+    expect(within(speed).getByText('21 tok/s')).toBeTruthy()
+
+    const duration = tile('Turn duration')
+    expect(within(duration).getByText('8.2')).toBeTruthy()
+    expect(within(duration).getByText('s')).toBeTruthy()
+    expect(within(duration).getByText('31.0 s')).toBeTruthy()
+
+    // Per model: TTFT p50 and tok/s are table columns
     const gpt = screen.getByRole('button', { name: /show only turns on this model/ })
     const mini = screen.getByText('gpt-5-mini').closest('div') as HTMLElement
-    expect(within(gpt).getByText('TTFT 1.4 s')).toBeTruthy()
-    expect(within(gpt).getByText('48 tok/s')).toBeTruthy()
-    // Not measured for this model: no empty cells.
-    expect(within(mini).queryByText(/tok\/s/)).toBeNull()
+    expect(gpt.textContent).toContain('TTFT p50 1.4 s')
+    expect(gpt.textContent).toContain('tok/s 48')
+    // Not measured for this model: a dash, not an empty cell.
+    expect(mini.textContent).toContain('TTFT p50 -')
+    expect(mini.textContent).toContain('tok/s -')
+    expect(within(mini).queryByText(/tok\/s [1-9]/)).toBeNull()
   })
 
   it('clicking a workspace narrows every request and hides the redundant card', async () => {
@@ -273,14 +338,16 @@ describe('TelemetryView overview', () => {
     useHandlers()
     const user = userEvent.setup()
     renderView()
-    await screen.findByText('Activity')
+    await screen.findByRole('list', { name: 'Spend per day' })
+    expect(screen.getByText('Range')).toBeTruthy()
 
     await user.click(screen.getByRole('radio', { name: '30d' }))
     await waitFor(() => expect(summaryRequests.at(-1)?.get('days')).toBe('30'))
 
     await user.click(screen.getByRole('radio', { name: '24h' }))
     await waitFor(() => expect(summaryRequests.at(-1)?.get('days')).toBe('1'))
-    await waitFor(() => expect(screen.queryByText('Activity')).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Spend per day' })).toBeNull())
+    expect(screen.getByText('Daily activity shows for 7 days or more.')).toBeTruthy()
   })
 
   it('"Failed only" asks the backend for failed turns', async () => {
@@ -288,9 +355,61 @@ describe('TelemetryView overview', () => {
     const user = userEvent.setup()
     renderView()
 
-    await user.click(await screen.findByRole('switch', { name: 'Failed turns only' }))
+    // A toggle button in the filter bar; recent turns has no switch of its own
+    const failedOnly = await screen.findByRole('button', { name: 'Failed only' })
+    expect(failedOnly.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.queryByRole('switch')).toBeNull()
+    await user.click(failedOnly)
+    expect(failedOnly.getAttribute('aria-pressed')).toBe('true')
+    expect(useTelemetryStore.getState().errorsOnly).toBe(true)
     await waitFor(() => expect(traceRequests.at(-1)?.get('status')).toBe('error'))
     expect(summaryRequests.every((p) => !p.has('status'))).toBe(true)
+
+    // Pressing it again lists every turn
+    await user.click(failedOnly)
+    expect(failedOnly.getAttribute('aria-pressed')).toBe('false')
+    expect(useTelemetryStore.getState().errorsOnly).toBe(false)
+    expect(within(screen.getByRole('table')).getAllByRole('button', { name: /^Open turn from/ })).toHaveLength(2)
+  })
+
+  it('the failed count in the Turns tile filters to failed turns', async () => {
+    useHandlers()
+    const user = userEvent.setup()
+    renderView()
+
+    await user.click(await screen.findByRole('button', { name: /^1 failed · / }))
+    expect(useTelemetryStore.getState().errorsOnly).toBe(true)
+    // Once filtered it is plain text again, not a second toggle.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 failed · / })).toBeNull())
+  })
+
+  it('says why a one-row Workspaces or Sessions card is hidden', async () => {
+    useHandlers({
+      summary: () => summaryFixture({
+        by_workspace: [{ workspace: '/w/site', turns: 6, errors: 1, input_tokens: 30_000, output_tokens: 2000, estimated_cost_usd: 0.3 }],
+        by_session: [sessionRow({ session_id: 'sess-1', title: 'Fix login redirect', workspace: '/w/site' })],
+      }),
+    })
+    renderView()
+
+    expect(await screen.findByText('All turns are in one workspace (site). All turns are in one session (Fix login redirect).')).toBeTruthy()
+    expect(screen.queryByText('Workspaces')).toBeNull()
+  })
+
+  it('names the workspace and model pickers by what they filter', async () => {
+    useHandlers()
+    const user = userEvent.setup()
+    renderView()
+
+    const workspace = await screen.findByRole('button', { name: 'Workspace' })
+    expect(workspace.textContent).toBe('Workspace:All')
+    const model = screen.getByRole('button', { name: 'Model' })
+    expect(model.textContent).toBe('Model:All')
+
+    await user.click(workspace)
+    await user.click(await screen.findByRole('option', { name: 'site' }))
+    expect(useTelemetryStore.getState().workspace).toBe('/w/site')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Workspace' }).textContent).toBe('Workspace:site'))
   })
 
   it('previews eight tools and expands to all', async () => {
@@ -317,7 +436,26 @@ describe('TelemetryView overview', () => {
   it('explains an empty window', async () => {
     useHandlers({ summary: () => summaryFixture({ totals: EMPTY_TOTALS, by_workspace: [], by_session: [], by_model: [], by_tool: [] }), turns: [] })
     renderView()
-    expect(await screen.findByText('No telemetry yet')).toBeTruthy()
+    expect(await screen.findByText('No usage yet')).toBeTruthy()
+    expect(screen.queryByText('No telemetry yet')).toBeNull()
+  })
+
+  it('says so when the usage cannot be loaded, and retries', async () => {
+    let calls = 0
+    server.use(
+      http.get(`${API}/summary`, () => {
+        calls += 1
+        return calls === 1 ? new HttpResponse(null, { status: 500 }) : HttpResponse.json(summaryFixture())
+      }),
+      http.get(`${API}/traces`, () => HttpResponse.json({ traces: [], limit: 25, offset: 0, total: 0, has_next: false })),
+    )
+    const user = userEvent.setup()
+    renderView()
+
+    expect(await screen.findByText("Couldn't load usage")).toBeTruthy()
+    expect(screen.queryByText("Couldn't load telemetry")).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByLabelText('Overview')).toBeTruthy()
   })
 
   it('offers to clear filters that match nothing', async () => {
@@ -353,7 +491,8 @@ describe('TelemetryView sessions', () => {
       expect.stringContaining('Fix login redirect'),
       expect.stringContaining('Deleted session'),
     ])
-    expect(rows[0].textContent).toContain('52% cached')
+    // Sessions are a table too: turns, failed, from cache, spend
+    expect(rows[0].textContent).toContain('From cache 52%')
 
     await user.click(rows[0])
     expect(useTelemetryStore.getState().session).toBe('sess-1')
@@ -413,6 +552,9 @@ describe('TelemetryView sessions', () => {
     // The session itself is listed for comparison, not as a shortcut to itself.
     const shortcuts = screen.getAllByRole('button', { name: /show only this session/ })
     expect(shortcuts.map((row) => row.textContent)).toEqual([expect.stringContaining('explorer sub-agent')])
+    // ...and is marked as the current one.
+    const current = document.querySelector('[aria-current="true"]')
+    expect(current?.textContent).toContain('Fix login redirect')
     expect(await screen.findByRole('columnheader', { name: 'Agent' })).toBeTruthy()
     expect(screen.getByRole('cell', { name: 'explorer' })).toBeTruthy()
 
@@ -464,10 +606,14 @@ describe('TelemetryView trace', () => {
     useHandlers()
     renderView()
 
-    const [open] = await screen.findAllByRole('button', { name: /^Open turn from/ })
+    const table = await screen.findByRole('table')
+    const [open] = within(table).getAllByRole('button', { name: /^Open turn from/ })
     expect(open.tagName).toBe('BUTTON')
     expect(open.closest('td')).not.toBeNull()
     expect(document.querySelector('tr[role="button"]')).toBeNull()
+    // The phone cards are real buttons too, in a list that is not the table
+    const card = within(screen.getByRole('list', { name: 'Recent turns' })).getAllByRole('button', { name: /^Open turn from/ })[0]
+    expect(card.closest('table')).toBeNull()
   })
 
   it('opens a turn with its facts and a way back to the session', async () => {
@@ -481,14 +627,57 @@ describe('TelemetryView trace', () => {
     expect(useTelemetryStore.getState().traceId).toBe('trace-1')
 
     const facts = await screen.findByLabelText('Turn summary')
+    const labels = Array.from(facts.querySelectorAll('dt')).map((dt) => dt.textContent)
+    expect(labels).toEqual(['Started', 'Workspace', 'Model', 'Duration', 'Tokens in / out', 'Spend (est.)', 'Status'])
     expect(within(facts).getByText('site')).toBeTruthy()
-    expect(within(facts).getByText('gpt-5')).toBeTruthy()
-    expect(within(facts).getByText('Completed')).toBeTruthy()
+    const model = facts.querySelector('span[title="openai:gpt-5"]')
+    expect(model?.querySelector('.font-mono')?.textContent).toBe('gpt-5')
+    expect(model?.querySelector('[data-slot="chip"]')?.textContent).toBe('openai')
+    expect(within(facts).getByText('ok').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(facts).queryByText('Completed')).toBeNull()
+    expect(within(facts).getByText('12K / 800')).toBeTruthy()
     expect(within(facts).getByText('$0.08')).toBeTruthy()
-    expect(screen.getByText('2 spans')).toBeTruthy()
+    expect(screen.getByText(/^2 spans · trace duration/)).toBeTruthy()
+
+    // Header line: the agent and when; the trace id is one click to copy
+    expect(screen.getByText('lead', { selector: 'span.font-mono' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy trace ID' }).textContent).toBe('trace trace-1')
 
     await user.click(screen.getByRole('button', { name: 'Open session' }))
     expect(onOpenSession).toHaveBeenCalledWith('sess-1')
+  })
+
+  it('keeps the selected span in the store and shows its detail beside the trace', async () => {
+    useHandlers()
+    const user = userEvent.setup()
+    useTelemetryStore.setState({ traceId: 'trace-1' })
+    renderView()
+
+    await screen.findByLabelText('Turn summary')
+    expect(screen.queryByRole('complementary', { name: 'Span detail' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /^chat gpt-5/ }))
+    expect(useTelemetryStore.getState().spanId).toBe('chat-1')
+    const detail = await screen.findByRole('complementary', { name: 'Span detail' })
+    expect(within(detail).getByRole('heading', { name: 'chat gpt-5' })).toBeTruthy()
+    // "Starts at" is measured from the start of the trace
+    expect(within(detail).getByText('+0.10 s')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^chat gpt-5/ }).getAttribute('aria-pressed')).toBe('true')
+
+    await user.click(within(detail).getByRole('button', { name: 'Close span detail' }))
+    expect(useTelemetryStore.getState().spanId).toBeNull()
+    expect(screen.queryByRole('complementary', { name: 'Span detail' })).toBeNull()
+  })
+
+  it('drops the selected span when the store steps back', async () => {
+    useHandlers()
+    useTelemetryStore.setState({ traceId: 'trace-1', spanId: 'chat-1' })
+    renderView()
+
+    expect(await screen.findByRole('complementary', { name: 'Span detail' })).toBeTruthy()
+    act(() => { useTelemetryStore.getState().stepBack() })
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Span detail' })).toBeNull())
+    expect(useTelemetryStore.getState().traceId).toBe('trace-1')
   })
 
   it('says so when the trace is gone', async () => {
@@ -496,5 +685,38 @@ describe('TelemetryView trace', () => {
     useTelemetryStore.setState({ traceId: 'expired' })
     renderView()
     expect(await screen.findByText('Trace not found')).toBeTruthy()
+    expect(screen.getByText("It isn't in the last 7 days. It may be older, or past the data retention limit.")).toBeTruthy()
+  })
+
+  it('offers to search the last 90 days for a trace that is not in the range', async () => {
+    useHandlers({ trace: null })
+    useTelemetryStore.setState({ traceId: 'expired' })
+    const user = userEvent.setup()
+    renderView()
+
+    await user.click(await screen.findByRole('button', { name: 'Search the last 90 days' }))
+    expect(useTelemetryStore.getState().days).toBe(90)
+    // Nothing wider to offer once the longest range was searched
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Search the last 90 days' })).toBeNull())
+    expect(await screen.findByText('Trace not found')).toBeTruthy()
+    expect(screen.getByText('It may be past the data retention limit.')).toBeTruthy()
+  })
+
+  it('says so when a turn cannot be loaded, and retries', async () => {
+    let calls = 0
+    useHandlers()
+    server.use(
+      http.get(`${API}/traces/:id`, ({ params }) => {
+        calls += 1
+        return calls === 1 ? new HttpResponse(null, { status: 500 }) : HttpResponse.json({ trace_id: params.id, spans: TRACE_SPANS })
+      }),
+    )
+    useTelemetryStore.setState({ traceId: 'trace-1' })
+    const user = userEvent.setup()
+    renderView()
+
+    expect(await screen.findByText("Couldn't load this turn")).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByLabelText('Turn summary')).toBeTruthy()
   })
 })

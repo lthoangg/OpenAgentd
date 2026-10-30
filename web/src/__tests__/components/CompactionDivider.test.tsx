@@ -40,35 +40,34 @@ mock.module('@/utils/markdown', () => ({
 // ---------------------------------------------------------------------------
 
 describe('CompactionDivider — labels', () => {
-  it('shows "Session compacting" label while compacting', () => {
+  it('shows "Summarizing earlier messages…" label while compacting', () => {
     render(<CompactionDivider state="compacting" />)
-    expect(screen.getByRole('region', { name: 'Session compacting' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Summarizing earlier messages…' })).toBeTruthy()
   })
 
-  it('shows "Session compacted" label after completion', () => {
+  it('shows "Earlier messages summarized" label after completion', () => {
     render(<CompactionDivider state="compacted" />)
-    expect(screen.getByRole('region', { name: 'Session compacted' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Earlier messages summarized' })).toBeTruthy()
   })
 
-  it('shows "Compaction failed" label on error regardless of state', () => {
+  it('shows the failure label on error regardless of state', () => {
     render(<CompactionDivider state="compacted" error />)
-    expect(screen.getByRole('region', { name: 'Compaction failed' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: "Couldn't summarize earlier messages" })).toBeTruthy()
   })
 
-  it('shows "Compaction failed" when state is compacting but error is set', () => {
+  it('shows the failure label when state is compacting but error is set', () => {
     render(<CompactionDivider state="compacting" error />)
-    expect(screen.getByRole('region', { name: 'Compaction failed' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: "Couldn't summarize earlier messages" })).toBeTruthy()
   })
 })
 
 // ---------------------------------------------------------------------------
 
 describe('CompactionDivider — animated ellipsis', () => {
-  it('renders the animated "…" span while compacting', () => {
+  it('says it is working with a static "…", never pulsing text', () => {
     const { container } = render(<CompactionDivider state="compacting" />)
-    const pulse = container.querySelector('.animate-pulse')
-    expect(pulse).toBeTruthy()
-    expect(pulse?.textContent).toBe('…')
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('Summarizing earlier messages…')
   })
 
   it('does not render the animated "…" span once compacted', () => {
@@ -88,12 +87,12 @@ describe('CompactionDivider — collapse', () => {
   it('collapses the summary body by default', () => {
     render(<CompactionDivider state="compacted" summary="Hidden summary" />)
     expect(screen.queryByTestId('markdown')).toBeNull()
-    expect(screen.getByRole('button', { name: /Session compacted/ }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('button', { name: /Earlier messages summarized/ }).getAttribute('aria-expanded')).toBe('false')
   })
 
   it('toggles the summary body from the label', () => {
     render(<CompactionDivider state="compacted" summary="Toggled summary" />)
-    const toggle = screen.getByRole('button', { name: /Session compacted/ })
+    const toggle = screen.getByRole('button', { name: /Earlier messages summarized/ })
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('Toggled summary')).toBeTruthy()
@@ -121,7 +120,7 @@ describe('CompactionDivider — collapse', () => {
     expand()
     rerender(<CompactionDivider state="compacted" summary="Final" />)
     expect(screen.getByText('Final')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Session compacted/ }).getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('button', { name: /Earlier messages summarized/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('has no toggle without a body', () => {
@@ -134,7 +133,7 @@ describe('CompactionDivider — collapse', () => {
 
   it('pins the open divider to the top of the transcript while the summary scrolls under it', () => {
     render(<CompactionDivider state="compacted" summary="Long summary" />)
-    const toggle = screen.getByRole('button', { name: /Session compacted/ })
+    const toggle = screen.getByRole('button', { name: /Earlier messages summarized/ })
     const header = toggle.parentElement as HTMLElement
     expect(header.className).not.toContain('sticky')
 
@@ -146,7 +145,7 @@ describe('CompactionDivider — collapse', () => {
   it('closes from a Collapse row at the end of the summary, handing focus back to the divider', () => {
     render(<CompactionDivider state="compacted" summary="Long summary" />)
     expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
-    const toggle = screen.getByRole('button', { name: /Session compacted/ })
+    const toggle = screen.getByRole('button', { name: /Earlier messages summarized/ })
     fireEvent.click(toggle)
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))

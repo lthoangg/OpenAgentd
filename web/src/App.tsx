@@ -91,18 +91,18 @@ function AppLoadingScreen({ switchingTo = null, unavailable, failed, retrying, o
           <div className="flex flex-col items-center gap-2">
             {switchingTo
               ? <BackendSwitchMessage target={switchingTo} />
-              : <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Connecting to OpenAgentd…</p>}
+              : <p role="status" className="text-sm font-medium text-(--color-text-muted)">Connecting to OpenAgentd…</p>}
             <Button variant="ghost" size="sm" className="mt-1 text-xs text-(--color-text-subtle)" onClick={onChooseServer}>
               Choose Server
             </Button>
           </div>
         ) : (
           <>
-            <p className="text-sm text-(--color-text-muted)">{failed ? 'OpenAgentd could not start its local backend.' : 'OpenAgentd is taking longer than usual to start.'}</p>
+            <p className="text-sm text-(--color-text-muted)">{failed ? "OpenAgentd couldn't start its local server." : 'OpenAgentd is taking longer than usual to start.'}</p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={onRetry} disabled={retrying}>{retrying ? 'Restarting…' : 'Retry'}</Button>
-              <Button variant="subtle" onClick={onChooseServer}>Choose Server</Button>
-              <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopyState === 'copied' ? 'Backend Log Path Copied' : logCopyState === 'failed' ? 'Copy Failed' : 'Copy Backend Log Path'}</Button>
+              <Button variant="subtle" onClick={onChooseServer}>Choose server</Button>
+              <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopyState === 'copied' ? 'Log path copied' : logCopyState === 'failed' ? "Couldn't copy" : 'Copy log path'}</Button>
             </div>
             {logCopyState === 'failed' && backendLogPath && <code className="max-w-full select-text break-all text-xs text-(--color-text-muted)">{backendLogPath}</code>}
           </>

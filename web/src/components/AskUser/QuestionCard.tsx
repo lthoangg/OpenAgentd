@@ -265,11 +265,7 @@ export function QuestionCard({
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--color-border) px-3 py-2.5">
         <span className="text-[11px] text-(--color-text-subtle)">
-          {questions.length > 1
-            ? `${answeredCount} of ${questions.length} answered`
-            : answeredCount === 0
-              ? 'Optional — send blank to skip'
-              : null}
+          {questions.length > 1 ? `${answeredCount} of ${questions.length} answered` : null}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {/* Past the first step the secondary action is "go back one", not
@@ -291,7 +287,8 @@ export function QuestionCard({
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? 'Sending…' : isLastStep ? 'Send answer' : 'Next question'}
+            {/* Nothing picked: sending is skipping, so the button says so. */}
+            {submitting ? 'Sending…' : !isLastStep ? 'Next question' : answeredCount === 0 ? 'Skip' : 'Send answer'}
           </Button>
         </div>
       </div>

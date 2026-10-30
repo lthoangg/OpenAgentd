@@ -6,7 +6,9 @@
  * handlers; this module only renders. The discard confirmation lives here
  * too because both surfaces open it.
  */
+import { useState } from 'react'
 import { Copy, ExternalLink, FileDiff, FolderOpen, RotateCcw, Undo2 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -85,6 +87,7 @@ export function DockActionMenus({
   discarding,
   onConfirmDiscard,
 }: DockActionMenusProps) {
+  const [commitConfirm, setCommitConfirm] = useState<{ kind: 'undo' } | { kind: 'revert'; sha: string; shortSha: string } | null>(null)
   return (
     <>
       <Dialog open={mobileFileActions !== null} onOpenChange={(open) => { if (!open) setMobileFileActions(null) }}>
@@ -158,10 +161,10 @@ export function DockActionMenus({
                 variant="danger-subtle"
                 className="justify-start"
                 disabled={gitActionPending}
-                onClick={() => { if (mobileCommitActions) onUndoCommit() }}
+                onClick={() => { if (mobileCommitActions) { setMobileCommitActions(null); setCommitConfirm({ kind: 'undo' }) } }}
               >
                 <Undo2 size={14} aria-hidden="true" />
-                {gitActionPending ? 'Undoing…' : 'Undo commit'}
+                {gitActionPending ? 'Undoing…' : 'Undo commit…'}
               </Button>
             )}
             <Button
@@ -171,11 +174,11 @@ export function DockActionMenus({
               disabled={gitActionPending}
               onClick={() => {
                 const c = mobileCommitActions
-                if (c) onRevertCommit(c.sha, c.shortSha)
+                if (c) { setMobileCommitActions(null); setCommitConfirm({ kind: 'revert', sha: c.sha, shortSha: c.shortSha }) }
               }}
             >
               <RotateCcw size={14} aria-hidden="true" />
-              {gitActionPending ? 'Reverting…' : 'Revert commit'}
+              {gitActionPending ? 'Reverting…' : 'Revert commit…'}
             </Button>
             <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
               const c = mobileCommitActions; setMobileCommitActions(null)
@@ -232,22 +235,22 @@ export function DockActionMenus({
               type="button"
               role="menuitem"
               disabled={gitActionPending}
-              onClick={onUndoCommit}
+              onClick={() => { setDesktopCommitActions(null); setCommitConfirm({ kind: 'undo' }) }}
               className={MENU_ITEM_DANGER_CLASS}
             >
               <Undo2 size={12} aria-hidden="true" />
-              {gitActionPending ? 'Undoing…' : 'Undo commit'}
+              {gitActionPending ? 'Undoing…' : 'Undo commit…'}
             </button>
           )}
           <button
             type="button"
             role="menuitem"
             disabled={gitActionPending}
-            onClick={() => onRevertCommit(desktopCommitActions.sha, desktopCommitActions.shortSha)}
+            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); setCommitConfirm({ kind: 'revert', sha: c.sha, shortSha: c.shortSha }) }}
             className={MENU_ITEM_CLASS}
           >
             <RotateCcw size={12} aria-hidden="true" />
-            {gitActionPending ? 'Reverting…' : 'Revert commit'}
+            {gitActionPending ? 'Reverting…' : 'Revert commit…'}
           </button>
           {MENU_DIVIDER}
           <button
@@ -325,7 +328,7 @@ export function DockActionMenus({
             className={MENU_ITEM_DANGER_CLASS}
           >
             <Undo2 size={12} aria-hidden="true" />
-            Discard changes
+            Discard changes…
           </button>
         </ContextMenu>
       )}
@@ -335,7 +338,7 @@ export function DockActionMenus({
           <DialogHeader>
             <DialogTitle>Discard changes?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to discard all changes in <span className="font-mono text-(--color-text)">{discardTarget?.path}</span>? This cannot be undone.
+              Every change in <span className="font-mono text-(--color-text)">{discardTarget?.path}</span> goes back to the last commit. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -348,6 +351,21 @@ export function DockActionMenus({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={commitConfirm !== null}
+        onOpenChange={(open) => { if (!open) setCommitConfirm(null) }}
+        tone={commitConfirm?.kind === 'undo' ? 'danger' : 'default'}
+        title={commitConfirm?.kind === 'undo' ? 'Undo the last commit?' : `Revert commit ${commitConfirm?.kind === 'revert' ? commitConfirm.shortSha : ''}?`}
+        description={commitConfirm?.kind === 'undo'
+          ? 'The commit is removed from the branch. Its changes stay in your working copy.'
+          : 'A new commit is added that undoes this commit\'s changes. History is kept.'}
+        confirmLabel={commitConfirm?.kind === 'undo' ? 'Undo commit' : 'Revert commit'}
+        onConfirm={() => {
+          if (commitConfirm?.kind === 'undo') onUndoCommit()
+          else if (commitConfirm?.kind === 'revert') onRevertCommit(commitConfirm.sha, commitConfirm.shortSha)
+        }}
+      />
     </>
   )
 }

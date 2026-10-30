@@ -59,13 +59,15 @@ mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () 
 mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () => {}, prependWorkspaceSession: () => {} }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
+  getCodingWorkspaceTree: async () => ({ repositories: [], groups: [] }),
+  setCodingWorkspaceVisibility: async () => ({}),
   renderCommand: async () => ({ content: '' }),
   renderSnippet: async () => ({ content: '' }),
   resolveApiUrl: () => null,
   resolveSession: async () => ({ id: 'new-session', created: true }),
 }))
 mock.module('@/utils/workspace', () => ({
-  saveLastWorkspace: () => {},
+  saveLastWorkspace: () => {}, removeWorkspace: () => {},
   workspaceLabel: (workspace: string) => workspace,
   pathBasename: (path: string) => path.split('/').pop() ?? path,
   sameWorkspacePath: (a: string, b: string) => a === b,

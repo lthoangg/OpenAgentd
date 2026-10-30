@@ -304,9 +304,9 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
     const subMore = screen.getByLabelText('More actions for subagent explorer#1')
     // Row actions and the subagent pill grow on touch (DESIGN.md touch parity).
-    expect(subMore.className).toContain('pointer-coarse:size-9')
-    expect(screen.getByLabelText(/^More actions for (?!subagent)/).className).toContain('pointer-coarse:size-9')
-    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-9')
+    expect(subMore.className).toContain('pointer-coarse:size-11')
+    expect(screen.getByLabelText(/^More actions for (?!subagent)/).className).toContain('pointer-coarse:size-11')
+    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-11')
     fireEvent.click(subMore)
     expect(handleActions).toHaveBeenCalledTimes(1)
     const target = handleActions.mock.calls[0][0] as SessionResponse
@@ -381,5 +381,65 @@ describe('WorkspaceSessionList — several checkouts', () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1)
     expect(onSelect.mock.calls[0][1]).toBe('/wt/task-a')
+  })
+})
+
+describe('WorkspaceSessionList — the open session', () => {
+  const session = (id: string, title: string): SessionResponse => ({
+    id,
+    title,
+    workspace: '/test/workspace',
+    interaction_mode: 'code',
+    created_at: new Date().toISOString(),
+    updated_at: null,
+    agent_name: 'code',
+  })
+
+  it('lists the open session even when it sits past the loaded page', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    queryClient.setQueryData(queryKeys.session.sessions.workspace('/test/workspace', 'activity'), {
+      pages: [{ data: [session('s-1', 'Recent one')], has_more: true, next_cursor: 'c1' }],
+      pageParams: [null],
+    })
+    queryClient.setQueryData(queryKeys.session.sessions.detail('s-old'), { ...session('s-old', 'Opened from a link'), messages: [] })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/test/workspace"
+          currentSessionId="s-old"
+          onSessionSelect={() => {}}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText('Opened from a link')).toBeTruthy()
+    expect(screen.getByText('Recent one')).toBeTruthy()
+  })
+
+  it('offers Retry when the sessions fail to load', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    globalThis.fetch = mock(async () => new Response('boom', { status: 500 })) as unknown as typeof fetch
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/broken/workspace"
+          onSessionSelect={() => {}}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load sessions.")
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(screen.queryByText('No sessions yet.')).toBeNull()
   })
 })

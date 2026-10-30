@@ -28,5 +28,5 @@ export function restartNoteInfo(block: ContentBlock): RestartNoteInfo | null {
 
 /** The divider's words. */
 export function restartNoteLabel(info: RestartNoteInfo): string {
-  return info.continued ? 'Continued after a server restart' : 'Stopped by a server restart · not continued again'
+  return info.continued ? 'Server restarted · turn continued' : 'Server restarted · turn stopped'
 }

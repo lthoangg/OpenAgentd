@@ -30,6 +30,8 @@ interface TelemetryState {
   session: string | null
   errorsOnly: boolean
   traceId: string | null
+  /** Span open in the trace's detail panel; Escape closes it before the trace. */
+  spanId: string | null
   setDays: (days: TelemetryRange) => void
   setWorkspace: (workspace: string | null) => void
   setModel: (model: string | null) => void
@@ -37,6 +39,9 @@ interface TelemetryState {
   setErrorsOnly: (value: boolean) => void
   openTrace: (traceId: string) => void
   closeTrace: () => void
+  selectSpan: (spanId: string | null) => void
+  /** One level back: the open span, else the open trace. False when neither is open. */
+  stepBack: () => boolean
   clearFilters: () => void
 }
 
@@ -46,20 +51,29 @@ export function isTelemetryRange(value: unknown): value is TelemetryRange {
 
 export const useTelemetryStore = create<TelemetryState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       days: 7,
       workspace: null,
       model: null,
       session: null,
       errorsOnly: false,
       traceId: null,
+      spanId: null,
       setDays: (days) => set({ days }),
       setWorkspace: (workspace) => set({ workspace }),
       setModel: (model) => set({ model }),
       setSession: (session) => set({ session }),
       setErrorsOnly: (errorsOnly) => set({ errorsOnly }),
-      openTrace: (traceId) => set({ traceId }),
-      closeTrace: () => set({ traceId: null }),
+      openTrace: (traceId) => set({ traceId, spanId: null }),
+      closeTrace: () => set({ traceId: null, spanId: null }),
+      selectSpan: (spanId) => set({ spanId }),
+      stepBack: () => {
+        const { spanId, traceId } = get()
+        if (spanId) set({ spanId: null })
+        else if (traceId) set({ traceId: null })
+        else return false
+        return true
+      },
       clearFilters: () => set({ workspace: null, model: null, session: null, errorsOnly: false }),
     }),
     {
@@ -81,7 +95,7 @@ export const useTelemetryStore = create<TelemetryState>()(
  * points without a ``traceId`` land on the overview.
  */
 export function openTelemetry(options: OpenTelemetryOptions = {}): void {
-  const patch: Partial<TelemetryState> = { traceId: options.traceId ?? null }
+  const patch: Partial<TelemetryState> = { traceId: options.traceId ?? null, spanId: null }
   if (options.days !== undefined) patch.days = options.days
   if (options.workspace !== undefined) patch.workspace = options.workspace
   if (options.model !== undefined) patch.model = options.model

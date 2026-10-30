@@ -12,23 +12,23 @@ const ARGS = JSON.stringify({ workspace: 'infra', message: 'Add a queue', reply:
 describe('send_to_workspace display', () => {
   it('names the target and shows the message', () => {
     const display = getToolDisplay('send_to_workspace', JSON.stringify({ workspace: 'infra', message: 'Add a queue', reply: true }))
-    expect(display.headerTitle).toBe('Message to infra (awaiting reply)')
+    expect(display.headerTitle).toBe('→ infra · awaiting reply')
     expect(display.formattedArgs).toBe('Add a queue')
   })
 
   it('shortens a path target to its folder name', () => {
     const display = getToolDisplay('send_to_workspace', JSON.stringify({ workspace: '/Users/me/src/infra', message: 'x' }))
-    expect(display.headerTitle).toBe('Message to infra')
+    expect(display.headerTitle).toBe('→ infra')
   })
 
   it('describes list calls', () => {
-    expect(getToolDisplay('send_to_workspace', JSON.stringify({ action: 'list' })).headerTitle).toBe('Listing workspaces…')
-    expect(getToolDisplay('send_to_workspace', JSON.stringify({ action: 'list', workspace: 'infra' })).headerTitle).toBe('Listing sessions in infra')
+    expect(getToolDisplay('send_to_workspace', JSON.stringify({ action: 'list' })).headerTitle).toBe('list')
+    expect(getToolDisplay('send_to_workspace', JSON.stringify({ action: 'list', workspace: 'infra' })).headerTitle).toBe('list infra')
   })
 
   it('names the checkout a worktree send picks', () => {
-    expect(getToolDisplay('workspace', JSON.stringify({ worktree: 'auth', message: 'x', reply: true })).headerTitle).toBe('Message to worktree auth (awaiting reply)')
-    expect(getToolDisplay('workspace', JSON.stringify({ workspace: 'app', worktree: 'main', message: 'x' })).headerTitle).toBe('Message to app · main checkout')
+    expect(getToolDisplay('workspace', JSON.stringify({ worktree: 'auth', message: 'x', reply: true })).headerTitle).toBe('→ worktree auth · awaiting reply')
+    expect(getToolDisplay('workspace', JSON.stringify({ workspace: 'app', worktree: 'main', message: 'x' })).headerTitle).toBe('→ app · main checkout')
   })
 })
 

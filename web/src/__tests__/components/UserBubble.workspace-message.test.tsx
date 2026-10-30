@@ -37,7 +37,7 @@ describe("AgentView — workspace messages", () => {
     const chip = screen.getByRole("button", { name: "Open the sending session in app" })
     expect(chip).toHaveTextContent("From")
     expect(chip).toHaveTextContent("· Orders service")
-    expect(chip.className).toContain("pointer-coarse:min-h-9")
+    expect(chip.className).toContain("pointer-coarse:min-h-11")
     await userEvent.setup().click(chip)
     expect(onOpenSession).toHaveBeenCalledWith("app-session", "/r/app")
     // It is a prompt, not a report: it stays editable.
@@ -55,7 +55,7 @@ describe("AgentView — workspace messages", () => {
     render(<AgentView blocks={[reply("completed")]} currentBlocks={[]} isWorking={false} onOpenSession={onOpenSession} />)
 
     expect(screen.getByText("Workspace reply")).toBeTruthy()
-    expect(screen.queryByText("Subagent report")).toBeNull()
+    expect(screen.queryByText("Report from")).toBeNull()
     await userEvent.setup().click(screen.getByRole("button", { name: "Open the replying session in infra" }))
     expect(onOpenSession).toHaveBeenCalledWith("infra-session", "/r/infra")
   })

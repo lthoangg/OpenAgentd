@@ -151,7 +151,7 @@ describe('AssistantTurn — reader mode', () => {
   it('names the step in progress while the turn runs, and lists no files yet', () => {
     renderTurn(running, { isWorking: true })
 
-    expect(screen.getByRole('button', { name: /Working · Shell: Run web tests/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Working · shell bun test/ })).toBeTruthy()
     expect(screen.queryByText(/files? changed/)).toBeNull()
   })
 
@@ -159,13 +159,13 @@ describe('AssistantTurn — reader mode', () => {
     const clock = fakeClock(1_000_000)
     try {
       renderTurn(running, { isWorking: true, startedAt: 1_000_000 - 59_000 })
-      expect(screen.getByRole('button', { name: /^Working · 59s · Shell: Run web tests/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /^Working · 59s · shell bun test/ })).toBeTruthy()
 
       clock.tick(1000)
-      expect(screen.getByRole('button', { name: /^Working · 1m 0s · Shell: Run web tests/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /^Working · 1m 0s · shell bun test/ })).toBeTruthy()
 
       clock.tick(3_600_000)
-      expect(screen.getByRole('button', { name: /^Working · 1h 1m · Shell: Run web tests/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /^Working · 1h 1m · shell bun test/ })).toBeTruthy()
     } finally {
       clock.restore()
     }
@@ -212,7 +212,7 @@ describe('AssistantTurn — reader mode, across a compaction', () => {
     const done = screen.getByRole('button', { name: /^1 read$/ })
     const working = screen.getAllByRole('button', { name: /Working/ })
     expect(working).toHaveLength(1)
-    expect(working[0].textContent).toMatch(/^Working · .*Shell: Run web tests/)
+    expect(working[0].textContent).toMatch(/^Working · .*shell bun test/)
     const divider = screen.getByTestId('block-compact')
     expect(follows(done, divider)).toBe(true)
     expect(follows(divider, working[0])).toBe(true)
@@ -449,7 +449,7 @@ describe('AssistantTurn — reader mode, goal', () => {
 
     const rows = screen.getAllByRole('button')
     expect(rows).toHaveLength(1)
-    expect(rows[0].textContent).toMatch(/^Working · .*Shell: Run web tests/)
+    expect(rows[0].textContent).toMatch(/^Working · .*shell bun test/)
     expect(rendered('claim')).not.toBeNull()
   })
 })

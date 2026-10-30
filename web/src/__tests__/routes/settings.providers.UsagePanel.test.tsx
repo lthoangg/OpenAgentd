@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 
@@ -367,7 +367,7 @@ describe('UsagePanel', () => {
     const resetBtn = screen.getByText('Redeem reset')
     fireEvent.click(resetBtn)
 
-    expect(screen.getByText('Cannot Redeem Reset Yet')).toBeTruthy()
+    expect(screen.getByText("Can't redeem a reset yet")).toBeTruthy()
     expect(screen.getByText(/Your current usage is 50%/)).toBeTruthy()
     expect(screen.getByText('Got it')).toBeTruthy()
   })
@@ -387,9 +387,9 @@ describe('UsagePanel', () => {
     const resetBtn = screen.getByText('Redeem reset')
     fireEvent.click(resetBtn)
 
-    expect(screen.getByText('Redeem Rate Limit Reset?')).toBeTruthy()
+    expect(screen.getByText('Redeem a usage reset?')).toBeTruthy()
     expect(screen.getByText('Cancel')).toBeTruthy()
-    expect(screen.getByText('Confirm reset')).toBeTruthy()
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Redeem reset' })).toBeTruthy()
   })
 
   it('shows confirm dialog when rate limit is reached even if usage percent < 99', () => {
@@ -405,9 +405,10 @@ describe('UsagePanel', () => {
       />,
     )
 
-    const bannerResetBtn = screen.getByText('Redeem reset (1)')
-    fireEvent.click(bannerResetBtn)
+    // One Redeem button: the limit banner does not repeat it.
+    expect(screen.getAllByRole('button', { name: /redeem reset/i })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Redeem reset' }))
 
-    expect(screen.getByText('Redeem Rate Limit Reset?')).toBeTruthy()
+    expect(screen.getByText('Redeem a usage reset?')).toBeTruthy()
   })
 })

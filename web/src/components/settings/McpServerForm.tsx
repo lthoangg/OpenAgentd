@@ -83,7 +83,7 @@ export function McpServerForm({
 
           <Field
             label="Status"
-            hint={value.enabled ? 'Server is started at runtime.' : 'Server is left stopped.'}
+            hint={value.enabled ? 'Starts with OpenAgentd.' : 'Stays stopped; agents cannot use its tools.'}
           >
             <EnabledToggle
               value={value.enabled}
@@ -93,10 +93,10 @@ export function McpServerForm({
           </Field>
 
           <Field
-            label="Tool timeout"
+            label="Tool timeout (seconds)"
             error={errors?.timeout}
             errorId="mcp-timeout-error"
-            hint={`Seconds a tool call may take before it is cancelled (1–${MAX_MCP_TIMEOUT_S}). Empty uses 210.`}
+            hint={`How long a tool call may run before it is cancelled, 1 to ${MAX_MCP_TIMEOUT_S}. Leave empty for 210.`}
           >
             <Input
               value={value.timeoutText}
@@ -115,8 +115,8 @@ export function McpServerForm({
 
       {/* Transport + connection fields — merged into one section ── */}
       <PanelSection
-        title={value.transport === 'stdio' ? 'Transport — Stdio' : 'Transport — HTTP'}
-        description={value.transport === 'stdio' ? 'A subprocess speaking MCP over stdin/stdout.' : 'A Streamable HTTP session.'}
+        title="Transport"
+        description={value.transport === 'stdio' ? 'Runs a local process and talks to it over stdin and stdout.' : 'Connects to a URL (Streamable HTTP).'}
       >
         <div className="flex flex-col gap-5">
           {/* Transport picker always at the top */}
@@ -137,7 +137,7 @@ export function McpServerForm({
                 required
                 error={errors?.command}
                 errorId="mcp-command-error"
-                hint="Executable to launch (looked up on PATH)."
+                hint="A program on your PATH, or an absolute path."
               >
                 <Input
                   value={value.command}
@@ -183,7 +183,7 @@ export function McpServerForm({
                 required
                 error={errors?.url}
                 errorId="mcp-url-error"
-                hint="Streamable HTTP endpoint (full URL incl. scheme)."
+                hint="The full address, including https://"
               >
                 <Input
                   value={value.url}
@@ -208,12 +208,12 @@ export function McpServerForm({
               />
 
               <Field
-                label="OAuth"
+                label="Sign-in"
                 error={errors?.oauth}
                 hint={
                   value.oauthEnabled
-                    ? 'Paste app credentials here. They are saved to credentials.yaml and referenced from mcp.json.'
-                    : 'Enable for hosted servers like Slack or Notion that require user OAuth.'
+                    ? 'Optional app credentials. They are stored apart from mcp.json, in credentials.yaml.'
+                    : 'Turn on for hosted servers, such as Slack or Notion, that ask you to sign in.'
                 }
               >
                 <EnabledToggle
@@ -222,6 +222,7 @@ export function McpServerForm({
                   disabled={disabled}
                   enabledLabel="OAuth"
                   disabledLabel="None"
+                  label="Sign-in method"
                 />
               </Field>
 
@@ -272,9 +273,11 @@ function EnabledToggle({
   value,
   onChange,
   disabled,
-  enabledLabel = 'Enabled',
-  disabledLabel = 'Disabled',
+  enabledLabel = 'On',
+  disabledLabel = 'Off',
+  label = 'Server status',
 }: {
+  label?: string
   value: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
@@ -283,7 +286,7 @@ function EnabledToggle({
 }) {
   return (
     <SegmentedControl
-      label="Server enabled state"
+      label={label}
       value={value ? 'enabled' : 'disabled'}
       onChange={(v) => onChange(v === 'enabled')}
       options={[
@@ -310,8 +313,8 @@ function TransportToggle({
       value={value}
       onChange={onChange}
       options={[
-        { value: 'stdio', label: 'Stdio' },
-        { value: 'http', label: 'HTTP' },
+        { value: 'stdio', label: 'stdio', tooltip: 'Runs a local process' },
+        { value: 'http', label: 'HTTP', tooltip: 'Connects to a URL' },
       ]}
       disabled={disabled}
       fill

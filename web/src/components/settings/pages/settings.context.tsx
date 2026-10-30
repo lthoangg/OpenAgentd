@@ -87,7 +87,7 @@ export function ContextSettingsPage() {
         <PanelRow
           label="Token threshold"
           htmlFor="context-threshold"
-          description="Summarize once a prompt reaches this many tokens. Empty uses 90% of the model's context window."
+          description={`Summarize earlier messages once a prompt reaches this many tokens. Empty uses 90% of the model's context window.${threshold !== null && Number.isFinite(threshold) && threshold > 0 ? ` Now ${threshold.toLocaleString('en-US')} tokens.` : ''}`}
           error={thresholdError}
         >
           <Input
@@ -106,10 +106,10 @@ export function ContextSettingsPage() {
 
       <PanelSection
         title="Idle sessions"
-        description="Summarize a session that has sat idle for 4½ minutes, while the provider's prompt cache is still warm. Costs one summarization call."
+        description="Summarize a session after 4½ idle minutes, while the model's cache is still warm. Uses one extra model call."
         flush
       >
-        <PanelRow label="Compact idle sessions" htmlFor="context-idle">
+        <PanelRow label="Summarize idle sessions" htmlFor="context-idle">
           <Switch
             id="context-idle"
             checked={idleCompaction}
@@ -121,8 +121,8 @@ export function ContextSettingsPage() {
           htmlFor="context-idle-percent"
           description={
             idleCompaction
-              ? 'Percent of the threshold a session must reach first. Empty uses 70%.'
-              : 'Turn on Compact idle sessions to change this.'
+              ? 'The percent of the token threshold a session must reach first. Empty uses 70%.'
+              : 'Turn on Summarize idle sessions to change this.'
           }
           error={idlePercentError}
         >

@@ -12,6 +12,7 @@ import {
   Image,
   Info,
   KeyRound,
+  Monitor,
   Plug,
   Puzzle,
   Server,
@@ -21,7 +22,6 @@ import {
   Sparkles,
   Target,
   Waypoints,
-  Wifi,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -35,8 +35,8 @@ import {
 export type TopLevelSection = Extract<
   SettingsSection,
   | 'general'
+  | 'desktop'
   | 'connection'
-  | 'network'
   | 'agents'
   | 'skills'
   | 'mcp'
@@ -53,7 +53,7 @@ export type TopLevelSection = Extract<
   | 'about'
 >
 
-type SettingsGroupId = 'app' | 'build' | 'models' | 'privacy' | 'about'
+type SettingsGroupId = 'app' | 'build' | 'sessions' | 'models' | 'privacy' | 'about'
 
 interface SettingsGroupDef {
   id: SettingsGroupId
@@ -66,9 +66,10 @@ interface SettingsGroupDef {
  */
 export const SETTINGS_GROUPS: readonly SettingsGroupDef[] = [
   { id: 'app', label: 'App' },
-  { id: 'build', label: 'Agents & tools' },
-  { id: 'models', label: 'Models' },
-  { id: 'privacy', label: 'Privacy & safety' },
+  { id: 'build', label: 'Agents and tools' },
+  { id: 'sessions', label: 'Sessions' },
+  { id: 'models', label: 'Models and media' },
+  { id: 'privacy', label: 'Data and safety' },
   { id: 'about', label: 'About' },
 ]
 
@@ -89,24 +90,25 @@ export interface SettingsSectionDef {
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // App
   { id: 'general', label: 'General', description: 'Theme and transcript style', icon: SlidersHorizontal, group: 'app' },
-  { id: 'connection', label: 'Connection', description: 'Which backend this app uses', icon: Server, group: 'app' },
-  { id: 'network', label: 'Network access', description: 'Let phones and other computers connect', icon: Wifi, group: 'app', desktopOnly: true },
-  // Agents & tools
-  { id: 'agents', label: 'Agents', description: 'Lead and member agent profiles', icon: Wrench, group: 'build' },
+  { id: 'desktop', label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'app', desktopOnly: true },
+  { id: 'connection', label: 'Connection', description: 'Which server this app uses, and access from other devices', icon: Server, group: 'app' },
+  // Agents and tools
+  { id: 'agents', label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'build' },
   { id: 'skills', label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'build' },
   { id: 'mcp', label: 'MCP servers', description: 'External tools over Model Context Protocol', icon: Plug, group: 'build' },
-  { id: 'plugins', label: 'Plugins', description: 'Plugins the backend loaded', icon: Puzzle, group: 'build', capability: 'api.plugins' },
-  { id: 'workspaces', label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'build' },
-  { id: 'goals', label: 'Goals', description: 'Keep going after a plan is approved: default, limits, questions', icon: Target, group: 'build' },
-  // Models
+  { id: 'plugins', label: 'Plugins', description: 'Plugins the server loaded', icon: Puzzle, group: 'build', capability: 'api.plugins' },
+  { id: 'goals', label: 'Goals', description: 'Keep working on an approved plan until it is done', icon: Target, group: 'build' },
+  // Sessions
+  { id: 'titles', label: 'Session titles', description: 'Name sessions automatically', icon: Heading, group: 'sessions' },
+  { id: 'context', label: 'Context', description: 'When long sessions are summarized', icon: Shrink, group: 'sessions' },
+  { id: 'workspaces', label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'sessions' },
+  // Models and media
   { id: 'providers', label: 'Providers', description: 'API keys and model accounts', icon: KeyRound, group: 'models' },
-  { id: 'titles', label: 'Chat titles', description: 'Name sessions automatically', icon: Heading, group: 'models' },
-  { id: 'context', label: 'Context', description: 'When long sessions are summarized', icon: Shrink, group: 'models' },
-  { id: 'media', label: 'Media generation', description: 'Image and video models and defaults', icon: Image, group: 'models' },
-  // Privacy & safety
+  { id: 'media', label: 'Image and video', description: 'Image and video models and defaults', icon: Image, group: 'models' },
+  // Data and safety
   { id: 'memory', label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'privacy' },
-  { id: 'denied_paths', label: 'Denied Paths', description: 'Files and folders agents cannot touch', icon: Shield, group: 'privacy' },
-  { id: 'telemetry', label: 'Telemetry', description: 'How long local traces and metrics are kept', icon: Activity, group: 'privacy' },
+  { id: 'denied_paths', label: 'Denied paths', description: 'Files and folders agents cannot touch', icon: Shield, group: 'privacy' },
+  { id: 'telemetry', label: 'Data retention', description: 'How long local traces and metrics are kept', icon: Activity, group: 'privacy' },
   // About
   { id: 'about', label: 'About OpenAgentd', description: 'Version, updates and community', icon: Info, group: 'about' },
 ]

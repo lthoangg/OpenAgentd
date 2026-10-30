@@ -193,7 +193,7 @@ export function ModelSetupCard({
                 disabled={pending !== null}
                 className={cn(
                   'flex h-9 min-w-0 items-center gap-2 rounded-sm border px-2.5 text-left text-xs transition-colors pointer-coarse:h-11',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-50',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
                   active
                     ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
                     : 'border-(--color-border) bg-(--color-surface) text-(--color-text) hover:bg-(--bg-key)/60',

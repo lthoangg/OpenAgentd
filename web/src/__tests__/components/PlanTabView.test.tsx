@@ -383,7 +383,18 @@ describe('PlanTabView', () => {
     const onClearPlan = mock(() => {})
     useAgentStore.setState({ pendingQuestion: REVIEW })
     renderTab({ onClearPlan })
-    expect((screen.getByRole('button', { name: 'Clear plan' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Clear plan…' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('asks before clearing the plan, and clears it on confirm', async () => {
+    const onClearPlan = mock(() => {})
+    renderTab({ onClearPlan })
+    fireEvent.click(screen.getByRole('button', { name: 'Clear plan…' }))
+
+    expect(await screen.findByText('Clear this plan?')).toBeTruthy()
+    expect(onClearPlan).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear plan' }))
+    await waitFor(() => expect(onClearPlan).toHaveBeenCalledTimes(1))
   })
 
   it('reads Done once every task on the board is finished', () => {

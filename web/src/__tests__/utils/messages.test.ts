@@ -251,7 +251,7 @@ describe("parseAgentBlocks", () => {
     const withUsage = blocks.filter((b) => b.usage);
     expect(withUsage).toHaveLength(1);
     expect(withUsage[0].type).toBe("text");
-    expect(withUsage[0].usage).toEqual({ outputTokens: 120, costUsd: 0.012 });
+    expect(withUsage[0].usage).toEqual({ outputTokens: 120, costUsd: 0.012, inputTokens: 900 });
   });
 
   it("puts usage on the first block when a message has no prose", () => {

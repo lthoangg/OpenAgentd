@@ -53,7 +53,7 @@ describe('formatTokenPrice & price badge helpers', () => {
       isFree: true,
     })
     expect(formatModelPriceBadge({ input: 1.25, output: 10 })).toEqual({
-      label: '$1.25 / $10 / 1M',
+      label: '$1.25 in · $10 out / 1M',
       isFree: false,
     })
     expect(formatModelPriceBadge({ input: 2.5, output: null })).toEqual({
@@ -96,7 +96,7 @@ describe('ModelsPanel — price display', () => {
       },
     })
 
-    expect(screen.getByText('$1.25 / $10 / 1M')).toBeTruthy()
+    expect(screen.getByText('$1.25 in · $10 out / 1M')).toBeTruthy()
     expect(screen.getByText('Free')).toBeTruthy()
   })
 
@@ -108,7 +108,7 @@ describe('ModelsPanel — price display', () => {
       },
     })
 
-    expect(screen.getByText('$1.25 / $10 / 1M')).toBeTruthy()
+    expect(screen.getByText('$1.25 in · $10 out / 1M')).toBeTruthy()
   })
 })
 
@@ -117,14 +117,16 @@ describe('ModelsPanel — stale visible models', () => {
 
   it('counts only visible models that are still in the provider model list', () => {
     renderPanel({ visibleModels: ['gpt-4o', 'gpt-4-turbo'] })
-    expect(screen.getByText('2 models available')).toBeTruthy()
-    expect(screen.getByText('1 visible')).toBeTruthy()
+    expect(screen.getByText('· 2 available')).toBeTruthy()
+    expect(screen.getByText('1 shown in pickers')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Only selected (1)' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('treats a provider whose visible models are all stale as all-visible', () => {
     renderPanel({ visibleModels: ['gpt-4-turbo'] })
-    expect(screen.getByText('2 models available')).toBeTruthy()
-    expect(screen.getByText('All visible')).toBeTruthy()
+    expect(screen.getByText('· 2 available')).toBeTruthy()
+    expect(screen.getByText('All shown in pickers')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'All models' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('drops stale visible entries when saving a toggle', () => {
@@ -135,12 +137,59 @@ describe('ModelsPanel — stale visible models', () => {
   })
 })
 
+describe('ModelsPanel — picker mode', () => {
+  afterEach(cleanup)
+
+  it('shows the header counts and no per-model toggles while every model is shown', () => {
+    renderPanel()
+    expect(screen.getByText('· 2 available')).toBeTruthy()
+    expect(screen.getByText('All shown in pickers')).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'Models shown in pickers' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'All models' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: 'Only selected' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.queryAllByRole('button', { name: /model pickers$/ })).toHaveLength(0)
+  })
+
+  it('shows Shown/Hidden toggles with aria-pressed only in Only selected mode', () => {
+    const save = mock(() => Promise.resolve())
+    renderPanel({ onSaveVisibleModels: save })
+    fireEvent.click(screen.getByRole('radio', { name: 'Only selected' }))
+
+    const show = screen.getByRole('button', { name: 'Show openai:gpt-5 in model pickers' })
+    expect(show.getAttribute('aria-pressed')).toBe('false')
+    expect(show.textContent).toBe('Hidden')
+    // Choosing the mode saves nothing until a model is picked
+    expect(save).not.toHaveBeenCalled()
+
+    fireEvent.click(show)
+    expect(save).toHaveBeenCalledWith(['gpt-5'])
+  })
+
+  it('names a selected model "Hide … from model pickers" and pressed', () => {
+    renderPanel({ visibleModels: ['gpt-5'] })
+    const hide = screen.getByRole('button', { name: 'Hide openai:gpt-5 from model pickers' })
+    expect(hide.getAttribute('aria-pressed')).toBe('true')
+    expect(hide.textContent).toBe('Shown')
+    expect(screen.getByRole('button', { name: 'Show openai:gpt-4o in model pickers' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('goes back to every model shown by saving an empty selection', () => {
+    const save = mock(() => Promise.resolve())
+    renderPanel({ visibleModels: ['gpt-5'], onSaveVisibleModels: save })
+    fireEvent.click(screen.getByRole('radio', { name: 'All models' }))
+    expect(save).toHaveBeenCalledWith([])
+  })
+})
+
 describe('ModelsPanel — long model lists', () => {
   afterEach(cleanup)
+  // Per-model toggles only render in "Only selected" mode
   const rows = () => screen.queryAllByRole('button', { name: /in model pickers$/ }).length
+  const onlySelected = () => fireEvent.click(screen.getByRole('radio', { name: 'Only selected' }))
 
   it('shows the first 50 models and the rest on request', () => {
     renderPanel({ models: Array.from({ length: 120 }, (_, i) => `model-${i}`) })
+    onlySelected()
     expect(rows()).toBe(50)
     fireEvent.click(screen.getByRole('button', { name: 'Show all 120 models' }))
     expect(rows()).toBe(120)
@@ -149,6 +198,7 @@ describe('ModelsPanel — long model lists', () => {
 
   it('shows a short list whole', () => {
     renderPanel({ models: Array.from({ length: 50 }, (_, i) => `model-${i}`) })
+    onlySelected()
     expect(rows()).toBe(50)
     expect(screen.queryByRole('button', { name: /^Show all/ })).toBeNull()
   })

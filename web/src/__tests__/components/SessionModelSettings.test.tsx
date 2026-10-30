@@ -62,7 +62,10 @@ describe('SessionModelSettings', () => {
     // entry and must not cover itself); a click or ArrowDown does.
     fireEvent.click(input)
 
-    expect(await screen.findByText('openai:gpt-5.5-mini')).toBeTruthy()
+    // Rows show the short model id; the full id is the row's title
+    const row = await screen.findByTitle('openai:gpt-5.5-mini')
+    expect(row.getAttribute('role')).toBe('option')
+    expect(row.textContent).toBe('gpt-5.5-mini')
   })
 
   it('shows warmed registry models when the backend populates cache on first load', async () => {
@@ -83,7 +86,9 @@ describe('SessionModelSettings', () => {
     const input = await screen.findByRole('combobox', { name: 'Search session model' })
     fireEvent.click(input)
 
-    expect(await screen.findByText('openai:gpt-5')).toBeTruthy()
+    const row = await screen.findByTitle('openai:gpt-5')
+    expect(row.getAttribute('role')).toBe('option')
+    expect(row.textContent).toBe('gpt-5')
   })
 
   it('limits thinking choices to the selected model metadata when available', async () => {
@@ -204,7 +209,7 @@ describe('SessionModelSettings', () => {
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'openai:gpt-4o' } })
 
-    const option = await screen.findByText('openai:gpt-4o')
+    const option = await screen.findByTitle('openai:gpt-4o')
     fireEvent.click(option)
 
     // The dropdown label follows the committed session prop, which this test
@@ -336,7 +341,7 @@ describe('SessionModelSettings — instant apply', () => {
     stub()
     renderPanel({ sessionModel: 'openai:gpt-4o' })
 
-    expect(await screen.findByText(/vision/i)).toBeTruthy()
+    expect(await screen.findByText('Vision')).toBeTruthy()
   })
 
   it('does not claim vision for a model without it', async () => {
@@ -418,8 +423,8 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     const firstOption = listbox?.querySelector('[role="option"]')
     if (firstOption) {
       // Whatever is shown first must be one of the real registry ids
-      const text = firstOption.textContent?.trim() ?? ''
-      expect(['openai:gpt-4o', 'anthropic:claude-3-5-sonnet']).toContain(text)
+      const id = firstOption.getAttribute('title') ?? ''
+      expect(['openai:gpt-4o', 'anthropic:claude-3-5-sonnet']).toContain(id)
     }
     // If no options shown, that is also acceptable — empty list, not fake item
   })
@@ -456,7 +461,7 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     const listbox = document.querySelector('[role="listbox"]')
     expect(listbox).toBeTruthy()
     const options = Array.from(listbox!.querySelectorAll('[role="option"]'))
-    expect(options.map((o) => o.textContent?.trim())).toEqual(['openai:gpt-4o'])
+    expect(options.map((o) => o.getAttribute('title'))).toEqual(['openai:gpt-4o'])
   })
 
   it('applies a fuzzy result as soon as Enter selects it', async () => {
@@ -496,7 +501,7 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     await waitFor(() => {
       const listbox = document.querySelector('[role="listbox"]')
       const options = Array.from(listbox?.querySelectorAll('[role="option"]') ?? [])
-      expect(options.map((o) => o.textContent?.trim())).toContain('openai:o3-mini')
+      expect(options.map((o) => o.getAttribute('title'))).toContain('openai:o3-mini')
     })
   })
 
@@ -514,7 +519,7 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     await waitFor(() => {
       const listbox = document.querySelector('[role="listbox"]')
       const options = Array.from(listbox?.querySelectorAll('[role="option"]') ?? [])
-      const matching = options.filter((o) => o.textContent?.trim() === 'openai:gpt-4o')
+      const matching = options.filter((o) => o.getAttribute('title') === 'openai:gpt-4o')
       expect(matching).toHaveLength(1) // exactly once, not duplicated
     })
   })

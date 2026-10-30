@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck, WifiOff } from 'lucide-react'
+import { ChevronRight, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 
 import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
-import { SectionCard } from '@/components/ui/section-card'
+import { Chip, type ChipTone } from '@/components/ui/chip'
+import { cn } from '@/lib/utils'
 import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
@@ -15,7 +17,24 @@ import { ModelsPanel } from './ModelsPanel'
 import { OAuthLoginDialog } from './OAuthLoginDialog'
 import { CredentialList } from './CredentialList'
 
-export function ProviderCard({ provider }: { provider: ProviderInfo }) {
+/** Kind as a person reads it in the row's subline. */
+function kindSubline(kind: ProviderInfo['kind']): string {
+  if (kind === 'oauth') return 'Sign-in'
+  if (kind === 'local') return 'Local server'
+  return providerKindLabel(kind)
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`
+}
+
+/**
+ * One provider as a row in the Providers list: name, what it is, and its
+ * state; opening it shows keys, usage and models. `defaultExpanded` is for a
+ * standalone render; the list opens rows on demand.
+ */
+export function ProviderCard({ provider, defaultExpanded = true }: { provider: ProviderInfo; defaultExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const [apiKey, setApiKey] = useState('')
   const [keyLabel, setKeyLabel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
@@ -33,6 +52,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const saveVisibleModelsMutation = useSaveProviderVisibleModelsMutation()
   const disconnectMutation = useDisconnectProviderMutation()
   const disconnectOauthMutation = useDisconnectOauthProviderMutation()
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
   const push = useToastStore((s) => s.push)
   const queryClient = useQueryClient()
 
@@ -154,15 +174,15 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       } else {
         push({
           tone: 'error',
-          title: 'Failed',
-          description: 'Provider is unreachable.',
+          title: 'Unreachable',
+          description: `${provider.label} did not answer. Check the key or the address.`,
         })
       }
     } catch (err) {
       setHasReachabilityFailure(true)
       push({
         tone: 'error',
-        title: 'Could not list models',
+        title: 'Could not test the key',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -225,13 +245,13 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       await disconnectMutation.mutateAsync({ providerId: provider.id, disconnected })
       push({
         tone: 'success',
-        title: disconnected ? 'Provider hidden' : 'Provider visible',
+        title: disconnected ? 'Hidden from pickers' : 'Shown in pickers',
         description: provider.label,
       })
     } catch (err) {
       push({
         tone: 'error',
-        title: disconnected ? 'Could not hide provider' : 'Could not show provider',
+        title: disconnected ? 'Could not hide from pickers' : 'Could not show in pickers',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -259,65 +279,79 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const isConfiguredButUnreachable =
     hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
+  const testLabel =
+    provider.kind === 'oauth' ? 'Test sign-in'
+      : provider.kind === 'local' ? 'Test connection'
+        : provider.kind === 'cloud_creds' ? 'Test credentials'
+          : 'Test key'
+  const credentialCount = storedCredentials.length
+  const modelCount = provider.is_configured ? (provider.cached_models?.length ?? 0) : 0
+  const subline = [
+    kindSubline(provider.kind),
+    credentialCount > 0 ? plural(credentialCount, provider.kind === 'oauth' ? 'account' : 'key') : null,
+    provider.env_pinned ? 'from environment' : null,
+    modelCount > 0 ? plural(modelCount, 'model') : null,
+  ].filter(Boolean).join(' · ')
+  const status: { label: string; tone: ChipTone; dot: boolean } = isConfiguredButUnreachable
+    ? { label: 'Unreachable', tone: 'warning', dot: true }
+    : provider.is_disconnected
+      ? { label: 'Hidden from pickers', tone: 'neutral', dot: false }
+      : isConnected
+        ? { label: 'Connected', tone: 'success', dot: true }
+        : { label: provider.kind === 'local' ? 'Not detected' : 'Not connected', tone: 'neutral', dot: false }
+  const bodyId = `provider-${provider.id}-details`
+
   return (
-    <SectionCard className="group">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-(--color-border-subtle) px-4 py-2.5">
-        <p className="min-w-0 flex-1 basis-32 truncate text-xs font-semibold text-(--color-text)">{provider.label}</p>
-
-        <div className="hidden flex-1 sm:block" />
-
-        <span className="rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
-          {providerKindLabel(provider.kind)}
+    <div className="group" data-provider={provider.id}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={bodyId}
+        onClick={() => setExpanded((v) => !v)}
+        className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-(--bg-key)/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-(--color-text)">{provider.label}</span>
+          <span className="block truncate text-xs text-(--color-text-muted)">{subline}</span>
         </span>
+        <Chip tone={status.tone} dot={status.dot}>{status.label}</Chip>
+        <ChevronRight
+          size={14}
+          aria-hidden="true"
+          className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast)', expanded && 'rotate-90')}
+        />
+      </button>
 
-        {isConfiguredButUnreachable ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-(--color-error-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-error) border border-(--color-error)/15">
-            <AlertCircle size={11} aria-hidden="true" />
-            Failed
-          </span>
-        ) : provider.is_disconnected ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted) border border-(--color-border)">
-            <WifiOff size={11} aria-hidden="true" />
-            Hidden
-          </span>
-        ) : isConnected ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success) border border-(--color-success)/15">
-            <CheckCircle2 size={11} aria-hidden="true" />
-            Connected
-          </span>
-        ) : null}
+      {expanded && (
+      <div id={bodyId} className="space-y-4 border-t border-(--color-border-subtle) px-4 py-4">
 
-        {(isConnected || isConfiguredButUnreachable) && (
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            onClick={() => void handleDisconnect(!provider.is_disconnected)}
-            disabled={disconnectMutation.isPending}
-          >
-            {disconnectMutation.isPending
-              ? <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-              : provider.is_disconnected ? 'Show' : 'Hide'
-            }
-          </Button>
-        )}
-
-        {provider.docs_url && (
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            onClick={() => void openExternalUrl(provider.docs_url)}
-          >
-            Docs <ExternalLink size={11} aria-hidden="true" className="ml-1" />
-          </Button>
-        )}
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <p className="min-w-0 flex-1 basis-60 text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>
+        <div className="flex shrink-0 items-center gap-1">
+          {(isConnected || isConfiguredButUnreachable) && (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={() => void handleDisconnect(!provider.is_disconnected)}
+              disabled={disconnectMutation.isPending}
+            >
+              {disconnectMutation.isPending && <Loader2 size={11} className="mr-1 animate-spin" aria-hidden="true" />}
+              {provider.is_disconnected ? 'Show in pickers' : 'Hide from pickers'}
+            </Button>
+          )}
+          {provider.docs_url && (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={() => void openExternalUrl(provider.docs_url)}
+            >
+              Docs <ExternalLink size={11} aria-hidden="true" className="ml-1" />
+            </Button>
+          )}
+        </div>
       </div>
-
-      <div className="space-y-4 px-4 py-4">
-
-      <p className="text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>
 
       {/* ── API-key controls ─────────────────────────────────────────── */}
       {provider.kind === 'api_key' && (
@@ -368,7 +402,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               disabled={(!hasCandidateKey && !hasSavedCredentials && !provider.public_access) || listing}
             >
               {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              List models
+              {testLabel}
             </Button>
             <Button
               type="button"
@@ -397,7 +431,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           )}
           {hasCandidateKey && !hasVerifiedKey && (
             <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
-              Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before {hasStoredKeys ? 'adding it' : 'saving'}.
+              Click <span className="font-medium text-(--color-text)">Test key</span> to verify this key before {hasStoredKeys ? 'adding it' : 'saving'}.
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
@@ -439,7 +473,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             disabled={!hasSavedCredentials || listing}
           >
             {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-            List models
+            {testLabel}
           </Button>
           {hasStoredAccounts ? (
             <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => setOauthTarget({})}>
@@ -462,14 +496,22 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 size="sm"
                 variant="ghost"
                 className="w-full sm:w-auto text-(--color-error) hover:text-(--color-error)"
-                onClick={() => void handleOauthDisconnect()}
+                onClick={() => setConfirmSignOut(true)}
                 disabled={disconnectOauthMutation.isPending}
               >
                 {disconnectOauthMutation.isPending ? (
                   <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />
                 ) : null}
-                Disconnect
+                Sign out…
               </Button>
+              <ConfirmDialog
+                open={confirmSignOut}
+                onOpenChange={setConfirmSignOut}
+                title={`Sign out of ${provider.label}?`}
+                description="OpenAgentd forgets this sign-in. Models from this provider stop working until you sign in again."
+                confirmLabel="Sign out"
+                onConfirm={handleOauthDisconnect}
+              />
             </>
           ) : (
             <Button
@@ -489,21 +531,21 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       {provider.is_configured && (
         <div className="space-y-2 pt-1">
           {usageQ.isLoading ? (
-            <p className="inline-flex items-center gap-1 text-[11px] text-(--color-text-subtle) font-mono">
+            <p role="status" className="inline-flex items-center gap-1 text-[11px] text-(--color-text-subtle)">
               <Loader2 className="h-3 w-3 animate-spin mr-1" aria-hidden="true" />
-              Loading active usage…
+              Loading usage…
             </p>
           ) : usageQ.data && usageQ.data.limits.length > 0 ? (
             <UsagePanel providerId={provider.id} limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
           ) : usageQ.isError ? (
             provider.kind === 'oauth' ? (
-              <p className="text-[11px] text-(--color-text-subtle) font-mono">
+              <p className="text-[11px] text-(--color-text-subtle)">
                 {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
                   ? 'Usage monitoring is not supported for this OAuth provider yet.'
                   : 'Usage monitor unavailable right now.'}
               </p>
             ) : usageQ.error instanceof ApiValidationError && usageQ.error.status !== 404 ? (
-              <p className="text-[11px] text-(--color-text-subtle) font-mono">
+              <p className="text-[11px] text-(--color-text-subtle)">
                 Usage monitor unavailable right now.
               </p>
             ) : null
@@ -536,7 +578,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               disabled={listing}
             >
               {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              List models
+              {testLabel}
             </Button>
             <Button
               type="button"
@@ -587,7 +629,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               disabled={(!hasCloudCandidate && !hasSavedCredentials) || listing}
             >
               {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              List models
+              {testLabel}
             </Button>
             <Button
               type="button"
@@ -602,7 +644,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           </div>
           {hasCloudCandidate && !hasVerifiedCloud && (
             <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
-              Click <span className="font-medium text-(--color-text)">List models</span> to verify these credentials before saving.
+              Click <span className="font-medium text-(--color-text)">Test credentials</span> to verify these credentials before saving.
             </p>
           )}
           {!hasCloudCandidate && provider.is_configured && (
@@ -647,6 +689,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         />
       )}
       </div>
-    </SectionCard>
+      )}
+    </div>
   )
 }

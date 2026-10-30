@@ -24,7 +24,7 @@ function parseReadResult(result?: string): { label: string; body: string; startL
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
   if (!match) return { label: '', body: truncateForDisplay(result), startLine: 1 }
   return {
-    label: `lines ${match[1]}-${match[2]} of ${match[3]}`,
+    label: `Lines ${match[1]}–${match[2]} of ${match[3]}`,
     body: truncateForDisplay(match[4]),
     startLine: Number(match[1]),
   }
@@ -66,14 +66,14 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         <button
           type="button"
           onClick={handleCollapse}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:text-(--color-text) pointer-coarse:min-h-11 focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
           aria-expanded={expanded}
           aria-label="Collapse read result"
         >
           <FileText size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden />
           <span className="truncate">{path}</span>
         </button>
-        <span className="shrink-0 px-1 text-xs md:text-[11px] font-normal text-(--color-text-muted) uppercase">
+        <span className="shrink-0 px-1 font-sans text-[11px] font-normal tabular-nums text-(--color-text-muted)">
           {label}
         </span>
         <Tooltip>
@@ -87,7 +87,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
                   event.stopPropagation()
                   void copyBody()
                 }}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6"
+                className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
                 aria-label="Copy read result"
               >
                 {copied ? (

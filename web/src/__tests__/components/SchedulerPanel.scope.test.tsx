@@ -18,10 +18,16 @@ function renderPanel(tasks: ScheduledTaskResponse[]) {
 describe('SchedulerPanel — workspace scope', () => {
   it('shows scheduled tasks across coding workspaces', async () => {
     renderPanel([task('App reminder', '/repo/app'), task('Api reminder', '/repo/api')])
+    // The first task is open in the detail pane, so its name shows twice
     await waitFor(() => {
-      expect(screen.getByText('App reminder')).toBeInTheDocument()
-      expect(screen.getByText('Api reminder')).toBeInTheDocument()
+      expect(screen.getAllByText('App reminder').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Api reminder').length).toBeGreaterThan(0)
     })
+    // Each list row names its workspace
+    const rows = screen.getAllByRole('button', { name: /reminder/ }).filter((row) => row.getAttribute('aria-current') !== null || row.textContent?.includes('every 1 h'))
+    const workspaces = (name: string) => rows.find((row) => row.textContent?.includes(name))?.textContent ?? ''
+    expect(workspaces('App reminder')).toContain('app')
+    expect(workspaces('Api reminder')).toContain('api')
     expect(screen.getAllByText('app').length).toBeGreaterThan(0)
     expect(screen.getAllByText('api').length).toBeGreaterThan(0)
   })

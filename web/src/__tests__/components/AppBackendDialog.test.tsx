@@ -121,7 +121,7 @@ describe('AppBackendDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Test connection' }))
     await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
 
-    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Save and connect' }))
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
 
     await fetch('http://127.0.0.1:4082/api/health/live')
@@ -142,7 +142,7 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Builtin sidecar')
+    await screen.findByText('Built-in server')
     const connectButtons = await screen.findAllByRole('button', { name: 'Connect' })
     await user.click(connectButtons[0])
 
@@ -153,7 +153,7 @@ describe('AppBackendDialog', () => {
   it('loads saved servers and shows live online/offline indicators', async () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    expect(await screen.findByText('Builtin sidecar')).toBeTruthy()
+    expect(await screen.findByText('Built-in server')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
     expect(screen.getByText('http://127.0.0.1:4082')).toBeTruthy()
     expect(screen.getByText('http://127.0.0.1:4999')).toBeTruthy()
@@ -168,7 +168,7 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     expect(await screen.findByText('Local CLI')).toBeTruthy()
-    expect(screen.queryByText('Builtin sidecar')).toBeNull()
+    expect(screen.queryByText('Built-in server')).toBeNull()
   })
 
   it('blocks incomplete URLs before invoking a backend switch command', async () => {
@@ -193,9 +193,10 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Builtin sidecar')
-    expect(screen.queryByRole('button', { name: 'Use builtin' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Stop' }))
+    await screen.findByText('Built-in server')
+    expect(screen.queryByRole('button', { name: 'Use built-in server' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Stop…' }))
+    await user.click(await screen.findByRole('button', { name: 'Stop server' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -216,9 +217,10 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Builtin sidecar')
-    expect(screen.queryByRole('button', { name: 'Use builtin' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Stop' }))
+    await screen.findByText('Built-in server')
+    expect(screen.queryByRole('button', { name: 'Use built-in server' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Stop…' }))
+    await user.click(await screen.findByRole('button', { name: 'Stop server' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -241,7 +243,7 @@ describe('AppBackendDialog', () => {
     window.history.replaceState(null, '', '/old-session')
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Builtin sidecar')
+    await screen.findByText('Built-in server')
     // The builtin sidecar row renders first in the connection options list,
     // so its "Connect" button is the first match.
     const [connectButton] = await screen.findAllByRole('button', { name: 'Connect' })
@@ -269,8 +271,8 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Builtin sidecar')
-    await user.click(screen.getByRole('button', { name: 'Use builtin' }))
+    await screen.findByText('Built-in server')
+    await user.click(screen.getByRole('button', { name: 'Use built-in server' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -300,7 +302,7 @@ describe('AppBackendDialog', () => {
 
     await user.click(screen.getByLabelText(/server name/i))
     await user.paste('Workstation')
-    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Save and connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
     expect(invokeCalls).toContainEqual({
@@ -322,7 +324,7 @@ describe('AppBackendDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Test connection' }))
     await user.clear(screen.getByLabelText(/server name/i))
     await user.type(screen.getByLabelText(/server name/i), 'Renamed CLI')
-    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Save and connect' }))
 
     await waitFor(() => expect(invokeCalls).toContainEqual({
       command: 'app_use_external_backend',
@@ -336,6 +338,7 @@ describe('AppBackendDialog', () => {
 
     const removeButtons = await screen.findAllByRole('button', { name: /^Remove / })
     await user.click(removeButtons[0])
+    await user.click(await screen.findByRole('button', { name: 'Remove server' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -446,7 +449,7 @@ describe('AppBackendDialog', () => {
     expect(new Headers(authCheck?.init?.headers).get('Authorization')).toBe('Bearer scanned-key')
     expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
 
-    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Save and connect' }))
     await waitFor(() => expect(invokeCalls).toContainEqual({
       command: 'app_use_external_backend',
       args: { baseUrl: 'http://127.0.0.1:4082', name: '127.0.0.1', persist: true },
@@ -465,7 +468,7 @@ describe('AppBackendDialog', () => {
     render(<ConnectionSettingsPage />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Connection' })).toBeTruthy()
-    expect(await screen.findByText('Builtin sidecar')).toBeTruthy()
+    expect(await screen.findByText('Built-in server')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
     expect(screen.getByLabelText(/server url/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy()

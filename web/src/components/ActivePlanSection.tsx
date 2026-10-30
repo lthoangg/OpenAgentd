@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
 import { cn } from '@/lib/utils'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
@@ -45,6 +46,7 @@ export function planTitle(content: string): string | null {
 
 export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, status, statusLabel, statusClassName, className }: ActivePlanSectionProps) {
   const [doc, setDoc] = useState<FileLightboxItem | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
   const urlRef = useRef<string | null>(null)
   const releaseUrl = useCallback(() => {
     if (urlRef.current) URL.revokeObjectURL(urlRef.current)
@@ -95,13 +97,21 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
         type="button"
         variant="ghost"
         size="xs"
-        onClick={onClear}
+        onClick={() => setConfirmClear(true)}
         disabled={clearing}
-        aria-label="Clear plan"
+        aria-label="Clear plan…"
         title="Stops using this plan in the session; the file stays."
       >
-        Clear
+        Clear…
       </Button>
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="Clear this plan?"
+        description="The session stops following this plan and the agent no longer sees it. The plan file stays on disk."
+        confirmLabel="Clear plan"
+        onConfirm={onClear}
+      />
       {doc && <FileLightbox items={[doc]} isOpen onClose={closePlan} />}
     </div>
   )

@@ -4,22 +4,26 @@
  * it (over it on phones).
  */
 import { useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, MessageSquare } from 'lucide-react'
+import { Check, Copy } from 'lucide-react'
+import { Chip } from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Term } from '@/components/ui/term'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useTraceDetailQuery } from '@/queries'
 import { formatFullDateTime } from '@/utils/format'
 import { formatCompact, formatMs, formatShortId, formatSpend } from '@/utils/telemetryFormat'
-import { modelName, traceSummary, workspaceName } from './model'
+import { useTelemetryStore } from '@/stores/useTelemetryStore'
+import { traceSummary, workspaceName } from './model'
+import { ModelId, shortDateTime } from './ModelId'
 import { SpanDetailPanel } from './SpanDetailPanel'
 import { Waterfall } from './Waterfall'
 
 const ACTION_CLASS =
-  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm border pointer-coarse:h-11 pointer-coarse:px-3 border-(--color-border) bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
-function Fact({ label, children, title }: { label: string; children: ReactNode; title?: string }) {
+function Fact({ label, children, title, className }: { label: ReactNode; children: ReactNode; title?: string; className?: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 bg-(--bg-card) px-3 py-2">
+    <div className={`flex min-w-0 flex-col gap-0.5 bg-(--bg-card) px-3 py-2 ${className ?? ''}`}>
       <dt className="text-[11px] text-(--color-text-muted)">{label}</dt>
       <dd className="truncate text-xs text-(--color-text)" title={title}>{children}</dd>
     </div>
@@ -38,7 +42,9 @@ export function TraceView({
 }) {
   const isMobile = useIsMobile()
   const { data, isPending, isError, refetch } = useTraceDetailQuery(traceId, days)
-  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null)
+  const selectedSpanId = useTelemetryStore((s) => s.spanId)
+  const setSelectedSpanId = useTelemetryStore((s) => s.selectSpan)
+  const setDays = useTelemetryStore((s) => s.setDays)
   const [copied, setCopied] = useState(false)
   const summary = useMemo(() => (data ? traceSummary(data.spans) : null), [data])
   const selectedSpan = data?.spans.find((s) => s.span_id === selectedSpanId) ?? null
@@ -65,7 +71,7 @@ export function TraceView({
   if (isError) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-        <p className="text-sm font-medium text-(--color-text)">Could not load this trace</p>
+        <p className="text-sm font-medium text-(--color-text)">Couldn't load this turn</p>
         <button type="button" onClick={() => void refetch()} className={ACTION_CLASS}>
           Retry
         </button>
@@ -75,30 +81,44 @@ export function TraceView({
 
   if (!data || !summary) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
         <p className="text-sm font-medium text-(--color-text)">Trace not found</p>
-        <p className="text-xs text-(--color-text-muted)">It may be older than the selected range or past retention.</p>
+        <p className="max-w-[48ch] text-xs text-(--color-text-muted)">
+          {days < 90
+            ? `It isn't in the last ${days === 1 ? '24 hours' : `${days} days`}. It may be older, or past the data retention limit.`
+            : 'It may be past the data retention limit.'}
+        </p>
+        {days < 90 && (
+          <button type="button" onClick={() => setDays(90)} className={ACTION_CLASS}>
+            Search the last 90 days
+          </button>
+        )}
       </div>
     )
   }
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:p-4">
+      <div className="@container flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="min-w-0 truncate text-xs text-(--color-text-muted)">
-            {summary.agentName && <span className="font-medium text-(--color-text)">{summary.agentName}</span>}
-            {summary.agentName && ' - '}
-            <span className="font-mono">{formatShortId(traceId)}</span>
+            {summary.agentName && <span className="font-mono font-medium text-(--color-text)">{summary.agentName}</span>}
+            {summary.agentName && ' · '}
+            {shortDateTime(summary.startMs)}
           </p>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void copyTraceId()} className={ACTION_CLASS}>
+            <button
+              type="button"
+              onClick={() => void copyTraceId()}
+              className={ACTION_CLASS}
+              aria-label={copied ? 'Trace ID copied' : 'Copy trace ID'}
+              title={`Copy trace ID ${traceId}`}
+            >
               {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-              {copied ? 'Copied' : 'Copy trace ID'}
+              {copied ? 'Copied' : <span className="font-mono">trace {formatShortId(traceId)}</span>}
             </button>
             {summary.sessionId && onOpenSession && (
               <button type="button" onClick={() => onOpenSession(summary.sessionId!)} className={ACTION_CLASS}>
-                <MessageSquare size={13} aria-hidden="true" />
                 Open session
               </button>
             )}
@@ -107,24 +127,31 @@ export function TraceView({
 
         <dl
           aria-label="Turn summary"
-          className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-(--color-border) bg-(--color-border) sm:grid-cols-4 lg:grid-cols-7"
+          className="grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-sm border border-(--color-border) bg-(--color-border) @xl:grid-cols-4 @5xl:grid-cols-7"
         >
           <Fact label="Started" title={formatFullDateTime(new Date(summary.startMs))}>
-            {formatFullDateTime(new Date(summary.startMs))}
+            {shortDateTime(summary.startMs)}
           </Fact>
           <Fact label="Workspace" title={summary.workspace ?? undefined}>
             {summary.workspace === undefined ? '-' : workspaceName(summary.workspace)}
           </Fact>
           <Fact label="Model" title={summary.providerModel ?? undefined}>
-            <span className="font-mono">{summary.providerModel ? modelName(summary.providerModel) : '-'}</span>
+            {summary.providerModel ? <ModelId id={summary.providerModel} /> : '-'}
           </Fact>
-          <Fact label="Duration">{formatMs(summary.durationMs)}</Fact>
-          <Fact label="Tokens">
-            {formatCompact(summary.inputTokens)} in, {formatCompact(summary.outputTokens)} out
+          <Fact label={<Term definition="turnDuration">Duration</Term>}>
+            <span className="font-mono">{formatMs(summary.durationMs)}</span>
           </Fact>
-          <Fact label="Cost">{formatSpend(summary.cost)}</Fact>
-          <Fact label="Status">
-            {summary.failed ? <span className="font-medium text-(--color-error)">Failed</span> : 'Completed'}
+          <Fact label="Tokens in / out">
+            <span className="font-mono">
+              {formatCompact(summary.inputTokens)} / {formatCompact(summary.outputTokens)}
+            </span>
+          </Fact>
+          <Fact label={<Term definition="spendEstimate">Spend (est.)</Term>}>
+            <span className="font-mono">{formatSpend(summary.cost)}</span>
+          </Fact>
+          {/* Seventh cell: fills the last row so no empty cell shows. */}
+          <Fact label="Status" className="col-span-2 @5xl:col-span-1">
+            {summary.failed ? <Chip tone="error">failed</Chip> : <Chip tone="success">ok</Chip>}
           </Fact>
         </dl>
 
@@ -133,10 +160,10 @@ export function TraceView({
       {selectedSpan &&
         (isMobile ? (
           <div className="absolute inset-0 z-10 overflow-y-auto bg-(--bg-page)">
-            <SpanDetailPanel span={selectedSpan} onClose={() => setSelectedSpanId(null)} fullWidth />
+            <SpanDetailPanel span={selectedSpan} traceStartMs={summary.startMs} onClose={() => setSelectedSpanId(null)} fullWidth />
           </div>
         ) : (
-          <SpanDetailPanel span={selectedSpan} onClose={() => setSelectedSpanId(null)} />
+          <SpanDetailPanel span={selectedSpan} traceStartMs={summary.startMs} onClose={() => setSelectedSpanId(null)} />
         ))}
     </div>
   )

@@ -155,12 +155,51 @@ fn snapshot_ref(tree: &str) -> String {
 }
 
 async fn repack(gitdir: &Path) {
+    prune_dead_alternates(gitdir);
     let gd = p(gitdir);
     let mut a: Vec<&str> = CORE_FLAGS.to_vec();
     a.extend(["--git-dir", &gd, "repack", "-a", "-d", "-q", "-l"]);
     let o = git(&a, None, &[], None).await;
     if o.code != 0 {
         tracing::warn!("snapshot_repack_failed gitdir={} stderr={}", gd, o.err());
+    }
+}
+
+/// Drop `objects/info/alternates` entries whose directory is gone (the
+/// workspace repo was deleted or moved). git refuses to repack with an
+/// unreadable alternate ("unable to normalize alternate object path"), so
+/// one deleted repo would otherwise fail every maintenance run. Objects that
+/// lived only there are already unreadable; dropping the line loses nothing.
+fn prune_dead_alternates(gitdir: &Path) {
+    let objects = gitdir.join("objects");
+    let file = objects.join("info").join("alternates");
+    let Ok(raw) = std::fs::read_to_string(&file) else {
+        return;
+    };
+    let mut dropped = 0usize;
+    let kept: Vec<&str> = raw
+        .lines()
+        .filter(|line| {
+            let e = line.trim();
+            if e.is_empty() || e.starts_with('#') {
+                return true;
+            }
+            let c = PathBuf::from(e);
+            let alive = if c.is_absolute() { c.is_dir() } else { objects.join(c).is_dir() };
+            if !alive {
+                dropped += 1;
+            }
+            alive
+        })
+        .collect();
+    if dropped == 0 {
+        return;
+    }
+    let res =
+        if kept.iter().all(|l| l.trim().is_empty() || l.trim().starts_with('#')) { std::fs::remove_file(&file) } else { std::fs::write(&file, format!("{}\n", kept.join("\n"))) };
+    match res {
+        Ok(()) => tracing::info!("snapshot_alternates_pruned gitdir={} dropped={} kept={}", p(gitdir), dropped, kept.len()),
+        Err(e) => tracing::warn!("snapshot_alternates_prune_failed gitdir={} error={}", p(gitdir), e),
     }
 }
 
@@ -876,6 +915,49 @@ mod tests {
         assert!(s.contains("M|a.txt") && s.contains("A|sub/b.txt") && s.contains("D|c.txt"), "{s}");
         delete_extras(&ws, &["c.txt".into()]);
         assert!(!ws.join("c.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn repack_drops_alternates_whose_repo_was_deleted() {
+        if !is_available() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let gitdir = tmp.path().join("snap");
+        assert!(init_repo(&gitdir, &ws).await);
+        let live = tmp.path().join("live-objects");
+        std::fs::create_dir_all(&live).unwrap();
+        let gone = tmp.path().join("deleted-repo/.git/objects");
+        let alternates = gitdir.join("objects/info/alternates");
+        std::fs::create_dir_all(alternates.parent().unwrap()).unwrap();
+        std::fs::write(&alternates, format!("{}\n{}\n", p(&gone), p(&live))).unwrap();
+
+        repack(&gitdir).await;
+
+        assert_eq!(std::fs::read_to_string(&alternates).unwrap(), format!("{}\n", p(&live)));
+        let o = git(&gd_args(&p(&gitdir), &["repack", "-a", "-d", "-q", "-l"]), None, &[], None).await;
+        assert_eq!(o.code, 0, "{}", o.err());
+    }
+
+    #[tokio::test]
+    async fn repack_removes_alternates_file_when_every_entry_is_gone() {
+        if !is_available() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let gitdir = tmp.path().join("snap");
+        assert!(init_repo(&gitdir, &ws).await);
+        let alternates = gitdir.join("objects/info/alternates");
+        std::fs::create_dir_all(alternates.parent().unwrap()).unwrap();
+        std::fs::write(&alternates, format!("{}\n", p(&tmp.path().join("gone/.git/objects")))).unwrap();
+
+        repack(&gitdir).await;
+
+        assert!(!alternates.exists());
     }
 
     // ── gix engine vs git CLI engine ────────────────────────────────────────

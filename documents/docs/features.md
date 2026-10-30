@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.36.0 · October 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.36.0)
+**Latest release:** v3.37.0 · October 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.37.0)
 
 ---
 
@@ -293,13 +293,34 @@ run from the terminal (the native Rust binary since v3.0.0).
     it, and keeps five controls: sidebar, title, **Session settings**,
     Review panel and **More**, so the model and thinking level are one tap
     away. The sidebar drawer's
-    footer is icons only: Settings, Usage, the server dot and the theme.
+    footer has Settings, Usage, the server and the theme.
     More holds Tasks (with the open count and goal ring), Session settings,
     context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
     command palette, grouped as Session, Workspace and App. Touch controls
     and list rows share one compact 36 px size (40 px in the Android app),
     and panels use tighter spacing, so an iPhone mini shows more at once;
     Usage fits a 375 px screen.
+- **Phone polish** `[v3.37.0]` — the phone drawer footer names the connected
+  server next to its dot, and the phone header shows the context ring, so
+  context use is one glance away. At 320–375 px, model IDs, provider and
+  session names, file paths and tool summaries stay readable instead of
+  collapsing to a few letters; crowded toolbars (Plan, Preview, Git, the
+  review panel) move rare actions into a `⋯` menu; the composer's controls
+  and the split Steer pill share one 36 px height; and in a phone browser a
+  session's More button opens a sheet with its full title. Toasts sit below
+  the header. The Git Changes / History tabs stay inside their toolbar on a
+  phone, and a commit with several branch or tag labels keeps its date in
+  view.
+- **Quieter transcript** `[v3.37.0]` — reasoning stays open in full (no
+  "Thought for" fold), tool rows drop the coloured running dot ("running…"
+  and the timer remain), and long tool results no longer end in a Collapse
+  bar; the pinned tool row closes them.
+  Shell rows show only test counts or "no output" — no exit-code or error
+  chip.
+- **No duplicate messages on resume** `[v3.37.0]` — reopening the phone app
+  or reloading mid-turn no longer repeats the reply or a steer message, and
+  a step saved during the reconnect shows up right away instead of at the
+  end of the turn.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -1569,6 +1590,13 @@ executes tools, manages its task list, and inspects workspace repositories.
   quoting Anthropic's explanation when present. The refused response is not
   saved, so it does not trigger repeat refusals, and its truncated tool calls
   do not run. Before, the turn just ended with nothing shown.
+- **Empty model answers** `[v3.37.0]` — when a model answers with nothing
+  after a tool result, the agent retries up to three times with a short
+  backoff (0.5 s, 1 s, 2 s; Stop ends the wait), then ends the turn on an
+  error card instead of finishing silently. Responses-API replies whose text
+  arrives only in the finished item (no streamed deltas) are no longer read
+  as empty, and a truly empty reply logs `responses_empty_output` with the
+  events it carried.
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
   cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request
@@ -2218,6 +2246,11 @@ agnostic by design.
 - **Chat-completions-only compatible routing** `[v1.44.3]` — OpenAI-compatible
   providers that do not expose OpenAI's Responses API stay on `/v1/chat/completions`
   even when session or agent thinking settings are enabled.
+- **OpenAI uses the Responses API by default** `[v3.37.0]` — the `openai`
+  provider sends every request to `/v1/responses`, so newer models that
+  reason by default can call tools (they reject tools on
+  `/v1/chat/completions` with HTTP 400). Set `responses_api: false` in a
+  model's settings to keep chat completions.
 - **AWS Bedrock Mantle-only routing** `[v1.110.0]` — Bedrock models use Mantle's
   Anthropic- or OpenAI-compatible route metadata and bearer-token auth; native
   Converse and the access-key/secret-key Settings path were removed. This is an

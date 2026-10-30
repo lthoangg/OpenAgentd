@@ -99,6 +99,9 @@ const INITIAL_STATE = {
   isLoadingHistory: false,
   _leadRevertTime: null,
   _workspace: null,
+  // Set by connectStream until the first content frame; leaking it between
+  // tests turns a later queued_turn_start into an attach replay.
+  _attachReplay: false,
   _loadingOlder: false,
   pinnedPrompt: null,
   _resolvedSessionReadyId: null,

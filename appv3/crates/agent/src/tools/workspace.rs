@@ -81,9 +81,6 @@ impl Tool for WorkspaceTool {
             if message.as_deref().unwrap_or("").trim().is_empty() {
                 errs.push("message: Value error, message is required for action='send'".into());
             }
-            if delivery_raw.is_some() && session_id.is_none() {
-                errs.push("delivery: Value error, delivery applies to an existing session; pass session_id with it".into());
-            }
         }
         if !errs.is_empty() {
             return Err(invalid_args("workspace", &errs));
@@ -114,6 +111,10 @@ impl Tool for WorkspaceTool {
         // Models that fill every enum send `mode` with `session_id` too; an
         // existing session keeps its mode, and the result says so.
         let mode_ignored = mode.is_some() && session_id.is_some();
+        // Likewise `delivery` without `session_id`: a new session has no
+        // running turn to steer, queue behind or stop.
+        let delivery_ignored = delivery_raw.is_some() && session_id.is_none();
+        let delivery = if delivery_ignored { DeliveryMode::default() } else { delivery };
         // `worktree` alone picks a checkout of this workspace's repository.
         let workspace = workspace.filter(|w| !w.trim().is_empty()).unwrap_or_else(|| current.clone());
         let req = SendRequest {
@@ -156,6 +157,9 @@ impl Tool for WorkspaceTool {
         if mode_ignored {
             text.push_str(" Its mode was left as it was: mode applies to new sessions only.");
         }
+        if delivery_ignored {
+            text.push_str(" delivery was ignored: it applies to an existing session (with session_id) only.");
+        }
         Ok(ToolOutput::text(text))
     }
 }
@@ -196,8 +200,10 @@ mod tests {
         assert!(e.contains("'send', 'list' or 'set_groups'"), "{e}");
         let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "session_id": "x", "delivery": "now"})).await);
         assert!(e.contains("'steer', 'queue' or 'stop_and_send'"), "{e}");
-        let e = err(tool.run(&c, serde_json::json!({"workspace": "infra", "message": "hi", "delivery": "queue"})).await);
-        assert!(e.contains("pass session_id"), "{e}");
+        // `delivery` without `session_id` (a new session) is ignored, not an
+        // argument error that costs the model a turn.
+        let r = tool.run(&c, serde_json::json!({"workspace": "/nonexistent/x", "message": "hi", "delivery": "queue"})).await.unwrap();
+        assert!(format!("{r:?}").contains("not registered"), "{r:?}");
         assert_eq!(DeliveryMode::parse("stop_and_send"), Some(DeliveryMode::StopAndSend));
         assert_eq!(DeliveryMode::default(), DeliveryMode::Steer);
         // A failed send does not use up the turn's budget.

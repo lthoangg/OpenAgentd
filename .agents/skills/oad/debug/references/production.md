@@ -32,7 +32,7 @@ Stdlib Python 3 (optional `orjson`), run from the repository root. Each scans
 both the production and dev state roots.
 
 ```bash
-python3 .agents/skills/oad/debug/scripts/analyze_logs.py --days 7   # error categories by module and message
+python3 .agents/skills/oad/debug/scripts/analyze_logs.py --days 7   # WARNING+ grouped by message shape (--level, --log-dir)
 python3 .agents/skills/oad/debug/scripts/query_otel.py --days 7     # span, turn, chat, and tool totals; error spans
 python3 .agents/skills/oad/debug/scripts/tool_usage.py --days 7     # per-tool volume, latency, errors, shell intent
 ```

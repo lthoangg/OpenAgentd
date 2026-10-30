@@ -154,7 +154,7 @@ export function MobileChatActions({
             >
               <div className="flex items-start justify-between gap-2 border-b border-(--color-border) py-2 pl-4 pr-1">
                 <div className="min-w-0 py-1.5">
-                  <p className="truncate text-sm font-semibold text-(--color-text)">{title}</p>
+                  <p className="line-clamp-2 text-sm font-semibold break-words text-(--color-text)">{title}</p>
                   {subtitle && <p className="truncate text-xs text-(--color-text-muted)">{subtitle}</p>}
                 </div>
                 <button
@@ -167,7 +167,8 @@ export function MobileChatActions({
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
+              {/* pb-safe: the last row clears the iPhone home indicator. */}
+              <div data-mobile-actions-list="" className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2 pb-safe">
                 <div className={GROUP_LABEL_CLASS}>Session</div>
                 <Row
                   onClick={onTasks}

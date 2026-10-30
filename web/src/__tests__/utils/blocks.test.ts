@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, mock } from "bun:test";
 import {
   mergeBlocks,
   appendThinking,
@@ -12,6 +12,7 @@ import {
   appendCompactionContent,
   endCompaction,
   countBlocksAfter,
+  liveBlockTail,
 } from "@/utils/blocks";
 import type { ContentBlock } from "@/api/types";
 
@@ -792,5 +793,48 @@ describe("endCompaction", () => {
     expect(result[0].extra?.state).toBe("compacted");
     expect(result[0].extra?.error).toBe(true);
     expect(result[1].id).toBe("t1"); // live block untouched
+  });
+});
+
+describe("liveBlockTail safety net", () => {
+  const user = (id: string, content: string): ContentBlock => ({ id, type: "user", content });
+  const text = (id: string, content: string): ContentBlock => ({ id, type: "text", content });
+  const tool = (id: string, toolCallId: string): ContentBlock => ({ id, type: "tool", content: "", toolName: "shell", toolCallId });
+
+  it("drops a live copy of a step this turn already confirmed under another id", () => {
+    const blocks = [user("u1", "go"), text("block-a", "The third command printed three."), tool("t3", "call-3")];
+    const live = [text("block-b", "The third command printed three."), tool("t3-live", "call-3"), text("block-c", "Next step coming.")];
+
+    expect(liveBlockTail(blocks, live).map((b) => b.id)).toEqual(["block-c"]);
+  });
+
+  it("keeps a reply that repeats one from an earlier turn", () => {
+    const blocks = [user("u1", "go"), text("a1", "All tests passed, nothing to fix."), user("u2", "again")];
+    const live = [text("a2", "All tests passed, nothing to fix.")];
+
+    expect(liveBlockTail(blocks, live).map((b) => b.id)).toEqual(["a2"]);
+  });
+
+  it("keeps short repeated text such as a one-word answer", () => {
+    const blocks = [user("u1", "go"), text("a1", "Done.")];
+    const live = [text("a2", "Done.")];
+
+    expect(liveBlockTail(blocks, live).map((b) => b.id)).toEqual(["a2"]);
+  });
+
+  it("warns once per dropped duplicate", () => {
+    const warn = mock(() => {});
+    const original = console.warn;
+    console.warn = warn;
+    try {
+      const blocks = [user("u1", "go"), tool("t9", "call-9")];
+      const live = [tool("t9-live", "call-9")];
+      liveBlockTail(blocks, live);
+      liveBlockTail(blocks, live);
+    } finally {
+      console.warn = original;
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toBe("transcript_duplicate_block");
   });
 });

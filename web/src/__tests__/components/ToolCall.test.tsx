@@ -76,8 +76,8 @@ describe("ToolCall — header", () => {
     // Running state: no pending badge, no result section until expanded details exist
     const btn = screen.getByRole("button")
     expect(btn).toBeTruthy()
-    // Running is a blue dot and "running…" (no summary yet), never a pulse
-    expect(btn.querySelector("[data-running-dot]")).toBeTruthy()
+    // Running reads "running…" (no summary yet), with no coloured dot or pulse
+    expect(btn.querySelector("[data-running-dot]")).toBeNull()
     expect(btn.querySelector(".animate-pulse")).toBeNull()
     expect(btn.textContent).toContain("running…")
   })
@@ -888,11 +888,11 @@ describe("ToolCall — plan display", () => {
     expect(pre?.textContent).toBe("- 1. Old step\n+ 1. New step\n\n- 2. B\n+ 2. C")
   })
 
-  it("reads a running edit by its change count, with a running dot", () => {
+  it("reads a running edit by its change count, with no running dot", () => {
     const args = JSON.stringify({ action: "edit", edits: [{ old: "a", new: "b" }] })
     render(<ToolCall name="plan" args={args} done={false} />)
     expect(getHeader("plan: edit · 1 change")).toBeTruthy()
-    expect(document.querySelector("[data-running-dot]")).toBeTruthy()
+    expect(document.querySelector("[data-running-dot]")).toBeNull()
   })
 
   it("shows a new plan as its Markdown, under the same target before and after it finishes", async () => {
@@ -1281,9 +1281,9 @@ describe("ToolCall — shell terminal label and formatting", () => {
     expect(pre!.textContent).toContain("all tests passed")
     expect(screen.getByText("terminal")).toBeTruthy()
     expect(screen.queryByText("result")).toBeNull()
-    // The `[Succeeded]` status line is not output: the exit chip carries it
+    // The `[Succeeded]` status line is not output, and no exit chip repeats it
     expect(pre!.textContent).not.toContain("[Succeeded]")
-    expect(screen.getByText("exit 0").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
+    expect(screen.queryByText("exit 0")).toBeNull()
   })
 
   it("$ prefix is non-selectable (select-none class)", async () => {
@@ -1577,9 +1577,8 @@ describe("ToolCall — empty args {} show no args section", () => {
       />,
     )
 
-    // Collapsed: the exit code rides in the meta column as an error chip
-    const chip = screen.getByText("exit 1").closest('[data-slot="chip"]')
-    expect(chip?.getAttribute("data-tone")).toBe("error")
+    // Collapsed: no exit chip; the agent handles the failure
+    expect(screen.queryByText("exit 1")).toBeNull()
 
     await user.click(screen.getByRole("button"))
     // Expanded: the status line is gone from the output, its body is kept

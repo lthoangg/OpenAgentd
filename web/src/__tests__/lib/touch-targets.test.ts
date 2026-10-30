@@ -34,9 +34,27 @@ describe('coarse-pointer touch targets', () => {
     expect(css).toMatch(/\.touch-hit::before\s*\{\s*content:\s*"";\s*position:\s*absolute;\s*inset:\s*min\(0px, calc\(\(100% - 36px\) \/ 2\)\);/)
   })
 
-  it('makes every tab trigger 36px on touch', () => {
+  it('makes default tab triggers 36px on touch and keeps sm tabs inside the 32px toolbar', () => {
     const tabs = readFileSync(fileURLToPath(new URL('../../components/ui/tabs.tsx', import.meta.url)), 'utf8')
-    expect(tabs.match(/pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/g)?.length).toBe(2)
+    expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/)
+    expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7'/)
+  })
+
+  it('grows the small controls found in the phone audit to 36px on touch', () => {
+    const src = (rel: string) => readFileSync(fileURLToPath(new URL(`../../components/${rel}`, import.meta.url)), 'utf8')
+    const cases: Array<[string, RegExp]> = [
+      ['ToastStack.tsx', /aria-label="Dismiss"[\s\S]{0,40}className="[^"]*pointer-coarse:size-9/],
+      ['Telemetry/SessionHeader.tsx', /pointer-coarse:h-9"[\s\S]{0,80}Open session/],
+      ['PendingMessageQueue.tsx', /aria-label=\{expanded \? 'Collapse' : 'Expand'\}\s*className="[^"]*pointer-coarse:size-9/],
+      ['PendingMessageQueue.tsx', /aria-label="Edit queued message"\s*className="[^"]*pointer-coarse:size-9/],
+      ['settings/WorkspaceGroupsSettings.tsx', /aria-label=\{`Remove \$\{repo\.name\} from[\s\S]{0,300}className="[^"]*pointer-coarse:size-9/],
+      ['settings/pages/settings.providers/CredentialList.tsx', /aria-label=\{`New name for[\s\S]{0,300}className="[^"]*pointer-coarse:h-9/],
+    ]
+    for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
+  })
+
+  it('keeps phone toasts below the app header', () => {
+    expect(css).toMatch(/\.mobile-safe-toast\s*\{\s*top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ var\(--spacing-app-header\) \+ 0\.5rem\);/)
   })
 
   it('uses no 44px touch sizes: phones stay compact enough for a mini screen', () => {

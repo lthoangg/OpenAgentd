@@ -64,7 +64,7 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
           </div>
         )}
       >
-        <span className="font-mono">{workspace}</span> is not on disk. You can read this session, but new messages need the folder back.
+        <span className="font-mono [overflow-wrap:anywhere]">{workspace}</span> is not on disk. You can read this session, but new messages need the folder back.
       </Callout>
     </div>
   )

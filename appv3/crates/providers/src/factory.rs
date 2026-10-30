@@ -165,6 +165,18 @@ pub fn parse_model_str(model_str: Option<&str>) -> ProviderResult<(&str, &str)> 
     Ok((name, model))
 }
 
+/// The official OpenAI API. Uses the Responses API unless the model's
+/// settings say `responses_api: false`: newer models reason by default and
+/// reject function tools on /v1/chat/completions, with no thinking level set.
+pub fn openai_provider(key: &str, model: &str, kw: Kwargs) -> ProviderResult<OpenAiProvider> {
+    let explicit = kw.contains_key("responses_api");
+    let mut p = OpenAiProvider::new(key, model, OPENAI_BASE, kw, CompletionsDialect::OpenAi, true)?;
+    if !explicit {
+        p.use_responses = true;
+    }
+    Ok(p)
+}
+
 /// Build one concrete provider: API keys and settings come from `creds`,
 /// an OAuth provider's tokens from `slot` (the account in use when `None`).
 pub fn build_member(name: &str, model: &str, model_kwargs: Kwargs, creds: &CredentialStore, slot: Option<&TokenSlot>) -> ProviderResult<Arc<dyn LlmProvider>> {
@@ -174,7 +186,7 @@ pub fn build_member(name: &str, model: &str, model_kwargs: Kwargs, creds: &Crede
     match name {
         "openai" => {
             let key = require_api_key(creds, "OPENAI_API_KEY", "OpenAI")?;
-            let mut p = OpenAiProvider::new(&key, model, OPENAI_BASE, kw, CompletionsDialect::OpenAi, true)?;
+            let mut p = openai_provider(&key, model, kw)?;
             p.provider_name = pname;
             Ok(named(p))
         }
@@ -416,6 +428,23 @@ impl LlmProvider for RetryingProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Newer OpenAI models reason by default and reject function tools on
+    /// /v1/chat/completions ("use /v1/responses"), even with no thinking set.
+    #[test]
+    fn official_openai_uses_the_responses_api_by_default() {
+        assert!(openai_provider("sk-test", "gpt-5.6-terra", Kwargs::new()).unwrap().use_responses);
+        let mut kw = Kwargs::new();
+        kw.insert("thinking_level".into(), serde_json::json!("none"));
+        assert!(openai_provider("sk-test", "gpt-5.6-terra", kw).unwrap().use_responses);
+    }
+
+    #[test]
+    fn official_openai_keeps_chat_completions_when_configured() {
+        let mut kw = Kwargs::new();
+        kw.insert("responses_api".into(), serde_json::json!(false));
+        assert!(!openai_provider("sk-test", "gpt-4.1", kw).unwrap().use_responses);
+    }
 
     #[test]
     fn error_messages_match_v2() {

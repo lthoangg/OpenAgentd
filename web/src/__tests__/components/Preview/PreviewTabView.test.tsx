@@ -21,6 +21,8 @@ const invokeMock = mock(async (..._args: unknown[]) => {
   return { port: 61000, origin: RELAY_ORIGIN }
 })
 mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
+let isMobile = false
+mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => isMobile, MOBILE_QUERY: '(max-width: 767px)' }))
 const originalFetch = globalThis.fetch
 let previewBodies: Record<string, unknown>[] = []
 let workspaceFiles: { path: string; mtime: number }[] = []
@@ -39,6 +41,7 @@ if (happyDOM) {
 
 beforeEach(() => {
   localStorage.clear()
+  isMobile = false
   previewBodies = []
   workspaceFiles = []
   missingPaths = new Set()
@@ -314,6 +317,22 @@ describe('PreviewTabView', () => {
     fireEvent.click(button)
     expect(screen.getByText('boom')).toBeTruthy()
     expect(screen.getByText('2 entries')).toBeTruthy()
+  })
+
+  it('on a phone, folds Console, Design and Open in browser into a More menu so the address keeps its width', async () => {
+    isMobile = true
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }] })
+
+    expect(screen.queryByRole('button', { name: /^Console/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Preview address' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'More preview actions' }))
+    expect(screen.getByRole('menuitem', { name: /^Design/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Open in browser' })).toBeTruthy()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Console (1 errors)' }))
+    expect(screen.getByText('boom')).toBeTruthy()
   })
 
   it('keeps the tools when the page reloads again before the first load is judged', async () => {

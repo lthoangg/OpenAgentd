@@ -935,7 +935,8 @@ function TeamToolResult({ result }: { result: string }) {
                   <Chip tone={TEAM_STATUS_TONE[resStatus] ?? 'neutral'}>{TEAM_STATUS_LABEL[resStatus] ?? resStatus}</Chip>
                 </div>
                 {resOutput && (
-                  <div className="max-h-48 overflow-y-auto text-xs">
+                  // Phones: no scroller per member inside the transcript scroll.
+                  <div data-team-member-output="" className="text-xs md:max-h-48 md:overflow-y-auto">
                     <MarkdownBlock content={truncateForDisplay(resOutput)} />
                   </div>
                 )}

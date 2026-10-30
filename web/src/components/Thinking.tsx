@@ -3,9 +3,8 @@
  * Transcript rows).
  *
  * While the model reasons the row reads "Thinking…" and the trace shows
- * below it as it streams. Once it is done the row folds to
- * "Thought for 12.0 s ›" so a long trace does not take over the
- * transcript; the trace is one click away.
+ * below it as it streams. Once it is done the label goes and the trace stays
+ * open: reasoning is part of the answer, not something to dig for.
  *
  * Reasoning streams from providers like OpenAI's ``/responses`` API as a
  * sequence of sections, each beginning with a bold ``**Title**`` header.
@@ -14,41 +13,36 @@
  * Inline ``**bold**`` runs inside the body are NOT Markdown-rendered —
  * reasoning is rarely complex prose; only the section headers get emphasis.
  */
-import { useId, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
 import { splitSections } from '@/utils/thinking'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
-import { MetaRow, formatMetaDuration } from '@/components/ui/meta-row'
-import { cn } from '@/lib/utils'
+import { MetaRow } from '@/components/ui/meta-row'
 
 interface ThinkingProps {
   content: string
   isStreaming?: boolean
-  /** How long the model reasoned, when the server recorded it. */
+  /** How long the model reasoned, when the server recorded it. Not shown. */
   durationMs?: number
 }
 
-export function Thinking({ content, isStreaming = false, durationMs }: ThinkingProps) {
+export function Thinking({ content, isStreaming = false }: ThinkingProps) {
   const smoothedContent = useSmoothStream(content, isStreaming)
-  const [open, setOpen] = useState(false)
-  const bodyId = useId()
   // Whitespace-only traces (a provider's blank first delta) would render an
   // empty, margined box.
   if (!content.trim()) return null
 
   const sections = splitSections(smoothedContent)
-  const expanded = isStreaming || open
-  const label = isStreaming
-    ? 'Thinking…'
-    : durationMs !== undefined
-      ? `Thought for ${formatMetaDuration(durationMs)}`
-      : 'Thought'
 
-  const body = (
-    <div
-      id={bodyId}
-      className="selectable-text mt-1 mb-2 min-w-0 space-y-2 border-l border-(--color-border) pl-3 text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]"
-    >
+  return (
+    <div className="my-1 min-w-0" data-thinking>
+      {isStreaming && (
+        <MetaRow>
+          <span className="flex items-center gap-2 text-(--color-text-muted)">
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--color-info)" />
+            Thinking…
+          </span>
+        </MetaRow>
+      )}
+      <div className="selectable-text mt-1 mb-2 min-w-0 space-y-2 border-l border-(--color-border) pl-3 text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]">
       {sections.map((s, i) => (
         <div key={i} className="min-w-0">
           {s.header && (
@@ -57,30 +51,7 @@ export function Thinking({ content, isStreaming = false, durationMs }: ThinkingP
           {s.body && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{s.body}</p>}
         </div>
       ))}
-    </div>
-  )
-
-  return (
-    <div className="my-1 min-w-0" data-thinking>
-      {isStreaming ? (
-        <MetaRow>
-          <span className="flex items-center gap-2 text-(--color-text-muted)">
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--color-info)" />
-            {label}
-          </span>
-        </MetaRow>
-      ) : (
-        <MetaRow
-          as="button"
-          aria-expanded={open}
-          aria-controls={bodyId}
-          onClick={() => setOpen((v) => !v)}
-          meta={<ChevronRight size={12} aria-hidden className={cn('transition-transform duration-(--motion-fast)', open && 'rotate-90')} />}
-        >
-          <span className="text-(--color-text-muted)">{label}</span>
-        </MetaRow>
-      )}
-      {expanded && body}
+      </div>
     </div>
   )
 }

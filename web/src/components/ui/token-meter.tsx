@@ -192,7 +192,7 @@ export function TokenMeter({
           'relative flex items-center justify-center text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
           compact
             ? 'h-5 w-5 min-w-5 rounded-xs'
-            : 'h-8 min-w-8 rounded-md md:h-7 md:min-w-7 md:rounded-sm'
+            : 'h-8 min-w-8 rounded-md md:h-7 md:min-w-7 md:rounded-sm max-md:pointer-coarse:size-9'
         )}
         aria-label={tooltip}
         aria-expanded={open}

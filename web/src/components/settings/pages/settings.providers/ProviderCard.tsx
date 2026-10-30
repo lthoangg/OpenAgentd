@@ -308,22 +308,26 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         aria-expanded={expanded}
         aria-controls={bodyId}
         onClick={() => setExpanded((v) => !v)}
-        className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-(--bg-key)/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)"
+        // A grid, so one chip can sit under the subline on phones (giving the
+        // subline the full width) and beside the text from md.
+        className="grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left transition-colors hover:bg-(--bg-key)/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring) md:grid-cols-[minmax(0,1fr)_auto_auto] md:px-4"
       >
-        <span className="min-w-0 flex-1">
+        <span className="col-start-1 row-start-1 min-w-0">
           <span className="block truncate text-sm font-medium text-(--color-text)">{provider.label}</span>
-          <span className="block truncate text-xs text-(--color-text-muted)">{subline}</span>
+          <span data-provider-subline="" className="block text-xs text-(--color-text-muted) md:truncate">{subline}</span>
         </span>
-        <Chip tone={status.tone} dot={status.dot}>{status.label}</Chip>
+        <span className="col-start-1 row-start-2 justify-self-start md:col-start-2 md:row-start-1">
+          <Chip tone={status.tone} dot={status.dot}>{status.label}</Chip>
+        </span>
         <ChevronRight
           size={14}
           aria-hidden="true"
-          className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast)', expanded && 'rotate-90')}
+          className={cn('col-start-2 row-span-2 row-start-1 shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) md:col-start-3 md:row-span-1', expanded && 'rotate-90')}
         />
       </button>
 
       {expanded && (
-      <div id={bodyId} className="space-y-4 border-t border-(--color-border-subtle) px-4 py-4">
+      <div id={bodyId} className="space-y-4 border-t border-(--color-border-subtle) px-3 py-4 md:px-4">
 
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <p className="min-w-0 flex-1 basis-60 text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>

@@ -195,14 +195,19 @@ function CommitHistorySubPanelView({
                       <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">{commit.short_sha}</span>
                     </span>
                     <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-(--color-text-muted) md:text-[11px]">
-                      {refs.map((ref) => (
-                        <span
-                          key={ref}
-                          className="max-w-32 shrink-0 truncate rounded-xs border border-(--color-border-subtle) bg-(--bg-key) px-1 font-mono text-(--color-text-2)"
-                        >
-                          {ref}
+                      {refs.length > 0 && (
+                        // Labels shrink (and end in "…") before the date does.
+                        <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
+                          {refs.map((ref) => (
+                            <span
+                              key={ref}
+                              className="max-w-32 min-w-0 shrink truncate rounded-xs border border-(--color-border-subtle) bg-(--bg-key) px-1 font-mono text-(--color-text-2)"
+                            >
+                              {ref}
+                            </span>
+                          ))}
                         </span>
-                      ))}
+                      )}
                       <span className="min-w-0 truncate">{commit.author_name}</span>
                       <span className="ml-auto shrink-0">{formatCommitTime(commit.timestamp)}</span>
                     </span>

@@ -19,6 +19,7 @@ import {
   Bot,
   ExternalLink,
   Globe,
+  MoreHorizontal,
   MousePointerClick,
   RefreshCw,
   RotateCw,
@@ -33,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/use-platform'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { WORKSPACE_TREE_STALE_MS, workspaceFileListQueryOptions } from '@/queries/workspace-files'
 import { DOCK_ACTION_BUTTON_CLASS } from '../WorkspacePanel/dock-tab-styles'
 import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale, frameSize } from './devices'
@@ -155,6 +157,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const reach = previewMode()
   const available = reach !== 'unavailable'
   const { os } = usePlatform()
+  const phone = useIsMobile()
   const designShortcut = os === 'macos' || os === 'ios' ? '⌥C' : 'Alt+C'
   const [info, setInfo] = useState<PreviewInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -492,6 +495,10 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   const errorCount = consoleEntries.filter((e) => e.level === 'error').length
   const designDisabled = !ready || inspectorMissing
+  const consoleLabel = errorCount ? `Console (${errorCount} errors)` : 'Console'
+  const designLabel = designDisabled ? 'Design (unavailable on this page)' : mode === 'inspect' ? `Stop picking elements (Esc or ${designShortcut})` : `Design: pick an element to comment on (${designShortcut})`
+  const openLabel = reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'
+  const openDisabled = !pageUrl || reach === 'relay'
   toggleDesignRef.current = () => {
     if (designDisabled) return
     setMode((m) => (m === 'inspect' ? 'browse' : 'inspect'))
@@ -573,12 +580,37 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             </DropdownItem>
           ))}
         </Dropdown>
-        {size && (
+        {phone ? (
+          // Phones: the rarer tools share one menu, so the address keeps room.
+          <Dropdown
+            aria-label="More preview actions"
+            align="end"
+            trigger={
+              <span className="relative flex items-center">
+                <MoreHorizontal size={14} aria-hidden="true" />
+                {errorCount > 0 && <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-(--color-error)" aria-hidden="true" />}
+              </span>
+            }
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center border-0 bg-transparent p-0 [&>svg]:hidden')}
+            panelClassName="w-56"
+          >
+            {[
+              size && <DropdownItem key="rotate" onSelect={() => setRotated((r) => !r)}>{rotated ? 'Rotate back' : 'Rotate'}</DropdownItem>,
+              <DropdownItem key="console" onSelect={() => setConsoleOpen((o) => !o)}>{consoleLabel}</DropdownItem>,
+              <DropdownItem key="design" disabled={designDisabled} onSelect={() => toggleDesignRef.current()}>
+                {mode === 'inspect' ? 'Stop picking elements' : designDisabled ? 'Design (unavailable on this page)' : 'Design: pick an element'}
+              </DropdownItem>,
+              <DropdownItem key="open" disabled={openDisabled} onSelect={() => pageUrl && void openExternalUrl(pageUrl)}>{openLabel}</DropdownItem>,
+            ].filter(Boolean)}
+          </Dropdown>
+        ) : null}
+        {!phone && size && (
           <ToolbarButton label="Rotate" onClick={() => setRotated((r) => !r)} pressed={rotated}>
             <RotateCw size={13} aria-hidden="true" />
           </ToolbarButton>
         )}
-        <ToolbarButton label={errorCount ? `Console (${errorCount} errors)` : 'Console'} onClick={() => setConsoleOpen((o) => !o)} pressed={consoleOpen}>
+        {!phone && (
+        <ToolbarButton label={consoleLabel} onClick={() => setConsoleOpen((o) => !o)} pressed={consoleOpen}>
           <span className="relative">
             <SquareTerminal size={13} aria-hidden="true" />
             {errorCount > 0 && (
@@ -588,22 +620,27 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             )}
           </span>
         </ToolbarButton>
+        )}
+        {!phone && (
         <ToolbarButton
-          label={designDisabled ? 'Design (unavailable on this page)' : mode === 'inspect' ? `Stop picking elements (Esc or ${designShortcut})` : `Design: pick an element to comment on (${designShortcut})`}
+          label={designLabel}
           onClick={() => toggleDesignRef.current()}
           disabled={designDisabled}
           pressed={mode === 'inspect'}
         >
           <MousePointerClick size={13} aria-hidden="true" />
         </ToolbarButton>
+        )}
         {/* A relayed page lives on this app's relay, which another browser cannot use. */}
+        {!phone && (
         <ToolbarButton
-          label={reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'}
+          label={openLabel}
           onClick={() => pageUrl && void openExternalUrl(pageUrl)}
-          disabled={!pageUrl || reach === 'relay'}
+          disabled={openDisabled}
         >
           <ExternalLink size={13} aria-hidden="true" />
         </ToolbarButton>
+        )}
       </div>
       {(error || inspectorMissing) && (
         <div role={error ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11px]', error ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>

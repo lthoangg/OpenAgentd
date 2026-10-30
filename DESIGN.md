@@ -734,12 +734,12 @@ buttons never shift size between states.
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), chosen so small phones (iPhone mini, 375px) still show a useful amount of content, while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
 - `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
-- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px (no `pointer-coarse:*-11`; a test guards it); the composer keeps its own sizes.
+- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px (no `pointer-coarse:*-11`; a test guards it), the composer included: on a touch phone its attach, Code/Plan, Send/Stop and both halves of the split Steer pill are 36px (`max-md:pointer-coarse:h-9`), so the row stays one height.
 - `--spacing-tab-bar` (the review panel's tab strip) grows to 39px on coarse pointers, so each tab and its close control are 36px inside the strip's 2px top edge and 1px bottom border.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
 - Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
-- The phone drawer footer is icons only (Settings, Usage, the server dot, theme), each with an accessible name, so all four fit any phone width. The phone header has a Session settings button beside Review panel, so model and thinking level are one tap away; desktop opens them from the status bar. The composer stays free of it.
+- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header shows the context ring (once a session exists) and a Session settings button beside Review panel, so context use, model and thinking level are one tap away; desktop has them in the header and status bar. The composer stays free of them. The review panel's phone tab strip shows its actions as icons only (+, refresh).
 - Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers (`.touch-hit` on a positioned element, 36×36 around it). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
@@ -754,8 +754,9 @@ pins its header (or its collapse control) to the top of the transcript while
 open (`PINNED_HEADER` plus the surface fill), so it can close from anywhere.
 A header inside an open fold pins just below the fold's row (`--fold-top`), not
 over it. Closing leaves the header where the pressed control was, so the view
-never jumps. A long body also ends in a Collapse row when its header is the
-only other way to close it. Clip with `overflow-clip`, not `overflow-hidden`,
+never jumps. A tool call's details have no bottom Collapse bar: the pinned row
+and the section captions close them. Reasoning (`Thinking`) is not a fold: it
+streams under "Thinking…", then stays open with no label. Clip with `overflow-clip`, not `overflow-hidden`,
 on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
@@ -768,8 +769,8 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Container**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-key)` (or `bg-card`), `p-0.5`.
 - **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
-- **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
-- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, never grown on touch, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
+- **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
+- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height on `bg-sidebar`; tabs scroll horizontally, actions stay pinned right.

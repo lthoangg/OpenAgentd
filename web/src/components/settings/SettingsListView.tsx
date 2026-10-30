@@ -201,7 +201,9 @@ function ListRow({ row }: { row: ListViewRow }) {
       onClick={row.onClick}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        'group flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left',
+        // Phones wrap the trailing chips onto a line of their own, under the
+        // text, so the title keeps the row's width.
+        'group flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left max-sm:flex-wrap max-sm:gap-y-1.5',
         'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
         row.active && 'bg-(--bg-key)/60',
@@ -217,8 +219,8 @@ function ListRow({ row }: { row: ListViewRow }) {
       )}
 
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className={cn('truncate', TEXT.label, row.titleMono && 'font-mono')}>{row.title}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
+          <span className={cn('min-w-0 [overflow-wrap:anywhere] sm:truncate', TEXT.label, row.titleMono && 'font-mono')}>{row.title}</span>
           {row.subtitle && <span className={cn('truncate', TEXT.hint)}>{row.subtitle}</span>}
           {row.badge && <Chip tone={row.badgeTone}>{row.badge}</Chip>}
           {row.invalidReason && <Chip tone="error">Invalid</Chip>}
@@ -238,7 +240,7 @@ function ListRow({ row }: { row: ListViewRow }) {
       </span>
 
       {row.trailing && (
-        <span className="shrink-0 text-(--color-text-muted)">{row.trailing}</span>
+        <span className={cn('shrink-0 text-(--color-text-muted) max-sm:w-full', row.icon ? 'max-sm:pl-11' : null)}>{row.trailing}</span>
       )}
     </button>
   )

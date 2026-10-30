@@ -324,7 +324,9 @@ export function DockTabBar({
                     setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
                   }}
                   className={cn(
-                    'flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:px-1.5 pointer-coarse:h-9 pointer-coarse:px-3',
+                    'flex h-8 shrink-0 items-center gap-1 rounded-sm text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 pointer-coarse:h-9',
+                    // Phones show the + alone, the same square as Refresh.
+                    mobile ? 'w-8 justify-center pointer-coarse:w-9' : 'px-2 md:px-1.5 pointer-coarse:px-3',
                     openMenuAt !== null && 'bg-(--bg-key) text-(--color-text)',
                   )}
                   aria-label="Open in the review panel"
@@ -332,7 +334,7 @@ export function DockTabBar({
                   aria-expanded={openMenuAt !== null}
                 >
                   <Plus size={13} aria-hidden="true" />
-                  Open…
+                  {!mobile && 'Open…'}
                 </button>
               }
             />

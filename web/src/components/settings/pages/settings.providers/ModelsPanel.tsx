@@ -162,7 +162,9 @@ export function ModelsPanel({
             placeholder="Filter models…"
           />
 
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Phones stack the help text under the control, so it reads as a
+              sentence rather than a narrow column beside it. */}
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <SegmentedControl
               label="Models shown in pickers"
               value={pickerMode}
@@ -173,7 +175,7 @@ export function ModelsPanel({
                 { value: 'selected', label: allVisible ? 'Only selected' : `Only selected (${visibleSet.size})` },
               ]}
             />
-            <p className="min-w-0 flex-1 text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="min-w-0 text-xs md:text-[11px] leading-relaxed text-(--color-text-muted) sm:flex-1">
               {pickerMode === 'all'
                 ? 'Every model below appears in model pickers.'
                 : allVisible
@@ -182,7 +184,9 @@ export function ModelsPanel({
             </p>
           </div>
 
-          <ul className="-mx-0.5 max-h-[calc(var(--app-vh,100svh)*0.45)] overflow-y-auto md:max-h-56">
+          {/* Phones: no scroll inside the scrolling sheet; the list is capped
+              at MODEL_ROWS_SHOWN rows before "Show all" anyway. */}
+          <ul className="-mx-0.5 md:max-h-56 md:overflow-y-auto">
             {visible.length === 0 ? (
               <li className="px-2 py-3 text-center text-xs md:text-[11px] text-(--color-text-muted)">
                 No matching models.
@@ -281,36 +285,38 @@ function ModelRow({
       onPointerCancel={clearLongPress}
       onPointerLeave={clearLongPress}
     >
-      {/* Model ID */}
-      <Tooltip className="min-w-0 flex-1">
-        <TooltipTrigger
-          className="min-w-0 flex-1"
-          render={<span className="min-w-0 flex-1 truncate font-mono text-xs md:text-[11px] text-(--color-text)">{qualifiedId}</span>}
-        />
-        <TooltipContent>{qualifiedId}</TooltipContent>
-      </Tooltip>
-
-      {/* Price per 1M tokens, on every width */}
-      {priceBadge && (
-        <Tooltip>
+      {/* Model ID, then its price per 1M tokens: one line from md, two on a
+          phone so the id is never squeezed to a letter by the price. */}
+      <span data-model-text="" className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-0.5 md:flex-row md:items-center md:gap-1.5 md:py-0">
+        <Tooltip className="min-w-0 max-w-full md:flex-1">
           <TooltipTrigger
-            className="shrink-0"
-            render={
-              <span
-                className={cn(
-                  'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] tabular-nums select-none',
-                  priceBadge.isFree
-                    ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
-                    : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
-                )}
-              >
-                {priceBadge.label}
-              </span>
-            }
+            className="min-w-0 max-w-full md:flex-1"
+            render={<span className="block min-w-0 break-all font-mono text-xs md:flex-1 md:truncate md:text-[11px] text-(--color-text)">{qualifiedId}</span>}
           />
-          {priceTooltip && <TooltipContent>{priceTooltip}</TooltipContent>}
+          <TooltipContent>{qualifiedId}</TooltipContent>
         </Tooltip>
-      )}
+
+        {priceBadge && (
+          <Tooltip>
+            <TooltipTrigger
+              className="shrink-0"
+              render={
+                <span
+                  className={cn(
+                    'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] tabular-nums select-none',
+                    priceBadge.isFree
+                      ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
+                      : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
+                  )}
+                >
+                  {priceBadge.label}
+                </span>
+              }
+            />
+            {priceTooltip && <TooltipContent>{priceTooltip}</TooltipContent>}
+          </Tooltip>
+        )}
+      </span>
 
       {/* Shown/hidden in pickers: only while choosing "Only selected" */}
       {selectable && (

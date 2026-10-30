@@ -522,7 +522,9 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
+          {/* Keyboard hints: phones have no keys to press, and the row would
+              clip at 320px. */}
+          <div data-palette-hints="" className="hidden shrink-0 items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2 md:flex">
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↵</kbd>

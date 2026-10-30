@@ -88,7 +88,9 @@ function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean
 
 /** The chevron half of the split Send pill. */
 const DELIVERY_TRIGGER_CLASS =
-  'flex h-8 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) md:h-7 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
+  // Same height as the Steer half on every pointer: the Dropdown's own
+  // touch minimum (36px) would otherwise leave it taller than a 32px pill.
+  'flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 max-md:pointer-coarse:h-9 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
 
 export interface InputComposerProps {
   onSubmit: (message: string, files?: File[], mentionedFiles?: string[], delivery?: SendDelivery) => void
@@ -767,7 +769,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // disable animation. The transition is transform+color only — both
   // GPU-cheap, no layout.
   const actionBtnClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7'
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9'
 
   // Two states share one DOM tree: minimized, and expanded. Expanded always
   // puts the textarea on its own full-width row (the slot's flex-basis:100%)
@@ -841,7 +843,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // DESIGN.md `button-send`: the one inverted surface, a full pill. Stop takes
   // the same slot and shape while a turn runs — neutral ink, not an error red.
   const sendSlotClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7'
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9'
   const sendPillClass = 'border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
@@ -859,7 +861,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       <Square size={11} fill="currentColor" aria-hidden="true" />
     </button>
   ) : splitSend ? (
-    <div role="group" aria-label="Send" className="flex shrink-0">
+    <div role="group" aria-label="Send" className="flex shrink-0 items-center">
       <button
         type="button"
         {...keepKeyboard}

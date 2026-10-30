@@ -116,7 +116,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       <button
         onClick={() => dismiss(t.id)}
         aria-label="Dismiss"
-        className="flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-xs p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+        className="-my-1 flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-xs p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9"
       >
         <X size={12} />
       </button>

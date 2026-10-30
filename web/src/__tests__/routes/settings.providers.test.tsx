@@ -737,6 +737,30 @@ describe('ProvidersSettingsPage', () => {
       expect((await header('Foxtrot')).textContent).toContain('Local server')
     })
 
+    it('puts the status chip under the subline on phones, beside it from md', async () => {
+      useProviders([provider('Charlie', { is_disconnected: true }), provider('Delta')])
+      renderPage()
+      const row = await screen.findByRole('button', { name: /Charlie/ })
+      const chip = row.querySelector('[data-slot="chip"]')?.parentElement as HTMLElement
+      // One chip, placed by the row's grid: row 2 under the text, then column 2 from md.
+      expect(row.querySelectorAll('[data-slot="chip"]')).toHaveLength(1)
+      expect(chip.className).toContain('row-start-2')
+      expect(chip.className).toContain('md:row-start-1')
+      expect(chip.className).toContain('md:col-start-2')
+      // The subline is not squeezed to one truncated line on phones.
+      expect((row.querySelector('[data-provider-subline]') as HTMLElement).className).toContain('md:truncate')
+    })
+
+    it('wraps the status filter on phones instead of scrolling it out of view', async () => {
+      useProviders([provider('Alpha'), provider('Charlie', { is_disconnected: true }), provider('Delta', { is_configured: false, is_saved: false, is_reachable: null })])
+      renderPage()
+      const filter = await screen.findByRole('radiogroup', { name: 'Filter by status' })
+      expect(filter.className).toContain('max-md:flex-wrap')
+      // No sideways-scrolling wrapper around it, and it does not clip on phones.
+      expect(filter.parentElement?.closest('.overflow-x-auto')).toBeNull()
+      expect(filter.className).toContain('max-md:overflow-visible')
+    })
+
     it('filters by type from the dropdown', async () => {
       useProviders([
         provider('Alpha'),

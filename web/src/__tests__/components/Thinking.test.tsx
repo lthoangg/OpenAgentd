@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 
 import { Thinking } from '@/components/Thinking'
 import { splitSections } from '@/utils/thinking'
@@ -89,23 +89,13 @@ describe('Thinking', () => {
     expect(container.textContent).toContain('Line one.\n\nLine two.\n\n\nLine three.')
   })
 
-  it('folds a finished trace behind a "Thought for" row that opens it', () => {
-    render(<Thinking content={TRACE} durationMs={12_000} />)
+  it('shows a finished trace in full, with no "Thought for" row or toggle', () => {
+    const { container } = render(<Thinking content={TRACE} durationMs={12_000} />)
 
-    const row = screen.getByRole('button', { name: /Thought for 12.0 s/ })
-    expect(row.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText('Read the config first.')).toBeNull()
-
-    fireEvent.click(row)
-
-    expect(row.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('Read the config first.')).toBeTruthy()
-  })
-
-  it('says "Thought" when the server did not record how long', () => {
-    render(<Thinking content={TRACE} />)
-
-    expect(screen.getByRole('button', { name: 'Thought' })).toBeTruthy()
+    expect(screen.getByText('Then run the tests.')).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(container.textContent).not.toContain('Thought')
   })
 
   it('shows a streaming trace in full under a "Thinking…" row, with no toggle', () => {

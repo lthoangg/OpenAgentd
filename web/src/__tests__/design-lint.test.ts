@@ -121,8 +121,6 @@ const RULES: Rule[] = [
       'components/AppBackendPanel.tsx': 1,
       'components/WorkSummary.tsx': 1,
       'components/WorkspacePanel/GoalTabView.tsx': 1,
-      // The running tool's dot, not its label.
-      'components/ToolCall/index.tsx': 1,
     },
   },
   {

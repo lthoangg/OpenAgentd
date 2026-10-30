@@ -70,8 +70,9 @@ describe("AgentView — reader transcript", () => {
   it("shows every step in the default detailed transcript", () => {
     renderStream({ blocks })
 
-    // The finished thought is its own row, folded; nothing is grouped.
-    expect(screen.getByRole("button", { name: /^Thought/ })).toBeTruthy()
+    // The finished thought shows in full, with no fold row; nothing is grouped.
+    expect(screen.getByText("Looking around.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /^Thought/ })).toBeNull()
     expect(screen.queryByRole("button", { name: /^1 read/ })).toBeNull()
   })
 
@@ -759,7 +760,6 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
-      fireEvent.click(screen.getByRole("button", { name: /^Thought/ }))
       expect(container.textContent).toContain("Reasoning line one\n\nReasoning line two")
     })
   })

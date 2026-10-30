@@ -300,8 +300,10 @@ html[data-mobile-shell] .mobile-safe-header {
   }
 }
 
+/* Phones: toasts land under the app header, so they never cover (or catch
+   taps meant for) its buttons. Desktop puts the stack in the status bar. */
 .mobile-safe-toast {
-  top: max(1rem, env(safe-area-inset-top, 0px));
+  top: calc(env(safe-area-inset-top, 0px) + var(--spacing-app-header) + 0.5rem);
   right: max(1rem, env(safe-area-inset-right, 0px));
   left: max(1rem, env(safe-area-inset-left, 0px));
 }

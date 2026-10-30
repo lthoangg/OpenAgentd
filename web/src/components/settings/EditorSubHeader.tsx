@@ -80,7 +80,9 @@ export function EditorSubHeader({
 
   return (
     <div className="sticky top-0 z-10 shrink-0 border-b border-(--color-border) bg-(--bg-page)" data-editor-kind={kind}>
-    <header className="flex h-14 items-center gap-2 px-2 sm:gap-3 sm:px-4 md:px-6">
+    {/* Phones: the switch drops to a second row and Save to its icon, so
+        the name and path keep the width instead of a few characters. */}
+    <header className="flex min-h-14 items-center gap-2 px-2 max-sm:flex-wrap max-sm:py-2 sm:h-14 sm:gap-3 sm:px-4 md:px-6">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
         <TooltipTrigger
@@ -110,16 +112,18 @@ export function EditorSubHeader({
 
       {/* Form / Raw toggle ──────────────────────────────────────── */}
       {showToggle && (
+        <div data-editor-mode="" className="max-sm:order-last max-sm:w-full">
         <Tabs value={mode} onValueChange={(v) => onModeChange(v as 'form' | 'raw')}>
-          <TabsList className="h-7">
-            <TabsTrigger value="form" className="px-2 text-xs">
+          <TabsList className="h-7 max-sm:w-full">
+            <TabsTrigger value="form" className="px-2 text-xs max-sm:flex-1">
               Form
             </TabsTrigger>
-            <TabsTrigger value="raw" className="px-2 text-xs">
+            <TabsTrigger value="raw" className="px-2 text-xs max-sm:flex-1">
               Source
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        </div>
       )}
 
       {/* Status + Save ──────────────────────────────────────────── */}
@@ -143,16 +147,16 @@ export function EditorSubHeader({
                   aria-label={saving ? 'Saving' : saveLabel}
                 >
                   <Save size={12} aria-hidden="true" />
-                  {saving ? 'Saving…' : saveLabel}
+                  <span className="max-sm:sr-only">{saving ? 'Saving…' : saveLabel}</span>
                 </Button>
               }
             />
             <TooltipContent>{saveTooltip}</TooltipContent>
           </Tooltip>
         ) : (
-          <Button size="sm" className="min-h-9 md:min-h-0" onClick={onSave} disabled={saveDisabled}>
+          <Button size="sm" className="min-h-9 md:min-h-0" onClick={onSave} disabled={saveDisabled} aria-label={saving ? 'Saving' : saveLabel}>
             <Save size={12} aria-hidden="true" />
-            {saving ? 'Saving…' : saveLabel}
+            <span className="max-sm:sr-only">{saving ? 'Saving…' : saveLabel}</span>
           </Button>
         )}
       </div>

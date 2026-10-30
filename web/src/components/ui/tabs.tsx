@@ -67,10 +67,11 @@ const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
 // Height lives in the size map (not the base) because ``cn`` is a plain join:
 // a caller's ``h-*`` cannot override a base height it does not replace.
 const TABS_LIST_SIZE: Record<TabsSize, string> = {
-  // On touch a list is 50px so each trigger (inside 2px padding and a 1px
-  // border) is 44px.
+  // On touch a default list is 42px so each trigger (inside 2px padding and a
+  // 1px border) is 36px. ``sm`` lives in a 32px view toolbar, so on touch it
+  // stays compact at 28px to fit inside it.
   default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-10.5',
-  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-10.5',
+  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-7',
 }
 const TABS_TRIGGER_SIZE: Record<TabsSize, string> = {
   default: 'px-3 py-1 text-sm [&_svg:not([class*=size-])]:size-4',

@@ -29,6 +29,17 @@ interface FilePreviewSubPanelProps {
 
 const HTML_FILE = /\.html?$/i
 
+/** Last path segment (either separator). */
+function fileBaseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+/** Everything before the last segment, without the trailing separator. */
+function fileDirName(path: string): string {
+  const base = fileBaseName(path)
+  return path.slice(0, Math.max(0, path.length - base.length)).replace(/[\\/]+$/, '')
+}
+
 const MARKDOWN_VIEW_OPTIONS: readonly SegmentedOption<MarkdownView>[] = [
   { value: 'rendered', label: 'Rendered' },
   { value: 'source', label: 'Source' },
@@ -102,7 +113,16 @@ export function FilePreviewSubPanel({
         <Tooltip className="min-w-0 flex-1">
           <TooltipTrigger
             className="min-w-0 flex-1"
-            render={<p className="truncate font-mono text-xs text-(--color-text)">{file.path}</p>}
+            // The file name leads and the folder (muted) gives way first, so a
+            // narrow dock shows "Foo.tsx src/comp…" rather than "src/comp…".
+            render={
+              <p data-file-preview-path="" className="flex min-w-0 items-baseline gap-1.5 font-mono text-xs" aria-label={file.path}>
+                <span className="min-w-0 truncate text-(--color-text)">{fileBaseName(file.path)}</span>
+                {fileDirName(file.path) && (
+                  <span className="min-w-0 shrink-[4] truncate text-[11px] text-(--color-text-muted)">{fileDirName(file.path)}</span>
+                )}
+              </p>
+            }
           />
           <TooltipContent side="bottom">{file.path}</TooltipContent>
         </Tooltip>

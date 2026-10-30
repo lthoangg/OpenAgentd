@@ -123,6 +123,8 @@ describe('Review dock "+" menu', () => {
     // Refresh is for Git, diff, commit and file tabs only
     expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Open in the review panel' })).toBeTruthy()
+    // Icon only on phones: the + carries the name, no "Open…" text.
+    expect(screen.getByRole('button', { name: 'Open in the review panel' }).textContent).toBe('')
     // Tasks and side questions open above the chat on phones, not in the
     // dock; the plan and the goal open here everywhere.
     expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])

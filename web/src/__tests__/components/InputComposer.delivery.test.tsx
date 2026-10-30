@@ -83,6 +83,16 @@ describe('InputComposer — split Send', () => {
     expect(screen.queryByRole('button', { name: 'More ways to send' })).toBeNull()
   })
 
+  it('sizes both halves of the split Send, and the composer controls, to 36px on a phone', async () => {
+    await typeWhileStreaming()
+    const steer = screen.getByRole('button', { name: 'Steer the running turn' })
+    const chevron = await moreWaysToSend()
+    // jsdom has no layout: the shared phone-touch height class is the contract.
+    for (const el of [steer, chevron, screen.getByRole('button', { name: 'Attach file' })]) {
+      expect(el.className).toContain('max-md:pointer-coarse:h-9')
+    }
+  })
+
   it('lists each way to send with its shortcut', async () => {
     const { user } = await typeWhileStreaming()
     await user.click(await moreWaysToSend())

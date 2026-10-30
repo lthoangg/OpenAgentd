@@ -31,7 +31,7 @@ export function GoalTurnDivider({ info }: { info: GoalTurnInfo }) {
       onClick={() => setOpen((value) => !value)}
       aria-expanded={open}
       aria-controls={bodyId}
-      className="inline-flex min-w-0 items-center gap-1.5 rounded-xs px-1 text-center text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-11"
+      className="inline-flex min-w-0 items-center gap-1.5 rounded-xs px-1 text-center text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
     >
       <span data-goal-turn-label>
         {'Goal · turn '}

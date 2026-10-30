@@ -184,6 +184,8 @@ interface FloatingInputComposerProps {
   historyPrompts?: string[]
   onHistoryRecall?: (prompt: string | null) => void
   onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
+  /** Phones only: opens Session settings from the composer (see ``InputComposer``). */
+  onOpenSessionSettings?: () => void
   value?: string
   onValueChange?: (value: string) => void
   /** Rendered above the composer (the `/btw` side-question panel or its chip). */

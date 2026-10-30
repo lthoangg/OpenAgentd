@@ -1,12 +1,12 @@
 import { useState, type MouseEvent, type ReactNode, type Ref } from 'react'
-import { ListFilter, Search, SquarePen } from 'lucide-react'
+import { ListFilter, Search } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspaceGroup } from '@/api/types'
 import type { SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { SidebarViewMenu } from './SidebarViewMenu'
 
 const ACTION_CLASS =
-  'flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 pointer-coarse:size-11'
+  'flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 pointer-coarse:size-9'
 
 function HeaderAction({
   label,
@@ -51,19 +51,16 @@ function HeaderAction({
 }
 
 /**
- * The sessions section header: its name with Search and View options, then
- * a New session row that is always there (with ⌘N on desktop), so starting
- * a session never depends on finding a per-folder "+". Collapse all and
- * Open folder… live in View options. It stays put however long the list
- * below is.
+ * The sessions section header: its name with Search and View options.
+ * Collapse all and Open folder… live in View options. New sessions start
+ * from a folder's "+", ⌘N or the command palette. It stays put however
+ * long the list below is.
  */
 export function SidebarSectionHeader({
   groupBy,
   workspaceGroups,
-  newSessionShortcut,
   searchOpen,
   searchButtonRef,
-  onNewSession,
   onToggleSearch,
   onCollapseAll,
   onOpenFolder,
@@ -71,11 +68,8 @@ export function SidebarSectionHeader({
   groupBy: SidebarGroupBy
   /** Workspace groups for the View options filter (Workspace view). */
   workspaceGroups?: readonly WorkspaceGroup[]
-  /** Shortcut hint shown on the New session row, e.g. "⌘N". */
-  newSessionShortcut?: string
   searchOpen: boolean
   searchButtonRef?: Ref<HTMLButtonElement>
-  onNewSession: () => void
   onToggleSearch: () => void
   onCollapseAll: () => void
   onOpenFolder: () => void
@@ -111,19 +105,6 @@ export function SidebarSectionHeader({
             <ListFilter size={13} aria-hidden="true" />
           </HeaderAction>
         </div>
-      </div>
-      <div className="px-1.5 pb-1">
-        <button
-          type="button"
-          onClick={onNewSession}
-          aria-label="New session"
-          aria-keyshortcuts={newSessionShortcut}
-          className="flex h-8 w-full items-center gap-2 rounded-sm px-1.5 text-left text-xs text-(--color-text-2) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:h-11"
-        >
-          <SquarePen size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
-          <span className="flex-1">New session</span>
-          {newSessionShortcut && <kbd className="font-mono text-[11px] text-(--color-text-subtle)">{newSessionShortcut}</kbd>}
-        </button>
       </div>
       {viewMenuAt && (
         <SidebarViewMenu

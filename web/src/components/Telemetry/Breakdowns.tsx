@@ -182,7 +182,7 @@ function ShowAllButton({ expanded, total, noun, onToggle }: { expanded: boolean;
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="w-full border-t border-(--color-border) px-3 py-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-page) hover:text-(--color-text) pointer-coarse:min-h-11"
+      className="w-full border-t border-(--color-border) px-3 py-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-page) hover:text-(--color-text) pointer-coarse:min-h-9"
     >
       {expanded ? 'Show fewer' : `Show all ${total} ${noun}`}
     </button>

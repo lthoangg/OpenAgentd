@@ -79,7 +79,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
         type="button"
         onClick={() => hasDesc && setOpen((v) => !v)}
         aria-expanded={hasDesc ? open : undefined}
-        className={`flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left md:min-h-10 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`flex min-h-9 w-full items-center gap-3 px-4 py-2 text-left md:min-h-10 md:py-2.5 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
       >
         <code className="shrink-0 font-mono text-xs font-medium text-(--color-text)">
           {name}
@@ -176,7 +176,7 @@ export function SessionTools({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="-mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] items-center gap-2 rounded-sm px-1.5 text-left transition-colors hover:bg-(--bg-key)/40 md:min-h-7 pointer-coarse:min-h-11"
+          className="-mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] items-center gap-2 rounded-sm px-1.5 text-left transition-colors hover:bg-(--bg-key)/40 md:min-h-7 pointer-coarse:min-h-9"
         >
           <span className={TEXT.title}>Tools</span>
           <CountBadge count={tools.length} />

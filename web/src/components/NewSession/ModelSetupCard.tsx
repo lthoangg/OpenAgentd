@@ -192,7 +192,7 @@ export function ModelSetupCard({
                 onClick={() => handlePick(provider)}
                 disabled={pending !== null}
                 className={cn(
-                  'flex h-9 min-w-0 items-center gap-2 rounded-sm border px-2.5 text-left text-xs transition-colors pointer-coarse:h-11',
+                  'flex h-9 min-w-0 items-center gap-2 rounded-sm border px-2.5 text-left text-xs transition-colors pointer-coarse:h-9',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
                   active
                     ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'

@@ -542,12 +542,12 @@ function ServerRow({
   children: React.ReactNode
 }) {
   return (
-    <div className={cn('flex min-h-14 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4', ROW_PAD)}>
+    <div className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
       <button
         type="button"
         onClick={onSelect}
         disabled={disabled}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-xs text-left pointer-coarse:min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-xs text-left pointer-coarse:min-h-9 focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
       >
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">

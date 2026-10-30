@@ -102,7 +102,7 @@ export function FilterBar({
             </>
           )}
           trigger="All workspaces"
-          className="h-7 max-w-60 shrink-0 text-xs pointer-coarse:min-h-11"
+          className="h-7 max-w-60 shrink-0 text-xs pointer-coarse:min-h-9"
         >
           <DropdownItem value={ALL}>All workspaces</DropdownItem>
           {workspaces.map((path) => (
@@ -125,7 +125,7 @@ export function FilterBar({
             </>
           )}
           trigger="All models"
-          className="h-7 max-w-64 shrink-0 text-xs pointer-coarse:min-h-11"
+          className="h-7 max-w-64 shrink-0 text-xs pointer-coarse:min-h-9"
         >
           <DropdownItem value={ALL}>All models</DropdownItem>
           {models.map((pm) => (
@@ -144,7 +144,7 @@ export function FilterBar({
             type="button"
             onClick={() => onSessionChange(null)}
             aria-label="Remove session filter"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-11"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9"
           >
             <X size={12} aria-hidden="true" />
           </button>
@@ -157,7 +157,7 @@ export function FilterBar({
           aria-pressed={errorsOnly}
           onClick={() => onErrorsOnlyChange(!errorsOnly)}
           className={cn(
-            'h-7 shrink-0 rounded-sm border px-2.5 text-xs transition-colors pointer-coarse:min-h-11',
+            'h-7 shrink-0 rounded-sm border px-2.5 text-xs transition-colors pointer-coarse:min-h-9',
             'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--focus-ring)',
             errorsOnly
               ? 'border-(--color-error)/45 bg-(--color-error-subtle) text-(--color-error)'
@@ -172,7 +172,7 @@ export function FilterBar({
         <button
           type="button"
           onClick={onClear}
-          className="h-7 shrink-0 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:min-h-11"
+          className="h-7 shrink-0 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:min-h-9"
         >
           Clear filters
         </button>

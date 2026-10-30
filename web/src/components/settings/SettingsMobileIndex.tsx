@@ -18,7 +18,7 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
 
   return (
     <nav aria-label="Settings sections" className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-      <div className={cn(PAGE_BODY, 'space-y-8 pt-5 pb-12')}>
+      <div className={cn(PAGE_BODY, 'space-y-6 pt-4 pb-12')}>
         {SETTINGS_GROUPS.map((group) => {
           const items = sections.filter((s) => s.group === group.id)
           if (items.length === 0) return null
@@ -32,7 +32,7 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
                     type="button"
                     onClick={() => onSelect(item.id)}
                     className={cn(
-                      'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left',
+                      'flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left',
                       'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40 active:bg-(--bg-key)/60',
                       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
                     )}

@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, Loader2, MessageCircle, Paperclip, SlidersHorizontal, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
@@ -174,6 +174,11 @@ export interface InputComposerProps {
   onHistoryRecall?: (prompt: string | null) => void
   /** A design feedback chip's x was clicked; the chip is already gone. */
   onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
+  /**
+   * Phones only: a Session settings button beside Code / Plan, so the model
+   * and thinking level are one tap away (desktop has the status bar).
+   */
+  onOpenSessionSettings?: () => void
 }
 
 export interface InputComposerHandle {
@@ -236,6 +241,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   historyPrompts = [],
   onHistoryRecall,
   onDesignFeedbackRemoved,
+  onOpenSessionSettings,
 }, ref) {
   const [value, setValue] = useState('')
   const {
@@ -1035,6 +1041,16 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
             disabled={interactionModeDisabled}
           />
         </div>
+      )}
+      {!minimized && isMobile && onOpenSessionSettings && (
+        <button
+          type="button"
+          onClick={(e) => { stopClick(e); onOpenSessionSettings() }}
+          aria-label="Session settings"
+          className={actionBtnClass}
+        >
+          <SlidersHorizontal size={14} aria-hidden="true" />
+        </button>
       )}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
           ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always

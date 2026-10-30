@@ -30,7 +30,7 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         onClick={() => setToggled(!open)}
         aria-expanded={open}
         aria-controls={listId}
-        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
       >
         <ChevronRight
           size={12}

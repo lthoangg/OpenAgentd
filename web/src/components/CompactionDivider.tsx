@@ -80,7 +80,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
             aria-expanded={open}
             aria-controls={bodyId}
             className={cn(
-              'inline-flex items-center gap-1 rounded-xs px-1 text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-11 hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
+              'inline-flex items-center gap-1 rounded-xs px-1 text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
               tone,
             )}
           >
@@ -112,7 +112,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
             anchorRef.current?.focus({ preventScroll: true })
           }}
           aria-controls={bodyId}
-          className="mt-1 inline-flex items-center gap-1.5 py-1 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) pointer-coarse:min-h-11 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+          className="mt-1 inline-flex items-center gap-1.5 py-1 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         >
           <ChevronUp size={13} aria-hidden className="shrink-0" />
           <span>Collapse</span>

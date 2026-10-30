@@ -32,18 +32,18 @@ export function listRowClass({ current = false }: { current?: boolean } = {}): s
  * focus ring is the global `:focus-visible` one.
  */
 export const ROW_ACTION =
-  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-11 pointer-coarse:active:bg-(--bg-key)'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9 pointer-coarse:active:bg-(--bg-key)'
 
 /** A text action inside a list row (e.g. "Show all"), sized like `ROW_ACTION`. */
 export const ROW_TEXT_ACTION =
-  'inline-flex h-6 shrink-0 items-center rounded-xs px-2 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-11 pointer-coarse:px-2.5'
+  'inline-flex h-6 shrink-0 items-center rounded-xs px-2 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5'
 
 /**
  * A count chip in a row (subagents, worktrees): a 20px mono pill on a soft
  * keycap wash; `active` (expanded with work, or a filter applied) inks it.
  */
 export function rowChipClass(active = false): string {
-  return `inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full px-1.5 font-mono text-[11px] leading-4 transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center pointer-coarse:rounded-md pointer-coarse:px-2.5 ${
+  return `inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full px-1.5 font-mono text-[11px] leading-4 transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center pointer-coarse:rounded-md pointer-coarse:px-2.5 ${
     active ? 'bg-(--bg-key) text-(--color-text)' : 'bg-(--bg-key)/60 text-(--color-text-subtle)'
   }`
 }

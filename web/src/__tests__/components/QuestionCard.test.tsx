@@ -100,13 +100,13 @@ describe('QuestionCard', () => {
     expect(screen.queryAllByRole('radio', { name: /recommended/i })).toHaveLength(1)
   })
 
-  it('gives options and question steps a 44px touch target on coarse pointers', () => {
+  it('gives options and question steps a 36px touch target on coarse pointers', () => {
     renderCard({ question: TWO_QUESTIONS })
 
-    expect(screen.getByRole('radio', { name: /pnpm/ }).closest('label')?.className).toContain('pointer-coarse:min-h-11')
+    expect(screen.getByRole('radio', { name: /pnpm/ }).closest('label')?.className).toContain('pointer-coarse:min-h-9')
     const steps = within(screen.getByRole('group', { name: 'Questions' })).getAllByRole('button')
     expect(steps).toHaveLength(2)
-    for (const step of steps) expect(step.className).toContain('pointer-coarse:min-h-11')
+    for (const step of steps) expect(step.className).toContain('pointer-coarse:min-h-9')
   })
 
   it('replaces the selection for a single-answer question', () => {

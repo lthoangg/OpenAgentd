@@ -42,7 +42,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
         setDone(true)
         setTimeout(() => setDone(false), 1500)
       }}
-      className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-0 transition-opacity group-hover:opacity-100 hover:text-(--color-text) focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-11 pointer-coarse:opacity-100"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-0 transition-opacity group-hover:opacity-100 hover:text-(--color-text) focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 pointer-coarse:opacity-100"
     >
       {done ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
     </button>
@@ -77,7 +77,7 @@ function Group({ title, count, children, collapsible = false }: { title: string;
   if (collapsible) {
     return (
       <details className="group/grp overflow-hidden rounded-sm border border-(--color-border-subtle)">
-        <summary className={cn(headerClass, 'cursor-pointer list-none pointer-coarse:h-11 [&::-webkit-details-marker]:hidden')}>{header}</summary>
+        <summary className={cn(headerClass, 'cursor-pointer list-none pointer-coarse:h-9 [&::-webkit-details-marker]:hidden')}>{header}</summary>
         <dl className="py-1">{children}</dl>
       </details>
     )

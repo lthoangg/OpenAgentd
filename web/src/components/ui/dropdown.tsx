@@ -356,7 +356,7 @@ function Dropdown({
         data-popup-open={open || undefined}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
-          'justify-between pointer-coarse:min-h-11',
+          'justify-between pointer-coarse:min-h-9',
           open && 'border-(--focus-ring)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,

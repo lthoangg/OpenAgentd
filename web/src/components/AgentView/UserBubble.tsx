@@ -105,7 +105,7 @@ function useRenderedLines(ref: React.RefObject<HTMLElement | null>, text: string
 export type OpenSessionHandler = (sessionId: string, workspace: string) => void
 
 const SOURCE_CHIP_CLASS =
-  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) pointer-coarse:min-h-11'
+  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) pointer-coarse:min-h-9'
 
 /** "From <workspace> · <session>" above a prompt another workspace's agent sent. */
 function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSession?: OpenSessionHandler }) {
@@ -389,7 +389,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       <button
         type="button"
         onClick={() => onOpenSession(reply.sessionId, reply.workspace)}
-        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-11"
+        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
         title={reply.workspace}
         aria-label={`Open the replying session in ${reply.workspaceName}`}
       >
@@ -425,7 +425,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             <button
               type="button"
               onClick={handleCopy}
-              className="ml-0.5 flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-11"
+              className="ml-0.5 flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-9"
               title="Copy report"
               aria-label="Copy report"
             >
@@ -435,7 +435,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               <button
                 type="button"
                 onClick={(event) => report.close(event.currentTarget)}
-                className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-11"
+                className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-9"
                 title="Collapse report"
                 aria-label="Collapse report"
               >
@@ -459,7 +459,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               type="button"
               onClick={(event) => toggleReport(event.currentTarget)}
               aria-expanded={reportExpanded}
-              className="mt-0.5 flex items-center gap-1 rounded-xs text-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+              className="mt-0.5 flex items-center gap-1 rounded-xs text-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
             >
               {reportExpanded ? (
                 <>
@@ -513,7 +513,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                          onClick={(event) => toggleExpanded(event.currentTarget)}
                          aria-expanded={expanded}
                          aria-label={expanded ? 'Collapse' : 'Expand'}
-                         className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-11 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
+                         className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-9 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
                        >
                          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                        </button>
@@ -568,7 +568,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                     render={
                       <button
                         onClick={onEdit}
-                        className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-11"
+                        className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9"
                         aria-label="Edit message"
                       >
                         <Pencil size={11} />
@@ -584,7 +584,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   render={
                     <button
                       onClick={handleCopy}
-                      className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-11"
+                      className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9"
                       aria-label="Copy message"
                     >
                       {copied ? (

@@ -37,7 +37,7 @@ describe('Waterfall', () => {
 
     const row = screen.getByRole('button', { name: /agent\.run/ })
     expect(row.tagName).toBe('BUTTON')
-    expect(row.className).toMatch(/min-h-(10|11)/)
+    expect(row.className).toMatch(/(^| )min-h-9( |$)/)
     expect(row.className).toContain('md:min-h-7')
     expect(row.className).toContain('hover:bg-(--bg-key)/40')
     expect(row.className).toContain('focus-visible:ring-2')

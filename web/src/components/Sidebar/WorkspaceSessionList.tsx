@@ -103,7 +103,7 @@ export function WorkspaceSessionList({
           <button
             type="button"
             onClick={() => { void sessions.refetch() }}
-            className="rounded-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+            className="rounded-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
           >
             Retry
           </button>

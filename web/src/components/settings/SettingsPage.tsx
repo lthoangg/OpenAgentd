@@ -132,7 +132,7 @@ export function SettingsPage({
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
         <div className={cn(PAGE_BODY, 'pb-12')}>
           {header}
-          <div className="space-y-8">{body}</div>
+          <div className="space-y-6 md:space-y-8">{body}</div>
         </div>
       </div>
 
@@ -254,7 +254,7 @@ function SaveBar({ draft, onSave, saveBlockedReason }: { draft: DraftControls; o
  */
 export function SettingsSkeleton({ label = 'Loading settings' }: { label?: string }) {
   return (
-    <div className="oa-fade-in-late space-y-8" role="status" aria-label={label}>
+    <div className="oa-fade-in-late space-y-6 md:space-y-8" role="status" aria-label={label}>
       {[0, 1].map((i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="h-3 w-32" />

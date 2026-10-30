@@ -357,7 +357,7 @@ function HeaderAction({
             disabled={disabled}
             aria-label={label}
             className={cn(
-              'text-(--color-text-muted) pointer-coarse:size-11',
+              'text-(--color-text-muted) pointer-coarse:size-9',
               danger ? 'hover:bg-(--color-error-subtle) hover:text-(--color-error)' : 'hover:text-(--color-text)',
             )}
           >

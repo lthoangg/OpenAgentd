@@ -37,7 +37,7 @@ describe("AgentView — workspace messages", () => {
     const chip = screen.getByRole("button", { name: "Open the sending session in app" })
     expect(chip).toHaveTextContent("From")
     expect(chip).toHaveTextContent("· Orders service")
-    expect(chip.className).toContain("pointer-coarse:min-h-11")
+    expect(chip.className).toContain("pointer-coarse:min-h-9")
     await userEvent.setup().click(chip)
     expect(onOpenSession).toHaveBeenCalledWith("app-session", "/r/app")
     // It is a prompt, not a report: it stays editable.

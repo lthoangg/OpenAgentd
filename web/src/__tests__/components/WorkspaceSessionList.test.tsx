@@ -304,9 +304,9 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
     const subMore = screen.getByLabelText('More actions for subagent explorer#1')
     // Row actions and the subagent pill grow on touch (DESIGN.md touch parity).
-    expect(subMore.className).toContain('pointer-coarse:size-11')
-    expect(screen.getByLabelText(/^More actions for (?!subagent)/).className).toContain('pointer-coarse:size-11')
-    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-11')
+    expect(subMore.className).toContain('pointer-coarse:size-9')
+    expect(screen.getByLabelText(/^More actions for (?!subagent)/).className).toContain('pointer-coarse:size-9')
+    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-9')
     fireEvent.click(subMore)
     expect(handleActions).toHaveBeenCalledTimes(1)
     const target = handleActions.mock.calls[0][0] as SessionResponse

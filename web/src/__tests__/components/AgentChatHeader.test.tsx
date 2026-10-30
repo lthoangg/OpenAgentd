@@ -90,7 +90,7 @@ describe('AgentChatHeader', () => {
     renderHeader({ isMobile: true })
 
     for (const name of ['Toggle sidebar', 'Review panel', 'More actions']) {
-      expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-11')
+      expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
     }
   })
 

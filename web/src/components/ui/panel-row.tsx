@@ -46,7 +46,7 @@ export function PanelRow({
   return (
     <div
       className={cn(
-        'flex min-h-14 flex-col gap-3',
+        'flex min-h-11 flex-col gap-2 md:min-h-14 md:gap-3',
         ROW_PAD,
         !stack && 'sm:flex-row sm:items-center sm:justify-between sm:gap-8',
         className,

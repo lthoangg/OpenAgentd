@@ -195,7 +195,7 @@ const WaterfallRow = memo(function WaterfallRow({
       aria-label={`${span.name}${summary ? `, ${summary}` : ''}, ${isError ? 'error' : 'ok'}, duration ${formatMs(span.duration_ms)}`}
       className={cn(
         COLS,
-        'min-h-11 w-full px-3 pt-1.5 text-left md:pt-0 text-xs transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) md:min-h-7',
+        'min-h-9 w-full px-3 pt-1.5 text-left md:pt-0 text-xs transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) md:min-h-7',
         selected && 'bg-(--bg-key)',
       )}
     >

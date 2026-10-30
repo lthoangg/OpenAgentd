@@ -238,12 +238,6 @@ export function DockTabBar({
         onKeyDown={handleStripKeyDown}
         {...drag.handlers}
       >
-        {tabs.length === 0 && (
-          // An empty strip still says what this panel is.
-          <span className="flex shrink-0 items-center border-b border-(--color-border) px-3 text-xs font-medium text-(--color-text-2)">
-            Review panel
-          </span>
-        )}
         {tabs.map((tab) => {
           const active = activeTabId === tab.id
           const dragging = drag.draggingId === tab.id
@@ -330,7 +324,7 @@ export function DockTabBar({
                     setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
                   }}
                   className={cn(
-                    'flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:px-1.5 pointer-coarse:h-11 pointer-coarse:px-3',
+                    'flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:px-1.5 pointer-coarse:h-9 pointer-coarse:px-3',
                     openMenuAt !== null && 'bg-(--bg-key) text-(--color-text)',
                   )}
                   aria-label="Open in the review panel"
@@ -370,7 +364,7 @@ export function DockTabBar({
                 type="button"
                 role="menuitem"
                 aria-label={item.open ? `${item.label} (open)` : item.label}
-                className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-11 pointer-coarse:text-sm')}
+                className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
                 onClick={() => { setOpenMenuAt(null); item.run() }}
               >
                 {item.icon}

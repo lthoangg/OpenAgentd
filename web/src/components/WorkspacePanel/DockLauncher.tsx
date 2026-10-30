@@ -74,7 +74,7 @@ export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActio
             type="button"
             aria-label={row.shortcut ? `${row.label} (${row.shortcut})` : row.label}
             onClick={row.run}
-            className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-key:bg-(--bg-key) focus-visible:text-(--color-text) pointer-coarse:h-11"
+            className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-key:bg-(--bg-key) focus-visible:text-(--color-text) pointer-coarse:h-9"
           >
             {row.icon}
             <span className="flex-1">{row.label}</span>

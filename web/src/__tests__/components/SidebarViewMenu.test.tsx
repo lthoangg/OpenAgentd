@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SidebarSectionHeader } from '@/components/Sidebar/SidebarSectionHeader'
@@ -12,20 +12,16 @@ beforeEach(() => {
 })
 
 function renderHeader(groupBy: SidebarGroupBy = 'project', workspaceGroups: Array<{ id: string; name: string; brief: string | null }> = []) {
-  const onNewSession = mock(() => {})
   render(
     <SidebarSectionHeader
       groupBy={groupBy}
       workspaceGroups={workspaceGroups}
-      newSessionShortcut="⌘N"
       searchOpen={false}
-      onNewSession={onNewSession}
       onToggleSearch={() => {}}
       onCollapseAll={() => {}}
       onOpenFolder={() => {}}
     />,
   )
-  return { onNewSession }
 }
 
 describe('SidebarSectionHeader', () => {
@@ -39,20 +35,15 @@ describe('SidebarSectionHeader', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Open folder…' })).toBeTruthy()
   })
 
-  it('always offers New session with its shortcut, in every view', async () => {
-    const user = userEvent.setup()
-    const { onNewSession } = renderHeader('project')
-    const button = screen.getByRole('button', { name: 'New session' })
-    expect(button.textContent).toContain('⌘N')
-    await user.click(button)
-    expect(onNewSession).toHaveBeenCalledTimes(1)
+  it('has no New session button: sessions start from a folder, ⌘N or the palette', () => {
+    renderHeader('project')
+    expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
   })
 
   it('names a flat view Sessions, with no Collapse all', async () => {
     const user = userEvent.setup()
     renderHeader('date')
     expect(screen.getByText('Sessions')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'View options' }))
     expect(screen.queryByRole('menuitem', { name: 'Collapse all workspaces' })).toBeNull()
   })

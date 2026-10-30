@@ -52,7 +52,7 @@ export interface MobileChatActionsProps {
 }
 
 const ROW_CLASS =
-  'flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-(--color-text) transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-45'
+  'flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-(--color-text) transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-45'
 const GROUP_LABEL_CLASS = 'px-2 pb-1 pt-4 text-xs font-medium text-(--color-text-muted) select-none first:pt-1'
 
 function Row({ onClick, children, trailing }: { onClick?: () => void; children: ReactNode; trailing?: ReactNode }) {
@@ -102,7 +102,7 @@ export function MobileChatActions({
               type="button"
               data-no-drag
               onClick={() => onOpenChange(true)}
-              className="relative mr-1 flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-11"
+              className="relative mr-1 flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9"
               aria-label={moreLabel}
             >
               <MoreHorizontal size={16} aria-hidden="true" />
@@ -160,7 +160,7 @@ export function MobileChatActions({
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
-                  className="flex size-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Close"
                 >
                   <X size={16} aria-hidden="true" />

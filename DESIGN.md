@@ -731,15 +731,16 @@ buttons never shift size between states.
 | `icon-dense` | **28×28px** | `p-0` | 14px | — | `rounded-sm` (6px) | Panel-header and detail-pane actions (close, back) |
 | `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
-**Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
+**Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), chosen so small phones (iPhone mini, 375px) still show a useful amount of content, while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
-- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 44px` on `[data-slot="button"]` (48px in the Android app, Material's minimum). Prefer `Button` over a bare `<button>` for icon actions.
-- `--spacing-list-row` becomes 44px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-11`. Inline row actions add `pointer-coarse:size-11` (44px) to fill the row. Every touch target is 44px; the composer keeps its own sizes.
-- `--spacing-tab-bar` (the review panel's tab strip) grows to 47px on coarse pointers, so each tab and its close control are 44px inside the strip's 2px top edge and 1px bottom border.
+- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
+- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px (no `pointer-coarse:*-11`; a test guards it); the composer keeps its own sizes.
+- `--spacing-tab-bar` (the review panel's tab strip) grows to 39px on coarse pointers, so each tab and its close control are 36px inside the strip's 2px top edge and 1px bottom border.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
-- On phones the app header's controls are 44px (`max-md:pointer-coarse:size-11`) and the header grows with them. On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
-- Tabs (`ui/tabs`) are 44px per trigger on touch: the list grows to 50px around them.
-- Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 44px tall) and small icon buttons in code-block and tool-detail headers (`.touch-hit` on a positioned element, 44×44 around it). Keep such targets apart so neighbours do not steal each other's taps.
+- On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
+- Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
+- The phone drawer footer is icons only (Settings, Usage, the server dot, theme), each with an accessible name, so all four fit any phone width. On phones the composer adds a Session settings button beside Code / Plan, so model and thinking level are one tap away; desktop opens them from the status bar.
+- Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers (`.touch-hit` on a positioned element, 36×36 around it). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
 **Inputs** use `bg-input` (matching the page, not the card) with a 1px border.
@@ -768,7 +769,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
-- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 44px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, never grown on touch, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
+- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, never grown on touch, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height on `bg-sidebar`; tabs scroll horizontally, actions stay pinned right.
@@ -829,9 +830,10 @@ The sidebar keeps its own caps section headers (below).
 **Sidebar sections** stack Pinned, Needs you, the session list and Scheduled
 in one scroller. Each section header is a `label-caps` label with a count; a
 header (32px) or group header (24px) folds its list. The list's header row
-holds the icon actions (`md:` 24px, 44px on touch): New session (only where
-there is no per-folder **+**, i.e. the flat views, and always on phones),
-Search, **View options**, Collapse all (folder tree only) and Open folder.
+holds the icon actions (`md:` 24px, 36px on touch): Search and **View
+options** (which holds Collapse all and Open folder…). There is no New
+session button in the sidebar: sessions start from a folder's **+**, ⌘N or
+the command palette.
 View options is a context menu of `menuitemradio` groups (Group by, Sort by)
 and a `menuitemcheckbox` (Show details); it stays open while choices apply.
 Rows in flat views and Pinned name their workspace in mono 11px subtle text,
@@ -839,7 +841,7 @@ which gives way first when the row is narrow.
 
 **Sidebar row actions** share one style (`ROW_ACTION` in `ui/list-row.ts`):
 24px, borderless, `rounded-xs`, subtle glyph, keycap wash on hover, the
-global focus ring, 44px on touch. They take the place of the row's meta (age,
+global focus ring, 36px on touch. They take the place of the row's meta (age,
 tags) on hover or keyboard focus and hold no room at rest, so titles and
 folder names keep the row; touch shows them always, except Pin, which stays
 in More on touch so the title keeps the room. Session rows offer **Pin**

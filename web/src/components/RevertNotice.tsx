@@ -53,7 +53,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                 <button
                   type="button"
                   onClick={onRedo}
-                  className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+                  className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
                 >
                   <Redo2 size={13} aria-hidden="true" className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
                   <span>Redo next message</span>
@@ -69,7 +69,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                   <button
                     type="button"
                     onClick={onRedoAll}
-                    className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+                    className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
                   >
                     <span>Redo all</span>
                   </button>

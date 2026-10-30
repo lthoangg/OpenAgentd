@@ -13,7 +13,7 @@ import type { ComponentPropsWithRef, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 export const META_ROW_GRID =
-  'grid w-full min-h-7 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-sm px-1.5 text-left text-xs pointer-coarse:min-h-11'
+  'grid w-full min-h-7 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-sm px-1.5 text-left text-xs pointer-coarse:min-h-9'
 
 /** Right-aligned meta column: tabular mono numbers, muted. */
 export const META_COL =

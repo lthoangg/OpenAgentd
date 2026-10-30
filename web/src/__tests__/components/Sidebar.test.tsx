@@ -236,7 +236,7 @@ mock.module('@/components/ThemeToggle', () => ({
 
 mock.module('@/components/HealthDot', () => ({
   HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
-    <div aria-label="Connected">{labeled ? 'backend-name' : null}</div>
+    <button type="button" aria-label={labeled ? 'Connected. Change server' : 'backend-name. Connected. Change server'}>{labeled ? 'backend-name' : null}</button>
   ),
 }))
 
@@ -895,7 +895,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarWithProps({ mobileOpen: true })
 
-    expect(screen.getByText('backend-name')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'backend-name. Connected. Change server' })).toBeTruthy()
   })
 
   it('has no help button that opens the command palette under another name', async () => {
@@ -1082,7 +1082,7 @@ describe('Sidebar workspace trust flow', () => {
     await renderSidebar()
 
     expect(await screen.findByText('Trust this workspace?')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /back/i }))
+    await user.click(screen.getByRole('button', { name: /^back$/i }))
 
     expect(screen.getByText('Open folder')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
@@ -1857,7 +1857,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
     // The filter chip grows on touch like the row actions (DESIGN.md touch parity).
-    expect(chip.className).toContain('pointer-coarse:h-11')
+    expect(chip.className).toContain('pointer-coarse:h-9')
 
     await user.click(chip)
     const menu = screen.getByRole('menu', { name: 'Worktrees for project' })
@@ -1871,7 +1871,7 @@ describe('Sidebar workspace trust flow', () => {
     // One checkout listed: the tag would only repeat the chip.
     expect(document.querySelector('[data-checkout-tag]')).toBeNull()
     const newSession = screen.getByLabelText('New session in worktree task-a')
-    expect(newSession.className).toContain('pointer-coarse:size-11')
+    expect(newSession.className).toContain('pointer-coarse:size-9')
 
     await user.click(newSession)
 
@@ -2536,18 +2536,18 @@ describe('Sidebar workspace trust flow', () => {
       useSidebarViewStore.setState({ groupBy: 'project', showDetails: true, pinnedCollapsed: false, collapsedGroups: [] })
     })
 
-    it('always shows New session under the header in Project mode, with Collapse all in View options', async () => {
+    it('has no header New session in Project mode, and keeps Collapse all in View options', async () => {
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
       await renderSidebarForSessions('session-1')
 
-      expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: 'View options' }))
       expect(screen.getByRole('menuitem', { name: 'Collapse all workspaces' })).toBeTruthy()
       expect(allSessionsQueryArgs).toEqual([])
     })
 
-    it('switches to a flat list with a header New session in Status mode', async () => {
+    it('switches to a flat list in Status mode', async () => {
       const { useSidebarViewStore } = await import('@/stores/useSidebarViewStore')
       useSidebarViewStore.setState({ groupBy: 'status' })
       sessionsData = [projectSession('session-1', 'Feature')]
@@ -2560,12 +2560,9 @@ describe('Sidebar workspace trust flow', () => {
       expect(allSessionsQueryArgs.length).toBeGreaterThan(0)
       // The tree's controls belong to Project mode.
       expect(screen.queryByRole('menuitem', { name: 'Collapse all workspaces' })).toBeNull()
-
-      fireEvent.click(screen.getByRole('button', { name: 'New session' }))
-      expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false })
     })
 
-    it('shows the header New session in Project mode on mobile', async () => {
+    it('shows icon-only Settings, Usage, server and theme controls in the mobile drawer footer', async () => {
       isMobile = true
       platformOs = 'ios'
       sessionsData = [projectSession('session-1', 'Feature')]
@@ -2573,7 +2570,11 @@ describe('Sidebar workspace trust flow', () => {
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 
-      expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+      for (const name of ['Settings', 'Usage', /Change server$/, /^Theme:/]) {
+        const button = screen.getByRole('button', { name })
+        expect(button.textContent).toBe('')
+      }
     })
 
     it('lists pinned sessions above the tree and unpins from the row menu', async () => {

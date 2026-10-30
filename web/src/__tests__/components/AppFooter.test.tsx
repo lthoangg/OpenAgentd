@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
+import { HealthDot } from '@/components/HealthDot'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { queryKeys } from '@/queries/keys'
@@ -93,6 +94,12 @@ describe('AppFooter', () => {
     backendExternal = true
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByRole('button', { name: /Connected\. Change server/ })).toBeTruthy()
+  })
+
+  it('names the server in the label when the dot has no visible name (phone drawer)', () => {
+    renderWithQueryClient(<HealthDot />)
+    const dot = screen.getByRole('button', { name: 'Built-in server. Connected. Change server' })
+    expect(dot.textContent).toBe('')
   })
 
   it('keeps every status item in Tab order', () => {

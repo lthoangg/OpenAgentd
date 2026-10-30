@@ -84,7 +84,7 @@ export function SessionSettingsPanel({
         closeLabel="Close (Esc)"
       />
 
-      <div className={cn(OVERLAY_BODY, 'space-y-8')}>
+      <div className={cn(OVERLAY_BODY, 'space-y-6 md:space-y-8')}>
         {isLoading || !agent ? (
           <div role="status" aria-label="Loading session settings" className="space-y-8">
             {[16, 24].map((h) => (

@@ -117,7 +117,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     onSidebarToggle()
                   }}
                   aria-label="Toggle sidebar"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 max-md:pointer-coarse:size-11"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 max-md:pointer-coarse:size-9"
                 >
                   <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
                 </button>

@@ -12,8 +12,7 @@
  *     narrows it to one checkout and holds the worktree actions. Sessions
  *     page in with an explicit "Show more" row, so the sidebar has exactly
  *     one scroller.
- *   • Mobile drawer footer: ⚙ Settings · ❔ Help (command palette) · 🌙
- *     ThemeToggle. On desktop those live in the status bar.
+ *   • Mobile drawer footer: Settings, Usage, server and theme icons. On desktop those live in the status bar.
  *
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline in a single column. ``activeWorkspace`` is
@@ -28,7 +27,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
@@ -70,7 +68,7 @@ import {
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
-import { WORKSPACES_KEY, loadLastWorkspace, workspaceLabel } from '@/utils/workspace'
+import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { ThemeToggle } from './ThemeToggle'
@@ -476,13 +474,6 @@ export function Sidebar({
       current: { sessionId: currentSessionId, workspace },
     })
     onMobileClose?.()
-  }
-
-  // The header's New session: where the user is, else where they last were.
-  const newSessionHere = () => {
-    const target = activeWorkspace ?? loadLastWorkspace()?.path ?? chatWorkspace?.path ?? null
-    if (target) newSessionIn(target)
-    else void openWorkspaceDialog()
   }
 
   // A folder from Open folder…: register it (so it has a row) and open a
@@ -944,10 +935,8 @@ export function Sidebar({
       <SidebarSectionHeader
         groupBy={groupBy}
         workspaceGroups={workspaceGroups}
-        newSessionShortcut={isMobile ? undefined : shortcutLabel(APP_SHORTCUTS.newSession, os)}
         searchOpen={searchOpen}
         searchButtonRef={searchButtonRef}
-        onNewSession={newSessionHere}
         onToggleSearch={() => { if (searchOpen) closeSessionSearch(); else openSessionSearch() }}
         onCollapseAll={collapseAllWorkspaces}
         onOpenFolder={() => { void openWorkspaceDialog() }}
@@ -993,7 +982,7 @@ export function Sidebar({
 
         {activeGroupFilter && (
           // The group filter, named above the list, with a one-step way back.
-          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-11" data-sidebar-group-filter="">
+          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
             <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter) }} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">
               Group: <span className="font-mono text-(--color-text-2)">{activeGroupFilter.name}</span>
@@ -1148,7 +1137,7 @@ export function Sidebar({
                 {sourceIsChat ? (
                   // Chat has no actions menu; hold its slot so the + lines up
                   // with every other workspace row.
-                  !mobileLongPressActions && <span aria-hidden="true" className={`mr-1 w-6 shrink-0 pointer-coarse:w-11 ${rowActionsReveal('')}`} />
+                  !mobileLongPressActions && <span aria-hidden="true" className={`mr-1 w-6 shrink-0 pointer-coarse:w-9 ${rowActionsReveal('')}`} />
                 ) : (
                   <Tooltip>
                     <TooltipTrigger
@@ -1179,7 +1168,7 @@ export function Sidebar({
                   {checkouts.selected && sourceIsExpanded && (
                     // The active filter, named where its sessions are, with
                     // a one-step way back to every checkout.
-                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-11">
+                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9">
                       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
                         {selectedWorktree
                           ? <GitBranch size={11} className="text-(--accent-orange-text)" />
@@ -1228,30 +1217,27 @@ export function Sidebar({
       </div>
 
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
-      <div className="flex md:hidden items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">
-        <div className="flex items-center gap-1">
-          {/* Labelled, 44 px: on a phone there is no hover to explain a bare icon. */}
-          <button
-            type="button"
-            onClick={() => { openSettings(); onMobileClose?.() }}
-            className="flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-          >
-            <Settings size={14} aria-hidden="true" />
-            Settings
-          </button>
-          <button
-            type="button"
-            onClick={() => { openTelemetry(); onMobileClose?.() }}
-            className="flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-          >
-            <Activity size={14} aria-hidden="true" />
-            Usage
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <HealthDot labeled className="min-h-11 max-w-24" />
-          <ThemeToggle collapsed />
-        </div>
+      {/* Icons only: four familiar glyphs fit any phone width; each has an
+          accessible name. */}
+      <div className="flex md:hidden items-center gap-1 border-t border-(--color-border) px-2 py-1 pb-safe">
+        <button
+          type="button"
+          onClick={() => { openSettings(); onMobileClose?.() }}
+          aria-label="Settings"
+          className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+        >
+          <Settings size={16} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={() => { openTelemetry(); onMobileClose?.() }}
+          aria-label="Usage"
+          className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+        >
+          <Activity size={16} aria-hidden="true" />
+        </button>
+        <HealthDot className="h-9 w-9" />
+        <ThemeToggle collapsed className="ml-auto h-9 w-9" />
       </div>
 
       <Dialog

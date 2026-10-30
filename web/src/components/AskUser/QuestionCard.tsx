@@ -187,7 +187,7 @@ export function QuestionCard({
                 aria-current={index === step ? 'step' : undefined}
                 onClick={() => update({ step: index })}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:min-h-11 pointer-coarse:px-3',
+                  'flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:min-h-9 pointer-coarse:px-3',
                   index === step
                     ? 'bg-(--bg-key) text-(--color-text)'
                     : 'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
@@ -324,7 +324,7 @@ function OptionRow({
   return (
     <label
       className={cn(
-        'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors pointer-coarse:min-h-11',
+        'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors pointer-coarse:min-h-9',
         checked
           ? 'border-(--color-border-strong) bg-(--bg-key)/50'
           : 'border-(--color-border) bg-(--bg-card) hover:bg-(--bg-key)/25',

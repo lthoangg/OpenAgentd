@@ -66,7 +66,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         <button
           type="button"
           onClick={handleCollapse}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:text-(--color-text) pointer-coarse:min-h-11 focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:text-(--color-text) pointer-coarse:min-h-9 focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
           aria-expanded={expanded}
           aria-label="Collapse read result"
         >

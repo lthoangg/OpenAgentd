@@ -37,7 +37,7 @@ const BRIEF_PLACEHOLDER = 'For example: web = Next.js frontend, api = Rust backe
 
 /** The native picker drawn as a round swatch instead of the browser's button. */
 const SWATCH_CLASS = cn(
-  'size-5 shrink-0 cursor-pointer appearance-none rounded-full pointer-coarse:size-11 border-0 bg-transparent p-0',
+  'size-5 shrink-0 cursor-pointer appearance-none rounded-full pointer-coarse:size-9 border-0 bg-transparent p-0',
   '[&::-webkit-color-swatch-wrapper]:p-0',
   '[&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border [&::-webkit-color-swatch]:border-(--color-border-strong)',
   '[&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border [&::-moz-color-swatch]:border-(--color-border-strong)',
@@ -363,7 +363,7 @@ export function WorkspaceGroupsSettings() {
           type="button"
           onClick={startCreating}
           className={cn(
-            'flex h-11 w-full cursor-pointer items-center gap-2 border-t border-(--color-border-subtle) px-4 text-left text-xs font-medium text-(--color-text-muted) md:h-10',
+            'flex h-9 w-full cursor-pointer items-center gap-2 border-t border-(--color-border-subtle) px-4 text-left text-xs font-medium text-(--color-text-muted) md:h-10',
             'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
             'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none focus-visible:ring-inset',
           )}

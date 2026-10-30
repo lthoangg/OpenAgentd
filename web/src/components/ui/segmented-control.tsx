@@ -34,8 +34,8 @@ const TRACK_SIZE: Record<SegmentedSize, string> = {
 }
 
 const ITEM_SIZE: Record<SegmentedSize, string> = {
-  sm: 'px-2 text-xs pointer-coarse:min-h-11 pointer-coarse:min-w-11 [&_svg:not([class*=size-])]:size-3',
-  default: 'px-2.5 text-xs pointer-coarse:min-h-11 pointer-coarse:min-w-11 [&_svg:not([class*=size-])]:size-3.5',
+  sm: 'px-2 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
+  default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3.5',
   composer: 'px-2.5 text-xs [&_svg:not([class*=size-])]:size-3.5',
 }
 

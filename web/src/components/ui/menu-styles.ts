@@ -13,7 +13,7 @@ export const MENU_PANEL_CLASS =
 
 /** Row geometry (28px, 44px on touch). Callers add tone and state. */
 export const MENU_ITEM_CLASS =
-  'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-xs pointer-coarse:min-h-11'
+  'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-xs pointer-coarse:min-h-9'
 
 /** Hairline between menu groups. */
 export const MENU_SEPARATOR_CLASS = 'my-1 border-t border-(--color-border-subtle)'

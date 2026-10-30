@@ -69,8 +69,8 @@ const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
 const TABS_LIST_SIZE: Record<TabsSize, string> = {
   // On touch a list is 50px so each trigger (inside 2px padding and a 1px
   // border) is 44px.
-  default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-12.5',
-  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-12.5',
+  default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-10.5',
+  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-10.5',
 }
 const TABS_TRIGGER_SIZE: Record<TabsSize, string> = {
   default: 'px-3 py-1 text-sm [&_svg:not([class*=size-])]:size-4',

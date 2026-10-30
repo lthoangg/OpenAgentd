@@ -258,12 +258,12 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   min-height: var(--spacing-app-header);
 }
 
-/* Phones: a 44px header, so its buttons meet the touch minimum and the
-   title fits the session name over its workspace. Everything placed under
-   the header reads the same variable. */
+/* Phones: a 40px header, tall enough for the 36px touch buttons and the
+   session name over its workspace. Everything placed under the header
+   reads the same variable. */
 @media (max-width: 767px) {
   :root {
-    --spacing-app-header: 2.75rem;
+    --spacing-app-header: 2.5rem;
   }
 }
 
@@ -1137,33 +1137,34 @@ html[data-app-hidden="true"] *::after {
 }
 @media (pointer: coarse) {
   [data-slot="button"] {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 36px;
+    min-width: 36px;
   }
-  /* Material's minimum touch target is 48dp; 44pt is Apple's. */
+  /* Android gets 4px more: Material sizes its touch controls larger. */
   html[data-mobile-shell="android"] [data-slot="button"] {
-    min-height: 48px;
-    min-width: 48px;
+    min-height: 40px;
+    min-width: 40px;
   }
 }
 
-/* Touch density (DESIGN.md): list rows are 44px on touch, the same minimum
-   as every other control, so a row and its inline actions (also 44px, via
-   their ``pointer-coarse:`` sizes) are one comfortable target. Rows sized
-   from the token (sidebar sessions, sub-sessions, group headers,
-   workspaces, dock lists) follow. Line height tightens too: UI text
-   (``leading-relaxed``) and chat/plan prose read denser on a phone. */
+/* Touch density (DESIGN.md): one compact touch size, 36px, for list rows
+   and every other control, so small phones (iPhone mini) still show a
+   useful amount of content. A row and its inline actions (also 36px, via
+   their ``pointer-coarse:`` sizes) line up. Rows sized from the token
+   (sidebar sessions, sub-sessions, group headers, workspaces, dock lists)
+   follow. Line height tightens too: UI text (``leading-relaxed``) and
+   chat/plan prose read denser on a phone. */
 @media (pointer: coarse) {
   :root {
-    --spacing-list-row: 2.75rem;
+    --spacing-list-row: 2.25rem;
     --leading-relaxed: 1.5;
-    --spacing-tab-bar: 2.9375rem; /* 44px tab plus its 2px top and 1px bottom edge */
+    --spacing-tab-bar: 2.4375rem; /* 36px tab plus its 2px top and 1px bottom edge */
   }
   .oa-prose {
     line-height: 1.6;
   }
   /* Links and file references inside prose stay inline (resizing them would
-     reflow the text), so their touch target grows invisibly to 44px tall. */
+     reflow the text), so their touch target grows invisibly to 36px tall. */
   .oa-prose a,
   [data-file-ref] {
     position: relative;
@@ -1172,15 +1173,15 @@ html[data-app-hidden="true"] *::after {
   [data-file-ref]::before {
     content: "";
     position: absolute;
-    inset: calc((100% - 44px) / 2) 0;
+    inset: calc((100% - 36px) / 2) 0;
   }
   /* Small icon buttons inside dense strips (code-block and tool-detail
-     headers, chips) keep their drawn size; the hit area grows to 44px
+     headers, chips) keep their drawn size; the hit area grows to 36px
      around them. The element must be positioned (``relative`` or more). */
   .touch-hit::before {
     content: "";
     position: absolute;
-    inset: min(0px, calc((100% - 44px) / 2));
+    inset: min(0px, calc((100% - 36px) / 2));
   }
 }
 

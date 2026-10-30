@@ -291,11 +291,15 @@ run from the terminal (the native Rust binary since v3.0.0).
     list; Settings → Telemetry is now **Data retention**.
   - **Phones.** The header shows the session title with its workspace under
     it, and keeps four controls: sidebar, title, Review panel and **More**.
+    The composer has a **Session settings** button beside Code / Plan, so
+    the model and thinking level are one tap away. The sidebar drawer's
+    footer is icons only: Settings, Usage, the server dot and the theme.
     More holds Tasks (with the open count and goal ring), Session settings,
     context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
-    command palette, grouped as Session, Workspace and App. Every control
-    outside the composer is at least 44 px on touch, list rows and the
-    review-panel tab strip included, and Usage fits a 390 px screen.
+    command palette, grouped as Session, Workspace and App. Touch controls
+    and list rows share one compact 36 px size (40 px in the Android app),
+    and panels use tighter spacing, so an iPhone mini shows more at once;
+    Usage fits a 375 px screen.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -1796,6 +1800,8 @@ agent against it.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
+  Since `[v3.36.0]` the sidebar has no New session button in any mode: start
+  one from a folder's **+**, `⌘N`/`Ctrl+N` or the command palette.
   Since `[v3.21.0]` repository rows show a coloured dot per workspace group,
   and in Project mode **View options → Workspace group** shows one group's
   repositories (Chat stays), named in a row above the list with **Show all**.

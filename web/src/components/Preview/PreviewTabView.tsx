@@ -118,7 +118,7 @@ function ToolbarButton({
             disabled={disabled}
             aria-label={label}
             aria-pressed={pressed}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'pointer-coarse:size-11', pressed && 'bg-(--bg-key) text-(--color-text)', className)}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'pointer-coarse:size-9', pressed && 'bg-(--bg-key) text-(--color-text)', className)}
           >
             {children}
           </button>
@@ -539,7 +539,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               }
             }}
             spellCheck={false}
-            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-[11px] text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-11 pointer-coarse:text-xs"
+            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-[11px] text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-9 pointer-coarse:text-xs"
           />
         </form>
         {agentAction && (

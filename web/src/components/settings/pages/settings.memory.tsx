@@ -211,7 +211,7 @@ export function MemorySettingsPage() {
               <button
                 type="button"
                 onClick={() => setLintFindings(null)}
-                className="inline-flex cursor-pointer items-center text-xs font-normal underline hover:no-underline pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                className="inline-flex cursor-pointer items-center text-xs font-normal underline hover:no-underline pointer-coarse:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 Dismiss
               </button>
@@ -287,7 +287,7 @@ export function MemorySettingsPage() {
                     onClick={() => setSelectedPath(p.path)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-11 pointer-coarse:text-sm',
+                      'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9 pointer-coarse:text-sm',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
                       active
                         ? 'bg-(--bg-key) font-medium text-(--color-text)'

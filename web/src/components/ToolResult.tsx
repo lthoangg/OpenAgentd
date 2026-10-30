@@ -271,7 +271,7 @@ function BackgroundOutputBlock({
   return (
     <div className="min-w-0 overflow-hidden">
       <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-        <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+        <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
           <BgStatus pid={pid} status={status} detail={[outputLabel && !status ? 'output' : null, detail].filter(Boolean).join(' · ') || undefined} />
         </button>
         {headerAction}
@@ -288,7 +288,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
             <span className="font-sans">No background processes</span>
           </button>
           {headerAction}
@@ -308,7 +308,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
             <span className="font-sans">{listRows.length} background {listRows.length === 1 ? 'process' : 'processes'}</span>
           </button>
           {headerAction}
@@ -342,7 +342,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={status} detail={bufferedLines ? `${bufferedLines} new ${bufferedLines === '1' ? 'line' : 'lines'}` : undefined} />
           </button>
           {headerAction}
@@ -367,7 +367,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={status} detail={detail} />
           </button>
           {headerAction}
@@ -392,7 +392,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     return (
       <div className="min-w-0 overflow-hidden">
         <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={pid ? 'not found' : 'error'} detail={known} />
           </button>
           {headerAction}

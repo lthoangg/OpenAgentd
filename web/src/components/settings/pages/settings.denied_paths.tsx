@@ -164,7 +164,7 @@ function DeniedPathsHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex min-h-9 items-center gap-0.5 rounded-xs pointer-coarse:min-h-11 text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-0"
+            className="inline-flex min-h-9 items-center gap-0.5 rounded-xs pointer-coarse:min-h-9 text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-0"
           >
             See examples
             <ChevronDown

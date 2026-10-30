@@ -38,11 +38,13 @@ export function HealthDot({
   const serverName = connectionLabel === 'built-in' ? 'Built-in server' : connectionLabel
   const address = backendStatus.data?.base_url || apiBaseUrl()
   const version = health.data?.version
-  const label = health.isSuccess
+  const status = health.isSuccess
     ? 'Connected. Change server'
     : health.isError
       ? 'Server not reachable. Change server'
       : 'Connecting. Change server'
+  // A bare dot (the phone drawer) has no visible name, so the label carries it.
+  const label = labeled ? status : `${serverName}. ${status}`
 
   const defaultClasses = labeled
     ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'

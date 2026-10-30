@@ -69,7 +69,7 @@ function useLiveNow(active: boolean): number {
 }
 
 /** Both of the fold's controls; each adds its own text tone. */
-const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-11 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
+const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
 /** The row's height (``ROW_CLASS``: one ``text-xs`` line plus ``py-1``, or ``min-h-9`` on touch), so an opened step pins below it. */
 const BELOW_ROW = '[--fold-top:1.5rem] pointer-coarse:[--fold-top:2.25rem]'
 
@@ -165,7 +165,7 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
         onClick={(event) => (open ? close(event.currentTarget) : setOpen(true))}
         aria-expanded={open}
         aria-controls={listId}
-        className={cn('flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-text-2) pointer-coarse:min-h-11', open && cn(PINNED_HEADER, 'bg-(--bg-card)'), hoverClass)}
+        className={cn('flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-text-2) pointer-coarse:min-h-9', open && cn(PINNED_HEADER, 'bg-(--bg-card)'), hoverClass)}
       >
         <ChevronRight
           size={12}

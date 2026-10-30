@@ -144,7 +144,7 @@ describe('WorkspacesSettingsPage', () => {
     const toggle = await screen.findByRole('switch', { name: /let agents message other workspaces/i })
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
     // The switch sits in a 56px settings row whose label also toggles it.
-    expect(toggle.closest('.min-h-14')).not.toBeNull()
+    expect(toggle.closest('.min-h-11')).not.toBeNull()
     fireEvent.click(toggle)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
@@ -175,7 +175,7 @@ describe('TitlesSettingsPage', () => {
     renderPage(<TitlesSettingsPage />)
 
     const enabled = await screen.findByRole('switch', { name: /generate titles automatically/i })
-    expect(enabled.closest('.min-h-14')).not.toBeNull()
+    expect(enabled.closest('.min-h-11')).not.toBeNull()
     expect(document.querySelector(`label[for="${enabled.id}"]`)?.textContent).toMatch(/generate titles automatically/i)
 
     const waitTimeout = screen.getByLabelText('Wait for title (seconds)')

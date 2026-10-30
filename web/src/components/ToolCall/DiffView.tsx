@@ -112,7 +112,7 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="w-full border-t border-(--color-border) bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs text-(--color-text-muted) pointer-coarse:min-h-11 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+          className="w-full border-t border-(--color-border) bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs text-(--color-text-muted) pointer-coarse:min-h-9 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         >
           Show {hidden.toLocaleString()} more {hidden === 1 ? 'line' : 'lines'}
         </button>
@@ -167,7 +167,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-11 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-9 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >

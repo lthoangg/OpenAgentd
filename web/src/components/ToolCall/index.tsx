@@ -612,7 +612,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 <button
                   type="button"
                   onClick={(event) => collapse(event.currentTarget)}
-                  className="block w-full border-t border-(--color-border) bg-(--bg-key) py-1 text-center text-[11px] text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-11"
+                  className="block w-full border-t border-(--color-border) bg-(--bg-key) py-1 text-center text-[11px] text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
                 >
                   Collapse
                 </button>

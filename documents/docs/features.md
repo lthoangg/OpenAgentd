@@ -271,7 +271,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Status bar** shows the server (`built-in`), the model ID with its
     provider and thinking level as chips, and spend with its period
     (`$0.55 · 24h`), each with a tooltip.
-  - **Review panel** (was the review dock) has one **Open…** button for
+  - **Review panel** (was the review dock) has one **+** (Open) button for
     views, terminals, previews and files; Refresh appears only where it
     reloads something and names what it reloads. Tab menus use sentence case
     ("Close other tabs", "Move right"). Clearing a plan asks first.

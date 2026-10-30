@@ -137,7 +137,10 @@ impl Matcher {
 
 pub fn compile_pattern(pattern: &str) -> Result<Matcher, ToolError> {
     if pattern.chars().count() > MAX_PATTERN_LEN {
-        return Err(ToolError::Execution(format!("Pattern too long ({} chars, max {MAX_PATTERN_LEN})", pattern.chars().count())));
+        return Err(ToolError::Execution(format!(
+            "Pattern too long ({} chars, max {MAX_PATTERN_LEN}). Split a long a|b|c alternation into several grep calls, or search a shorter distinctive substring",
+            pattern.chars().count()
+        )));
     }
     if let Ok(line) = regex::Regex::new(pattern) {
         // Multi-line form over the whole (newline-normalised) file: every
@@ -566,6 +569,18 @@ mod tests {
         assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
         let err = GrepTool.run(&ctx(d.path()), serde_json::json!({"pattern": "(unclosed"})).await.unwrap_err();
         assert!(format!("{err:?}").contains("Invalid regex"), "{err:?}");
+    }
+
+    /// Models hit the length cap with long `a|b|c|…` alternations and,
+    /// given no hint, resend the same pattern.
+    #[tokio::test]
+    async fn too_long_pattern_says_how_to_split_it() {
+        let d = tempfile::tempdir().unwrap();
+        let pattern = (0..80).map(|i| format!("symbol_{i}")).collect::<Vec<_>>().join("|");
+        let err = GrepTool.run(&ctx(d.path()), serde_json::json!({"pattern": pattern})).await.unwrap_err();
+        let e = format!("{err}");
+        assert!(e.contains("Pattern too long"), "{e}");
+        assert!(e.contains("Split a long a|b|c alternation into several grep calls"), "{e}");
     }
 
     /// Files are scanned in chunks of whole lines; the hits, line numbers

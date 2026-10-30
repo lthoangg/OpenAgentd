@@ -232,6 +232,16 @@ impl Tool for GlobTool {
         a.finish()?;
         let denied = ctx.denied.clone();
         let resolved = denied.validate_read_path(&directory)?;
+        // A file passed as `directory`: answer for that one file, as grep does.
+        if resolved.is_file() && !denied.is_denied_read_path(&resolved) {
+            let name = resolved.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let hit = expand_braces(&pattern).iter().any(|p| {
+                let tail = p.rsplit('/').next().unwrap_or(p);
+                regex::Regex::new(&crate::denied::fnmatch_translate(tail)).map(|r| r.is_match(&name)).unwrap_or(false)
+            });
+            let shown = denied.display_path(&resolved);
+            return Ok(ToolOutput::Text(if hit { shown } else { format!("No files matching '{pattern}' in {shown} (a file, not a directory)") }));
+        }
         if !resolved.is_dir() {
             return Err(ToolError::Execution(format!("Not a directory: {}{}", denied.display_path(&resolved), denied.absolute_path_hint(&directory))));
         }
@@ -376,6 +386,24 @@ mod tests {
             ToolOutput::Text(t) => t.lines().map(|l| l.replace('\\', "/")).collect(),
             o => panic!("{o:?}"),
         }
+    }
+
+    /// Models sometimes pass a file as `directory`; grep already searches
+    /// that file, and glob now checks it instead of failing.
+    #[tokio::test]
+    async fn a_file_as_directory_is_matched_against_the_pattern() {
+        let d = glob_tree();
+        assert_eq!(glob(d.path(), serde_json::json!({"pattern": "*.rs", "directory": "src/m.rs"})).await, vec!["src/m.rs"]);
+        assert_eq!(glob(d.path(), serde_json::json!({"pattern": "**/*.rs", "directory": "src/m.rs"})).await, vec!["src/m.rs"]);
+        assert_eq!(glob(d.path(), serde_json::json!({"pattern": "m.rs", "directory": "src/m.rs", "match": "name"})).await, vec!["src/m.rs"]);
+    }
+
+    #[tokio::test]
+    async fn a_file_as_directory_that_does_not_match_says_so() {
+        let d = glob_tree();
+        let out = glob(d.path(), serde_json::json!({"pattern": "*.py", "directory": "src/m.rs"})).await;
+        assert_eq!(out.len(), 1);
+        assert!(out[0].starts_with("No files matching '*.py' in src/m.rs"), "{out:?}");
     }
 
     #[tokio::test]

@@ -57,6 +57,7 @@
     "allow-island-update-settings",
     "allow-app-server-watch-states",
     "allow-island-viewing",
+    "allow-session-read",
     "allow-pet-settings",
     "allow-pet-update-settings",
     "allow-updater-check",

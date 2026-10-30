@@ -28,6 +28,7 @@ import {
   clampY,
   dashTarget,
   followLedge,
+  readOnDismiss,
   ledges,
   nextTarget,
   petPose,
@@ -55,11 +56,14 @@ import {
 const STATE_COMMAND = 'pet_state'
 const FIT_COMMAND = 'pet_fit'
 const OPEN_COMMAND = 'pet_open'
+const DISMISS_COMMAND = 'pet_dismiss'
 const DRAG_END_COMMAND = 'pet_drag_end'
 const MENU_COMMAND = 'pet_menu'
 const STATE_EVENT = 'pet-state'
 const NOTIFICATION_EVENT = 'pet-notification'
 const MENU_EVENT = 'pet-menu-action'
+/** A session was read somewhere (an app window, the notch, here). */
+const SESSION_READ_EVENT = 'pet-session-read'
 /** Where the pointer is while it is near the pet (CSS px), or null once it leaves. */
 const POINTER_EVENT = 'pet-pointer'
 /** Other apps' windows it can climb, front first (CSS px); empty when it may not. */
@@ -73,6 +77,12 @@ const FIT_EVERY_MS = 100
 const POKE_SAY_MS = 2500
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
+
+/** Dismissed finished turns and reminders: their sessions are read everywhere. */
+function reportDismissed(items: PetBubble[]): void {
+  const notificationIds = readOnDismiss(items)
+  if (notificationIds.length > 0) void invoke(DISMISS_COMMAND, { notificationIds }).catch(() => {})
+}
 type PointerAt = { x: number; y: number } | null
 /** The laptop being folded before a walk, or opened after one. */
 type Fold = 'folding' | 'unfolding'
@@ -146,6 +156,9 @@ function ToneMark({ tone }: { tone: BubbleTone }) {
 export function Pet() {
   const [view, setView] = useState<PetView | null>(null)
   const [bubbles, dispatch] = useReducer(bubbleReducer, EMPTY_BUBBLES)
+  // The menu's Clear arrives as an event: it reads what is up then.
+  const bubblesRef = useRef(bubbles)
+  bubblesRef.current = bubbles
   const [reaction, setReaction] = useState<PetReaction | null>(null)
   const [sitting, setSitting] = useState(true)
   const [lastActivity, setLastActivity] = useState(() => Date.now())
@@ -223,7 +236,17 @@ export function Pet() {
     MENU_EVENT,
     useCallback((payload: MenuAction) => {
       if (payload.action === 'dismiss') dispatch({ type: 'dismiss', id: payload.id })
-      else dispatch({ type: 'clearUnread' })
+      else {
+        const { current, unread } = bubblesRef.current
+        reportDismissed(current ? [current, ...unread] : unread)
+        dispatch({ type: 'clearUnread' })
+      }
+    }, []),
+  )
+  useShellEvent<{ sessionKey: string }>(
+    SESSION_READ_EVENT,
+    useCallback((payload: { sessionKey: string }) => {
+      if (typeof payload?.sessionKey === 'string') dispatch({ type: 'readSession', key: payload.sessionKey })
     }, []),
   )
   useShellEvent<PointerAt>(POINTER_EVENT, setPointer)
@@ -602,6 +625,11 @@ export function Pet() {
     dispatch({ type: 'dismiss', id: bubble.id })
   }
 
+  const dismiss = (bubble: PetBubble) => {
+    reportDismissed([bubble])
+    dispatch({ type: 'dismiss', id: bubble.id })
+  }
+
   if (!active || !settings || x === null) return null
 
   const left = walking ? xRef.current : x
@@ -629,7 +657,7 @@ export function Pet() {
           style={bubbleStyle}
           role="status"
         >
-          <button type="button" className="pet-bubble-close" aria-label="Dismiss" onClick={() => dispatch({ type: 'dismiss', id: visible.bubble.id })}>
+          <button type="button" className="pet-bubble-close" aria-label="Dismiss" onClick={() => dismiss(visible.bubble)}>
             <X size={13} aria-hidden="true" />
           </button>
           <span className="pet-chip">
@@ -665,7 +693,7 @@ export function Pet() {
               <button type="button" className="pet-list-open" onClick={() => open(item)} title={item.body}>
                 {item.title}
               </button>
-              <button type="button" className="pet-list-dismiss" aria-label="Dismiss" onClick={() => dispatch({ type: 'dismiss', id: item.id })}>
+              <button type="button" className="pet-list-dismiss" aria-label="Dismiss" onClick={() => dismiss(item)}>
                 <X size={12} aria-hidden="true" />
               </button>
             </div>

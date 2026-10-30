@@ -960,16 +960,55 @@ fn open_notification(app: &AppHandle, notification_id: &str) {
     };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::island::open_session_on_server(&app, route.server, &route.session_id).await {
-            log::warn!("pet: could not open session: {e:#}");
+        match crate::island::open_session_on_server(&app, route.server, &route.session_id).await {
+            Ok(()) => crate::island::mark_session_read(&app, &route.session_id, None),
+            Err(e) => log::warn!("pet: could not open session: {e:#}"),
         }
     });
+}
+
+/// The sessions the dismissed bubbles are about, once each.
+fn dismissed_sessions(routes: &VecDeque<Route>, notification_ids: &[String]) -> Vec<String> {
+    let mut sessions: Vec<String> = Vec::new();
+    for id in notification_ids.iter().take(MAX_ROUTES) {
+        if let Some(route) = routes.iter().find(|r| &r.notification_id == id) {
+            if !sessions.iter().any(|s| id_key(s) == id_key(&route.session_id)) {
+                sessions.push(route.session_id.clone());
+            }
+        }
+    }
+    sessions
+}
+
+/// The user dismissed bubbles (×, or Clear Notifications): their sessions
+/// are read everywhere, as a dismiss on the island is.
+#[tauri::command]
+pub fn pet_dismiss(app: AppHandle, window: WebviewWindow, notification_ids: Vec<String>) {
+    if window.label() != PET_WINDOW {
+        return;
+    }
+    // Never hold the pet's lock while the island takes its own.
+    let sessions = dismissed_sessions(&shared().lock().unwrap().routes, &notification_ids);
+    for session_id in sessions {
+        crate::island::mark_session_read(&app, &session_id, None);
+    }
+}
+
+/// A session was read somewhere (an [`id_key`]): the page drops its bubbles
+/// about it, except a question still waiting on the user.
+pub fn forget_session(app: &AppHandle, key: &str) {
+    if !is_enabled() {
+        return;
+    }
+    let _ = app.emit_to(PET_WINDOW, PET_SESSION_READ_EVENT, serde_json::json!({ "sessionKey": key }));
 }
 
 // ── Right-click menu ────────────────────────────────────────────────────────
 
 /// Sent to the pet page when a menu item changes its bubbles.
 pub const PET_MENU_EVENT: &str = "pet-menu-action";
+/// Sent to the pet page when a session was read somewhere.
+pub const PET_SESSION_READ_EVENT: &str = "pet-session-read";
 /// Unread notifications listed in the menu, at most.
 const MENU_MAX_UNREAD: usize = 6;
 /// A notification title in the menu is cut to this many characters.
@@ -1778,8 +1817,17 @@ mod tests {
         assert!(pet.get("remote").is_none());
         assert_eq!(
             strings(&pet["permissions"]),
-            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-drag-end", "allow-pet-menu"],
+            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-dismiss", "allow-pet-drag-end", "allow-pet-menu"],
         );
+    }
+
+    #[test]
+    fn dismissing_bubbles_reads_their_sessions_once_each() {
+        let route = |n: &str, s: &str| Route { notification_id: n.into(), session_id: s.into(), server: ServerId::Bundled };
+        let routes: VecDeque<Route> = [route("n1", "aa-bb"), route("n2", "AABB"), route("n3", "cc")].into_iter().collect();
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(dismissed_sessions(&routes, &ids(&["n1", "n2", "n3", "unknown"])), ["aa-bb", "cc"]);
+        assert!(dismissed_sessions(&routes, &ids(&["reminder-without-session"])).is_empty());
     }
 
     #[test]

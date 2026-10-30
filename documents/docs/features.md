@@ -800,6 +800,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
     existing window. Cancelling the menu leaves unread notifications intact.
+    Since `[v3.38.0]` reading a session is shared between the notch, the
+    desktop pet and the sidebar of every app window: opening or dismissing
+    it in any of them clears it from the others (the pet keeps a question
+    until it is answered). Turning off "keep finished sessions" only empties
+    the notch.
   - **Desktop pet** `[v3.36.0]` — on macOS and Windows, an opt-in pixel pet
     (a cat, a duck that waddles, or a crab that walks sideways)
     walks along the bottom of the screen by default, above the Dock or

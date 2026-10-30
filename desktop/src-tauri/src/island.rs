@@ -45,6 +45,11 @@
 //! followed (its last window closed) drops out without reporting anything.
 //! Clicking a row opens it in a window on its server.
 //!
+//! Reading is shared: opening or dismissing a session here, on the desktop
+//! pet, or in an app window goes through [`mark_session_read`], which clears
+//! it from this list, drops the pet's bubbles about it, and tells the other
+//! app windows (`session-read`) so their sidebars clear its unread mark.
+//!
 //! A session working toward a goal shows how far it has got (the list's
 //! `goal_turns_used` / `goal_max_turns`), and when its last turn ends the row
 //! says what became of the goal, from the `goal` the finishing turn's
@@ -72,6 +77,9 @@ pub const ISLAND_GEOMETRY_EVENT: &str = "island-geometry";
 pub const ISLAND_POINTER_EVENT: &str = "island-pointer";
 /// The island settings changed; sent to every window.
 pub const ISLAND_SETTINGS_EVENT: &str = "island-settings-changed";
+/// A session was read somewhere (an app window, the island, the pet); sent
+/// to the app windows that did not read it, to clear their unread mark.
+pub const SESSION_READ_EVENT: &str = "session-read";
 
 /// Island size when the screen has no notch: a pill this wide, as tall as
 /// the menu bar (or this tall when the menu bar is hidden).
@@ -1165,7 +1173,7 @@ pub fn on_app_focus_changed(app: &AppHandle) {
             if let Some(window) = focused {
                 let shown = shared().lock().unwrap().viewing.get(window.label()).cloned();
                 if let Some(key) = shown {
-                    mark_read(&handle, &key);
+                    mark_session_read(&handle, &key, Some(window.label()));
                 }
             }
             if changed {
@@ -1501,6 +1509,29 @@ fn mark_read(app: &AppHandle, key: &str) {
     edit_unread(app, |unread| unread.retain(|u| id_key(&u.id) != key));
 }
 
+/// The app windows to tell that a session was read: every one but the
+/// overlays and the window that read it (it already knows).
+pub fn read_recipients(labels: impl IntoIterator<Item = String>, source: Option<&str>) -> Vec<String> {
+    labels
+        .into_iter()
+        .filter(|label| !crate::window::is_overlay_window(label) && Some(label.as_str()) != source)
+        .collect()
+}
+
+/// `session_id` was read or dismissed somewhere (`source`: the app window
+/// that read it, if one did): it is read everywhere. The island drops its
+/// row, the pet its bubbles, and the other app windows their unread mark.
+pub(crate) fn mark_session_read(app: &AppHandle, session_id: &str, source: Option<&str>) {
+    let key = id_key(session_id);
+    log::info!("read: session={key} from={}", source.unwrap_or("shell"));
+    mark_read(app, &key);
+    crate::pet::forget_session(app, &key);
+    let payload = serde_json::json!({ "sessionId": session_id });
+    for label in read_recipients(app.webview_windows().into_keys(), source) {
+        let _ = app.emit_to(label.as_str(), SESSION_READ_EVENT, &payload);
+    }
+}
+
 /// The session on screen in the focused app window, while OpenAgentd is in front.
 pub(crate) fn viewed_session(app: &AppHandle) -> Option<String> {
     let label = crate::window::target_window_label(app);
@@ -1554,16 +1585,16 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
     let session = action_session(&shared().lock().unwrap().status, session_id, action)?;
     let server = session.server_id.context("The session's server is no longer available.")?;
     if action == SessionAction::Dismiss {
-        mark_read(app, &id_key(session_id));
+        mark_session_read(app, session_id, None);
         return Ok(());
     }
     if action == SessionAction::NewWindow {
         crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
-        mark_read(app, &id_key(session_id));
+        mark_session_read(app, session_id, None);
         return Ok(());
     }
     open_session_on_server(app, server, session_id).await?;
-    mark_read(app, &id_key(session_id));
+    mark_session_read(app, session_id, None);
     Ok(())
 }
 
@@ -1692,8 +1723,18 @@ fn show_session_menu(app: &AppHandle, window: &WebviewWindow, session_id: &str, 
 #[tauri::command]
 pub fn island_dismiss(app: AppHandle, window: WebviewWindow, session_id: String) {
     if window.label() == ISLAND_WINDOW {
-        mark_read(&app, &id_key(&session_id));
+        mark_session_read(&app, &session_id, None);
     }
+}
+
+/// An app window read a session (its sidebar cleared the unread mark): the
+/// island, the pet and the other windows clear it too.
+#[tauri::command]
+pub fn session_read(app: AppHandle, window: WebviewWindow, session_id: String) {
+    if crate::window::is_overlay_window(window.label()) || session_id.is_empty() {
+        return;
+    }
+    mark_session_read(&app, &session_id, Some(window.label()));
 }
 
 /// An app window reports the session it shows (None: none). Showing it in
@@ -1713,7 +1754,7 @@ pub fn island_viewing(app: AppHandle, window: WebviewWindow, session_id: Option<
         };
     }
     if let Some(key) = key.filter(|_| window.is_focused().unwrap_or(false)) {
-        mark_read(&app, &key);
+        mark_session_read(&app, &key, Some(window.label()));
     }
 }
 
@@ -1906,6 +1947,17 @@ mod tests {
             assert_eq!(actions[..2], [SessionAction::Open, SessionAction::NewWindow]);
             assert_eq!(actions.contains(&SessionAction::Dismiss), matches!(state, SessionState::Done | SessionState::Failed));
         }
+    }
+
+    // Reading a session in one window tells the others, never the overlays
+    // (they hear through their own events) nor the window that read it.
+    #[test]
+    fn a_read_reaches_the_other_app_windows_only() {
+        let labels = || ["main", "window-2", ISLAND_WINDOW, crate::pet::PET_WINDOW, crate::tray_popup::TRAY_POPUP_WINDOW].map(String::from);
+        assert_eq!(read_recipients(labels(), Some("main")), ["window-2"]);
+        let mut all = read_recipients(labels(), None);
+        all.sort();
+        assert_eq!(all, ["main", "window-2"]);
     }
 
     #[test]

@@ -17,6 +17,7 @@ import {
   nextTarget,
   petPose,
   reactionFor,
+  readOnDismiss,
   sitPause,
   startX,
   startY,
@@ -246,6 +247,25 @@ describe('bubbleReducer', () => {
     state = bubbleReducer(state, { type: 'toggleList' })
     const cleared = bubbleReducer(state, { type: 'clearUnread' })
     expect(cleared).toEqual({ ...EMPTY_BUBBLES, questions: [bubble('q', 'input')] })
+  })
+
+  it('drops what a session read elsewhere left, whatever form its id takes', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('a', 'done', 'AA-bb'))
+    state = notify(state, bubble('b', 'done', 'cc'))
+    state = notify(state, bubble('r', 'remind', 'aabb'))
+    state = notify(state, bubble('q', 'input', 'aabb'))
+    state = bubbleReducer(state, { type: 'toggleList' })
+    state = bubbleReducer(state, { type: 'readSession', key: 'aabb' })
+    expect(state.unread.map((u) => u.id)).toEqual(['b'])
+    expect(state.questions.map((q) => q.id)).toEqual(['q'])
+    expect(state.listOpen).toBe(true)
+    state = bubbleReducer(state, { type: 'readSession', key: 'cc' })
+    expect(state.listOpen).toBe(false)
+    expect(bubbleReducer(state, { type: 'readSession', key: 'zz' })).toBe(state)
+  })
+
+  it('reads the sessions of dismissed finished turns and reminders, not questions', () => {
+    expect(readOnDismiss([bubble('a', 'done'), bubble('q', 'input'), bubble('r', 'remind'), bubble('x', 'failed', null)])).toEqual(['a', 'r'])
   })
 })
 

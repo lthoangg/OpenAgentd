@@ -3,6 +3,7 @@
  * (desktop/src-tauri/src/pet.rs), and the pure decisions about what it does:
  * its pose, and which bubble shows.
  */
+import { sessionKey } from '@/lib/session-key'
 
 export type PetCharacter = 'cat' | 'duck' | 'crab'
 export type PetColour = 'orange' | 'paper' | 'bark' | 'blue'
@@ -327,6 +328,7 @@ export type BubbleAction =
   | { type: 'notify'; bubble: PetBubble }
   | { type: 'fade'; id: string }
   | { type: 'dismiss'; id: string }
+  | { type: 'readSession'; key: string }
   | { type: 'status'; status: PetStatus }
   | { type: 'toggleList' }
   | { type: 'clearUnread' }
@@ -365,6 +367,19 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
         listOpen: state.listOpen && unread.length > 0,
       }
     }
+    case 'readSession': {
+      // Read somewhere else: its finished turns and reminders go; a question
+      // still waits on the user until it is answered.
+      const about = (b: PetBubble | null) => Boolean(b?.sessionId && sessionKey(b.sessionId) === action.key)
+      if (!about(state.current) && !state.unread.some(about)) return state
+      const unread = state.unread.filter((u) => !about(u))
+      return {
+        ...state,
+        current: about(state.current) ? null : state.current,
+        unread,
+        listOpen: state.listOpen && unread.length > 0,
+      }
+    }
     case 'status':
       // Nothing waits on the user any more: the questions were answered.
       return action.status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [] } : state
@@ -394,6 +409,14 @@ export function visibleBubble(state: BubbleState): VisibleBubble {
 /** The badge count on the pet: unread bubbles plus questions behind the one on show. */
 export function badgeCount(state: BubbleState): number {
   return state.unread.length + Math.max(0, state.questions.length - 1)
+}
+
+/**
+ * The dismissed bubbles whose sessions are then read everywhere: finished
+ * turns and reminders about a session. Dismissing a question only hides it.
+ */
+export function readOnDismiss(bubbles: PetBubble[]): string[] {
+  return bubbles.filter((b) => b.sessionId && b.tone !== 'input').map((b) => b.id)
 }
 
 // ── Placement ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "pet",
-  "description": "The desktop pet (web/pet.html): events, reading its settings and status, reporting its clickable areas, opening the session a bubble is about, remembering where it was dropped, and showing its right-click menu. No backend access, no settings changes, and no general window commands.",
+  "description": "The desktop pet (web/pet.html): events, reading its settings and status, reporting its clickable areas, opening the session a bubble is about, marking the sessions of dismissed bubbles read, remembering where it was dropped, and showing its right-click menu. No backend access, no settings changes, and no general window commands.",
   "windows": [
     "pet"
   ],
@@ -11,6 +11,7 @@
     "allow-pet-state",
     "allow-pet-fit",
     "allow-pet-open",
+    "allow-pet-dismiss",
     "allow-pet-drag-end",
     "allow-pet-menu"
   ]

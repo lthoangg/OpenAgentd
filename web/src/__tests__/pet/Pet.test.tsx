@@ -194,6 +194,31 @@ describe('Pet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByText('Fix the flaky login test')).toBeNull()
     expect(calls.some(([cmd]) => cmd === 'pet_open')).toBe(false)
+    // Dismissed here is read everywhere: the notch and the sidebar clear it too.
+    expect(calls).toContainEqual(['pet_dismiss', { notificationIds: ['n1'] }])
+  })
+
+  it('only hides a dismissed question: it still waits on you elsewhere', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', bubble({ id: 'q1', kind: 'input_needed', tone: 'input', body: 'Keep v1?' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByText('Keep v1?')).toBeNull()
+    expect(calls.some(([cmd]) => cmd === 'pet_dismiss')).toBe(false)
+  })
+
+  it('drops the bubbles of a session read somewhere else, keeping its question', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-notification', bubble({ id: 'a', sessionId: 'aa-bb', title: 'First' }))
+    emit('pet-notification', bubble({ id: 'b', sessionId: 'cc', title: 'Second' }))
+    emit('pet-notification', bubble({ id: 'c', sessionId: 'AABB', title: 'Third' }))
+    expect(screen.getByRole('button', { name: '2 unread' })).toBeInTheDocument()
+    emit('pet-session-read', { sessionKey: 'aabb' })
+    expect(screen.queryByText('Third')).toBeNull()
+    expect(screen.getByRole('button', { name: '1 unread' })).toBeInTheDocument()
+    expect(calls.some(([cmd]) => cmd === 'pet_dismiss')).toBe(false)
   })
 
   it('lists what it missed behind a badge, opened by clicking the badge', async () => {
@@ -254,6 +279,7 @@ describe('Pet', () => {
     emit('pet-menu-action', { action: 'clear' })
     expect(screen.queryByRole('button', { name: /unread/ })).toBeNull()
     expect(screen.queryByText('Third')).toBeNull()
+    expect(calls).toContainEqual(['pet_dismiss', { notificationIds: ['c', 'b'] }])
   })
 
   it('takes every click while dragged and reports where it was dropped', async () => {

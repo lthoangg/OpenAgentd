@@ -171,7 +171,8 @@ export function MultiSelect({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="w-[--anchor-width] min-w-72 max-w-[28rem] p-0"
+        // Never wider than the screen: 18rem overflowed a 320px phone.
+        className="w-[--anchor-width] min-w-[min(18rem,calc(100vw-1rem))] max-w-[min(28rem,calc(100vw-1rem))] p-0"
       >
         <div className="flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2">
           <Search size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />

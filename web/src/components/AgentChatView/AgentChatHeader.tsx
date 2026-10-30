@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
+import { TokenMeter } from '@/components/ui/token-meter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -173,6 +174,18 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
         {isMobile ? (
           <>
+            {/* Context at a glance; the ring's popover has the numbers. A new
+                chat has no context yet, so it keeps the header for the title. */}
+            {headerTokens && sessionId && (
+              <TokenMeter
+                input={headerTokens.input}
+                output={headerTokens.output}
+                cached={headerTokens.cached}
+                cachedPercent={headerTokens.cachedPercent}
+                sessionCostUsd={headerTokens.sessionCostUsd}
+                trigger={headerTokens.trigger}
+              />
+            )}
             {/* One tap to the model and thinking level (desktop has the status bar). */}
             <MobileHeaderAction
               Icon={SlidersHorizontal}

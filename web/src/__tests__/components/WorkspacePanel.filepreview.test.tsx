@@ -24,7 +24,7 @@ let isMacOverlay = false
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
-  AlertTriangle: Icon, CheckCircle2: Icon, Info: Icon,
+  MoreHorizontal: Icon, SlidersHorizontal: Icon, AlertTriangle: Icon, CheckCircle2: Icon, Info: Icon,
   Globe: Icon, ArrowRight: Icon, MousePointerClick: Icon, RotateCw: Icon, Smartphone: Icon, SquareTerminal: Icon, Send: Icon, Bot: Icon,
   CalendarClock: Icon, ListTodo: Icon, MessageCircleQuestion: Icon, Target: Icon, CircleCheck: Icon, Square: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
   AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
@@ -373,7 +373,11 @@ describe('Coding workspace two-layer file preview', () => {
     expect(audioEl?.controls).toBe(true)
     expect(audioEl?.src).toContain('workspace/files/read')
     expect(audioEl?.src).toContain('voice.mp3')
-    expect(screen.getByText('voice.mp3')).toBeTruthy()
+    // The player names the file; so does the header, file name first.
+    expect(screen.getAllByText('voice.mp3')).toHaveLength(2)
+    const header = document.querySelector('[data-file-preview-path]') as HTMLElement
+    expect(header.getAttribute('aria-label')).toBe('assets/voice.mp3')
+    expect(Array.from(header.children).map((el) => el.textContent)).toEqual(['voice.mp3', 'assets'])
     expect(screen.queryByText('No inline preview for this file type')).toBeNull()
     expect(screen.queryByRole('button', { name: /copy file contents/i })).toBeNull()
   })

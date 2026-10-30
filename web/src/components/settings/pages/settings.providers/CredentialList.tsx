@@ -179,7 +179,7 @@ export function CredentialList({
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') setRenaming(null)
                     }}
-                    className="h-7 max-w-56 text-xs"
+                    className="h-7 max-w-56 text-xs pointer-coarse:h-9"
                   />
                   <Button type="submit" size="xs">Save</Button>
                   <Button type="button" size="xs" variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>

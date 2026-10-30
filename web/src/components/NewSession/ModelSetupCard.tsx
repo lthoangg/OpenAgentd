@@ -180,8 +180,9 @@ export function ModelSetupCard({
         </ul>
       )}
 
+      {/* One column under 360px, so "OpenRouter  API key" is not clipped. */}
       {!needsProvider && picks.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-1.5" role="group" aria-label="Providers">
+        <div className="mt-3 grid grid-cols-1 gap-1.5 min-[360px]:grid-cols-2" role="group" aria-label="Providers">
           {picks.map((provider) => {
             const active = selectedId === provider.id
             return (

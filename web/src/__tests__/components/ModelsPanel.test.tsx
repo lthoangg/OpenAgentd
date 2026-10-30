@@ -112,6 +112,39 @@ describe('ModelsPanel — price display', () => {
   })
 })
 
+describe('ModelsPanel — phone layout', () => {
+  afterEach(cleanup)
+
+  it('keeps the model name whole, with the price on the line under it below md', () => {
+    renderPanel({ models: ['gpt-5'], modelCosts: { 'gpt-5': { input: 1.25, output: 10 } } })
+
+    const name = screen.getByText('openai:gpt-5')
+    // Wraps on phones, truncates on wider screens.
+    expect(name.className).toContain('break-all')
+    expect(name.className).toContain('md:truncate')
+    expect(name.className.split(' ')).not.toContain('truncate')
+    // Name and price share one column that stacks below md.
+    const column = name.closest('[data-model-text]') as HTMLElement
+    expect(column.className).toContain('flex-col')
+    expect(column.className).toContain('md:flex-row')
+    expect(column.textContent).toContain('$1.25 in · $10 out / 1M')
+  })
+
+  it('lets the list grow with the sheet on phones, scrolling on its own only from md', () => {
+    const { container } = renderPanel()
+    const list = container.querySelector('ul') as HTMLElement
+    expect(list.className.split(' ')).not.toContain('overflow-y-auto')
+    expect(list.className).toContain('md:overflow-y-auto')
+  })
+
+  it('stacks the picker mode above its help text on phones', () => {
+    renderPanel()
+    const row = screen.getByRole('radiogroup', { name: 'Models shown in pickers' }).parentElement as HTMLElement
+    expect(row.className).toContain('flex-col')
+    expect(row.className).toContain('sm:flex-row')
+  })
+})
+
 describe('ModelsPanel — stale visible models', () => {
   afterEach(cleanup)
 

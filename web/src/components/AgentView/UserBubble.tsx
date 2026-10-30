@@ -112,7 +112,8 @@ function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSessi
   const label = (
     <>
       <span className="shrink-0">From</span>
-      <span className="shrink-0 font-mono font-semibold text-(--color-text)">{source.workspaceName}</span>
+      {/* Either part truncates, so a long workspace name stays in the chip. */}
+      <span className="min-w-0 max-w-[60%] shrink-0 truncate font-mono font-semibold text-(--color-text)">{source.workspaceName}</span>
       {source.sessionTitle && <span className="min-w-0 truncate">· {source.sessionTitle}</span>}
     </>
   )

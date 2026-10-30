@@ -827,6 +827,12 @@ export function Sidebar({
     onSessionRenameCancel: () => setEditingSessionId(null),
     onSessionLongPress: (session: SessionResponse) => setMobileSessionActions({ session, workspacePath: session.workspace ?? '' }),
     onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
+      // Phones (browser too): the titled sheet, since a truncated title has
+      // no tooltip on touch.
+      if (isMobile) {
+        setMobileSessionActions({ session, workspacePath: session.workspace ?? '' })
+        return
+      }
       setDesktopSessionActions({ session, workspacePath: session.workspace ?? '', x: event.clientX, y: event.clientY })
     },
     onSessionPinToggle: toggleSessionPinned,
@@ -1145,6 +1151,10 @@ export function Sidebar({
                         <button
                           type="button"
                           onClick={(event) => {
+                            if (isMobile) {
+                              setMobileWorkspaceActions({ path, sessionPath: sessionTarget, kind: 'main' })
+                              return
+                            }
                             const rect = event.currentTarget.getBoundingClientRect()
                             setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: rect.left, y: rect.bottom + 4 })
                           }}
@@ -1202,6 +1212,10 @@ export function Sidebar({
                     {...sessionRowHandlers}
                     onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: session.workspace || path })}
                     onSessionContextActions={(session, event) => {
+                      if (isMobile) {
+                        setMobileSessionActions({ session, workspacePath: session.workspace || path })
+                        return
+                      }
                       setDesktopSessionActions({ session, workspacePath: session.workspace || path, x: event.clientX, y: event.clientY })
                     }}
                   />
@@ -1217,8 +1231,8 @@ export function Sidebar({
       </div>
 
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
-      {/* Icons only: four familiar glyphs fit any phone width; each has an
-          accessible name. */}
+      {/* Settings, Usage and theme are icons; the server takes the free width
+          and names itself, so the connection is readable at a glance. */}
       <div className="flex md:hidden items-center gap-1 border-t border-(--color-border) px-2 py-1 pb-safe">
         <button
           type="button"
@@ -1236,8 +1250,8 @@ export function Sidebar({
         >
           <Activity size={16} aria-hidden="true" />
         </button>
-        <HealthDot className="h-9 w-9" />
-        <ThemeToggle collapsed className="ml-auto h-9 w-9" />
+        <HealthDot labeled className="h-9 min-w-0 flex-1 justify-start px-2 text-xs" />
+        <ThemeToggle collapsed className="h-9 w-9" />
       </div>
 
       <Dialog
@@ -1345,7 +1359,7 @@ export function Sidebar({
         onOpenChange={(open) => { if (!open) setMobileWorkspaceActions(null) }}
       >
         <DialogContent>
-          <DialogHeader>
+          <DialogHeader className="pr-8">
             <DialogTitle>
               {mobileWorkspaceActions?.kind === 'chat'
                 ? (chatWorkspace?.name ?? 'Chat')
@@ -1797,7 +1811,7 @@ export function Sidebar({
         onOpenChange={(open) => { if (!open) setMobileSessionActions(null) }}
       >
         <DialogContent>
-          <DialogHeader>
+          <DialogHeader className="pr-8">
             <DialogTitle>{mobileSessionActions?.session.title || 'Untitled'}</DialogTitle>
             <DialogDescription>Choose a session action.</DialogDescription>
           </DialogHeader>
@@ -1817,19 +1831,22 @@ export function Sidebar({
                 {mobileSessionActions.session.pinned_at ? 'Unpin' : 'Pin'}
               </Button>
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start"
-              onClick={() => {
-                const action = mobileSessionActions
-                setMobileSessionActions(null)
-                if (action?.session) handleSessionEdit(action.session)
-              }}
-            >
-              <Pencil size={14} aria-hidden="true" />
-              Rename
-            </Button>
+            {/* Subagent titles are their task; they have no inline editor. */}
+            {mobileSessionActions && !mobileSessionActions.session.parent_session_id && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-start"
+                onClick={() => {
+                  const action = mobileSessionActions
+                  setMobileSessionActions(null)
+                  if (action?.session) handleSessionEdit(action.session)
+                }}
+              >
+                <Pencil size={14} aria-hidden="true" />
+                Rename
+              </Button>
+            )}
             <Button
               type="button"
               variant="danger-subtle"

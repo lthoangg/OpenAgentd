@@ -55,7 +55,8 @@ function AttrRow({ k, v }: { k: string; v: string }) {
       <dt className="col-start-1 truncate text-(--color-text-muted)" title={k}>
         {k}
       </dt>
-      <dd className="col-start-1 truncate text-(--color-text) md:col-start-2 md:row-start-1" title={v}>
+      {/* Phones wrap the value: its title tooltip never shows on touch. */}
+      <dd className="col-start-1 [overflow-wrap:anywhere] text-(--color-text) md:col-start-2 md:row-start-1 md:truncate" title={v}>
         {v}
       </dd>
       <span className="col-start-2 row-span-2 row-start-1 md:col-start-3 md:row-span-1">

@@ -195,7 +195,7 @@ mock.module('@/lib/app-backend', () => ({
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
-  Activity: Icon,
+  SlidersHorizontal: Icon, Activity: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
@@ -890,12 +890,12 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.queryByRole('button', { name: 'Open Quick Open' })).toBeNull()
   })
 
-  it('shows the connected backend name in the mobile sidebar footer', async () => {
+  it('names the connected server in the mobile sidebar footer', async () => {
     isMobile = true
 
     await renderSidebarWithProps({ mobileOpen: true })
 
-    expect(screen.getByRole('button', { name: 'backend-name. Connected. Change server' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Connected. Change server' }).textContent).toBe('backend-name')
   })
 
   it('has no help button that opens the command palette under another name', async () => {
@@ -2562,7 +2562,7 @@ describe('Sidebar workspace trust flow', () => {
       expect(screen.queryByRole('menuitem', { name: 'Collapse all workspaces' })).toBeNull()
     })
 
-    it('shows icon-only Settings, Usage, server and theme controls in the mobile drawer footer', async () => {
+    it('shows icon-only Settings, Usage and theme, plus the named server, in the mobile drawer footer', async () => {
       isMobile = true
       platformOs = 'ios'
       sessionsData = [projectSession('session-1', 'Feature')]
@@ -2571,10 +2571,25 @@ describe('Sidebar workspace trust flow', () => {
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 
       expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
-      for (const name of ['Settings', 'Usage', /Change server$/, /^Theme:/]) {
+      for (const name of ['Settings', 'Usage', /^Theme:/]) {
         const button = screen.getByRole('button', { name })
         expect(button.textContent).toBe('')
       }
+      expect(screen.getByRole('button', { name: /Change server$/ }).textContent).toBe('backend-name')
+    })
+
+    it('opens the titled action sheet from a session row More button in a phone browser', async () => {
+      isMobile = true
+      sessionsData = [projectSession('session-1', 'A session title far too long for a phone row')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for A session title far too long for a phone row' }))
+      // The sheet names the session in full (tooltips never show on touch).
+      expect(screen.getByText('Choose a session action.')).toBeTruthy()
+      expect(screen.getAllByText('A session title far too long for a phone row').length).toBeGreaterThan(1)
+      expect(screen.queryByRole('menu')).toBeNull()
     })
 
     it('lists pinned sessions above the tree and unpins from the row menu', async () => {

@@ -139,11 +139,14 @@ export function ProvidersSettingsPage() {
           {/* ── Filter bar: one status control, one type picker ──────── */}
           {showFilterBar && (
             <div className="flex flex-wrap items-center gap-2">
-              <div className="max-w-full overflow-x-auto [scrollbar-width:none]">
+              {/* Phones wrap the segments: a sideways scroll with no visible
+                  bar hid "Not connected" and "Hidden" off-screen. */}
               <SegmentedControl
                 label="Filter by status"
                 value={statusFilter}
                 onChange={setStatusFilter}
+                className="max-md:h-auto max-md:flex-wrap max-md:overflow-visible"
+                itemClassName="max-md:min-h-7"
                 options={([
                   { value: 'all', label: `All ${providers.length}` },
                   { value: 'connected', label: `Connected ${statusCounts.connected}` },
@@ -151,7 +154,6 @@ export function ProvidersSettingsPage() {
                   { value: 'hidden', label: `Hidden ${statusCounts.hidden}` },
                 ] as const).filter((o) => o.value === 'all' || o.value === statusFilter || statusCounts[o.value] > 0)}
               />
-              </div>
               {kindOptions.length > 1 && (
                 <Dropdown
                   aria-label="Filter by type"

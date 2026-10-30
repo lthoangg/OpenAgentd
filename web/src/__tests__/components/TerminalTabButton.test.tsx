@@ -10,7 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { getTerminalRuntime, useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 
 const Icon = () => null
-mock.module('lucide-react', () => ({ TerminalSquare: Icon, X: Icon, Pencil: Icon, Eraser: Icon }))
+mock.module('lucide-react', () => ({ MoreHorizontal: Icon, SlidersHorizontal: Icon, TerminalSquare: Icon, X: Icon, Pencil: Icon, Eraser: Icon }))
 mock.module('@/api/terminal', () => ({ connectTerminal: mock(() => new Promise(() => {})) }))
 
 beforeEach(() => {

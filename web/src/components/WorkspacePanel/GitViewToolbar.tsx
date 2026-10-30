@@ -8,8 +8,9 @@
  * ARIA tabs; the caller renders the matching ``tabpanel`` using
  * ``gitViewPanelId`` / ``gitViewTabId`` so the ids line up.
  */
-import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, SlidersHorizontal } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -107,7 +108,28 @@ export function GitViewToolbar({
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
         )}
-        {subTab !== 'changes' && (
+        {mobile && subTab !== 'changes' && (
+          // Phones: the two options share a menu, so the tabs keep the width.
+          <Dropdown
+            aria-label="History options"
+            align="end"
+            trigger={<SlidersHorizontal size={14} aria-hidden="true" />}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center border-0 bg-transparent p-0 [&>svg]:hidden')}
+            panelClassName="w-44"
+          >
+            {[
+              <DropdownItem key="graph" active={subTab === 'tree'} onSelect={() => onSubTabChange(subTab === 'tree' ? 'commits' : 'tree')}>
+                Graph view
+              </DropdownItem>,
+              subTab === 'tree' && (
+                <DropdownItem key="branches" active={allBranches} onSelect={() => onAllBranchesChange(!allBranches)}>
+                  All branches
+                </DropdownItem>
+              ),
+            ].filter(Boolean)}
+          </Dropdown>
+        )}
+        {!mobile && subTab !== 'changes' && (
           <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
             <Checkbox
               checked={subTab === 'tree'}
@@ -118,7 +140,7 @@ export function GitViewToolbar({
             <span className="whitespace-nowrap">Graph view</span>
           </label>
         )}
-        {subTab === 'tree' && (
+        {!mobile && subTab === 'tree' && (
           <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
             <Checkbox
               checked={allBranches}

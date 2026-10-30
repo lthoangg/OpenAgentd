@@ -38,4 +38,37 @@ describe('SettingsListView', () => {
     // Verify it's focusable (interactive button element)
     expect(row.tagName).toBe('BUTTON')
   })
+
+  it('wraps a long title beside its chips on phones, and moves trailing chips under it', () => {
+    render(
+      <SettingsListView
+        title="MCP"
+        description="Servers"
+        newLabel="New server"
+        onNew={() => {}}
+        filterPlaceholder="Filter"
+        rows={[
+          {
+            key: 'github',
+            title: 'a-really-long-mcp-server-name',
+            badge: 'subagent',
+            trailing: <span data-testid="trailing">stdio · Connected</span>,
+            onClick: () => {},
+          },
+        ]}
+        isLoading={false}
+        isError={false}
+        emptyTitle="None"
+        emptyBody="None"
+      />,
+    )
+
+    const title = screen.getByText('a-really-long-mcp-server-name')
+    expect(title.className).toContain('sm:truncate')
+    expect(title.className.split(' ')).not.toContain('truncate')
+    expect((title.parentElement as HTMLElement).className).toContain('flex-wrap')
+    const row = screen.getByRole('button', { name: /a-really-long/ })
+    expect(row.className).toContain('max-sm:flex-wrap')
+    expect((screen.getByTestId('trailing').parentElement as HTMLElement).className).toContain('max-sm:w-full')
+  })
 })

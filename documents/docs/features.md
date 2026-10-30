@@ -293,13 +293,26 @@ run from the terminal (the native Rust binary since v3.0.0).
     it, and keeps five controls: sidebar, title, **Session settings**,
     Review panel and **More**, so the model and thinking level are one tap
     away. The sidebar drawer's
-    footer is icons only: Settings, Usage, the server dot and the theme.
+    footer has Settings, Usage, the server and the theme.
     More holds Tasks (with the open count and goal ring), Session settings,
     context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
     command palette, grouped as Session, Workspace and App. Touch controls
     and list rows share one compact 36 px size (40 px in the Android app),
     and panels use tighter spacing, so an iPhone mini shows more at once;
     Usage fits a 375 px screen.
+- **Phone polish** `[v3.37.0]` — the phone drawer footer names the connected
+  server next to its dot, and the phone header shows the context ring, so
+  context use is one glance away. At 320–375 px, model IDs, provider and
+  session names, file paths and tool summaries stay readable instead of
+  collapsing to a few letters; crowded toolbars (Plan, Preview, Git, the
+  review panel) move rare actions into a `⋯` menu; the composer's controls
+  and the split Steer pill share one 36 px height; and in a phone browser a
+  session's More button opens a sheet with its full title. Toasts sit below
+  the header.
+- **Quieter transcript** `[v3.37.0]` — reasoning stays open in full (no
+  "Thought for" fold), tool rows drop the coloured running dot ("running…"
+  and the timer remain), and long tool results no longer end in a Collapse
+  bar; the pinned tool row closes them.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

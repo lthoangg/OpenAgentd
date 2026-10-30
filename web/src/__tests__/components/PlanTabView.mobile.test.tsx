@@ -115,6 +115,13 @@ async function setKeyboardOpen(open: boolean) {
 }
 
 describe('PlanTabView on a phone', () => {
+  it('folds the toolbar actions into one More menu, so none is pushed off a narrow screen', () => {
+    renderTab()
+    expect(screen.queryByRole('button', { name: 'Copy plan' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'More plan actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Copy plan' })).toBeTruthy()
+  })
+
   it('offers Comment in the footer, not floating over the selection', () => {
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))

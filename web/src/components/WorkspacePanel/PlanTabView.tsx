@@ -27,10 +27,11 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronRight, Copy, ExternalLink, FileText, MessageSquarePlus, Pencil, Unlink } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, FileText, MessageSquarePlus, MoreHorizontal, Pencil, Unlink } from 'lucide-react'
 import type { SessionPlan, TodoItem } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -502,20 +503,43 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             Run as goal
           </Button>
         )}
-        {canEdit && !editing && (
+        {mobile ? (
+          // Phones: one More menu, so Run as goal and the actions all fit.
+          <Dropdown
+            trigger={<MoreHorizontal size={14} aria-hidden="true" />}
+            aria-label="More plan actions"
+            align="end"
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center border-0 bg-transparent p-0 [&>svg]:hidden')}
+            panelClassName="w-48"
+          >
+            {[
+              canEdit && !editing && <DropdownItem key="edit" onSelect={startEditing}>Edit plan</DropdownItem>,
+              plan.workspace_path && onOpenFile && (
+                <DropdownItem key="open" onSelect={() => onOpenFile(plan.workspace_path as string)}>Open file</DropdownItem>
+              ),
+              <DropdownItem key="copy" onSelect={copy}>{copied ? 'Copied' : 'Copy plan'}</DropdownItem>,
+              onClearPlan && (
+                <DropdownItem key="clear" disabled={Boolean(review)} onSelect={() => setConfirmClear(true)}>Clear plan…</DropdownItem>
+              ),
+            ].filter(Boolean)}
+          </Dropdown>
+        ) : null}
+        {!mobile && canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
             <Pencil size={12} aria-hidden="true" />
           </ToolbarAction>
         )}
-        {plan.workspace_path && onOpenFile && (
+        {!mobile && plan.workspace_path && onOpenFile && (
           <ToolbarAction label="Open file" tooltip={plan.workspace_path} onClick={() => onOpenFile(plan.workspace_path as string)}>
             <ExternalLink size={12} aria-hidden="true" />
           </ToolbarAction>
         )}
-        <ToolbarAction label={copied ? 'Copied' : 'Copy plan'} onClick={copy}>
-          {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
-        </ToolbarAction>
-        {onClearPlan && (
+        {!mobile && (
+          <ToolbarAction label={copied ? 'Copied' : 'Copy plan'} onClick={copy}>
+            {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+          </ToolbarAction>
+        )}
+        {!mobile && onClearPlan && (
           <ToolbarAction
             label="Clear plan…"
             tooltip={review ? 'The plan is awaiting review.' : 'Stops using this plan in the session; the file stays.'}

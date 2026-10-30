@@ -81,16 +81,15 @@ export function toolRowSummary(rawName: string, result: string | undefined, fail
   if (!result) return null
   const name = canonicalToolName(rawName)
 
+  // Shell: never an error summary or exit status — the agent reads and fixes
+  // a failed command. Only test counts (from the output's tail) are worth a
+  // glance, and nothing here scans the whole output, which can be megabytes.
   if (name === 'shell') {
     const outcome = parseShellOutcome(result)
     if (!outcome) return null
     const counts = testCounts(outcome.body)
-    if (counts) return { text: counts, error: failed }
-    if (outcome.timedOut) return { text: 'timed out', error: true }
-    const lines = nonEmptyLines(outcome.body)
-    if (lines.length === 0) return { text: 'no output' }
-    if (failed) return { text: clip(lines.at(-1) ?? '', 60), error: true }
-    return { text: plural(lines.length, 'line') + ' of output' }
+    if (counts) return { text: counts }
+    return outcome.body.trim() ? null : { text: 'no output' }
   }
 
   if (failed) {

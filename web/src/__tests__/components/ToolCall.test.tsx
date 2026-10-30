@@ -1281,9 +1281,9 @@ describe("ToolCall — shell terminal label and formatting", () => {
     expect(pre!.textContent).toContain("all tests passed")
     expect(screen.getByText("terminal")).toBeTruthy()
     expect(screen.queryByText("result")).toBeNull()
-    // The `[Succeeded]` status line is not output: the exit chip carries it
+    // The `[Succeeded]` status line is not output, and no exit chip repeats it
     expect(pre!.textContent).not.toContain("[Succeeded]")
-    expect(screen.getByText("exit 0").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
+    expect(screen.queryByText("exit 0")).toBeNull()
   })
 
   it("$ prefix is non-selectable (select-none class)", async () => {
@@ -1577,9 +1577,8 @@ describe("ToolCall — empty args {} show no args section", () => {
       />,
     )
 
-    // Collapsed: the exit code rides in the meta column as an error chip
-    const chip = screen.getByText("exit 1").closest('[data-slot="chip"]')
-    expect(chip?.getAttribute("data-tone")).toBe("error")
+    // Collapsed: no exit chip; the agent handles the failure
+    expect(screen.queryByText("exit 1")).toBeNull()
 
     await user.click(screen.getByRole("button"))
     // Expanded: the status line is gone from the output, its body is kept

@@ -313,6 +313,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   "Thought for" fold), tool rows drop the coloured running dot ("running…"
   and the timer remain), and long tool results no longer end in a Collapse
   bar; the pinned tool row closes them.
+  Shell rows show only test counts or "no output" — no exit-code or error
+  chip.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

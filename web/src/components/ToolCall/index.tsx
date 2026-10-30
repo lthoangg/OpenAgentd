@@ -43,7 +43,6 @@ import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome, toolRowSummary } from './summary'
 import { MetaRow, formatMetaDuration } from '@/components/ui/meta-row'
 import { Chip } from '@/components/ui/chip'
-import { Term } from '@/components/ui/term'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
@@ -352,19 +351,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
   const displayName = name || 'tool'
   const title = headerTitle ? `${displayName}: ${headerTitle}` : displayName
-  // Shell's exit status rides in the meta column as a chip, not as an
-  // `[Succeeded]` line in the output.
-  const shellOutcome = isShell && done ? parseShellOutcome(result) : null
-  const rowSummary = done ? toolRowSummary(name, result, state === 'failed') : null
-  const exitChip = shellOutcome
-    ? shellOutcome.timedOut
-      ? <Chip tone="error" mono>timeout</Chip>
-      : shellOutcome.exitCode !== null
-        ? <Term definition="exitCode"><Chip tone={shellOutcome.exitCode === 0 ? 'neutral' : 'error'} mono>{`exit ${shellOutcome.exitCode}`}</Chip></Term>
-        : <Chip tone="error" mono>error</Chip>
-    : state === 'failed'
-      ? <Chip tone="error" mono>error</Chip>
-      : null
+  // Shell rows carry no exit status or error mark: the agent reads and fixes
+  // a failed command. Other tools still flag a failure with an error chip.
+  const failed = state === 'failed'
+  const rowSummary = useMemo(() => (done ? toolRowSummary(name, result, failed) : null), [done, name, result, failed])
+  const exitChip = !isShell && failed ? <Chip tone="error" mono>error</Chip> : null
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
   // ``ask_user`` owns its whole card — frame and label included, since

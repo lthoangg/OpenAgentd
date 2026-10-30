@@ -10,9 +10,10 @@
  * looked identical to a successful one unless the user expanded it and read
  * the body text.
  *
- * The row keeps the tool name neutral and carries the failure in two places:
- * a red result summary holding the error text, and an `error` / `exit N`
- * chip in the meta column.
+ * The row keeps the tool name neutral and carries a non-shell failure in two
+ * places: a red result summary holding the error text, and an `error` chip in
+ * the meta column. Shell rows show neither: the agent reads and fixes a failed
+ * command, so the row stays a quiet record (no exit chip, no red text).
  */
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, cleanup } from "@testing-library/react"
@@ -62,7 +63,7 @@ describe("ToolCall — failure indication", () => {
     expect(toolName(container, "patch").className).not.toContain("color-error")
   })
 
-  it("shows an exit-code error chip and a red summary for a shell [Failed] result", () => {
+  it("shows no exit chip and no red summary for a shell [Failed] result", () => {
     const { container } = render(
       <ToolCall
         name="shell"
@@ -72,10 +73,28 @@ describe("ToolCall — failure indication", () => {
       />,
     )
 
-    expect(errorSummary(container, "AssertionError")).toBeTruthy()
-    expect(chip(container)?.textContent).toBe("exit 1")
-    expect(chip(container)?.getAttribute("data-tone")).toBe("error")
+    expect(errorSummary(container, "AssertionError")).toBeUndefined()
+    expect(container.querySelector("button .text-\\(--color-error\\)")).toBeNull()
+    expect(chip(container)).toBeNull()
     expect(toolName(container, "shell").className).not.toContain("color-error")
+  })
+
+  it("shows no chip for a timed-out shell call", () => {
+    const { container } = render(
+      <ToolCall name="shell" args={JSON.stringify({ command: "sleep 999" })} done={true} result={"[Timed out after 120s]\n\npartial"} />,
+    )
+
+    expect(chip(container)).toBeNull()
+    expect(container.querySelector("button .text-\\(--color-error\\)")).toBeNull()
+  })
+
+  it("keeps a test run's counts as the shell summary, uncoloured", () => {
+    const { container } = render(
+      <ToolCall name="shell" args={JSON.stringify({ command: "bun test" })} done={true} result={"[Failed — exit code 1]\n\n 1 fail\n 11 pass"} />,
+    )
+
+    const summary = Array.from(container.querySelectorAll<HTMLElement>("button span")).find((s) => s.textContent === "1 failed, 11 passed")
+    expect(summary?.className).not.toContain("color-error")
   })
 
   it("shows no error styling or error chip on success", () => {
@@ -92,7 +111,7 @@ describe("ToolCall — failure indication", () => {
     expect(chip(container)).toBeNull()
   })
 
-  it("shows a neutral exit 0 chip for a successful shell call", () => {
+  it("shows no exit chip for a successful shell call", () => {
     const { container } = render(
       <ToolCall
         name="shell"
@@ -102,8 +121,7 @@ describe("ToolCall — failure indication", () => {
       />,
     )
 
-    expect(chip(container)?.textContent).toBe("exit 0")
-    expect(chip(container)?.getAttribute("data-tone")).toBe("neutral")
+    expect(chip(container)).toBeNull()
     expect(container.querySelector("button .text-\\(--color-error\\)")).toBeNull()
   })
 })

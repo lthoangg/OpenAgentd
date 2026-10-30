@@ -809,7 +809,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     below it. Its pose follows your agents: it wanders and sits when
     nothing runs (and sleeps after five quiet minutes), types on a tiny
     laptop while an agent works, and raises an orange "!" while one waits on
-    you. Notifications show in its speech bubble instead of the system
+    you. While an agent works it keeps moving too `[v3.38.0]`: it types a
+    while (twice its idle pause, at least 6 s), dims the screen, folds the
+    lid with a clack and swings the laptop onto its back, walks or climbs
+    with it, then sets it down and opens it again; it never runs about on
+    its own mid-turn, and stays put at the open laptop when told to stay
+    put or with reduced motion. Notifications show in its speech bubble instead of the system
     banner: a question stays until it is answered (Answer opens it), and a
     finished turn, a failed one or a reminder hops, droops or looks up and
     fades after 8 s into a count badge. Click the badge to list what it
@@ -818,8 +823,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     and never brings OpenAgentd forward. Right-click it for a menu: what
     it missed (open one, or clear them), Open OpenAgentd, New Session,
     Movement, Character, Pet Settings and Hide Pet; it stands still while
-    the menu is open. It turns to look at the pointer nearby and pounces
-    at one resting beside it. Playful and Chaotic pets run about (zoomies)
+    the menu is open. It pounces at a pointer resting beside it, but no
+    longer turns to follow the pointer `[v3.38.0]`. Playful and Chaotic pets run about (zoomies)
     when a turn finishes, Chaotic ones now and then too, and pant a moment
     after; they also jump onto the top edge of the windows you have open,
     walk along it, ride along when the window moves, and jump or fall back

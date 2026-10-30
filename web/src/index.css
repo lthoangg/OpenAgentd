@@ -1107,6 +1107,10 @@ html[data-app-hidden="true"] *::after {
 [data-quiet-focus]:focus-visible {
   outline: none;
 }
+/* Controls that show keyboard focus another way (a fill), never a ring. */
+[data-focus-ring="off"]:focus-visible {
+  outline: none;
+}
 :where(input, textarea):focus,
 :where(input, textarea):focus-visible {
   outline: none;

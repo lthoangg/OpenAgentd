@@ -406,6 +406,15 @@ describe('FloatingInputComposer', () => {
     expect(expandButton.hasAttribute('data-quiet-focus')).toBe(true)
   })
 
+  it('never draws the focus ring on the minimized chat button', () => {
+    render(<Harness />)
+    const expandButton = screen.getByRole('button', { name: 'Expand input bar' })
+    // The ring returned after an app switch cleared the quiet flag. The
+    // button has no ring at all; keyboard focus shows the hover fill instead.
+    expect(expandButton.getAttribute('data-focus-ring')).toBe('off')
+    expect(expandButton.className).toContain('focus-key:bg-(--bg-key)')
+  })
+
   it('minimizes when Escape is pressed while the input is focused', async () => {
     const user = userEvent.setup()
     render(<Harness />)

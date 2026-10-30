@@ -823,7 +823,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       type="button"
       onClick={(e) => { stopClick(e); handleExpand() }}
       aria-label="Expand input bar"
-      className={actionBtnClass}
+      // No ring, ever: keyboard focus shows the hover fill instead.
+      data-focus-ring="off"
+      className={cn(actionBtnClass, 'focus-key:bg-(--bg-key) focus-key:text-(--color-text)')}
     >
       <MessageCircle size={14} aria-hidden="true" />
     </button>

@@ -992,6 +992,11 @@ async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<Strin
 
 async fn ensure_agent_ready(root: &db::ChatSession) -> ApiResult<()> {
     if !root.workspace.is_empty() && root.parent_session_id.is_none() {
+        // A session whose folder was moved or deleted stays readable: its
+        // history lives in the database, only a new turn needs the folder.
+        if manager::validate_workspace(&root.workspace, false).is_ok_and(|p| !std::path::Path::new(&p).is_dir()) {
+            return Ok(());
+        }
         get_or_start(&root.workspace, Some(&db::codec::api_uuid(&root.id))).await?;
     } else if root.parent_session_id.is_none() {
         let cwd = std::env::current_dir().unwrap_or_default().display().to_string();

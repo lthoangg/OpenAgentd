@@ -489,6 +489,7 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::NO_CONTENT);
 
     history_paging_flow(&c, &pool, &ws).await;
+    history_missing_folder_flow(&c, &pool, root.path()).await;
     history_first_page_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     confirm_change_flow(&c, &pool, &ws).await;
@@ -971,6 +972,24 @@ async fn open_review(pool: &appv3_db::DbPool, sid: &str, call: &str, revision: u
     let payload = appv3_agent::tools::plan::review_payload(revision, None, in_plan_mode);
     let q = appv3_db::create_pending_question_with(pool, sid, call, "submit_plan", &payload).await.unwrap();
     appv3_db::codec::api_uuid(&q.id)
+}
+
+/// A session whose folder was moved or deleted still reads its history: the
+/// rows live in the database and only a new turn needs the folder.
+async fn history_missing_folder_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
+    let gone = root.join("moved-away");
+    std::fs::create_dir_all(&gone).unwrap();
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: gone.display().to_string(), ..Default::default() }).await.unwrap();
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::assistant(Some("kept".into()))).await.unwrap();
+    std::fs::remove_dir_all(&gone).unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK, "{page}");
+    assert_eq!(page["lead"]["messages"][0]["content"], json!("kept"), "{page}");
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
 }
 
 /// History pages for a lead with a member: the newest page carries the

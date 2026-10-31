@@ -763,6 +763,24 @@ pub async fn last_assistant_content(pool: &DbPool, session_id: &str) -> Result<O
     Ok(row.and_then(|r| r.0))
 }
 
+/// Whether the newest row by `(seq, id)` ends a turn: a chat reply from the
+/// assistant with no tool calls that was not interrupted. Any other last row
+/// (a prompt, a tool result, a pending call, a note) does not.
+pub async fn transcript_ends_with_answer(pool: &DbPool, session_id: &str) -> Result<bool> {
+    let last = sqlx::query_as::<_, SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? ORDER BY seq DESC, id DESC LIMIT 1")
+        .bind(db_id(session_id))
+        .fetch_optional(pool)
+        .await?;
+    let Some(m) = last else { return Ok(false) };
+    let no_calls = match m.tool_calls_json() {
+        None | Some(Value::Null) => true,
+        Some(Value::Array(a)) => a.is_empty(),
+        Some(_) => false,
+    };
+    let interrupted = m.extra_json().and_then(|e| e.get("interrupted").and_then(Value::as_bool)).unwrap_or(false);
+    Ok(m.role == "assistant" && m.kind == kind::CHAT && no_calls && !interrupted)
+}
+
 // ── Workspace messages (`extra.sent_from`) ───────────────────────────────────
 
 /// Requests from another workspace that asked for a reply and have not had

@@ -425,7 +425,8 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
                 if hold {
                     extra.insert(db::HOLD_UNTIL_TURN_END.into(), json!(true));
                 }
-                db::save_queued_user_message(pool, &sid, &message, Some(extra)).await.map_err(err)?;
+                let row = db::save_queued_user_message(pool, &sid, &message, Some(extra)).await.map_err(err)?;
+                crate::broadcaster::publish_session_activity(&sid, &row.created_at);
                 if !agent.has_active_user_turn() {
                     agent.activate_queued_user_messages(&sid).await;
                 }
@@ -480,12 +481,14 @@ pub async fn list(pool: &DbPool, current_workspace: &str, workspace: Option<&str
     };
     let target = resolve_in(&targets, current_workspace, q)?;
     let ws = manager::validate_workspace(&target.path, false)?;
-    let filter = db::SessionListFilter { workspaces: std::slice::from_ref(&ws), ..Default::default() };
+    // The sidebar's order (last message first), so the session an agent picks
+    // is the one the user sees on top, not merely the newest created.
+    let filter = db::SessionListFilter { workspaces: std::slice::from_ref(&ws), sort: db::SessionSort::Activity, ..Default::default() };
     let (rows, _, more) = db::list_sessions_page(pool, None, LIST_SESSIONS_MAX, &filter).await.map_err(err)?;
     if rows.is_empty() {
         return Ok(format!("No sessions yet in '{}' ({ws}). Omit session_id to start one.", target.name));
     }
-    let mut lines = vec![format!("Recent sessions in '{}' ({ws}), newest first (id | title | updated | state):", target.name)];
+    let mut lines = vec![format!("Recent sessions in '{}' ({ws}), most recently active first (id | title | last active | state):", target.name)];
     for r in rows {
         let id = codec::api_uuid(&r.id);
         let state = match manager::find_live_session(&ws, Some(&id)) {
@@ -493,8 +496,9 @@ pub async fn list(pool: &DbPool, current_workspace: &str, workspace: Option<&str
             Some(s) if s.is_busy() => "running",
             _ => "idle",
         };
-        let updated = codec::parse_dt(&r.updated_at).map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_default();
-        lines.push(format!("- {id} | {} | {updated} | {state}", r.title.clone().filter(|t| !t.is_empty()).unwrap_or_else(|| "Untitled".into())));
+        let active = r.last_message_at.as_deref().unwrap_or(&r.created_at);
+        let active = codec::parse_dt(active).map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_default();
+        lines.push(format!("- {id} | {} | {active} | {state}", r.title.clone().filter(|t| !t.is_empty()).unwrap_or_else(|| "Untitled".into())));
     }
     if more {
         lines.push("Older sessions are not listed.".into());

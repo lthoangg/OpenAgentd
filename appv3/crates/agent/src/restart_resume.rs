@@ -19,7 +19,8 @@
 //! - keeps active goals running (see [`crate::goal::continue_after_restart`]).
 //!
 //! A turn the user stopped clears its row like any other ending, so it is
-//! never continued.
+//! never continued. A row whose session already ends on a finished answer is
+//! only cleared: that turn was over, and its mark was left behind.
 
 use crate::session::TurnOptions;
 use appv3_db::{self as db, DbPool, NewMessage};
@@ -78,6 +79,8 @@ enum Outcome {
     NotContinued,
     /// Parked on a question: not running, and its answer resumes it.
     Parked,
+    /// The turn had already answered; only its mark was left behind.
+    Answered,
 }
 
 /// Continue what the last server process left running. Call once, after
@@ -117,7 +120,7 @@ pub async fn resume_after_restart(pool: &DbPool) -> Report {
         match resume_lead(pool, &sid, &session, row.restart_resumes).await {
             Outcome::Continued => report.continued.push(sid),
             Outcome::NotContinued => report.not_continued.push(sid),
-            Outcome::Parked => {}
+            Outcome::Parked | Outcome::Answered => {}
         }
     }
     // After the leads: a report to a lead that is running again joins its turn.
@@ -178,6 +181,13 @@ async fn resume_lead(pool: &DbPool, sid: &str, row: &db::ChatSession, resumes: i
     if db::get_pending_question(pool, sid).await.ok().flatten().is_some() {
         clear(pool, sid).await;
         return Outcome::Parked;
+    }
+    // A turn that ends on a finished answer was over: an older build could
+    // leave its mark behind, and running it again repeats finished work.
+    if db::transcript_ends_with_answer(pool, sid).await.unwrap_or(false) {
+        clear(pool, sid).await;
+        tracing::info!("restart_resume_skipped session_id={} reason=turn_finished", sid);
+        return Outcome::Answered;
     }
     if resumes >= MAX_RESUMES {
         clear(pool, sid).await;

@@ -5,8 +5,8 @@
  * While the model reasons the row reads "Thinking…" and the trace shows
  * below it as it streams. Once it is done the label goes and the trace stays
  * open: reasoning is part of the answer, not something to dig for.
- * The trace sits inline in muted italics (no quote bar), so it reads as
- * reasoning beside the answer; section headers stay upright.
+ * The trace sits inline in small mono text (no quote bar, no italics), so it
+ * reads as reasoning beside the answer; section headers are bold.
  *
  * Reasoning streams from providers like OpenAI's ``/responses`` API as a
  * sequence of sections, each beginning with a bold ``**Title**`` header.
@@ -46,12 +46,12 @@ export function Thinking({ content, isStreaming = false }: ThinkingProps) {
       )}
       <div
         data-thinking-trace
-        className="selectable-text mt-1 mb-2 min-w-0 space-y-2 text-xs italic leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]"
+        className="selectable-text mt-1 mb-2 min-w-0 space-y-2 font-mono text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]"
       >
       {sections.map((s, i) => (
         <div key={i} className="min-w-0">
           {s.header && (
-            <p className="mb-1 break-words font-semibold not-italic text-(--color-text-2) [overflow-wrap:anywhere]">{s.header}</p>
+            <p className="mb-1 break-words font-semibold text-(--color-text) [overflow-wrap:anywhere]">{s.header}</p>
           )}
           {s.body && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{s.body}</p>}
         </div>

@@ -664,6 +664,58 @@ describe('handleGlobalEvent', () => {
     }
   })
 
+  // An agent in a grouped workspace messages an old session that sits past
+  // its repository's loaded rows, but in the app-wide recent list: no
+  // refetch happens, so the turn event itself must lift it into the repo.
+  it('lifts a session a turn starts in to the top of its repository list', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    const row = (id: string) => ({ id, title: id, agent_name: 'code', created_at: null, updated_at: null, workspace: '/repo-b' })
+    const page = (data: ReturnType<typeof row>[]) => ({ pages: [{ data, next_cursor: null, has_more: false }], pageParams: [null] })
+    const repo = queryKeys.session.sessions.workspace('/repo-b', 'activity')
+    client.setQueryData(queryKeys.session.sessions.workspace('__all_coding__', 'activity'), page([row('old')]))
+    client.setQueryData(repo, page([row('r1'), row('r2')]))
+
+    await handleGlobalEvent(client, 'session_turn_started', { session_id: 'old', workspace: '/repo-b' }, 1, () => 1)
+
+    const data = client.getQueryData(repo) as { pages: { data: { id: string; running?: boolean }[] }[] }
+    expect(data.pages[0].data.map((s) => s.id)).toEqual(['old', 'r1', 'r2'])
+    expect(data.pages[0].data[0].running).toBe(true)
+  })
+
+  // A message queued on a busy or waiting session starts no turn, but the
+  // server now sorts that session first.
+  it('moves a session a message was queued on to the top, at the server time', async () => {
+    const client = new QueryClient()
+    const row = (id: string) => ({ id, title: id, agent_name: 'code', created_at: null, updated_at: null, workspace: '/repo-b' })
+    const page = (data: ReturnType<typeof row>[]) => ({ pages: [{ data, next_cursor: null, has_more: false }], pageParams: [null] })
+    const repo = queryKeys.session.sessions.workspace('/repo-b', 'activity')
+    client.setQueryData(queryKeys.session.sessions.workspace('__all_coding__', 'activity'), page([row('x')]))
+    client.setQueryData(repo, page([row('r1'), row('r2')]))
+    const at = '2026-10-31T09:00:00.000000Z'
+
+    expect(await handleGlobalEvent(client, 'session_activity', { session_id: 'x', last_message_at: at }, 1, () => 1)).toBe(true)
+
+    const data = client.getQueryData(repo) as { pages: { data: { id: string; last_message_at?: string }[] }[] }
+    expect(data.pages[0].data.map((s) => s.id)).toEqual(['x', 'r1', 'r2'])
+    expect(data.pages[0].data[0].last_message_at).toBe(at)
+    expect(client.getQueryState(repo)?.isInvalidated).toBe(false)
+  })
+
+  it('refetches session lists when a queued-on session is not cached anywhere', async () => {
+    const client = new QueryClient()
+    const repo = queryKeys.session.sessions.workspace('/repo-b', 'activity')
+    client.setQueryData(repo, { pages: [{ data: [], next_cursor: null, has_more: false }], pageParams: [null] })
+
+    await handleGlobalEvent(client, 'session_activity', { session_id: 'unknown', last_message_at: '2026-10-31T09:00:00Z' }, 1, () => 1)
+
+    expect(client.getQueryState(repo)?.isInvalidated).toBe(true)
+  })
+
+  it('ignores a session_activity event without a session id', async () => {
+    expect(await handleGlobalEvent(new QueryClient(), 'session_activity', { last_message_at: '2026-10-31T09:00:00Z' }, 1, () => 1)).toBe(false)
+  })
+
   it('marks a finished session unread when this window is not showing it', async () => {
     const client = new QueryClient()
     useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })

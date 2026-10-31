@@ -277,11 +277,11 @@ function AnswerList({ pairs }: { pairs: { question: string; answer: string }[] }
     <div className="flex flex-col gap-1.5 px-3 py-2">
       {pairs.map(({ question, answer }, index) => (
         <div key={index} className="flex flex-col gap-0.5">
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">
+          <span className="text-[11px] leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
             {question}
           </span>
           {answer && answer !== 'Unanswered' ? (
-            <span className="text-[11px] leading-relaxed font-medium break-words text-(--color-text)">
+            <span className="text-[11px] leading-relaxed font-medium break-words text-(--color-text) [overflow-wrap:anywhere]">
               {answer}
             </span>
           ) : (

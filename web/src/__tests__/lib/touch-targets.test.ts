@@ -8,7 +8,8 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
 
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
 
@@ -38,6 +39,18 @@ describe('coarse-pointer touch targets', () => {
     const tabs = readFileSync(fileURLToPath(new URL('../../components/ui/tabs.tsx', import.meta.url)), 'utf8')
     expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/)
     expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7'/)
+  })
+
+  it('keeps sm segmented controls and toolbar icon actions inside the 32px toolbar on touch', () => {
+    // 28px, like sm tabs. Icon actions keep a 36px hit area via ``touch-hit``.
+    const track = segmentedTrackClass({ size: 'sm' })
+    expect(track).toContain('pointer-coarse:h-7')
+    expect(track).not.toContain('pointer-coarse:h-auto')
+    const item = segmentedItemClass({ active: false, size: 'sm' })
+    expect(item).not.toContain('pointer-coarse:min-h-9')
+    expect(DOCK_ACTION_BUTTON_CLASS).toContain('pointer-coarse:size-7')
+    expect(DOCK_ACTION_BUTTON_CLASS).not.toContain('pointer-coarse:size-9')
+    expect(DOCK_ACTION_BUTTON_CLASS).toContain('touch-hit')
   })
 
   it('grows the small controls found in the phone audit to 36px on touch', () => {

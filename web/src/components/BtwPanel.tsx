@@ -31,9 +31,11 @@ interface BtwPanelProps {
   chipOnly?: boolean
   /** What the chip does; defaults to reopening this panel. */
   onReopen?: () => void
+  /** Shorten the chip label to "btw" (the composer is minimized). */
+  compact?: boolean
 }
 
-export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }: BtwPanelProps) {
+export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, compact = false }: BtwPanelProps) {
   const btw = useSideQuestions(sessionId, { countEnabled, listEnabled: chipOnly ? false : undefined })
   const [confirmClear, setConfirmClear] = useState(false)
   const { exchanges, view } = btw
@@ -61,7 +63,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex h-7 origin-bottom-right items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
       >
         <MessageCircleQuestion size={13} aria-hidden="true" />
-        <span className="font-medium">Side questions</span>
+        <span className="font-medium">{compact ? 'btw' : 'Side questions'}</span>
         <span className="tabular-nums text-(--color-text-subtle)">{btw.total}</span>
       </button>
     )

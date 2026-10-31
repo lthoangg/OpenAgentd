@@ -11,6 +11,7 @@ import type { SSECallbacks } from './sse'
 export const GLOBAL_EVENT_TYPES = [
   'session_turn_started',
   'session_turn_completed',
+  'session_activity',
   'title_update',
   'desktop_notification',
   'subagent_spawned',

@@ -204,7 +204,7 @@ export function QuestionCard({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <fieldset className="min-w-0 border-0 p-0">
-          <legend className="selectable-text mb-2.5 block text-[13px] leading-relaxed text-(--color-text)">
+          <legend className="selectable-text mb-2.5 block text-[13px] leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
             <InlineMarkdown text={current.question} />
           </legend>
 
@@ -341,7 +341,7 @@ function OptionRow({
         />
       )}
       <span className="min-w-0 flex-1">
-        <span className="block text-xs leading-relaxed text-(--color-text)">
+        <span className="block text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
           {plainLabel ? label : <InlineMarkdown text={label} variant="code" />}
           {recommended && (
             <span className="ml-1.5 rounded-xs bg-(--bg-key) px-1 py-0.5 text-xs md:text-[11px] text-(--color-text-muted)">
@@ -350,7 +350,7 @@ function OptionRow({
           )}
         </span>
         {description && (
-          <span className="mt-0.5 block text-[11px] leading-relaxed text-(--color-text-muted)">
+          <span className="mt-0.5 block text-[11px] leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
             <InlineMarkdown text={description} />
           </span>
         )}

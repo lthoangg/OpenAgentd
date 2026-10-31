@@ -1,7 +1,8 @@
 //! What the next start does with each kind of turn a restart left behind:
-//! one already continued once, one parked on a question, a member's, and an
-//! active goal between turns. The manager is process-wide, so this file is
-//! its own test binary.
+//! one already continued once, one parked on a question, a member's, an
+//! active goal between turns, and a mark left by a turn that had already
+//! answered. The manager is process-wide, so this file is its own test
+//! binary.
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::manager;
@@ -104,6 +105,12 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     appv3_db::save_message(&pool, &between, NewMessage::tool("c1", "shell", "ok")).await.unwrap();
     appv3_db::save_message(&pool, &between, NewMessage::assistant(Some("Step one done.".into()))).await.unwrap();
     appv3_db::insert_session_goal(&pool, &between, "finish it", 2, None).await.unwrap();
+    // Marked, but its turn had answered: an older build could leave such a
+    // mark behind. It is not run again.
+    let answered = cut_off_session(&pool, &ws, None, None).await;
+    appv3_db::save_message(&pool, &answered, NewMessage::tool("c1", "shell", "ok")).await.unwrap();
+    appv3_db::save_message(&pool, &answered, NewMessage::assistant(Some("All cleaned up.".into()))).await.unwrap();
+    appv3_db::mark_turn_in_flight(&pool, &answered, false).await.unwrap();
 
     let report = restart_resume::resume_after_restart(&pool).await;
     assert!(report.continued.is_empty(), "{report:?}");
@@ -111,9 +118,15 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     assert_eq!(report.members_reported, std::slice::from_ref(&member));
     // (The lead's and the goal's new turns may be running and marked now.)
     let marked: Vec<String> = appv3_db::list_inflight_turns(&pool).await.unwrap().into_iter().map(|r| appv3_db::codec::api_uuid(&r.session_id)).collect();
-    for (name, sid) in [("capped", &capped), ("parked", &parked), ("member", &member)] {
+    for (name, sid) in [("capped", &capped), ("parked", &parked), ("member", &member), ("answered", &answered)] {
         assert!(!marked.contains(sid), "{name} is still marked");
     }
+
+    // Answered: left as it was, with no restart note and no new turn.
+    let answered_rows = rows(&pool, &answered).await;
+    assert_eq!(answered_rows.last().and_then(|r| r.content.as_deref()), Some("All cleaned up."));
+    assert!(!answered_rows.iter().any(|r| r.extra_json().is_some_and(|e| e.get(NOTE_KEY).is_some())), "a restart note was added");
+    assert!(manager::find_live_session(&ws, Some(&answered)).is_none(), "an agent was started for it");
 
     // Capped: its tool call says a restart cut it off, a note says it was not continued.
     let capped_rows = rows(&pool, &capped).await;

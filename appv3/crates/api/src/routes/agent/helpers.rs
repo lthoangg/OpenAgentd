@@ -166,6 +166,7 @@ pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> Api
         }
     }
     let queued = db::save_queued_user_message(pool, a.session_id, a.message, Some(extra)).await?;
+    appv3_agent::broadcaster::publish_session_activity(a.session_id, &queued.created_at);
     let qid = db::codec::api_uuid(&queued.id);
     for block in a.mention_context_blocks {
         let mut e = Map::new();

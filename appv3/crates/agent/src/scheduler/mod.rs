@@ -203,6 +203,19 @@ fn dt(s: &Option<String>) -> Option<DateTime<Utc>> {
     s.as_deref().and_then(codec::parse_dt)
 }
 
+/// Sleep until the wall clock `now` reaches `slot`. The sleep runs on the
+/// monotonic clock, which drifts from the wall clock over hours, so it can
+/// wake early: sleep again for what is left.
+async fn wait_until(slot: DateTime<Utc>, now: impl Fn() -> DateTime<Utc>) {
+    loop {
+        let left = (slot - now()).num_microseconds().unwrap_or(i64::MAX);
+        if left <= 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_micros(left as u64).max(std::time::Duration::from_millis(1))).await;
+    }
+}
+
 fn nf(t: &ScheduledTask, after: Option<DateTime<Utc>>) -> Option<String> {
     next_fire(&t.schedule_type, t.cron_expression.as_deref(), t.every_seconds, dt(&t.at_datetime), &t.timezone, after, t.run_count).map(|d| codec::dt_db(&d))
 }
@@ -569,10 +582,7 @@ impl TaskScheduler {
 
     async fn timer_loop(self: Arc<Self>, mut task: ScheduledTask) {
         while let Some(nxt) = next_fire(&task.schedule_type, task.cron_expression.as_deref(), task.every_seconds, dt(&task.at_datetime), &task.timezone, None, task.run_count) {
-            let delay = (nxt - Utc::now()).num_milliseconds();
-            if delay > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(delay as u64)).await;
-            }
+            wait_until(nxt, Utc::now).await;
             // Firing runs detached so aborting the timer never cancels a dispatch mid-way.
             let me = self.clone();
             let t = task.clone();
@@ -630,8 +640,12 @@ impl TaskScheduler {
                 _ => return,
             }
         }
+        // A task without a session starts a new one each run, with its own
+        // AgentSession: sharing the workspace's sessionless one let a second
+        // run rebind it while the first was still running.
+        let fresh = task.session_id.is_none();
         let resolved_sid: Option<String> = match task.session_id.as_deref() {
-            None => None,
+            None => Some(uuid::Uuid::now_v7().to_string()),
             Some("auto") => Some(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, format!("scheduler:{}", task.name).as_bytes()).to_string()),
             Some(s) => Some(s.to_string()),
         };
@@ -647,7 +661,7 @@ impl TaskScheduler {
             if self.version(&task.id) != v {
                 return Ok(());
             }
-            if resolved_sid.is_some() && agent.has_active_user_turn() {
+            if !fresh && agent.has_active_user_turn() {
                 self.reschedule_without_firing(task, v).await;
                 tracing::info!("scheduler_skip_active_session task_slug={} name={} session_id={:?}", task.slug, task.name, resolved_sid);
                 return Err("__skip__".into());
@@ -1133,6 +1147,20 @@ impl Tool for ScheduleTaskTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A timer sleeps on the monotonic clock, which can run ahead of the
+    /// wall clock: woken a little before its slot, the next slot computed
+    /// from that time was the same slot again, so the task ran twice.
+    #[tokio::test(start_paused = true)]
+    async fn the_timer_does_not_wake_before_its_slot_on_the_wall_clock() {
+        let base = Utc::now();
+        let start = tokio::time::Instant::now();
+        // The wall clock gains 99ms for every 100ms slept.
+        let wall = move || base + chrono::Duration::milliseconds((start.elapsed().as_millis() as i64) * 99 / 100);
+        let slot = base + chrono::Duration::seconds(10);
+        wait_until(slot, wall).await;
+        assert!(wall() >= slot, "woke {}ms before its slot", (slot - wall()).num_milliseconds());
+    }
 
     #[test]
     fn slugify_matches_v2() {

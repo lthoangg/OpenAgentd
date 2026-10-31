@@ -29,6 +29,14 @@ pub fn publish(event: &str, data: Value) {
     broadcaster().publish(event, data);
 }
 
+/// A message was queued on `session_id` (`at` is its stored time) without
+/// starting a turn. Saving it moved the session's `last_message_at`, so
+/// clients that sort sessions by activity move it up without a refetch.
+/// Turns announce themselves (`session_turn_started`); this covers the rest.
+pub fn publish_session_activity(session_id: &str, at: &str) {
+    publish("session_activity", serde_json::json!({"session_id": appv3_db::codec::api_uuid(session_id), "last_message_at": appv3_db::codec::api_dt(at)}));
+}
+
 impl Broadcaster {
     pub fn publish(&self, event: &str, data: Value) {
         crate::events::check_contract(crate::events::Stream::Global, event);

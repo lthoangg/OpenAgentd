@@ -1160,6 +1160,10 @@ impl AgentSession {
 
     async fn run_turn(self: Arc<Self>, opts: TurnOptions) {
         let sid = self.session_id();
+        // The session this turn marked in flight. The AgentSession can be
+        // bound to another session while the turn runs, so the end clears
+        // this one, not whatever `session_id()` reads by then.
+        let marked_sid = sid.clone();
         if !sid.is_empty() {
             store().init_turn(&sid, true);
         }
@@ -1316,9 +1320,9 @@ impl AgentSession {
             // next start continues it; every other end clears the mark
             // (before the turn reads as over, so a new turn's mark survives).
             let stopped_by_shutdown = self.cancel.is_set() && crate::restart_resume::is_shutting_down();
-            if tracks_in_flight && !stopped_by_shutdown && !sid.is_empty() {
-                if let Err(e) = db::clear_turn_in_flight(&self.pool, &sid).await {
-                    tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", sid, e);
+            if tracks_in_flight && !stopped_by_shutdown {
+                if let Err(e) = db::clear_turn_in_flight(&self.pool, &marked_sid).await {
+                    tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", marked_sid, e);
                 }
             }
             self.set_active_turn(false);

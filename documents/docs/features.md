@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.38.0 · October 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.38.0)
+**Latest release:** v3.39.0 · October 31, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.39.0)
 
 ---
 
@@ -317,9 +317,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   bar; the pinned tool row closes them.
   Shell rows show only test counts or "no output" — no exit-code or error
   chip.
-- **Italic reasoning** `[v3.38.0]` — the thinking trace reads as muted
-  italic text inline in the transcript, with upright section headers,
-  instead of a quote with a bar down its left side.
+- **Mono reasoning** `[v3.38.0, v3.39.0]` — the thinking trace reads inline
+  in the transcript as small mono text with bold section headers, always
+  open, with no quote bar. (v3.38.0 showed it in muted italics.)
+- **Toolbar controls fit on touch** `[v3.39.0]` — on a touch screen the
+  review panel's view toolbar keeps its 32px height: the Rendered / Source
+  switch and the icon actions (download, copy, preview) are 28px instead of
+  spilling past it, and icon actions keep a 36px tap area.
 - **No duplicate messages on resume** `[v3.37.0]` — reopening the phone app
   or reloading mid-turn no longer repeats the reply or a steer message, and
   a step saved during the reconnect shows up right away instead of at the
@@ -1451,7 +1455,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   session's history never changes, so the provider's prompt cache stays valid.
 
   `action: "list"` shows the workspaces you can message under their groups,
-  each with its brief, or one workspace's recent sessions with their state.
+  each with its brief, or one workspace's recent sessions with their state,
+  most recently active first with their last activity time (the sidebar's
+  order) `[v3.39.0]`.
   Sending to a workspace outside its groups is refused with a message telling
   the agent it can propose a shared group (see **Workspace groups** below)
   `[v3.35.0]`. Limits: a request can pass through at most
@@ -1850,6 +1856,9 @@ agent against it.
   a rename or a model switch: a session moves to the top when a turn starts or
   finishes, sliding into place rather than jumping, and the row's age keeps
   counting while the app is open.
+  Since `[v3.39.0]` it also moves up when a message is queued on it, and an
+  older session past a repository's first rows moves to the top of that
+  repository too.
   Since `[v3.22.0]` Project mode orders repositories too: Chat, then those in
   a workspace group (clustered by group, in the groups' order), then the rest,
   each part most recently active first.

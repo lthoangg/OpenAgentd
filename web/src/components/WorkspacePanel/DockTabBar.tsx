@@ -109,7 +109,7 @@ function ActionButton({ label, onClick, children, expanded }: {
           <button
             type="button"
             onClick={onClick}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, expanded && 'bg-(--bg-key) text-(--color-text)')}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'pointer-coarse:size-9', expanded && 'bg-(--bg-key) text-(--color-text)')}
             aria-label={label}
             aria-haspopup={expanded === undefined ? undefined : 'menu'}
             aria-expanded={expanded}

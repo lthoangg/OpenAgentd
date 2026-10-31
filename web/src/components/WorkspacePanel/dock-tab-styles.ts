@@ -41,9 +41,13 @@ export function dockTabCloseClass(active: boolean): string {
   ].join(' ')
 }
 
-/** Icon-only action in the tab bar or a view toolbar. */
+/**
+ * Icon-only action in the tab bar or a view toolbar. On touch it stays 28px
+ * so it fits the 32px toolbar; ``touch-hit`` grows its hit area to 36px. The
+ * tab bar (39px on touch) adds ``pointer-coarse:size-9`` back.
+ */
 export const DOCK_ACTION_BUTTON_CLASS =
-  'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7 pointer-coarse:size-9'
+  'relative touch-hit flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7 pointer-coarse:size-7'
 
 /** Hover-revealed row action inside a list row (28px, 44px on touch). */
 export const DOCK_ROW_ACTION_CLASS =

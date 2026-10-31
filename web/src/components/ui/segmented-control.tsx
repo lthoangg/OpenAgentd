@@ -24,8 +24,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 type SegmentedSize = 'sm' | 'default' | 'composer'
 
 const TRACK_SIZE: Record<SegmentedSize, string> = {
-  // 24px dense toolbar variant, 44px on touch like every control.
-  sm: 'h-6 pointer-coarse:h-auto',
+  // 24px dense toolbar variant; 28px on touch so it still fits the 32px
+  // toolbar (like ``TabsList size="sm"``).
+  sm: 'h-6 pointer-coarse:h-7',
   // 32px; on touch each segment is a 44px target.
   default: 'h-8 pointer-coarse:h-auto',
   // Composer toolbar: matches the attach/send buttons beside it (32px, 28px
@@ -34,7 +35,7 @@ const TRACK_SIZE: Record<SegmentedSize, string> = {
 }
 
 const ITEM_SIZE: Record<SegmentedSize, string> = {
-  sm: 'px-2 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
+  sm: 'px-2 text-xs pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
   default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3.5',
   composer: 'px-2.5 text-xs [&_svg:not([class*=size-])]:size-3.5',
 }

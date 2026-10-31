@@ -320,6 +320,10 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Mono reasoning** `[v3.38.0, v3.39.0]` — the thinking trace reads inline
   in the transcript as small mono text with bold section headers, always
   open, with no quote bar. (v3.38.0 showed it in muted italics.)
+- **Toolbar controls fit on touch** `[v3.39.0]` — on a touch screen the
+  review panel's view toolbar keeps its 32px height: the Rendered / Source
+  switch and the icon actions (download, copy, preview) are 28px instead of
+  spilling past it, and icon actions keep a 36px tap area.
 - **No duplicate messages on resume** `[v3.37.0]` — reopening the phone app
   or reloading mid-turn no longer repeats the reply or a steer message, and
   a step saved during the reconnect shows up right away instead of at the

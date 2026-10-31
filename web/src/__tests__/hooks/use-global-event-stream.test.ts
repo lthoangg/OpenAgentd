@@ -664,6 +664,25 @@ describe('handleGlobalEvent', () => {
     }
   })
 
+  // An agent in a grouped workspace messages an old session that sits past
+  // its repository's loaded rows, but in the app-wide recent list: no
+  // refetch happens, so the turn event itself must lift it into the repo.
+  it('lifts a session a turn starts in to the top of its repository list', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    const row = (id: string) => ({ id, title: id, agent_name: 'code', created_at: null, updated_at: null, workspace: '/repo-b' })
+    const page = (data: ReturnType<typeof row>[]) => ({ pages: [{ data, next_cursor: null, has_more: false }], pageParams: [null] })
+    const repo = queryKeys.session.sessions.workspace('/repo-b', 'activity')
+    client.setQueryData(queryKeys.session.sessions.workspace('__all_coding__', 'activity'), page([row('old')]))
+    client.setQueryData(repo, page([row('r1'), row('r2')]))
+
+    await handleGlobalEvent(client, 'session_turn_started', { session_id: 'old', workspace: '/repo-b' }, 1, () => 1)
+
+    const data = client.getQueryData(repo) as { pages: { data: { id: string; running?: boolean }[] }[] }
+    expect(data.pages[0].data.map((s) => s.id)).toEqual(['old', 'r1', 'r2'])
+    expect(data.pages[0].data[0].running).toBe(true)
+  })
+
   it('marks a finished session unread when this window is not showing it', async () => {
     const client = new QueryClient()
     useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })

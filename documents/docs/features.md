@@ -1854,6 +1854,8 @@ agent against it.
   a rename or a model switch: a session moves to the top when a turn starts or
   finishes, sliding into place rather than jumping, and the row's age keeps
   counting while the app is open.
+  Since `[v3.39.0]` an older session past a repository's first rows moves to
+  the top of that repository too.
   Since `[v3.22.0]` Project mode orders repositories too: Chat, then those in
   a workspace group (clustered by group, in the groups' order), then the rest,
   each part most recently active first.

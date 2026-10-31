@@ -775,4 +775,60 @@ describe('bumpSessionActivity', () => {
 
     expect(client.getQueryData(key)).toBe(before)
   })
+
+  // A session past a repository's loaded rows (an agent in a grouped
+  // workspace messages an old session, or the user sends in one opened from
+  // the palette) must still lead that repository's list.
+  it('inserts a session missing from its workspace and checkout lists at the top', () => {
+    const client = new QueryClient()
+    const all = queryKeys.session.sessions.workspace('__all_coding__', 'activity')
+    const workspace = queryKeys.session.sessions.workspace('/repo', 'activity')
+    const checkouts = queryKeys.session.sessions.checkouts(['/repo', '/repo-wt'], 'activity')
+    const old = { ...makeSession('old', 'Old'), workspace: '/repo', running: true }
+    seedInfinite(client, [[old]], all)
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), workspace: '/repo' }], [{ ...makeSession('s2', 'B'), workspace: '/repo' }]], workspace)
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), workspace: '/repo' }]], checkouts)
+
+    bumpSessionActivity(client, 'old', AT)
+
+    expect(ids(client, workspace)).toEqual([['old', 's1'], ['s2']])
+    expect(ids(client, checkouts)).toEqual([['old', 's1']])
+    const inserted = client.getQueryData<InfiniteData<SessionPageResponse>>(workspace)!.pages[0].data[0]
+    expect(inserted.last_message_at).toBe(AT)
+    expect(inserted.running).toBe(true)
+  })
+
+  it('inserts into the all-workspaces list but leaves other workspaces alone', () => {
+    const client = new QueryClient()
+    const everywhere = queryKeys.session.sessions.everywhere('activity')
+    const other = queryKeys.session.sessions.workspace('/other', 'activity')
+    const created = queryKeys.session.sessions.workspace('/repo')
+    seedInfinite(client, [[{ ...makeSession('old', 'Old'), workspace: '/repo' }]], queryKeys.session.sessions.search('Old'))
+    seedInfinite(client, [[makeSession('s1', 'A')]], everywhere)
+    seedInfinite(client, [[{ ...makeSession('o1', 'O'), workspace: '/other' }]], other)
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), workspace: '/repo' }]], created)
+    const otherBefore = client.getQueryData(other)
+    const createdBefore = client.getQueryData(created)
+
+    bumpSessionActivity(client, 'old', AT)
+
+    expect(ids(client, everywhere)).toEqual([['old', 's1']])
+    expect(client.getQueryData(other)).toBe(otherBefore)
+    expect(client.getQueryData(created)).toBe(createdBefore)
+  })
+
+  it('never inserts a pinned session into unpinned lists, nor a subagent anywhere', () => {
+    const client = new QueryClient()
+    const workspace = queryKeys.session.sessions.workspace('/repo', 'activity')
+    const pinnedRow = { ...makeSession('pinned', 'P'), workspace: '/repo', pinned_at: '2026-10-01T00:00:00Z' }
+    const lead = { ...makeSession('lead', 'L'), workspace: '/repo', subagents: [{ ...makeSession('child', 'C'), workspace: '/repo' }] }
+    seedInfinite(client, [[pinnedRow]], queryKeys.session.sessions.pinned())
+    seedInfinite(client, [[lead]], queryKeys.session.sessions.everywhere('activity'))
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), workspace: '/repo' }]], workspace)
+
+    bumpSessionActivity(client, 'pinned', AT)
+    bumpSessionActivity(client, 'child', AT)
+
+    expect(ids(client, workspace)).toEqual([['s1']])
+  })
 })

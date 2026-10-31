@@ -164,6 +164,41 @@ function isActivitySortedList(queryKey: readonly unknown[]): boolean {
     && queryKey[queryKey.length - 1] === 'activity'
 }
 
+/** The sidebar's app-wide list, which shares the per-workspace key shape. */
+const ALL_WORKSPACES = '__all_coding__'
+
+/**
+ * Whether the activity-sorted list at ``queryKey`` would hold ``session`` if it
+ * were refetched: its workspace's list, a checkouts list spanning it, or an
+ * app-wide one. Unpinned-only lists (all but the app-wide one) skip pins.
+ */
+function listShouldHold(queryKey: readonly unknown[], session: SessionResponse): boolean {
+  const kind = queryKey[2]
+  const scope = queryKey[3]
+  if (kind === 'workspace' && scope === ALL_WORKSPACES) return true
+  if (session.pinned_at) return false
+  if (kind === 'everywhere') return true
+  if (!session.workspace) return false
+  if (kind === 'workspace') return scope === session.workspace
+  return kind === 'checkouts' && Array.isArray(scope) && scope.includes(session.workspace)
+}
+
+/** A cached top-level row for ``sessionId``, from any session list or its detail. */
+function findTopLevelRow(
+  queryClient: Pick<QueryClient, 'getQueriesData' | 'getQueryData'>,
+  sessionId: string,
+): SessionResponse | null {
+  for (const [, data] of queryClient.getQueriesData<InfiniteData<SessionPageResponse>>({ queryKey: queryKeys.session.sessions.all() })) {
+    if (!isInfiniteSessionData(data)) continue
+    for (const page of data.pages) {
+      const row = page.data.find((session) => session.id === sessionId)
+      if (row && !row.parent_session_id) return row
+    }
+  }
+  const detail = queryClient.getQueryData<SessionResponse>(queryKeys.session.sessions.detail(sessionId))
+  return detail && !detail.parent_session_id ? detail : null
+}
+
 /**
  * A turn started or finished in ``sessionId``: the server has moved its
  * ``last_message_at`` (every saved message does). Mirror that in the cached rows and
@@ -172,13 +207,21 @@ function isActivitySortedList(queryKey: readonly unknown[]): boolean {
  * session in its old place, with its old age, until something refetched the
  * whole list — and refetching is what ``patchSessionRunning`` exists to avoid.
  *
+ * A list that should hold the session but has not loaded it (a repository
+ * shows its newest few; the session was older) gets the row from another
+ * cache at its top. Otherwise a session an agent in a grouped workspace
+ * messages, or an old one the user sends in, never leads its repository.
+ *
  * Top-level rows only: a subagent's messages do not touch its parent.
+ *
+ * Returns whether a top-level row was cached anywhere; when not, there was
+ * nothing to move or insert, and only a refetch can show the session.
  */
 export function bumpSessionActivity(
-  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData' | 'getQueriesData' | 'getQueryData'>,
   sessionId: string,
   at: string = new Date().toISOString(),
-): void {
+): boolean {
   const newer = (current: string | null | undefined) =>
     !current || Date.parse(current) < Date.parse(at)
 
@@ -196,26 +239,37 @@ export function bumpSessionActivity(
     },
   )
 
-  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+  // Read after the patch above, so the row carries the new time and turn state.
+  const cachedRow = findTopLevelRow(queryClient, sessionId)
+
+  const activityLists = queryClient.getQueriesData<InfiniteData<SessionPageResponse>>(
     { queryKey: queryKeys.session.sessions.all(), predicate: (query) => isActivitySortedList(query.queryKey) },
-    (old) => {
+  )
+  for (const [queryKey] of activityLists) {
+    queryClient.setQueryData<InfiniteData<SessionPageResponse>>(queryKey, (old) => {
       if (!isInfiniteSessionData(old) || old.pages.length === 0) return old
       if (old.pages[0].data[0]?.id === sessionId) return old
       const pageIndex = old.pages.findIndex((page) => page.data.some((session) => session.id === sessionId))
-      if (pageIndex < 0) return old
+      if (pageIndex < 0) {
+        if (!cachedRow || !listShouldHold(queryKey, cachedRow)) return old
+        const row = newer(cachedRow.last_message_at) ? { ...cachedRow, last_message_at: at } : cachedRow
+        const [first, ...rest] = old.pages
+        return { ...old, pages: [{ ...first, data: [row, ...first.data] }, ...rest] }
+      }
       const row = old.pages[pageIndex].data.find((session) => session.id === sessionId)!
       const pages = old.pages.map((page, index) => {
         const data = index === pageIndex ? page.data.filter((session) => session.id !== sessionId) : page.data
         return index === 0 ? { ...page, data: [row, ...data] } : index === pageIndex ? { ...page, data } : page
       })
       return { ...old, pages }
-    },
-  )
+    })
+  }
 
   queryClient.setQueryData<SessionResponse>(
     queryKeys.session.sessions.detail(sessionId),
     (old) => (old && newer(old.last_message_at) ? { ...old, last_message_at: at } : old),
   )
+  return cachedRow !== null
 }
 
 export function patchSessionTitle(

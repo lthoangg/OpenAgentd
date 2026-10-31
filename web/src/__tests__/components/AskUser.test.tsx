@@ -234,6 +234,25 @@ describe('AskUser — resolved state', () => {
     expect(screen.getByText(/skipped/i)).toBeInTheDocument()
   })
 
+  it('wraps a long URL in the answered summary instead of clipping it', () => {
+    const url = `https://example.com/${'a'.repeat(200)}`
+    useAgentStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {
+        'call-1': {
+          questions: [{ ...QUESTION.questions[0], question: `Use ${url}?` }],
+          answers: [[url]],
+          reason: null,
+        },
+      },
+    })
+
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    expect(screen.getByText(`Use ${url}?`).className).toContain('[overflow-wrap:anywhere]')
+    expect(screen.getByText(url).className).toContain('[overflow-wrap:anywhere]')
+  })
+
   it('parses the persisted sentence on a cold load, dropping the model instructions', () => {
     useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
 

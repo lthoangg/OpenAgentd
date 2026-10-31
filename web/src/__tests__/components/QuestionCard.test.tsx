@@ -91,6 +91,33 @@ describe('QuestionCard', () => {
     expect(screen.getByRole('radio', { name: /bun/ })).toBeInTheDocument()
   })
 
+  it('wraps long unbroken text (URLs, paths) inside the card instead of clipping it', () => {
+    // happy-dom has no layout, so this guards the class that lets a long URL
+    // break mid-string; the card frame is overflow-hidden and would clip it.
+    const url = `https://example.com/${'a'.repeat(200)}`
+    const path = `/very/long/${'b'.repeat(200)}.ts`
+    renderCard({
+      question: question({
+        questions: [
+          {
+            question: `Open ${url}?`,
+            header: 'Link',
+            multiple: false,
+            options: [
+              { label: `Edit \`${path}\``, description: `See ${url}#desc`, recommended: false },
+            ],
+          },
+        ],
+      }),
+    })
+
+    const wraps = (text: string | RegExp) =>
+      screen.getByText(text).closest('[class*="[overflow-wrap:anywhere]"]')
+    expect(wraps(`Open ${url}?`)?.tagName).toBe('LEGEND')
+    expect(wraps(path)).not.toBeNull()
+    expect(wraps(`See ${url}#desc`)).not.toBeNull()
+  })
+
   it('marks the agent’s preferred option in its accessible name', () => {
     renderCard()
 

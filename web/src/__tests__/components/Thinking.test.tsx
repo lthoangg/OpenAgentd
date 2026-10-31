@@ -98,10 +98,10 @@ describe('Thinking', () => {
     expect(container.textContent).not.toContain('Thought')
   })
 
-  it('shows a streaming trace in full under a "Thinking…" row, with no toggle', () => {
+  it('shows a streaming trace in full with no "Thinking…" label or toggle', () => {
     render(<Thinking content={TRACE} isStreaming />)
 
-    expect(screen.getByText('Thinking…')).toBeTruthy()
+    expect(screen.queryByText('Thinking…')).toBeNull()
     expect(screen.getByText('Read the config first.')).toBeTruthy()
     expect(screen.getByText('Then run the tests.')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()

@@ -2,9 +2,8 @@
  * Thinking — the model's reasoning trace, as a transcript Row (DESIGN.md →
  * Transcript rows).
  *
- * While the model reasons the row reads "Thinking…" and the trace shows
- * below it as it streams. Once it is done the label goes and the trace stays
- * open: reasoning is part of the answer, not something to dig for.
+ * The trace streams in place with no label, and stays open once done:
+ * reasoning is part of the answer, not something to dig for.
  * The trace sits inline in small mono text (no quote bar, no italics), so it
  * reads as reasoning beside the answer; section headers are bold.
  *
@@ -17,7 +16,6 @@
  */
 import { splitSections } from '@/utils/thinking'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
-import { MetaRow } from '@/components/ui/meta-row'
 
 interface ThinkingProps {
   content: string
@@ -36,14 +34,6 @@ export function Thinking({ content, isStreaming = false }: ThinkingProps) {
 
   return (
     <div className="my-1 min-w-0" data-thinking>
-      {isStreaming && (
-        <MetaRow>
-          <span className="flex items-center gap-2 text-(--color-text-muted)">
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--color-info)" />
-            Thinking…
-          </span>
-        </MetaRow>
-      )}
       <div
         data-thinking-trace
         className="selectable-text mt-1 mb-2 min-w-0 space-y-2 font-mono text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]"

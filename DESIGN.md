@@ -755,9 +755,9 @@ open (`PINNED_HEADER` plus the surface fill), so it can close from anywhere.
 A header inside an open fold pins just below the fold's row (`--fold-top`), not
 over it. Closing leaves the header where the pressed control was, so the view
 never jumps. A tool call's details have no bottom Collapse bar: the pinned row
-and the section captions close them. Reasoning (`Thinking`) is not a fold: it
-streams under "Thinking…", then stays open with no label, inline in muted
-italics with upright semibold section headers (no quote bar). Clip with `overflow-clip`, not `overflow-hidden`,
+and the section captions close them. Reasoning (`Thinking`) is not a fold and
+has no label: it streams in place and stays open, inline in small upright mono
+with semibold section headers (no quote bar). Clip with `overflow-clip`, not `overflow-hidden`,
 on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):

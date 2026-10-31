@@ -1455,7 +1455,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   session's history never changes, so the provider's prompt cache stays valid.
 
   `action: "list"` shows the workspaces you can message under their groups,
-  each with its brief, or one workspace's recent sessions with their state.
+  each with its brief, or one workspace's recent sessions with their state,
+  most recently active first with their last activity time (the sidebar's
+  order) `[v3.39.0]`.
   Sending to a workspace outside its groups is refused with a message telling
   the agent it can propose a shared group (see **Workspace groups** below)
   `[v3.35.0]`. Limits: a request can pass through at most

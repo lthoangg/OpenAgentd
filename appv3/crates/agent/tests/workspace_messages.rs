@@ -245,6 +245,11 @@ async fn send_reply_retry_and_guards() {
     assert!(!wm::list(&pool, &app_ws, None).await.unwrap().contains("billing"));
     let sessions = wm::list(&pool, &app_ws, Some("infra")).await.unwrap();
     assert!(sessions.contains(&infra_sid) && sessions.contains("Create the orders queue."), "{sessions}");
+    // Most recently active first, like the sidebar: the first infra session
+    // was created first but had the latest follow-up.
+    let first = sessions.lines().nth(1).unwrap_or_default();
+    assert!(first.starts_with(&format!("- {infra_sid} | ")), "{sessions}");
+    assert!(sessions.lines().next().unwrap().contains("most recently active first (id | title | last active | state)"), "{sessions}");
 
     // ── 5. the switch removes the tool ──────────────────────────────────
     write_settings(root, false);

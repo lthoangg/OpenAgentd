@@ -30,6 +30,7 @@
   "global_stream": [
     "session_turn_started",
     "session_turn_completed",
+    "session_activity",
     "session_goal",
     "title_update",
     "desktop_notification",

@@ -425,7 +425,8 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
                 if hold {
                     extra.insert(db::HOLD_UNTIL_TURN_END.into(), json!(true));
                 }
-                db::save_queued_user_message(pool, &sid, &message, Some(extra)).await.map_err(err)?;
+                let row = db::save_queued_user_message(pool, &sid, &message, Some(extra)).await.map_err(err)?;
+                crate::broadcaster::publish_session_activity(&sid, &row.created_at);
                 if !agent.has_active_user_turn() {
                     agent.activate_queued_user_messages(&sid).await;
                 }

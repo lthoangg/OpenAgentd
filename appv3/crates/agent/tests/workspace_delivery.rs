@@ -157,9 +157,22 @@ async fn steer_queue_and_stop_and_send_reach_a_busy_session() {
     assert_eq!(first.delivery, Delivery::Started);
     let sid = first.session_id.clone();
     until("the build to start", || steer_started.exists()).await;
+    let mut global = appv3_agent::broadcaster::broadcaster().attach();
     let s = wm::send(&pool, send("Also lint.", Some(sid.clone()), DeliveryMode::Steer)).await.unwrap();
     assert_eq!(s.delivery, Delivery::Queued);
     assert_eq!(calls(), 1, "nothing read it yet");
+    // Queued, no turn starts, but the session was just used: clients that
+    // sort by activity hear it, with the time the server now sorts by.
+    let activity = loop {
+        let e = tokio::time::timeout(Duration::from_secs(5), global.next()).await.expect("session_activity").expect("feed open");
+        if e.event == "session_activity" {
+            break serde_json::from_str::<serde_json::Value>(&e.data).unwrap();
+        }
+    };
+    assert_eq!(activity["session_id"], sid.as_str());
+    let row = appv3_db::get_session(&pool, &sid).await.unwrap().unwrap();
+    assert_eq!(activity["last_message_at"], appv3_db::codec::api_dt(row.last_message_at.as_deref().unwrap()), "{activity}");
+    drop(global);
     std::fs::write(&steer_release, "").unwrap();
     wait_turn(&infra_ws, &sid).await;
     assert_eq!(calls(), 2, "the steer rode the running turn: no turn of its own");

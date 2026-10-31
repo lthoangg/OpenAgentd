@@ -180,6 +180,18 @@ export async function handleGlobalEvent(
     return true
   }
 
+  if (type === 'session_activity') {
+    // A message was queued on a session (busy, or waiting on its user): no
+    // turn starts, but the server now sorts it first.
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    if (!sessionId) return false
+    const at = typeof event.last_message_at === 'string' ? event.last_message_at : undefined
+    if (!bumpSessionActivity(queryClient, sessionId, at)) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    }
+    return true
+  }
+
   if (type === 'title_update') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
     const title = typeof event.title === 'string' ? event.title : null

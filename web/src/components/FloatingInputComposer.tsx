@@ -186,8 +186,11 @@ interface FloatingInputComposerProps {
   onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
   value?: string
   onValueChange?: (value: string) => void
-  /** Rendered above the composer (the `/btw` side-question panel or its chip). */
-  aboveComposer?: React.ReactNode
+  /**
+   * Rendered above the composer (the `/btw` side-question panel or its
+   * chip). A function receives whether the desktop bar is minimized.
+   */
+  aboveComposer?: React.ReactNode | ((state: { minimized: boolean }) => React.ReactNode)
   /** Keep the bar expanded while ``aboveComposer`` shows a panel. */
   aboveComposerOpen?: boolean
   /**
@@ -218,7 +221,7 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, aboveComposer, aboveComposerOpen = false, placement = 'floating', onHandoffCapture, enterFrom = null, ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, aboveComposer: aboveComposerProp, aboveComposerOpen = false, placement = 'floating', onHandoffCapture, enterFrom = null, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const reducedMotion = useReducedMotion()
     const dragControls = useDragControls()
@@ -520,6 +523,10 @@ export const FloatingInputComposer = memo(
     }, [forceExpanded, isMobile])
 
     const effectiveMinimized = !isMobile && minimized && !forceExpanded
+    // The inline (new-session) composer never collapses.
+    const aboveComposer = typeof aboveComposerProp === 'function'
+      ? aboveComposerProp({ minimized: placement === 'inline' ? false : effectiveMinimized })
+      : aboveComposerProp
 
     // Keep the ref used by the paste handler in sync with the current value.
     useEffect(() => {

@@ -719,11 +719,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       // Desktop with a workspace: the dock's BTW tab shows side
       // questions, and here only the chip reopens it while that tab is
       // not on screen.
-      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
+      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : ({ minimized }: { minimized: boolean }) => (
         <BtwPanel
           sessionId={sessionIdState || null}
           countEnabled={leadHasVisibleBlocks}
           chipOnly={dockViewsEnabled}
+          compact={minimized}
           onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
         />
       )}

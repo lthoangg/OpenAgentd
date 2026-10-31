@@ -35,7 +35,7 @@ function installFetch() {
   }) as unknown as typeof fetch
 }
 
-function renderPanel(countEnabled = true, extra: { chipOnly?: boolean; onReopen?: () => void } = {}) {
+function renderPanel(countEnabled = true, extra: { chipOnly?: boolean; onReopen?: () => void; compact?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
@@ -70,6 +70,18 @@ describe('BtwPanel', () => {
     expect(state().open).toBe(true)
     expect(await screen.findByText('question b')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Show side questions/ })).toBeNull()
+  })
+
+  it('compact chip (composer minimized) reads "btw" but keeps its accessible name', async () => {
+    renderPanel(true, { compact: true })
+    const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
+    expect(chip.textContent).toBe('btw2')
+  })
+
+  it('full chip reads "Side questions"', async () => {
+    renderPanel()
+    const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
+    expect(chip.textContent).toBe('Side questions2')
   })
 
   it('renders nothing while closed without side questions or a count', () => {

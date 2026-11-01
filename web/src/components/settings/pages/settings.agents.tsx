@@ -15,7 +15,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { AgentEditorPage } from './settings.agents.$name'
 import { errorMessage } from '@/utils/errors'
-import { shortModelName } from '@/utils/format'
 import { isUnconfiguredModel } from '@/lib/model-readiness'
 
 export function AgentsListPage() {
@@ -40,7 +39,7 @@ export function AgentsListPage() {
         badgeTone: isLead ? 'info' : 'neutral',
         description: a.description || (isLead ? 'The agent you chat with' : 'Takes tasks from the main agent'),
         ...(a.model && !isUnconfiguredModel(a.model)
-          ? { meta: shortModelName(a.model) ?? undefined }
+          ? { meta: a.model }
           : { metaChip: 'model not set' }),
         invalidReason: !a.valid ? (a.error ?? 'Invalid configuration') : undefined,
         onClick: () => setSelectedAgent(a.name),

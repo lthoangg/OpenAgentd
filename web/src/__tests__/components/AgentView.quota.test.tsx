@@ -233,7 +233,7 @@ describe("AgentView — waiting for the pinned account", () => {
     expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
     expect(screen.getByText("2h 00m")).toBeTruthy()
     expect(screen.getByText("Personal")).toBeTruthy()
-    expect(screen.getByText("gpt-5.4").className).toContain("font-mono")
+    expect(screen.getByText("gpt-5.4").closest("[data-model-name]")?.className).toContain("font-mono")
     for (const name of ["Use Auto for this session", "Choose account…", "Stop", "Copy details"]) {
       expect(screen.getByRole("button", { name })).toBeTruthy()
     }

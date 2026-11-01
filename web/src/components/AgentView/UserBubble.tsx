@@ -13,7 +13,8 @@ import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import { copyText, useChatMenu } from '../ChatContextMenu'
-import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
+import { formatTime, formatFullDateTime } from '@/utils/format'
+import { ModelName } from '@/components/ui/model-name'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
@@ -292,7 +293,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
           <button
             type="button"
             onClick={onOpen}
-            className="flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key)/40 focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+            className="flex items-center gap-2 rounded-sm bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           >
             <span className="shrink-0 text-(--color-text-muted)">
               <FileTypeIcon name={item.name} size={14} />
@@ -340,7 +341,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const textRef = useRef<HTMLParagraphElement>(null)
   // Height before an expand/collapse, so the layout effect can animate from it.
   const toggleFromHeight = useRef<number | null>(null)
-  const modelName = shortModelName(modelId)
   const chatMenu = useChatMenu(fromAgent ? `Actions for ${fromAgent} report` : 'Actions for message', () => [
     { label: 'Copy', run: () => copyText(content) },
     ...(onEdit && !fromAgent && !editLocked ? [{ label: 'Edit', run: onEdit }] : []),
@@ -564,13 +564,14 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             {/* The latest prompt shows the row at rest. Earlier ones reveal it on
                 hover and keyboard focus; touch has no hover, so it always shows there. */}
             <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
-              {modelName && (
+              {modelId && (
                 <span
                   data-prompt-model
-                  className="mr-1 font-mono text-meta text-(--color-text-subtle)"
+                  className="mr-1 flex min-w-0 font-mono text-meta text-(--color-text-subtle)"
                   title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
                 >
-                  {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
+                  <ModelName id={modelId} />
+                  {thinkingLevel && <span className="shrink-0 whitespace-pre">{` · ${thinkingLevel}`}</span>}
                 </span>
               )}
               {onEdit && editLocked && (

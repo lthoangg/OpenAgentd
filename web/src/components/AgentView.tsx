@@ -29,11 +29,12 @@ import { PendingMessageQueue } from './PendingMessageQueue'
 import { JumpToLatest } from './JumpToLatestChip'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix, shortModelName } from '@/utils/format'
+import { extractSleepPrefix } from '@/utils/format'
 import { Callout } from '@/components/ui/callout'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/stores/useUIStore'
 import { Chip } from '@/components/ui/chip'
+import { ModelName } from '@/components/ui/model-name'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -284,8 +285,7 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
   }, [now, sessionId, wait.resetsAt])
 
   const countdown = wait.resetsAt === undefined ? undefined : formatQuotaCountdown(wait.resetsAt, now)
-  const model = shortModelName(wait.model)
-  const modelName = model ? <span className="font-mono text-(--color-text-2)">{model}</span> : null
+  const modelName = wait.model ? <ModelName id={wait.model} className="align-bottom text-(--color-text-2)" /> : null
   const accountName = wait.account ? <span className="font-semibold text-(--color-text-2)">{wait.account}</span> : null
 
   return (
@@ -375,7 +375,6 @@ function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode
   errorType?: unknown
   statusCode?: unknown
 }) {
-  const short = shortModelName(model) ?? 'model'
   // Dropped connections retry without a budget until the network is back.
   const progress = typeof maxAttempts === 'number'
     ? `${String(attempt ?? '?')}/${maxAttempts}`
@@ -389,7 +388,7 @@ function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode
     >
       <span>
         {'Retrying '}
-        <span className="font-mono text-(--color-text-2)" title={model}>{short}</span>
+        {model ? <ModelName id={model} className="align-bottom text-(--color-text-2)" /> : 'the model'}
         {' · attempt '}
         <span className="font-mono tabular-nums">{progress}</span>
         {typeof delay === 'number' && <>{' · in '}<span className="font-mono tabular-nums">{formatMetaDuration(delay * 1000)}</span></>}
@@ -538,7 +537,9 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             <Chip tone="info">
               {account ? <>Switched to account <span className="font-semibold">{account}</span></> : 'Switched account'}
             </Chip>
-            <span className="min-w-0 break-words">{reason ?? `${shortModelName(model) ?? 'The model'} continues on another account.`}</span>
+            <span className="min-w-0 break-words">
+              {reason ?? (model ? <><ModelName id={model} className="align-bottom" /> continues on another account.</> : 'The model continues on another account.')}
+            </span>
           </div>
         )
       }

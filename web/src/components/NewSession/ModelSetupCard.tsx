@@ -39,12 +39,6 @@ function shortLabel(provider: ProviderInfo): string {
   return QUICK_PICK_LABELS[provider.id] ?? provider.label
 }
 
-function modelName(providerModel: string | null | undefined): string | null {
-  if (!providerModel) return null
-  const index = providerModel.indexOf(':')
-  return index >= 0 ? providerModel.slice(index + 1) : providerModel
-}
-
 function detectedText({ provider, source }: DetectedProvider): { title: string; detail: string } {
   const name = shortLabel(provider)
   if (source === 'local') return { title: `${name} is running`, detail: 'Models on this computer, no key needed' }
@@ -87,11 +81,10 @@ export function ModelSetupCard({
   const localRunning = detected.some((item) => item.source === 'local')
 
   const announce = (provider: ProviderInfo, model: string | null | undefined) => {
-    const name = modelName(model)
     push({
       tone: 'success',
       title: `${shortLabel(provider)} connected`,
-      description: name ? `Your agents use ${name}. Change it from the model in the footer.` : 'Your agents are ready.',
+      description: model ? `Your agents use ${model}. Change it with the run chip under the message box.` : 'Your agents are ready.',
     })
   }
 
@@ -143,7 +136,7 @@ export function ModelSetupCard({
 
   const title = needsProvider ? `Connect ${shortLabel(needsProvider)} to start` : 'Connect a model to start'
   const subtitle = needsProvider
-    ? `Your agent uses ${modelName(currentModel)}, but ${needsProvider.label} is not connected.`
+    ? `Your agent uses ${currentModel ?? 'a model'}, but ${needsProvider.label} is not connected.`
     : detected.length > 0
       ? 'You can use one of these right away, or connect another provider.'
       : 'Pick where your model comes from. You can add more later.'

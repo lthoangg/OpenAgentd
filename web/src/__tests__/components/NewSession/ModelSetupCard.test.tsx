@@ -160,7 +160,7 @@ describe('ModelSetupCard', () => {
     const anthropic = provider('anthropic')
     renderCard({ readiness: { status: 'needs-provider', model: 'anthropic:claude-sonnet-5-5', provider: anthropic } })
     expect(screen.getByRole('heading', { name: 'Connect Anthropic to start' })).toBeTruthy()
-    expect(screen.getByText(/uses claude-sonnet-5-5/)).toBeTruthy()
+    expect(screen.getByText(/uses anthropic:claude-sonnet-5-5/)).toBeTruthy()
     expect(screen.queryByRole('group', { name: 'Providers' })).toBeNull()
     // Its key field is already open.
     expect(screen.getByLabelText('anthropic API key')).toBeTruthy()

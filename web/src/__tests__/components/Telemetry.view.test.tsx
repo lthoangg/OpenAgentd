@@ -249,7 +249,7 @@ describe('TelemetryView overview', () => {
     expect(headers('Tools')).toEqual(['Tool', 'Calls', 'p95', 'Errors'])
   })
 
-  it('lists recent turns with a When column, tokens in / out, a model id with its provider, and a status chip', async () => {
+  it('lists recent turns with a When column, tokens in / out, the model as provider:model, and a status chip', async () => {
     useHandlers()
     renderView()
 
@@ -261,10 +261,10 @@ describe('TelemetryView overview', () => {
     // The date, then how long ago
     expect(within(ok).getByText(/^\d+s ago$|^\d+m ago$/)).toBeTruthy()
     expect(within(ok).getByText('12K / 800')).toBeTruthy()
-    // Short model id in mono, provider as an outline chip, full id in the title
-    const model = within(ok).getByTitle('openai:gpt-5')
-    expect(model.querySelector('.font-mono')?.textContent).toBe('gpt-5')
-    expect(model.querySelector('[data-slot="chip"]')?.textContent).toBe('openai')
+    // provider:model in mono, as everywhere, with the full id as the tooltip
+    const model = ok.querySelector('[data-model-name]') as HTMLElement
+    expect(model.className).toContain('font-mono')
+    expect(model.textContent).toBe('openai:gpt-5')
     expect(within(ok).getByText('ok').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
     expect(within(failed).getByText('failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
   })
@@ -630,9 +630,9 @@ describe('TelemetryView trace', () => {
     const labels = Array.from(facts.querySelectorAll('dt')).map((dt) => dt.textContent)
     expect(labels).toEqual(['Started', 'Workspace', 'Model', 'Duration', 'Tokens in / out', 'Spend (est.)', 'Status'])
     expect(within(facts).getByText('site')).toBeTruthy()
-    const model = facts.querySelector('span[title="openai:gpt-5"]')
-    expect(model?.querySelector('.font-mono')?.textContent).toBe('gpt-5')
-    expect(model?.querySelector('[data-slot="chip"]')?.textContent).toBe('openai')
+    const model = facts.querySelector('[data-model-name]')
+    expect(model?.className).toContain('font-mono')
+    expect(model?.textContent).toBe('openai:gpt-5')
     expect(within(facts).getByText('ok').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
     expect(within(facts).queryByText('Completed')).toBeNull()
     expect(within(facts).getByText('12K / 800')).toBeTruthy()

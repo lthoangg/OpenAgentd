@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import type { ObservabilitySummary, SessionUsage, SpanDetail } from '@/api/client'
-import { dailySeries, headline, modelName, nestSessions, sessionName, sharePct, traceSummary, workspaceName } from '@/components/Telemetry/model'
+import { dailySeries, headline, nestSessions, sessionName, sharePct, traceSummary, workspaceName } from '@/components/Telemetry/model'
 import { setChatWorkspaceEntry } from '@/utils/workspace'
 
 afterEach(() => setChatWorkspaceEntry(null))
@@ -74,11 +74,6 @@ describe('telemetry model', () => {
     expect(workspaceName(null)).toBe('Unknown workspace')
     expect(workspaceName('/home/me/.openagentd/chat')).toBe('Chat')
     expect(workspaceName('/home/me/code/site')).toBe('site')
-  })
-
-  it('strips the provider from provider:model', () => {
-    expect(modelName('openai:gpt-5')).toBe('gpt-5')
-    expect(modelName('local-model')).toBe('local-model')
   })
 
   it('names sessions by title, else by what they were', () => {

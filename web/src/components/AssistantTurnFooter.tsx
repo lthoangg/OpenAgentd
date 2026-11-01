@@ -13,9 +13,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Collapsible } from '@/components/ui/collapsible'
 import { Term } from '@/components/ui/term'
 import { formatMetaDuration } from '@/components/ui/meta-row'
+import { ModelName } from '@/components/ui/model-name'
 import { cn } from '@/lib/utils'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
-import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
+import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { turnAccount, turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
@@ -125,7 +126,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
       timestamp: lastBlock?.timestamp,
       responseDurationMs,
       model: model?.model ?? null,
-      modelName: shortModelName(model?.model),
       thinkingLevel: model?.thinkingLevel,
       outputTokens,
       inputTokens,
@@ -133,7 +133,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
       costUsd: Math.round(costUsd * 1e8) / 1e8,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, model, modelName, thinkingLevel, account, outputTokens, inputTokens, cachedTokens, costUsd } = footerData
+  const { textContent, timestamp, responseDurationMs, model, thinkingLevel, account, outputTokens, inputTokens, cachedTokens, costUsd } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -149,7 +149,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   }, [])
 
   const hasActions = Boolean(textContent || onRegenerate || onEditPrompt || onUndo || changedFiles.length > 0)
-  if (!hasActions && !timestamp && responseDurationMs === undefined && !modelName) return null
+  if (!hasActions && !timestamp && responseDurationMs === undefined && !model) return null
 
   const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 flex-wrap items-center gap-1.5' : 'mt-0.5 flex min-w-0 flex-wrap items-center gap-1'
   const hasUsage = outputTokens > 0 || costUsd > 0
@@ -157,9 +157,10 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0)
 
   const parts: ReactNode[] = []
-  // One line: the model ID truncates first; time, duration and cost never wrap.
+  // One line: the model ID truncates first (its provider part before its
+  // model part); time, duration and cost never wrap.
   if (timestamp) parts.push(<span key="time" className="shrink-0">{formatTime(timestamp)}</span>)
-  if (modelName) parts.push(<span key="model" data-turn-model className="min-w-0 truncate">{modelName}</span>)
+  if (model) parts.push(<ModelName key="model" id={model} data-turn-model />)
   if (account) parts.push(<span key="account" data-turn-account className="min-w-0 max-w-[10rem] truncate">{account}</span>)
   if (responseDurationMs !== undefined) parts.push(<span key="dur" className="shrink-0">{formatMetaDuration(responseDurationMs)}</span>)
   if (hasUsage) {
@@ -169,7 +170,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   }
   const summary = [
     timestamp && formatTime(timestamp),
-    modelName && (thinkingLevel ? `${modelName} (thinking ${thinkingLevel})` : modelName),
+    model && (thinkingLevel ? `${model} (thinking ${thinkingLevel})` : model),
     account && `account ${account}`,
     responseDurationMs !== undefined && formatMetaDuration(responseDurationMs),
     hasUsage && (costUsd > 0 ? formatSpend(costUsd) : `${formatInt(outputTokens)} output tokens`),

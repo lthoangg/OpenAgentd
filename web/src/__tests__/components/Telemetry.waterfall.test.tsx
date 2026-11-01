@@ -222,21 +222,21 @@ describe('spanSummary', () => {
     expect(summary({ name: 'chat gpt-5', attributes: { 'gen_ai.request.model': 'openai:gpt-5', 'gen_ai.usage.output_tokens': 7 } })).toBe('out 7')
   })
 
-  it('says the short model and output tokens for a model call', () => {
-    expect(summary({ name: 'chat x', attributes: { 'gen_ai.request.model': 'openai:gpt-5', 'gen_ai.usage.output_tokens': 1234 } })).toBe('gpt-5 · out 1,234')
+  it('says the model as provider:model and output tokens for a model call', () => {
+    expect(summary({ name: 'chat x', attributes: { 'gen_ai.request.model': 'openai:gpt-5', 'gen_ai.usage.output_tokens': 1234 } })).toBe('openai:gpt-5 · out 1,234')
     // The response model wins over the requested one
-    expect(summary({ name: 'chat x', attributes: { 'gen_ai.request.model': 'openai:gpt-5', 'gen_ai.response.model': 'openai:gpt-5-mini' } })).toBe('gpt-5-mini')
+    expect(summary({ name: 'chat x', attributes: { 'gen_ai.request.model': 'openai:gpt-5', 'gen_ai.response.model': 'openai:gpt-5-mini' } })).toBe('openai:gpt-5-mini')
     expect(summary({ name: 'chat x' })).toBeNull()
   })
 
   it('says the verdict and model for a goal check', () => {
-    expect(summary({ name: 'goal_check', attributes: { 'goal_check.met': true, 'gen_ai.request.model': 'openai:gpt-5' } })).toBe('met · gpt-5')
+    expect(summary({ name: 'goal_check', attributes: { 'goal_check.met': true, 'gen_ai.request.model': 'openai:gpt-5' } })).toBe('met · openai:gpt-5')
     expect(summary({ name: 'goal_check', attributes: { 'goal_check.met': false } })).toBe('not yet')
   })
 
   it('says the model for summarization and title spans', () => {
-    expect(summary({ name: 'summarization', attributes: { 'gen_ai.request.model': 'openai:gpt-5' } })).toBe('gpt-5')
-    expect(summary({ name: 'title_generation', attributes: { 'gen_ai.request.model': 'openai:gpt-5' } })).toBe('gpt-5')
+    expect(summary({ name: 'summarization', attributes: { 'gen_ai.request.model': 'openai:gpt-5' } })).toBe('openai:gpt-5')
+    expect(summary({ name: 'title_generation', attributes: { 'gen_ai.request.model': 'openai:gpt-5' } })).toBe('openai:gpt-5')
   })
 
   it('says the error type for a failed span, or "failed" when it has none', () => {

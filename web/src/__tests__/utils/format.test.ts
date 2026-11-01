@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatCompactRelative, formatCompactUpcoming, formatDate, isSleepMessage, extractSleepPrefix, shortId, shortModelName, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatCompactRelative, formatCompactUpcoming, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
 import { formatCommitTime } from "@/components/WorkspacePanel/diff-helpers";
 
 // ---------------------------------------------------------------------------
@@ -259,22 +259,6 @@ describe("shortId", () => {
 
   it("returns exactly 8 characters when input is exactly 8", () => {
     expect(shortId("12345678")).toBe("12345678");
-  });
-});
-
-describe("shortModelName", () => {
-  it("drops the provider prefix and any vendor path", () => {
-    expect(shortModelName("openai:gpt-5")).toBe("gpt-5");
-    expect(shortModelName("openrouter:anthropic/claude-sonnet-4.5")).toBe("claude-sonnet-4.5");
-    expect(shortModelName("gpt-5")).toBe("gpt-5");
-    // A provider prefix repeated inside the name is dropped.
-    expect(shortModelName("agy:antigravity-claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
-    expect(shortModelName("google:gemini-3-flash")).toBe("gemini-3-flash");
-  });
-
-  it("is empty for no model", () => {
-    expect(shortModelName(null)).toBeNull();
-    expect(shortModelName("")).toBeNull();
   });
 });
 

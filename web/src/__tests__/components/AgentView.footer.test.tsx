@@ -804,7 +804,7 @@ describe("AgentView — footer model label", () => {
     return { id, type: "text", content: `answer ${id}`, extra: { model } }
   }
 
-  it("names the model on every answer", () => {
+  it("names the model on every answer as provider:model", () => {
     const { container } = renderStream({
       blocks: [
         makeUserBlock("u1", "one"),
@@ -819,7 +819,8 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5", "gpt-5", "claude-opus-4"])
+    expect(labels).toEqual(["openai:gpt-5", "openai:gpt-5", "anthropic:claude-opus-4"])
+    expect(container.querySelector("[data-turn-model]")?.className).toContain("font-mono")
   })
 
   it("names the thinking level in each answer's turn details", () => {
@@ -843,7 +844,7 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5", "gpt-5", "gpt-5", "gpt-5"])
+    expect(labels).toEqual(["openai:gpt-5", "openai:gpt-5", "openai:gpt-5", "openai:gpt-5"])
     const details = screen.getAllByRole("button", { name: /Turn details/ }).map((el) => el.getAttribute("aria-label"))
     expect(details.map((d) => /thinking (\w+)/.exec(d ?? "")?.[1] ?? null)).toEqual(["high", "high", "low", null])
   })
@@ -865,6 +866,6 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5 · high", "claude-opus-4", "gpt-5 · low"])
+    expect(labels).toEqual(["openai:gpt-5 · high", "anthropic:claude-opus-4", "openai:gpt-5 · low"])
   })
 })

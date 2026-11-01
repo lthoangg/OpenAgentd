@@ -285,6 +285,9 @@ describe('AgentChatHeader', () => {
       // No ``max-md:`` gate: a touch tablet in the desktop layout needs it too.
       expect(el.className).not.toContain('max-md:pointer-coarse')
     }
+    // The title grows to 36px on touch with its words centred in it, in line
+    // with the workspace name, not stuck to the top.
+    expect(screen.getByRole('button', { name: 'Rename session: Fix updater restart' }).className).toContain('items-center')
   })
 
   it('has two layout buttons on desktop: the sidebar on the left and the Review panel on the right', () => {

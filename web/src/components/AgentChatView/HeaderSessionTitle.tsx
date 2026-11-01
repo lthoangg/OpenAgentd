@@ -96,7 +96,7 @@ function RenameableTitle({ sessionId, title, onRename }: HeaderSessionTitleProps
               event.preventDefault()
               setEditing(true)
             }}
-            className="flex min-w-0 rounded-xs text-left text-(--color-text-muted) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9"
+            className="flex min-w-0 items-center rounded-xs text-left text-(--color-text-muted) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9"
           >
             <AnimatedTitle text={title} sessionId={sessionId} />
           </button>

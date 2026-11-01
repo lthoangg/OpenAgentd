@@ -10,6 +10,7 @@
 import { ChevronDown } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
+import { MODEL_LINE_CLASS, MODEL_PART_CLASS, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -62,11 +63,11 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
       )}
     >
       <span className="flex min-w-0 items-baseline gap-1.5 leading-tight @max-[520px]:flex-col @max-[520px]:items-start @max-[520px]:gap-0">
-        <span className="flex min-w-0 max-w-full font-mono">
-          {/* The provider part gives way first, down to its "…"; the model
-              part only truncates after that (see ui/model-name). */}
-          {provider && <span className="min-w-[1ch] shrink truncate text-(--color-text-muted)">{provider}:</span>}
-          <span className="max-w-full shrink-0 truncate">{model}</span>
+        <span className={cn('flex', MODEL_LINE_CLASS)}>
+          {/* The provider part gives way first, whole; the model part only
+              truncates after that (see ui/model-name). */}
+          {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
+          <span className={MODEL_PART_CLASS}>{model}</span>
         </span>
         {meta && (
           <span className="max-w-full shrink-0 truncate whitespace-nowrap text-(--color-text-muted) @max-[520px]:text-meta">

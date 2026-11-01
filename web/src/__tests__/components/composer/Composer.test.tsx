@@ -87,11 +87,14 @@ describe('RunChip', () => {
   it('lets the provider part give way first, and stacks under 520px', () => {
     wrap(<RunChip settings={runSettings()} />)
     const chip = document.querySelector('[data-run-chip]') as HTMLElement
-    const [provider, model] = Array.from(chip.querySelectorAll('.font-mono > span'))
-    expect(provider.className).toMatch(/(^| )shrink( |$)/)
-    expect(provider.className).toContain('truncate')
-    // Never a clipped sliver of a letter: always room for its "…".
-    expect(provider.className).toContain('min-w-[1ch]')
+    const line = chip.querySelector('.font-mono') as HTMLElement
+    const [provider, model] = Array.from(line.children)
+    // Whole or not at all: never a clipped sliver of a letter (see
+    // ui/model-name).
+    expect(provider.className).toContain('whitespace-nowrap')
+    expect(provider.className).not.toContain('truncate')
+    expect(line.className).toContain('h-[1lh]')
+    expect(line.className).toContain('flex-wrap')
     // The model never shrinks; capped at the chip's width it truncates only
     // once the provider part is gone.
     expect(model.className).toContain('shrink-0')

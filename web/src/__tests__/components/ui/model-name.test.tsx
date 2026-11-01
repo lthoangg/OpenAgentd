@@ -17,21 +17,32 @@ describe('ModelName', () => {
     const { container } = render(<ModelName id="googlegenai:gemini-3.7-flash" />)
     const [provider, model] = Array.from(container.querySelectorAll('[data-model-name] > span')) as HTMLElement[]
     expect(provider.textContent).toBe('googlegenai:')
-    expect(provider.className).toMatch(/(^| )shrink( |$)/)
     // Never shrinks (a sliver would already cut it); capped, it truncates
     // only once the provider part is gone.
     expect(model.className).toContain('shrink-0')
     expect(model.className).toContain('max-w-full')
+    expect(model.className).toContain('truncate')
   })
 
-  // Narrower than its ellipsis, a truncating box shows a clipped sliver of
-  // its first letter ("ıfake-model" at Android's 125% text); one character
-  // wide, it always has room for the "…".
-  it('keeps the provider part at least an ellipsis wide', () => {
+  // A truncating provider part showed a sliver of its first letter
+  // ("ıfake-model" at Android's 125% text): CSS clips a line's first
+  // character rather than replace it with "…". The part now wraps whole
+  // onto a second line that the one-line box clips away.
+  it('shows the provider part whole or not at all', () => {
     const { container } = render(<ModelName id="router9:fake-model" />)
-    const provider = container.querySelector('[data-model-name] > span') as HTMLElement
-    expect(provider.className).toContain('min-w-[1ch]')
-    expect(provider.className).not.toContain('min-w-0')
+    const name = container.querySelector('[data-model-name]') as HTMLElement
+    const [provider, model] = Array.from(name.children) as HTMLElement[]
+    expect(provider.className).toContain('shrink-0')
+    expect(provider.className).toContain('whitespace-nowrap')
+    expect(provider.className).not.toContain('truncate')
+    // One line tall and clipped below it; the model wraps first so its line
+    // is the visible one (and the box's baseline), drawn after the provider.
+    for (const cls of ['flex-wrap', 'flex-row-reverse', 'justify-end', 'h-[1lh]', 'overflow-y-clip']) {
+      expect(name.className).toContain(cls)
+    }
+    expect(model.className).toContain('order-first')
+    // Copy and screen readers still get provider:model in order.
+    expect(name.textContent).toBe('router9:fake-model')
   })
 
   it('shows a bare ID as it is', () => {

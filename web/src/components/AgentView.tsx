@@ -1286,7 +1286,10 @@ export function AgentView({
               </div>
             )}
 
-            <PendingMessageQueue />
+            {/* With a composer (``jumpToLatestInComposer``) the queue sits in
+                its tray, right above the box. Without one (a subagent's
+                session) it stays here, under the turn it waits behind. */}
+            {!jumpToLatestInComposer && <PendingMessageQueue />}
 
             {showsLastError && lastError && (
               <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />

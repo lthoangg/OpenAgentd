@@ -3,7 +3,9 @@
  *
  * Always open, never dragged: the run deck under the text shows how the next
  * message runs, so it has to stay in view. Above it sits the tray: the
- * jump-to-latest chip, side questions and the undo notice. The column is
+ * jump-to-latest chip, side questions, the undo notice and the queue of
+ * messages waiting for the agent. The tray is inside the measured, docked
+ * element, so the transcript always ends above its last row. The column is
  * 768px at most, the transcript's prose width, so text and box line up.
  *
  * ``placement="inline"`` is the new-session screen's centered composer. Its
@@ -69,6 +71,11 @@ export interface ComposerProps {
   deckEnd?: ReactNode
   /** In the tray above the box: the side-question panel or its chip. */
   aboveComposer?: ReactNode
+  /**
+   * In the tray, last, right above the box: the queue of messages waiting
+   * for the agent. Docked only; the new-session composer has no queue.
+   */
+  queue?: ReactNode
   placement?: 'docked' | 'inline'
   /** Inline only: reports where the composer sat, just before each submit. */
   onHandoffCapture?: (snapshot: ComposerHandoff) => void
@@ -81,6 +88,7 @@ const GLIDE_EASING = `cubic-bezier(${EASINGS.out.join(', ')})`
 
 export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(function Composer({
   aboveComposer,
+  queue,
   placement = 'docked',
   onHandoffCapture,
   enterFrom = null,
@@ -190,6 +198,15 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
       <JumpToLatestChip />
       {aboveComposer}
       <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
+      {/* An empty queue renders nothing, and ``empty:hidden`` drops this
+          slot's margin with it. Capped, so a few long messages scroll here
+          rather than push the box up the screen; the side padding keeps the
+          buttons' focus rings inside the scroller. */}
+      {queue != null && (
+        <div data-composer-queue="" className="-mx-1 mb-2 max-h-[30dvh] touch-pan-y overflow-y-auto overscroll-contain px-1 empty:hidden">
+          {queue}
+        </div>
+      )}
     </>
   )
 

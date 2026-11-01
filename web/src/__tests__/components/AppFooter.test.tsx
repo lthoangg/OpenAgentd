@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
 import { HealthDot } from '@/components/HealthDot'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
+import { useTerminalStore, _resetTerminalStoreForTests, type TerminalSessionMeta } from '@/stores/useTerminalStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { APP_EVENTS } from '@/lib/app-events'
 import { queryKeys } from '@/queries/keys'
 
 const navigate = mock(() => Promise.resolve())
@@ -198,6 +200,135 @@ describe('AppFooter', () => {
   it('leaves the spend out until the summary loads', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
+  })
+})
+
+/** Shells keep running with the terminal group hidden: the status bar says so. */
+describe('AppFooter terminals', () => {
+  const WORKSPACE = '/path/to/project'
+  const realFetch = globalThis.fetch
+
+  /** Metadata only: no PTY, no socket, so the footer is the only thing under test. */
+  function seedTerminals(...sessions: Array<{ contextKey: string; status: TerminalSessionMeta['status'] }>) {
+    useTerminalStore.setState({
+      sessions: Object.fromEntries(sessions.map((session, i) => {
+        const id = `term-${i + 1}`
+        return [id, { id, title: `Terminal ${i + 1}`, order: i + 1, ...session }]
+      })),
+    })
+  }
+  const item = () => screen.queryByRole('button', { name: /terminals? running$/ })
+
+  beforeEach(() => {
+    _resetTerminalStoreForTests()
+    globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
+  })
+  afterEach(() => {
+    cleanup()
+    _resetTerminalStoreForTests()
+    globalThis.fetch = realFetch
+  })
+
+  it('says "1 terminal running" for a single live shell', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('1 terminal running')
+  })
+
+  it('says "N terminals running" for several, connecting ones included', () => {
+    seedTerminals(
+      { contextKey: WORKSPACE, status: 'connected' },
+      { contextKey: WORKSPACE, status: 'connecting' },
+      { contextKey: WORKSPACE, status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('3 terminals running')
+  })
+
+  it('is hidden while the workspace has no terminals', () => {
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+    expect(screen.queryByText(/running/)).toBeNull()
+  })
+
+  it('does not count shells that ended or failed', () => {
+    seedTerminals(
+      { contextKey: WORKSPACE, status: 'exited' },
+      { contextKey: WORKSPACE, status: 'error' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+
+    cleanup()
+    seedTerminals(
+      { contextKey: WORKSPACE, status: 'exited' },
+      { contextKey: WORKSPACE, status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('1 terminal running')
+  })
+
+  it("does not count another workspace's terminals", () => {
+    seedTerminals(
+      { contextKey: '/path/to/other', status: 'connected' },
+      { contextKey: '/path/to/other', status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+
+    cleanup()
+    seedTerminals(
+      { contextKey: '/path/to/other', status: 'connected' },
+      { contextKey: WORKSPACE, status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('1 terminal running')
+  })
+
+  it('shows none when no workspace is attached', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    renderWithQueryClient(<AppFooter />)
+    expect(item()).toBeNull()
+  })
+
+  it('follows shells as they start and end', () => {
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+
+    act(() => seedTerminals({ contextKey: WORKSPACE, status: 'connecting' }))
+    expect(item()?.textContent).toBe('1 terminal running')
+
+    act(() => seedTerminals({ contextKey: WORKSPACE, status: 'connected' }, { contextKey: WORKSPACE, status: 'connected' }))
+    expect(item()?.textContent).toBe('2 terminals running')
+
+    act(() => seedTerminals({ contextKey: WORKSPACE, status: 'exited' }))
+    expect(item()).toBeNull()
+  })
+
+  it('is a focusable 24px status item like the others', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    const button = item()!
+    expect(screen.getByLabelText('Status bar').contains(button)).toBe(true)
+    expect(button.tabIndex).toBe(0)
+    expect(button.className.split(' ')).toContain('h-6')
+  })
+
+  it('shows the terminals on click, once, without toggling them away', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    const opened = mock(() => {})
+    const toggled = mock(() => {})
+    window.addEventListener(APP_EVENTS.openTerminal, opened)
+    window.addEventListener(APP_EVENTS.toggleTerminalGroup, toggled)
+    try {
+      renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+      fireEvent.click(item()!)
+      expect(opened).toHaveBeenCalledTimes(1)
+      expect(toggled).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener(APP_EVENTS.openTerminal, opened)
+      window.removeEventListener(APP_EVENTS.toggleTerminalGroup, toggled)
+    }
   })
 })
 

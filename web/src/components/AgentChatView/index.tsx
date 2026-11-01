@@ -73,6 +73,7 @@ import { ContextMeter } from '../composer/ContextMeter'
 import { McpAttentionChip } from '../composer/McpAttentionChip'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
+import { PendingMessageQueue } from '../PendingMessageQueue'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -114,7 +115,7 @@ interface ActiveAgentViewProps {
   fileRefOpener?: FileRefOpener
   onRetry?: () => void
   onSwitchModel?: () => void
-  /** The floating composer is up and carries the jump-to-latest chip. */
+  /** The docked composer is up: its tray carries the jump-to-latest chip and the message queue. */
   jumpToLatestInComposer?: boolean
 }
 
@@ -704,6 +705,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     />
   ), [workspace, isSessionLoading, canAskSideQuestion, snippetCommands.length])
 
+  // The docked composer's tray carries the jump-to-latest chip and the queue
+  // of messages waiting for the agent. With no composer (a subagent's
+  // session, which only the main agent directs) both stay in the transcript.
+  const composerHoldsTray = !parentSessionId && Boolean(workspace)
+
   // One composer element: inside the new-session screen while that is
   // centered, else docked at the bottom of the chat column. While a switch
   // looks up the next session's workspace, the composer stays (disabled)
@@ -795,6 +801,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
         />
       )}
+      queue={composerHoldsTray ? <PendingMessageQueue /> : null}
     />
   ) : null
 
@@ -943,10 +950,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <EmptyState
             icon={FolderCode}
             title="No workspace attached"
-            body="Choose a local project folder from the sidebar to start a session."
+            body="Open a workspace, a folder on this computer, to start a session."
             action={
               <Button type="button" onClick={handleOpenWorkspaceDialog}>
-                Open folder…
+                Open workspace…
               </Button>
             }
           />
@@ -1003,7 +1010,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               fileRefOpener={fileRefOpener}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
-              jumpToLatestInComposer={!parentSessionId && Boolean(workspace)}
+              jumpToLatestInComposer={composerHoldsTray}
               emptyState={
                 effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">

@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { Profiler } from 'react'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
+
+mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
+const { Composer } = await import('@/components/composer/Composer')
 
 const realFetch = globalThis.fetch
 /** The cancel endpoint answers with ``status`` (204 cancelled, 404 already read). */
@@ -400,7 +403,7 @@ describe('PendingMessageQueue', () => {
     })
   })
 
-  it('keeps the queued bubble flat: it sits in the transcript, it does not float', () => {
+  it('keeps the queued bubble flat: in the tray or the transcript, it does not float', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Queued' }],
@@ -580,5 +583,104 @@ describe('PendingMessageQueue', () => {
     const collapseBtn = screen.getByRole('button', { name: 'Collapse' })
     await user.click(collapseBtn)
     expect(screen.queryByText(/queued-line-11/)).toBeNull()
+  })
+})
+
+/**
+ * A main session has a composer, and the queue lives in its tray, right above
+ * the box (the transcript keeps it only where there is no composer; see
+ * ``AgentView.footer.test.tsx``).
+ */
+describe('PendingMessageQueue in the composer tray', () => {
+  const realResizeObserver = globalThis.ResizeObserver
+  afterEach(() => {
+    globalThis.ResizeObserver = realResizeObserver
+  })
+
+  function queueOne(content = 'Steer this way') {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content }],
+    })
+  }
+  const docked = () => render(<Composer onSubmit={() => {}} queue={<PendingMessageQueue />} />)
+
+  it('renders inside the docked composer, above the message box', () => {
+    queueOne()
+    docked()
+
+    const tray = screen.getByTestId('docked-composer')
+    const queued = within(tray).getByText('Steer this way')
+    const box = within(tray).getByLabelText('Message input')
+    expect(queued.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(tray).getByRole('button', { name: 'Edit queued message' })).toBeTruthy()
+  })
+
+  it('sits inside the element whose height the composer publishes as --composer-h', () => {
+    const observed: Element[] = []
+    globalThis.ResizeObserver = class {
+      observe(target: Element) { observed.push(target) }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+    queueOne()
+    render(
+      <div data-workbench-center="">
+        <Composer onSubmit={() => {}} queue={<PendingMessageQueue />} />
+      </div>,
+    )
+
+    // The measured element is the docked composer; a queue that grows the
+    // tray grows it too, and the transcript above simply ends sooner.
+    expect(observed).toEqual([screen.getByTestId('docked-composer')])
+    expect(observed[0].contains(screen.getByText('Steer this way'))).toBe(true)
+  })
+
+  it('takes no room while nothing is queued', () => {
+    docked()
+
+    const slot = document.querySelector('[data-composer-queue]') as HTMLElement
+    expect(slot.childElementCount).toBe(0)
+    // An empty slot is hidden, margin included.
+    expect(slot.className).toContain('empty:hidden')
+  })
+
+  it('scrolls within a capped height, so a long queue cannot push the box off screen', () => {
+    queueOne()
+    docked()
+
+    const slot = document.querySelector('[data-composer-queue]') as HTMLElement
+    expect(slot.className).toContain('max-h-[30dvh]')
+    expect(slot.className).toContain('overflow-y-auto')
+  })
+
+  it('is not drawn by the new-session composer, which has no queue', () => {
+    queueOne()
+    render(<Composer onSubmit={() => {}} placement="inline" queue={<PendingMessageQueue />} />)
+
+    expect(screen.queryByText('Steer this way')).toBeNull()
+  })
+
+  it('keeps Remove, with Undo to put the text back in the composer', async () => {
+    const user = userEvent.setup()
+    let restored: { content?: string } | undefined
+    const restoreListener = mock((e: unknown) => {
+      restored = (e as CustomEvent<{ content?: string }>).detail
+    })
+    window.addEventListener('queue:restore-draft', restoreListener)
+    answerCancel(204)
+    queueOne('Oops, not this')
+    docked()
+
+    await user.click(within(screen.getByTestId('docked-composer')).getByRole('button', { name: 'Remove queued message' }))
+
+    expect(useAgentStore.getState()._pendingMessages).toEqual([])
+    expect(screen.queryByText('Oops, not this')).toBeNull()
+    const toast = useToastStore.getState().toasts[0]
+    expect(toast?.title).toBe('Queued message removed')
+    expect(toast?.action?.label).toBe('Undo')
+    toast?.action?.onAction()
+    expect(restored).toEqual({ content: 'Oops, not this', files: undefined })
+    window.removeEventListener('queue:restore-draft', restoreListener)
   })
 })

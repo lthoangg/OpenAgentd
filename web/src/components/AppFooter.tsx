@@ -3,7 +3,8 @@
  *
  * Left cluster is workspace-scoped, right cluster is session-scoped:
  *   • left:  connected backend and its health · git branch with ahead/behind
- *            + dirty count
+ *            + dirty count · "N terminals running" while the workspace has
+ *            live shells (they keep running with the terminal group hidden)
  *   • right: fast mode · 24h spend · settings
  *
  * The model lives on the composer's run deck, the one place to read and
@@ -17,6 +18,7 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   GitBranch,
   Settings,
+  TerminalSquare,
   Zap,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -24,8 +26,10 @@ import { useQuery } from '@tanstack/react-query'
 import { HealthDot } from './HealthDot'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useTerminalStore } from '@/stores/useTerminalStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
@@ -105,6 +109,23 @@ function syncLabel(ahead: number | null | undefined, behind: number | null | und
   return parts.length > 0 ? parts.join(', ') : null
 }
 
+/**
+ * Shells of ``workspace`` that are still alive, the same ones the dock asks
+ * before closing. Terminals are keyed by the workspace path (their
+ * ``contextKey``), so another workspace's shells never count here. A number,
+ * so a shell's output or title does not re-render the footer.
+ */
+function useRunningTerminalCount(workspace: string | null | undefined): number {
+  return useTerminalStore((state) => {
+    if (!workspace) return 0
+    let running = 0
+    for (const meta of Object.values(state.sessions)) {
+      if (meta.contextKey === workspace && (meta.status === 'connected' || meta.status === 'connecting')) running += 1
+    }
+    return running
+  })
+}
+
 export const AppFooter = memo(function AppFooter({
   workspace,
   chatWorkspace = false,
@@ -116,6 +137,8 @@ export const AppFooter = memo(function AppFooter({
   const openSettings = useSettingsStore((s) => s.openSettings)
   const spend = useFooterSpend()
   const spendLabel = spend === undefined ? null : formatSpend(spend)
+  const terminals = useRunningTerminalCount(workspace)
+  const terminalsLabel = `${terminals} ${terminals === 1 ? 'terminal' : 'terminals'} running`
 
   const isProject = Boolean(workspace) && !chatWorkspace
   const statusQuery = useQuery({
@@ -185,6 +208,32 @@ export const AppFooter = memo(function AppFooter({
               <TooltipContent>
                 <span className="block">{branchTooltip}</span>
                 <span className="block opacity-70">Open Git</span>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
+
+        {terminals > 0 && (
+          <>
+            <Divider />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    // Opens (never toggles) the terminal group on the last
+                    // shell, so the item cannot hide what it points to.
+                    onClick={() => dispatchAppEvent(APP_EVENTS.openTerminal)}
+                    className={cn(ITEM, 'shrink-0')}
+                  >
+                    <TerminalSquare size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                    <span className="whitespace-nowrap">{terminalsLabel}</span>
+                  </button>
+                }
+              />
+              <TooltipContent>
+                <span className="block">Terminals keep running while hidden</span>
+                <span className="block opacity-70">Show terminals</span>
               </TooltipContent>
             </Tooltip>
           </>

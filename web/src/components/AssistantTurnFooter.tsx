@@ -7,19 +7,23 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Term } from '@/components/ui/term'
 import { formatMetaDuration } from '@/components/ui/meta-row'
+import { cn } from '@/lib/utils'
+import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { turnAccount, turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
-import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
+import { WorkSummaryRow } from '@/components/ReaderTurn'
 import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
+import type { ChangedFileInfo } from '@/components/WorkspacePanel/diff-helpers'
+import { TurnFileList } from '@/components/AgentView/TurnFileList'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 
@@ -28,6 +32,36 @@ export interface AssistantTurnFooterProps {
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
+  /** Files the turn edited; listed behind "N files changed". */
+  changedFiles?: readonly ChangedFileInfo[]
+  /** Resend this turn's prompt for a new answer; offered under the last finished turn only. */
+  onRegenerate?: () => void
+  /** Edit the prompt this turn answers. */
+  onEditPrompt?: () => void
+  /** A turn is running, so the prompt cannot be edited yet: the action shows disabled, with the reason. */
+  editLocked?: boolean
+  /** Undo this turn; offered under the last finished turn only. */
+  onUndo?: () => void
+}
+
+const NO_FILES: readonly ChangedFileInfo[] = []
+
+/**
+ * A text action on the footer (DESIGN.md → Transcript rows): muted, shown at
+ * rest, a keycap wash on hover. 24px tall, 36px on touch.
+ */
+const ACTION_CLASS = 'inline-flex h-6 shrink-0 items-center gap-1 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5'
+
+/** A footer action with a hint on hover and keyboard focus. */
+function FooterAction({ label, hint, onClick, ariaLabel }: { label: ReactNode; hint: string; onClick: () => void; ariaLabel?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<button type="button" onClick={onClick} aria-label={ariaLabel} className={ACTION_CLASS}>{label}</button>}
+      />
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 /** One line of the turn-details popover: a label, then a right-aligned value. */
@@ -48,8 +82,18 @@ function DetailRow({ label, children }: { label: ReactNode; children: ReactNode 
  * and opens this session in Usage. A popover rather than a tooltip so it
  * works on touch and can hold the link.
  */
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({
+  turnBlocks,
+  size = 'compact',
+  changedFiles = NO_FILES,
+  onRegenerate,
+  onEditPrompt,
+  editLocked = false,
+  onUndo,
+}: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
+  const filesFold = useStickyFold()
+  const filesId = useId()
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
     const textContent = lastTurnText(turnBlocks)
@@ -104,11 +148,13 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     openTelemetry(session ? { session } : {})
   }, [])
 
-  if (!textContent && !timestamp && responseDurationMs === undefined && !modelName) return null
+  const hasActions = Boolean(textContent || onRegenerate || onEditPrompt || onUndo || changedFiles.length > 0)
+  if (!hasActions && !timestamp && responseDurationMs === undefined && !modelName) return null
 
-  const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 items-center gap-1.5' : 'mt-0.5 flex min-w-0 items-center gap-1'
-  const iconSize = size === 'roomy' ? 11 : 10
+  const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 flex-wrap items-center gap-1.5' : 'mt-0.5 flex min-w-0 flex-wrap items-center gap-1'
   const hasUsage = outputTokens > 0 || costUsd > 0
+  const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0)
+  const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0)
 
   const parts: ReactNode[] = []
   // One line: the model ID truncates first; time, duration and cost never wrap.
@@ -133,24 +179,65 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     : undefined
 
   return (
-    <div className={wrapperClass}>
-      {textContent && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                onClick={handleCopy}
-                className="flex size-6 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:flex pointer-coarse:size-9 pointer-coarse:items-center pointer-coarse:justify-center pointer-coarse:p-0"
-                aria-label="Copy response"
-              >
-                {copied
-                  ? <Check size={iconSize} className="text-(--accent-green-text)" />
-                  : <Copy size={iconSize} />}
-              </button>
-            }
-          />
-          <TooltipContent>Copy response</TooltipContent>
-        </Tooltip>
+    <>
+    {/* Open, the row pins to the top of the transcript while a long file list scrolls under it, so it can close from anywhere. */}
+    <div className={cn(wrapperClass, filesFold.open && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
+      {hasActions && (
+        <div role="group" aria-label="Turn actions" className="flex min-w-0 flex-wrap items-center gap-x-0.5">
+          {textContent && (
+            <FooterAction
+              label={copied ? 'Copied' : 'Copy'}
+              ariaLabel="Copy response"
+              hint="Copy response"
+              onClick={handleCopy}
+            />
+          )}
+          {onRegenerate && (
+            <FooterAction label="Regenerate" hint="Send the prompt again and replace this answer" onClick={onRegenerate} />
+          )}
+          {onEditPrompt && (editLocked ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
+                  <button
+                    type="button"
+                    aria-disabled="true"
+                    aria-label="Edit prompt, available when this turn ends"
+                    onClick={(event) => event.preventDefault()}
+                    className={cn(ACTION_CLASS, 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-(--color-text-muted)')}
+                  >
+                    Edit prompt
+                  </button>
+                }
+              />
+              <TooltipContent>Available when this turn ends</TooltipContent>
+            </Tooltip>
+          ) : (
+            <FooterAction label="Edit prompt" hint="Undo this turn and put the prompt back in the composer" onClick={onEditPrompt} />
+          ))}
+          {changedFiles.length > 0 && (
+            <button
+              ref={filesFold.anchorRef}
+              type="button"
+              aria-expanded={filesFold.open}
+              aria-controls={filesId}
+              onClick={(event) => (filesFold.open ? filesFold.close(event.currentTarget) : filesFold.setOpen(true))}
+              className={ACTION_CLASS}
+            >
+              {`${changedFiles.length} ${changedFiles.length === 1 ? 'file' : 'files'} changed`}
+              {(additions > 0 || deletions > 0) && (
+                <span className="flex items-center gap-1 font-mono tabular-nums">
+                  {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
+                  {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
+                </span>
+              )}
+            </button>
+          )}
+          {onUndo && (
+            <FooterAction label="Undo" hint="Undo this turn. The prompt returns to the composer" onClick={onUndo} />
+          )}
+        </div>
       )}
       {parts.length > 0 && (
         <Popover>
@@ -192,6 +279,12 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
         </Popover>
       )}
     </div>
+    {changedFiles.length > 0 && (
+      <Collapsible open={filesFold.open}>
+        <TurnFileList id={filesId} files={changedFiles} />
+      </Collapsible>
+    )}
+    </>
   )
 })
 
@@ -236,6 +329,16 @@ export interface AssistantTurnProps {
    * Reader mode's work row shows how long the agent has been working.
    */
   startedAt?: number
+  /** The prompt this turn answers, so its footer can offer Edit prompt. */
+  promptId?: string
+  /** Rewind to a prompt and put it back in the composer (the same flow as editing it in its bubble). */
+  onEditPrompt?: (promptId: string) => void
+  /** A turn is running, so a prompt cannot be edited yet. */
+  editLocked?: boolean
+  /** Resend this turn's prompt; passed to the last finished turn only. */
+  onRegenerate?: () => void
+  /** Undo this turn; passed to the last finished turn only. */
+  onUndo?: () => void
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -250,6 +353,11 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   reader = false,
   startedAt,
+  promptId,
+  onEditPrompt,
+  editLocked = false,
+  onRegenerate,
+  onUndo,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -258,7 +366,11 @@ export const AssistantTurn = memo(function AssistantTurn({
   const turnIsWorking = isWorking && isTrailingTurn
   const awaitsUser = useQuestionAwaitsUser()
   const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
-  const changedFiles = useMemo(() => (reader && !turnIsOpen ? turnChangedFiles(blocks) : []), [reader, turnIsOpen, blocks])
+  // Both transcript styles list the files a finished turn edited.
+  const changedFiles = useMemo(() => (turnIsOpen ? NO_FILES : turnChangedFiles(blocks)), [turnIsOpen, blocks])
+  const editPrompt = useCallback(() => {
+    if (promptId !== undefined) onEditPrompt?.(promptId)
+  }, [onEditPrompt, promptId])
   // A compaction divider ends the fold before it (see ``readerSegments``), so
   // only a fold after the turn's last divider can still be working.
   const lastCompaction = useMemo(() => {
@@ -313,8 +425,17 @@ export const AssistantTurn = memo(function AssistantTurn({
             )
           })
         : blocks.map((_, j) => renderAt(j))}
-      {changedFiles.length > 0 && <TurnChangedFiles files={changedFiles} />}
-      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
+      {!turnIsOpen && (
+        <AssistantTurnFooter
+          turnBlocks={blocks}
+          size={size}
+          changedFiles={changedFiles}
+          onRegenerate={onRegenerate}
+          onEditPrompt={promptId !== undefined && onEditPrompt ? editPrompt : undefined}
+          editLocked={editLocked}
+          onUndo={onUndo}
+        />
+      )}
     </div>
   )
 })

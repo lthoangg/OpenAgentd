@@ -69,14 +69,14 @@ async function fireScroll(el: HTMLDivElement, distFromBottom: number) {
 describe("AgentView — scroll-to-bottom button", () => {
   it("hidden by default (attached)", () => {
     const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("appears when user scrolls away from bottom", async () => {
     const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
     await fireScroll(el, 200) // 200px above bottom → detach
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 
 
@@ -85,11 +85,11 @@ describe("AgentView — scroll-to-bottom button", () => {
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
     await fireScroll(el, 200)
 
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     expect(btn).toBeTruthy()
 
     await act(async () => { btn.click() })
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("uses smooth scroll and ignores scroll events during programmatic scroll", async () => {
@@ -100,16 +100,16 @@ describe("AgentView — scroll-to-bottom button", () => {
     el.scrollTo = scrollToMock
 
     await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     await act(async () => { btn.click() })
 
     expect(scrollToMock).toHaveBeenCalledWith({ top: el.scrollHeight - el.clientHeight, behavior: "smooth" })
 
     // During the smooth scroll, intermediate scroll events should not detach the view
     await fireScroll(el, 150)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("hides button when user scrolls back to the bottom", async () => {
@@ -117,10 +117,33 @@ describe("AgentView — scroll-to-bottom button", () => {
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
 
     await fireScroll(el, 200) // detach
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     await fireScroll(el, 0) // back at bottom → re-attach
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
+  })
+
+  it("is the one jump chip, saying Jump to latest, and counting what arrives while the reader is away", async () => {
+    const view = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = view.container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 200)
+
+    // No 28px icon-only button beside it.
+    expect(view.container.querySelectorAll('button[aria-label*="latest"], button[aria-label*="bottom"]')).toHaveLength(1)
+    const chip = view.container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
+    expect(chip.getAttribute("aria-label")).toBe("Jump to latest")
+    expect(chip.textContent).toBe("Jump to latest")
+    expect(chip.dataset.side).toBe("inside")
+
+    view.rerender(
+      <AgentView
+        blocks={[makeTextBlock("b1", "Hi"), makeTextBlock("b2", "More"), makeTextBlock("b3", "Even more")]}
+        currentBlocks={[]}
+        isWorking={false}
+      />,
+    )
+    await waitFrame()
+    expect(view.container.querySelector('button[aria-label^="Jump to latest"]')?.getAttribute("aria-label")).toBe("Jump to latest, 2 new")
   })
 
   it("does not detach when keyboard is open (data-keyboard-open attribute)", async () => {
@@ -132,19 +155,19 @@ describe("AgentView — scroll-to-bottom button", () => {
     await fireScroll(el, 200) // would normally detach, but keyboard is open
     document.documentElement.removeAttribute("data-keyboard-open")
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("hides stale button when chat resets to empty", async () => {
     const { container, rerender } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
     await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     await act(async () => {
       rerender(<AgentView blocks={[]} currentBlocks={[]} isWorking={false} />)
     })
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("re-attaches when new user message arrives (regardless of scroll position)", async () => {
@@ -154,7 +177,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     })
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
     await fireScroll(el, 200) // detach
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     await act(async () => {
       rerender(
@@ -167,7 +190,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     })
     await waitFrame()
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("re-attaches to stream after clicking scroll-to-bottom: ResizeObserver fires scrollToBottom", async () => {
@@ -179,12 +202,12 @@ describe("AgentView — scroll-to-bottom button", () => {
 
     // Detach
     await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     // Click button — sets attached=true
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     await act(async () => { btn.click() })
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
 
     // New stream content — ResizeObserver should scroll (attached=true)
     let scrollTopSet = false
@@ -235,14 +258,14 @@ describe("AgentView — scroll-to-bottom button", () => {
 
     // 1. Detach by scrolling away from bottom
     await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     // 2. Click scroll to bottom button to trigger smooth scroll
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     await act(async () => { btn.click() })
 
     // Button should be hidden immediately
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
 
     // Wait for the programmatic scroll timeout to finish (500ms)
     await act(async () => {
@@ -256,7 +279,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     await waitFrame()
 
     // Still attached and no button
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
 
     // 4. Now fire a scroll event that actually scrolls UP (from 400 to 390)
     // This should detach!
@@ -264,7 +287,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     await act(async () => { el.dispatchEvent(new Event("scroll", { bubbles: true })) })
     await waitFrame()
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 })
 
@@ -280,7 +303,7 @@ describe("attach-to-stream — session switch", () => {
 
     // Detach in session A (user scrolled up to read).
     await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     // Switch to session B — the stale detach must not leak across sessions.
     await act(async () => {
@@ -288,7 +311,7 @@ describe("attach-to-stream — session switch", () => {
     })
     await waitFrame()
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
     expect(el.scrollTop).toBe(500) // scrollHeight 1000 - clientHeight 500
   })
 
@@ -300,7 +323,7 @@ describe("attach-to-stream — smooth scroll no-op fallback (WKWebView)", () => 
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
 
     await fireScroll(el, 200) // detach at scrollTop=300
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     expect(btn).toBeTruthy()
 
     // WKWebView can silently no-op scrollTo({behavior:'smooth'}) — the view
@@ -316,7 +339,7 @@ describe("attach-to-stream — smooth scroll no-op fallback (WKWebView)", () => 
       await new Promise((r) => setTimeout(r, 600))
     })
     expect(el.scrollTop).toBe(500)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 })
 
@@ -405,7 +428,7 @@ describe("chat layout resize", () => {
 
         expect(scrollTop).toBe(400)
         expect(requestedScrollTop).toBe(400)
-        expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+        expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
       } finally {
         globalThis.ResizeObserver = originalResizeObserver
         Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth })
@@ -459,7 +482,7 @@ describe("chat layout resize", () => {
         observer?.callback([{ target: content } as unknown as ResizeObserverEntry], {} as ResizeObserver)
         el.dispatchEvent(new Event("scroll"))
       })
-      expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+      expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
 
       // Stream grows to 1600 (content and scrollHeight grow)
       scrollHeight = 1600
@@ -476,7 +499,7 @@ describe("chat layout resize", () => {
         el.dispatchEvent(new Event("scroll"))
       })
 
-      expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+      expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
     } finally {
       globalThis.ResizeObserver = originalResizeObserver
     }
@@ -603,7 +626,7 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     // The RO snaps scrollTop back to bottom before any scroll event is seen —
     // the wheel event is the only observable signal of the user's gesture.
     await fireWheel(el, -50)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 
   it("does not re-attach at the bottom while the wheel gesture is still in flight", async () => {
@@ -612,13 +635,13 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     await fireScroll(el, 0)
 
     await fireWheel(el, -50)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     // A small trackpad delta leaves the view within SCROLL_THRESHOLD of the
     // bottom (or the RO already snapped it back): the resulting scroll event
     // must NOT re-attach while the user's upward gesture is recent.
     await fireScroll(el, 0)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 
   it("re-attaches at the bottom once the gesture window has passed", async () => {
@@ -627,11 +650,11 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     await fireScroll(el, 0)
 
     await fireWheel(el, -50)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     await act(async () => { await new Promise((r) => setTimeout(r, 400)) })
     await fireScroll(el, 0) // user scrolled back to the bottom, gesture over
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("does not detach on wheel-down", async () => {
@@ -640,7 +663,7 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     await fireScroll(el, 0)
 
     await fireWheel(el, 50)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("does not detach on wheel-up when the pane cannot scroll", async () => {
@@ -649,7 +672,7 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     // default happy-dom metrics: scrollHeight = clientHeight = 0 → not scrollable
 
     await fireWheel(el, -50)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it("detaches when a touch drag moves the finger downward (scrolling up)", async () => {
@@ -659,7 +682,7 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
 
     await fireTouch(el, "touchstart", 200)
     await fireTouch(el, "touchmove", 260)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 
   it("does not detach when a touch drag moves the finger upward (scrolling down)", async () => {
@@ -669,7 +692,7 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
 
     await fireTouch(el, "touchstart", 260)
     await fireTouch(el, "touchmove", 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
 })
@@ -701,7 +724,7 @@ describe("AgentView — escaping auto-follow without a wheel event", () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }))
     })
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 
   it("ignores scroll keys typed into a text field", async () => {
@@ -714,7 +737,7 @@ describe("AgentView — escaping auto-follow without a wheel event", () => {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
     })
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
     input.remove()
   })
 
@@ -730,7 +753,7 @@ describe("AgentView — escaping auto-follow without a wheel event", () => {
       menuItem.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
     })
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
     menuItem.remove()
   })
 
@@ -814,10 +837,10 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
     const anchor = el.querySelector("[data-chat-scroll-anchor]") as HTMLElement
 
     await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
     expect(anchor.style.overflowAnchor).toBe("none")
 
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     await act(async () => { btn.click() })
     expect(anchor.style.overflowAnchor).toBe("auto")
   })
@@ -834,7 +857,7 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
     await fireScroll(el, 200)
     expect(el.dataset.follow).toBe("reading")
 
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
     await act(async () => { btn.click() })
     expect(el.dataset.follow).toBe("live")
   })

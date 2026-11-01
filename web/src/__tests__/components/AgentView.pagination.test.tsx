@@ -236,8 +236,33 @@ describe("AgentView — scroll-to-top pagination", () => {
     })
 
     // The scroll-to-bottom button should be visible — user is mid-page, NOT snapped to bottom
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
+    const btn = container.querySelector('button[aria-label^="Jump to latest"]')
     expect(btn).not.toBeNull()
+  })
+})
+
+describe("AgentView — the row for earlier messages loading", () => {
+  it("says earlier messages are loading while an older page is on its way, above the first turn", () => {
+    storeState._loadingOlder = true
+    const { container } = render(
+      <AgentView blocks={[block("b1", "user"), block("b2")]} currentBlocks={[]} isWorking={false} />,
+    )
+
+    const row = container.querySelector("[data-loading-earlier]") as HTMLElement
+    expect(row.getAttribute("role")).toBe("status")
+    expect(row.textContent).toBe("Loading earlier messages…")
+    const first = container.querySelector("[data-block-id]") as HTMLElement
+    expect(row.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("shows nothing when no older page is loading, even when more exist", () => {
+    storeState.hasMore = true
+    storeState.nextCursor = "cursor-1"
+    const { container } = render(
+      <AgentView blocks={[block("b1", "user"), block("b2")]} currentBlocks={[]} isWorking={false} />,
+    )
+
+    expect(container.querySelector("[data-loading-earlier]")).toBeNull()
   })
 })
 

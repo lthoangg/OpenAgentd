@@ -305,12 +305,19 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, actionsAtRest = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
+  /** A turn is running, so the prompt cannot be rewound yet: Edit shows disabled, with the reason. */
+  editLocked?: boolean
+  /**
+   * Show Edit and Copy at rest, in the muted tone (the latest prompt). Other
+   * prompts reveal them on hover, keyboard focus and touch.
+   */
+  actionsAtRest?: boolean
   /** The model and thinking level this prompt ran with. */
   modelId?: string | null
   thinkingLevel?: string | null
@@ -335,7 +342,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const modelName = shortModelName(modelId)
   const chatMenu = useChatMenu(fromAgent ? `Actions for ${fromAgent} report` : 'Actions for message', () => [
     { label: 'Copy', run: () => copyText(content) },
-    ...(onEdit && !fromAgent ? [{ label: 'Edit', run: onEdit }] : []),
+    ...(onEdit && !fromAgent && !editLocked ? [{ label: 'Edit', run: onEdit }] : []),
   ])
 
   const handleCopy = async () => {
@@ -553,8 +560,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
-            {/* Hover reveals the row on desktop; touch has no hover, so it always shows there. */}
-            <div className={`flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+            {/* The latest prompt shows the row at rest. Earlier ones reveal it on
+                hover and keyboard focus; touch has no hover, so it always shows there. */}
+            <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
               {modelName && (
                 <span
                   data-prompt-model
@@ -564,7 +572,26 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
                 </span>
               )}
-              {onEdit && (
+              {onEdit && editLocked && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
+                      <button
+                        type="button"
+                        aria-disabled="true"
+                        onClick={(event) => event.preventDefault()}
+                        className="flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9"
+                        aria-label="Edit message, available when this turn ends"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>Available when this turn ends</TooltipContent>
+                </Tooltip>
+              )}
+              {onEdit && !editLocked && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -603,7 +630,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 <Tooltip className="text-xs text-(--color-text-subtle)">
                   <TooltipTrigger
                     render={
-                      <span className="text-xs text-(--color-text-subtle)" aria-hidden={!showTime}>
+                      <span className="text-xs text-(--color-text-subtle)" aria-hidden={!(actionsAtRest || showTime)}>
                         {formatTime(timestamp)}
                       </span>
                     }

@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { render, screen, cleanup, fireEvent } from "@testing-library/react"
+import { act, render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AgentView } from "@/components/AgentView"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
+import { useSettingsStore } from "@/stores/useSettingsStore"
+import { useUIStore } from "@/stores/useUIStore"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(() => {
@@ -293,7 +295,109 @@ describe("AgentView — provider retry notice", () => {
       },
     }
     render(<AgentView blocks={[]} currentBlocks={[block]} isWorking />)
-    expect(screen.getByText("Personal hit its usage limit (resets in 2h). Continuing on Work with the same model.")).toBeTruthy()
+    // Words first: an info chip names the new account, the old one's reason follows.
+    const chip = screen.getByText("Work").closest("[data-slot=chip]")
+    expect(chip?.getAttribute("data-tone")).toBe("info")
+    expect(chip?.textContent).toBe("Switched to account Work")
+    expect(screen.getByText("Personal hit its usage limit (resets in 2h)")).toBeTruthy()
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+  })
+
+  it("still says the account switched when the message has an unfamiliar shape", () => {
+    const block: ContentBlock = {
+      id: "s2",
+      type: "provider_status",
+      content: "",
+      extra: { status: "switched_credential", model: "openai:gpt", message: "Moved to the next key." },
+    }
+    render(<AgentView blocks={[]} currentBlocks={[block]} isWorking />)
+
+    expect(screen.getByText("Switched account").closest("[data-slot=chip]")?.getAttribute("data-tone")).toBe("info")
+    expect(screen.getByText("Moved to the next key.")).toBeTruthy()
+  })
+
+  it("prefers the account the status names over the one in its message", () => {
+    const block: ContentBlock = {
+      id: "s3",
+      type: "provider_status",
+      content: "",
+      extra: { status: "switched_credential", credential_label: "Home", message: "Personal was rate-limited. Continuing on Work with the same model." },
+    }
+    render(<AgentView blocks={[]} currentBlocks={[block]} isWorking />)
+
+    expect(screen.getByText("Home")).toBeTruthy()
+    expect(screen.queryByText("Work")).toBeNull()
+  })
+})
+
+describe("AgentView — error card details and settings", () => {
+  const detailed = (extra: Record<string, unknown>): ContentBlock => ({
+    id: "e1",
+    type: "provider_status",
+    content: "Rate limit exceeded",
+    extra: { status: "error", title: "Rate Limit Exceeded", message: "Rate limit exceeded", category: "provider", ...extra },
+  })
+  const ended = (error: ContentBlock): ContentBlock[] => [
+    { id: "m1", type: "user", content: "prompt" },
+    { id: "a1", type: "text", content: "partial" },
+    error,
+  ]
+
+  it("copies the error with its code, status and model", async () => {
+    const writeText = mock(async (_text: unknown) => {})
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true, writable: true })
+    render(
+      <AgentView
+        blocks={ended(detailed({ code: "provider_rate_limit", status_code: 429, error_type: "HTTPStatusError", model: "openai:gpt-5" }))}
+        currentBlocks={[]}
+        isWorking={false}
+      />,
+    )
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy details" })) })
+
+    expect(writeText).toHaveBeenCalledWith(
+      "Rate Limit Exceeded\nRate limit exceeded\nCode: provider_rate_limit\nType: HTTPStatusError\nStatus: 429\nModel: openai:gpt-5",
+    )
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy()
+  })
+
+  it("lets an earlier error be copied too, without a way forward", () => {
+    const blocks: ContentBlock[] = [
+      { id: "m1", type: "user", content: "prompt" },
+      detailed({}),
+      { id: "a1", type: "text", content: "answer after the fallback" },
+    ]
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
+
+    expect(screen.getByRole("button", { name: "Copy details" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Provider settings" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
+  })
+
+  it("opens Settings → Providers from the error a turn ended with", () => {
+    const openSettings = mock((..._args: unknown[]) => {})
+    const original = useSettingsStore.getState().openSettings
+    act(() => { useSettingsStore.setState({ openSettings }) })
+    try {
+      render(<AgentView blocks={ended(detailed({}))} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
+      fireEvent.click(screen.getByRole("button", { name: "Provider settings" }))
+      expect(openSettings).toHaveBeenCalledWith("providers")
+    } finally {
+      act(() => { useSettingsStore.setState({ openSettings: original }) })
+    }
+  })
+
+  it("opens the run picker from Switch model when the host gives no handler", () => {
+    const openRunPicker = mock((_focus?: unknown) => {})
+    const original = useUIStore.getState().openRunPicker
+    act(() => { useUIStore.setState({ openRunPicker }) })
+    try {
+      render(<AgentView blocks={ended(detailed({}))} currentBlocks={[]} isWorking={false} />)
+      fireEvent.click(screen.getByRole("button", { name: "Switch model" }))
+      expect(openRunPicker).toHaveBeenCalledWith("model")
+    } finally {
+      act(() => { useUIStore.setState({ openRunPicker: original }) })
+    }
   })
 })

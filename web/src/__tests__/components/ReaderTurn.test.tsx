@@ -288,15 +288,16 @@ describe('AssistantTurn — reader mode, closing a long fold', () => {
     expect(body.className).toContain('[--fold-top:1.5rem]')
   })
 
-  it('pins the open file list header so it can close from anywhere in a long list', () => {
+  it('pins the footer row of an open file list so it can close from anywhere in a long list', () => {
     renderTurn(finished, { opener: { canOpen: () => true, open: () => {}, openDiff: () => {} } })
     const files = screen.getByRole('button', { name: /1 file changed/ })
-    expect(files.className).not.toContain('sticky')
+    const row = files.closest('[role="group"]')?.parentElement as HTMLElement
+    expect(row.className).not.toContain('sticky')
 
     fireEvent.click(files)
 
-    expect(files.className).toContain('sticky')
-    expect(files.closest('section')?.className).not.toContain('overflow-hidden')
+    expect(row.className).toContain('sticky')
+    expect(screen.getByRole('list', { name: 'Files changed this turn' }).className).not.toContain('overflow-hidden')
   })
 
   it('closes from the end of the steps too, handing focus back to the row', () => {

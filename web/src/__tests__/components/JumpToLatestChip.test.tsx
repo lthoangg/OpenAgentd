@@ -4,7 +4,7 @@ import { useFakeTimers } from '../fake-timers'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { JumpToLatestChip } from '@/components/JumpToLatestChip'
+import { JumpToLatest, JumpToLatestChip } from '@/components/JumpToLatestChip'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 
 beforeEach(() => useTranscriptFollowStore.setState({ unseen: null, jumpToLatest: null }))
@@ -24,11 +24,11 @@ describe('JumpToLatestChip', () => {
     expect(chip.textContent).toBe('3 new')
   })
 
-  it('is a bare arrow when nothing new arrived', () => {
+  it('says "Jump to latest" when nothing new arrived', () => {
     useTranscriptFollowStore.setState({ unseen: 0, jumpToLatest: () => {} })
     render(<JumpToLatestChip />)
 
-    expect(screen.getByRole('button', { name: 'Jump to latest' }).textContent).toBe('')
+    expect(screen.getByRole('button', { name: 'Jump to latest' }).textContent).toBe('Jump to latest')
   })
 
   it('jumps to the latest', () => {
@@ -45,6 +45,13 @@ describe('JumpToLatestChip', () => {
     render(<JumpToLatestChip below />)
 
     expect(screen.getByRole('button', { name: /jump to latest/i }).dataset.side).toBe('below')
+  })
+
+  it('has no border: the chip floats on its own surface and shadow', () => {
+    useTranscriptFollowStore.setState({ unseen: 2, jumpToLatest: () => {} })
+    render(<JumpToLatestChip />)
+
+    expect(screen.getByRole('button', { name: /jump to latest/i }).className).not.toMatch(/(?<![\w-])border(?![\w-])/)
   })
 
   it('fades out of reach, keeping its count, when the reader is back at the live end', () => {
@@ -64,5 +71,26 @@ describe('JumpToLatestChip', () => {
     } finally {
       timers.restore()
     }
+  })
+})
+
+describe('JumpToLatest, in the transcript itself', () => {
+  it('is the same chip, with the count, and jumps through the handler it is given', () => {
+    const onJump = mock(() => {})
+    render(<JumpToLatest unseen={5} side="inside" onJump={onJump} />)
+
+    const chip = screen.getByRole('button', { name: 'Jump to latest, 5 new' })
+    expect(chip.dataset.side).toBe('inside')
+    expect(chip.textContent).toBe('5 new')
+    fireEvent.click(chip)
+    expect(onJump).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves at once, with no fade, when asked not to fade out', () => {
+    const { rerender, container } = render(<JumpToLatest unseen={0} side="inside" fadeOut={false} onJump={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Jump to latest' })).toBeTruthy()
+
+    rerender(<JumpToLatest unseen={null} side="inside" fadeOut={false} onJump={() => {}} />)
+    expect(container.querySelector('button')).toBeNull()
   })
 })

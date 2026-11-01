@@ -57,7 +57,7 @@ describe('AgentView — jump chip in the composer', () => {
   it('draws no button of its own and reports following while at the end', () => {
     const { container } = renderView([prompt('p'), text('a')])
 
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
     expect(useTranscriptFollowStore.getState().unseen).toBeNull()
     expect(useTranscriptFollowStore.getState().jumpToLatest).not.toBeNull()
   })
@@ -69,7 +69,7 @@ describe('AgentView — jump chip in the composer', () => {
 
     update([prompt('p'), text('a')], [text('b'), text('c')])
     expect(useTranscriptFollowStore.getState().unseen).toBe(2)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
   it('does not count earlier messages loaded above', async () => {

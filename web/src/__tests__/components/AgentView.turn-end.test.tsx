@@ -134,7 +134,7 @@ describe("AgentView — a finishing turn leaves a scrolled-up reader alone", () 
 
       expect(el.dataset.follow).toBe("reading")
       expect(scrollTop).toBe(1500)
-      expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+      expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
     } finally {
       globalThis.ResizeObserver = originalResizeObserver
     }

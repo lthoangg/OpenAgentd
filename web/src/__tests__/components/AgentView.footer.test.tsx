@@ -597,7 +597,8 @@ describe("AgentView — AssistantFooter", () => {
       // Footer should render because there's a non-user block with timestamp
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      // The footer also carries "Edit prompt" for the prompt this turn answered.
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) => /\d+:\d+/.test(el.textContent ?? ""))
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })
@@ -654,7 +655,7 @@ describe("AgentView — AssistantFooter", () => {
       expect(copyBtn).toBeNull()
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) => /\d+:\d+/.test(el.textContent ?? ""))
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })

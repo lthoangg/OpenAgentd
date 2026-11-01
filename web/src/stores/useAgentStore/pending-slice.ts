@@ -10,6 +10,11 @@ import type { MessageAttachment, SessionInteractionMode } from '@/api/types'
  * The mode picked on the new-session screen rides on the message that
  * creates the session; an existing session switches through PATCH instead.
  */
+/** The account a new-session draft was pinned to; an existing session has it saved. */
+function draftCredentialId(state: AgentStore): string | null {
+  return state.sessionId ? null : state.sessionCredentialId
+}
+
 function newSessionInteractionMode(state: AgentStore): SessionInteractionMode | undefined {
   return state.sessionId ? undefined : state.sessionInteractionMode
 }
@@ -152,6 +157,8 @@ export const createPendingSlice: StateCreator<
           options?.fastMode ?? get().sessionFastMode,
           options?.mentions,
           newSessionInteractionMode(get()),
+          false,
+          draftCredentialId(get()),
         )
         if (result.status !== 'queued') {
           // The lead had already gone idle by the time the POST landed, so
@@ -256,6 +263,8 @@ export const createPendingSlice: StateCreator<
         options?.fastMode ?? get().sessionFastMode,
         options?.mentions,
         newSessionInteractionMode(get()),
+        false,
+        draftCredentialId(get()),
       )
       set((draft) => {
         draft.sessionId = result.session_id

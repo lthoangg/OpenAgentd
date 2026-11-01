@@ -13,13 +13,13 @@
  *   C. <motion.div layout>                     80 rect calls  (2.00/render)
  *   D. <motion.div layout animate={{padding}}> 80 rect calls  (2.00/render)
  *
- * C vs D shows the `animate={{ padding }}` transition costs nothing while
- * typing (it only runs on the minimize toggle) — `layout` is the whole cost.
+ * The docked composer never collapses, so the pill needs no motion at all:
+ * it renders as a plain element (case A).
  *
  * This suite cannot measure that directly: setup.ts stubs framer-motion by
  * resolved path, so every import of it inside `bun test` gets the stub. It
- * instead pins the structural contract the benchmark justifies — the desktop
- * pill must not carry `layout`.
+ * instead pins the structural contract the benchmark justifies — the pill is
+ * not a motion element.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import type React from 'react'
@@ -78,16 +78,9 @@ function findPill() {
 }
 
 describe('InputComposer — composer pill motion contract', () => {
-  it('does not use layout projection on the pill (forced reflow per keystroke)', () => {
+  it('renders the pill as a plain element: no motion node to measure per keystroke', () => {
     render(<InputComposer onSubmit={() => {}} />)
-    const pill = findPill()!
-    expect(pill.layout).toBeUndefined()
-    expect(pill.layoutId).toBeUndefined()
-  })
-
-  it('still animates padding between minimized and expanded', () => {
-    render(<InputComposer onSubmit={() => {}} />)
-    const pill = findPill()!
-    expect(pill.animate).toEqual({ padding: 8 })
+    expect(document.querySelector('[data-composer-pill]')).not.toBeNull()
+    expect(findPill()).toBeUndefined()
   })
 })

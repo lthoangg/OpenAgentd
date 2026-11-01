@@ -14,7 +14,7 @@ const base = {
   title: 'Fix the login bug',
   subtitle: 'app',
   onScheduler: () => {},
-  onSessionSettings: () => {},
+  onModelSettings: () => {},
 }
 
 describe('MobileChatActions', () => {
@@ -61,9 +61,9 @@ describe('MobileChatActions', () => {
     expect(screen.getByRole('button', { name: 'Terminal' })).toBeDisabled()
   })
 
-  it('gives touch users tasks, session settings, prompt stepping, file search, and the command palette', () => {
+  it('gives touch users tasks, model and thinking, prompt stepping, file search, and the command palette', () => {
     const onTasks = mock(() => {})
-    const onSessionSettings = mock(() => {})
+    const onModelSettings = mock(() => {})
     const onPreviousPrompt = mock(() => {})
     const onNextPrompt = mock(() => {})
     const onQuickOpen = mock(() => {})
@@ -73,7 +73,7 @@ describe('MobileChatActions', () => {
       <MobileChatActions
         {...base}
         onTasks={onTasks}
-        onSessionSettings={onSessionSettings}
+        onModelSettings={onModelSettings}
         onPreviousPrompt={onPreviousPrompt}
         onNextPrompt={onNextPrompt}
         onQuickOpen={onQuickOpen}
@@ -82,14 +82,14 @@ describe('MobileChatActions', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Tasks' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Session settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Model and thinking' }))
     fireEvent.click(screen.getByRole('button', { name: 'Previous prompt' }))
     fireEvent.click(screen.getByRole('button', { name: 'Next prompt' }))
     fireEvent.click(screen.getByRole('button', { name: 'Find file' }))
     fireEvent.click(screen.getByRole('button', { name: 'Command palette' }))
 
     expect(onTasks).toHaveBeenCalledTimes(1)
-    expect(onSessionSettings).toHaveBeenCalledTimes(1)
+    expect(onModelSettings).toHaveBeenCalledTimes(1)
     expect(onPreviousPrompt).toHaveBeenCalledTimes(1)
     expect(onNextPrompt).toHaveBeenCalledTimes(1)
     expect(onQuickOpen).toHaveBeenCalledTimes(1)

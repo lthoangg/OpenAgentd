@@ -1,7 +1,5 @@
-import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
-import { motion } from 'framer-motion'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo, type ReactNode } from 'react'
+import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { DesignFeedbackStrip } from './DesignFeedbackViews'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
@@ -19,10 +17,11 @@ import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback,
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { focusQuietly } from '@/lib/focus/quiet'
+import { selectionHapticFeedback, softHapticFeedback } from '@/lib/haptics'
 import { SessionModeToggle } from './SessionModeToggle'
+import type { ComposerActions } from './composer/PlusMenu'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
@@ -90,7 +89,7 @@ function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean
 const DELIVERY_TRIGGER_CLASS =
   // Same height as the Steer half on every pointer: the Dropdown's own
   // touch minimum (36px) would otherwise leave it taller than a 32px pill.
-  'flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 max-md:pointer-coarse:h-9 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
+  'flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 pointer-coarse:h-9 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
 
 export interface InputComposerProps {
   onSubmit: (message: string, files?: File[], mentionedFiles?: string[], delivery?: SendDelivery) => void
@@ -118,49 +117,35 @@ export interface InputComposerProps {
   interactionModeDisabled?: boolean
   /**
    * When true, the component renders only the inner rounded pill (no
-   * top border, no background row chrome). A parent wrapper is expected
-   * to provide positioning, shadow, and backdrop. Used by
-   * `FloatingInputComposer` for the draggable variant.
+   * top border, no background row chrome). The parent (``Composer``)
+   * provides the placement around it.
    */
   floating?: boolean
   /**
    * When true, file previews render below the input container instead of
-   * above it. Used by `FloatingInputComposer` when the panel is near the top
-   * edge of its bounds so previews stay visible.
+   * above it: the new-session screen's centered composer.
    */
   filesBelow?: boolean
   suggestionsBelow?: boolean
   /**
-   * Optional render-prop for a drag handle rendered anchored to the top
-   * edge of the input pill (not the outer wrapper). This keeps the handle
-   * pinned to the input regardless of whether file previews are rendered
-   * above or below. Used by `FloatingInputComposer`.
+   * The run deck's "+" control, given what it may do to the draft. Without
+   * it the row shows a plain Attach button.
    */
-  renderDragHandle?: () => React.ReactNode
-  /**
-   * When true, render the slim collapsed action strip instead of the full
-   * pill. The strip keeps file, chat, and send/stop controls visible.
-   * Clicking the chat affordance calls `onUnminimize` so the parent can swap
-   * back to the full variant and focus the textarea.
-   */
-  minimized?: boolean
-  /** Called when the user clicks the collapsed bar to expand it. */
-  onUnminimize?: () => void
-  /** Forwarded to the textarea so the parent can drive minimize-on-blur. */
+  renderPlus?: (actions: ComposerActions) => ReactNode
+  /** Run deck controls after the mode toggle (the run chip, the MCP chip). */
+  deck?: ReactNode
+  /** Run deck controls just before Send (the context ring). */
+  deckEnd?: ReactNode
+  /** Forwarded to the textarea. */
   onFocus?: () => void
   /**
-   * Fired when the textarea blurs. ``canMinimize`` is ``false`` when the
-   * input has uncommitted content (text or attachments) the user would
-   * lose visual access to if the bar collapsed; the parent should keep
-   * the bar expanded in that case.
+   * Fired when the textarea blurs. ``empty`` is ``false`` while the input
+   * holds uncommitted content (text, attachments or design feedback).
    */
-  onBlur?: (canMinimize: boolean) => void
+  onBlur?: (empty: boolean) => void
   /**
    * Called whenever uncommitted content (text or attachments) appears or
-   * disappears. The parent uses this to keep the bar expanded when the
-   * user adds files via the minimized strip's attach button — without
-   * this signal, dropping a file while collapsed would leave the bar
-   * collapsed and the new file invisible.
+   * disappears.
    */
   onHasContentChange?: (hasContent: boolean) => void
   /** Called whenever the current unsent text changes. */
@@ -180,8 +165,8 @@ export interface InputComposerProps {
 
 export interface InputComposerHandle {
   /**
-   * ``expand: false`` leaves a collapsed floating bar collapsed, focusing its
-   * Expand button instead — for handing focus back rather than summoning it.
+   * ``expand: false`` hands focus back quietly (no focus ring): a page load
+   * or a closing panel, not the user steering to the composer.
    */
   focus: (options?: { expand?: boolean }) => void
   setValue: (text: string) => void
@@ -227,9 +212,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   floating = false,
   filesBelow = false,
   suggestionsBelow,
-  renderDragHandle,
-  minimized = false,
-  onUnminimize,
+  renderPlus,
+  deck,
+  deckEnd,
   onFocus,
   onBlur,
   onHasContentChange,
@@ -291,10 +276,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     })
   }, [mentionRanges])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const expandButtonRef = useRef<HTMLButtonElement>(null)
   const isMobile = useIsMobile()
   const { os } = usePlatform()
-  const prefersReducedMotion = useReducedMotion()
 
   const history = useMemo(
     () => buildHistoryEntries(localHistory, historyPrompts),
@@ -331,7 +314,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onSnippetCommand,
     onSlashCommand,
     setMentions,
-    minimized,
+    minimized: false,
     onSuggestionsMenuChange,
   })
 
@@ -426,13 +409,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   useImperativeHandle(ref, () => ({
     focus: (options) => {
-      const pill = options?.expand === false && minimized ? expandButtonRef.current : null
-      // Handing focus back (page load, dock close) isn't keyboard-steered, but
-      // a script focus() on a fresh page counts as :focus-visible and rings
-      // the pill. Focus it quietly: Tab still continues from here, and the
-      // ring returns on the next control the keyboard reaches.
-      if (pill) focusQuietly(pill, {})
-      else textareaRef.current?.focus()
+      const el = textareaRef.current
+      if (!el) return
+      // Handing focus back (page load, panel close) isn't keyboard-steered,
+      // but a script focus() on a fresh page counts as :focus-visible. Focus
+      // quietly then: Tab still continues from here.
+      if (options?.expand === false) focusQuietly(el, {})
+      else el.focus()
     },
     setValue: (text: string) => {
       // A restored message's design feedback blocks come back as chips.
@@ -514,35 +497,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     },
   }))
 
-  // Auto-focus the textarea whenever the bar transitions from
-  // minimized → expanded. The textarea is always mounted (visibility
-  // is opacity-driven, not mount-driven) so the ref is reliably
-  // populated; we just need to call ``.focus()`` at the transition.
-  const prevMinimizedRef = useRef(minimized)
-  useEffect(() => {
-    const wasMinimized = prevMinimizedRef.current
-    prevMinimizedRef.current = minimized
-    if (wasMinimized === minimized) return
-    if (minimized) {
-      // Minimizing disables the textarea, and the browser drops its focus
-      // onto <body> without an event (after a send, or Esc). Keep focus in
-      // the composer on the pill instead, so the next Tab, Enter or typed
-      // key starts here rather than at the top of the page. Quietly: the
-      // user did not steer focus here, and WebKit would ring the pill.
-      const active = document.activeElement
-      const pill = expandButtonRef.current
-      if (pill && (active === textareaRef.current || active === document.body || active === null)) {
-        focusQuietly(pill)
-      }
-      return
-    }
-    // ``resizeAfterLayout``'s double-rAF lets Framer's spring reach (or get
-    // very close to) the bar's final width before scrollHeight is measured.
-    return resizeAfterLayout(() => textareaRef.current?.focus())
-  }, [minimized, resizeAfterLayout])
-
-  // Plain ref now — no auto-focus-on-mount magic needed since the
-  // textarea never unmounts.
   const setTextareaRef = useCallback((node: HTMLTextAreaElement | null) => {
     textareaRef.current = node
   }, [])
@@ -676,11 +630,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       !e.altKey &&
       !e.ctrlKey &&
       !e.metaKey &&
-      !minimized &&
       onInteractionModeChange &&
       !interactionModeDisabled
     ) {
       e.preventDefault()
+      selectionHapticFeedback()
       onInteractionModeChange(interactionMode === 'code' ? 'plan' : 'code')
       return
     }
@@ -762,22 +716,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     />
   ) : null
 
-  // Reusable pill button styles for the action row (attach — pencil calls
-  // this `inputBarAttach`: 32×32 rounded controls, warm card fill).
-  // ``active:scale-90`` gives a tactile press response on touch (``hover``
-  // never fires on a finger), and ``motion-reduce`` opts out for users who
-  // disable animation. The transition is transform+color only — both
-  // GPU-cheap, no layout.
+  // Icon controls on the action row are borderless (DESIGN.md → Buttons):
+  // ghost at rest, keycap fill on hover. 28px on desktop, 32px on a narrow
+  // screen with a mouse, 36px for a finger.
   const actionBtnClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9'
+    'flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9'
 
-  // Two states share one DOM tree: minimized, and expanded. Expanded always
-  // puts the textarea on its own full-width row (the slot's flex-basis:100%)
-  // with the action buttons wrapping onto the row below — no DOM reordering,
-  // no content-dependent layout flip.
-  const handleExpand = () => {
-    onUnminimize?.()
-  }
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
   // Phone: tapping Send, Steer, Stop or the mode toggle must not move focus
@@ -805,7 +749,44 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     if (document.activeElement !== textareaRef.current) textareaRef.current?.focus({ preventScroll: true })
   }
 
-  const attachEl = (
+  // What the "+" menu may do to the draft.
+  const composerActions = useMemo<ComposerActions>(() => ({
+    attach: () => fileInputRef.current?.click(),
+    startToken: (token) => {
+      const el = textareaRef.current
+      const current = el?.value ?? ''
+      const start = el?.selectionStart ?? current.length
+      const end = el?.selectionEnd ?? start
+      // A token starts a word: put a space before it unless one is there.
+      const lead = start > 0 && !/\s/.test(current[start - 1] ?? '') ? ' ' : ''
+      const inserted = `${lead}${token}`
+      const next = current.slice(0, start) + inserted + current.slice(end)
+      const caret = start + inserted.length
+      setValue(next)
+      setHistoryIndex(-1)
+      requestAnimationFrame(() => {
+        el?.focus()
+        el?.setSelectionRange(caret, caret)
+        const mention = findActiveMention(next, caret)
+        if (mention) onFileRefsNeeded?.()
+        setMentionRange(mention)
+        setSnippetRange(mention ? null : findActiveSnippet(next, caret))
+        resize()
+      })
+    },
+    setDraft: (text) => {
+      setValue(text)
+      setDesignFeedback([])
+      resetDraftState()
+      resizeAfterLayout(() => {
+        const el = textareaRef.current
+        el?.focus()
+        el?.setSelectionRange(text.length, text.length)
+      })
+    },
+  }), [fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setMentionRange, setSnippetRange])
+
+  const plusEl = renderPlus ? renderPlus(composerActions) : (
     <button
       type="button"
       onClick={(e) => { stopClick(e); fileInputRef.current?.click() }}
@@ -817,20 +798,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     </button>
   )
 
-  const chatEl = minimized ? (
-    <button
-      ref={expandButtonRef}
-      type="button"
-      onClick={(e) => { stopClick(e); handleExpand() }}
-      aria-label="Expand input bar"
-      // No ring, ever: keyboard focus shows the hover fill instead.
-      data-focus-ring="off"
-      className={cn(actionBtnClass, 'focus-key:bg-(--bg-key) focus-key:text-(--color-text)')}
-    >
-      <MessageCircle size={14} aria-hidden="true" />
-    </button>
-  ) : null
-
   const effectivePlaceholder = disabled
     ? 'Waiting for response…'
     : isStreaming
@@ -840,13 +807,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const activePopupId = menu?.id
   const activeOptionId = menu ? `${menu.id}-option-${activeIndex}` : undefined
 
-
-
   // DESIGN.md `button-send`: the one inverted surface, a full pill. Stop takes
   // the same slot and shape while a turn runs — neutral ink, not an error red.
+  // Idle with nothing to send it is a keycap, borderless like every control.
   const sendSlotClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9'
-  const sendPillClass = 'border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
+    'flex size-8 shrink-0 items-center justify-center rounded-full transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9 max-md:pointer-coarse:size-11'
+  const sendPillClass = 'bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
@@ -867,10 +833,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       <button
         type="button"
         {...keepKeyboard}
-        onClick={(e) => { stopClick(e); submit('steer'); refocusAfterTap() }}
+        onClick={(e) => { stopClick(e); softHapticFeedback(); submit('steer'); refocusAfterTap() }}
         aria-label="Steer the running turn"
         aria-keyshortcuts="Enter"
-        className={cn(sendSlotClass, sendPillClass, 'rounded-r-none')}
+        className={cn(sendSlotClass, sendPillClass, 'rounded-r-none max-md:pointer-coarse:size-9')}
       >
         <ArrowUp size={14} aria-hidden="true" />
       </button>
@@ -882,6 +848,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       {...keepKeyboard}
       onClick={(e) => {
         stopClick(e)
+        if (canSend) softHapticFeedback()
         submit()
         refocusAfterTap()
       }}
@@ -889,13 +856,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       aria-label="Send message"
       className={cn(
         sendSlotClass,
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        'disabled:cursor-not-allowed',
         canSend
           ? sendPillClass
-          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2)',
+          : 'bg-(--bg-key) text-(--color-text-muted)',
       )}
     >
-      {disabled && !minimized ? (
+      {disabled ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
       ) : (
         <ArrowUp size={14} aria-hidden="true" />
@@ -903,20 +870,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     </button>
   )
 
-  // The textarea stays mounted while minimized (opacity + pointer-events
-  // toggle) so the ref stays valid and there's no remount flicker.
   const messageSlot = (
-    <div
-      aria-hidden={minimized}
-      className={`flex w-full items-center transition-opacity duration-(--motion-fast) ${
-        minimized ? 'pointer-events-none opacity-0 h-0 overflow-hidden' : 'opacity-100'
-      }`}
-    >
+    <div className="flex w-full items-center">
       {/* Position context for the chip overlay. ``relative`` + ``w-full``
           keep the overlay's bounding box equal to the textarea's, so
-          chips line up pixel-for-pixel with the text glyphs above them.
-          Intentionally not nesting the textarea's props one level deeper —
-          keeps the diff against the prior version minimal. */}
+          chips line up pixel-for-pixel with the text glyphs above them. */}
       <div className="relative w-full">
       <MentionOverlay
         value={value}
@@ -946,26 +904,22 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           if (findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
         }}
         onBlur={() => {
-          const canMinimize = value.trim().length === 0 && files.length === 0 && designFeedback.length === 0
-          onBlur?.(canMinimize)
+          const empty = value.trim().length === 0 && files.length === 0 && designFeedback.length === 0
+          onBlur?.(empty)
           // Close all pickers on blur — clicks on their items use
           // ``onMouseDown`` with ``preventDefault`` so they fire before the
           // textarea blurs and the menu still gets to commit its choice.
           setMentionRange(null)
           setSnippetRange(null)
         }}
-        disabled={disabled || minimized}
-        placeholder={minimized ? '' : effectivePlaceholder}
+        disabled={disabled}
+        placeholder={effectivePlaceholder}
         rows={1}
         autoFocus={autoFocus}
-        tabIndex={minimized ? -1 : 0}
         // ``p-0`` zeroes WebKit's asymmetric default textarea padding (WKWebView
         // in the macOS Tauri shell ships ~2px top + ~1px bottom that bias the
         // single-line baseline upward). ``align-middle`` keeps the textarea's
-        // bounding box centred in the flex row instead of sitting on the
-        // baseline of adjacent inline-block buttons. Together they make the
-        // placeholder sit vertically centred against the 28px action buttons
-        // both in Chrome (web build) and WKWebView (desktop build).
+        // bounding box centred in its row.
         //
         // ``text-transparent`` + ``caret-color`` hides the textarea's own
         // glyphs so the syntax-highlight overlay (``MentionOverlay``) is
@@ -977,13 +931,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         // the textarea grows a ~15px-wide vertical scrollbar once content
         // exceeds ``maxHeight``, which narrows its inner text-width and makes
         // it wrap a few characters earlier than the overlay mirror (which
-        // has no scrollbar). The wrap-point drift is invisible while typing
-        // but the native spellcheck squiggle is anchored to textarea text
-        // positions, so it ends up under the wrong overlay word and drifts
-        // further with every scroll. The wrapper around the overlay handles
-        // overflow via the overlay's ``overflow-hidden`` + scroll sync.
+        // has no scrollbar), and the spellcheck squiggle drifts off its word.
         className={cn(
           'block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50',
+          // 16px on a phone: iOS zooms the page into any smaller field.
+          'max-md:pointer-coarse:text-base',
           isComposing ? 'text-(--color-text)' : 'text-transparent',
         )}
         // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the
@@ -1008,101 +960,55 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     </div>
   )
 
-  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-(--motion-base) ${
-    minimized
-      ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
-      : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-2 focus-within:ring-(--focus-ring)/30'
-  }`
+  // The composer is an input field, so it keeps its one hairline (DESIGN.md
+  // → Borders); everything inside it is borderless. ``@container`` lets the
+  // run deck respond to the composer's own width (stacked chip under 520px).
+  const pillClassName = 'oa-composer-pill @container relative block w-full rounded-lg border border-(--color-border-strong) bg-(--color-surface) p-2 transition-[border-color,box-shadow] duration-(--motion-base) focus-within:ring-2 focus-within:ring-(--focus-ring)/30'
 
-  const pillInner = (
-    // Click-anywhere-to-expand on bare strip whitespace. Action buttons call
-    // stopClick so they don't trigger this. No ARIA role — the Send button is
-    // the keyboard-accessible "Expand input bar" affordance.
+  const pill = (
     <div
-      onClick={minimized ? handleExpand : undefined}
-      className={`flex w-full flex-wrap items-center gap-2 ${minimized ? 'cursor-text' : ''}`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className={pillClassName}
+      data-composer-pill=""
     >
-      {attachEl}
-      {chatEl}
-      {!minimized && onInteractionModeChange && (
-        // ``contents``: a wrapper for the keep-the-keyboard handlers only.
+      {messageSlot}
+      {/* The run deck: what to add, how it runs, and Send. */}
+      <div className="mt-2 flex w-full min-w-0 items-center gap-1" data-run-deck="">
         <div
           className="contents"
           onPointerDownCapture={keepKeyboard.onPointerDown}
           onMouseDownCapture={keepKeyboard.onMouseDown}
           onClick={isMobile ? refocusAfterTap : undefined}
         >
-          <SessionModeToggle
-            mode={interactionMode}
-            pending={interactionModePending}
-            onChange={onInteractionModeChange}
-            disabled={interactionModeDisabled}
-          />
+          {plusEl}
+          {onInteractionModeChange && (
+            <SessionModeToggle
+              mode={interactionMode}
+              pending={interactionModePending}
+              onChange={onInteractionModeChange}
+              disabled={interactionModeDisabled}
+            />
+          )}
         </div>
-      )}
-      {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
-          ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always
-          takes the full row (flex-basis:100%, order:-1) so the textarea sits
-          above the action buttons. */}
-      <div
-        style={!minimized ? { flexBasis: '100%', order: -1 } : undefined}
-        className={`min-w-0 overflow-hidden ${minimized ? 'w-0 -ml-2' : 'flex-1'}`}
-      >
-        {messageSlot}
+        {deck}
+        <div className="min-w-0 flex-1" />
+        {deckEnd}
+        {sendOrStopEl}
       </div>
-      {/* Spacer pushes Send to the right edge of the action-button row. */}
-      {!minimized && <div className="flex-1" />}
-      {sendOrStopEl}
     </div>
-  )
-
-  // Mobile renders a plain ``div`` — no framer-motion. The pill has no
-  // animation on mobile (no ``layout``, static padding), and rendering it
-  // through ``motion.div`` still made framer reconcile inline styles on every
-  // minimize toggle, which flickered in the WebView. A bare div makes the
-  // toggle a pure, cheap class swap. Desktop keeps the polished morph.
-  //
-  // Desktop deliberately omits ``layout``. ``value`` is local state, so the
-  // composer re-renders on every keystroke, and a ``layout`` node is measured
-  // by framer's projection pass on every render — 2 forced
-  // ``getBoundingClientRect`` calls per typed character. Measured with
-  // ``bun scripts/bench-motion-layout.mjs``; pinned by
-  // ``InputComposer.layout-perf.test.tsx``. The padding animation below is free
-  // while typing (it only retargets on the minimize toggle).
-  const pill = isMobile ? (
-    <div
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      className={pillClassName}
-      style={{ padding: 8 }}
-    >
-      {pillInner}
-    </div>
-  ) : (
-    <motion.div
-      initial={false}
-      animate={{ padding: minimized ? 6 : 8 }}
-      transition={{ duration: prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.sheet }}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      className={pillClassName}
-    >
-      {pillInner}
-    </motion.div>
   )
 
   return (
-    <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
+    <div className={floating ? '' : 'bg-(--bg-page) px-4 py-3'}>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
-        {!minimized && !filesBelow && filePreviews}
-        {!minimized && !filesBelow && feedbackChips}
+        {!filesBelow && filePreviews}
+        {!filesBelow && feedbackChips}
 
         <InputComposerSuggestions
-          minimized={minimized}
+          minimized={false}
           menu={menu}
           activeIndex={activeIndex}
           optionRefs={optionRefs}
@@ -1110,14 +1016,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           suggestionsBelow={suggestionsBelow ?? filesBelow}
         />
 
-        {/* ``flex justify-center`` centers the self-sized minimized pill. */}
-        <div className={`relative ${minimized ? 'flex justify-center' : ''}`}>
-          {renderDragHandle?.()}
+        <div className="relative">
           {pill}
         </div>
 
-        {!minimized && filesBelow && filePreviews}
-        {!minimized && filesBelow && feedbackChips}
+        {filesBelow && filePreviews}
+        {filesBelow && feedbackChips}
 
         <input
           ref={fileInputRef}

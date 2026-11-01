@@ -40,7 +40,7 @@ export interface UseCommandPaletteArgs {
   /** Project workspaces only: opens or shows the dock's Git tab. */
   handleOpenGit?: () => void
   handleSidebarToggle: () => void
-  handleToggleAgentCapabilities: () => void
+  handleToggleRunPicker: () => void
   /** Desktop + workspace: the dock's Tasks tab; otherwise the popover. */
   handleToggleTasks: () => void
   handleTogglePalette: () => void
@@ -80,7 +80,7 @@ export function useCommandPalette({
   handleWorkspaceFiles,
   handleOpenGit,
   handleSidebarToggle,
-  handleToggleAgentCapabilities,
+  handleToggleRunPicker,
   handleToggleTasks,
   handleTogglePalette,
   handleToggleQuickOpen,
@@ -116,7 +116,7 @@ export function useCommandPalette({
   )
 
   const agentCommands = useAgentCommands({
-    toggleAgentCapabilities: handleToggleAgentCapabilities,
+    toggleRunPicker: handleToggleRunPicker,
     toggleTasks: handleToggleTasks,
     toggleScheduler: handleToggleScheduler,
     handleWorkspaceFiles,
@@ -172,7 +172,7 @@ export function useCommandPalette({
   // these (switchers aside), so none of them act on the app underneath.
   useShortcuts([
     appShortcut('newSession', () => { handleNewSession() }),
-    appShortcut('sessionSettings', () => { handleToggleAgentCapabilities() }),
+    appShortcut('sessionSettings', () => { handleToggleRunPicker() }),
     appShortcut('workspaceFiles', () => { handleWorkspaceFiles() }),
     appShortcut('maximizeDock', () => { handleToggleDockMaximized() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('tasks', () => { handleToggleTasks() }, { enabled: Boolean(sessionIdState) }),

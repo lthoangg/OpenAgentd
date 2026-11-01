@@ -31,7 +31,7 @@ export interface UseAgentCommandsGoal {
 }
 
 interface UseAgentCommandsArgs {
-  toggleAgentCapabilities: () => void
+  toggleRunPicker: () => void
   /** Opens the task list (dock Tasks tab on desktop, popover otherwise). */
   toggleTasks: () => void
   /** Opens scheduled tasks (dock Schedule tab with a workspace, overlay otherwise). */
@@ -74,7 +74,7 @@ function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
 }
 
 export function useAgentCommands({
-  toggleAgentCapabilities,
+  toggleRunPicker,
   toggleTasks,
   toggleScheduler,
   handleWorkspaceFiles,
@@ -97,7 +97,7 @@ export function useAgentCommands({
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
-    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Model, thinking level and tools for this session', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
+    { id: 'agent-info',       group: 'Session',    label: 'Model and Thinking…', description: 'Model, thinking level and account for the next message', keywords: 'model thinking account key reasoning provider switch', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleRunPicker },
     { id: 'todos',            group: 'View',       label: 'Tasks',          description: "The agent's task list and progress", keywords: 'todos task list progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     ...(handleOpenPlan
       ? [{
@@ -174,5 +174,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
 }

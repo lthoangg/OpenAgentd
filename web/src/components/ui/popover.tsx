@@ -221,6 +221,21 @@ function PopoverContent({
   // Escape closes it while it is the top layer (not the dialog around it).
   useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
+  // Closing hands focus back to the trigger when it was inside the popover
+  // (or dropped on <body> as the content unmounted), like a native menu.
+  useEffect(() => {
+    if (!open) return
+    const content = contentRef
+    const trigger = triggerRef.current
+    return () => {
+      const active = document.activeElement
+      const inside = active instanceof Node && content.current?.contains(active)
+      if ((inside || active === document.body || active === null) && trigger?.isConnected) {
+        trigger.focus({ preventScroll: true })
+      }
+    }
+  }, [open, triggerRef])
+
   if (!mounted) return null
 
   return createPortal(
@@ -231,7 +246,7 @@ function PopoverContent({
       className={cn(
         'fixed z-50 overscroll-contain',
         'flex w-[min(18rem,calc(100vw-1rem))] flex-col gap-2.5',
-        'rounded-sm border border-(--color-border) bg-(--bg-card)',
+        'rounded-md border border-(--color-border-subtle) bg-(--bg-card)',
         'p-3.5 text-xs text-(--color-text) shadow-(--shadow-depth) outline-none',
         // Animation only: ``duration-*`` would also transition ``top``/``left``
         // (``transition-property`` defaults to ``all``) as the content moves

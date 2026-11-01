@@ -15,7 +15,7 @@ import { Term } from '@/components/ui/term'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
-import { turnModel } from '@/utils/turns'
+import { turnAccount, turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
 import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
@@ -76,6 +76,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     }
     const model = turnModel(turnBlocks)
     return {
+      account: turnAccount(turnBlocks),
       textContent,
       timestamp: lastBlock?.timestamp,
       responseDurationMs,
@@ -88,7 +89,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       costUsd: Math.round(costUsd * 1e8) / 1e8,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, model, modelName, thinkingLevel, outputTokens, inputTokens, cachedTokens, costUsd } = footerData
+  const { textContent, timestamp, responseDurationMs, model, modelName, thinkingLevel, account, outputTokens, inputTokens, cachedTokens, costUsd } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -113,6 +114,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
   // One line: the model ID truncates first; time, duration and cost never wrap.
   if (timestamp) parts.push(<span key="time" className="shrink-0">{formatTime(timestamp)}</span>)
   if (modelName) parts.push(<span key="model" data-turn-model className="min-w-0 truncate">{modelName}</span>)
+  if (account) parts.push(<span key="account" data-turn-account className="min-w-0 max-w-[10rem] truncate">{account}</span>)
   if (responseDurationMs !== undefined) parts.push(<span key="dur" className="shrink-0">{formatMetaDuration(responseDurationMs)}</span>)
   if (hasUsage) {
     parts.push(
@@ -122,6 +124,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
   const summary = [
     timestamp && formatTime(timestamp),
     modelName && (thinkingLevel ? `${modelName} (thinking ${thinkingLevel})` : modelName),
+    account && `account ${account}`,
     responseDurationMs !== undefined && formatMetaDuration(responseDurationMs),
     hasUsage && (costUsd > 0 ? formatSpend(costUsd) : `${formatInt(outputTokens)} output tokens`),
   ].filter(Boolean).join(', ')
@@ -163,6 +166,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
               {timestamp && <DetailRow label="Finished">{formatFullDateTime(timestamp)}</DetailRow>}
               {model && <DetailRow label="Model"><span title={model}>{model}</span></DetailRow>}
               {thinkingLevel && <DetailRow label="Thinking">{thinkingLevel}</DetailRow>}
+              {account && <DetailRow label="Account">{account}</DetailRow>}
               {responseDurationMs !== undefined && (
                 <DetailRow label={<Term definition="turnDuration">Duration</Term>}>{formatMetaDuration(responseDurationMs)}</DetailRow>
               )}

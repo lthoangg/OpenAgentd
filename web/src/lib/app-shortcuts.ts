@@ -23,7 +23,7 @@ export interface AppShortcut {
 
 export const APP_SHORTCUTS = {
   newSession: { key: 'N' },
-  // Shift dodges bare ⌘A (Select All).
+  // The run picker (model, thinking, account). Shift dodges bare ⌘A (Select All).
   sessionSettings: { key: 'A', shift: true },
   workspaceFiles: { key: 'D' },
   maximizeDock: { key: 'D', shift: true },

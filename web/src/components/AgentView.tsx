@@ -31,6 +31,8 @@ import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels 
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix, shortModelName } from '@/utils/format'
 import { Callout } from '@/components/ui/callout'
+import { Button } from '@/components/ui/button'
+import { useUIStore } from '@/stores/useUIStore'
 import { Chip } from '@/components/ui/chip'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
@@ -139,6 +141,8 @@ interface QuotaWait {
   model?: string
   message?: string
   resetsAt?: number
+  /** The session is pinned to the account that ran out: it waits for that one. */
+  pinned?: boolean
 }
 
 const QUOTA_WAIT_STORAGE_PREFIX = 'openagentd:quota-wait:'
@@ -191,7 +195,9 @@ function removeStoredQuotaWait(sessionId: string | undefined): void {
 }
 
 function quotaWaitFromBlock(block: ContentBlock): QuotaWait | null {
-  if (block.type !== 'provider_status' || block.extra?.status !== 'waiting_quota') return null
+  if (block.type !== 'provider_status' || !block.extra) return null
+  const status = block.extra.status
+  if (status !== 'waiting_quota' && status !== 'waiting_credential') return null
 
   const model = typeof block.extra.model === 'string' ? block.extra.model : undefined
   const resetsAt = typeof block.extra.resets_at === 'number' && Number.isFinite(block.extra.resets_at)
@@ -203,6 +209,7 @@ function quotaWaitFromBlock(block: ContentBlock): QuotaWait | null {
     model,
     message: typeof block.extra.message === 'string' ? block.extra.message : undefined,
     resetsAt,
+    pinned: status === 'waiting_credential',
   }
 }
 
@@ -270,7 +277,7 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
         role="status"
         title={
           <>
-            Waiting for quota reset
+            {wait.pinned ? 'Waiting for the pinned account' : 'Waiting for quota reset'}
             {countdown !== undefined && (
               <span className="font-normal text-(--color-text-muted)" aria-live="polite">
                 {countdown === null ? ' · resuming now' : <>{' · resumes in '}<span className="font-mono tabular-nums">{countdown}</span></>}
@@ -278,12 +285,48 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
             )}
           </>
         }
+        action={wait.pinned && persist ? <PinnedWaitActions /> : undefined}
       >
         <span className="text-(--color-text-muted)">
-          {model ? <><span className="font-mono">{model}</span> used up its provider quota. </> : 'The provider quota is used up. '}
-          Resumes automatically. Stop anytime.
+          {wait.pinned
+            ? 'This session is pinned to an account that hit its usage limit. It resumes on that account, or continue now on Auto.'
+            : <>{model ? <><span className="font-mono">{model}</span> used up its provider quota. </> : 'The provider quota is used up. '}Resumes automatically. Stop anytime.</>}
         </span>
       </Callout>
+    </div>
+  )
+}
+
+/**
+ * The ways out of a pinned wait, on the card itself: drop the pin and go on
+ * now (the wait stops, and the turn continues on Auto), pick another
+ * account, or stop.
+ */
+function PinnedWaitActions() {
+  const [busy, setBusy] = useState(false)
+  const useAuto = async () => {
+    setBusy(true)
+    try {
+      const store = useAgentStore.getState()
+      if (!(await store.setSessionRunSettings({ credentialId: null }))) return
+      const workspace = useAgentStore.getState()._workspace
+      await useAgentStore.getState().stopAgent({ keepGoal: true })
+      if (workspace) await useAgentStore.getState().sendMessage('Continue.', undefined, { workspace })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void useAuto()}>
+        Use Auto for this session
+      </Button>
+      <Button type="button" size="sm" onClick={() => useUIStore.getState().openRunPicker('model')}>
+        Choose account…
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => void useAgentStore.getState().stopAgent()}>
+        Stop
+      </Button>
     </div>
   )
 }
@@ -452,8 +495,11 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (status === 'switched_credential') {
         // A key or account hit its limit; the same turn continues on the next one.
         message = customMsg || `Switched ${shortModelName(model) ?? 'model'} to another credential.`
+      } else if (status === 'pin_released') {
+        // The pinned account was removed or turned off: the session is on Auto.
+        message = customMsg || 'The pinned account is gone, so this session is back on Auto.'
       }
-      return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
+      return <p className="rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
     case 'tool': {
       const mcpApp = (block.extra as { mcp_app?: unknown } | undefined)?.mcp_app

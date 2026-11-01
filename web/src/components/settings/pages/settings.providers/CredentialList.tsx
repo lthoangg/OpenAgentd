@@ -60,6 +60,9 @@ function StatusPills({ credential, pinned }: { credential: StoredCredential; pin
       {credential.status === 'disabled' && <Chip>Disabled</Chip>}
       {credential.status === 'needs_reconnect' && <Chip tone="error">Reconnect required</Chip>}
       {credential.status === 'cooling_down' && <CooldownPill reason={credential.cooldown_reason} until={credential.cooldown_until} />}
+      {(credential.pinned_sessions ?? 0) > 0 && (
+        <Chip>{`Pinned by ${credential.pinned_sessions} ${credential.pinned_sessions === 1 ? 'session' : 'sessions'}`}</Chip>
+      )}
     </>
   )
 }

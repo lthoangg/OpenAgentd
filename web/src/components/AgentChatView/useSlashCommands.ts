@@ -6,8 +6,9 @@
  *   - Fetching user-defined commands + snippets (workspace-scoped queries).
  *   - Assembling the ``SlashCommand[]`` / ``SnippetCommand[]`` lists the
  *     ``InputComposer`` renders in its picker (built-ins + backend-discovered).
- *   - Dispatching a picked slash command (``stop`` / ``btw`` / ``continue`` /
- *     ``compact`` / ``undo`` / ``redo`` / ``redo-all`` / ``new`` / ``init`` — agent lifecycle
+ *   - Dispatching a picked slash command (``stop`` / ``btw`` / ``model`` /
+ *     ``think`` / ``mcp`` / ``compact`` / ``undo`` / ``redo`` / ``redo-all`` /
+ *     ``new`` / ``init`` — agent lifecycle
  *     actions read straight off ``useAgentStore.getState()`` since they're
  *     one-shot imperative calls, not part of the render subscription).
  *   - Expanding a user-defined ``/command`` at submit time by rendering it
@@ -23,6 +24,7 @@ import { restoredPromptText } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
@@ -146,6 +148,15 @@ export function useSlashCommands({
         else useBtwStore.getState().reopen(sessionId)
         break
       }
+      case 'model':
+        useUIStore.getState().openRunPicker('model')
+        break
+      case 'think':
+        useUIStore.getState().openRunPicker('thinking')
+        break
+      case 'mcp':
+        useUIStore.getState().openPlusMenu('mcp')
+        break
       case 'compact':
         useAgentStore.getState().compactAgent()
         break

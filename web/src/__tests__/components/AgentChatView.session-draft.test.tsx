@@ -45,11 +45,11 @@ mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () =>
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     closeScheduler: () => {},
-    closeAgentCapabilities: () => {},
+    closeRunPicker: () => {},
   }),
 }))
 mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () => {} }) }))
@@ -73,11 +73,11 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHead
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
-mock.module('@/components/FloatingInputComposer', () => ({
-  FloatingInputComposer: forwardRef<
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
     { onValueChange?: (value: string) => void; onSlashCommand?: (id: string) => void }
-  >(function FloatingInputComposerMock({ onValueChange, onSlashCommand }, ref) {
+  >(function ComposerMock({ onValueChange, onSlashCommand }, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,

@@ -46,11 +46,11 @@ mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () =>
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     closeScheduler: () => {},
-    closeAgentCapabilities: () => {},
+    closeRunPicker: () => {},
   }),
 }))
 // Selector-aware on purpose: components read this store as
@@ -85,11 +85,11 @@ mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ useP
 
 // Stands in for the composer: a submit button that fires ``onSubmit`` exactly
 // as the real bar does, plus the restore entry point under test.
-mock.module('@/components/FloatingInputComposer', () => ({
-  FloatingInputComposer: forwardRef<
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
     Record<string, (...args: never[]) => void>,
     { onSubmit: (content: string, files?: File[], mentions?: string[]) => void | Promise<void> }
-  >(function FloatingInputComposerMock({ onSubmit }, ref) {
+  >(function ComposerMock({ onSubmit }, ref) {
     useImperativeHandle(ref, () => ({
       focus: () => {},
       setValue: () => {},

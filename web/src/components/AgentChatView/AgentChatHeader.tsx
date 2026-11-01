@@ -2,10 +2,9 @@ import { memo, useState, type Dispatch, type HTMLAttributes, type SetStateAction
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
+import { ListTodo, PanelLeft, PanelRight } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
-import { TokenMeter } from '@/components/ui/token-meter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -28,6 +27,7 @@ interface AgentChatHeaderProps {
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
   onSidebarToggle: () => void
+  /** Context use for the phone's More sheet; the run deck's ring shows it everywhere else. */
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
   todos: TodoItem[]
@@ -39,8 +39,8 @@ interface AgentChatHeaderProps {
   goalState?: GoalHeaderState | null
   workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
-  agentCapabilitiesOpen: boolean
-  onToggleAgentCapabilities: () => void
+  /** Opens the run picker (model, thinking, account) from the phone's More sheet. */
+  onToggleRunPicker: () => void
   showMobileActions: boolean
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
   mobileActionsDragOffset?: number | null
@@ -69,8 +69,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   goalState = null,
   workspacePanel,
   onWorkspaceFiles,
-  agentCapabilitiesOpen,
-  onToggleAgentCapabilities,
+  onToggleRunPicker,
   showMobileActions,
   setShowMobileActions,
   mobileActionsDragOffset = null,
@@ -174,25 +173,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
         {isMobile ? (
           <>
-            {/* Context at a glance; the ring's popover has the numbers. A new
-                chat has no context yet, so it keeps the header for the title. */}
-            {headerTokens && sessionId && (
-              <TokenMeter
-                input={headerTokens.input}
-                output={headerTokens.output}
-                cached={headerTokens.cached}
-                cachedPercent={headerTokens.cachedPercent}
-                sessionCostUsd={headerTokens.sessionCostUsd}
-                trigger={headerTokens.trigger}
-              />
-            )}
-            {/* One tap to the model and thinking level (desktop has the status bar). */}
-            <MobileHeaderAction
-              Icon={SlidersHorizontal}
-              label="Session settings"
-              onClick={onToggleAgentCapabilities}
-              active={agentCapabilitiesOpen}
-            />
             <MobileHeaderAction
               Icon={PanelRight}
               label="Review panel"
@@ -210,7 +190,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               openTasks={activeTodoCount}
               goalTone={goalState?.tone}
               goalText={goalState?.text ?? null}
-              onSessionSettings={() => { onCloseMobileActionsMenu(); if (!agentCapabilitiesOpen) onToggleAgentCapabilities() }}
+              onModelSettings={() => { onCloseMobileActionsMenu(); onToggleRunPicker() }}
               tokens={headerTokens}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
@@ -223,7 +203,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         ) : (
           <AgentTopbar
             isMobile={false}
-            tokens={headerTokens}
             todosAction={{
               Icon: ListTodo,
               onClick: onToggleTasks,

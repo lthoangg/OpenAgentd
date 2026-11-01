@@ -232,7 +232,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   app-wide, and page copy is shorter. A saved link to the old Automation
   section opens Workspaces.
 - **Roomier Scheduled tasks, Session settings and Keyboard shortcuts**
-  `[v3.21.0]` — these panels now use the same layout as Settings: titled
+  `[v3.21.0]` (Session settings *(deprecated)* in v3.40.0: model, thinking and
+  account moved to the run picker, MCP servers to the composer's **+** menu,
+  and the tool list to Settings → Agents) — these panels now use the same layout as Settings: titled
   sections above their cards, label-left / control-right rows, more space
   between fields, one notice style, and sentence-case labels. A scheduled
   task's detail reads Status, then **Delivery**, **Schedule**, **Prompt** and
@@ -292,7 +294,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Phones.** The header shows the session title with its workspace under
     it, and keeps five controls: sidebar, title, **Session settings**,
     Review panel and **More**, so the model and thinking level are one tap
-    away. The sidebar drawer's
+    away (since v3.40.0 four: the model moved to the run deck under the
+    composer). The sidebar drawer's
     footer has Settings, Usage, the server and the theme.
     More holds Tasks (with the open count and goal ring), Session settings,
     context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
@@ -608,6 +611,37 @@ run from the terminal (the native Rust binary since v3.0.0).
     brings the session back (and reopens it if it was open).
   - Screen readers hear "Agent is working", "Turn finished" and "Needs you: …"
     for the open session.
+- **Run deck under the composer** `[v3.40.0]`:
+  - The composer sits at the foot of the chat on every screen, in line with
+    the transcript, up to the reading width, and is always open. It can no
+    longer be dragged or minimized.
+  - Under the text a run deck says how the next message runs: **+**,
+    Code / Plan, the run chip (`provider:model · Thinking · Account`), an MCP
+    chip when a server needs you, the context ring and Send. On a narrow
+    composer the chip stacks into two lines and the provider part gives way
+    first. In Plan mode the placeholder says the agent reads and proposes
+    without editing files.
+  - The run chip opens one picker for model, thinking and account: search
+    models (recent ones first), step thinking with ←/→, pick an account with
+    its state and quota left, or **Reset to default** / **Make default**.
+    Every pick is saved on the session at once and survives a reload. Open it
+    with `⌘⇧A`/`Ctrl+Shift+A`, `/model`, `/think`, or **Model and Thinking…**
+    in the palette. On phones it is a bottom sheet.
+  - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
+    servers (state in words, Sign in, on/off); `/mcp` opens it there.
+  - The context ring opens the token numbers and **Summarize now**. The
+    header and status bar no longer show the context meter or the model.
+  - On phones the header keeps four controls (sidebar, title, Review panel,
+    More), and Send is a 44px target.
+- **Pin a session to one account** `[v3.40.0]` — when a provider has several
+  keys or OAuth profiles, the run picker can pin the session to one of them;
+  **Auto** keeps today's rotation. A pinned session only ever uses that
+  account, and so do its subagents on the same provider, its title and its
+  summaries. If the account is cooling down or needs reconnecting, the turn
+  waits and says so, with **Use Auto for this session**, **Choose account…**
+  and **Stop**; if the account is deleted or disabled, the session goes back
+  to Auto with a note. Each answer's footer names the account it ran on, and
+  Settings → Providers shows how many sessions pin each account.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1136,7 +1170,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     composer; `/redo` brings the undone turns back), reachable from the
     keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
-    opens Session Settings.
+    opens the run picker (Session Settings before v3.40.0).
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the
@@ -1218,7 +1252,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     closed behind its "N files changed" header.
 - **The composer while the agent works** `[v3.0.0, updated v3.4.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
-    composer, wherever it is dragged, and counts what arrived since.
+    composer and counts what arrived since.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
     done, which holds the message in this window and sends it as a turn of
@@ -1677,6 +1711,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   Settings while a session runs no longer switches that run: member reports,
   queued steers and answered questions continue on the config the run started
   with, and the edit applies from the user's next message `[v3.30.0]`.
+  Since `[v3.40.0]` the choice is made in the run picker under the composer,
+  saved on the session as soon as it is picked (not on the next send), and
+  can include the account to run on.
 - **Coding agent profile** `[since v1.0, updated v2.1.0]` — `agents/code.md` is the
  root profile tuned for workspace-aware coding sessions.
 - **Built-in first-party agent profile** `[v1.23.0, v1.118.0, v2.14.0]` — the default `code`
@@ -1837,7 +1874,7 @@ agent against it.
   sidebar, the chat, the review dock and a status bar. The status bar shows
   the connected backend and its health, the branch with
   commits to push/pull and uncommitted changes (a click opens the review dock),
-  the session model, and the last 24 hours of spend (a click opens Telemetry on
+  the session model (moved to the run deck in v3.40.0), and the last 24 hours of spend (a click opens Telemetry on
   that range); scheduled tasks and the theme moved to the sidebar, the palette
   and Settings. In light mode the header, sidebar, status bar and chat share
   one page tone; dark mode sets the chrome on a darker rail. The sidebar opens expanded on windows at least 1280px
@@ -2690,6 +2727,7 @@ Four orthogonal ways to add capability.
   hot-reloaded via `POST /api/mcp/apply`. A configured server is automatically
   available to the coding agent; agent Markdown no longer needs a per-agent MCP
   selection. OAuth-backed setup. Session Settings shows every configured server
+  (the composer's **+** menu since v3.40.0)
   and can enable/disable it globally or connect OAuth-backed servers in place
   `[v1.52.2]`. Each server gets its own row showing connection state and tool count, with a
   toggle and an OAuth connect/reconnect action; the list re-polls while a server is

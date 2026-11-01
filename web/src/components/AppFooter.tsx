@@ -4,7 +4,10 @@
  * Left cluster is workspace-scoped, right cluster is session-scoped:
  *   • left:  connected backend and its health · git branch with ahead/behind
  *            + dirty count
- *   • right: active model (thinking level) · fast mode · 24h spend · settings
+ *   • right: fast mode · 24h spend · settings
+ *
+ * The model lives on the composer's run deck, the one place to read and
+ * change it, so the status bar does not repeat it.
  *
  * The command palette entry lives in the header's command center, so the
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
@@ -19,7 +22,6 @@ import {
 import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
-import { Chip } from '@/components/ui/chip'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -29,7 +31,6 @@ import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQ
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
 import { sessionsSpending } from '@/lib/active-sessions'
 import { formatSpend } from '@/utils/telemetryFormat'
-import { modelParts } from '@/utils/format'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -82,17 +83,7 @@ export interface AppFooterProps {
    */
   chatWorkspace?: boolean
   sessionId?: string | null
-  sessionModel?: string | null
-  /**
-   * The lead agent's configured model. ``sessionModel`` is null until the
-   * session overrides it, so the footer shows this instead.
-   */
-  defaultModel?: string | null
-  /** The lead agent's configured thinking level, paired with ``defaultModel``. */
-  defaultThinkingLevel?: string | null
-  sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
-  onToggleSessionSettings?: () => void
   onOpenGitChanges?: () => void
   className?: string
 }
@@ -117,23 +108,12 @@ function syncLabel(ahead: number | null | undefined, behind: number | null | und
 export const AppFooter = memo(function AppFooter({
   workspace,
   chatWorkspace = false,
-  sessionModel,
-  defaultModel,
-  defaultThinkingLevel,
-  sessionThinkingLevel,
   sessionFastMode,
-  onToggleSessionSettings,
   onOpenGitChanges,
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const activeModel = sessionModel || defaultModel || null
-  // Mirrors the backend: a session model override builds its own provider,
-  // which carries only the session's level, never the agent's.
-  const modelOverridden = Boolean(sessionModel) && sessionModel !== defaultModel
-  const activeThinkingLevel = sessionThinkingLevel || (modelOverridden ? null : defaultThinkingLevel) || null
-  const sessionSettingsShortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const spend = useFooterSpend()
   const spendLabel = spend === undefined ? null : formatSpend(spend)
 
@@ -166,8 +146,6 @@ export const AppFooter = memo(function AppFooter({
     dirtyTotal > 0 ? `${dirtyTotal} changed files` : null,
     sync,
   ].filter(Boolean).join(', ')
-  const model = activeModel ? modelParts(activeModel) : null
-  const showThinking = Boolean(activeThinkingLevel) && activeThinkingLevel !== 'off'
 
   return (
     <footer
@@ -214,31 +192,6 @@ export const AppFooter = memo(function AppFooter({
 
       {/* Right cluster — session scope, then app utilities. */}
       <div className="flex min-w-0 shrink items-center justify-end gap-0.5">
-        {activeModel && model && (
-          <Tooltip className="min-w-0">
-            <TooltipTrigger
-              className="min-w-0"
-              render={
-                <button
-                  type="button"
-                  onClick={onToggleSessionSettings}
-                  className={cn(ITEM, 'max-w-[320px] gap-1.5 lg:max-w-[440px]')}
-                  aria-label={`Model ${activeModel}${showThinking ? `, thinking ${activeThinkingLevel}` : ''}. Change model`}
-                >
-                  <span className="truncate font-mono">{model.short}</span>
-                  {model.provider && <Chip mono>{model.provider}</Chip>}
-                  {showThinking && <Chip mono>{activeThinkingLevel}</Chip>}
-                </button>
-              }
-            />
-            <TooltipContent>
-              <span className="block font-mono">{activeModel}</span>
-              {showThinking && <span className="block">{`Thinking: ${activeThinkingLevel}`}</span>}
-              <span className="block opacity-70">{`Change model · ${sessionSettingsShortcut}`}</span>
-            </TooltipContent>
-          </Tooltip>
-        )}
-
         {sessionFastMode && (
           <Tooltip>
             <TooltipTrigger
@@ -253,7 +206,7 @@ export const AppFooter = memo(function AppFooter({
           </Tooltip>
         )}
 
-        {(activeModel || sessionFastMode) && <Divider />}
+        {sessionFastMode && <Divider />}
 
         {spendLabel && (
           <Tooltip>

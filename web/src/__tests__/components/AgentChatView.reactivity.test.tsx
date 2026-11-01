@@ -28,7 +28,10 @@ mock.module('@/queries', () => ({ queryKeys, useProvidersQuery: () => ({ data: {
 mock.module('@/queries/useAgentsQuery', () => ({
   useAgentsQuery: () => ({ data: { agents: [{ name: 'code' }] }, isLoading: false }),
 }))
-mock.module('@/queries/useAgentSettingsQueries', () => ({ useRegistryQuery: () => ({ data: { models: [] } }) }))
+mock.module('@/queries/useAgentSettingsQueries', () => ({
+  useRegistryQuery: () => ({ data: { models: [] } }),
+  useUpdateAgentMutation: () => ({ mutateAsync: async () => ({}), isPending: false }),
+}))
 mock.module('@/queries/useFileRefsQuery', () => ({ useFileRefsQuery: () => ({ refs: [] }) }))
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 mock.module('@/hooks/use-platform', () => ({ usePlatform: () => ({ isMacOverlay: false, os: 'linux' }) }))
@@ -36,13 +39,13 @@ mock.module('@/hooks/use-tauri-drag', () => ({ useTauriDrag: () => ({}) }))
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     paletteOpen: false,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     togglePalette: () => {},
     closeScheduler: () => {},
-    closeAgentCapabilities: () => {},
+    closeRunPicker: () => {},
     closePalette: () => {},
   }),
 }))
@@ -70,11 +73,11 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
 /** The composer's ``onHistoryRecall``, as the mounted chat view passed it. */
 let recall: ((prompt: string | null) => void) | undefined
 
-mock.module('@/components/FloatingInputComposer', () => ({
-  FloatingInputComposer: forwardRef<
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
     { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void }
-  >(function FloatingInputComposerMock({ historyPrompts, onHistoryRecall }, ref) {
+  >(function ComposerMock({ historyPrompts, onHistoryRecall }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
     recall = onHistoryRecall
     return <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
@@ -106,7 +109,7 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     handleMentionFileOpen: () => {},
     closeMobileActionsMenu: () => {},
     handleSetShowMobileActions: () => {},
-    handleToggleAgentCapabilities: () => {},
+    handleToggleRunPicker: () => {},
     handleToggleScheduler: () => {},
     handleTogglePalette: () => {},
     handleSetShowTodos: () => {},

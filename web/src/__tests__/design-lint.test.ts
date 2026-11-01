@@ -75,8 +75,6 @@ const RULES: Rule[] = [
       // Rendered content: PDF page and sized web-preview viewport.
       'components/PdfDocumentViewer.tsx': 1,
       'components/Preview/PreviewTabView.tsx': 1,
-      // The composer floats over the transcript (rest and minimized states).
-      'components/InputComposer.tsx': 2,
       // Design-board preview card, not product UI.
       'components/previews/FormPrimitivesPreview.tsx': 1,
     },

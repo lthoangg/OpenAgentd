@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 mock.module('@/hooks/use-platform', () => ({
@@ -60,42 +60,29 @@ describe('stranded focus guard', () => {
   })
 })
 
-describe('composer minimize keeps focus', () => {
+describe('composer keeps focus', () => {
   it('keeps every composer action in Tab order', () => {
-    render(<InputComposer onSubmit={() => {}} minimized={false} onInteractionModeChange={() => {}} interactionMode="code" />)
+    render(<InputComposer onSubmit={() => {}} onInteractionModeChange={() => {}} interactionMode="code" />)
     expect(screen.queryByRole('toolbar')).toBeNull()
     const enabled = screen.getAllByRole('button').filter((el) => !(el as HTMLButtonElement).disabled)
     expect(enabled.length).toBeGreaterThan(1)
     expect(enabled.every((el) => el.tabIndex === 0)).toBe(true)
   })
 
-  it('keeps the pill and Attach as their own Tab stops while minimized', () => {
-    render(<InputComposer onSubmit={() => {}} minimized />)
-    expect(screen.getByRole('button', { name: 'Expand input bar' }).tabIndex).toBe(0)
-    expect(screen.getByRole('button', { name: 'Attach file' }).tabIndex).toBe(0)
+  it('keeps focus in the message after a send', () => {
+    render(<InputComposer onSubmit={() => {}} />)
+    const textbox = screen.getByRole('textbox') as HTMLTextAreaElement
+    textbox.focus()
+    fireEvent.change(textbox, { target: { value: 'hello' } })
+    fireEvent.keyDown(textbox, { key: 'Enter' })
+    expect(textbox.value).toBe('')
+    expect(document.activeElement).toBe(textbox)
   })
 
-  it('moves focus from the textarea to the pill when the bar minimizes (send, Esc)', () => {
-    const { rerender } = render(<InputComposer onSubmit={() => {}} minimized={false} />)
-    screen.getByRole('textbox').focus()
-    rerender(<InputComposer onSubmit={() => {}} minimized />)
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Expand input bar' }))
-  })
-
-  it('does not pull focus that already moved elsewhere', () => {
-    const { rerender } = render(
-      <>
-        <button type="button">elsewhere</button>
-        <InputComposer onSubmit={() => {}} minimized={false} />
-      </>,
-    )
-    screen.getByRole('button', { name: 'elsewhere' }).focus()
-    rerender(
-      <>
-        <button type="button">elsewhere</button>
-        <InputComposer onSubmit={() => {}} minimized />
-      </>,
-    )
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'elsewhere' }))
+  it('takes focus back quietly when handed it (no focus ring for a script focus)', () => {
+    const ref = { current: null as import('@/components/InputComposer').InputComposerHandle | null }
+    render(<InputComposer ref={(h) => { ref.current = h }} onSubmit={() => {}} />)
+    ref.current?.focus({ expand: false })
+    expect(document.activeElement).toBe(screen.getByRole('textbox'))
   })
 })

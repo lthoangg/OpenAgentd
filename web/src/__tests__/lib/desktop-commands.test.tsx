@@ -57,7 +57,7 @@ async function renderBridge() {
 function resetUIStore(): void {
   useUIStore.setState({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     paletteOpen: false,
   })
   listener = null
@@ -140,7 +140,7 @@ describe('useDesktopCommands', () => {
     await renderBridge()
 
     listener?.({ payload: 'agent_capabilities' })
-    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
+    expect(useUIStore.getState().runPickerOpen).toBe(true)
   })
 
   it('dispatches the same Ctrl+K keyboard event used by the in-app command palette shortcut', async () => {
@@ -176,7 +176,7 @@ describe('useDesktopCommands', () => {
       expect(events.map((e) => e.key)).toEqual(['p'])
 
       listener?.({ payload: 'agent_capabilities' })
-      expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
+      expect(useUIStore.getState().runPickerOpen).toBe(true)
     } finally {
       Date.now = originalNow
     }
@@ -235,7 +235,7 @@ describe('useDesktopCommands', () => {
 
       expect(useUIStore.getState()).toMatchObject({
         schedulerOpen: false,
-        agentCapabilitiesOpen: false,
+        runPickerOpen: false,
       })
       expect(keydownCount).toBe(0)
     } finally {

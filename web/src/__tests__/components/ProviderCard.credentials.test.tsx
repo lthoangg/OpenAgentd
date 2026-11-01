@@ -148,6 +148,21 @@ describe('ProviderCard — several API keys', () => {
     expect(within(rows[1]).getByText(/Usage limit reached/).closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('warning')
   })
 
+  it('says how many sessions pin a key, and nothing when none do', () => {
+    renderCard({
+      ...openai,
+      stored_credentials: [
+        credential({ id: 'cred_a', label: 'Personal', pinned_sessions: 2 }),
+        credential({ id: 'cred_b', label: 'Work', pinned_sessions: 1 }),
+        credential({ id: 'cred_c', label: 'Spare', pinned_sessions: 0 }),
+      ],
+    })
+    const rows = within(screen.getByRole('list', { name: 'OpenAI keys' })).getAllByRole('listitem')
+    expect(within(rows[0]).getByText('Pinned by 2 sessions')).toBeTruthy()
+    expect(within(rows[1]).getByText('Pinned by 1 session')).toBeTruthy()
+    expect(within(rows[2]).queryByText(/Pinned by/)).toBeNull()
+  })
+
   it('moves a key down from the More menu, and offers no earlier slot to the first key', async () => {
     renderCard(openai)
     openMore('Personal')

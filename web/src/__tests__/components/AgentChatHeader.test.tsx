@@ -22,8 +22,7 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     tasksViewActive: false,
     workspacePanel: null,
     onWorkspaceFiles: () => undefined,
-    agentCapabilitiesOpen: false,
-    onToggleAgentCapabilities: () => undefined,
+    onToggleRunPicker: () => undefined,
     showMobileActions: false,
     setShowMobileActions: () => undefined,
     mobileActionsDragOffset: null,
@@ -44,29 +43,28 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
   })
 
-  it('keeps the mobile header to sidebar, title, Session settings, Review panel and More', () => {
-    const { container } = renderHeader({ isMobile: true })
+  it('keeps the mobile header to sidebar, title, Review panel and More: the run deck has the model and context', () => {
+    const { container } = renderHeader({ isMobile: true, headerTokens: { input: 50_000, output: 1_000, trigger: 100_000 } })
     const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-    expect(names).toEqual(['Toggle sidebar', 'Session settings', 'Review panel', 'More actions'])
+    expect(names).toEqual(['Toggle sidebar', 'Review panel', 'More actions'])
   })
 
-  it('opens Session settings in one tap from the mobile header', async () => {
+  it('leaves context use to the run deck on desktop too', () => {
+    renderHeader({ isMobile: false, headerTokens: { input: 50_000, output: 1_000, trigger: 100_000 } })
+    const header = document.querySelector('header') as HTMLElement
+    expect(header.querySelector('[aria-label^="Input:"]')).toBeNull()
+    expect(header).not.toHaveTextContent('50K')
+  })
+
+  it('opens the run picker from the mobile More sheet, then closes the sheet', async () => {
     const user = userEvent.setup()
-    const onToggleAgentCapabilities = mock(() => undefined)
-    renderHeader({ isMobile: true, onToggleAgentCapabilities })
+    const onToggleRunPicker = mock(() => undefined)
+    const onCloseMobileActionsMenu = mock(() => undefined)
+    renderHeader({ isMobile: true, showMobileActions: true, onToggleRunPicker, onCloseMobileActionsMenu })
 
-    await user.click(screen.getByRole('button', { name: 'Session settings' }))
-    expect(onToggleAgentCapabilities).toHaveBeenCalledTimes(1)
-  })
-
-  it('marks the mobile Session settings button active while the panel is open', () => {
-    renderHeader({ isMobile: true, agentCapabilitiesOpen: true })
-    expect(screen.getByRole('button', { name: 'Session settings' }).className).toContain('bg-(--bg-key)')
-  })
-
-  it('keeps the Session settings button off the desktop header', () => {
-    renderHeader({ isMobile: false })
-    expect(screen.queryByRole('button', { name: 'Session settings' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Model and thinking' }))
+    expect(onToggleRunPicker).toHaveBeenCalledTimes(1)
+    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the desktop header on the page tone in light mode', () => {
@@ -108,7 +106,7 @@ describe('AgentChatHeader', () => {
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
-    for (const name of ['Toggle sidebar', 'Session settings', 'Review panel', 'More actions']) {
+    for (const name of ['Toggle sidebar', 'Review panel', 'More actions']) {
       expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
     }
   })
@@ -123,34 +121,10 @@ describe('AgentChatHeader', () => {
     expect(screen.getByRole('dialog', { name: 'More actions' })).toHaveTextContent('Context (tokens)')
   })
 
-  it('hides token meter when headerTokens is undefined', () => {
-    renderHeader({ headerTokens: undefined })
-    expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
-  })
-
-  it('shows the context ring in the mobile header, before Session settings', async () => {
-    const user = userEvent.setup()
-    const { container } = renderHeader({ isMobile: true, headerTokens: { input: 50_000, output: 1_000, trigger: 100_000 } })
-
-    const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-    expect(names[1]).toMatch(/^Input: 50,000 of 100,000/)
-    expect(names.slice(2)).toEqual(['Session settings', 'Review panel', 'More actions'])
-
-    const ring = screen.getByRole('button', { name: /^Input:/ })
-    expect(ring.className).toContain('pointer-coarse:size-9')
-    await user.click(ring)
-    expect(screen.getByRole('tooltip')).toHaveTextContent('50%')
-  })
-
   it('pads the More sheet list clear of the home indicator', () => {
     renderHeader({ isMobile: true, showMobileActions: true })
     const list = screen.getByRole('dialog', { name: 'More actions' }).querySelector('[data-mobile-actions-list]') as HTMLElement
     expect(list.className).toContain('pb-safe')
-  })
-
-  it('leaves the context ring off the mobile header of a chat with no session yet', () => {
-    renderHeader({ isMobile: true, sessionId: null, headerTokens: { input: 0, output: 0 } })
-    expect(screen.queryByRole('button', { name: /^Input:/ })).not.toBeInTheDocument()
   })
 
   it('runs the mobile terminal action before closing the drawer', async () => {
@@ -276,8 +250,7 @@ describe('AgentChatHeader', () => {
         tasksViewActive={false}
         workspacePanel="changed"
         onWorkspaceFiles={() => undefined}
-        agentCapabilitiesOpen={false}
-        onToggleAgentCapabilities={() => undefined}
+        onToggleRunPicker={() => undefined}
         showMobileActions={false}
         setShowMobileActions={() => undefined}
         onToggleScheduler={() => undefined}

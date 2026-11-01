@@ -2,8 +2,8 @@
  * AgentChatView — top-level layout for the agent chat route.
  *
  * Owns:
- *   - Side panels (``Sidebar``, ``WorkspaceFilesPanel``, ``SessionSettingsPanel``,
- *     todos popover, command palette).
+ *   - Side panels (``Sidebar``, the Review panel, todos popover, command
+ *     palette) and the docked composer with its run deck.
  *   - The header (token totals, panel toggles).
  *   - Mount-time SSE connect + session restore (carefully sequenced so
  *     ``loadSession`` runs *before* ``connectStream`` to avoid wiping
@@ -53,7 +53,7 @@ import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { previewTargetForFeedback } from '../Preview/preview-comments'
 import { usePreviewToolAutoOpen } from './usePreviewToolAutoOpen'
 import { useToastStore } from '@/stores/useToastStore'
-import { selectBtw, useBtwStore } from '@/stores/useBtwStore'
+import { useBtwStore } from '@/stores/useBtwStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
@@ -65,7 +65,12 @@ import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
-import { FloatingInputComposer } from '../FloatingInputComposer'
+import { Composer } from '../composer/Composer'
+import { RunChip } from '../composer/RunChip'
+import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
+import { ContextMeter } from '../composer/ContextMeter'
+import { McpAttentionChip } from '../composer/McpAttentionChip'
+import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
@@ -178,7 +183,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // browsers. See ``useTauriDrag`` for details.
   const dragHandlers = useTauriDrag()
   const inputRef = useRef<InputComposerHandle>(null)
-  const mainColumnRef = useRef<HTMLDivElement>(null)
   // Handing focus back from the dock must not summon a collapsed composer.
   const returnFocusToComposer = useCallback(() => inputRef.current?.focus?.({ expand: false }), [])
 
@@ -196,7 +200,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         loadSession: s.loadSession,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
-        setSessionModelSettings: s.setSessionModelSettings,
         setupRequired: s.setupRequired,
         dismissSetupRequired: s.dismissSetupRequired,
 
@@ -208,7 +211,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         sessionInteractionMode: s.sessionInteractionMode,
         sessionPendingInteractionMode: s.sessionPendingInteractionMode,
         sessionModel: s.sessionModel,
-        sessionThinkingLevel: s.sessionThinkingLevel,
         sessionFastMode: s.sessionFastMode,
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
@@ -234,7 +236,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     loadSession,
     beginResolvedSession,
     consumeResolvedSessionReady,
-    setSessionModelSettings,
     setupRequired,
     dismissSetupRequired,
 
@@ -246,7 +247,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     sessionInteractionMode,
     sessionPendingInteractionMode,
     sessionModel,
-    sessionThinkingLevel,
 
     leadRevertedCount,
     leadRevertedMessages,
@@ -262,18 +262,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
-  const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
   const palettePage = useUIStore((s) => s.palettePage)
   const paletteKey = useUIStore((s) => s.paletteKey)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
   const quickOpenQuery = useUIStore((s) => s.quickOpenQuery)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
-  const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
+  const toggleRunPicker = useUIStore((s) => s.toggleRunPicker)
   const togglePalette = useUIStore((s) => s.togglePalette)
   const toggleQuickOpen = useUIStore((s) => s.toggleQuickOpen)
   const closeScheduler = useUIStore((s) => s.closeScheduler)
-  const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
   const closePalette = useUIStore((s) => s.closePalette)
   const closeQuickOpen = useUIStore((s) => s.closeQuickOpen)
 
@@ -316,7 +314,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleDiffOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
-    handleToggleAgentCapabilities,
+    handleToggleRunPicker,
     handleToggleScheduler,
     handleTogglePalette,
     handleSwitchModel,
@@ -335,7 +333,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     isMobile,
     workspace,
     toggleScheduler,
-    toggleAgentCapabilities,
+    toggleRunPicker,
     togglePalette,
     toggleQuickOpen,
   })
@@ -376,7 +374,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   }, [])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
-  const btwOpen = useBtwStore((s) => selectBtw(sessionIdState)(s).open)
   const todos = todosData?.todos ?? []
   const { data: planData } = useSessionPlanQuery(sessionIdState)
   const plan = planData?.plan ?? null
@@ -591,7 +588,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleWorkspaceFiles,
     handleOpenGit: workspace && !isChatWorkspace ? handleOpenGit : undefined,
     handleSidebarToggle,
-    handleToggleAgentCapabilities,
+    handleToggleRunPicker,
     handleToggleTasks,
     handleTogglePalette,
     handleToggleQuickOpen,
@@ -655,15 +652,28 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       }
     : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, handleOpenPreview, workspace])
 
+  // How the next message runs, for the run deck under the composer.
+  const runSettings = useRunSettings(workspace)
+  const composerMode = sessionPendingInteractionMode ?? sessionInteractionMode
+  const canAskSideQuestion = Boolean(sessionIdState) && (leadHasVisibleBlocks || leadHasLiveBlocks)
+  const renderPlus = useCallback((actions: ComposerActions) => (
+    <PlusMenu
+      actions={actions}
+      workspace={workspace}
+      disabled={isSessionLoading}
+      canAskSideQuestion={canAskSideQuestion}
+      hasSnippets={snippetCommands.length > 0}
+    />
+  ), [workspace, isSessionLoading, canAskSideQuestion, snippetCommands.length])
+
   // One composer element: inside the new-session screen while that is
-  // centered, else docked/floating at the bottom of the chat column.
-  // While a switch looks up the next session's workspace, the composer stays
-  // (disabled) instead of unmounting; sending needs `workspace` itself.
+  // centered, else docked at the bottom of the chat column. While a switch
+  // looks up the next session's workspace, the composer stays (disabled)
+  // instead of unmounting; sending needs `workspace` itself.
   const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
-    <FloatingInputComposer
+    <Composer
       ref={inputRef}
-      boundsRef={mainColumnRef}
-      placement={composerInline ? 'inline' : 'floating'}
+      placement={composerInline ? 'inline' : 'docked'}
       onHandoffCapture={draftHandoff.capture}
       enterFrom={draftHandoff.active ? draftHandoff.snapshot : null}
       onSubmit={async (content, files, mentions, delivery) => {
@@ -696,13 +706,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         // While a turn runs the composer shows its own queue/stop hint.
         isDraft && needsModelSetup
           ? 'Connect a model to start chatting'
-          : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+          : composerMode === 'plan'
+            // Says what Plan mode does before the first message does it.
+            ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
+            : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
       // shows what the user picked while the turn finishes under the old
       // mode.
-      interactionMode={sessionPendingInteractionMode ?? sessionInteractionMode}
+      interactionMode={composerMode}
       interactionModePending={sessionPendingInteractionMode !== null}
       onInteractionModeChange={(mode) => {
         setIsSwitchingInteractionMode(true)
@@ -716,19 +729,34 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       revertedMessages={leadRevertedMessages}
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
+      renderPlus={renderPlus}
+      deck={
+        <>
+          <RunChip settings={runSettings} disabled={isSessionLoading} />
+          <McpAttentionChip workspace={workspace} />
+        </>
+      }
+      deckEnd={sessionIdState ? (
+        <ContextMeter
+          input={headerTokens.input}
+          output={headerTokens.output}
+          cachedPercent={headerTokens.cachedPercent}
+          sessionCostUsd={headerTokens.sessionCostUsd}
+          trigger={headerTokens.trigger}
+          canSummarize={leadHasVisibleBlocks && !isAgentWorking}
+        />
+      ) : null}
       // Desktop with a workspace: the dock's BTW tab shows side
       // questions, and here only the chip reopens it while that tab is
       // not on screen.
-      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : ({ minimized }: { minimized: boolean }) => (
+      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
         <BtwPanel
           sessionId={sessionIdState || null}
           countEnabled={leadHasVisibleBlocks}
           chipOnly={dockViewsEnabled}
-          compact={minimized}
           onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
         />
       )}
-      aboveComposerOpen={btwOpen && !dockViewsEnabled}
     />
   ) : null
 
@@ -779,8 +807,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
-        agentCapabilitiesOpen={agentCapabilitiesOpen}
-        onToggleAgentCapabilities={handleToggleAgentCapabilities}
+        onToggleRunPicker={handleToggleRunPicker}
         showMobileActions={showMobileActions}
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
@@ -810,7 +837,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         <div ref={centerRef} className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
-          ref={mainColumnRef}
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
           inert={chatCoveredByDock}
           aria-hidden={chatCoveredByDock || undefined}
@@ -1019,22 +1045,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         workspace={workspace}
         chatWorkspace={isChatWorkspace}
         sessionId={sessionIdState}
-        sessionModel={sessionModel}
-        defaultModel={leadAgent?.model ?? null}
-        defaultThinkingLevel={leadAgent?.thinking_level ?? null}
-        sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
-        onToggleSessionSettings={handleToggleAgentCapabilities}
         onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
       />
 
       <AgentChatPanels
-        agentCapabilitiesOpen={agentCapabilitiesOpen}
-        agentWorkspace={agentWorkspace}
-        sessionModel={sessionModel}
-        sessionThinkingLevel={sessionThinkingLevel}
-        onSessionModelSettingsChange={setSessionModelSettings}
-        onCloseAgentCapabilities={closeAgentCapabilities}
         showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}

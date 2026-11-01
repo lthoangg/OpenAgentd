@@ -22,7 +22,16 @@ export function _registerCloseSettings(fn: () => void): void {
 
 interface UIStore {
   schedulerOpen: boolean
-  agentCapabilitiesOpen: boolean
+  /**
+   * The run picker (model, thinking, account) over the composer's run chip;
+   * ⇧⌘A, ``/model``, ``/think`` and the palette open it.
+   */
+  runPickerOpen: boolean
+  /** Where the run picker puts focus as it opens. */
+  runPickerFocus: RunPickerFocus
+  /** The composer's "+" menu; ``plusMenuSection`` scrolls it to a part (``/mcp``). */
+  plusMenuOpen: boolean
+  plusMenuSection: PlusMenuSection | null
   paletteOpen: boolean
   /** Ids of the palette pages it opens on, outermost first; empty for the root list. */
   palettePage: string[]
@@ -48,7 +57,11 @@ interface UIStore {
   /** Clear a pending scheduler request; true when there was one. */
   takeSchedulerOpenRequest: () => boolean
   toggleScheduler: () => void
-  toggleAgentCapabilities: () => void
+  toggleRunPicker: () => void
+  /** Open the run picker focused on ``focus`` (stays open when it already is). */
+  openRunPicker: (focus?: RunPickerFocus) => void
+  openPlusMenu: (section?: PlusMenuSection | null) => void
+  closePlusMenu: () => void
   togglePalette: () => void
   /**
    * Open the palette on a page (Switch Workspace/Session…, or a workspace's
@@ -63,17 +76,23 @@ interface UIStore {
   toggleShortcutsHelp: () => void
   closeShortcutsHelp: () => void
   closeScheduler: () => void
-  closeAgentCapabilities: () => void
+  closeRunPicker: () => void
   closePalette: () => void
   closeQuickOpen: () => void
   closeTelemetry: () => void
   closeAll: () => void
 }
 
+export type RunPickerFocus = 'model' | 'thinking'
+export type PlusMenuSection = 'mcp'
+
 export const useUIStore = create<UIStore>()(
   immer((set, get) => ({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
+    runPickerFocus: 'model',
+    plusMenuOpen: false,
+    plusMenuSection: null,
     paletteOpen: false,
     palettePage: [],
     paletteKey: 0,
@@ -98,7 +117,7 @@ export const useUIStore = create<UIStore>()(
         const nextOpen = !state.schedulerOpen
         state.schedulerOpen = nextOpen
         if (nextOpen) {
-          state.agentCapabilitiesOpen = false
+          state.runPickerOpen = false
           state.paletteOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
@@ -107,11 +126,13 @@ export const useUIStore = create<UIStore>()(
       })
       if (useUIStore.getState().schedulerOpen) _closeSettings?.()
     },
-    toggleAgentCapabilities: () => {
+    toggleRunPicker: () => {
       set((state) => {
-        const nextOpen = !state.agentCapabilitiesOpen
-        state.agentCapabilitiesOpen = nextOpen
+        const nextOpen = !state.runPickerOpen
+        state.runPickerOpen = nextOpen
         if (nextOpen) {
+          state.runPickerFocus = 'model'
+          state.plusMenuOpen = false
           state.schedulerOpen = false
           state.paletteOpen = false
           state.quickOpenOpen = false
@@ -119,8 +140,32 @@ export const useUIStore = create<UIStore>()(
           state.shortcutsHelpOpen = false
         }
       })
-      if (useUIStore.getState().agentCapabilitiesOpen) _closeSettings?.()
+      if (useUIStore.getState().runPickerOpen) _closeSettings?.()
     },
+    openRunPicker: (focus = 'model') => {
+      set((state) => {
+        state.runPickerOpen = true
+        state.runPickerFocus = focus
+        state.plusMenuOpen = false
+        state.schedulerOpen = false
+        state.paletteOpen = false
+        state.quickOpenOpen = false
+        state.telemetryOpen = false
+        state.shortcutsHelpOpen = false
+      })
+      _closeSettings?.()
+    },
+    openPlusMenu: (section = null) => {
+      set((state) => {
+        state.plusMenuOpen = true
+        state.plusMenuSection = section
+        state.runPickerOpen = false
+      })
+    },
+    closePlusMenu: () => set((state) => {
+      state.plusMenuOpen = false
+      state.plusMenuSection = null
+    }),
     togglePalette: () => {
       set((state) => {
         const nextOpen = !state.paletteOpen
@@ -128,7 +173,7 @@ export const useUIStore = create<UIStore>()(
         if (nextOpen) {
           state.palettePage = []
           state.schedulerOpen = false
-          state.agentCapabilitiesOpen = false
+          state.runPickerOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
           state.shortcutsHelpOpen = false
@@ -147,7 +192,7 @@ export const useUIStore = create<UIStore>()(
         state.palettePage = page
         state.paletteKey += 1
         state.schedulerOpen = false
-        state.agentCapabilitiesOpen = false
+        state.runPickerOpen = false
         state.quickOpenOpen = false
         state.telemetryOpen = false
         state.shortcutsHelpOpen = false
@@ -161,7 +206,7 @@ export const useUIStore = create<UIStore>()(
         if (nextOpen) {
           state.quickOpenQuery = ''
           state.schedulerOpen = false
-          state.agentCapabilitiesOpen = false
+          state.runPickerOpen = false
           state.paletteOpen = false
           state.telemetryOpen = false
           state.shortcutsHelpOpen = false
@@ -174,7 +219,7 @@ export const useUIStore = create<UIStore>()(
         state.quickOpenOpen = true
         state.quickOpenQuery = query
         state.schedulerOpen = false
-        state.agentCapabilitiesOpen = false
+        state.runPickerOpen = false
         state.paletteOpen = false
         state.telemetryOpen = false
         state.shortcutsHelpOpen = false
@@ -185,7 +230,7 @@ export const useUIStore = create<UIStore>()(
       set((state) => {
         state.telemetryOpen = true
         state.schedulerOpen = false
-        state.agentCapabilitiesOpen = false
+        state.runPickerOpen = false
         state.paletteOpen = false
         state.quickOpenOpen = false
         state.shortcutsHelpOpen = false
@@ -202,7 +247,7 @@ export const useUIStore = create<UIStore>()(
         state.shortcutsHelpOpen = nextOpen
         if (nextOpen) {
           state.schedulerOpen = false
-          state.agentCapabilitiesOpen = false
+          state.runPickerOpen = false
           state.paletteOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
@@ -212,13 +257,13 @@ export const useUIStore = create<UIStore>()(
     },
     closeShortcutsHelp: () => set((state) => { state.shortcutsHelpOpen = false }),
     closeScheduler: () => set((state) => { state.schedulerOpen = false }),
-    closeAgentCapabilities: () => set((state) => { state.agentCapabilitiesOpen = false }),
+    closeRunPicker: () => set((state) => { state.runPickerOpen = false }),
     closePalette: () => set((state) => { state.paletteOpen = false }),
     closeQuickOpen: () => set((state) => { state.quickOpenOpen = false }),
     closeTelemetry: () => set((state) => { state.telemetryOpen = false }),
     closeAll: () => set((state) => {
       state.schedulerOpen = false
-      state.agentCapabilitiesOpen = false
+      state.runPickerOpen = false
       state.paletteOpen = false
       state.quickOpenOpen = false
       state.telemetryOpen = false

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { lazySurface } from '@/lib/lazy-surface'
-import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
 import type { SessionGoal, SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
@@ -17,12 +16,6 @@ function useOpenedOnce(open: boolean): boolean {
 }
 
 interface AgentChatPanelsProps {
-  agentCapabilitiesOpen: boolean
-  agentWorkspace: string | null
-  sessionModel: string | null
-  sessionThinkingLevel: string | null
-  onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null) => void
-  onCloseAgentCapabilities: () => void
   /** Popover fallback: mobile, or desktop without a review dock. */
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
@@ -57,12 +50,6 @@ interface AgentChatPanelsProps {
 }
 
 export function AgentChatPanels({
-  agentCapabilitiesOpen,
-  agentWorkspace,
-  sessionModel,
-  sessionThinkingLevel,
-  onSessionModelSettingsChange,
-  onCloseAgentCapabilities,
   showTodos,
   onShowTodosChange,
   todos,
@@ -86,20 +73,9 @@ export function AgentChatPanels({
   onClosePalette,
   onCloseQuickOpen,
 }: AgentChatPanelsProps) {
-  const settingsOpened = useOpenedOnce(agentCapabilitiesOpen)
   const schedulerOpened = useOpenedOnce(schedulerOpen)
   return (
     <>
-      {settingsOpened && (
-        <SessionSettingsPanel
-          open={agentCapabilitiesOpen}
-          workspace={agentWorkspace}
-          sessionModel={sessionModel}
-          sessionThinkingLevel={sessionThinkingLevel}
-          onSessionModelSettingsChange={onSessionModelSettingsChange}
-          onClose={onCloseAgentCapabilities}
-        />
-      )}
       <TodosPopover
         open={showTodos}
         onOpenChange={onShowTodosChange}

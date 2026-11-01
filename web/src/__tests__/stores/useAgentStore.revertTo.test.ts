@@ -12,6 +12,7 @@ mock.module('@/api/client', () => ({
   postAgentChat: mock(async () => ({ status: 'accepted', session_id: 'session-1' })),
   postAgentCommand,
   updateSessionInteractionMode: mock(async () => { throw new Error('not used') }),
+  updateSessionRunSettings: mock(async () => { throw new Error('not used') }),
   sessionHistory: mock(async () => { throw new Error('not used') }),
   sessionHistorySince: mock(async () => { throw new Error('not used') }),
   agentStatus: mock(async () => { throw new Error('not used') }),

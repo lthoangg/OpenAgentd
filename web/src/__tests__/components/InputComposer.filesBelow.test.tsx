@@ -200,44 +200,7 @@ describe("InputComposer.filesBelow", () => {
     expect(count).toBe(3)
   })
 
-  it("invokes renderDragHandle and renders its output", () => {
-    const onSubmit = () => {}
-    const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputComposer onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
-
-    const handle = screen.getByRole("button", { name: "test-handle" })
-    expect(handle).toBeTruthy()
-  })
-
-  it("renders renderDragHandle output above the input pill", () => {
-    const onSubmit = () => {}
-    const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputComposer onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
-
-    const handle = screen.getByRole("button", { name: "test-handle" })
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const inputContainer = textarea.parentElement
-
-    expect(handle).toBeTruthy()
-    expect(inputContainer).toBeTruthy()
-    // Handle and input container are siblings within the input pill wrapper
-    // Handle should precede input container
-    expect(precedes(handle, inputContainer!)).toBe(true)
-  })
-
-  it("does not clobber attach button when renderDragHandle is provided", () => {
-    const onSubmit = () => {}
-    const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputComposer onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
-
-    const handle = screen.getByRole("button", { name: "test-handle" })
-    const attachButton = screen.getByRole("button", { name: /attach file/i })
-
-    expect(handle).toBeTruthy()
-    expect(attachButton).toBeTruthy()
-  })
-
-  it("renders normally when renderDragHandle is not provided", () => {
+  it("renders the message input", () => {
     const onSubmit = () => {}
     render(<InputComposer onSubmit={onSubmit} />)
 
@@ -245,31 +208,27 @@ describe("InputComposer.filesBelow", () => {
     expect(textarea).toBeTruthy()
   })
 
-  it("maintains DOM order: handle → input → preview when filesBelow={true} with renderDragHandle", async () => {
+  it("maintains DOM order: input → preview when filesBelow={true}", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputComposer onSubmit={onSubmit} filesBelow={true} renderDragHandle={renderDragHandle} />)
+    render(<InputComposer onSubmit={onSubmit} filesBelow={true} />)
 
     // Upload a file
     const file = new File(["test"], "test.txt", { type: "text/plain" })
     const hiddenInput = document.querySelector('input[type="file"]') as HTMLInputElement
     await user.upload(hiddenInput, file)
 
-    const handle = screen.getByRole("button", { name: "test-handle" })
     const fileText = await screen.findByText("test.txt")
     const previewWrapper = findPreviewWrapper(fileText)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     const inputContainer = textarea.parentElement
     const inputPillWrapper = findInputPillWrapper()
 
-    expect(handle).toBeTruthy()
     expect(previewWrapper).toBeTruthy()
     expect(inputContainer).toBeTruthy()
     expect(inputPillWrapper).toBeTruthy()
 
-    // Order: handle → input container (siblings) → input pill wrapper → preview
-    expect(precedes(handle, inputContainer!)).toBe(true)
+    // Order: input pill wrapper → preview
     expect(precedes(inputPillWrapper!, previewWrapper!)).toBe(true)
   })
 })

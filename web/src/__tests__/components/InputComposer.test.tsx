@@ -540,29 +540,16 @@ describe("InputComposer — design feedback chips", () => {
 // Interaction mode
 // ─────────────────────────────────────────────────────────────────────────────
 describe("InputComposer — interaction mode", () => {
-  it("shows the mode control only while expanded", () => {
-    const onInteractionModeChange = mock(() => {})
-    const { rerender } = render(
+  it("shows the mode control on the run deck, always", () => {
+    render(
       <InputComposer
-        minimized
         interactionMode="code"
-        onInteractionModeChange={onInteractionModeChange}
+        onInteractionModeChange={() => {}}
         onSubmit={() => {}}
       />,
     )
-
-    expect(screen.queryByRole("button", { name: "Code mode" })).toBeNull()
-
-    rerender(
-      <InputComposer
-        minimized={false}
-        interactionMode="code"
-        onInteractionModeChange={onInteractionModeChange}
-        onSubmit={() => {}}
-      />,
-    )
-
-    expect(screen.getByRole("button", { name: "Code mode" })).toBeTruthy()
+    const deck = document.querySelector("[data-run-deck]") as HTMLElement
+    expect(deck.contains(screen.getByRole("button", { name: "Code mode" }))).toBe(true)
   })
 
   it("switches modes with Tab when empty and when containing a draft", async () => {
@@ -626,23 +613,67 @@ describe("InputComposer — interaction mode", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Minimized state
+// Run deck
 // ─────────────────────────────────────────────────────────────────────────────
-describe("InputComposer — minimized state", () => {
-  it("hides message slot when minimized", () => {
-    render(<InputComposer onSubmit={() => {}} minimized />)
-    const slot = screen.getByLabelText("Message input").closest('div[aria-hidden="true"]') as HTMLElement
-    expect(slot.getAttribute("aria-hidden")).toBe("true")
+describe("InputComposer — run deck", () => {
+  it("keeps the textarea enabled and in the Tab order: the composer never collapses", () => {
+    render(<InputComposer onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(false)
+    expect(textarea.tabIndex).toBe(0)
+    expect(screen.queryByRole("button", { name: "Expand input bar" })).toBeNull()
   })
 
-  it("re-enables textarea on minimize → expand", async () => {
-    const { rerender } = render(<InputComposer onSubmit={() => {}} minimized={false} />)
+  it("puts the deck controls between the mode toggle and Send", () => {
+    render(
+      <InputComposer
+        onSubmit={() => {}}
+        interactionMode="code"
+        onInteractionModeChange={() => {}}
+        deck={<button type="button">Run chip</button>}
+        deckEnd={<button type="button">Context</button>}
+      />,
+    )
+    const deck = document.querySelector("[data-run-deck]") as HTMLElement
+    const names = Array.from(deck.querySelectorAll("button")).map((b) => b.getAttribute("aria-label") ?? b.textContent)
+    expect(names).toEqual(["Attach file", "Code mode", "Plan mode", "Run chip", "Context", "Send message"])
+  })
+
+  it("hands the + control actions that start a mention at the caret", async () => {
+    const onFileRefsNeeded = mock(() => {})
+    let actions: { startToken: (t: "@" | "#") => void; setDraft: (t: string) => void } | null = null
+    render(
+      <InputComposer
+        onSubmit={() => {}}
+        onFileRefsNeeded={onFileRefsNeeded}
+        renderPlus={(a) => { actions = a; return <button type="button">Add</button> }}
+      />,
+    )
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    rerender(<InputComposer onSubmit={() => {}} minimized />)
-    expect(textarea.getAttribute("disabled")).not.toBeNull()
-    rerender(<InputComposer onSubmit={() => {}} minimized={false} />)
+    fireEvent.change(textarea, { target: { value: "look at" } })
+    textarea.setSelectionRange(7, 7)
+    act(() => actions!.startToken("@"))
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
-    expect(textarea.getAttribute("disabled")).toBeNull()
+    expect(textarea.value).toBe("look at @")
+    expect(onFileRefsNeeded).toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Attach file" })).toBeNull()
+  })
+
+  it("replaces the draft for a side question", async () => {
+    let actions: { setDraft: (t: string) => void } | null = null
+    render(<InputComposer onSubmit={() => {}} renderPlus={(a) => { actions = a; return null }} />)
+    act(() => actions!.setDraft("/btw "))
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    expect(textarea.value).toBe("/btw ")
+  })
+
+  it("draws no border on the deck controls: only the composer field has one", () => {
+    render(<InputComposer onSubmit={() => {}} interactionMode="code" onInteractionModeChange={() => {}} />)
+    for (const name of ["Attach file", "Send message"]) {
+      expect(screen.getByRole("button", { name }).className.split(" ")).not.toContain("border")
+    }
+    const pill = document.querySelector("[data-composer-pill]") as HTMLElement
+    expect(pill.className.split(" ")).toContain("border")
   })
 })
 
@@ -685,10 +716,6 @@ describe("InputComposer — height reset after submit", () => {
 
     expect(textarea.value).toBe("")
     expect(textarea.style.height).toBe("auto")
-    // Expanded always renders the textarea on its own full-width row —
-    // clearing the content resets height, not the (static) row layout.
-    const slot = textarea.closest("div.min-w-0") as HTMLElement
-    expect(slot.style.flexBasis).toBe("100%")
   })
 
   it("expands the composer to fit a multiline snippet insertion", async () => {
@@ -708,10 +735,6 @@ describe("InputComposer — height reset after submit", () => {
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
     expect(textarea.value).toBe("line one\nline two\nline three")
     expect(textarea.style.height).toBe("60px")
-    // Expanded always renders the message slot on its own row (flexBasis:
-    // 100%), independent of content — this just guards that invariant.
-    const slot = textarea.closest("div.min-w-0") as HTMLElement
-    expect(slot.style.flexBasis).toBe("100%")
   })
 })
 

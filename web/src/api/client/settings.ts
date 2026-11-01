@@ -296,6 +296,8 @@ export type StoredCredential = {
   /** Unix seconds when a cooling-down credential is tried again. */
   cooldown_until: number | null
   cooldown_reason: 'rate_limit' | 'quota' | 'spend_limit' | 'auth' | string | null
+  /** Sessions pinned to this credential (v3; the credentials list only). */
+  pinned_sessions?: number
 }
 
 export type ProviderCredentialsBody = {

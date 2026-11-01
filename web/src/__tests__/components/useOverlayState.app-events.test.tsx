@@ -22,7 +22,7 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
     isMobile: false,
     workspace: '/repo/project',
     toggleScheduler: mock(() => useUIStore.getState().toggleScheduler()),
-    toggleAgentCapabilities: mock(() => {}),
+    toggleRunPicker: mock(() => {}),
     togglePalette: mock(() => {}),
     toggleQuickOpen: mock(() => {}),
     ...overrides,
@@ -33,7 +33,7 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 beforeEach(() => {
   useUIStore.setState({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
     schedulerOpenPending: false,

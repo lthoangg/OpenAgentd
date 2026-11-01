@@ -78,7 +78,7 @@ export interface UseOverlayStateArgs {
   isMobile: boolean
   workspace: string | null
   toggleScheduler: () => void
-  toggleAgentCapabilities: () => void
+  toggleRunPicker: () => void
   togglePalette: () => void
   toggleQuickOpen: () => void
 }
@@ -137,7 +137,7 @@ export interface UseOverlayStateResult {
   handleOpenAttachment: (item: FileLightboxItem) => void
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
-  handleToggleAgentCapabilities: () => void
+  handleToggleRunPicker: () => void
   handleToggleScheduler: () => void
   handleTogglePalette: () => void
   /** Open Session Settings to pick another model. */
@@ -174,7 +174,7 @@ export function useOverlayState({
   isMobile,
   workspace,
   toggleScheduler,
-  toggleAgentCapabilities,
+  toggleRunPicker,
   togglePalette,
   toggleQuickOpen,
 }: UseOverlayStateArgs): UseOverlayStateResult {
@@ -224,7 +224,7 @@ export function useOverlayState({
 
   useEffect(() => {
     if (isMobile) {
-      useUIStore.getState().closeAgentCapabilities()
+      useUIStore.getState().closeRunPicker()
     }
   }, [isMobile])
 
@@ -239,7 +239,7 @@ export function useOverlayState({
     if (toClose.has('todos')) setShowTodos(false)
     const ui = useUIStore.getState()
     if (toClose.has('scheduler')) ui.closeScheduler()
-    if (toClose.has('capabilities')) ui.closeAgentCapabilities()
+    if (toClose.has('capabilities')) ui.closeRunPicker()
     if (toClose.has('palette')) {
       ui.closePalette()
       ui.closeQuickOpen()
@@ -404,10 +404,10 @@ export function useOverlayState({
   // Cross-platform overlay toggles: when opening one overlay, close the rest.
   // closeOtherMobileOverlays now coordinates todos/files/capabilities on both
   // desktop and mobile; sidebar/actions guards stay mobile-only.
-  const handleToggleAgentCapabilities = useCallback(() => {
-    if (!useUIStore.getState().agentCapabilitiesOpen) closeOtherMobileOverlays('capabilities')
-    toggleAgentCapabilities()
-  }, [closeOtherMobileOverlays, toggleAgentCapabilities])
+  const handleToggleRunPicker = useCallback(() => {
+    if (!useUIStore.getState().runPickerOpen) closeOtherMobileOverlays('capabilities')
+    toggleRunPicker()
+  }, [closeOtherMobileOverlays, toggleRunPicker])
 
   // Second press of the same view's shortcut hides the dock; otherwise the
   // dock opens (if needed) and focuses that view's tab.
@@ -457,8 +457,8 @@ export function useOverlayState({
 
   // Session Settings holds the model picker, focused when it opens.
   const handleSwitchModel = useCallback(() => {
-    if (!useUIStore.getState().agentCapabilitiesOpen) handleToggleAgentCapabilities()
-  }, [handleToggleAgentCapabilities])
+    if (!useUIStore.getState().runPickerOpen) handleToggleRunPicker()
+  }, [handleToggleRunPicker])
 
   const handleToggleQuickOpen = useCallback(() => {
     if (!useUIStore.getState().quickOpenOpen) closeOtherMobileOverlays('palette')
@@ -661,7 +661,7 @@ export function useOverlayState({
     handleOpenAttachment,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
-    handleToggleAgentCapabilities,
+    handleToggleRunPicker,
     handleToggleScheduler,
     handleTogglePalette,
     handleSwitchModel,

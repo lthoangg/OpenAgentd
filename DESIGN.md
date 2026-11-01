@@ -384,7 +384,7 @@ Three deliberate tensions define the personality:
   system earns that density with a strict 11px legibility floor and generous
   horizontal padding. Working surfaces (transcript, sidebar, review dock,
   Telemetry) stay dense; management surfaces (Settings, Scheduled tasks,
-  Session settings, Keyboard shortcuts, Backend connection) keep the same type
+  Keyboard shortcuts, Backend connection) keep the same type
   scale but trade height for room to breathe.
 - **Flat, not sterile.** Hierarchy comes from tonal steps and hairline borders,
   never from drop shadows. Only true overlays cast a shadow.
@@ -791,12 +791,12 @@ hovered; `danger` is the soft error fill.
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), chosen so small phones (iPhone mini, 375px) still show a useful amount of content, while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
 - `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
-- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px (no `pointer-coarse:*-11`; a test guards it), the composer included: on a touch phone its attach, Code/Plan, Send/Stop and both halves of the split Steer pill are 36px (`max-md:pointer-coarse:h-9`), so the row stays one height.
+- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px, tablets included. The one 44px target is the phone's primary action: the composer's Send (`max-md:pointer-coarse:size-11`); a test keeps `pointer-coarse:*-11` to that file.
 - `--spacing-tab-bar` (the review panel's tab strip) grows to 39px on coarse pointers, so each tab and its close control are 36px inside the strip's 2px top edge and 1px bottom border.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
 - Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
-- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header shows the context ring (once a session exists) and a Session settings button beside Review panel, so context use, model and thinking level are one tap away; desktop has them in the header and status bar. The composer stays free of them. The review panel's phone tab strip shows its actions as icons only (+, refresh).
+- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header has four controls: sidebar, title, Review panel and More. Model, thinking, account and context live in the run deck under the composer on every screen, never in the header or status bar. The review panel's phone tab strip shows its actions as icons only (+, refresh).
 - Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers and in the 32px view toolbar (`.touch-hit` on a positioned element, 36×36 around it; `DOCK_ACTION_BUTTON_CLASS` is 28px on touch, 36px in the tab bar). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
@@ -910,6 +910,41 @@ click from a row. Text actions in rows ("Show all") use `ROW_TEXT_ACTION`
 (24px), and count chips (subagents, worktrees) one 20px mono pill
 (`rowChipClass`) that inks when active. Long titles always truncate: a fold
 must never take the width of its longest line.
+
+**Composer and run deck** (`components/composer/`): the composer is docked at
+the foot of the chat column on every screen, in the column's flow (never
+floating over the transcript), up to the 768px prose measure, always open:
+no drag, no collapse, no saved position. It is one framed field (one
+`border-subtle` hairline, no shadow); nothing inside it has a border. Under
+the text sits the run deck, which says how the next message runs:
+
+```
+[+] [Code|Plan] [provider:model · Level · Account ▾] [mcp: Sign in]   (ring 42%) [Send]
+```
+
+- **"+"** opens the add menu: Attach, Mention a file, Snippet, Side question
+  and MCP servers (state in words, Sign in, on/off). The MCP chip shows only
+  when a server needs the user, and opens that section.
+- **Code/Plan** is the segmented control (Bark fill, no border). Plan mode
+  changes the placeholder to say the agent reads and proposes without editing.
+- **The run chip** reads `provider:model` in mono, then the thinking level and
+  a pinned account in words. The `provider:` part gives way first; under 520px
+  of composer width (container query) the chip stacks into two lines and the
+  context ring drops its percentage. The chip has no tooltip: its accessible
+  name carries the shortcut.
+- **The run picker** (⇧⌘A, `/model`, `/think`, the palette's "Model and
+  Thinking…") is one surface for all three: a model search with Recent first,
+  thinking as a segmented control (←/→ step it from the empty search), the
+  provider's accounts with state and quota left ("Auto" first), then Reset to
+  default and Make default. A popover on desktop and tablet, a bottom sheet
+  on phones. Every pick saves on the session at once; a refused save puts the
+  previous choice back and says so.
+- **The context ring** opens the numbers and "Summarize now".
+- **Send** is a keycap fill until there is something to send, then Bark. It is
+  the phone's one 44px target.
+
+Bottom sheets (`ui/bottom-sheet.tsx`) are the phone form of any picker or
+menu: a grab handle, drag or Esc to dismiss, safe-area padding, 44px rows.
 
 **New-session hero** (the draft screen): a `text-lg` semibold question with
 the folder in mono, a 24px `rounded-full` folder chip opening a filterable

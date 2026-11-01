@@ -71,14 +71,22 @@ describe('coarse-pointer touch targets', () => {
     expect(css).toMatch(/\.mobile-safe-toast\s*\{\s*top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ var\(--spacing-app-header\) \+ 0\.5rem\);/)
   })
 
-  it('uses no 44px touch sizes: phones stay compact enough for a mini screen', () => {
+  it('keeps 44px touch sizes to the phone primary action (Send): the rest stays 36px for a mini screen', () => {
     const root = fileURLToPath(new URL('../../components', import.meta.url))
+    // Decision 7: 36px for every control on touch, 44px for the phone's primary action only.
+    const primaryOnPhone = new Set(['InputComposer.tsx'])
     const offenders: string[] = []
     const files = readdirSync(root, { recursive: true, encoding: 'utf8' }).filter((f) => /\.tsx?$/.test(f))
     for (const file of files) {
+      if (primaryOnPhone.has(file)) continue
       const text = readFileSync(`${root}/${file}`, 'utf8')
       if (/pointer-coarse:[\w:\-[\]=]*(?:min-h|min-w|size|h|w)-11\b/.test(text)) offenders.push(file)
     }
     expect(offenders).toEqual([])
+  })
+
+  it('sizes the phone Send to 44px and keeps it 36px on a touch tablet', () => {
+    const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer.tsx', import.meta.url)), 'utf8')
+    expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9 max-md:pointer-coarse:size-11'/)
   })
 })

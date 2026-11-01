@@ -146,61 +146,9 @@ describe('AppFooter', () => {
     expect(footer.className.split(' ')).not.toContain('bg-(--bg-sidebar)')
   })
 
-  it('renders model name and thinking level when provided and triggers session settings', async () => {
-    const user = userEvent.setup()
-    const onToggleSessionSettings = mock(() => {})
-    renderWithQueryClient(
-      <AppFooter
-        sessionModel="anthropic/claude-3-7-sonnet"
-        sessionThinkingLevel="high"
-        onToggleSessionSettings={onToggleSessionSettings}
-      />
-    )
-    const modelButton = screen.getByRole('button', { name: /anthropic\/claude-3-7-sonnet/i })
-    expect(modelButton).toBeTruthy()
-    expect(screen.getByText('claude-3-7-sonnet')).toBeTruthy()
-    expect(screen.getByText('high')).toBeTruthy()
-
-    await user.hover(modelButton)
-    expect((await screen.findByRole('tooltip')).textContent).toMatch(/anthropic\/claude-3-7-sonnet.*Thinking: high.*Change model/)
-
-    fireEvent.click(modelButton)
-    expect(onToggleSessionSettings).toHaveBeenCalledTimes(1)
-  })
-
-  it('falls back to the agent default model when the session has no override', () => {
-    renderWithQueryClient(
-      <AppFooter sessionModel={null} defaultModel="openai/gpt-5" onToggleSessionSettings={() => {}} />
-    )
-    expect(screen.getByRole('button', { name: /openai\/gpt-5/i })).toBeTruthy()
-  })
-
-  it('shows the agent thinking level when the session sets none', async () => {
-    const user = userEvent.setup()
-    renderWithQueryClient(
-      <AppFooter sessionModel={null} defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
-    )
-    const button = screen.getByRole('button', { name: /openai\/gpt-5/i })
-    expect(screen.getByText('high')).toBeTruthy()
-
-    await user.hover(button)
-    expect((await screen.findByRole('tooltip')).textContent).toMatch(/openai\/gpt-5Thinking: high/)
-  })
-
-  it('drops the agent thinking level once the session picks another model', () => {
-    renderWithQueryClient(
-      <AppFooter sessionModel="anthropic/claude-sonnet" defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
-    )
-    expect(screen.getByText('claude-sonnet')).toBeTruthy()
-    expect(screen.queryByText('high')).toBeNull()
-  })
-
-  it('prefers the session thinking level over the agent one', () => {
-    renderWithQueryClient(
-      <AppFooter sessionModel={null} sessionThinkingLevel="low" defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
-    )
-    expect(screen.getByText('low')).toBeTruthy()
-    expect(screen.queryByText('high')).toBeNull()
+  it('leaves the model to the run deck under the composer', () => {
+    renderWithQueryClient(<AppFooter workspace="/tmp/repo" sessionId="s1" />)
+    expect(screen.queryByRole('button', { name: /model/i })).toBeNull()
   })
 
   it('renders fast mode pill when fast mode is enabled', async () => {

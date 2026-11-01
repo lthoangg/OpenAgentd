@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { HANDOFF_ACTIVE_MS, useDraftHandoff } from '@/components/AgentChatView/useDraftHandoff'
-import type { ComposerHandoff } from '@/components/FloatingInputComposer'
+import type { ComposerHandoff } from '@/components/composer/Composer'
 
 // Deterministic timers (Bun has no jest-style fake timer API); see ToastStack.test.tsx.
 function useFakeTimers() {

@@ -76,19 +76,19 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     paletteOpen: false,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     togglePalette: () => {},
     closeScheduler: () => {},
-    closeAgentCapabilities: () => {},
+    closeRunPicker: () => {},
     closePalette: () => {},
   }),
 }))
 
-mock.module('@/components/FloatingInputComposer', () => ({
-  FloatingInputComposer: forwardRef<
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
     object
   >(function Mock(_props, ref) {
@@ -113,6 +113,7 @@ const mockRegistry = {
 
 mock.module('@/queries/useAgentSettingsQueries', () => ({
   useRegistryQuery: () => ({ data: mockRegistry }),
+  useUpdateAgentMutation: () => ({ mutateAsync: async () => ({}), isPending: false }),
   useAgentsQuery: () => ({
     data: {
       agents: [{

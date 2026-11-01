@@ -52,7 +52,7 @@ function runDesktopCommand(command: unknown): void {
       dispatchAppEvent(APP_EVENTS.toggleScheduler)
       break
     case 'agent_capabilities':
-      useUIStore.getState().toggleAgentCapabilities()
+      useUIStore.getState().toggleRunPicker()
       break
     case 'settings':
       useSettingsStore.getState().openSettings()

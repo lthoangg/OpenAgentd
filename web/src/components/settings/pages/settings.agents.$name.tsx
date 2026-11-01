@@ -25,6 +25,25 @@ import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 import { errorMessage } from '@/utils/errors'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
+import { SessionTools } from '@/components/SessionTools'
+import { useAgentsQuery } from '@/queries/useAgentsQuery'
+import { useAgentStore } from '@/stores/useAgentStore'
+
+/**
+ * The tools the agent has right now in the open workspace: built-ins plus
+ * what its MCP servers bring. Read-only; the form above is what changes them.
+ */
+function LiveAgentTools({ name }: { name: string }) {
+  const workspace = useAgentStore((s) => s._workspace)
+  const { data } = useAgentsQuery(workspace, Boolean(workspace))
+  const agent = data?.agents?.find((a) => a.name === name) ?? (name === 'code' ? data?.agents?.[0] : undefined)
+  if (!agent) return null
+  return (
+    <div className="mt-8">
+      <SessionTools tools={agent.tools} mcpServers={agent.mcp_servers ?? []} defaultOpen={false} />
+    </div>
+  )
+}
 
 interface AgentEditorPageProps {
   name?: string
@@ -135,6 +154,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
               onModeChange={setMode}
             />
           )}
+          {data && mode === 'form' && <LiveAgentTools name={name} />}
           <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
             <div className="flex items-center gap-2">
               {dirty && (

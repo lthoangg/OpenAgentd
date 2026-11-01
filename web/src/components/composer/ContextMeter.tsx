@@ -1,0 +1,87 @@
+/**
+ * ContextMeter — the run deck's context ring: how full the context is before
+ * older messages are summarized, with the numbers and "Summarize now" behind
+ * a click. The percentage drops out when the composer is narrow.
+ */
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Button } from '@/components/ui/button'
+import { DEFAULT_SUMMARY_TRIGGER_TOKENS } from '@/components/ui/token-meter'
+import { formatCompact, formatSpend } from '@/utils/telemetryFormat'
+import { useAgentStore } from '@/stores/useAgentStore'
+
+export interface ContextMeterProps {
+  input: number
+  output: number
+  cachedPercent?: number
+  sessionCostUsd?: number
+  trigger?: number
+  /** "Summarize now" works on an idle session with messages. */
+  canSummarize: boolean
+}
+
+const RADIUS = 7
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS
+
+export function ContextMeter({ input, output, cachedPercent, sessionCostUsd, trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS, canSummarize }: ContextMeterProps) {
+  const limit = Math.max(trigger, 1)
+  const progress = Math.min(input / limit, 1)
+  const percent = Math.round(progress * 100)
+  const label = `Context ${percent}% full: ${input.toLocaleString()} of ${limit.toLocaleString()} tokens before older messages are summarized`
+  return (
+    <Popover>
+      <PopoverTrigger
+        aria-label={label}
+        data-context-meter=""
+        className="h-8 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center"
+      >
+        <svg className="size-4 -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
+          <circle cx="9" cy="9" r={RADIUS} fill="none" stroke="var(--color-accent)" strokeOpacity="0.18" strokeWidth="2" />
+          <circle
+            cx="9"
+            cy="9"
+            r={RADIUS}
+            fill="none"
+            stroke="var(--color-accent)"
+            strokeLinecap="round"
+            strokeWidth="2.6"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
+          />
+        </svg>
+        <span className="@max-[520px]:hidden">{percent}%</span>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" sideOffset={8} className="w-60 gap-2 p-3">
+        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 font-mono text-meta tabular-nums">
+          <dt className="text-(--color-text-muted)">Context</dt>
+          <dd className="text-right">{formatCompact(input)} / {formatCompact(limit)} · {percent}%</dd>
+          <dt className="text-(--color-text-muted)">Output</dt>
+          <dd className="text-right">{formatCompact(output)}</dd>
+          {cachedPercent !== undefined && cachedPercent > 0 && (
+            <>
+              <dt className="text-(--color-text-muted)">Cached</dt>
+              <dd className="text-right">{cachedPercent.toFixed(0)}%</dd>
+            </>
+          )}
+          {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
+            <>
+              <dt className="text-(--color-text-muted)">Spend (est.)</dt>
+              <dd className="text-right">{formatSpend(sessionCostUsd)}</dd>
+            </>
+          )}
+        </dl>
+        <p className="text-meta leading-relaxed text-(--color-text-muted)">
+          Older messages are summarized when the context reaches {formatCompact(limit)} tokens.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="default"
+          disabled={!canSummarize}
+          onClick={() => { void useAgentStore.getState().compactAgent() }}
+        >
+          Summarize now
+        </Button>
+      </PopoverContent>
+    </Popover>
+  )
+}

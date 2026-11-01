@@ -203,9 +203,13 @@ describe('session search helpers', () => {
   })
 
   it('describes a session by workspace name and age', () => {
-    const now = new Date()
-    expect(sessionDescription(session('a', 't', { workspace: '/repo/app' }), now)).toBe('app · 3h')
-    expect(sessionDescription(session('a', 't', { workspace: null }), now)).toBe('3h')
+    // Exactly 3h after the fixture's time: a clock read before it could land
+    // a millisecond short of 3h under load.
+    const at = Date.parse(session('a', 't').last_message_at!)
+    const now = new Date(at + 3 * HOUR)
+    const lastMessage = new Date(at).toISOString()
+    expect(sessionDescription(session('a', 't', { workspace: '/repo/app', last_message_at: lastMessage }), now)).toBe('app · 3h')
+    expect(sessionDescription(session('a', 't', { workspace: null, last_message_at: lastMessage }), now)).toBe('3h')
     expect(sessionDescription(session('a', 't', { workspace: '/repo/app', last_message_at: null }), now)).toBe('app')
   })
 })

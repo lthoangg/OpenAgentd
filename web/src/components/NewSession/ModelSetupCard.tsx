@@ -16,7 +16,7 @@ import { CheckCircle2, ExternalLink, Loader2 } from 'lucide-react'
 import { configureDefaultModel, listProviderModels, saveProvider, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { OAuthLoginDialog } from '@/components/settings/pages/settings.providers/OAuthLoginDialog'
+import { lazySurface } from '@/lib/lazy-surface'
 import { openExternalUrl } from '@/lib/open-external'
 import {
   detectedProviders,
@@ -28,6 +28,12 @@ import {
 import { invalidateModelSetup } from '@/queries/model-setup'
 import { useToastStore } from '@/stores/useToastStore'
 import { cn } from '@/lib/utils'
+
+// Opened only to sign in with a subscription.
+const OAuthLoginDialog = lazySurface(
+  () => import('@/components/settings/pages/settings.providers/OAuthLoginDialog'),
+  'OAuthLoginDialog',
+)
 
 function shortLabel(provider: ProviderInfo): string {
   return QUICK_PICK_LABELS[provider.id] ?? provider.label

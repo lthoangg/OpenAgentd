@@ -17,7 +17,8 @@ import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
 import { cn } from '@/lib/utils'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import type { SessionPlan } from '@/api/types'
-import { FileLightbox, type FileLightboxItem } from './FileLightbox'
+import type { FileLightboxItem } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 
 export interface ActivePlanSectionProps {
   plan: SessionPlan

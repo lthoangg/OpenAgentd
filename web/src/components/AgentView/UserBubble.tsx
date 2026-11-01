@@ -3,7 +3,8 @@ import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucid
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
-import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
+import type { FileLightboxItem, FileLightboxItemType } from '../FileLightbox'
+import { FileLightbox } from '../LazyFileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { FileRefContext } from '../FileRefLink'
 import { findCommittedMentions } from '../InputComposer.mentions'

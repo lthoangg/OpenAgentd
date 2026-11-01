@@ -6,7 +6,7 @@
  * alerts: Enter confirms a safe action and never a destructive one.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog'
@@ -80,17 +80,28 @@ describe('DialogFooter', () => {
   })
 })
 
+/**
+ * The dialog moves focus on the next animation frame. Focus changes do not
+ * touch the DOM, so ``waitFor`` would only notice on its slow fallback; poll.
+ */
+async function focusLandsOn(element: HTMLElement) {
+  for (let i = 0; i < 100 && document.activeElement !== element; i++) await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(document.activeElement).toBe(element)
+}
+
 describe('ConfirmDialog default button', () => {
   it('gives focus to a safe confirm, so Enter confirms', async () => {
     setPlatform('MacIntel')
     render(<ConfirmDialog open onOpenChange={() => {}} title="Reset layout?" confirmLabel="Reset" tone="default" onConfirm={() => {}} />)
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reset' })))
+    const reset = screen.getByRole('button', { name: 'Reset' })
+    await focusLandsOn(reset)
   })
 
   it('never makes a destructive confirm the default: Cancel takes focus', async () => {
     setPlatform('MacIntel')
     render(<ConfirmDialog open onOpenChange={() => {}} title="Delete this session?" confirmLabel="Delete" onConfirm={() => {}} />)
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' })))
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    await focusLandsOn(cancel)
     expect(screen.getByRole('button', { name: 'Delete' }).dataset.variant).toBe('danger')
   })
 })

@@ -3,7 +3,7 @@
  * and then stays mounted so it can animate out. ⌘K and ⌘P mount one and the
  * same palette, scoped differently.
  */
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 
 mock.module('@/components/SchedulerPanel', () => ({
@@ -25,6 +25,12 @@ mock.module('@/components/AgentChatView/PaletteHost', () => ({
 }))
 
 import { AgentChatPanels } from '@/components/AgentChatView/AgentChatPanels'
+import { prefetchSurfaces } from '@/lib/lazy-surface'
+
+// The viewer and notices load lazily; load them before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 
 afterEach(cleanup)
 

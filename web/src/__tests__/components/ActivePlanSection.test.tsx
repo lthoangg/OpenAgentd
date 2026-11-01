@@ -1,6 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ActivePlanSection } from '@/components/ActivePlanSection'
+import { prefetchSurfaces } from '@/lib/lazy-surface'
+
+// The viewer and notices load lazily; load them before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 import type { SessionPlan } from '@/api/types'
 
 const PLAN: SessionPlan = { content: '## Summary\nShip the plan file.', updated_at: new Date(Date.now() - 5 * 60_000).toISOString() }

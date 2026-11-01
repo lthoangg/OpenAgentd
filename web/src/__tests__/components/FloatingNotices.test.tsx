@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom'
 
-import { afterEach, beforeEach, expect, it, mock } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +13,12 @@ mock.module('@/components/UpdateCard', () => ({
 }))
 
 import { FloatingNotices } from '@/components/FloatingNotices'
+import { prefetchSurfaces } from '@/lib/lazy-surface'
+
+// The viewer and notices load lazily; load them before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useToastStore } from '@/stores/useToastStore'
 

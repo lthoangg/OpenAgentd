@@ -6,9 +6,13 @@
  * screen, full width on phones, so the composer and its run deck own the
  * bottom. Toasts come first, newest nearest the top edge (see ``ToastStack``).
  */
-import { LspInstallPrompt } from '@/components/LspInstallPrompt'
 import { ToastStack } from '@/components/ToastStack'
-import { UpdateCard } from '@/components/UpdateCard'
+import { lazySurface } from '@/lib/lazy-surface'
+
+// Shown only when there is an update or a language server to install: kept
+// out of the startup bundle and prefetched while the app is idle.
+const LspInstallPrompt = lazySurface(() => import('@/components/LspInstallPrompt'), 'LspInstallPrompt')
+const UpdateCard = lazySurface(() => import('@/components/UpdateCard'), 'UpdateCard')
 
 export function FloatingNotices() {
   return (

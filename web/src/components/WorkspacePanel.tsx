@@ -78,8 +78,6 @@ import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { PlanTabView } from './WorkspacePanel/PlanTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import { GoalTabView } from './WorkspacePanel/GoalTabView'
-import { AttachmentTabView } from './WorkspacePanel/AttachmentTabView'
-import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { GroupSplitHandle } from './WorkspacePanel/GroupSplitHandle'
@@ -117,6 +115,8 @@ import type { GroupIndex } from './WorkspacePanel/dock-groups'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
+const PreviewTabView = lazySurface(() => import('./Preview/PreviewTabView'), 'PreviewTabView')
+const AttachmentTabView = lazySurface(() => import('./WorkspacePanel/AttachmentTabView'), 'AttachmentTabView')
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 

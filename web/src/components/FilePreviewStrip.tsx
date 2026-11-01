@@ -24,7 +24,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { TEXT_FILE_EXTENSIONS } from '@/utils/file-extensions'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
-import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from './FileLightbox'
+import type { FileLightboxItem, FileLightboxItemType } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 import { PdfThumbnail } from './PdfThumbnail'
 
 // ─── Props ─────────────────────────────────────────────────────────────────────

@@ -1,7 +1,13 @@
-import { describe, it, expect, afterEach } from "bun:test";
+import { describe, it, expect, afterEach, beforeAll } from "bun:test";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { MarkdownBlock, resolveImageSrc, extractFileName } from "@/utils/markdown";
+import { prefetchSurfaces } from '@/lib/lazy-surface';
+
+// The viewer and notices load lazily; load them before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces();
+});
 
 afterEach(() => {
   cleanup();

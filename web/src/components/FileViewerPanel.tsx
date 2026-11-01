@@ -5,7 +5,7 @@
  * the surrounding toolbar.
  */
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
-import { FileLightbox } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 import { Check, Copy, Download, ExternalLink, FileHeadphone, FileText, Loader2, Plus } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'

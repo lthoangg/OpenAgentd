@@ -120,17 +120,17 @@ export function useMobileViewportGuards() {
   useEffect(() => {
     const { isTauri, os } = getPlatform()
     const isTouch = (navigator.maxTouchPoints ?? 0) > 0
-    // Activate for the mobile Tauri shell (always) or for any touch device
-    // that is *currently* in a mobile-sized viewport. The media query is the
-    // same one `useIsMobile` uses, so the layout mode (mobile vs desktop) and
-    // the viewport-binding always agree — prevents split-brain on iPads and
-    // large Android tablets where a landscape orientation push the width above
-    // the 768px threshold and the layout switches to the desktop draggable bar
-    // while this hook would otherwise still be manipulating --app-vh.
+    // Activate for the mobile Tauri shell (always), for any touch device in a
+    // phone-sized viewport, and for touch-first tablets in a browser (iPad,
+    // Android tablets): the composer is docked at the bottom of the chat
+    // column in every layout, so binding the shell to the visual viewport is
+    // what keeps it on the soft keyboard there too. A touchscreen laptop
+    // driven by a mouse (fine pointer) keeps the desktop page.
     const isMobileViewport = window.matchMedia(MOBILE_QUERY).matches
+    const isTouchFirst = window.matchMedia('(pointer: coarse)').matches
     const isMobileShell =
       (isTauri && (os === 'ios' || os === 'android')) ||
-      (isTouch && !!window.visualViewport && isMobileViewport)
+      (isTouch && !!window.visualViewport && (isMobileViewport || isTouchFirst))
     if (!isMobileShell) return
 
     const root = document.documentElement

@@ -642,6 +642,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     header and status bar no longer show the context meter or the model.
   - On phones the header keeps four controls (sidebar, title, Review panel,
     More), and Send is a 44px target.
+  - On a touch tablet, in the app or a browser, the composer rides up on the
+    soft keyboard as it does on phones, and Settings ends above the keyboard
+    so its Save bar stays reachable.
 - **Pin a session to one account** `[v3.40.0]` — when a provider has several
   keys or OAuth profiles, the run picker can pin the session to one of them;
   **Auto** keeps today's rotation. A pinned session only ever uses that

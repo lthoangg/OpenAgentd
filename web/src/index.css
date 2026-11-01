@@ -536,16 +536,22 @@ html[data-mobile-shell][data-keyboard-open] [data-dialog-content] {
   }
 }
 
-html[data-mobile-shell] .settings-modal-shell {
-  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
-  transform: translateY(var(--app-vt, 0px));
-}
+/* Phones fill the visible region. Touch tablets also carry data-mobile-shell
+ * (use-mobile-viewport) but keep the centred card below, so these stay at
+ * phone widths: their height would outrank the card's and push its bottom
+ * off screen. */
+@media (max-width: 767px) {
+  html[data-mobile-shell] .settings-modal-shell {
+    height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+    transform: translateY(var(--app-vt, 0px));
+  }
 
-/* The home indicator is behind the keyboard: drop its inset so the Save bar
- * sits on the keyboard instead of above a dead strip. */
-html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
-  bottom: 0.5rem;
-  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
+  /* The home indicator is behind the keyboard: drop its inset so the Save bar
+   * sits on the keyboard instead of above a dead strip. */
+  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+    bottom: 0.5rem;
+    height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
+  }
 }
 
 @media (min-width: 768px) {
@@ -557,6 +563,13 @@ html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
     height: auto;
     max-height: calc(100vh - var(--spacing-app-header) - 8vh);
     transform: none;
+  }
+
+  /* A tablet's soft keyboard covers the card's lower part: end it above the
+   * keyboard so the Save bar stays reachable. */
+  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+    bottom: auto;
+    max-height: calc(var(--app-vh, 100svh) - var(--spacing-app-header) - 4vh - 0.5rem);
   }
 }
 

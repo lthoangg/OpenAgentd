@@ -89,7 +89,7 @@ export interface SettingsSectionDef {
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // App
-  { id: 'general', label: 'General', description: 'Theme and transcript style', icon: SlidersHorizontal, group: 'app' },
+  { id: 'general', label: 'Appearance', description: 'Theme, text size and transcript style', icon: SlidersHorizontal, group: 'app' },
   { id: 'desktop', label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'app', desktopOnly: true },
   { id: 'connection', label: 'Connection', description: 'Which server this app uses, and access from other devices', icon: Server, group: 'app' },
   // Agents and tools

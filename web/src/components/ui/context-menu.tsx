@@ -21,7 +21,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S } from '@/lib/motion'
-import { MENU_ITEM_CLASS, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
+import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 
 /** Gap kept between the menu and the viewport edge. */
 const VIEWPORT_MARGIN = 8
@@ -30,9 +30,9 @@ const EXIT_MS = DURATIONS_S.fast * 1000
 const MENU_CLASS = `fixed z-50 text-xs text-(--color-text) ease-(--ease-out) ${MENU_PANEL_CLASS}`
 
 export const CONTEXT_MENU_ITEM_CLASS =
-  `${MENU_ITEM_CLASS} text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:bg-(--bg-key) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
+  `${MENU_ITEM_CLASS} text-(--color-text) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
 export const CONTEXT_MENU_ITEM_DANGER_CLASS =
-  `${MENU_ITEM_CLASS} text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
+  `${MENU_ITEM_CLASS} ${MENU_ITEM_DANGER} text-(--color-error) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
 
 export function ContextMenuSeparator() {
   return <div role="separator" className={MENU_SEPARATOR_CLASS} />

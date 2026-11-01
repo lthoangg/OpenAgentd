@@ -94,7 +94,7 @@ describe("ToolResult — shell", () => {
   it("shows [Succeeded] status in green", () => {
     render(<ToolResult toolName="shell" result={"[Succeeded]\n\nhello world"} />)
     const status = screen.getByText(/\[Succeeded\]/)
-    expect(status.className).toContain("color-success")
+    expect(status.className).toContain("accent-green-text")
   })
 
   it("shows [Failed] status in the error color", () => {
@@ -538,10 +538,10 @@ describe("ToolResult — team tools", () => {
       output: "Audit finished: 5 endpoints found.",
     })
     render(<ToolResult toolName="team_spawn" result={res} />)
-    // The member id is an outline mono chip; the status is a success chip
+    // The member id is a neutral mono chip (soft, no border); the status is a success chip
     const member = screen.getByText("explorer#1").closest('[data-slot="chip"]')
     expect(member?.className).toContain("font-mono")
-    expect(member?.className).toContain("border")
+    expect(member?.getAttribute("data-tone")).toBe("neutral")
     expect(screen.getByText("completed").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
     expect(screen.getByText(/Audit finished: 5 endpoints found\./)).toBeTruthy()
   })

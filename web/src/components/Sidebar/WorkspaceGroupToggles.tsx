@@ -42,7 +42,7 @@ export function WorkspaceGroupToggles({
   return (
     <>
       {menu && <ContextMenuSeparator />}
-      <p className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-(--color-text-subtle)">Groups</p>
+      <p className="px-2 pt-1 pb-0.5 text-meta font-medium text-(--color-text-subtle)">Groups</p>
       {groups.map((group) => {
         const checked = tags.includes(group.id)
         return (

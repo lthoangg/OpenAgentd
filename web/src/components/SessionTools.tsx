@@ -56,7 +56,7 @@ function groupTools(tools: AgentInfo['tools'], mcpServers: string[]): ToolGroup[
 
 function CountBadge({ count }: { count: number }) {
   return (
-    <span className="text-[11px] font-normal tabular-nums text-(--color-text-subtle)">
+    <span className="text-meta font-normal tabular-nums text-(--color-text-subtle)">
       · {count}
     </span>
   )

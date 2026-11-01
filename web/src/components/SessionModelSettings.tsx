@@ -190,7 +190,7 @@ export function SessionModelSettings({
             openOnFocus={false}
           />
           {!modelValid && (
-            <span className="mt-2 block text-[11px] leading-relaxed text-(--color-error)">
+            <span className="mt-2 block text-meta leading-relaxed text-(--color-error)">
               Choose a model from the list.
             </span>
           )}

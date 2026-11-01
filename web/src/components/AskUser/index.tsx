@@ -257,13 +257,13 @@ function ClosedQuestions({
 }) {
   return (
     <div className="flex flex-col gap-1 px-3 py-2">
-      <span className="text-[11px] leading-relaxed font-medium text-(--color-text-muted)">
+      <span className="text-meta leading-relaxed font-medium text-(--color-text-muted)">
         {(reason && REASON_LABEL[reason]) ?? 'Closed without an answer'}
       </span>
       {questions.map((item, index) => (
         <span
           key={index}
-          className="truncate text-[11px] leading-relaxed text-(--color-text-subtle)"
+          className="truncate text-meta leading-relaxed text-(--color-text-subtle)"
         >
           {item.question}
         </span>
@@ -277,15 +277,15 @@ function AnswerList({ pairs }: { pairs: { question: string; answer: string }[] }
     <div className="flex flex-col gap-1.5 px-3 py-2">
       {pairs.map(({ question, answer }, index) => (
         <div key={index} className="flex flex-col gap-0.5">
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
+          <span className="text-meta leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
             {question}
           </span>
           {answer && answer !== 'Unanswered' ? (
-            <span className="text-[11px] leading-relaxed font-medium break-words text-(--color-text) [overflow-wrap:anywhere]">
+            <span className="text-meta leading-relaxed font-medium break-words text-(--color-text) [overflow-wrap:anywhere]">
               {answer}
             </span>
           ) : (
-            <span className="text-[11px] leading-relaxed text-(--color-text-subtle) italic">
+            <span className="text-meta leading-relaxed text-(--color-text-subtle) italic">
               Skipped
             </span>
           )}
@@ -297,7 +297,7 @@ function AnswerList({ pairs }: { pairs: { question: string; answer: string }[] }
 
 function QuestionNote({ text }: { text: string }) {
   return (
-    <p className="px-3 py-2 text-[11px] leading-relaxed text-(--color-text-muted)">
+    <p className="px-3 py-2 text-meta leading-relaxed text-(--color-text-muted)">
       {text}
     </p>
   )

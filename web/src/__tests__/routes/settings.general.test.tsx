@@ -1,5 +1,5 @@
 /**
- * Settings → General: theme and transcript style.
+ * Settings → Appearance: theme, text size and transcript style.
  */
 import '@testing-library/jest-dom'
 
@@ -14,14 +14,29 @@ import { GeneralSettingsPage } from '@/components/settings/pages/settings.genera
 afterEach(() => {
   cleanup()
   localStorage.removeItem(THEME_STORAGE_KEY)
-  useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+  useDisplayPrefsStore.setState({ transcriptStyle: 'detailed', textSize: 'default' })
+  delete document.documentElement.dataset.textSize
 })
 
 describe('GeneralSettingsPage — appearance', () => {
-  it('renders the page title and the Appearance section', () => {
+  it('renders the page title and its sections', () => {
     render(<GeneralSettingsPage />)
-    expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: 'Appearance' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Appearance' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Look' })).toBeInTheDocument()
+  })
+
+  it('sets the text size at once, for the whole app', async () => {
+    const user = userEvent.setup()
+    render(<GeneralSettingsPage />)
+
+    const size = screen.getByRole('radiogroup', { name: 'Text size' })
+    expect(screen.getByRole('radio', { name: 'Default' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(screen.getByRole('radio', { name: 'Large' }))
+
+    expect(size.contains(screen.getByRole('radio', { name: 'Large' }))).toBe(true)
+    expect(useDisplayPrefsStore.getState().textSize).toBe('large')
+    expect(document.documentElement.dataset.textSize).toBe('large')
   })
 
   it('picks the theme', async () => {

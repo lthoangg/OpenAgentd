@@ -187,13 +187,13 @@ export function QuestionCard({
                 aria-current={index === step ? 'step' : undefined}
                 onClick={() => update({ step: index })}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:min-h-9 pointer-coarse:px-3',
+                  'flex items-center gap-1.5 rounded-sm px-2 py-1 text-meta whitespace-nowrap transition-colors pointer-coarse:min-h-9 pointer-coarse:px-3',
                   index === step
                     ? 'bg-(--bg-key) text-(--color-text)'
                     : 'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
                 )}
               >
-                {answered && <Check size={11} className="text-(--color-success)" />}
+                {answered && <Check size={11} className="text-(--accent-green-text)" />}
                 {/* ``header`` is plain text by contract — never markdown. */}
                 <span>{item.header || `Question ${index + 1}`}</span>
               </button>
@@ -204,7 +204,7 @@ export function QuestionCard({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <fieldset className="min-w-0 border-0 p-0">
-          <legend className="selectable-text mb-2.5 block text-[13px] leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
+          <legend className="selectable-text mb-2.5 block text-code leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
             <InlineMarkdown text={current.question} />
           </legend>
 
@@ -258,13 +258,13 @@ export function QuestionCard({
       </div>
 
       {error && (
-        <p role="alert" className="shrink-0 px-3 pb-2 text-[11px] text-(--color-error)">
+        <p role="alert" className="shrink-0 px-3 pb-2 text-meta text-(--color-error)">
           {error}
         </p>
       )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--color-border) px-3 py-2.5">
-        <span className="text-[11px] text-(--color-text-subtle)">
+        <span className="text-meta text-(--color-text-subtle)">
           {questions.length > 1 ? `${answeredCount} of ${questions.length} answered` : null}
         </span>
         <div className="ml-auto flex items-center gap-2">
@@ -344,13 +344,13 @@ function OptionRow({
         <span className="block text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
           {plainLabel ? label : <InlineMarkdown text={label} variant="code" />}
           {recommended && (
-            <span className="ml-1.5 rounded-xs bg-(--bg-key) px-1 py-0.5 text-xs md:text-[11px] text-(--color-text-muted)">
+            <span className="ml-1.5 rounded-xs bg-(--bg-key) px-1 py-0.5 text-xs md:text-meta text-(--color-text-muted)">
               Recommended
             </span>
           )}
         </span>
         {description && (
-          <span className="mt-0.5 block text-[11px] leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
+          <span className="mt-0.5 block text-meta leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
             <InlineMarkdown text={description} />
           </span>
         )}

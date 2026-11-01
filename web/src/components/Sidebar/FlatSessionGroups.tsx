@@ -91,7 +91,7 @@ export function FlatSessionGroups({
       )}
       {all.isLoading && <SessionRowsSkeleton rows={5} />}
       {groups.length === 0 && !all.isLoading && !draftWorkspace && (
-        <p className="flex h-6 items-center pl-6 text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
+        <p className="flex h-6 items-center pl-6 text-meta text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {groupBy === 'none'
         ? groups[0] && <div className="space-y-px">{groups[0].sessions.map(renderRow)}</div>

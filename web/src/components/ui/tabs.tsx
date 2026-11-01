@@ -62,15 +62,16 @@ function Tabs({ className, value, defaultValue, onValueChange, orientation = 'ho
   )
 }
 
-const TABS_LIST_BASE = 'group/tabs-list inline-flex w-fit max-w-full items-center justify-center overflow-x-auto border border-(--color-border) bg-(--bg-key) p-0.5 text-(--color-text-muted) data-[orientation=vertical]:h-fit data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible data-[variant=line]:border-transparent data-[variant=line]:bg-transparent data-[variant=line]:p-0'
+// Same look as a SegmentedControl: a keycap track with no border and no
+// padding ring; the chosen trigger fills it edge to edge with the accent.
+const TABS_LIST_BASE = 'group/tabs-list inline-flex w-fit max-w-full items-stretch justify-center overflow-hidden overflow-x-auto bg-(--bg-key) text-(--color-text-muted) data-[orientation=vertical]:h-fit data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible data-[variant=line]:bg-transparent'
 const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
 // Height lives in the size map (not the base) because ``cn`` is a plain join:
 // a caller's ``h-*`` cannot override a base height it does not replace.
 const TABS_LIST_SIZE: Record<TabsSize, string> = {
-  // On touch a default list is 42px so each trigger (inside 2px padding and a
-  // 1px border) is 36px. ``sm`` lives in a 32px view toolbar, so on touch it
-  // stays compact at 28px to fit inside it.
-  default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-10.5',
+  // On touch a default list is 36px, one trigger tall. ``sm`` lives in a 32px
+  // view toolbar, so on touch it stays compact at 28px to fit inside it.
+  default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-9',
   sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-7',
 }
 const TABS_TRIGGER_SIZE: Record<TabsSize, string> = {
@@ -129,10 +130,10 @@ function TabsTrigger({ className, value, id, type = 'button', onClick, onKeyDown
       aria-controls={`${groupId}-${encodeURIComponent(value)}-panel`}
       tabIndex={active ? 0 : -1}
       className={cn(
-        'relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-xs border border-transparent font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
+        'relative inline-flex flex-1 items-center justify-center gap-1.5 font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
         TABS_TRIGGER_SIZE[size],
-        'hover:bg-(--bg-card)/40 hover:text-(--color-text) active:bg-(--bg-card)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:pointer-events-none disabled:opacity-50',
-        'data-active:bg-(--bg-card) data-active:text-(--color-text)',
+        'hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) disabled:pointer-events-none disabled:opacity-50',
+        'data-active:bg-(--color-accent) data-active:text-(--color-text-on-accent)',
         '[&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,
       )}

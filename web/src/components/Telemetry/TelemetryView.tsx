@@ -131,7 +131,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
             <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-(--color-accent)" />
             <span>
               Totals are estimates: only {Math.round(data.sample_ratio * 100)}% of activity is recorded. To record all of it, set{' '}
-              <code className="rounded-xs bg-(--bg-key) px-1 font-mono text-[11px] select-all">OTEL_SPAN_SAMPLE_RATIO=1.0</code> and
+              <code className="rounded-xs bg-(--bg-key) px-1 font-mono text-meta select-all">OTEL_SPAN_SAMPLE_RATIO=1.0</code> and
               restart OpenAgentd.
             </span>
           </p>
@@ -140,7 +140,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
         {days > 1 ? (
           <ActivityChart points={dailySeries(data)} hasCost={data.daily_turns.some((d) => d.estimated_cost_usd !== undefined)} />
         ) : (
-          <p className="text-[11px] text-(--color-text-subtle)">Daily activity shows for 7 days or more.</p>
+          <p className="text-meta text-(--color-text-subtle)">Daily activity shows for 7 days or more.</p>
         )}
         {(showWorkspaces || showSessions) && (
           <div className={cn('grid items-start gap-4', showWorkspaces && showSessions && 'lg:grid-cols-2')}>
@@ -150,7 +150,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
             )}
           </div>
         )}
-        {hiddenNote && <p className="text-[11px] text-(--color-text-subtle)">{hiddenNote}</p>}
+        {hiddenNote && <p className="text-meta text-(--color-text-subtle)">{hiddenNote}</p>}
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <ModelsCard rows={data.by_model} filterable={filterableModels} onSelect={setModel} />
           <ToolsCard rows={data.by_tool} />

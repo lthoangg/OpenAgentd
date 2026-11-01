@@ -158,9 +158,9 @@ export function DateTimePicker({
           />
 
           {/* Time + Done row */}
-          <div className="flex items-center justify-between gap-3 border-t border-(--color-border) bg-(--bg-sidebar)/60 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 border-t border-(--color-border-subtle) bg-(--bg-sidebar)/60 px-3 py-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-(--color-text-muted)">Time</span>
+              <span className="text-meta font-medium text-(--color-text-muted)">Time</span>
               {isMobile ? (
                 <input
                   type="time"

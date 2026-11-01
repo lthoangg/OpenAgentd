@@ -98,7 +98,7 @@ export function WorkspaceSessionList({
       {draftActive && <DraftSessionRow />}
       {!collapsed && sessions.isLoading && <SessionRowsSkeleton />}
       {!collapsed && sessions.isError && workspaceSessions.length === 0 && (
-        <p role="alert" className="flex min-h-6 items-center gap-2 pl-6 text-[11px] text-(--color-text-muted)">
+        <p role="alert" className="flex min-h-6 items-center gap-2 pl-6 text-meta text-(--color-text-muted)">
           Couldn't load sessions.
           <button
             type="button"
@@ -110,7 +110,7 @@ export function WorkspaceSessionList({
         </p>
       )}
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && !sessions.isError && !draftActive && (
-        <p className="flex h-6 items-center pl-6 text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
+        <p className="flex h-6 items-center pl-6 text-meta text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {rows.map((session) => {
         const isCurrent = session.id === currentSessionId

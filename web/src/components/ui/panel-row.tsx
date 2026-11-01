@@ -59,7 +59,7 @@ export function PanelRow({
           <p id={labelId} className={labelClass}>{label}</p>
         )}
         {description && <div className={cn('mt-1 max-w-prose', TEXT.hint)}>{description}</div>}
-        {error && <p className="mt-1 text-[11px] leading-relaxed text-(--color-error)">{error}</p>}
+        {error && <p className="mt-1 text-meta leading-relaxed text-(--color-error)">{error}</p>}
       </div>
       {children !== undefined && (
         <div className={cn('min-w-0', stack ? 'w-full' : 'flex shrink-0 flex-wrap items-center gap-2 sm:justify-end')}>

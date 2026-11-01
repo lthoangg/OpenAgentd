@@ -253,7 +253,7 @@ function SessionRowView({
             minimum, so it shrinks (faster than the title) instead of
             holding its full width. */}
         {checkoutName && !isEditing && (
-          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-[11px] text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-meta text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
             <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
             <span data-checkout-tag className="truncate">{checkoutName}</span>
           </span>
@@ -261,7 +261,7 @@ function SessionRowView({
         {contextLabel && !isEditing && (
           <span
             data-context-label
-            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-[11px] text-(--color-text-subtle) ${ageVisibility}`}
+            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-meta text-(--color-text-subtle) ${ageVisibility}`}
             aria-hidden="true"
           >
             {contextLabel}
@@ -283,7 +283,7 @@ function SessionRowView({
           </span>
         )}
         {sessionAge && !isEditing && (
-          <span className={`shrink-0 pl-1 pr-1 text-[11px] tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+          <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
             {sessionAge}
           </span>
         )}
@@ -379,10 +379,10 @@ function SessionRowView({
                         label={isSubWaiting ? 'Subagent waiting for the main agent' : 'Subagent working'}
                       />
                       {/* Capped: a handle can fall back to the session id. */}
-                      <span className="max-w-[45%] shrink-0 truncate font-mono text-[11px] font-semibold text-(--color-text)">
+                      <span className="max-w-[45%] shrink-0 truncate font-mono text-meta font-semibold text-(--color-text)">
                         {sub.member_id}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[11px] text-(--color-text-muted)">
+                      <span className="min-w-0 flex-1 truncate text-meta text-(--color-text-muted)">
                         {subTitle}
                       </span>
                     </button>
@@ -458,7 +458,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       type="button"
       onClick={() => { if (!loading) onLoadMore() }}
       disabled={loading}
-      className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-(--spacing-list-row)"
+      className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-(--spacing-list-row)"
       aria-busy={loading || undefined}
     >
       {/* The status-mark slot, so the label lines up with the titles. */}
@@ -506,7 +506,7 @@ export function DraftSessionRow({ label = null }: { label?: string | null }) {
         <SquarePen size={11} />
       </span>
       <span className="min-w-0 flex-1 truncate font-semibold italic">New session</span>
-      {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-[11px] text-(--color-text-subtle)">{label}</span>}
+      {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-meta text-(--color-text-subtle)">{label}</span>}
     </div>
   )
 }

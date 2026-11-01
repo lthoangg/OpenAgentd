@@ -137,11 +137,11 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
             render={
               <button
                 onClick={handleCopy}
-                className="rounded-sm p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:flex pointer-coarse:size-9 pointer-coarse:items-center pointer-coarse:justify-center pointer-coarse:p-0"
+                className="flex size-6 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:flex pointer-coarse:size-9 pointer-coarse:items-center pointer-coarse:justify-center pointer-coarse:p-0"
                 aria-label="Copy response"
               >
                 {copied
-                  ? <Check size={iconSize} className="text-(--color-success)" />
+                  ? <Check size={iconSize} className="text-(--accent-green-text)" />
                   : <Copy size={iconSize} />}
               </button>
             }
@@ -154,7 +154,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
           <PopoverTrigger
             aria-label={`Turn details: ${summary}`}
             aria-haspopup="dialog"
-            className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm px-1 font-mono text-[11px] tabular-nums text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+            className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm px-1 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
           >
             {parts.flatMap((part, i) => (i === 0 ? [part] : [<span key={`sep-${i}`} aria-hidden className="shrink-0 opacity-60">·</span>, part]))}
           </PopoverTrigger>

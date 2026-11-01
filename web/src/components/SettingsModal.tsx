@@ -90,7 +90,7 @@ function SidebarRow({
     >
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {count && (
-        <span className="shrink-0 text-[11px] tabular-nums text-(--color-text-subtle)">
+        <span className="shrink-0 text-meta tabular-nums text-(--color-text-subtle)">
           {count}
         </span>
       )}

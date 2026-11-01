@@ -192,7 +192,7 @@ export function TokenMeter({
           'relative flex items-center justify-center text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
           compact
             ? 'h-5 w-5 min-w-5 rounded-xs'
-            : 'h-8 min-w-8 rounded-md md:h-7 md:min-w-7 md:rounded-sm max-md:pointer-coarse:size-9'
+            : 'h-8 min-w-8 rounded-md md:h-7 md:min-w-7 md:rounded-sm pointer-coarse:size-9'
         )}
         aria-label={tooltip}
         aria-expanded={open}
@@ -213,7 +213,7 @@ export function TokenMeter({
       {open && tooltipPosition && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-50 w-48 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-(--shadow-depth) animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast) ease-(--ease-out)"
+          className="fixed z-50 w-48 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-meta leading-5 text-(--color-text) shadow-(--shadow-depth) animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast) ease-(--ease-out)"
           style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
           role="tooltip"
           onMouseEnter={openHoverTooltip}

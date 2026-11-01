@@ -25,7 +25,7 @@ export function DoneWhenRow({ doneWhen, className }: { doneWhen: DoneWhen; class
       <span className={cn('mt-px shrink-0 label-caps', FLAG_CLASS[doneWhen.state])}>Done when</span>
       <div className="min-w-0 text-xs leading-4 text-(--color-text-2)">
         <p className="break-words"><InlineCodeText text={doneWhen.text} /></p>
-        <p className="mt-0.5 text-[11px] text-(--color-text-subtle)">{doneWhen.note}</p>
+        <p className="mt-0.5 text-meta text-(--color-text-muted)">{doneWhen.note}</p>
       </div>
     </div>
   )

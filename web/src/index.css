@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";
@@ -47,7 +46,7 @@
  * ───────────────────────────────────────────────────────────── */
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: var(--font-ui);
     --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Courier New', monospace;
 
 
@@ -66,10 +65,42 @@
     --spacing-mac-traffic-inset: 70px;
 
     /* Workbench chrome (see DESIGN.md → Workbench layout). */
-    --spacing-status-bar: 1.5rem;  /* 24px desktop status footer */
-    --spacing-tab-bar: 2.25rem;    /* 36px dock editor-tab strip */
+    --spacing-status-bar: 1.75rem; /* 28px desktop status footer */
+    --spacing-tab-bar: 2.3125rem;  /* 28px tab pills, 4px around, 1px hairline */
     --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
     --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
+
+    /* Type scale (DESIGN.md → Typography). Every step is rem times
+     * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
+     * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
+     * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
+     * set no line height of their own: they keep the line they sit in. */
+    --text-meta: calc(0.6875rem * var(--oa-text-scale));
+    --text-xs: calc(0.75rem * var(--oa-text-scale));
+    --text-xs--line-height: calc(1 / 0.75);
+    --text-code: calc(0.8125rem * var(--oa-text-scale));
+    --text-sm: calc(0.875rem * var(--oa-text-scale));
+    --text-sm--line-height: calc(1.25 / 0.875);
+    --text-base: calc(1rem * var(--oa-text-scale));
+    --text-base--line-height: calc(1.5 / 1);
+    --text-lg: calc(1.125rem * var(--oa-text-scale));
+    --text-lg--line-height: calc(1.75 / 1.125);
+    --text-xl: calc(1.25rem * var(--oa-text-scale));
+    --text-xl--line-height: calc(1.75 / 1.25);
+    --text-2xl: calc(1.5rem * var(--oa-text-scale));
+    --text-2xl--line-height: calc(2 / 1.5);
+}
+
+/* Text size (stores/useDisplayPrefsStore.ts, set before paint by
+ * public/theme-init.js). Default is one step above the old density. */
+:root {
+  --oa-text-scale: calc(13 / 12);
+}
+:root[data-text-size="compact"] {
+  --oa-text-scale: 1;
+}
+:root[data-text-size="large"] {
+  --oa-text-scale: calc(14 / 12);
 }
 
 @layer base {
@@ -225,28 +256,40 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   background-color: var(--accent-blue-soft);
 }
 
-/* Legibility floor — 11px minimum for tiny utility text on EVERY shell.
-   Previously this only applied inside mobile shells, which left desktop
-   (and iPad-as-desktop) rendering 9–10.5px metadata that fails comfortable-
-   reading guidance and made the same screen differ between platforms. An
-   11px floor keeps desktop dense while guaranteeing a readable minimum. */
-.text-\[8px\],
-.text-\[9px\],
-.text-\[10px\],
-.text-\[10\.5px\] {
-  font-size: 11px;
+/* Menus and listboxes (ui/menu-styles.ts): the row under the pointer or the
+ * keyboard fills with the theme accent and every word in it inverts, the way
+ * an OS menu highlights. Unlayered, so it wins over a row's own hover wash and
+ * muted text. A pointer hover counts only where hover exists, so a tap on a
+ * phone does not leave a row lit. */
+.oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
 }
-
-/* Responsive variants compile to their own selectors inside a media query,
-   so ``text-xs md:text-[10px]`` escaped the floor above and rendered 10px on
-   desktop. Same floor, same breakpoint (Tailwind's md). */
-@media (width >= 48rem) {
-  .md\:text-\[8px\],
-  .md\:text-\[9px\],
-  .md\:text-\[10px\],
-  .md\:text-\[10\.5px\] {
-    font-size: 11px;
+@media (hover: hover) {
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"]) {
+    background-color: var(--color-accent);
+    color: var(--color-text-on-accent);
   }
+  .oa-menu-item.oa-menu-item-danger:hover:not(:disabled, [aria-disabled="true"]) {
+    background-color: var(--color-error);
+  }
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"]) * {
+    color: inherit;
+  }
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"]) :is(kbd, [data-slot="chip"]) {
+    background-color: color-mix(in srgb, currentColor 16%, transparent);
+    border-color: transparent;
+  }
+}
+.oa-menu-item.oa-menu-item-danger:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
+  background-color: var(--color-error);
+}
+.oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) * {
+  color: inherit;
+}
+.oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) :is(kbd, [data-slot="chip"]) {
+  background-color: color-mix(in srgb, currentColor 16%, transparent);
+  border-color: transparent;
 }
 
 .mobile-safe-shell {
@@ -624,7 +667,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * the only uppercase style. Type only — callers pick the colour
  * (text-muted on card headers, text-subtle on nav/group labels). */
 @utility label-caps {
-  font-size: 11px;
+  font-size: calc(0.6875rem * var(--oa-text-scale));
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1073,7 +1116,7 @@ html[data-app-hidden="true"] *::after {
  * Only markdown structure (lists, code, bold) gets rendered.
  * ───────────────────────────────────────────────────────────── */
 .tool-desc .oa-prose {
-  font-size: 0.75rem; /* text-xs */
+  font-size: calc(0.75rem * var(--oa-text-scale)); /* text-xs */
   line-height: 1.625; /* leading-relaxed */
   color: var(--color-text-muted);
 }
@@ -1084,7 +1127,7 @@ html[data-app-hidden="true"] *::after {
 .tool-desc .oa-prose li                   { margin-bottom: 0.1em; }
 .tool-desc .oa-prose h1,
 .tool-desc .oa-prose h2,
-.tool-desc .oa-prose h3                   { font-size: 0.75rem; font-weight: 600; margin-top: 0.6em; margin-bottom: 0.2em; color: var(--color-text-muted); }
+.tool-desc .oa-prose h3                   { font-size: calc(0.75rem * var(--oa-text-scale)); font-weight: 600; margin-top: 0.6em; margin-bottom: 0.2em; color: var(--color-text-muted); }
 .tool-desc .oa-prose strong               { color: var(--color-text-muted); }
 .tool-desc .oa-prose em                   { color: var(--color-text-muted); }
 .tool-desc .oa-prose code                 { font-size: 0.85em; color: var(--color-text-muted); background: var(--bg-key); }
@@ -1164,7 +1207,7 @@ html[data-app-hidden="true"] *::after {
   :root {
     --spacing-list-row: 2.25rem;
     --leading-relaxed: 1.5;
-    --spacing-tab-bar: 2.4375rem; /* 36px tab plus its 2px top and 1px bottom edge */
+    --spacing-tab-bar: 2.8125rem; /* 36px tab pills, 4px around, 1px hairline */
   }
   .oa-prose {
     line-height: 1.6;

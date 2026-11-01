@@ -33,9 +33,9 @@ interface Rule {
 
 const RULES: Rule[] = [
   {
-    name: 'sub-floor-text',
-    why: 'index.css clamps 8–10.5px to 11px; write text-[11px] so the class matches the result',
-    pattern: /(?<![\w-])(?:md:)?text-\[(?:8|9|10|10\.5)px\]/g,
+    name: 'px-text',
+    why: 'type is rem so it follows Text size and Dynamic Type; use text-meta, text-xs, text-code, text-sm…',
+    pattern: /(?<![\w-])text-\[\d+(?:\.\d+)?px\]/g,
     allow: {},
   },
   {
@@ -128,6 +128,40 @@ const RULES: Rule[] = [
     why: 'write numeric z-index as z-60, not z-[60]',
     pattern: /(?<![\w-])z-\[\d+\]/g,
     allow: {},
+  },
+  {
+    name: 'hover-only',
+    why: 'nothing appears only on hover: show an action at rest (muted) or put it in the More / right-click / long-press menu',
+    pattern: /^(?=.*(?<![\w:/-])(?:md:)?opacity-0(?![\w-]))(?=.*group-hover(?:\/[\w-]+)?:opacity-100).*$/g,
+    allow: {
+      // A tooltip-style caption, not an action.
+      'components/FileLightbox.tsx': 1,
+      // The transcript's ambient timeline; scrolling does the same job.
+      'components/AgentView/TimelineScrubber.tsx': 1,
+    },
+  },
+  // ── Contrast with the existing palette (DESIGN.md → Colors) ─────────────
+  {
+    name: 'subtle-on-wash',
+    why: 'subtle text is AA only on the page and the sidebar; on a keycap wash, a card or a surface use text-muted',
+    pattern: /^(?=.*(?<![\w:-])text-\(--color-text-subtle\))(?=.*(?<![\w:-])bg-\(--(?:bg-key|bg-card|color-surface)\)).*$/g,
+    allow: {},
+  },
+  {
+    name: 'solid-hue-text',
+    why: 'solid state hues are ~2:1 on paper; text and icons use the -text tones (accent-orange-text, accent-green-text, accent-blue-text)',
+    pattern: /(?<![\w-])text-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)/g,
+    allow: {},
+  },
+  {
+    name: 'solid-hue-dot',
+    why: 'status dots, bars and marks use the -text tones, which reach 3:1 on paper; the solid hues stay for checked controls',
+    pattern: /(?<![\w:-])bg-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)(?![\w/-])/g,
+    allow: {
+      // Checked controls: the fill sits under a thumb or a tick.
+      'components/ui/switch.tsx': 1,
+      'components/ui/radio-group.tsx': 1,
+    },
   },
   // ── Motion (DESIGN.md → Motion) ──────────────────────────────────────────
   {

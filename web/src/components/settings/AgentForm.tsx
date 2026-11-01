@@ -202,7 +202,7 @@ export function AgentForm({
             rows={28}
             spellCheck={false}
             aria-label="Agent file source"
-            className="min-h-72 font-mono text-[13px] leading-relaxed"
+            className="min-h-72 font-mono text-code leading-relaxed"
           />
         </PanelSection>
       )}

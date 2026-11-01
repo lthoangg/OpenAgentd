@@ -67,7 +67,7 @@ function BreakdownTable({
     <div style={{ '--breakdown-cols': template } as React.CSSProperties}>
       <div
         aria-hidden="true"
-        className="hidden gap-x-3 border-b border-(--color-border)/60 px-3 py-1.5 text-[11px] font-medium text-(--color-text-muted) sm:grid sm:[grid-template-columns:var(--breakdown-cols)]"
+        className="hidden gap-x-3 border-b border-(--color-border)/60 px-3 py-1.5 text-meta font-medium text-(--color-text-muted) sm:grid sm:[grid-template-columns:var(--breakdown-cols)]"
       >
         <span>{nameHeader}</span>
         {columns.map((c) => <span key={c.label} className="text-right whitespace-nowrap">{c.header}</span>)}
@@ -115,11 +115,11 @@ function BreakdownRow({
         <span className="flex min-w-0 flex-col gap-1">
           <span className="min-w-0 truncate text-xs text-(--color-text)">
             {label}
-            {detail && <span className="ml-1.5 text-[11px] text-(--color-text-subtle)">{detail}</span>}
+            {detail && <span className="ml-1.5 text-meta text-(--color-text-subtle)">{detail}</span>}
           </span>
           <span aria-hidden="true" title={`${shareTitle}: ${Math.round(share)}%`} className="block h-0.5 rounded-full bg-(--color-accent)/55" style={{ width: `${share}%` }} />
         </span>
-        <span className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] tabular-nums sm:contents">
+        <span className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-meta tabular-nums sm:contents">
           {metrics.map((m, i) => (
             <span
               key={columns[i]?.label ?? i}
@@ -182,7 +182,7 @@ function ShowAllButton({ expanded, total, noun, onToggle }: { expanded: boolean;
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="w-full border-t border-(--color-border) px-3 py-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-page) hover:text-(--color-text) pointer-coarse:min-h-9"
+      className="w-full border-t border-(--color-border) px-3 py-1.5 text-left text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-page) hover:text-(--color-text) pointer-coarse:min-h-9"
     >
       {expanded ? 'Show fewer' : `Show all ${total} ${noun}`}
     </button>

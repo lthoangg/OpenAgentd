@@ -53,7 +53,7 @@ export function SidebarConfirmDialogs({
           <DialogHeader>
             <DialogTitle>Delete this session?</DialogTitle>
             <DialogDescription>
-              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; and its messages are deleted for good. This cannot be undone.
+              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; and its messages are deleted for good. You can undo it for a few seconds.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -10,8 +10,10 @@
  *   />
  *
  * Radio semantics: a ``radiogroup`` of ``radio`` buttons with a roving tab
- * stop; arrows, Home and End move and select. The track is a keycap well and
- * the chosen segment is a card fill — no shadow, no border colour.
+ * stop; arrows, Home and End move and select. The track is a keycap wash with
+ * no border and no padding ring; the chosen segment fills it edge to edge with
+ * the theme accent (Bark on paper, paper on dark) and inverts its text, like a
+ * native segmented control. No shadow, no border.
  *
  * ``segmentedTrackClass`` / ``segmentedItemClass`` expose the same look for
  * controls that need other semantics (e.g. a toggle-button group).
@@ -43,7 +45,7 @@ const ITEM_SIZE: Record<SegmentedSize, string> = {
 /** Track (container) classes. */
 export function segmentedTrackClass({ size = 'default', fill = false }: { size?: SegmentedSize; fill?: boolean } = {}): string {
   return cn(
-    'inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-key) p-0.5 scrollbar-none',
+    'inline-flex max-w-full shrink-0 items-stretch overflow-hidden overflow-x-auto rounded-sm bg-(--bg-key) scrollbar-none',
     TRACK_SIZE[size],
     fill && 'flex w-full',
   )
@@ -65,16 +67,16 @@ export function segmentedItemClass({
   dimDisabled?: boolean
 }): string {
   return cn(
-    'inline-flex h-full items-center justify-center gap-1.5 rounded-xs border border-transparent font-medium whitespace-nowrap select-none',
+    'inline-flex h-full items-center justify-center gap-1.5 font-medium whitespace-nowrap select-none',
     'transition-colors duration-(--motion-instant)',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)',
     dimDisabled ? 'disabled:cursor-not-allowed disabled:opacity-50' : 'disabled:cursor-default',
     '[&_svg]:pointer-events-none [&_svg]:shrink-0',
     ITEM_SIZE[size],
     iconOnly && 'aspect-square px-0',
     fill && 'flex-1',
     active
-      ? 'bg-(--bg-card) text-(--color-text)'
+      ? 'bg-(--color-accent) text-(--color-text-on-accent)'
       : 'text-(--color-text-muted) hover:text-(--color-text-2)',
   )
 }

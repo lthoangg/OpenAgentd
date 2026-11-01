@@ -121,7 +121,7 @@ function ColorField({ value, onChange, onValidChange }: {
           className="min-w-0 flex-1 bg-transparent font-mono text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)"
         />
       </div>
-      {invalid && <p id={errorId} className="text-[11px] text-(--color-error)">Use a hex colour such as #3b82f6.</p>}
+      {invalid && <p id={errorId} className="text-meta text-(--color-error)">Use a hex colour such as #3b82f6.</p>}
     </div>
   )
 }
@@ -374,7 +374,7 @@ export function WorkspaceGroupsSettings() {
       )}
 
       {error && (
-        <p role="alert" className="border-t border-(--color-border-subtle) px-4 py-3 text-[11px] leading-relaxed text-(--color-error)">
+        <p role="alert" className="border-t border-(--color-border-subtle) px-4 py-3 text-meta leading-relaxed text-(--color-error)">
           {error}
         </p>
       )}

@@ -195,7 +195,7 @@ export function OAuthLoginDialog({
                           className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
                           aria-label="Copy device code"
                         >
-                          {codeCopied ? <Check size={14} className="text-(--color-success)" /> : <Copy size={14} />}
+                          {codeCopied ? <Check size={14} className="text-(--accent-green-text)" /> : <Copy size={14} />}
                         </Button>
                       }
                     />
@@ -264,7 +264,7 @@ export function OAuthLoginDialog({
             </form>
           )}
           {isSuccess && (
-            <p className="text-sm text-(--color-success)">Connected successfully.</p>
+            <p className="text-sm text-(--accent-green-text)">Connected successfully.</p>
           )}
           {error && <p className="text-sm text-(--color-error)">{error}</p>}
           {events.length > 0 && (

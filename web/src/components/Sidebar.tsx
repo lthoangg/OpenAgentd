@@ -153,6 +153,8 @@ import { SessionSearch } from './Sidebar/SessionSearch'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
+/** How long a deleted session can be brought back before the server forgets it. */
+const SESSION_DELETE_UNDO_MS = 5000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
@@ -243,6 +245,7 @@ export function Sidebar({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
+  const dismissToast = useToastStore((s) => s.dismiss)
   const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useSessionsQuery()
   const deleteSession = useDeleteSessionMutation()
@@ -840,14 +843,40 @@ export function Sidebar({
 
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
+    const target = deleteTarget
+    const wasOpen = target.id === currentSessionId
+    // The row leaves at once; the server delete waits out the Undo window.
+    // Undo (or a refusal) brings the row back.
+    const undo = new AbortController()
+    const toastId = pushToast({
+      tone: 'info',
+      title: 'Session deleted',
+      description: target.title || 'Untitled',
+      action: {
+        label: 'Undo',
+        onAction: () => {
+          undo.abort()
+          if (wasOpen) navigate({ to: '/$sessionId', params: { sessionId: target.id }, replace: true })
+        },
+      },
+    }, SESSION_DELETE_UNDO_MS)
     applySessionDelete({
-      deleteTarget,
+      deleteTarget: target,
       currentSessionId,
       workspaceSessions,
-      // The row leaves at once; a refusal brings it back with this toast.
-      mutateDelete: (target) => deleteSession.mutate(target, {
-        onError: () => pushToast({ tone: 'error', title: 'Could not delete session' }),
-      }),
+      mutateDelete: (mutationTarget) => deleteSession.mutate(
+        typeof mutationTarget === 'string'
+          ? { id: mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal }
+          : { ...mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal },
+        {
+          // Past the window the Undo button can't help any more.
+          onSettled: () => dismissToast(toastId),
+          onError: () => {
+            if (undo.signal.aborted) return
+            pushToast({ tone: 'error', title: 'Could not delete session' })
+          },
+        },
+      ),
       navigate,
     })
     setDeleteTarget(null)
@@ -988,7 +1017,7 @@ export function Sidebar({
 
         {activeGroupFilter && (
           // The group filter, named above the list, with a one-step way back.
-          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
+          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
             <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter) }} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">
               Group: <span className="font-mono text-(--color-text-2)">{activeGroupFilter.name}</span>
@@ -1178,7 +1207,7 @@ export function Sidebar({
                   {checkouts.selected && sourceIsExpanded && (
                     // The active filter, named where its sessions are, with
                     // a one-step way back to every checkout.
-                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9">
+                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9">
                       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
                         {selectedWorktree
                           ? <GitBranch size={11} className="text-(--accent-orange-text)" />
@@ -1480,12 +1509,12 @@ export function Sidebar({
                   <Tooltip className="min-w-0">
                     <TooltipTrigger
                       className="min-w-0"
-                      render={<p className="truncate font-mono text-[11px] text-(--color-text-muted)">{worktreeTarget}</p>}
+                      render={<p className="truncate font-mono text-meta text-(--color-text-muted)">{worktreeTarget}</p>}
                     />
                     <TooltipContent>{worktreeTarget}</TooltipContent>
                   </Tooltip>
                 ) : (
-                  <p className="truncate font-mono text-[11px] text-(--color-text-muted)" />
+                  <p className="truncate font-mono text-meta text-(--color-text-muted)" />
                 )}
               </div>
               <div className="grid gap-2.5 sm:grid-cols-2">
@@ -1502,7 +1531,7 @@ export function Sidebar({
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="text-xs md:text-[11px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
+                  <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
                 </label>
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
@@ -1516,13 +1545,13 @@ export function Sidebar({
                     className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-8"
                     maxLength={255}
                   />
-                  <p className="text-xs md:text-[11px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
+                  <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
                 <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
-                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-[11px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
+                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">{worktreeOptions.length}</span>
                 </div>
                 {worktreeOptions.length === 0 ? (
                     <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
@@ -1537,7 +1566,7 @@ export function Sidebar({
                               render={
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-(--color-text-2)">{item.name}</p>
-                                  {item.branch && <p className="truncate text-[11px] text-(--color-text-subtle)">{item.branch}</p>}
+                                  {item.branch && <p className="truncate text-meta text-(--color-text-subtle)">{item.branch}</p>}
                                 </div>
                               }
                             />
@@ -1551,7 +1580,7 @@ export function Sidebar({
                                     type="button"
                                     onClick={() => setRemoveWorktreeTarget(item)}
                                     disabled={worktreeRemoving === item.directory}
-                                    className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                                    className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50"
                                     aria-label={`Remove worktree ${item.name}`}
                                   >
                                     {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
@@ -1561,7 +1590,7 @@ export function Sidebar({
                               <TooltipContent>Remove managed worktree</TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-[11px] text-(--color-text-subtle)">external</span>
+                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">external</span>
                           )}
                         </li>
                       ))}

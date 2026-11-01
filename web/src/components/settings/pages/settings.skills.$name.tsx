@@ -122,7 +122,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
           )}
           {data && (
             <PanelSection title="Skill file" description="SKILL.md, loaded by an agent when a task needs it.">
-              <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
+              <p className="mb-2.5 text-meta leading-relaxed text-(--color-text-muted)">
                 The settings block at the top needs <span className="font-mono">name</span> and{' '}
                 <span className="font-mono">description</span>. Name a sub-skill{' '}
                 <span className="font-mono">parent/sub</span>. The text below is what the agent reads.
@@ -135,7 +135,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
                 rows={28}
                 spellCheck={false}
                 aria-invalid={invalid || undefined}
-                className="min-h-96 font-mono text-[13px] leading-relaxed"
+                className="min-h-96 font-mono text-code leading-relaxed"
               />
             </PanelSection>
           )}

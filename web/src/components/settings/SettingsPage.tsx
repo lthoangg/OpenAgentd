@@ -204,7 +204,7 @@ function SaveBar({ draft, onSave, saveBlockedReason }: { draft: DraftControls; o
           transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
           className={cn(
             'sticky bottom-0 z-20 flex shrink-0 items-center gap-3',
-            'border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 md:px-8',
+            'border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-2.5 md:px-8',
           )}
           role="region"
           aria-label="Unsaved changes"

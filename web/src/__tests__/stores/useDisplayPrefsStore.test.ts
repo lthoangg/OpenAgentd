@@ -14,7 +14,7 @@ describe('useDisplayPrefsStore — transcript style', () => {
     useDisplayPrefsStore.getState().setTranscriptStyle('reader')
 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader', textSize: 'default' })
   })
 
   it('falls back to detailed for a stored style it does not know', async () => {
@@ -36,6 +36,6 @@ describe('useDisplayPrefsStore — removed new session composer setting', () => 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
 
     useDisplayPrefsStore.getState().setTranscriptStyle('detailed')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed', textSize: 'default' })
   })
 })

@@ -29,7 +29,7 @@ export function HealthDot({
   let bgColor = 'bg-(--color-text-muted)'
 
   if (health.isSuccess) {
-    bgColor = 'bg-(--color-success)'
+    bgColor = 'bg-(--accent-green-text)'
   } else if (health.isError) {
     bgColor = 'bg-(--color-error)'
   }
@@ -47,7 +47,7 @@ export function HealthDot({
   const label = labeled ? status : `${serverName}. ${status}`
 
   const defaultClasses = labeled
-    ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+    ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
     : 'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-8 md:w-8'
 
   return (

@@ -54,17 +54,17 @@ function Stat({
   const [number, unit] = splitUnit(value)
   return (
     <div className={cn('flex min-w-0 flex-col gap-0.5 bg-(--bg-card) px-3 py-2.5', className)}>
-      <dt className="text-[11px] text-(--color-text-muted)">
+      <dt className="text-meta text-(--color-text-muted)">
         {definition ? <Term definition={definition}>{label}</Term> : label}
       </dt>
       <dd className="flex min-w-0 items-baseline gap-1 font-mono tabular-nums text-(--color-text)">
-        {valueKey && number !== '-' && <span className="text-[11px] text-(--color-text-subtle)">{valueKey}</span>}
+        {valueKey && number !== '-' && <span className="text-meta text-(--color-text-subtle)">{valueKey}</span>}
         <span className="text-lg font-semibold">{number}</span>
         {unit && <span className="text-xs text-(--color-text-muted)">{unit}</span>}
       </dd>
       <dd
         className={cn(
-          'flex flex-wrap gap-x-2 text-[11px] leading-snug',
+          'flex flex-wrap gap-x-2 text-meta leading-snug',
           detailTone === 'error' ? 'text-(--color-error)' : 'text-(--color-text-subtle)',
         )}
       >

@@ -102,7 +102,7 @@ function UpdatesSection() {
         label={
           <span className="flex items-center gap-2">
             Desktop app
-            <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[11px] font-semibold text-(--color-text-muted) select-none">
+            <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-meta font-semibold text-(--color-text-muted) select-none">
               {statusTitle(status)}
             </span>
           </span>

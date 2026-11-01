@@ -75,7 +75,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
         ) : fileDiff ? (
           <>
             {diff.data?.truncated && (
-              <p className="border-b border-(--color-border-subtle) bg-(--color-warning)/10 px-3 py-1.5 text-xs text-(--color-warning)">
+              <p className="border-b border-(--color-border-subtle) bg-(--color-warning-subtle) px-3 py-1.5 text-xs text-(--accent-orange-text)">
                 This diff is too large to show in full.
               </p>
             )}

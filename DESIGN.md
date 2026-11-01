@@ -91,54 +91,54 @@ colors:
 
 typography:
   display:
-    fontFamily: Inter Variable
+    fontFamily: System UI
     fontSize: 48px
     fontWeight: 700
     lineHeight: 1
   title:
-    fontFamily: Inter Variable
+    fontFamily: System UI
     fontSize: 28px
     fontWeight: 700
     lineHeight: 1
   heading:
-    fontFamily: Inter Variable
+    fontFamily: System UI
     fontSize: 30px
     fontWeight: 700
     lineHeight: 1.1
   body-lg:
-    fontFamily: Inter Variable
+    fontFamily: System UI
     fontSize: 16px
     fontWeight: 400
     lineHeight: 1.6
   body-md:
-    fontFamily: Inter Variable
+    fontFamily: System UI
     fontSize: 14px
     fontWeight: 400
     lineHeight: 1.55
-  body-sm:
-    fontFamily: Inter Variable
-    fontSize: 12px
+  body-sm:                    # 13px at Default, 12px Compact, 14px Large
+    fontFamily: System UI
+    fontSize: 13px
     fontWeight: 400
     lineHeight: 1.5
   label-md:
-    fontFamily: Inter Variable
-    fontSize: 12px
+    fontFamily: System UI
+    fontSize: 13px
     fontWeight: 500
     lineHeight: 1.4
   label-sm:
-    fontFamily: Inter Variable
-    fontSize: 11px
+    fontFamily: System UI
+    fontSize: 12px
     fontWeight: 500
     lineHeight: 1.35
   label-caps:
-    fontFamily: Inter Variable
+    fontFamily: System UI
     fontSize: 11px
     fontWeight: 600
     lineHeight: 1
     letterSpacing: 0.05em
-  meta:
-    fontFamily: Inter Variable
-    fontSize: 11px
+  meta:                       # 12px at Default/Large, 11px at Compact
+    fontFamily: System UI
+    fontSize: 12px
     fontWeight: 400
     lineHeight: 1.4
   code-md:
@@ -148,7 +148,7 @@ typography:
     lineHeight: 1.6
   code-sm:
     fontFamily: JetBrains Mono Variable
-    fontSize: 11px
+    fontSize: 12px
     fontWeight: 400
     lineHeight: 1.5
 
@@ -175,7 +175,7 @@ spacing:
   gutter: 8px
   card-padding: 12px
   app-header: 36px
-  status-bar: 24px
+  status-bar: 28px
   tab-bar: 36px
   toolbar: 32px
   list-row: 28px
@@ -185,29 +185,28 @@ spacing:
   palette-max: 600px
 
 components:
+  # Controls carry no border: fills tell them apart.
   button-default:
-    backgroundColor: "{colors.bg-card}"
+    backgroundColor: "{colors.bg-key}"
     textColor: "{colors.on-surface}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
     height: 36px
     padding: 12px
   button-default-hover:
-    backgroundColor: "{colors.bg-key}"
+    backgroundColor: "{colors.border-subtle}"
   button-subtle:
-    backgroundColor: "{colors.bg-card}"
+    backgroundColor: "{colors.bg-key}"
     textColor: "{colors.on-surface-muted}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
   button-primary:
-    backgroundColor: "{colors.bg-key}"
-    textColor: "{colors.on-surface}"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.on-accent}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
     height: 36px
     padding: 12px
-  button-primary-hover:
-    backgroundColor: "{colors.surface-2}"
   button-ghost:
     backgroundColor: "{colors.bg-page}"
     textColor: "{colors.on-surface-muted}"
@@ -222,7 +221,7 @@ components:
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
   button-danger-subtle:
-    backgroundColor: "{colors.bg-card}"
+    backgroundColor: "{colors.bg-page}"
     textColor: "{colors.error}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
@@ -254,10 +253,10 @@ components:
     textColor: "{colors.on-accent}"
     rounded: "{rounded.full}"
     size: 32px
-  menu-panel:
+  menu-panel:                 # One hairline frame; nothing inside has a border
     backgroundColor: "{colors.bg-card}"
-    borderColor: "{colors.border}"
-    rounded: "{rounded.sm}"
+    borderColor: "{colors.border-subtle}"
+    rounded: "{rounded.md}"
     padding: 4px
   menu-item:
     textColor: "{colors.on-surface-2}"
@@ -265,18 +264,23 @@ components:
     rounded: "{rounded.xs}"
     height: 28px
     padding: 8px
-  menu-item-hover:
+  menu-item-highlighted:      # Pointer or keyboard: filled edge to edge, text inverts
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.on-accent}"
+  segmented-control:          # No border, no inset: the track is the segments
     backgroundColor: "{colors.bg-key}"
-    textColor: "{colors.on-surface}"
-  segmented-control:
-    backgroundColor: "{colors.bg-key}"
-    borderColor: "{colors.border}"
     rounded: "{rounded.sm}"
-    padding: 2px
+    padding: 0px
   segmented-item-active:
-    backgroundColor: "{colors.bg-card}"
-    textColor: "{colors.on-surface}"
-    rounded: "{rounded.xs}"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.on-accent}"
+    rounded: "{rounded.none}"
+  switch-off:
+    backgroundColor: "{colors.border-strong}"
+    rounded: "{rounded.full}"
+  switch-on:
+    backgroundColor: "{colors.accent-blue}"
+    rounded: "{rounded.full}"
   input:
     backgroundColor: "{colors.bg-input}"
     textColor: "{colors.on-surface}"
@@ -384,8 +388,8 @@ Three deliberate tensions define the personality:
   scale but trade height for room to breathe.
 - **Flat, not sterile.** Hierarchy comes from tonal steps and hairline borders,
   never from drop shadows. Only true overlays cast a shadow.
-- **Technical, not sterile.** Inter handles interface text and headings, while
-  JetBrains Mono distinguishes code and terminal-adjacent content.
+- **Technical, not sterile.** The host OS's UI font handles interface text and
+  headings, while JetBrains Mono distinguishes code and terminal-adjacent content.
 
 Light mode is canonical. Dark mode is a tonal inversion of the same paper, not a
 separate identity.
@@ -467,25 +471,57 @@ Front-matter tokens carry the canonical light values; substitute these when
 Agent and syntax hues brighten and desaturate in dark mode (e.g. `accent-blue`
 `#5AA8E2` → `#7CC2F0`); soft containers become deep tints of the same hue.
 
+### Contrast with the palette we have
+
+Every text-on-surface pair reaches WCAG AA with the existing tokens; no colour
+was added to get there (`styles/token-pairs.test.ts` measures each pair in
+both themes, and the lint enforces the rules below):
+
+- **Subtle text sits on the page or the sidebar only.** On a wash (`bg-key`,
+  soft chips, selected rows) or a card, use `on-surface-muted` (lint:
+  `subtle-on-wash`).
+- **Text in a hue uses its `-text` tone**, never the solid (`accent-green`
+  is for dots and fills; `accent-green-text` for words). In light mode, status
+  dots use the `-text` tone too, so a 6px dot still reads at 3:1 (lint:
+  `solid-hue-text`, `solid-hue-dot`).
+- **Checkbox and radio** strokes are 1.5px `on-surface-subtle`.
+- **Switch off** is a solid `border-strong` track without a border (2.25:1
+  against the page, matching macOS and iOS); with the OS's Increase contrast
+  setting it darkens to 5.6:1, and a switch always carries a text label.
+- **Increase contrast** (`prefers-contrast: more`, `styles/tokens.css`)
+  darkens every border and secondary text one step.
+
 ## Typography
 
 Two faces, each with a non-overlapping job:
 
-- **Inter Variable** — all interface text and prose. Chosen for legibility at
-  11–14px, where most of this UI lives.
+- **The system UI font** — all interface text and prose: SF Pro on macOS and
+  iOS, Segoe UI Variable on Windows, Roboto on Android, the desktop's own face
+  on Linux (`--font-ui` in `styles/tokens.css`). The app reads like the other
+  apps on the same machine; nothing is bundled.
 - **JetBrains Mono Variable** — code, diffs, terminal output, file paths, token
-  counts, IDs. Anything a user might copy, compare character-by-character, or
-  scan as a column.
+  counts, IDs and `provider:model` names. Anything a user might copy, compare
+  character-by-character, or scan as a column.
 
 ### The scale
 
-`body-sm` (12px) is the workhorse — it is the default for buttons, inputs, rows,
-and menus, not a "small" variant. `body-md` (14px) is for comfortable reading
-passages; `body-lg` (16px) for long-form prose only.
+Sizes are rem and follow the **Text size** setting (Settings → Appearance:
+Compact · Default · Large), stored per device and applied before first paint
+(`data-text-size` on `<html>`, `--oa-text-scale` in `index.css`). Text size
+scales type only; spacing and hit areas stay put. On iOS, Dynamic Type
+multiplies on top.
 
-`meta` and `label-sm` (11px) carry timestamps, counts, and secondary metadata.
-**11px is a hard floor.** Anything specified below it is clamped up, so the same
-screen never renders differently between desktop and mobile.
+| Token | Compact | Default | Large | Used for |
+|---|---|---|---|---|
+| `text-xs` / `body-sm` | 12px | 13px | 14px | buttons, inputs, rows, menus |
+| `text-meta` / `label-sm` | 11px | 12px | 12px | timestamps, counts, captions |
+| `text-code` | 11px | 12px | 12px | inline mono meta |
+| `text-sm` / `body-md` | 14px | 15px | 16px | reading passages, prose |
+
+`body-sm` is the workhorse — the default for buttons, inputs, rows, and menus,
+not a "small" variant. **11px exists only as Compact meta**; content never goes
+below 12px at Default. Never write `text-[Npx]`: the lint (`px-text`) rejects it
+because a pixel size ignores the Text size setting.
 
 `label-caps` (11px, 600, +0.05em, uppercase) marks dense section-card headers
 and group labels. Panel section titles are not caps: they use 12px semibold in
@@ -708,14 +744,35 @@ marketing surfaces.
 
 Primitives are hand-rolled — plain elements plus variant maps and CSS custom
 properties. No component framework, no `cva`. The shared language across all of
-them is: **warm paper surface · crisp 1px border · muted text · keycap hover.**
+them is: **warm paper surface · fills, not borders · muted text · keycap hover.**
+
+**Fewer borders, one frame at most.** Controls carry no border of their own:
+a primary action is filled with Bark (`--color-accent`), a secondary one with
+the keycap wash (`bg-key`), a ghost one is text only. In a small group (Code /
+Plan, a question's options, the highlighted menu item) the chosen item is
+filled with Bark edge to edge and its text inverts to `on-accent`; the track
+has no border and no inset. In a long list (sidebar rows, the dock's tab strip)
+the open row keeps a wash and gains medium weight and the main text colour,
+never a coloured bar. Borders are left for three jobs only: the boundary
+between large regions, text inputs, and one `border-subtle` hairline around a
+container (card, menu, popover, dialog). Nothing inside a framed container
+draws another frame. The lint (`design-lint.test.ts`) and
+`ui/borderless.test.tsx` hold this.
+
+**Native first.** Whatever the host OS already draws (context menus in the
+desktop app, the title bar, share, simple pickers, the Dock or taskbar badge,
+gestures) is the OS's own. The app draws only what needs its own content: the
+run picker, the "+" menu, the palette. Type is the OS's UI font, dialog
+buttons follow the OS's order, and every system setting is followed: light or
+dark, reduced motion, increased contrast, text size.
 
 **Buttons** ship seven variants (`default`, `subtle`, `primary`, `ghost`,
 `danger`, `danger-subtle`, `link`) across nine standard sizes (`xs`, `sm`, `default`,
-`lg`, `trigger`, `icon`, `icon-sm`, `icon-dense`, `icon-xs`). `primary` is a *tonal* emphasis —
-`bg-key` with a `border-strong` — not a saturated fill. Hover darkens toward the
-keycap wash; active goes one step further. Every variant keeps its border so
-buttons never shift size between states.
+`lg`, `trigger`, `icon`, `icon-sm`, `icon-dense`, `icon-xs`). No variant has a
+border. `primary` is filled with Bark and `on-accent` text; `default` and
+`subtle` sit on the keycap wash and step one tone along the ramp on hover
+(`border-subtle` on paper, `border` on dark paper); `ghost` is text until
+hovered; `danger` is the soft error fill.
 
 **Button Size Metrics Binding (Strict)**:
 
@@ -761,34 +818,34 @@ with semibold section headers (no quote bar). Clip with `overflow-clip`, not `ov
 on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
-- **Panel**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
-- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`, hover/focus `bg-(--bg-key)` and `on-surface`.
-- **Destructive Items**: `text-(--color-error)`, hover `bg-(--color-error-subtle)`.
+- **Panel**: `rounded-md`, one 1px `border-(--color-border-subtle)` hairline, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
+- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with Bark and its text and icons invert to `on-accent` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
+- **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns error and the text inverts.
+- In the desktop app, command-only context menus (tabs, sessions, messages, files, Changes rows) are the OS's own menu; these styles are the browser fallback and the menus that hold chips or switches.
 - **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
 
 **Segmented Controls & Connected Tabs**:
-- **Container**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-key)` (or `bg-card`), `p-0.5`.
-- **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
-- **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
+- **Track**: `rounded-sm`, `bg-(--bg-key)`, no border and no padding, `overflow-hidden`: the segments are the track.
+- **Active Segment**: filled with Bark edge to edge, `text-(--color-text-on-accent)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
+- **Inactive Segment**: square inside the track, `text-(--color-text-muted)`, hover `text-(--color-text-2)` and a keycap step. Keyboard focus is an inset ring so it never spills past the track.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
 - **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
-- **Strip**: `tab-bar` height on `bg-sidebar`; tabs scroll horizontally, actions stay pinned right.
-- **Active Tab**: `bg-page` with a 2px Bark (`--color-accent`) top edge and no bottom border, so it opens onto the content below.
-- **Inactive Tab**: transparent top edge, 1px bottom `border`, `text-(--color-text-muted)`, hover `bg-key` wash.
-- **Close**: a sibling `<button>` (never nested in the tab button), always visible on the active tab and on touch, hover-revealed otherwise; middle-click also closes.
+- **Strip**: `tab-bar` height (37px, 45px on touch) on `bg-sidebar` with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
+- **Active Tab**: filled with `bg-page`, `font-medium`, `text-(--color-text)`. No coloured edge, no border.
+- **Inactive Tab**: no fill, `text-(--color-text-muted)`, hover `bg-key` wash.
+- **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.
 - **Semantics**: tabs are buttons with `aria-current`, not an ARIA `tablist` — terminal tabs carry their own context menu and sheet.
 
 **Badges & Counters**:
 - **Agent / Status Chip**: `rounded-full`, 20px height, `px-2 py-0.5`, `label-sm` (11px).
-- **Counter / Sync Badge**: `rounded-full`, `bg-(--bg-key)`, `text-(--color-text-subtle)`, JetBrains Mono 11px, `px-1.5 py-0.5`.
-- **Kbd Shortcut Badge**: `rounded-xs`, 1px `border-(--color-border)`, `bg-(--bg-card)` (or `bg-key`), JetBrains Mono 10–11px, `px-1.5 py-0.5`.
+- **Counter / Sync Badge**: `rounded-full`, `bg-(--bg-key)`, `text-(--color-text-muted)` (subtle text never sits on a wash), JetBrains Mono `text-meta`, `px-1.5 py-0.5`.
+- **Kbd Shortcut Badge**: `rounded-xs`, `bg-(--bg-key)`, no border, JetBrains Mono `text-meta`, `px-1.5 py-0.5`.
 
 **Chips** (`ui/chip.tsx`): the one small label for states, identifiers and
-tags. 18px, `rounded-xs`, 11px, tones `neutral | info | success | warning |
-error`, styles `soft` (states) and `outline` (tags such as a provider `agy`
-or a transport `stdio`). Mono for identifiers and numbers (`exit 1`,
+tags. 18px, `rounded-xs`, `text-meta`, tones `neutral | info | success |
+warning | error`, soft fills only (there is no outlined chip). Mono for identifiers and numbers (`exit 1`,
 `429 rate_limit`), sans for words (`not yet`, `Vision`). A status chip always
 carries text, never colour alone; `dot` adds a leading dot for live states.
 Do not hand-roll pills; reach for `Chip` (agent identity chips keep their
@@ -884,15 +941,17 @@ subtitle, actions, and a ghost `icon-sm` close button ("Close (Esc)").
 `padding="default|compact|none"`), not className overrides: `cn` does not merge
 classes, so a wider `sm:max-w-*` never beat the default. `DialogFooter` reads the
 panel padding: it bleeds to the panel edges and sits the same distance below
-the body (16px, or 12px when `compact`); `none` panels lay out their own. Dialog footers order
-Cancel (`default`) before the confirm action (`primary`, or `danger` when
-destructive), all at the `default` size.
+the body (16px, or 12px when `compact`); `none` panels lay out their own. The
+footer has no border and no fill of its own. Button order follows the host OS
+(`data-button-order`): Cancel (`default`) then the confirm action (`primary`,
+or `danger` when destructive) on macOS, iOS and Linux; the confirm action first
+on Windows. Enter is the confirm action, Esc is Cancel, and a destructive
+action is never the default button.
 
 Inside a modal panel the scrolling body uses `OVERLAY_BODY` (`px-4 py-5`,
 `md:px-6 md:py-6`) and stacks titled sections 32px apart. A form's commit
-actions sit in a footer bar under the scroller (`border-t`, `bg-sidebar`,
-right-aligned), in the same order as `DialogFooter`: Cancel before the
-primary action.
+actions sit in a footer bar under the scroller (`bg-sidebar` with one
+`border-subtle` hairline, right-aligned), in the same order as `DialogFooter`.
 
 **App-level overlays** (Settings, Telemetry) share the `settings-modal-shell`
 geometry, mount at the root so any route can open them, and are mutually
@@ -1102,9 +1161,10 @@ inset would only waste a strip of space.
 The shell blocks pinch zoom, so the iOS app follows **Dynamic Type** instead
 (`lib/dynamic-type.ts`). A hidden probe set in `font: -apple-system-body` reads
 the user's text size, and the root font size scales from 16px by that size over
-iOS's default of 17px. The scale never goes below 1, because the 11px floor
+iOS's default of 17px. The scale never goes below 1, because the type scale
 assumes the design size, and stops at 1.25. Everything in rem scales with it:
-text, spacing, and touch targets. Px sizes do not.
+text, spacing, and touch targets. Px sizes do not. The app's own Text size
+setting multiplies on top (type only).
 
 ## Brand mark
 
@@ -1124,8 +1184,8 @@ this repository. Files and regeneration: `documents/assets/brand/README.md`.
 - **Color**: the ink is `currentColor`, set to `--color-text`; the dot is
   `--logo-signal`, which is `--accent-blue`. Both follow the theme. No tile,
   rounding, or shadow around the Seal in the app.
-- **Type**: the wordmark is outlines, so the app needs no extra font. Inter and
-  JetBrains Mono stay the only UI faces; Schibsted Grotesk appears only inside
+- **Type**: the wordmark is outlines, so the app needs no extra font. The OS's UI
+  font and JetBrains Mono stay the only UI faces; Schibsted Grotesk appears only inside
   the wordmark (and in marketing headlines outside the app).
 - **Motion**: the 3.3s Seal-to-wordmark intro is for the website and media,
   never the app. In the app only the dot moves: on loading screens it pulses

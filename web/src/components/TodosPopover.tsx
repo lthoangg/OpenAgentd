@@ -76,12 +76,12 @@ export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = nu
         )}
       >
         <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">
-          <span className="text-[11px] font-medium text-(--color-text)">Tasks</span>
+          <span className="text-meta font-medium text-(--color-text)">Tasks</span>
           {summary.total > 0 && (
             <span
               className={cn(
-                'font-mono text-xs tabular-nums text-(--color-text-subtle) md:text-[11px]',
-                summary.allDone && 'text-(--color-success)',
+                'font-mono text-xs tabular-nums text-(--color-text-subtle) md:text-meta',
+                summary.allDone && 'text-(--accent-green-text)',
               )}
             >
               {summary.finished}/{summary.total} done

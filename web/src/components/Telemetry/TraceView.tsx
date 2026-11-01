@@ -24,7 +24,7 @@ const ACTION_CLASS =
 function Fact({ label, children, title, className }: { label: ReactNode; children: ReactNode; title?: string; className?: string }) {
   return (
     <div className={`flex min-w-0 flex-col gap-0.5 bg-(--bg-card) px-3 py-2 ${className ?? ''}`}>
-      <dt className="text-[11px] text-(--color-text-muted)">{label}</dt>
+      <dt className="text-meta text-(--color-text-muted)">{label}</dt>
       <dd className="truncate text-xs text-(--color-text)" title={title}>{children}</dd>
     </div>
   )

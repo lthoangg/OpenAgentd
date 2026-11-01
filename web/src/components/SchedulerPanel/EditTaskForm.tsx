@@ -80,7 +80,7 @@ export function EditTaskForm({
           <div className="flex items-center gap-2">
             <div>
               <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Edit task</h2>
-              {!hostTitled && <p className="text-[11px] leading-relaxed text-(--color-text-muted)">{task.name}</p>}
+              {!hostTitled && <p className="text-meta leading-relaxed text-(--color-text-muted)">{task.name}</p>}
             </div>
           </div>
           {!hostTitled && (
@@ -291,7 +291,7 @@ export function EditTaskForm({
         </div>
 
         {/* Actions */}
-        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
+        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
           <Button
             type="button"
             variant="default"

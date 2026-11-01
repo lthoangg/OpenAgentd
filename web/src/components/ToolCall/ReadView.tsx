@@ -73,7 +73,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
           <FileText size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden />
           <span className="truncate">{path}</span>
         </button>
-        <span className="shrink-0 px-1 font-sans text-[11px] font-normal tabular-nums text-(--color-text-muted)">
+        <span className="shrink-0 px-1 font-sans text-meta font-normal tabular-nums text-(--color-text-muted)">
           {label}
         </span>
         <Tooltip>
@@ -91,7 +91,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
                 aria-label="Copy read result"
               >
                 {copied ? (
-                  <Check size={12} className="text-(--color-success)" aria-hidden />
+                  <Check size={12} className="text-(--accent-green-text)" aria-hidden />
                 ) : (
                   <Copy size={12} aria-hidden />
                 )}
@@ -111,7 +111,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
           <div className="min-w-0">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch text-(--color-text)">
-                <div className="sticky left-0 z-1 flex shrink-0 select-none border-r border-(--color-border)/40 bg-(--bg-input) text-right text-xs md:text-[11px] text-(--color-text-subtle)">
+                <div className="sticky left-0 z-1 flex shrink-0 select-none border-r border-(--color-border)/40 bg-(--bg-input) text-right text-xs md:text-meta text-(--color-text-subtle)">
                   <span className="w-9 py-0.5 pr-1.5">{startLine + idx}</span>
                 </div>
                 <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line || ' '}</pre>

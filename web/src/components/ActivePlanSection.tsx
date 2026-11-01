@@ -74,11 +74,11 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
       <span className="text-xs font-medium text-(--color-text)">Plan</span>
       {title && <span className="min-w-0 truncate text-xs text-(--color-text-2)" title={title}>{title}</span>}
       {plan.revision !== undefined && (
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
+        <span className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)">rev {plan.revision}</span>
       )}
-      {statusClass && <span data-plan-status-label className={cn('shrink-0 text-[11px] font-medium', statusClass)}>{statusText}</span>}
+      {statusClass && <span data-plan-status-label className={cn('shrink-0 text-meta font-medium', statusClass)}>{statusText}</span>}
       <span
-        className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)"
+        className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)"
         title={`Updated ${formatRelativeDate(plan.updated_at)}`}
       >
         {formatCompactRelative(plan.updated_at)}

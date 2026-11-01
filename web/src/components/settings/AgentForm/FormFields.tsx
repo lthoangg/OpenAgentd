@@ -256,7 +256,7 @@ export function FormFields({
             disabled={disabled}
             rows={14}
             placeholder={defaultPrompt || 'You are …'}
-            className="min-h-72 font-mono text-[13px] leading-relaxed"
+            className="min-h-72 font-mono text-code leading-relaxed"
             aria-label="System prompt"
           />
         </div>
@@ -278,7 +278,7 @@ function CapabilityChips({ label, values }: { label: string; values: string[] })
         {values.map((value) => (
           <span
             key={value}
-            className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)"
+            className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)"
           >
             {value}
           </span>

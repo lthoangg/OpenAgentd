@@ -109,7 +109,7 @@ export function MobileChatActions({
               {openTasks > 0 && (
                 <span
                   aria-hidden="true"
-                  className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[11px] leading-3.5 text-(--bg-page) pointer-coarse:right-1.5 pointer-coarse:top-1.5"
+                  className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-meta leading-3.5 text-(--bg-page) pointer-coarse:right-1.5 pointer-coarse:top-1.5"
                 >
                   {openTasks > 9 ? '9+' : openTasks}
                 </span>
@@ -194,7 +194,7 @@ export function MobileChatActions({
                         <dd className="text-right font-mono tabular-nums text-(--color-text)">{formatSpend(tokens.sessionCostUsd)}</dd>
                       </>
                     )}
-                    <dd className="col-span-2 text-[11px] text-(--color-text-muted)">
+                    <dd className="col-span-2 text-meta text-(--color-text-muted)">
                       Older messages are summarized when context reaches {formatCompact(trigger)} tokens.
                     </dd>
                   </dl>

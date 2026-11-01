@@ -159,10 +159,10 @@ export function ModelSetupCard({
                 key={item.provider.id}
                 className="flex items-center gap-2.5 rounded-sm border border-(--color-success)/30 bg-(--color-success-subtle) px-2.5 py-2"
               >
-                <CheckCircle2 size={14} className="shrink-0 text-(--color-success)" aria-hidden="true" />
+                <CheckCircle2 size={14} className="shrink-0 text-(--accent-green-text)" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-(--accent-green-text)">{text.title}</p>
-                  <p className="truncate text-[11px] text-(--color-text-2)">{text.detail}</p>
+                  <p className="truncate text-meta text-(--color-text-2)">{text.detail}</p>
                 </div>
                 <Button
                   size="sm"
@@ -201,7 +201,7 @@ export function ModelSetupCard({
                 )}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(provider)}</span>
-                <span className="shrink-0 text-[11px] text-(--color-text-subtle)">
+                <span className="shrink-0 text-meta text-(--color-text-subtle)">
                   {provider.kind === 'oauth' ? 'Sign in' : 'API key'}
                 </span>
               </button>
@@ -234,7 +234,7 @@ export function ModelSetupCard({
               Connect
             </Button>
           </div>
-          <p id="model-setup-hint" className="mt-1.5 text-[11px] text-(--color-text-subtle)">
+          <p id="model-setup-hint" className="mt-1.5 text-meta text-(--color-text-subtle)">
             We check the key, save it on this machine and pick a model for you.
             {selected.docs_url && (
               <>
@@ -272,7 +272,7 @@ export function ModelSetupCard({
         </p>
       )}
 
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-(--color-text-muted)">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-meta text-(--color-text-muted)">
         <span>
           {needsProvider
             ? 'Or pick another model in Settings → Agents.'

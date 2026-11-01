@@ -25,4 +25,15 @@
     // Fall back to light (the canonical default in index.css).
     document.documentElement.classList.add('light');
   }
+  // Text size (stores/useDisplayPrefsStore.ts): set before paint so the first
+  // frame already has the right type scale. Unknown values keep the default.
+  try {
+    var prefs = JSON.parse(localStorage.getItem('oa.display.v1') || 'null');
+    var size = prefs && prefs.state && prefs.state.textSize;
+    if (size === 'compact' || size === 'default' || size === 'large') {
+      document.documentElement.dataset.textSize = size;
+    }
+  } catch (_e) {
+    // Unreadable prefs: Default text size.
+  }
 })();

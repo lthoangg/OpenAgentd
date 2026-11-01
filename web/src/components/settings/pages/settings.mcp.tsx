@@ -27,7 +27,7 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
         onClick: () => onSelect(srv.name),
         trailing: (
           <span className="flex items-center gap-1.5">
-            <Chip mono variant="outline" title={srv.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{srv.transport}</Chip>
+            <Chip mono title={srv.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{srv.transport}</Chip>
             <McpStatusChip server={srv} />
           </span>
         ),

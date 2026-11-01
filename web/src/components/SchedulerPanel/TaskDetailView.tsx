@@ -124,7 +124,7 @@ export function TaskDetailView({
                 <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
               )}
               {task.slug !== task.name && (
-                <Chip mono variant="outline" title="Slug: the name the agent's schedule tool uses">
+                <Chip mono title="Slug: the name the agent's schedule tool uses">
                   {task.slug}
                 </Chip>
               )}
@@ -236,7 +236,7 @@ export function TaskDetailView({
           actions={
             <Button type="button" variant="ghost" size="sm" onClick={handleCopyPrompt} aria-label="Copy prompt">
               {copiedPrompt ? (
-                <Check size={ICON_SIZE_INLINE} className="text-(--color-success)" aria-hidden="true" />
+                <Check size={ICON_SIZE_INLINE} className="text-(--accent-green-text)" aria-hidden="true" />
               ) : (
                 <Copy size={ICON_SIZE_INLINE} aria-hidden="true" />
               )}
@@ -263,7 +263,7 @@ export function TaskDetailView({
       </div>
 
       {isMobile && (
-        <div className={cn('flex shrink-0 gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3', footerSafeArea)}>
+        <div className={cn('flex shrink-0 gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-3', footerSafeArea)}>
           <Button type="button" className="flex-1" onClick={triggerTask} disabled={triggerMutation.isPending}>
             {runIcon}
             Run now

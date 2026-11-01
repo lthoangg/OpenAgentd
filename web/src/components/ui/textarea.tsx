@@ -11,7 +11,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
         "flex field-sizing-content min-h-24 w-full rounded-sm border",
         // Surface — matches Input primitive
         "border-(--color-border) bg-(--bg-input)",
-        // Typography — text-xs consistent with Input; callers override for code (text-[13px])
+        // Typography — text-xs consistent with Input; callers override for code (text-code)
         "px-2.5 py-2 text-xs leading-relaxed text-(--color-text)",
         // Placeholder
         "placeholder:text-(--color-text-muted)",

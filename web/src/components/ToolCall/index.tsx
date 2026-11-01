@@ -318,11 +318,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         render={
           <button
             onClick={handleCopyResult}
-            className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
             aria-label="Copy result"
           >
             {copiedResult ? (
-              <Check size={12} className="text-(--color-success)" />
+              <Check size={12} className="text-(--accent-green-text)" />
             ) : (
               <Copy size={12} />
             )}
@@ -460,7 +460,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             type="button"
             onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
             title={`Switch to the session in ${sentSession.workspace}`}
-            className="inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:py-2"
+            className="inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:py-2"
           >
             <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
             <span className="truncate">Open in {sentSession.workspaceName}</span>
@@ -468,7 +468,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         )}
         {sentSession?.createdWorktree && (
           <span
-            className="inline-flex max-w-[60%] items-center gap-1 align-middle text-[11px] text-(--color-text-muted)"
+            className="inline-flex max-w-[60%] items-center gap-1 align-middle text-meta text-(--color-text-muted)"
             data-created-worktree=""
           >
             <GitBranch size={11} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
@@ -521,11 +521,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                             render={
                               <button
                                 onClick={handleCopyArgs}
-                                className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
                                 aria-label="Copy arguments"
                               >
                                 {copiedArgs ? (
-                                  <Check size={12} className="text-(--color-success)" />
+                                  <Check size={12} className="text-(--accent-green-text)" />
                                 ) : (
                                   <Copy size={12} />
                                 )}
@@ -563,7 +563,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       <pre
                         ref={liveOutputRef}
                         onScroll={handleScroll}
-                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>

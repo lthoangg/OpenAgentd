@@ -114,7 +114,7 @@ export function Waterfall({
 
   return (
     <div className="flex shrink-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-(--color-text-muted)">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta text-(--color-text-muted)">
         <span>
           {rows.length} span{rows.length === 1 ? '' : 's'} · trace duration{' '}
           <span className="font-mono text-(--color-text-2)">{formatMs(bounds.duration_ms)}</span>
@@ -136,7 +136,7 @@ export function Waterfall({
       <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
         <div>
           <div
-            className={cn(COLS, 'h-7 border-b border-(--color-border-subtle) px-3 font-mono text-[11px] text-(--color-text-muted) select-none')}
+            className={cn(COLS, 'h-7 border-b border-(--color-border-subtle) px-3 font-mono text-meta text-(--color-text-muted) select-none')}
           >
             <span>Span</span>
             <span
@@ -207,7 +207,7 @@ const WaterfallRow = memo(function WaterfallRow({
               <span className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
                 <span className="truncate font-mono font-medium text-(--color-text)">{span.name}</span>
                 {summary && (
-                  <span className={cn('max-w-[60%] shrink-0 truncate text-[11px]', isError ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
+                  <span className={cn('max-w-[60%] shrink-0 truncate text-meta', isError ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
                     {summary}
                   </span>
                 )}

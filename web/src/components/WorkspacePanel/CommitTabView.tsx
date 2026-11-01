@@ -104,7 +104,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
             <TooltipContent side="bottom">Copy full SHA</TooltipContent>
           </Tooltip>
         </div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-(--color-text-muted)">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-meta text-(--color-text-muted)">
           <span className="font-mono text-(--color-text-subtle)">{commit.short_sha}</span>
           <span>{commit.author_name}</span>
           <span>{formatCommitTime(commit.timestamp)}</span>
@@ -115,7 +115,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
           ))}
         </div>
         {commit.body && (
-          <p className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-(--color-text-2)">{commit.body}</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-meta leading-relaxed text-(--color-text-2)">{commit.body}</p>
         )}
       </header>
       {commitDiff.isLoading ? (
@@ -147,7 +147,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
               </button>
               {open && (body
                 ? <DiffPreview diff={body} autoScroll={false} />
-                : <p className="px-3 py-2 text-[11px] text-(--color-text-subtle)">No diff body for this file.</p>)}
+                : <p className="px-3 py-2 text-meta text-(--color-text-subtle)">No diff body for this file.</p>)}
             </section>
           )
         })

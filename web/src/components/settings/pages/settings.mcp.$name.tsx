@@ -254,7 +254,7 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         <McpStatusChip server={server} />
       </PanelRow>
       <PanelRow label="Transport">
-        <Chip mono variant="outline" title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
+        <Chip mono title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
       </PanelRow>
       <PanelRow label="Started">
         <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : 'Not running'}</span>
@@ -263,7 +263,7 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         <PanelRow label={`Tools · ${server.tool_names.length}`} stack>
           <div className="flex flex-wrap gap-1.5">
             {server.tool_names.map((tool) => (
-              <Chip key={tool} mono variant="outline">{tool}</Chip>
+              <Chip key={tool} mono>{tool}</Chip>
             ))}
           </div>
         </PanelRow>

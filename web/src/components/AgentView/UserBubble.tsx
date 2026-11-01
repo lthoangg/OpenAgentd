@@ -37,7 +37,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
         key={`${keyPrefix}-${match.index}`}
         href={url}
         onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
-        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:text-(--accent-blue) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
+        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:text-(--accent-blue-text) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
         rel="noopener noreferrer"
       >
         {url}
@@ -105,7 +105,7 @@ function useRenderedLines(ref: React.RefObject<HTMLElement | null>, text: string
 export type OpenSessionHandler = (sessionId: string, workspace: string) => void
 
 const SOURCE_CHIP_CLASS =
-  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) pointer-coarse:min-h-9'
+  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) pointer-coarse:min-h-9'
 
 /** "From <workspace> · <session>" above a prompt another workspace's agent sent. */
 function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSession?: OpenSessionHandler }) {
@@ -390,7 +390,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       <button
         type="button"
         onClick={() => onOpenSession(reply.sessionId, reply.workspace)}
-        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
         title={reply.workspace}
         aria-label={`Open the replying session in ${reply.workspaceName}`}
       >
@@ -398,7 +398,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
         <ArrowUpRight size={11} aria-hidden="true" />
       </button>
     ) : (
-      <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+      <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text)">
         {fromAgent}
       </span>
     )
@@ -417,11 +417,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             ref={report.anchorRef}
             className={cn('flex items-center gap-1.5 px-0.5 text-xs text-(--color-text-muted)', reportExpanded && cn(PINNED_HEADER, 'self-stretch bg-(--bg-page)'))}
           >
-            {!reply && <span className="text-[11px] text-(--color-text-subtle)">Report from</span>}
+            {!reply && <span className="text-meta text-(--color-text-subtle)">Report from</span>}
             {sender}
-            {reply && <span className="text-[11px] text-(--color-text-subtle)">{replyLabel(reply)}</span>}
+            {reply && <span className="text-meta text-(--color-text-subtle)">{replyLabel(reply)}</span>}
             {timestamp && (
-              <span className="text-[11px] text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
+              <span className="text-meta text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
             )}
             <button
               type="button"
@@ -557,7 +557,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               {modelName && (
                 <span
                   data-prompt-model
-                  className="mr-1 font-mono text-[11px] text-(--color-text-subtle)"
+                  className="mr-1 font-mono text-meta text-(--color-text-subtle)"
                   title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
                 >
                   {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
@@ -589,7 +589,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                       aria-label="Copy message"
                     >
                       {copied ? (
-                        <Check size={11} className="text-(--color-success)" />
+                        <Check size={11} className="text-(--accent-green-text)" />
                       ) : (
                         <Copy size={11} />
                       )}

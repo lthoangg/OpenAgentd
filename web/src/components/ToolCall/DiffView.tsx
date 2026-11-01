@@ -100,7 +100,7 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
         return (
           <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
             {/* Line Numbers */}
-            <div className="sticky left-0 z-1 flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[11px] text-(--color-text-subtle)">
+            <div className="sticky left-0 z-1 flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta text-(--color-text-subtle)">
               <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
             </div>
             {/* Code Line */}
@@ -137,7 +137,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
   const Icon = kind === 'add' ? PlusCircle : kind === 'delete' ? Trash2 : moveTo ? ArrowRight : FileEdit
   const iconColor =
     kind === 'add'
-      ? 'text-(--color-success)'
+      ? 'text-(--accent-green-text)'
       : kind === 'delete'
         ? 'text-(--color-error)'
         : 'text-(--color-text-muted)'
@@ -167,7 +167,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-9 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-9 text-left font-mono text-meta font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
@@ -186,7 +186,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           </>
         )}
         {(additions > 0 || deletions > 0) && (
-          <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs md:text-[11px] font-semibold select-none shrink-0">
+          <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs md:text-meta font-semibold select-none shrink-0">
             {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
             {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
           </span>

@@ -92,10 +92,10 @@ function StatRow({ label, value, fraction }: { label: string; value: string; fra
       <span className="text-(--color-text-muted)">{label}</span>
       {fraction === undefined ? <span /> : (
         <span className="h-1.5 overflow-hidden rounded-full bg-(--bg-key)" aria-hidden="true">
-          <span className="block h-full rounded-full bg-(--accent-blue)" style={{ width: `${Math.min(100, Math.max(2, fraction * 100))}%` }} />
+          <span className="block h-full rounded-full bg-(--accent-blue-text)" style={{ width: `${Math.min(100, Math.max(2, fraction * 100))}%` }} />
         </span>
       )}
-      <span className="font-mono text-[11px] tabular-nums text-(--color-text-2)">{value}</span>
+      <span className="font-mono text-meta tabular-nums text-(--color-text-2)">{value}</span>
     </div>
   )
 }
@@ -121,7 +121,7 @@ function GoalPlanSection({ plan, status, label, onOpenPlan }: {
       <h3 className="label-caps text-(--color-text-muted)">Plan</h3>
       <div className="flex items-center gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2">
         <span className="min-w-0 flex-1 truncate text-(--color-text)" title={title}>{title}</span>
-        <span className={cn('shrink-0 rounded-full px-2 py-px text-[11px] font-medium', PLAN_PILL_CLASS[status] ?? 'bg-(--bg-key) text-(--color-text-2)')}>
+        <span className={cn('shrink-0 rounded-full px-2 py-px text-meta font-medium', PLAN_PILL_CLASS[status] ?? 'bg-(--bg-key) text-(--color-text-2)')}>
           {label}
         </span>
         {onOpenPlan && (
@@ -188,7 +188,7 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
       </div>
       {note && (
         <section aria-label={note.title} className="border-t border-(--color-border-subtle) pt-3 leading-relaxed text-(--color-text-2)">
-          <h3 className="mb-0.5 text-[11px] font-medium text-(--color-text-muted)">{note.title}</h3>
+          <h3 className="mb-0.5 text-meta font-medium text-(--color-text-muted)">{note.title}</h3>
           <p className="break-words selectable-text"><InlineCodeText text={note.text} /></p>
           {note.detail && <p className="mt-1 whitespace-pre-wrap break-words text-(--color-text) selectable-text"><InlineCodeText text={note.detail} /></p>}
         </section>
@@ -248,7 +248,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
     <div className="flex h-full min-h-0 flex-col" data-goal-tab>
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pl-3 pr-1.5">
         <span className="text-xs font-medium text-(--color-text)">Goal</span>
-        <span className="truncate text-[11px] text-(--color-text-subtle)">Turns run on their own until a check confirms it</span>
+        <span className="truncate text-meta text-(--color-text-subtle)">Turns run on their own until a check confirms it</span>
       </div>
       {sessionId && !data && isError ? (
         <DockLoadError message="Failed to load the goal." onRetry={() => void refetch()} retrying={isFetching} />

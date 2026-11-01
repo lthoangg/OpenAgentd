@@ -151,7 +151,7 @@ function SearchBar({
           <span
             aria-live="polite"
             aria-atomic="true"
-            className="mr-2.5 shrink-0 font-mono text-xs md:text-[11px] tabular-nums text-(--color-text-subtle) select-none"
+            className="mr-2.5 shrink-0 font-mono text-xs md:text-meta tabular-nums text-(--color-text-subtle) select-none"
           >
             {count === 1 ? '1 item' : `${count} items`}
           </span>

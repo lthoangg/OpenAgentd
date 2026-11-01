@@ -62,11 +62,26 @@ export function _resetTooltipTimingForTests(): void {
   openCount = 0
 }
 
-function isWarm(): boolean {
+/** Whether a hint opens at once: one is open, or one closed within ``WARM_MS``. */
+export function isTooltipWarm(): boolean {
   return openCount > 0 || performance.now() - lastClosedAt < WARM_MS
 }
 
-function isKeyboardFocus(el: Element): boolean {
+/** Shared timing for every hint, including the ``title`` layer (ui/title-tooltip). */
+export function noteTooltipOpened(): void {
+  openCount += 1
+}
+
+export function noteTooltipClosed(): void {
+  openCount = Math.max(0, openCount - 1)
+  lastClosedAt = performance.now()
+}
+
+function isWarm(): boolean {
+  return isTooltipWarm()
+}
+
+export function isKeyboardFocus(el: Element): boolean {
   // Focus a script handed over quietly (lib/focus/quiet.ts) is not the
   // user's keyboard moving, so it opens no hint.
   if (el.hasAttribute('data-quiet-focus')) return false
@@ -76,6 +91,9 @@ function isKeyboardFocus(el: Element): boolean {
     return false
   }
 }
+
+/** The hint's look, shared with the ``title`` layer. */
+export const TOOLTIP_CONTENT_CLASS = 'pointer-events-none fixed z-9999 w-max max-w-xs rounded-sm px-2 py-1 text-meta bg-(--bg-send) text-(--color-text-on-accent) shadow-(--shadow-depth)'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -333,7 +351,7 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       data-slot="tooltip-content"
       className={cn(
         'pointer-events-none fixed z-9999 w-max max-w-xs',
-        'rounded-sm px-2 py-1 text-[11px]',
+        'rounded-sm px-2 py-1 text-meta',
         'bg-(--bg-send) text-(--color-text-on-accent)',
         'shadow-(--shadow-depth)',
         // Hide (not unmount) until the first measurement lands, so the box

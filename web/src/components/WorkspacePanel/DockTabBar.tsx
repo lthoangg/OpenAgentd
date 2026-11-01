@@ -232,9 +232,9 @@ export function DockTabBar({
     moveAndFocus(id, to)
   }
   return (
-    <div ref={stripRef} className="flex h-(--spacing-tab-bar) min-w-0 shrink-0 bg-(--bg-sidebar)">
+    <div ref={stripRef} className="flex h-(--spacing-tab-bar) min-w-0 shrink-0 border-b border-(--color-border-subtle) bg-(--bg-sidebar)">
       <div
-        className="scrollbar-none flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+        className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1"
         onKeyDown={handleStripKeyDown}
         {...drag.handlers}
       >
@@ -310,9 +310,9 @@ export function DockTabBar({
             </div>
           )
         })}
-        <div aria-hidden="true" className="min-w-2 flex-1 border-b border-(--color-border)" />
+        <div aria-hidden="true" className="min-w-2 flex-1" />
       </div>
-      <div className="flex shrink-0 items-center gap-0.5 border-b border-(--color-border) px-1">
+      <div className="flex shrink-0 items-center gap-0.5 px-1">
         {openItems.length > 0 && (
           <Tooltip>
             <TooltipTrigger
@@ -370,7 +370,7 @@ export function DockTabBar({
                 {item.icon}
                 <span className="flex-1">{item.label}</span>
                 {item.shortcut && (
-                  <kbd aria-hidden="true" className="hidden font-mono text-[11px] text-(--color-text-subtle) md:inline">{item.shortcut}</kbd>
+                  <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{item.shortcut}</kbd>
                 )}
                 {item.open && <Check size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
               </button>

@@ -80,7 +80,7 @@ export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActio
             <span className="flex-1">{row.label}</span>
             {row.shortcut && (
               // Phones have no keyboard to press it with.
-              <kbd aria-hidden="true" className="hidden font-mono text-[11px] text-(--color-text-subtle) md:inline">{row.shortcut}</kbd>
+              <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{row.shortcut}</kbd>
             )}
           </button>
         ))}

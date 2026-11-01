@@ -36,7 +36,7 @@ body {
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.4;
   color: var(--color-text);
@@ -292,7 +292,7 @@ button:focus-visible {
 
 .option-detail {
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -355,7 +355,7 @@ button:focus-visible {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .card-alert {
@@ -398,7 +398,7 @@ button:focus-visible {
 .row-window {
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .row-figures {
@@ -406,7 +406,7 @@ button:focus-visible {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .row-percent {
@@ -421,7 +421,7 @@ button:focus-visible {
   margin-top: 5px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 /* The fill is usage consumed; it scales (no width animation) so a refresh
@@ -489,7 +489,7 @@ button:focus-visible {
 
 .line-muted {
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .line-value {
@@ -506,7 +506,7 @@ button:focus-visible {
   gap: 3px;
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .small-btn {
@@ -555,7 +555,7 @@ button:focus-visible {
 
 .blank svg {
   margin-bottom: 4px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .blank-title {
@@ -579,7 +579,7 @@ button:focus-visible {
   gap: 6px;
   padding: 6px 8px 2px;
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .link-btn {
@@ -628,7 +628,7 @@ button:focus-visible {
   font-size: 11px;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 /* Reduced motion, as in the app (index.css): everything snaps; the

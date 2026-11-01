@@ -145,8 +145,8 @@ function quotaLabel(base: string, minutes: number | null | undefined, { generic 
 
 function barColor(percent: number): string {
   if (percent >= 90) return 'bg-(--color-error)'
-  if (percent >= 70) return 'bg-(--accent-orange)'
-  return 'bg-(--accent-green)'
+  if (percent >= 70) return 'bg-(--accent-orange-text)'
+  return 'bg-(--accent-green-text)'
 }
 
 /** A real but sub-percent use reads "<1%", never a false "0%"; only a true zero is 0%. */
@@ -155,7 +155,7 @@ function formatPercent(raw: number): string {
 }
 
 function Meta({ children }: { children: string }) {
-  return <p className="text-[11px] text-(--color-text-subtle) tabular-nums">{children}</p>
+  return <p className="text-meta text-(--color-text-subtle) tabular-nums">{children}</p>
 }
 
 function UsageRow({
@@ -175,7 +175,7 @@ function UsageRow({
     <div className="min-w-0 space-y-1">
       <div className="flex min-w-0 items-baseline justify-between gap-2 text-xs">
         <span className="truncate font-medium text-(--color-text)">{label}</span>
-        <span className="shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">{formatPercent(percent)} used</span>
+        <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">{formatPercent(percent)} used</span>
       </div>
       <div className="relative h-1 rounded-full bg-(--bg-key)">
         {percent > 0 && (
@@ -248,7 +248,7 @@ function SpendRow({
           <span className="shrink-0 tabular-nums">
             <span className="text-sm font-semibold text-(--color-text)">{fmt(spend.used)}</span>
             {' '}
-            <span className="text-[11px] text-(--color-text-muted)">{`/ ${fmt(spend.limit)}`}</span>
+            <span className="text-meta text-(--color-text-muted)">{`/ ${fmt(spend.limit)}`}</span>
           </span>
         </div>
         <div className="relative h-1 rounded-full bg-(--bg-key)">
@@ -262,7 +262,7 @@ function SpendRow({
             aria-label={label}
           />
         </div>
-        <div className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-(--color-text-subtle) tabular-nums">
+        <div className="flex flex-wrap items-center gap-x-1.5 text-meta text-(--color-text-subtle) tabular-nums">
           <span>{formatPercent(rawPercent)} used</span>
           {typeof spend.remaining === 'number' && (
             <>
@@ -287,7 +287,7 @@ function SpendRow({
       <div className="flex min-w-0 items-baseline justify-between gap-2 text-xs">
         <span className="truncate font-medium text-(--color-text)">{label}</span>
         {/* Unclamped — an overage is the whole point of this row. */}
-        <span className="shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">{formatPercent(rawPercent)} used</span>
+        <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">{formatPercent(rawPercent)} used</span>
       </div>
       <div className="relative h-1 rounded-full bg-(--bg-key)">
         {percent > 0 && <div className={cn('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${percent}%` }} />}
@@ -328,7 +328,7 @@ function CreditsRow({
     <div className="min-w-0 space-y-1 @md:col-span-2">
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
         <span className="truncate font-medium text-(--color-text)">{label}</span>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 text-[11px] text-(--color-text-muted) tabular-nums">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 text-meta text-(--color-text-muted) tabular-nums">
           <span>{text}</span>
           {showBalance && (
             <>
@@ -349,7 +349,7 @@ function PeriodRow({ label, periodEndAt, now }: { label: string; periodEndAt?: n
     <div className="min-w-0 space-y-1 @md:col-span-2">
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
         <span className="truncate font-medium text-(--color-text)">{label}</span>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 text-[11px] text-(--color-text-muted) tabular-nums">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 text-meta text-(--color-text-muted) tabular-nums">
           <span>Usage period available</span>
           {periodEnd && (
             <>
@@ -510,14 +510,14 @@ export function UsagePanel({
       {(updated || plan || hasResets || footnote) && (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            {updated && <span className="text-[11px] text-(--color-text-subtle)">{updated}</span>}
-            {footnote && <span className="text-[11px] text-(--color-text-subtle)">{footnote}</span>}
+            {updated && <span className="text-meta text-(--color-text-subtle)">{updated}</span>}
+            {footnote && <span className="text-meta text-(--color-text-subtle)">{footnote}</span>}
             {plan && <Chip>{plan}</Chip>}
           </div>
           {hasResets && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className="text-[11px] font-medium text-(--accent-green-text)"
+                className="text-meta font-medium text-(--accent-green-text)"
                 title="A reset clears this usage limit right away. Redeem one once you reach the limit."
               >
                 {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available

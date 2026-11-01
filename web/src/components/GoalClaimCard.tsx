@@ -30,7 +30,7 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         onClick={() => setToggled(!open)}
         aria-expanded={open}
         aria-controls={listId}
-        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
+        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
       >
         <ChevronRight
           size={12}
@@ -96,15 +96,15 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 px-3 py-2">
         {claim.kind === 'checking' && (
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">A separate check is reviewing the claim.</span>
+          <span className="text-meta leading-relaxed text-(--color-text-muted)">A separate check is reviewing the claim.</span>
         )}
         {claim.kind === 'rejected' && (
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">
+          <span className="text-meta leading-relaxed text-(--color-text-muted)">
             {claim.paused ? 'Goal paused until you resume it.' : 'The agent keeps working.'}
           </span>
         )}
         {claim.kind === 'unchecked' && (
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">
+          <span className="text-meta leading-relaxed text-(--color-text-muted)">
             {claim.paused ? 'The check could not run. Goal paused until you resume it.' : 'The check could not run. The agent can claim again.'}
           </span>
         )}
@@ -112,7 +112,7 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
           <p className="text-xs leading-relaxed break-words text-(--color-text) selectable-text"><InlineCodeText text={claim.reason} /></p>
         )}
         {claim.kind === 'blocked' && (
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">Goal paused until you resume it.</span>
+          <span className="text-meta leading-relaxed text-(--color-text-muted)">Goal paused until you resume it.</span>
         )}
         {claim.kind !== 'blocked' && claim.evidence.length > 0 && (
           <Evidence items={claim.evidence} label="Evidence" defaultOpen={claim.kind === 'achieved'} />

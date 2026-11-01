@@ -24,11 +24,11 @@ export function CommandCenterButton({ onClick }: { onClick: () => void }) {
             type="button"
             onClick={onClick}
             aria-label={`Search or run a command (${shortcut})`}
-            className="flex h-7 w-7 shrink-0 items-center justify-center gap-2 rounded-sm border border-transparent text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:border-(--color-border) hover:bg-(--bg-card) hover:text-(--color-text) lg:w-full lg:max-w-80 lg:justify-start lg:border-(--color-border-subtle) lg:bg-(--bg-page) lg:px-2.5"
+            className="flex h-7 w-7 shrink-0 items-center justify-center gap-2 rounded-sm border border-transparent pointer-coarse:h-9 pointer-coarse:min-w-9 text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:border-(--color-border) hover:bg-(--bg-card) hover:text-(--color-text) lg:w-full lg:max-w-80 lg:justify-start lg:border-(--color-border-subtle) lg:bg-(--bg-page) lg:px-2.5"
           >
             <Search size={13} strokeWidth={1.8} aria-hidden="true" className="shrink-0" />
             <span className="hidden min-w-0 flex-1 truncate text-left text-xs lg:inline">Search or run a command</span>
-            <kbd className="hidden shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 font-mono text-[11px] leading-4 text-(--color-text-subtle) lg:inline">
+            <kbd className="hidden shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 font-mono text-meta leading-4 text-(--color-text-muted) lg:inline">
               {shortcut}
             </kbd>
           </button>

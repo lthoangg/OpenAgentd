@@ -28,7 +28,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
         type="button"
         onClick={() => open(null)}
         aria-label="Open scheduled tasks"
-        className="flex h-8 w-full items-center gap-1.5 pl-3 pr-1.5 text-left text-[11px] leading-none transition-colors hover:text-(--color-text-2)"
+        className="flex h-8 w-full items-center gap-1.5 pl-3 pr-1.5 text-left text-meta leading-none transition-colors hover:text-(--color-text-2)"
       >
         <span className="label-caps text-(--color-text-subtle)">Scheduled</span>
         <span className="tabular-nums text-(--color-text-subtle)">{upcoming.length}</span>
@@ -43,7 +43,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
             >
               <Clock size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
               <span className="min-w-0 flex-1 truncate font-medium">{task.name}</span>
-              <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">
+              <span className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-subtle)">
                 {formatCompactUpcoming(task.next_fire_at, now)}
               </span>
             </button>

@@ -27,6 +27,12 @@
     /* iOS sheet curve: surfaces that move with the soft keyboard or a drag. */
     --ease-sheet:         cubic-bezier(0.32, 0.72, 0, 1);
     --ease-linear:        linear;
+
+    /* Interface type (DESIGN.md → Typography): the host OS's own UI font,
+     * like every native app beside it — SF Pro on Apple platforms, Segoe UI
+     * Variable on Windows, Roboto on Android, the desktop's font on Linux.
+     * Code stays in JetBrains Mono (index.css --font-mono). */
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, system-ui, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
 }
 
 /* ─────────────────────────────────────────────────────────────

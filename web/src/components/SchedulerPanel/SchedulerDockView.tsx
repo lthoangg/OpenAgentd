@@ -66,7 +66,7 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
             <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pr-1 pl-3">
               <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">All workspaces</span>
               {tasks.length > 0 && (
-                <span className="shrink-0 text-[11px] tabular-nums text-(--color-text-subtle)">
+                <span className="shrink-0 text-meta tabular-nums text-(--color-text-subtle)">
                   {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
                 </span>
               )}

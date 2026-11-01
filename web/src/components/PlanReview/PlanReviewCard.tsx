@@ -135,24 +135,24 @@ function ReviewFeedback({ feedback }: { feedback: string }) {
       {shown.map((comment, index) => (
         <div key={index} className="flex min-w-0 flex-col gap-0.5">
           {comment.quote && (
-            <span className="truncate border-l-2 border-(--color-border-strong) pl-1.5 text-[11px] leading-relaxed text-(--color-text-subtle)">
+            <span className="truncate border-l-2 border-(--color-border-strong) pl-1.5 text-meta leading-relaxed text-(--color-text-subtle)">
               {comment.quote.replace(/\s+/g, ' ')}
             </span>
           )}
           {comment.text && (
-            <span className="line-clamp-2 text-[11px] leading-relaxed break-words whitespace-pre-line text-(--color-text)">
+            <span className="line-clamp-2 text-meta leading-relaxed break-words whitespace-pre-line text-(--color-text)">
               {comment.text}
             </span>
           )}
         </div>
       ))}
       {hidden > 0 && (
-        <span className="text-[11px] text-(--color-text-subtle)">
+        <span className="text-meta text-(--color-text-subtle)">
           +{hidden} more {hidden === 1 ? 'comment' : 'comments'}
         </span>
       )}
       {overall && (
-        <span className="line-clamp-3 text-[11px] leading-relaxed break-words whitespace-pre-line text-(--color-text)">{overall}</span>
+        <span className="line-clamp-3 text-meta leading-relaxed break-words whitespace-pre-line text-(--color-text)">{overall}</span>
       )}
     </div>
   )
@@ -222,7 +222,7 @@ export function PlanReviewCard({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span
             className={cn(
-              'text-[11px] leading-relaxed font-medium',
+              'text-meta leading-relaxed font-medium',
               waiting && 'text-(--accent-orange-text)',
               state.kind === 'approved' && 'text-(--accent-green-text)',
               state.kind === 'submitting' && 'text-(--color-text-muted)',
@@ -233,7 +233,7 @@ export function PlanReviewCard({
             {comments > 0 && ` · ${comments} ${comments === 1 ? 'comment' : 'comments'}`}
           </span>
           {state.kind === 'changes' && state.feedback && <ReviewFeedback feedback={state.feedback} />}
-          {summary && <span className="text-[11px] leading-relaxed break-words text-(--color-text-subtle)">{summary}</span>}
+          {summary && <span className="text-meta leading-relaxed break-words text-(--color-text-subtle)">{summary}</span>}
         </div>
         {canOpen && (
           <Button

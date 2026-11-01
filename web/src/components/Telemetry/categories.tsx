@@ -69,7 +69,7 @@ export function SpanTypeChip({ category, error = false }: { category: SpanCatego
     <span
       data-slot="chip"
       data-tone={error ? 'error' : 'neutral'}
-      className={cn(chipClass({ variant: 'outline', mono: true, tone: error ? 'error' : 'neutral' }), 'w-[4.75rem] justify-start')}
+      className={cn(chipClass({ mono: true, tone: error ? 'error' : 'neutral' }), 'w-[4.75rem] justify-start')}
     >
       <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-[1px]', error ? 'bg-(--color-error)' : categoryDotClass(category))} />
       {categoryLabel(category)}

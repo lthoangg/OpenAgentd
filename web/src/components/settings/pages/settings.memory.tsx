@@ -223,7 +223,7 @@ export function MemorySettingsPage() {
               {lintFindings.map((f, i) => (
                 <li key={i} className="flex flex-wrap items-center gap-1.5 leading-relaxed">
                   <span className="font-mono font-semibold">[{f.code}]</span>
-                  <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+                  <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text)">
                     {f.path}
                   </code>
                   <span>{f.message}</span>
@@ -302,7 +302,7 @@ export function MemorySettingsPage() {
                       )}
                       aria-hidden="true"
                     />
-                    <span className="truncate font-mono text-[11px]">{p.path}</span>
+                    <span className="truncate font-mono text-meta">{p.path}</span>
                   </button>
                 )
               })
@@ -321,7 +321,7 @@ export function MemorySettingsPage() {
                     {selectedPath}
                   </span>
                   {isDirty && (
-                    <span className="hidden items-center gap-1 font-mono text-xs md:text-[11px] text-(--color-text-muted) sm:inline-flex">
+                    <span className="hidden items-center gap-1 font-mono text-xs md:text-meta text-(--color-text-muted) sm:inline-flex">
                       <span
                         className="h-1.5 w-1.5 rounded-full bg-(--color-text)"
                         aria-hidden="true"
@@ -391,7 +391,7 @@ export function MemorySettingsPage() {
                 aria-hidden="true"
               />
               <p className="text-xs font-semibold text-(--color-text)">No page selected</p>
-              <p className="mt-1 text-[11px] text-(--color-text-muted)">
+              <p className="mt-1 text-meta text-(--color-text-muted)">
                 Select a memory page to edit or create a new one.
               </p>
             </div>
@@ -437,7 +437,7 @@ export function MemorySettingsPage() {
             <DialogTitle>Delete this memory page?</DialogTitle>
             <DialogDescription>
               Agents lose{' '}
-              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text)">
                 {selectedPath}
               </code>
  and its notes. This can&apos;t be undone.
@@ -461,7 +461,7 @@ export function MemorySettingsPage() {
             <DialogTitle>New memory page</DialogTitle>
             <DialogDescription>
               Enter the page path relative to global memory (e.g.{' '}
-              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text)">
                 topics/database.md
               </code>
               ).

@@ -35,7 +35,7 @@ body {
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.35;
   color: var(--color-text);

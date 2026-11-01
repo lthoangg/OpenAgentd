@@ -17,7 +17,7 @@ export const META_ROW_GRID =
 
 /** Right-aligned meta column: tabular mono numbers, muted. */
 export const META_COL =
-  'flex min-w-24 items-center justify-end gap-1.5 font-mono text-[11px] tabular-nums whitespace-nowrap text-(--color-text-subtle)'
+  'flex min-w-24 items-center justify-end gap-1.5 font-mono text-meta tabular-nums whitespace-nowrap text-(--color-text-subtle)'
 
 type MetaRowProps = (
   | ({ as?: 'div' } & ComponentPropsWithRef<'div'>)

@@ -546,14 +546,14 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               }
             }}
             spellCheck={false}
-            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-[11px] text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-7 pointer-coarse:text-xs"
+            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-meta text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-7 pointer-coarse:text-xs"
           />
         </form>
         {agentAction && (
           <span
             role="status"
             title={`The agent is using this page (${agentAction})`}
-            className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-(--accent-blue-soft) px-2 text-[11px] font-medium text-(--accent-blue-text)"
+            className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-(--accent-blue-soft) px-2 text-meta font-medium text-(--accent-blue-text)"
           >
             <Bot size={11} aria-hidden="true" />
             <span className="hidden sm:inline">Agent</span>
@@ -568,7 +568,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           dense
           // rounded-xs: the address bar's corners, not the form trigger's rounded-md.
           // dense: 28px on touch too, so it fits the 32px toolbar.
-          className="h-7 shrink-0 gap-1 rounded-xs px-1.5 text-[11px]"
+          className="h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta"
           trigger={
             <span className="flex items-center gap-1">
               <Smartphone size={12} aria-hidden="true" />
@@ -617,7 +617,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           <span className="relative">
             <SquareTerminal size={13} aria-hidden="true" />
             {errorCount > 0 && (
-              <span className="absolute -top-1.5 -right-2 min-w-3.5 rounded-full bg-(--color-error) px-0.5 text-center text-[11px] leading-3.5 font-semibold text-(--color-text-on-accent)">
+              <span className="absolute -top-1.5 -right-2 min-w-3.5 rounded-full bg-(--color-error) px-0.5 text-center text-meta leading-3.5 font-semibold text-(--color-text-on-accent)">
                 {errorCount > 99 ? '99+' : errorCount}
               </span>
             )}
@@ -646,7 +646,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         )}
       </div>
       {(error || inspectorMissing) && (
-        <div role={error ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11px]', error ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
+        <div role={error ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-meta', error ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
           <p className="min-w-0 flex-1 break-words">
             {error ?? 'Design tools and the console are unavailable on this page: it did not load the preview script (a strict Content-Security-Policy can block it).'}
           </p>
@@ -694,14 +694,14 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       {consoleOpen && (
         <section aria-label="Preview console" className="flex max-h-44 shrink-0 flex-col border-t border-(--color-border) bg-(--bg-page)">
           <div className="flex h-7 shrink-0 items-center gap-2 pr-1 pl-3">
-            <p className="min-w-0 flex-1 text-[11px] text-(--color-text-muted)">
+            <p className="min-w-0 flex-1 text-meta text-(--color-text-muted)">
               {consoleEntries.length} {consoleEntries.length === 1 ? 'entry' : 'entries'}
             </p>
             <Button type="button" variant="ghost" size="xs" onClick={() => setConsoleEntries([])} disabled={!consoleEntries.length}>
               Clear
             </Button>
           </div>
-          <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 font-mono text-[11px]">
+          <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 font-mono text-meta">
             {consoleEntries.length === 0 && <li className="text-(--color-text-subtle)">No console output yet.</li>}
             {consoleEntries.map((entry, index) => (
               <li

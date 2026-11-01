@@ -1,5 +1,4 @@
 import { createRoot } from 'react-dom/client'
-import '@fontsource-variable/inter'
 import './island.css'
 import { Island } from './Island'
 

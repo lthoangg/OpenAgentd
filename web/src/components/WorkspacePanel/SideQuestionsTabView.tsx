@@ -72,7 +72,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pl-3 pr-1.5">
         <span className="text-xs font-medium text-(--color-text)">Side questions</span>
-        <span className="truncate text-[11px] text-(--color-text-subtle)">Not added to the chat</span>
+        <span className="truncate text-meta text-(--color-text-subtle)">Not added to the chat</span>
         <span className="min-w-0 flex-1" aria-hidden="true" />
         <Button
           size={confirmClear ? 'xs' : 'icon-xs'}

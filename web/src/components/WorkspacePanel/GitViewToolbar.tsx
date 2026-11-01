@@ -130,7 +130,7 @@ export function GitViewToolbar({
           </Dropdown>
         )}
         {!mobile && subTab !== 'changes' && (
-          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
+          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-meta text-(--color-text-muted)">
             <Checkbox
               checked={subTab === 'tree'}
               onChange={(event) => onSubTabChange(event.currentTarget.checked ? 'tree' : 'commits')}
@@ -141,7 +141,7 @@ export function GitViewToolbar({
           </label>
         )}
         {!mobile && subTab === 'tree' && (
-          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
+          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-meta text-(--color-text-muted)">
             <Checkbox
               checked={allBranches}
               onChange={(event) => onAllBranchesChange(event.currentTarget.checked)}

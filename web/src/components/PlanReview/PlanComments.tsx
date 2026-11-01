@@ -113,7 +113,7 @@ export function CommentComposer({
       }
       style={docked || !anchor ? undefined : { top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
     >
-      <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-[11px] leading-relaxed text-(--color-text-subtle)">
+      <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-meta leading-relaxed text-(--color-text-subtle)">
         {quote}
       </p>
       <Textarea
@@ -161,7 +161,7 @@ export function CommentList({
               type="button"
               onClick={() => onShow(comment)}
               title="Show in the plan"
-              className="block w-full truncate border-l-2 border-(--color-border-strong) pl-1.5 text-left text-[11px] leading-relaxed text-(--color-text-subtle) hover:text-(--color-text-muted) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+              className="block w-full truncate border-l-2 border-(--color-border-strong) pl-1.5 text-left text-meta leading-relaxed text-(--color-text-subtle) hover:text-(--color-text-muted) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
             >
               {comment.quote}
             </button>

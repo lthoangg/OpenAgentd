@@ -119,7 +119,7 @@ export function FilePreviewSubPanel({
               <p data-file-preview-path="" className="flex min-w-0 items-baseline gap-1.5 font-mono text-xs" aria-label={file.path}>
                 <span className="min-w-0 truncate text-(--color-text)">{fileBaseName(file.path)}</span>
                 {fileDirName(file.path) && (
-                  <span className="min-w-0 shrink-[4] truncate text-[11px] text-(--color-text-muted)">{fileDirName(file.path)}</span>
+                  <span className="min-w-0 shrink-[4] truncate text-meta text-(--color-text-muted)">{fileDirName(file.path)}</span>
                 )}
               </p>
             }
@@ -127,7 +127,7 @@ export function FilePreviewSubPanel({
           <TooltipContent side="bottom">{file.path}</TooltipContent>
         </Tooltip>
         {file.size > 0 && (
-          <span className="hidden shrink-0 font-mono text-[11px] text-(--color-text-subtle) md:inline">{formatBytes(file.size)}</span>
+          <span className="hidden shrink-0 font-mono text-meta text-(--color-text-subtle) md:inline">{formatBytes(file.size)}</span>
         )}
         <div className="flex shrink-0 items-center gap-0.5">
           {markdown && (

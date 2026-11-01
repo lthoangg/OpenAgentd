@@ -17,7 +17,7 @@ export function ModelId({ id, className }: { id: string; className?: string }) {
   return (
     <span className={cn('inline-flex min-w-0 max-w-full items-center gap-1.5', className)} title={id}>
       <span className="min-w-0 truncate font-mono">{modelName(id)}</span>
-      {provider && <Chip mono variant="outline">{provider}</Chip>}
+      {provider && <Chip mono>{provider}</Chip>}
     </span>
   )
 }

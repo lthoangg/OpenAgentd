@@ -2,6 +2,8 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
+import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
+import { RunStatusAnnouncer } from '@/components/RunStatusAnnouncer'
 import { Seal } from '@/components/brand/Logo'
 import { Home } from 'lucide-react'
 import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
@@ -129,6 +131,8 @@ export function Root() {
       <TelemetrySurface />
       <KeyboardShortcutsSheet />
       <FloatingNotices />
+      <TitleTooltipLayer />
+      <RunStatusAnnouncer />
     </QueryClientProvider>
   )
 }

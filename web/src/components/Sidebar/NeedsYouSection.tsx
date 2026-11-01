@@ -20,9 +20,9 @@ export function NeedsYouSection({
 
   return (
     <section aria-label="Needs you" className="shrink-0 border-b border-(--color-border-subtle) pb-1.5">
-      <div className="flex h-8 items-center gap-1.5 pl-3 pr-1.5 text-[11px] leading-none">
+      <div className="flex h-8 items-center gap-1.5 pl-3 pr-1.5 text-meta leading-none">
         <span className="label-caps text-(--color-text-subtle)">Needs you</span>
-        <span className="tabular-nums text-(--color-warning)">{sessions.length}</span>
+        <span className="tabular-nums text-(--accent-orange-text)">{sessions.length}</span>
       </div>
       <ul className="max-h-48 space-y-px overflow-y-auto px-1.5">
         {sessions.map((session) => (

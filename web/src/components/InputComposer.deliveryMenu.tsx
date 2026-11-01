@@ -45,10 +45,10 @@ export function DeliveryMenu({ className, mac, showShortcuts, onPick }: {
             <span className="flex items-center gap-3">
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-(--color-text)">{label}</span>
-                <span className="text-[11px] font-normal text-(--color-text-muted)">{hint}</span>
+                <span className="text-meta font-normal text-(--color-text-muted)">{hint}</span>
               </span>
               {showShortcuts && (
-                <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] font-normal text-(--color-text-muted)">
+                <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-meta font-normal text-(--color-text-muted)">
                   {shortcut.keys}
                 </kbd>
               )}

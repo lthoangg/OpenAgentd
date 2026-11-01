@@ -25,6 +25,7 @@ beforeEach(() => {
   document.documentElement.classList.remove('dark', 'light')
   delete document.documentElement.dataset.openagentdAppId
   delete document.documentElement.dataset.openagentdWindowId
+  delete document.documentElement.dataset.textSize
   delete window.__OAD_APP_ID__
   delete window.__OAD_WINDOW_ID__
 })
@@ -66,5 +67,21 @@ describe('theme-init pre-paint script', () => {
     runThemeInit()
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('applies the saved text size before paint', () => {
+    localStorage.setItem('oa.display.v1', JSON.stringify({ state: { transcriptStyle: 'detailed', textSize: 'large' }, version: 0 }))
+
+    runThemeInit()
+
+    expect(document.documentElement.dataset.textSize).toBe('large')
+  })
+
+  it('leaves the text size unset (Default) for an unknown value', () => {
+    localStorage.setItem('oa.display.v1', JSON.stringify({ state: { textSize: 'huge' }, version: 0 }))
+
+    runThemeInit()
+
+    expect(document.documentElement.dataset.textSize).toBeUndefined()
   })
 })

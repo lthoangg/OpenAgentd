@@ -27,6 +27,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { getPlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { Button } from '@/components/ui/button'
@@ -146,8 +147,8 @@ const DIALOG_PADDING = {
  * panels lay out their own footer.
  */
 const FOOTER_BLEED = {
-  default: '-mx-4 -mb-4 mt-4 p-4',
-  compact: '-mx-3 -mb-3 mt-3 p-3',
+  default: 'mt-5',
+  compact: 'mt-4',
   none: '',
 } as const
 
@@ -219,13 +220,25 @@ function DialogHeader({ className, ...props }: ComponentPropsWithRef<'div'>) {
   return <div data-slot="dialog-header" className={cn('flex flex-col gap-2', className)} {...props} />
 }
 
+/**
+ * Children go Cancel first, then the primary action. On wide screens the row
+ * follows the host OS: Cancel · Primary (macOS, iOS, Linux, Android), or
+ * Primary · Cancel on Windows. Phones stack them with the primary on top.
+ */
 function DialogFooter({ className, showCloseButton = false, children, ...props }: ComponentPropsWithRef<'div'> & { showCloseButton?: boolean }) {
   const { setOpen } = useDialog()
   const padding = useContext(DialogPaddingContext)
+  const primaryFirst = getPlatform().os === 'windows'
   return (
     <div
       data-slot="dialog-footer"
-      className={cn('flex flex-col-reverse gap-2 rounded-b-lg border-t border-(--color-border) bg-(--bg-key)/50 sm:flex-row sm:justify-end', FOOTER_BLEED[padding], className)}
+      data-button-order={primaryFirst ? 'primary-first' : 'cancel-first'}
+      className={cn(
+        'flex flex-col-reverse gap-2',
+        primaryFirst ? 'sm:flex-row-reverse sm:justify-start' : 'sm:flex-row sm:justify-end',
+        FOOTER_BLEED[padding],
+        className,
+      )}
       {...props}
     >
       {children}

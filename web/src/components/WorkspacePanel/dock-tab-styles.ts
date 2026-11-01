@@ -1,29 +1,27 @@
 /**
  * Shared class strings for the review dock's editor-tab strip.
  *
- * The strip sits on the recessed ``bg-sidebar`` rail; the active tab lifts
- * to ``bg-page`` with a 2px Bark top edge so it reads as the open sheet the
- * content below belongs to. The bar draws no bottom border of its own: each
- * inactive tab, the trailing filler, and the action cluster draw theirs, so
- * the active tab can open onto the content (an ``-mb-px`` overlap would be
- * clipped by the strip's horizontal scroller).
+ * Fewer borders (DESIGN.md → Editor tabs): tabs are borderless pills on the
+ * recessed ``bg-sidebar`` rail. The open tab is filled with the page colour
+ * and set in medium weight with the main text colour, with no coloured edge;
+ * the strip draws the one hairline between it and the content.
  */
 
 /** Tab wrapper. Holds the activate button and, when closable, a close button. */
 export function dockTabClass(active: boolean): string {
   return [
-    'group/tab relative flex h-full max-w-48 shrink-0 items-center border-t-2 border-r border-b border-r-(--color-border-subtle) text-xs transition-colors duration-(--motion-instant)',
+    'group/tab relative flex h-full max-w-48 shrink-0 items-center rounded-sm text-xs transition-colors duration-(--motion-instant)',
     active
-      ? 'border-t-(--color-accent) border-b-transparent bg-(--bg-page) text-(--color-text)'
-      : 'border-t-transparent border-b-(--color-border) text-(--color-text-muted) hover:bg-(--bg-key)/50 hover:text-(--color-text-2)',
+      ? 'bg-(--bg-page) font-medium text-(--color-text)'
+      : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)',
   ].join(' ')
 }
 
 /** Activate button filling the tab. ``closable`` tabs leave room for the ×. */
 export function dockTabButtonClass(closable: boolean): string {
   return [
-    'flex h-full min-w-0 items-center gap-1.5 outline-none focus-key:bg-(--bg-key)/60',
-    closable ? 'pl-3 pr-1' : 'px-3',
+    'flex h-full min-w-0 items-center gap-1.5 rounded-sm outline-none focus-key:bg-(--bg-key)/60',
+    closable ? 'pl-2.5 pr-1' : 'px-2.5',
   ].join(' ')
 }
 
@@ -33,11 +31,11 @@ export function dockTabButtonClass(closable: boolean): string {
  */
 export const DOCK_TAB_LIFTED_CLASS = 'shadow-(--shadow-depth) bg-(--bg-card) text-(--color-text) cursor-grabbing'
 
-/** Inline close control; always shown on the active tab and on touch. */
+/** Inline close control; always shown, dimmed on tabs that are not open. */
 export function dockTabCloseClass(active: boolean): string {
   return [
-    'mr-1.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:mr-0 pointer-coarse:size-9',
-    active ? 'opacity-100' : 'opacity-70 md:opacity-0 md:group-hover/tab:opacity-100 md:group-focus-within/tab:opacity-100',
+    'mr-1 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:mr-0 pointer-coarse:size-9',
+    active ? 'opacity-100' : 'opacity-60 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100',
   ].join(' ')
 }
 

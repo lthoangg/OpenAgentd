@@ -19,7 +19,7 @@ import { copyText } from '@/components/ChatContextMenu'
 import { SpanTypeChip } from './categories'
 import { shortDateTimeSeconds } from './ModelId'
 
-const SECTION_LABEL_CLASS = 'mb-1.5 mt-4 text-[11px] font-medium text-(--color-text-muted)'
+const SECTION_LABEL_CLASS = 'mb-1.5 mt-4 text-meta font-medium text-(--color-text-muted)'
 
 function Kv({ label, value, mono = true }: { label: ReactNode; value: ReactNode; mono?: boolean }) {
   return (
@@ -42,7 +42,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
         setDone(true)
         setTimeout(() => setDone(false), 1500)
       }}
-      className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-0 transition-opacity group-hover:opacity-100 hover:text-(--color-text) focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 pointer-coarse:opacity-100"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 pointer-coarse:opacity-100"
     >
       {done ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
     </button>
@@ -51,7 +51,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 
 function AttrRow({ k, v }: { k: string; v: string }) {
   return (
-    <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2 py-1 font-mono text-[11px] md:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto]">
+    <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2 py-1 font-mono text-meta md:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto]">
       <dt className="col-start-1 truncate text-(--color-text-muted)" title={k}>
         {k}
       </dt>
@@ -74,7 +74,7 @@ function Group({ title, count, children, collapsible = false }: { title: string;
       <span className="ml-auto font-sans text-(--color-text-subtle)">{count}</span>
     </>
   )
-  const headerClass = 'flex h-7 items-center gap-1.5 bg-(--bg-key)/50 px-2 font-mono text-[11px] font-medium text-(--color-text-2)'
+  const headerClass = 'flex h-7 items-center gap-1.5 bg-(--bg-key)/50 px-2 font-mono text-meta font-medium text-(--color-text-2)'
   if (collapsible) {
     return (
       <details className="group/grp overflow-hidden rounded-sm border border-(--color-border-subtle)">
@@ -142,7 +142,7 @@ export function SpanDetailPanel({
         <SpanTypeChip category={category} error={isError} />
         <Tooltip className="min-w-0 flex-1">
           <TooltipTrigger
-            render={<h3 className="truncate font-mono text-[13px] font-semibold text-(--color-text)">{span.name}</h3>}
+            render={<h3 className="truncate font-mono text-code font-semibold text-(--color-text)">{span.name}</h3>}
           />
           <TooltipContent>{span.name}</TooltipContent>
         </Tooltip>
@@ -187,7 +187,7 @@ export function SpanDetailPanel({
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-(--color-border) bg-(--color-border)">
               {tokens.map((t) => (
                 <div key={t.label} className="bg-(--bg-card) px-2.5 py-1.5">
-                  <dt className="text-[11px] text-(--color-text-muted)">{t.label}</dt>
+                  <dt className="text-meta text-(--color-text-muted)">{t.label}</dt>
                   <dd className="font-mono text-sm font-semibold tabular-nums text-(--color-text)">{formatInt(t.value)}</dd>
                 </div>
               ))}
@@ -202,7 +202,7 @@ export function SpanDetailPanel({
         )}
 
         <div className="mt-4 flex items-center justify-between">
-          <h4 className="text-[11px] font-medium text-(--color-text-muted)">
+          <h4 className="text-meta font-medium text-(--color-text-muted)">
             Attributes <span className="text-(--color-text-subtle)">{attrCount}</span>
           </h4>
           <Button variant="subtle" size="xs" onClick={copyJson}>

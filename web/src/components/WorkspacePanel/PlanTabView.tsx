@@ -478,14 +478,14 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pl-3 pr-1.5">
         <span className="text-xs font-medium text-(--color-text)">Plan</span>
-        <span className={cn('inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium', chip.className)}>
+        <span className={cn('inline-flex h-5 shrink-0 items-center rounded-full px-2 text-meta font-medium', chip.className)}>
           {chip.label}
         </span>
         {plan.revision !== undefined && (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
+          <span className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
         )}
         <span
-          className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
+          className="hidden shrink-0 font-mono text-meta tabular-nums text-(--color-text-subtle) sm:inline"
           title={`Updated ${formatRelativeDate(plan.updated_at)}`}
         >
           {formatCompactRelative(plan.updated_at)}
@@ -572,7 +572,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             className="min-h-0 flex-1 resize-none font-mono field-sizing-fixed"
           />
           {saveError && (
-            <p role="alert" className="text-[11px] text-(--color-error)">{saveError}</p>
+            <p role="alert" className="text-meta text-(--color-error)">{saveError}</p>
           )}
           <div className="flex shrink-0 items-center justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={update.isPending}>
@@ -704,9 +704,9 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               !compactFooter && (comments.length ? 'min-h-10' : 'min-h-16'),
             )}
           />
-          {!compactFooter && <p className="text-[11px] text-(--color-text-subtle)">Or reply in chat to redirect the agent.</p>}
+          {!compactFooter && <p className="text-meta text-(--color-text-subtle)">Or reply in chat to redirect the agent.</p>}
           {resolver.error && (
-            <p role="alert" className="text-[11px] text-(--color-error)">{resolver.error}</p>
+            <p role="alert" className="text-meta text-(--color-error)">{resolver.error}</p>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
             {showKeepGoing && (
@@ -721,7 +721,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                   Keep going until done
                 </label>
                 {keepGoing && (
-                  <label className="flex items-center gap-1 text-[11px] text-(--color-text-subtle)">
+                  <label className="flex items-center gap-1 text-meta text-(--color-text-subtle)">
                     for
                     <input
                       type="number"
@@ -734,7 +734,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                       onChange={(event) => setTurnsDraft(event.target.value)}
                       onFocus={() => setTurnsFocused(true)}
                       onBlur={() => setTurnsFocused(false)}
-                      className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-[11px] text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) aria-invalid:border-(--color-error)"
+                      className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-meta text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) aria-invalid:border-(--color-error)"
                     />
                     turns
                   </label>
@@ -748,7 +748,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                 // Keep focus (and the keyboard) in the feedback box.
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => setShowComments((open) => !open)}
-                className="mr-auto inline-flex items-center gap-1 rounded-full border border-(--color-border) px-2 py-0.5 text-[11px] text-(--color-text-2)"
+                className="mr-auto inline-flex items-center gap-1 rounded-full border border-(--color-border) px-2 py-0.5 text-meta text-(--color-text-2)"
               >
                 {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
                 <ChevronRight
@@ -759,7 +759,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               </button>
             ) : (
               footerHint && (!compactFooter || tooLong || turnsFocused) && (
-                <span className={cn('text-[11px] text-(--color-text-subtle)', compactFooter && 'mr-auto')}>{footerHint}</span>
+                <span className={cn('text-meta text-(--color-text-subtle)', compactFooter && 'mr-auto')}>{footerHint}</span>
               )
             )}
             <Button

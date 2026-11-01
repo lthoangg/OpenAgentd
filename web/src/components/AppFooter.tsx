@@ -97,11 +97,11 @@ export interface AppFooterProps {
   className?: string
 }
 
-/** Shared status-bar item: 20px tall, 11px text, keycap hover. */
+/** Shared status-bar item: 24px tall in the 28px bar, meta text, keycap hover. */
 const ITEM =
-  'flex h-5 min-w-0 items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+  'flex h-6 min-w-0 items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 const ICON_ITEM =
-  'flex h-5 w-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
 function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
@@ -172,7 +172,7 @@ export const AppFooter = memo(function AppFooter({
   return (
     <footer
       className={cn(
-        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-[11px] text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
+        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-meta text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
         className,
       )}
       aria-label="Status bar"
@@ -226,7 +226,7 @@ export const AppFooter = memo(function AppFooter({
                   aria-label={`Model ${activeModel}${showThinking ? `, thinking ${activeThinkingLevel}` : ''}. Change model`}
                 >
                   <span className="truncate font-mono">{model.short}</span>
-                  {model.provider && <Chip variant="outline" mono>{model.provider}</Chip>}
+                  {model.provider && <Chip mono>{model.provider}</Chip>}
                   {showThinking && <Chip mono>{activeThinkingLevel}</Chip>}
                 </button>
               }
@@ -243,7 +243,7 @@ export const AppFooter = memo(function AppFooter({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[11px] font-medium text-(--accent-orange-text)">
+                <span className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-meta font-medium text-(--accent-orange-text)">
                   <Zap size={11} aria-hidden="true" />
                   <span>fast</span>
                 </span>

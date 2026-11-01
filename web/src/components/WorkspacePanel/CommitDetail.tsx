@@ -38,7 +38,7 @@ export function CommitSyncBadge({
         render={
           <span
             className={cn(
-              'rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[11px] font-semibold leading-none',
+              'rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-meta font-semibold leading-none',
               isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
             )}
           >
@@ -71,14 +71,14 @@ export function CommitDetail({
   }
 
   if (commitDiff.isLoading) {
-    return <p className="py-2 text-xs md:text-[11px] text-(--color-text-subtle)">Loading commit changes…</p>
+    return <p className="py-2 text-xs md:text-meta text-(--color-text-subtle)">Loading commit changes…</p>
   }
   if (commitDiff.isError) {
-    return <p className="py-2 text-xs md:text-[11px] text-(--color-error)">Failed to load commit changes</p>
+    return <p className="py-2 text-xs md:text-meta text-(--color-error)">Failed to load commit changes</p>
   }
 
   if (commitChangedFiles.length === 0) {
-    return <p className="py-2 text-xs md:text-[11px] text-(--color-text-subtle)">No files changed in this commit.</p>
+    return <p className="py-2 text-xs md:text-meta text-(--color-text-subtle)">No files changed in this commit.</p>
   }
 
   return (
@@ -107,7 +107,7 @@ export function CommitDetail({
                         })
                       }
                     }}
-                    className="flex h-7 w-full cursor-pointer items-center gap-1.5 px-2 text-left text-xs md:h-6 md:text-[11px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
+                    className="flex h-7 w-full cursor-pointer items-center gap-1.5 px-2 text-left text-xs md:h-6 md:text-meta text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-expanded={expanded}
                   >
                     <ChevronRight size={11} className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', expanded && 'rotate-90')} aria-hidden="true" />
@@ -126,7 +126,7 @@ export function CommitDetail({
                     <DiffPreview diff={fileDiff} autoScroll={false} />
                   </div>
                 ) : (
-                  <p className="px-2 py-2 text-[11px] text-(--color-text-subtle)">No diff body for this file.</p>
+                  <p className="px-2 py-2 text-meta text-(--color-text-subtle)">No diff body for this file.</p>
                 )}
               </div>
             </Collapsible>

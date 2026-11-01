@@ -447,7 +447,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
                 type="button"
                 onClick={() => showPage(null)}
                 aria-label={trail.length > 1 ? `Back to ${trail[trail.length - 2].title}` : 'Back to all commands'}
-                className="inline-flex min-w-0 max-w-[60%] items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-[11px] font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                className="inline-flex min-w-0 max-w-[60%] items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-meta font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 <ChevronLeft size={12} className="shrink-0" aria-hidden="true" />
                 <span className="truncate">{trail.map((t) => t.title).join(' › ')}</span>
@@ -468,7 +468,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
             {query && (
               <button
                 onClick={() => handleQueryChange('')}
-                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                className="rounded-xs px-1.5 py-1 text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 Clear
               </button>
@@ -481,7 +481,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
                 <p className="text-xs text-(--color-text-muted)">{emptyLabel}</p>
                 {query.trim() && (
-                  <p className="text-[11px] text-(--color-text-subtle)">Try searching for another keyword or path</p>
+                  <p className="text-meta text-(--color-text-subtle)">Try searching for another keyword or path</p>
                 )}
               </div>
             ) : (
@@ -524,25 +524,25 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
 
           {/* Keyboard hints: phones have no keys to press, and the row would
               clip at 320px. */}
-          <div data-palette-hints="" className="hidden shrink-0 items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2 md:flex">
-            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↑↓</kbd>
+          <div data-palette-hints="" className="hidden shrink-0 items-center gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-3 py-2 md:flex">
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
-            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↵</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">↵</kbd>
             <span className="text-xs text-(--color-text-muted)">run</span>
             {activeOpensPage && (
               <>
-                <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">→</kbd>
+                <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">→</kbd>
                 <span className="text-xs text-(--color-text-muted)">open</span>
               </>
             )}
             {page && (
-              <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">←</kbd>
+              <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">←</kbd>
             )}
-            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">Esc</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">{page ? 'back' : 'close'}</span>
             {hasFiles && !commandMode && (
               <>
-                <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">&gt;</kbd>
+                <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">&gt;</kbd>
                 <span className="text-xs text-(--color-text-muted)">commands</span>
               </>
             )}
@@ -550,7 +550,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
               <Tooltip className="ml-auto min-w-0">
                 <TooltipTrigger
                   className="min-w-0"
-                  render={<span className="truncate text-xs text-(--color-warning)">file list truncated</span>}
+                  render={<span className="truncate text-xs text-(--accent-orange-text)">file list truncated</span>}
                 />
                 <TooltipContent>The workspace has more files than the listing cap, so some files are not searchable here.</TooltipContent>
               </Tooltip>
@@ -588,7 +588,7 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
         </span>
         {file.path !== file.name && (
           <span
-            className="block truncate font-mono text-xs md:text-[11px] text-(--color-text-muted)"
+            className="block truncate font-mono text-xs md:text-meta text-(--color-text-muted)"
             title={file.path}
           >
             {file.path}
@@ -624,14 +624,14 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
       <div className="min-w-0 flex-1 overflow-hidden">
         <span className="block truncate text-xs font-medium text-(--color-text)">{cmd.label}</span>
         {cmd.description && (
-          <span className="block truncate text-[11px] text-(--color-text-muted)">
+          <span className="block truncate text-meta text-(--color-text-muted)">
             {cmd.description}
           </span>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {cmd.shortcut && (
-          <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+          <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">
             {cmd.shortcut}
           </kbd>
         )}

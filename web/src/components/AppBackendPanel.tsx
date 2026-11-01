@@ -304,7 +304,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {/* Current connection */}
       <SectionCard>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-5">
-          <span className="size-2.5 shrink-0 rounded-full bg-(--color-success)" aria-hidden="true" />
+          <span className="size-2.5 shrink-0 rounded-full bg-(--accent-green-text)" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-(--color-text)">{currentTitle}</p>
             <p className={cn('mt-0.5 truncate font-mono', TEXT.hint)}>{currentUrl}</p>
@@ -477,7 +477,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             {error ? (
               <p role="alert" className="text-(--color-error)">{error}</p>
             ) : tested ? (
-              <p role="status" className="font-medium text-(--color-success)">Connection successful.</p>
+              <p role="status" className="font-medium text-(--accent-green-text)">Connection successful.</p>
             ) : (
               <p className="text-(--color-text-muted)">Test the connection to enable saving.</p>
             )}
@@ -563,8 +563,8 @@ function ServerRow({
               className={cn(
                 'mt-0.5 block truncate',
                 TEXT.hint,
-                note.tone === 'ok' && 'text-(--color-success)',
-                note.tone === 'warn' && 'text-(--color-warning)',
+                note.tone === 'ok' && 'text-(--accent-green-text)',
+                note.tone === 'warn' && 'text-(--accent-orange-text)',
                 note.tone === 'error' && 'text-(--color-error)',
               )}
             >
@@ -580,7 +580,7 @@ function ServerRow({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="shrink-0 rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted) select-none">
+    <span className="shrink-0 rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-0.5 text-meta font-medium text-(--color-text-muted) select-none">
       {children}
     </span>
   )
@@ -596,7 +596,7 @@ function hostnameOf(baseUrl: string): string {
 
 function ServerStatusDot({ status }: { status: Health | undefined }) {
   const className = status === 'online'
-    ? 'bg-(--color-success)'
+    ? 'bg-(--accent-green-text)'
     : status === 'offline'
       ? 'bg-(--color-error)'
       : 'animate-pulse bg-(--color-text-muted)'

@@ -192,9 +192,9 @@ function CommitHistorySubPanelView({
                         />
                         <TooltipContent>{subject}</TooltipContent>
                       </Tooltip>
-                      <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">{commit.short_sha}</span>
+                      <span className="shrink-0 font-mono text-meta text-(--color-text-subtle)">{commit.short_sha}</span>
                     </span>
-                    <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-(--color-text-muted) md:text-[11px]">
+                    <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-(--color-text-muted) md:text-meta">
                       {refs.length > 0 && (
                         // Labels shrink (and end in "…") before the date does.
                         <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
@@ -230,7 +230,7 @@ function CommitHistorySubPanelView({
                 {isExpanded && (
                   <div className="px-3 pb-2">
                     {commit.body && (
-                      <p className="max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words border-l-2 border-(--color-border) py-0.5 pl-2 text-[11px] leading-relaxed text-(--color-text-2)">
+                      <p className="max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words border-l-2 border-(--color-border) py-0.5 pl-2 text-meta leading-relaxed text-(--color-text-2)">
                         {commit.body}
                       </p>
                     )}
@@ -252,7 +252,7 @@ function CommitHistorySubPanelView({
         </ul>
 
         {gitHistory.isFetchingNextPage && (
-          <p className="py-2 text-center text-xs text-(--color-text-subtle) md:text-[11px]">Loading more commits…</p>
+          <p className="py-2 text-center text-xs text-(--color-text-subtle) md:text-meta">Loading more commits…</p>
         )}
         <div ref={sentinelRef} className="h-1" />
         {gitHistory.hasNextPage && (
@@ -287,7 +287,7 @@ function CommitHistorySubPanelView({
           key={line.key}
           className="group flex h-5 items-center gap-2 rounded-xs px-1 transition-colors hover:bg-(--bg-key)/40"
         >
-          <span className="shrink-0 font-mono text-[11px] leading-none tracking-widest whitespace-pre select-none">
+          <span className="shrink-0 font-mono text-meta leading-none tracking-widest whitespace-pre select-none">
             {renderGraphPrefix(line.graphPart)}
           </span>
           {line.sha ? (
@@ -299,7 +299,7 @@ function CommitHistorySubPanelView({
                     <button
                       type="button"
                       onClick={() => { if (line.sha) showCommitFromGraph(line.sha) }}
-                      className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 font-mono text-[11px] leading-4 text-(--color-text-subtle) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key) hover:text-(--color-text)"
+                      className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 font-mono text-meta leading-4 text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key) hover:text-(--color-text)"
                     >
                       {line.sha.substring(0, 7)}
                     </button>
@@ -317,7 +317,7 @@ function CommitHistorySubPanelView({
                         <TooltipTrigger
                           className="min-w-0"
                           render={
-                            <span className={cn('truncate rounded-xs border px-1 text-xs leading-4 font-semibold select-none md:text-[11px]', refChipClass(trimmed))}>
+                            <span className={cn('truncate rounded-xs border px-1 text-xs leading-4 font-semibold select-none md:text-meta', refChipClass(trimmed))}>
                               {trimmed}
                             </span>
                           }
@@ -332,7 +332,7 @@ function CommitHistorySubPanelView({
                 <TooltipTrigger
                   className="min-w-0 flex-1"
                   render={
-                    <span className="truncate font-mono text-[11px] text-(--color-text-2) transition-colors group-hover:text-(--color-text)">
+                    <span className="truncate font-mono text-meta text-(--color-text-2) transition-colors group-hover:text-(--color-text)">
                       {line.message}
                     </span>
                   }
@@ -342,7 +342,7 @@ function CommitHistorySubPanelView({
             </div>
           ) : (
             line.raw.trim().length > line.graphPart.trim().length && (
-              <span className="flex-1 truncate font-mono text-[11px] text-(--color-text-subtle)">
+              <span className="flex-1 truncate font-mono text-meta text-(--color-text-subtle)">
                 {line.raw.substring(line.graphPart.length)}
               </span>
             )

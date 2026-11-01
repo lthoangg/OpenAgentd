@@ -27,9 +27,9 @@ const STATUS_ICON: Record<TodoItem['status'], LucideIcon> = {
 }
 
 const STATUS_ICON_COLOR: Record<TodoItem['status'], string> = {
-  completed: 'text-(--color-success)',
+  completed: 'text-(--accent-green-text)',
   cancelled: 'text-(--color-text-subtle)',
-  in_progress: 'text-(--color-info)',
+  in_progress: 'text-(--accent-blue-text)',
   pending: 'text-(--color-text-muted)',
 }
 
@@ -79,7 +79,7 @@ export function TaskProgressBar({ summary }: { summary: TodoSummary }) {
       <div
         className={cn(
           'h-full w-full transition-transform duration-(--motion-base) ease-(--ease-out)',
-          summary.allDone ? 'bg-(--color-success)' : 'bg-(--color-info)',
+          summary.allDone ? 'bg-(--accent-green-text)' : 'bg-(--accent-blue-text)',
         )}
         style={{ translate: `${summary.progressPct - 100}% 0` }}
       />

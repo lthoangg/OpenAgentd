@@ -74,7 +74,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
           <PanelSection title="Skill file" description="SKILL.md, loaded by an agent when a task needs it.">
-            <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="mb-2.5 text-meta leading-relaxed text-(--color-text-muted)">
               The settings block at the top needs <span className="font-mono">name</span> and{' '}
               <span className="font-mono">description</span>. Name a sub-skill{' '}
               <span className="font-mono">parent/sub</span>. The text below is what the agent reads.
@@ -86,7 +86,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
               rows={28}
               spellCheck={false}
               aria-invalid={invalid || undefined}
-              className="min-h-96 font-mono text-[13px] leading-relaxed"
+              className="min-h-96 font-mono text-code leading-relaxed"
             />
             <p className="mt-2 text-xs text-(--color-text-muted)">
               Saved as <span className="font-mono text-(--color-text)">{name}</span>, from the <span className="font-mono">name</span> line.

@@ -575,6 +575,39 @@ run from the terminal (the native Rust binary since v3.0.0).
   **Appearance** section with a System / Light / Dark choice, and the Command
   Palette has **Theme…**, a list of System, Light and Dark that marks the
   current one `[v3.21.0]`. The mobile drawer keeps its theme button.
+- **Native look, fewer borders, readable everywhere** `[v3.40.0]`:
+  - Interface text uses the operating system's own font (SF Pro on macOS and
+    iOS, Segoe UI Variable on Windows, Roboto on Android, the desktop font on
+    Linux). Code, paths and model names stay in JetBrains Mono.
+  - Buttons, chips, tabs and segmented controls have no borders. The primary
+    button and the chosen segment (Code / Plan, for example) are filled with
+    the theme's Bark colour edge to edge, with inverted text; the highlighted
+    menu item is filled the same way. Menus, cards and dialogs keep one thin
+    frame, and nothing inside them adds another.
+  - Review panel tabs are borderless pills; the open tab is filled with the
+    page colour and set in medium weight, with no coloured edge.
+  - Dialog buttons follow the operating system: Cancel then the action on
+    macOS, iOS and Linux, the action first on Windows. The footer has no
+    border or fill of its own.
+  - Settings → General is now **Appearance**, with a new **Text size** choice
+    (Compact, Default, Large) remembered per device. Default is 1px larger than
+    before (13px interface text, 12px captions); Compact keeps the old density.
+    On iOS the system text size multiplies on top.
+  - Every text colour pair reaches WCAG AA with the existing palette: subtle
+    text moves to the muted tone on washes and cards, coloured words and light
+    mode status dots use their darker text tone, and checkbox and radio
+    outlines are heavier.
+  - Nothing appears on hover only: copy buttons, close buttons, row actions and
+    expand chevrons are always visible (dimmed until used).
+  - Native tooltips (`title`) render as the app's own tooltip, with the same
+    delay and look everywhere.
+  - The status bar is 28px with 24px items, and header controls are 36px on
+    touch screens.
+  - Error toasts stay until you close them, and a toast can carry an action.
+    Deleting a session shows **Session deleted · Undo** for 5 seconds; Undo
+    brings the session back (and reopens it if it was open).
+  - Screen readers hear "Agent is working", "Turn finished" and "Needs you: …"
+    for the open session.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

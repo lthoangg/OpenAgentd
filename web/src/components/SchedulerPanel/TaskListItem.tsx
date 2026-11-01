@@ -112,13 +112,13 @@ export function TaskListItem({
           <div className="flex min-w-0 items-center gap-1.5">
             <p className={cn('truncate', TEXT.label, isSelected && 'font-semibold')}>{task.name}</p>
             {task.slug !== task.name && (
-              <Chip mono variant="outline" title="Slug: the name the agent's schedule tool uses">
+              <Chip mono title="Slug: the name the agent's schedule tool uses">
                 {task.slug}
               </Chip>
             )}
           </div>
 
-          <p className="mt-1 truncate font-mono text-[11px] text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+          <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{formatScheduleLabel(task)}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
@@ -133,7 +133,7 @@ export function TaskListItem({
           </p>
 
           {task.last_error && (
-            <p className="mt-1 truncate text-[11px] text-(--color-error)" title={task.last_error}>
+            <p className="mt-1 truncate text-meta text-(--color-error)" title={task.last_error}>
               {task.last_error}
             </p>
           )}

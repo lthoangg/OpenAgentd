@@ -30,15 +30,15 @@ export function SessionGroupHeader({
       onClick={onToggle}
       aria-expanded={!collapsed}
       aria-controls={controls}
-      className={`group/header flex w-full items-center gap-1.5 rounded-sm pl-3 pr-2 text-left text-[11px] leading-none transition-colors hover:bg-(--bg-key)/35 pointer-coarse:h-(--spacing-list-row) ${tall ? 'h-8' : 'h-6'}`}
+      className={`group/header flex w-full items-center gap-1.5 rounded-sm pl-3 pr-2 text-left text-meta leading-none transition-colors hover:bg-(--bg-key)/35 pointer-coarse:h-(--spacing-list-row) ${tall ? 'h-8' : 'h-6'}`}
     >
       <span className="label-caps text-(--color-text-subtle)">{label}</span>
-      <span className={`tabular-nums ${tone === 'warning' ? 'text-(--color-warning)' : 'text-(--color-text-subtle)'}`}>{count}</span>
+      <span className={`tabular-nums ${tone === 'warning' ? 'text-(--accent-orange-text)' : 'text-(--color-text-subtle)'}`}>{count}</span>
       <span className="flex-1" />
       <ChevronRight
         size={11}
         aria-hidden="true"
-        className={`shrink-0 text-(--color-text-subtle) opacity-0 transition-transform duration-(--motion-fast) group-hover/header:opacity-100 group-focus-visible/header:opacity-100 pointer-coarse:opacity-100 ${collapsed ? '' : 'rotate-90'}`}
+        className={`shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ${collapsed ? '' : 'rotate-90'}`}
       />
     </button>
   )

@@ -45,7 +45,7 @@ export function DockListNotice({ children, tone = 'muted' }: { children: React.R
   )
 }
 
-const NOTICE_CLASS = 'border-b border-(--color-border-subtle) bg-(--color-warning)/10 px-3 py-1.5 text-xs text-(--color-warning)'
+const NOTICE_CLASS = 'border-b border-(--color-border-subtle) bg-(--color-warning-subtle) px-3 py-1.5 text-xs text-(--accent-orange-text)'
 
 /** An expanded row's diff: fetched for this file alone, only while open. */
 function ChangedFileDiff({ workspace, path }: { workspace: string; path: string }) {

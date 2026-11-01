@@ -108,7 +108,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
         >
           {live ? (
             <>
-              <span className="size-1.5 shrink-0 rounded-full bg-(--color-info)" aria-hidden="true" />
+              <span className="size-1.5 shrink-0 rounded-full bg-(--accent-blue-text)" aria-hidden="true" />
               <span className="shrink-0 font-semibold text-(--color-text)">Working</span>
               {elapsed && <span className="shrink-0 text-(--color-text-muted)">{` · ${elapsed}`}</span>}
               {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}
@@ -173,7 +173,7 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
           className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
         />
         <span>{`${files.length} ${files.length === 1 ? 'file' : 'files'} changed`}</span>
-        <span className="flex items-center gap-1.5 font-mono text-xs md:text-[11px]">
+        <span className="flex items-center gap-1.5 font-mono text-xs md:text-meta">
           {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
           {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
         </span>

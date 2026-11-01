@@ -42,7 +42,7 @@ export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevel
                       <span className={cn('line-clamp-2', TEXT.hint)}>{item.description}</span>
                     </span>
                     {count !== undefined && count !== null && (
-                      <span className="shrink-0 text-[11px] tabular-nums text-(--color-text-subtle)">
+                      <span className="shrink-0 text-meta tabular-nums text-(--color-text-subtle)">
                         {count}
                       </span>
                     )}

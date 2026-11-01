@@ -27,7 +27,7 @@ export function SessionStatusMark({ status, label }: { status: SessionStatus; la
   return (
     <span role="img" aria-label={name} className="flex size-3 shrink-0 items-center justify-center">
       {status === 'needs_input' && (
-        <span className="text-[11px] font-bold leading-none text-(--color-warning)" aria-hidden="true">!</span>
+        <span className="text-meta font-bold leading-none text-(--accent-orange-text)" aria-hidden="true">!</span>
       )}
       {status === 'running' && <Loader2 size={11} className="animate-spin text-(--color-accent)" aria-hidden="true" />}
       {status === 'unread' && <span className="size-1.5 rounded-full bg-(--color-accent)" aria-hidden="true" />}

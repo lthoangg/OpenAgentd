@@ -131,7 +131,7 @@ export function ProviderSignInRow({
               <>
                 <span className="text-xs font-semibold text-(--color-text)">Provider sign-in</span>
                 {plan && <Chip>{plan}</Chip>}
-                {accountInUse && <span className="text-[11px] text-(--color-text-muted)">Account in use</span>}
+                {accountInUse && <span className="text-meta text-(--color-text-muted)">Account in use</span>}
               </>
             }
             actions={refresh}
@@ -216,7 +216,7 @@ function OAuthIdentity({ c, index, ctx, plan }: { c: StoredCredential; index: nu
   if (ctx.renaming?.id === c.id) return <RenameForm c={c} ctx={ctx} />
   return (
     <>
-      <span className="min-w-3 text-[11px] tabular-nums text-(--color-text-subtle)">{index + 1}</span>
+      <span className="min-w-3 text-meta tabular-nums text-(--color-text-subtle)">{index + 1}</span>
       <span className="text-xs font-semibold text-(--color-text)">{c.label || c.id}</span>
       {plan && <Chip>{plan}</Chip>}
       <StatusPills credential={c} pinned={ctx.pinned} />
@@ -272,7 +272,7 @@ function IdleOAuthRow({ c, index, ctx }: { c: StoredCredential; index: number; c
           <ManageMenu c={c} index={index} ctx={ctx} />
         </>
       }
-      note={needsReconnect ? <p className="mt-1.5 text-[11px] text-(--color-text-muted)">The provider ended this sign-in. It is skipped until you reconnect.</p> : undefined}
+      note={needsReconnect ? <p className="mt-1.5 text-meta text-(--color-text-muted)">The provider ended this sign-in. It is skipped until you reconnect.</p> : undefined}
     />
   )
 }
@@ -365,14 +365,14 @@ export function CredentialList({
                   <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <div className="flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-xs font-semibold text-(--color-text)">From environment</span>
-                      {provider.env_var && <span className="font-mono text-[11px] text-(--color-text-muted)">{provider.env_var}</span>}
+                      {provider.env_var && <span className="font-mono text-meta text-(--color-text-muted)">{provider.env_var}</span>}
                       {plan && <Chip>{plan}</Chip>}
                       <Chip tone="info">In use</Chip>
                       <Chip>Read-only</Chip>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">{refresh}</div>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+                  <p className="text-meta leading-relaxed text-(--color-text-muted)">
                     Set in the environment when OpenAgentd started. Stored {noun}s are on standby while it is set.
                   </p>
                   {body}
@@ -381,15 +381,15 @@ export function CredentialList({
             </UsageScope>
           ) : (
             <div className="grid grid-cols-[24px_minmax(0,1fr)] gap-2.5">
-              <span className="flex h-6 items-center justify-center rounded-sm bg-(--bg-key) text-[11px] font-semibold text-(--color-text-muted)">env</span>
+              <span className="flex h-6 items-center justify-center rounded-sm bg-(--bg-key) text-meta font-semibold text-(--color-text-muted)">env</span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-(--color-text)">From environment</span>
-                  {provider.env_var && <span className="font-mono text-[11px] text-(--color-text-muted)">{provider.env_var}</span>}
+                  {provider.env_var && <span className="font-mono text-meta text-(--color-text-muted)">{provider.env_var}</span>}
                   <Chip tone="info">In use</Chip>
                   <Chip>Read-only</Chip>
                 </div>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-(--color-text-muted)">
+                <p className="mt-0.5 text-meta leading-relaxed text-(--color-text-muted)">
                   Set in the environment when OpenAgentd started. Stored {noun}s are on standby while it is set.
                 </p>
               </div>
@@ -412,20 +412,20 @@ export function CredentialList({
             role="listitem"
             className={`grid grid-cols-[24px_minmax(0,1fr)] gap-2.5 ${ROW_BORDER} px-3 py-2.5 sm:grid-cols-[24px_minmax(0,1fr)_auto] ${c.in_use && !pinned ? 'bg-(--accent-blue-soft)/30' : ''} ${pinned ? 'opacity-60' : ''}`}
           >
-            <span className="flex h-6 items-center justify-center rounded-sm bg-(--bg-key) text-[11px] font-semibold text-(--color-text-muted)">{i + 1}</span>
+            <span className="flex h-6 items-center justify-center rounded-sm bg-(--bg-key) text-meta font-semibold text-(--color-text-muted)">{i + 1}</span>
             <div className="min-w-0">
               {renaming?.id === c.id ? (
                 <RenameForm c={c} ctx={ctx} />
               ) : (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-(--color-text)">{c.label || c.id}</span>
-                  {c.hint && <span className="font-mono text-[11px] text-(--color-text-muted)">{c.hint}</span>}
+                  {c.hint && <span className="font-mono text-meta text-(--color-text-muted)">{c.hint}</span>}
                   <StatusPills credential={c} pinned={pinned} />
                 </div>
               )}
-              {settingsText && <p className="mt-0.5 truncate font-mono text-[11px] text-(--color-text-subtle)">{settingsText}</p>}
+              {settingsText && <p className="mt-0.5 truncate font-mono text-meta text-(--color-text-subtle)">{settingsText}</p>}
               {c.status === 'needs_reconnect' && (
-                <p className="mt-0.5 text-[11px] text-(--color-text-muted)">The provider ended this sign-in. It is skipped until you reconnect.</p>
+                <p className="mt-0.5 text-meta text-(--color-text-muted)">The provider ended this sign-in. It is skipped until you reconnect.</p>
               )}
               {usageOpen === c.id && (
                 <div className="mt-2">

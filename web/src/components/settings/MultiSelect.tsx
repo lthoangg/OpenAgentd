@@ -138,7 +138,7 @@ export function MultiSelect({
                 {value.map((v) => (
                   <span
                     key={v}
-                    className="flex items-center gap-1 rounded-xs border border-(--color-border-strong) bg-(--bg-card) py-0.5 pr-0.5 pl-1.5 font-mono text-[11px] text-(--color-text)"
+                    className="flex items-center gap-1 rounded-xs border border-(--color-border-strong) bg-(--bg-card) py-0.5 pr-0.5 pl-1.5 font-mono text-meta text-(--color-text)"
                   >
                     {v}
                     <button
@@ -190,7 +190,7 @@ export function MultiSelect({
             className="flex-1 border-none bg-transparent text-xs text-(--color-text) outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 placeholder:text-(--color-text-muted)"
             aria-label="Search options"
           />
-          <span className="shrink-0 text-[11px] text-(--color-text-muted)">
+          <span className="shrink-0 text-meta text-(--color-text-muted)">
             {filtered.length}/{options.length}
           </span>
         </div>
@@ -241,7 +241,7 @@ export function MultiSelect({
                         {o.label}
                       </p>
                       {o.description && (
-                        <p className="truncate text-[11px] text-(--color-text-muted)">
+                        <p className="truncate text-meta text-(--color-text-muted)">
                           {o.description}
                         </p>
                       )}

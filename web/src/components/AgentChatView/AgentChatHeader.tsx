@@ -118,7 +118,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     onSidebarToggle()
                   }}
                   aria-label="Toggle sidebar"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 max-md:pointer-coarse:size-9"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
                 >
                   <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
                 </button>
@@ -160,7 +160,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                   <span className="truncate text-sm font-semibold text-(--color-text)">
                     {sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'}
                   </span>
-                  <span className="truncate text-[11px] text-(--color-text-muted)">{workspaceName}</span>
+                  <span className="truncate text-meta text-(--color-text-muted)">{workspaceName}</span>
                 </>
               )}
             </div>
@@ -235,7 +235,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               badge: todoSummary.progressLabel,
               indicator: todoSummary.hasInProgress,
               goalTone: goalState?.tone,
-              indicatorClassName: 'bg-(--color-info)',
+              indicatorClassName: 'bg-(--accent-blue-text)',
               pressed: tasksViewActive,
               className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
             }}

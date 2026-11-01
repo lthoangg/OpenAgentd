@@ -20,7 +20,7 @@ function QueuedAttachmentList({ attachments }: { attachments: MessageAttachment[
       {attachments.map((att, i) => (
         <span
           key={`${att.original_name ?? att.filename ?? 'file'}-${i}`}
-          className="inline-flex max-w-full items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-key)/60 px-1.5 py-0.5 text-[11px] text-(--color-text-2)"
+          className="inline-flex max-w-full items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-key)/60 px-1.5 py-0.5 text-meta text-(--color-text-2)"
         >
           <Paperclip size={11} aria-hidden="true" className="shrink-0" />
           <Tooltip className="min-w-0">
@@ -57,9 +57,9 @@ function QueuedMessageContent({ content: raw, attachments }: { content: string; 
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
                 aria-label={expanded ? 'Collapse' : 'Expand'}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90 md:h-5 md:w-5 pointer-coarse:size-9"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90 pointer-coarse:size-9"
               >
-                {expanded ? <ChevronUp size={14} className="md:h-3 md:w-3" /> : <ChevronDown size={14} className="md:h-3 md:w-3" />}
+                {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
             }
           />
@@ -113,14 +113,14 @@ function QueuedBubble({ content, attachments, label, onEdit }: {
                   aria-label="Edit queued message"
                   className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100 pointer-coarse:size-9"
                 >
-                  <Pencil size={13} aria-hidden="true" className="md:h-3 md:w-3" />
+                  <Pencil size={13} aria-hidden="true"  />
                 </button>
               }
             />
             <TooltipContent>Edit queued message</TooltipContent>
           </Tooltip>
         </div>
-        <span className="pr-8 text-[11px] text-(--color-text-subtle)">{label}</span>
+        <span className="pr-8 text-meta text-(--color-text-subtle)">{label}</span>
       </div>
     </div>
   )

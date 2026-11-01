@@ -60,7 +60,7 @@ export function PreviewCommentComposer({
       className="shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
       style={{ top, left, width }}
     >
-      <p className="mb-1.5 truncate border-l-2 border-(--color-border-strong) pl-2 font-mono text-[11px] leading-relaxed text-(--color-text-subtle)">
+      <p className="mb-1.5 truncate border-l-2 border-(--color-border-strong) pl-2 font-mono text-meta leading-relaxed text-(--color-text-subtle)">
         {elementLabel(element)}
         {element.text ? ` ${element.text}` : ''}
       </p>
@@ -121,11 +121,11 @@ export function PreviewCommentList({
       <ul className="max-h-36 space-y-1 overflow-y-auto overscroll-contain px-2 pb-2">
         {comments.map((comment) => (
           <li key={comment.id} className="flex items-start gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-input) py-1 pr-1 pl-1.5">
-            <span className="mt-0.5 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--color-accent) px-1 text-[11px] font-semibold text-(--color-text-on-accent)">
+            <span className="mt-0.5 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--color-accent) px-1 text-meta font-semibold text-(--color-text-on-accent)">
               {comment.n}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-mono text-[11px] text-(--color-text-subtle)">{elementLabel(comment.element)} {comment.element.text}</p>
+              <p className="truncate font-mono text-meta text-(--color-text-subtle)">{elementLabel(comment.element)} {comment.element.text}</p>
               {editing?.id === comment.id ? (
                 <div className="mt-1">
                   <Textarea

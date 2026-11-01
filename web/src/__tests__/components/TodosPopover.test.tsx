@@ -150,10 +150,10 @@ describe('TodosPopover', () => {
     expect(calls).toEqual([false])
   })
 
-  it('keeps the progress counter at the 11px floor on desktop', () => {
+  it('keeps the progress counter on the meta step on desktop', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
     const counter = screen.getByText('2/4 done')
-    expect(counter.className).toContain('md:text-[11px]')
+    expect(counter.className).toContain('md:text-meta')
     expect(counter.className).not.toContain('text-[10px]')
   })
 })

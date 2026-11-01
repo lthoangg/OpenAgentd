@@ -33,11 +33,11 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
           <button
             type="button"
             onClick={handleCopy}
-            className="touch-hit relative flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            className="touch-hit relative flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs"
             aria-label="Copy code"
           >
             {copied ? (
-              <Check size={13} className="text-(--color-success)" />
+              <Check size={13} className="text-(--accent-green-text)" />
             ) : (
               <Copy size={13} />
             )}
@@ -50,7 +50,7 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
 
   if (noHeader) {
     return (
-      <pre onContextMenu={chatMenu.onContextMenu} onKeyDown={chatMenu.onKeyDown} className="overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
+      <pre onContextMenu={chatMenu.onContextMenu} onKeyDown={chatMenu.onKeyDown} className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
         <code>{children}</code>
         {chatMenu.menu}
       </pre>
@@ -74,7 +74,7 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
       ) : (
         <div className="absolute top-1.5 right-1.5 z-10">{copyButton}</div>
       )}
-      <pre className="overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
+      <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
         <code>{children}</code>
       </pre>
       {chatMenu.menu}

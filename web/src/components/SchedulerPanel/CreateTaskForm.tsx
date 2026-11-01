@@ -116,9 +116,9 @@ export function CreateTaskForm({
               />
               {fieldErrors.title && <p id="task-title-error" className={FIELD_ERROR}>{fieldErrors.title}</p>}
               {values.title && (
-                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-(--color-text-muted)">
+                <div className="mt-2 flex items-center gap-1.5 text-meta text-(--color-text-muted)">
                   <span>Slug:</span>
-                  <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-2)">
+                  <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-xs md:text-meta text-(--color-text-2)">
                     {slugify(values.title)}
                   </code>
                 </div>
@@ -308,7 +308,7 @@ export function CreateTaskForm({
         </div>
 
         {/* Submit */}
-        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
+        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
           <Button
             type="submit"
             variant="primary"

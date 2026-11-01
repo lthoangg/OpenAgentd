@@ -1,7 +1,7 @@
 /**
- * Settings → General — app-wide preferences that live on this device:
- * color theme and transcript style. The desktop app's notch status and pet
- * live on Settings → Desktop.
+ * Settings → Appearance — how OpenAgentd looks on this device: color theme,
+ * text size and transcript style. Each pick applies at once. The desktop
+ * app's notch status and pet live on Settings → Desktop.
  */
 import { type ComponentType } from 'react'
 
@@ -11,7 +11,7 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { TEXT_SIZES, TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 function SegmentedChoice<T extends string>({ label, options, value, onChange }: {
   label: string
@@ -37,15 +37,23 @@ export function GeneralSettingsPage() {
   const { preference, setPreference } = useThemePreference()
   const transcriptStyle = useDisplayPrefsStore((s) => s.transcriptStyle)
   const setTranscriptStyle = useDisplayPrefsStore((s) => s.setTranscriptStyle)
+  const textSize = useDisplayPrefsStore((s) => s.textSize)
+  const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
 
   return (
     <SettingsPage
-      title="General"
+      title="Appearance"
       description="How OpenAgentd looks on this device."
     >
-      <PanelSection title="Appearance" flush>
+      <PanelSection title="Look" flush>
         <PanelRow label="Theme" description="Follow the system, or always use light or dark.">
           <SegmentedChoice label="Theme" options={THEME_OPTIONS} value={preference} onChange={setPreference} />
+        </PanelRow>
+        <PanelRow
+          label="Text size"
+          description="Compact is the densest. On iPhone and iPad, the system text size adds to it."
+        >
+          <SegmentedChoice label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} />
         </PanelRow>
         <PanelRow
           label="Transcript"

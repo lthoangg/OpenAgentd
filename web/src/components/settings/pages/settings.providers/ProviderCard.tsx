@@ -435,22 +435,22 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             </label>
           )}
           {hasCandidateKey && !hasVerifiedKey && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Click <span className="font-medium text-(--color-text)">Test key</span> to verify this key before {hasStoredKeys ? 'adding it' : 'saving'}.
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Free models are available without an API key. Add a key to use paid models.
             </p>
           )}
           {!hasCandidateKey && hasStoredKeys && storedCredentials.length === 1 && !provider.env_pinned && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Add a second key to keep working when this one hits a rate limit or quota.
             </p>
           )}
           {!hasCandidateKey && provider.is_configured && !hasStoredKeys && !provider.env_pinned && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Key saved. Type a new one above only if you want to replace it.
             </p>
           )}
@@ -581,7 +581,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               Save
             </Button>
           </div>
-          <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+          <p className="text-meta leading-relaxed text-(--color-text-muted)">
             Leave blank to use the default daemon at <span className="font-mono text-(--color-text)">{daemon.placeholder}</span>.
           </p>
         </div>
@@ -633,12 +633,12 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             </Button>
           </div>
           {hasCloudCandidate && !hasVerifiedCloud && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Click <span className="font-medium text-(--color-text)">Test credentials</span> to verify these credentials before saving.
             </p>
           )}
           {!hasCloudCandidate && provider.is_configured && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Credentials saved. Type new values above only if you want to replace them.
             </p>
           )}
@@ -647,7 +647,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
 
       {/* ── Detected providers (local without base URL) ─────────────── */}
       {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
-        <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+        <p className="text-meta leading-relaxed text-(--color-text-muted)">
           Detected from local environment or system credentials.
         </p>
       )}

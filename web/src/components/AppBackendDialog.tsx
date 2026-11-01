@@ -37,7 +37,7 @@ export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBack
         <AppBackendPanel active={open} prefill={prefill} showNetworkAccess />
       </div>
 
-      <div className="flex flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 select-none md:px-6">
+      <div className="flex flex-wrap justify-end gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-3 select-none md:px-6">
         <Button type="button" variant="default" onClick={() => onOpenChange(false)}>
           Close
         </Button>

@@ -12,6 +12,7 @@ import { useUnreadStore } from '@/stores/useUnreadStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import {
   addExpandedPaths,
@@ -2299,13 +2300,40 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Delete session…' }))
     await user.click(screen.getByRole('button', { name: 'Delete session' }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
+    expect(deleteSessionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'session-1', holdMs: 5000 }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
     expect(navigate).toHaveBeenCalledWith({
       to: '/$sessionId',
       params: { sessionId: 'session-2' },
       replace: true,
     })
     expect(loadLastWorkspace()?.path).toBe('/repo/project')
+  })
+
+  it('offers Undo after a delete, which cancels it and reopens the session', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+    ]
+    workspaceSessionsData = sessionsData
+    useToastStore.setState({ toasts: [] })
+
+    await renderSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('More actions for Delete me'))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session…' }))
+    await user.click(screen.getByRole('button', { name: 'Delete session' }))
+
+    const toast = useToastStore.getState().toasts.find((t) => t.title === 'Session deleted')
+    expect(toast?.action?.label).toBe('Undo')
+    const [target] = deleteSessionMutate.mock.calls.at(-1) as unknown as [{ undo: AbortSignal }]
+    expect(target.undo.aborted).toBe(false)
+
+    navigate.mockClear()
+    toast?.action?.onAction()
+    expect(target.undo.aborted).toBe(true)
+    expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-1' }, replace: true })
   })
 
   it('requires confirmation before deleting a coding session', async () => {
@@ -2333,7 +2361,10 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete session' }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
+    expect(deleteSessionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'session-1', holdMs: 5000 }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 

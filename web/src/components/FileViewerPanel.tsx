@@ -119,7 +119,7 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
             aria-label={label}
             className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
           >
-            {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+            {copied ? <Check size={12} className="text-(--accent-green-text)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
           </button>
         }
       />
@@ -791,7 +791,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           <div className="shrink-0 border-r border-(--color-border)/40 bg-inherit">
             <span className="block w-9 py-0.5" />
           </div>
-          <span className="min-w-0 px-3 py-0.5 text-xs md:text-[11px] italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
+          <span className="min-w-0 px-3 py-0.5 text-xs md:text-meta italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
             {p.text}
           </span>
         </div>,
@@ -813,7 +813,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           <div className="shrink-0 border-r border-(--color-border)/40 bg-inherit">
             <span className="block w-9 py-0.5" />
           </div>
-          <span className="min-w-0 px-3 py-0.5 text-xs md:text-[11px] italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
+          <span className="min-w-0 px-3 py-0.5 text-xs md:text-meta italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
             {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
           </span>
         </div>,
@@ -833,7 +833,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
         )}
       >
-        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[11px] text-(--color-text-subtle)">
+        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta text-(--color-text-subtle)">
           <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
         </div>
         <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
@@ -842,7 +842,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
   })
 
   return (
-    <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">
+    <div className="bg-(--bg-card) font-mono text-meta leading-relaxed">
       <div className="min-w-0">
         {blockStarts(rows.length).map((start) => (
           // 11px text at leading-relaxed plus the row's 4px padding.

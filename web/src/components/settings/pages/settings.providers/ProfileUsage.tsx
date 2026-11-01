@@ -53,7 +53,7 @@ function UsageSkeleton() {
 }
 
 function Quiet({ children }: { children: ReactNode }) {
-  return <p className="text-[11px] text-(--color-text-subtle)">{children}</p>
+  return <p className="text-meta text-(--color-text-subtle)">{children}</p>
 }
 
 interface BodyProps {

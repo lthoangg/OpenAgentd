@@ -33,13 +33,12 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
         onCheckedChange?.(!checked)
       }}
       className={cn(
-        // Track — pill shape
+        // Track — a solid pill with no border, like an OS switch
         'relative inline-flex h-[22px] w-10 shrink-0',
-        'items-center rounded-full border p-[3px]',
-        // At rest: warm neutral, visible border
-        'border-(--color-border-strong) bg-(--bg-key)',
-        // Checked: accent-blue fill, border dissolves
-        checked && 'border-(--accent-blue) bg-(--accent-blue)',
+        'items-center rounded-full p-[3px]',
+        // Off: the strong hairline tone as a fill (it steps up under the OS
+        // "Increase contrast"); on: Signal Blue.
+        checked ? 'bg-(--accent-blue)' : 'bg-(--color-border-strong)',
         // Transitions
         'transition-colors duration-(--motion-base)',
         // Touch: a 44px hit area around the 40×22 track, without moving the layout.

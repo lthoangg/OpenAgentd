@@ -345,4 +345,39 @@ describe('useDeleteSessionMutation', () => {
     })
     expect(idsIn(client)).toEqual(['s1', 's2'])
   })
+
+  it('holds the DELETE for the undo window, and Undo puts the row back without calling the server', async () => {
+    setApiBaseUrl('')
+    const fetchMock = mock(async () => new Response(null, { status: 204 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page(rows))
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const undo = new AbortController()
+    const { result } = renderHook(() => useDeleteSessionMutation(), { wrapper })
+    act(() => { result.current.mutate({ id: 's2', holdMs: 60_000, undo: undo.signal }) })
+    await waitFor(() => expect(idsIn(client)).toEqual(['s1']))
+
+    act(() => undo.abort())
+    await waitFor(() => expect(idsIn(client)).toEqual(['s1', 's2']))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('deletes once the undo window passes', async () => {
+    setApiBaseUrl('')
+    const fetchMock = mock(async () => new Response(null, { status: 204 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(queryKeys.session.sessions.workspace('/repo'), page(rows))
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useDeleteSessionMutation(), { wrapper })
+    act(() => { result.current.mutate({ id: 's2', holdMs: 5, undo: new AbortController().signal }) })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(idsIn(client)).toEqual(['s1'])
+  })
 })

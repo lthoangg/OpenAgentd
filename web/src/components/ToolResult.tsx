@@ -89,7 +89,7 @@ function WebSearchResult({ result }: { result: string }) {
           <li key={i} className="group flex flex-col gap-0.5">
             {/* Title + link */}
             <div className="flex items-start gap-1.5">
-              <Globe size={11} className="mt-0.5 shrink-0 text-(--color-info)" />
+              <Globe size={11} className="mt-0.5 shrink-0 text-(--accent-blue-text)" />
               {link ? (
                 <a
                   href={link}
@@ -110,7 +110,7 @@ function WebSearchResult({ result }: { result: string }) {
             {link && (
               <div className="flex items-center gap-1 pl-5">
                 <ExternalLink size={11} className="text-(--color-text-muted)" />
-                <span className="font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+                <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
                   {hostname(link)}
                 </span>
               </div>
@@ -150,8 +150,8 @@ function ShellResult({ result }: { result: string }) {
     <div className="flex flex-col gap-1">
       {/* Status line — plain text, coloured by outcome */}
       <span
-        className={`font-mono text-[11px] font-medium ${
-          success ? 'text-(--color-success)' : 'text-(--color-error)'
+        className={`font-mono text-meta font-medium ${
+          success ? 'text-(--accent-green-text)' : 'text-(--color-error)'
         }`}
       >
         {statusLine}
@@ -159,7 +159,7 @@ function ShellResult({ result }: { result: string }) {
 
       {/* stdout / stderr output */}
       {body && (
-        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-meta leading-relaxed text-(--color-text-2)">
           <LinkifiedText text={body} />
         </pre>
       )}
@@ -183,14 +183,14 @@ function FileListResult({ result }: { result: string }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+      <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
       </span>
       <ul className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
         {entries.map((e, i) => (
           <li
             key={i}
-            className="font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
+            className="font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
           >
             <LinkifiedText text={e} />
           </li>
@@ -217,7 +217,7 @@ function FileReadResult({ result }: { result: string }) {
           {rangeLabel}
         </span>
       </div>
-      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
+      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text)">
         {body}
       </pre>
     </div>
@@ -270,13 +270,13 @@ function BackgroundOutputBlock({
 }) {
   return (
     <div className="min-w-0 overflow-hidden">
-      <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+      <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
         <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
           <BgStatus pid={pid} status={status} detail={[outputLabel && !status ? 'output' : null, detail].filter(Boolean).join(' · ') || undefined} />
         </button>
         {headerAction}
       </div>
-      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2) sm:max-h-64">
+      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text-2) sm:max-h-64">
         <LinkifiedText text={truncateForDisplay(body)} />
       </pre>
     </div>
@@ -287,7 +287,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   if (result === 'No background processes running.') {
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta text-(--color-text-muted)">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
             <span className="font-sans">No background processes</span>
           </button>
@@ -307,7 +307,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   if (result.startsWith('PID     | Status') && listRows.length > 0) {
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta text-(--color-text-muted)">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
             <span className="font-sans">{listRows.length} background {listRows.length === 1 ? 'process' : 'processes'}</span>
           </button>
@@ -315,7 +315,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
         </div>
         <ul className="max-h-40 overflow-y-auto sm:max-h-64">
           {listRows.map((process) => (
-            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-[11px] last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
+            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-meta last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
               <span className="text-(--color-text)">pid {process.pid}</span>
               <span><Chip tone={statusTone(process.status)} dot={statusTone(process.status) === 'info'}>{process.status}</Chip></span>
               <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
@@ -341,14 +341,14 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     const [, pid, status, command, bufferedLines] = statusMatch
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={status} detail={bufferedLines ? `${bufferedLines} new ${bufferedLines === '1' ? 'line' : 'lines'}` : undefined} />
           </button>
           {headerAction}
         </div>
         {command && (
-          <code className="block break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+          <code className="block break-words px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text-2)">
             {command}
           </code>
         )}
@@ -366,14 +366,14 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
 
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={status} detail={detail} />
           </button>
           {headerAction}
         </div>
         {body && (
-          <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+          <p className="px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text-2)">
             {body}
           </p>
         )}
@@ -391,13 +391,13 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
 
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={pid ? 'not found' : 'error'} detail={known} />
           </button>
           {headerAction}
         </div>
-        <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-error)">
+        <p className="px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-error)">
           {body}
         </p>
       </div>
@@ -413,7 +413,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   return (
     <div className="relative">
       {headerAction && <div className="absolute top-0 right-1.5">{headerAction}</div>}
-      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-meta leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
         <LinkifiedText text={truncateForDisplay(result)} />
       </pre>
     </div>
@@ -469,7 +469,7 @@ function ScheduleTaskListResult({ result }: { result: string }) {
 
   return (
     <div className="oa-table-wrap">
-      <table className="w-full min-w-max font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+      <table className="w-full min-w-max font-mono text-meta leading-relaxed text-(--color-text-2)">
         <thead className="border-b border-(--color-border) bg-(--bg-key) text-left label-caps text-(--color-text-muted)">
           <tr>
             <th className="px-3 py-1.5 font-semibold">Task</th>
@@ -484,7 +484,7 @@ function ScheduleTaskListResult({ result }: { result: string }) {
             <tr key={task.slug || task.name} className="border-b border-(--color-border) last:border-b-0">
               <td className="px-3 py-2 align-top text-(--color-text)">
                 <div>{task.name}</div>
-                {task.slug && <div className="text-xs md:text-[11px] text-(--color-text-muted)">{task.slug}</div>}
+                {task.slug && <div className="text-xs md:text-meta text-(--color-text-muted)">{task.slug}</div>}
               </td>
               <td className="px-3 py-2 align-top">{task.schedule}</td>
               <td className="px-3 py-2 align-top">{task.status}</td>
@@ -522,9 +522,9 @@ const TODO_STATUS_ICON: Record<string, LucideIcon> = {
 }
 
 const TODO_STATUS_COLOR: Record<string, string> = {
-  completed: 'text-(--color-success)',
+  completed: 'text-(--accent-green-text)',
   cancelled: 'text-(--color-text-subtle)',
-  in_progress: 'text-(--color-info)',
+  in_progress: 'text-(--accent-blue-text)',
   pending: 'text-(--color-text-muted)',
 }
 
@@ -607,7 +607,7 @@ function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
-    return <div className="text-[11px] text-(--color-text-muted)">No todos.</div>
+    return <div className="text-meta text-(--color-text-muted)">No todos.</div>
   }
   const parsed = parseTodoList(result)
   if (!parsed) return <GenericResult result={result} />
@@ -623,8 +623,8 @@ function TodoListResult({ result }: { result: string }) {
             return (
               <div
                 key={idx}
-                className={`font-mono text-[11px] leading-relaxed ${
-                  isError ? 'text-(--color-warning)' : 'text-(--color-text-muted)'
+                className={`font-mono text-meta leading-relaxed ${
+                  isError ? 'text-(--accent-orange-text)' : 'text-(--color-text-muted)'
                 }`}
               >
                 {describeTodoOutcome(outcome, tasks)}
@@ -658,7 +658,7 @@ function TodoListResult({ result }: { result: string }) {
                     {task.content}
                   </div>
                   {/* What the task is reads first; its ID trails, muted. */}
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs md:text-meta text-(--color-text-muted)">
                     <span>{task.status}</span>
                     {task.priority && <span>{task.priority}</span>}
                     {agent && <span>{agent}</span>}
@@ -666,12 +666,12 @@ function TodoListResult({ result }: { result: string }) {
                     <span className="text-(--color-text-subtle)">{task.taskId}</span>
                   </div>
                   {task.instructions && (
-                    <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
+                    <div className="mt-1 text-meta leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
                       <span className="font-semibold">instructions:</span> {task.instructions}
                     </div>
                   )}
                   {task.result && (
-                    <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
+                    <div className="mt-1 text-meta leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
                       <span className="font-semibold">result:</span> {task.result}
                     </div>
                   )}
@@ -765,7 +765,7 @@ function LspNavigationResult({
   const opener = useContext(FileRefContext)
   if (result.trim() === 'No results.') {
     return (
-      <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">
+      <p className="font-mono text-meta leading-relaxed text-(--color-text-muted)">
         {lspEmptyLabel(operation)}
       </p>
     )
@@ -776,14 +776,14 @@ function LspNavigationResult({
 
   return (
     <div className="min-w-0">
-      <p className="mb-1 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+      <p className="mb-1 font-mono text-xs md:text-meta text-(--color-text-muted)">
         {lspCountLabel(operation, locations.length)}
       </p>
       <ul className="max-h-[calc(8*1.55em)] min-w-0 space-y-1 overflow-y-auto pr-1 sm:max-h-[calc(10*1.55em)]">
         {locations.map((location, index) => (
           <li
             key={`${location.path}:${location.position}:${location.name ?? ''}:${index}`}
-            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-[11px] leading-relaxed"
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-meta leading-relaxed"
           >
             <span className="min-w-0 break-words text-(--color-text-2)">
               {location.name && (
@@ -801,7 +801,7 @@ function LspNavigationResult({
               {location.position}
             </span>
             {location.code && (
-              <span className="col-span-2 min-w-0 truncate text-xs md:text-[11px] text-(--color-text-muted)">
+              <span className="col-span-2 min-w-0 truncate text-xs md:text-meta text-(--color-text-muted)">
                 {location.code}
               </span>
             )}
@@ -809,7 +809,7 @@ function LspNavigationResult({
         ))}
       </ul>
       {note && (
-        <p className="mt-1 font-mono text-xs md:text-[11px] text-(--color-text-muted) italic">
+        <p className="mt-1 font-mono text-xs md:text-meta text-(--color-text-muted) italic">
           {note}
         </p>
       )}
@@ -831,7 +831,7 @@ function GenericResult({ result }: { result: string }) {
   const clipped = truncateForDisplay(display)
 
   return (
-    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-meta leading-relaxed text-(--color-text-2)">
       <LinkifiedText text={clipped} />
     </pre>
   )
@@ -885,9 +885,9 @@ function TeamToolResult({ result }: { result: string }) {
     : (Array.isArray(obj.subagents) ? (obj.subagents as Record<string, unknown>[]) : null)
 
   return (
-    <div className="flex flex-col gap-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <div className="flex flex-col gap-2 font-mono text-meta leading-relaxed text-(--color-text-2)">
       <div className="flex flex-wrap items-center gap-1.5 font-sans">
-        {memberId && <Chip mono variant="outline">{memberId}</Chip>}
+        {memberId && <Chip mono>{memberId}</Chip>}
         {status && (
           <Chip tone={TEAM_STATUS_TONE[status] ?? 'error'} dot={status === 'spawned' || status === 'waiting_lead'} data-team-status={status}>
             {TEAM_STATUS_LABEL[status] ?? status}
@@ -902,7 +902,7 @@ function TeamToolResult({ result }: { result: string }) {
           {pendingQuestion.options && pendingQuestion.options.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {pendingQuestion.options.map((opt, i) => (
-                <span key={i} className="rounded-xs border border-(--color-warning)/30 bg-(--bg-card) px-2 py-0.5 text-[11px] font-medium text-(--color-text)">
+                <span key={i} className="rounded-xs border border-(--color-warning)/30 bg-(--bg-card) px-2 py-0.5 text-meta font-medium text-(--color-text)">
                   {opt}
                 </span>
               ))}
@@ -931,7 +931,7 @@ function TeamToolResult({ result }: { result: string }) {
             return (
               <div key={handle} className="rounded-xs border border-(--color-border-subtle) bg-(--bg-card)/40 p-2 font-sans">
                 <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="font-mono text-[11px] font-semibold text-(--color-text)">{handle}</span>
+                  <span className="font-mono text-meta font-semibold text-(--color-text)">{handle}</span>
                   <Chip tone={TEAM_STATUS_TONE[resStatus] ?? 'neutral'}>{TEAM_STATUS_LABEL[resStatus] ?? resStatus}</Chip>
                 </div>
                 {resOutput && (
@@ -1037,7 +1037,7 @@ export function LspDiagnosticsView({
         const locationColor = 'text-(--color-text-muted)'
 
         return (
-          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs md:text-[11px] leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
+          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs md:text-meta leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
             <span className={`${labelColor} shrink-0 font-sans font-medium`}>
               {label}
             </span>
@@ -1051,7 +1051,7 @@ export function LspDiagnosticsView({
         )
       })}
       {overflowCount > 0 && (
-        <div className="font-mono text-xs md:text-[11px] leading-tight text-(--color-text-muted) italic">
+        <div className="font-mono text-xs md:text-meta leading-tight text-(--color-text-muted) italic">
           +{overflowCount} more
         </div>
       )}

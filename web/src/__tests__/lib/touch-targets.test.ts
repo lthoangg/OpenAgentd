@@ -15,7 +15,7 @@ const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.ur
 
 describe('coarse-pointer touch targets', () => {
   it('sets the shared list row and the dock tab strip to 36px on touch, and tightens line height', () => {
-    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*:root\s*\{\s*--spacing-list-row:\s*2\.25rem;\s*--leading-relaxed:\s*1\.5;\s*--spacing-tab-bar:\s*2\.4375rem;/)
+    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*:root\s*\{\s*--spacing-list-row:\s*2\.25rem;\s*--leading-relaxed:\s*1\.5;\s*--spacing-tab-bar:\s*2\.8125rem;/)
     expect(css).toMatch(/@media \(pointer: coarse\)\s*\{[^}]*\}\s*\.oa-prose\s*\{\s*line-height:\s*1\.6;/)
   })
 
@@ -37,7 +37,8 @@ describe('coarse-pointer touch targets', () => {
 
   it('makes default tab triggers 36px on touch and keeps sm tabs inside the 32px toolbar', () => {
     const tabs = readFileSync(fileURLToPath(new URL('../../components/ui/tabs.tsx', import.meta.url)), 'utf8')
-    expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/)
+    // No padding ring or border around the triggers, so the list is one trigger tall.
+    expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-9'/)
     expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7'/)
   })
 

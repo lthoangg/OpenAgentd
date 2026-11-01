@@ -71,7 +71,7 @@ export function FilterBar({
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--color-border) px-3 py-2 sm:px-4">
-      <span className="text-[11px] text-(--color-text-subtle) max-sm:sr-only" aria-hidden="true">Range</span>
+      <span className="text-meta text-(--color-text-subtle) max-sm:sr-only" aria-hidden="true">Range</span>
       <SegmentedControl
         label="Time range"
         size="sm"
@@ -87,7 +87,7 @@ export function FilterBar({
       />
 
       {facets === null ? (
-        <span className="text-[11px] text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
+        <span className="text-meta text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
       ) : null}
 
       {workspaces.length > 0 && (

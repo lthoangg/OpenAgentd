@@ -105,7 +105,7 @@ function ServerRow({
         title="On or off for every session"
       />
       {server.error && server.state !== 'auth_required' && (
-        <p className="w-full text-[11px] leading-relaxed text-(--color-error)">{server.error}</p>
+        <p className="w-full text-meta leading-relaxed text-(--color-error)">{server.error}</p>
       )}
     </li>
   )

@@ -1233,6 +1233,14 @@ html[data-app-hidden="true"] *::after {
     min-width: 40px;
   }
 }
+/* Phones: the primary button of a card, sheet or dialog (Approve, Send an
+   answer, Save) is a 44px target, as on iOS and Android; the rest keep the
+   36px floor so a small phone still shows content. */
+@media (pointer: coarse) and (max-width: 767px) {
+  [data-slot="button"][data-variant="primary"] {
+    min-height: 44px;
+  }
+}
 
 /* Touch density (DESIGN.md): one compact touch size, 36px, for list rows
    and every other control, so small phones (iPhone mini) still show a

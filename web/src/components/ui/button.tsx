@@ -83,7 +83,7 @@ const SIZE = {
   'icon-xs':'size-6 p-0 rounded-xs',
   'icon-sm':'size-8 p-0 rounded-sm',
   // 28px desktop-dense icon action (panel headers, detail panes). Touch still
-  // gets the 44px coarse-pointer minimum like every other Button.
+  // gets the 36px coarse-pointer floor like every other Button (index.css).
   'icon-dense': 'size-7 p-0 rounded-sm',
 } as const
 

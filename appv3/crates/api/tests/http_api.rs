@@ -682,6 +682,10 @@ async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path:
     assert_eq!(v["credential_id"], json!(work));
     let (_, v) = c.json("GET", &uri, None).await;
     assert_eq!(v["credential_id"], json!(work), "the pin is stored: {v}");
+    assert_eq!(v["credential_label"], json!("Work"), "the pinned account is named: {v}");
+    let (_, list) = c.json("GET", "/api/agent/sessions?limit=100", None).await;
+    let row = list["data"].as_array().unwrap().iter().find(|r| r["id"] == json!(appv3_db::codec::api_uuid(&s.id))).cloned().unwrap();
+    assert_eq!(row["credential_label"], json!("Work"), "lists name it too, for the desktop tray: {row}");
     let (_, v) = c.json("GET", base, None).await;
     let pinned: Vec<i64> = v["credentials"].as_array().unwrap().iter().map(|c| c["pinned_sessions"].as_i64().unwrap()).collect();
     let work_index = v["credentials"].as_array().unwrap().iter().position(|c| c["id"] == json!(work)).unwrap();
@@ -704,6 +708,7 @@ async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path:
     let (st, v) = c.json("PATCH", &uri, Some(json!({"credential_id": null}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");
     assert!(v.get("credential_id").is_none(), "null returns the session to Auto: {v}");
+    assert!(v.get("credential_label").is_none(), "Auto names no account: {v}");
     for id in [&s.id, &other.id] {
         let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(id)), None).await;
         assert_eq!(st, StatusCode::NO_CONTENT);

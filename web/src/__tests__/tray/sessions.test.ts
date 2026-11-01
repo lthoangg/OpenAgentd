@@ -33,6 +33,12 @@ describe('rowSubtitle', () => {
     expect(rowSubtitle(running)).toBe('Goal 2/9')
     expect(rowSubtitle(session({ state: 'running', workspace: null }))).toBe('')
   })
+
+  it('names the account a pinned session runs on, before what it asked', () => {
+    expect(rowSubtitle(session({ state: 'running', account: 'Work' }))).toBe('api · Pinned to Work')
+    expect(rowSubtitle(session({ question: 'Ship it?', account: 'Work' }))).toBe('api · Pinned to Work · “Ship it?”')
+    expect(rowSubtitle(session({ state: 'running', account: null }))).toBe('api')
+  })
 })
 
 describe('needsYouText', () => {

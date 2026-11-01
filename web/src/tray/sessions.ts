@@ -33,9 +33,10 @@ export function parseSessions(value: unknown): TraySessions | null {
   }
 }
 
-/** The line under a row's title: server, workspace or goal, and what a waiting session asked. */
+/** The line under a row's title: server, workspace or goal, the pinned account, and what a waiting session asked. */
 export function rowSubtitle(session: TraySession): string {
-  const meta = [session.server, goalLabel(session) ?? session.workspace].filter(Boolean).join(' · ')
+  const pinned = session.account ? `Pinned to ${session.account}` : ''
+  const meta = [session.server, goalLabel(session) ?? session.workspace, pinned].filter(Boolean).join(' · ')
   const question = session.state === 'needs_input' ? session.question?.trim() : ''
   return [meta, question ? `“${question}”` : ''].filter(Boolean).join(' · ')
 }

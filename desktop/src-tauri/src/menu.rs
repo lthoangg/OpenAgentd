@@ -1272,6 +1272,7 @@ mod tray_mark_tests {
             server: None,
             server_id: None,
             goal: None,
+            account: None,
         }
     }
 

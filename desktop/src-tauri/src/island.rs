@@ -228,6 +228,8 @@ pub struct IslandSession {
     /// Buttons that answer the question in place (see
     /// `answers::OpenQuestion::quick_choices`); empty when it needs the app.
     pub choices: Vec<String>,
+    /// The account the session is pinned to; `None` on Auto.
+    pub account: Option<String>,
 }
 
 /// A session's goal, as the island shows it.
@@ -386,6 +388,9 @@ pub struct SessionRow {
     pub goal_turns_used: Option<i64>,
     #[serde(default)]
     pub goal_max_turns: Option<i64>,
+    /// The pinned account's name; missing on Auto, or from older backends.
+    #[serde(default)]
+    pub credential_label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -448,6 +453,7 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>
                 server: None,
                 server_id: None,
                 goal,
+                account: row.credential_label,
             }
         })
         .collect();
@@ -2230,6 +2236,7 @@ mod tests {
             goal_status: None,
             goal_turns_used: None,
             goal_max_turns: None,
+            credential_label: None,
         }
     }
 
@@ -2245,6 +2252,7 @@ mod tests {
             server: None,
             server_id: None,
             goal: None,
+            account: None,
         }
     }
 
@@ -2518,6 +2526,17 @@ mod tests {
         assert!(!page.data[0].background_work);
         let page: SessionPage = serde_json::from_str(r#"{"data": [{"id": "a", "background_work": true}]}"#).unwrap();
         assert!(page.data[0].background_work);
+    }
+
+    #[test]
+    fn a_pinned_session_names_its_account() {
+        let page: SessionPage =
+            serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "credential_label": "Work"}, {"id": "b", "running": true}]}"#).unwrap();
+        let sessions = active_sessions(page.data, &HashMap::new(), None);
+        assert_eq!(sessions[0].account.as_deref(), Some("Work"));
+        assert_eq!(sessions[1].account, None, "Auto names no account");
+        let wire = serde_json::to_value(&sessions[0]).unwrap();
+        assert_eq!(wire["account"], "Work");
     }
 
     #[test]

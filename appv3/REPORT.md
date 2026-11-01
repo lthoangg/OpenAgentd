@@ -182,7 +182,10 @@ idle memory unchanged: 20 ms handshake, 18.8 MB idle RSS.
 
 Migration 00000030 adds `chat_sessions.credential_id` (nullable; NULL is
 Auto). `SessionResponse` gains `credential_id`, omitted on Auto, so v2
-response shapes are unchanged.
+response shapes are unchanged. The session list, detail, history, resolve
+and PATCH responses also carry `credential_label`, the pinned credential's
+name, omitted on Auto or once the credential is gone (the desktop tray shows
+it without reading credentials).
 
 `PATCH /api/agent/sessions/{id}` additionally accepts `model`,
 `thinking_level` and `credential_id`: a present key sets the field, `null`

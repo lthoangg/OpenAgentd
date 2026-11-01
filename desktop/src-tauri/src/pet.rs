@@ -1768,6 +1768,7 @@ mod tests {
             server: None,
             server_id: None,
             goal: None,
+            account: None,
         };
         let status = IslandStatus {
             seq: 1,

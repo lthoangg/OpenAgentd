@@ -786,14 +786,23 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let data: Vec<Value> = sessions
         .iter()
         .map(|s| {
-            let subs: Vec<Value> =
-                children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_response(c, &overlay(c)))).collect();
+            let subs: Vec<Value> = children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_json(c, &overlay(c)))).collect();
             let mut o = overlay(s);
             o.subagents = subs;
-            Value::Object(session_response(s, &o))
+            Value::Object(session_json(s, &o))
         })
         .collect();
     Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
+}
+
+/// `session_response` plus, as a v3 addition omitted on Auto, the pinned
+/// account's name, so the tray and run chip need no credentials lookup.
+fn session_json(s: &db::ChatSession, o: &SessionOverlay) -> Map<String, Value> {
+    let mut m = session_response(s, o);
+    if let Some(label) = s.credential_id.as_deref().and_then(appv3_providers::pool::credential_label_by_id) {
+        m.insert("credential_label".into(), Value::String(label));
+    }
+    m
 }
 
 /// Record a session's folder as a sidebar workspace, filed under its
@@ -859,7 +868,7 @@ async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
         None => session,
     };
     register_session_workspace(&st.pool, &workspace).await?;
-    let mut m = session_response(&session, &SessionOverlay::default());
+    let mut m = session_json(&session, &SessionOverlay::default());
     m.insert("created".into(), json!(created));
     Ok(json(Value::Object(m)))
 }
@@ -871,7 +880,7 @@ async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>)
     let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
     let goal = db::live_session_goal(&st.pool, &sid).await?;
     let (goal_status, goal_turns) = (goal.as_ref().map(|g| g.status.clone()), goal.as_ref().map(|g| (g.turns_used, g.max_turns)));
-    let m = session_response(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
+    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
     Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
 }
 
@@ -971,7 +980,7 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
         if model.is_some() || thinking.is_some() || credential.is_some() {
             row = save_run_settings(&st.pool, &sid, row, model, thinking, credential).await?;
         }
-        let resp = session_response(&row, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: Some(m), ..Default::default() });
+        let resp = session_json(&row, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: Some(m), ..Default::default() });
         return Ok(json(Value::Object(resp)));
     }
     let mut row = row;
@@ -988,7 +997,7 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
             resolve_agent_for_existing_session(&st.pool, &sid).await?.goal_after_code_mode(&sid);
         }
     }
-    Ok(json(Value::Object(session_response(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))
+    Ok(json(Value::Object(session_json(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))
 }
 
 /// Store a session's model, thinking level and pinned credential (each
@@ -1151,7 +1160,7 @@ fn lead_part<'a>(root: &db::ChatSession, msgs: &'a [db::SessionMessage], totals:
     let effective = root.agent_name.clone().unwrap_or_else(|| if root.parent_session_id.is_none() { "code".into() } else { "member".into() });
     let usage = totals.map(|t| t.get(&root.id).copied().unwrap_or((0.0, 0)));
     let rid = db::codec::api_uuid(&root.id);
-    let session = session_response(
+    let session = session_json(
         root,
         &SessionOverlay {
             agent_name: Some(effective),

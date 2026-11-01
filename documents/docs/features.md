@@ -650,7 +650,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   waits and says so, with **Use Auto for this session**, **Choose account…**
   and **Stop**; if the account is deleted or disabled, the session goes back
   to Auto with a note. Each answer's footer names the account it ran on, and
-  Settings → Providers shows how many sessions pin each account.
+  Settings → Providers shows how many sessions pin each account. The desktop
+  tray names the account a pinned session runs on (**Pinned to Work**).
 - **Review panel splits in two; terminals below** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps

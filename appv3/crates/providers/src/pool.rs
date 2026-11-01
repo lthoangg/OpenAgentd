@@ -97,6 +97,11 @@ pub fn label_of(c: &Credential) -> String {
     }
 }
 
+/// How stored credential `id` is named to the user, while it exists.
+pub fn credential_label_by_id(id: &str) -> Option<String> {
+    store::snapshot().providers.values().flat_map(|cs| cs.iter()).find(|c| c.id == id).map(label_of)
+}
+
 pub fn active_credential(provider_id: &str) -> Option<Credential> {
     let f = store::snapshot();
     store::select(provider_id, &enabled_credentials(provider_id, &f)).cloned()

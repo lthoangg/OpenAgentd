@@ -21,10 +21,12 @@ mock.module('@/api/client', () => ({
 }))
 
 const { useAgentStore } = await import('@/stores/useAgentStore')
+const { useToastStore } = await import('@/stores/useToastStore')
 
 beforeEach(() => {
   updateSessionRunSettings.mockClear()
   postAgentChat.mockClear()
+  useToastStore.setState({ toasts: [] })
   useAgentStore.setState({
     agentStreams: {},
     leadName: null,
@@ -56,12 +58,19 @@ describe('setSessionRunSettings', () => {
     expect(useAgentStore.getState().sessionThinkingLevel).toBeNull()
   })
 
-  it('puts the previous choice back when the server refuses', async () => {
+  it('puts the previous choice back when the server refuses, with a Retry that sends it again', async () => {
     updateSessionRunSettings.mockImplementation(async () => { throw new Error('That account or key is turned off') })
     expect(await useAgentStore.getState().setSessionRunSettings({ credentialId: 'cred-off' })).toBe(false)
     updateSessionRunSettings.mockImplementation(saveRunSettings)
     expect(useAgentStore.getState().sessionCredentialId).toBeNull()
-    expect(useAgentStore.getState().error).toContain('turned off')
+    const [toast] = useToastStore.getState().toasts
+    expect(toast).toMatchObject({ tone: 'error', title: "Couldn't save the run settings", description: 'That account or key is turned off' })
+    expect(toast.action?.label).toBe('Retry')
+
+    toast.action?.onAction()
+    await Promise.resolve()
+    expect(updateSessionRunSettings).toHaveBeenLastCalledWith('session-1', { credential_id: 'cred-off' })
+    expect(useAgentStore.getState().sessionCredentialId).toBe('cred-off')
   })
 
   it('keeps a new-session draft local and sends the account with the first message', async () => {

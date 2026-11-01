@@ -12,6 +12,7 @@ import type { ModelCatalogEntry } from '@/api/types'
 import { RunPicker } from '@/components/composer/RunPicker'
 import type { RunSettings } from '@/components/composer/useRunSettings'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { RunSettingsPatch } from '@/stores/useAgentStore/types'
 
 afterEach(cleanup)
@@ -129,6 +130,24 @@ describe('RunPicker', () => {
     expect(setRun).toHaveBeenLastCalledWith({ credentialId: 'home' })
     fireEvent.click(screen.getByRole('radio', { name: /Auto/ }))
     expect(setRun).toHaveBeenLastCalledWith({ credentialId: null })
+  })
+
+  it('offers Reconnect for a signed-out account, opening Settings → Providers', () => {
+    const openSettings = mock((..._args: unknown[]) => {})
+    const original = useSettingsStore.getState().openSettings
+    useSettingsStore.setState({ openSettings })
+    try {
+      const onDone = mock(() => {})
+      const accounts = [credential('work', 'Work', { status: 'needs_reconnect' })]
+      const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
+      wrap(<RunPicker settings={settings({ accounts, providerInfo })} focus="model" onDone={onDone} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reconnect Work…' }))
+      expect(openSettings).toHaveBeenCalledWith('providers')
+      expect(onDone).toHaveBeenCalledTimes(1)
+    } finally {
+      useSettingsStore.setState({ openSettings: original })
+    }
   })
 
   it('resets every override at once, and only when there is one', () => {

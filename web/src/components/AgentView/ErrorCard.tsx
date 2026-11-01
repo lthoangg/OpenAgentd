@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useUIStore } from '@/stores/useUIStore'
 
 /** How long "Copied" shows before the label returns. */
 const COPIED_MS = 1500
@@ -36,12 +38,14 @@ export function CopyDetailsButton({ text, size = 'xs' }: { text: string; size?: 
  * settings); the caller decides which one that is. Every failure can copy
  * its details, for a bug report.
  */
-export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
+export function ErrorCard({ title, message, details, code, onRetry, onSwitchModel }: {
   /** Omitted when the message is the whole story. */
   title?: string
   message: string
   /** What Copy details copies (type, status, model…); the title and message by default. */
   details?: string
+  /** The error's code (`provider_auth_failed`…): names the way forward. */
+  code?: string
   /** Resend the latest prompt with the session's current model. */
   onRetry?: () => void
   /** Pick another model; it applies from the next message, so Retry after. */
@@ -51,6 +55,20 @@ export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
   const body = title && message.trim() === title.trim() ? null : message
   const copyable = details ?? [title, message].filter((part, i, all) => part && all.indexOf(part) === i).join('\n')
   const hasWayForward = Boolean(onRetry || onSwitchModel)
+  // A session pinned to one account cannot rotate past it (plan 2.3): the
+  // card offers the ways out the waiting card does, and a rejected account
+  // is reconnected rather than "configured".
+  const pinned = useAgentStore((s) => Boolean(s.sessionCredentialId)) && hasWayForward
+  const reconnect = pinned && code === 'provider_auth_failed'
+  const [busy, setBusy] = useState(false)
+  const useAuto = async () => {
+    setBusy(true)
+    try {
+      if (await useAgentStore.getState().setSessionRunSettings({ credentialId: null })) onRetry?.()
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className="my-2">
       <Callout
@@ -59,11 +77,17 @@ export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
         title={title}
         action={(
           <div className="flex flex-wrap items-center gap-1.5">
+            {pinned && (
+              <>
+                <Button size="xs" variant="primary" disabled={busy} onClick={() => void useAuto()}>Use Auto for this session</Button>
+                <Button size="xs" onClick={() => useUIStore.getState().openRunPicker('model')}>Choose account…</Button>
+              </>
+            )}
             {onRetry && <Button size="xs" onClick={onRetry}>Retry</Button>}
-            {onSwitchModel && <Button size="xs" variant="subtle" onClick={onSwitchModel}>Switch model</Button>}
+            {onSwitchModel && !pinned && <Button size="xs" variant="subtle" onClick={onSwitchModel}>Switch model</Button>}
             {hasWayForward && (
               <Button type="button" size="xs" variant="ghost" onClick={() => useSettingsStore.getState().openSettings('providers')}>
-                Provider settings
+                {reconnect ? 'Reconnect…' : 'Provider settings'}
               </Button>
             )}
             <CopyDetailsButton text={copyable} />

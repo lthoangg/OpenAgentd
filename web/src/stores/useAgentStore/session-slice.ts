@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode, updateSessionRunSettings } from '@/api/client'
 import { takePrefetchedHistory } from '@/lib/session-prefetch'
+import { useToastStore } from '@/stores/useToastStore'
 import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages, userMessageSender } from '@/utils/messages'
 import { isRestartNoteExtra } from '@/lib/restart-note'
 import type { OrphanToolResult } from '@/utils/messages'
@@ -1035,7 +1036,13 @@ export const createSessionSlice: StateCreator<
         draft.sessionModel = before.model
         draft.sessionThinkingLevel = before.thinkingLevel
         draft.sessionCredentialId = before.credentialId
-        draft.error = err instanceof Error ? err.message : 'Could not save the run settings'
+      })
+      // A toast, not `error`: the choice is put back, and Retry sends it again.
+      useToastStore.getState().push({
+        tone: 'error',
+        title: "Couldn't save the run settings",
+        description: err instanceof Error ? err.message : undefined,
+        action: { label: 'Retry', onAction: () => void get().setSessionRunSettings(patch) },
       })
       return false
     }

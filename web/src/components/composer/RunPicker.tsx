@@ -31,6 +31,7 @@ import {
 } from '@/lib/run-settings'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { RunPickerFocus } from '@/stores/useUIStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { RunSettings } from './useRunSettings'
@@ -94,11 +95,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     return () => cancelAnimationFrame(id)
   }, [focus, touch])
 
-  const save = async (patch: Parameters<typeof setRun>[0], what: string) => {
-    const ok = await setRun(patch)
-    if (!ok) pushToast({ tone: 'error', title: `Could not change the ${what}`, description: 'The previous choice is back. Try again.' })
-    return ok
-  }
+  // A failed save puts the previous choice back and says so in a toast with
+  // Retry (setSessionRunSettings).
+  const save = (patch: Parameters<typeof setRun>[0]) => setRun(patch)
 
   const pickModel = (id: string, close: boolean) => {
     selectionHapticFeedback()
@@ -112,21 +111,21 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       thinkingLevel: keepLevel,
       // An account belongs to one provider; another provider starts on Auto.
       ...(sameProvider ? {} : { credentialId: null }),
-    }, 'model')
+    })
     if (close) onDone()
   }
 
   const pickLevel = (level: string) => {
-    void save({ thinkingLevel: level }, 'thinking level')
+    void save({ thinkingLevel: level })
   }
 
   const pickAccount = (id: string | null) => {
     selectionHapticFeedback()
-    void save({ credentialId: id }, 'account')
+    void save({ credentialId: id })
   }
 
   const reset = () => {
-    void save({ model: null, thinkingLevel: null, credentialId: null }, 'run settings')
+    void save({ model: null, thinkingLevel: null, credentialId: null })
   }
 
   const updateAgent = useUpdateAgentMutation(settings.agentName ?? 'code')
@@ -144,7 +143,12 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       pushToast({ tone: 'success', title: 'Default saved', description: `New sessions run ${settings.model}${settings.thinkingLevel ? ` · ${thinkingLevelLabel(settings.thinkingLevel)}` : ''}.` })
       onDone()
     } catch (err) {
-      pushToast({ tone: 'error', title: 'Could not save the default', description: err instanceof Error ? err.message : String(err) })
+      pushToast({
+        tone: 'error',
+        title: "Couldn't save the default",
+        description: err instanceof Error ? err.message : String(err),
+        action: { label: 'Retry', onAction: () => void makeDefault() },
+      })
     }
   }
 
@@ -262,6 +266,10 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           usage={settings.providerInfo.supports_credential_usage === true}
           pinned={settings.credentialId}
           onPick={pickAccount}
+          onReconnect={() => {
+            onDone()
+            useSettingsStore.getState().openSettings('providers')
+          }}
           rowClass={rowClass}
         />
       )}
@@ -292,6 +300,7 @@ function AccountList({
   usage,
   pinned,
   onPick,
+  onReconnect,
   rowClass,
 }: {
   providerId: string
@@ -300,8 +309,11 @@ function AccountList({
   usage: boolean
   pinned: string | null
   onPick: (id: string | null) => void
+  /** Sign a signed-out account back in (Settings → Providers). */
+  onReconnect: () => void
   rowClass: string
 }) {
+  const signedOut = accounts.filter((account) => account.status === 'needs_reconnect')
   return (
     <div role="radiogroup" aria-label={`${providerLabel} account`} className="mt-1 border-t border-(--color-border-subtle) px-1 pt-1.5">
       <div className="px-2 pb-0.5 text-meta font-medium text-(--color-text-muted) select-none">Account</div>
@@ -323,6 +335,12 @@ function AccountList({
           <AccountState account={account} providerId={providerId} usage={usage} />
           <Check size={13} aria-hidden="true" className={pinned === account.id ? 'opacity-100' : 'opacity-0'} />
         </button>
+      ))}
+      {/* Beside the radios, not inside one: a radio holds no second control. */}
+      {signedOut.map((account) => (
+        <Button key={account.id} type="button" size="xs" variant="ghost" className="mt-0.5 ml-1" onClick={onReconnect}>
+          Reconnect {account.label}…
+        </Button>
       ))}
     </div>
   )

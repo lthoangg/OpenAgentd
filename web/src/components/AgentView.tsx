@@ -504,6 +504,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             title={title}
             message={message}
             details={providerErrorDetails({ title, message, extra: block.extra })}
+            code={typeof block.extra?.code === 'string' ? block.extra.code : undefined}
             onRetry={onRetry}
             onSwitchModel={onSwitchModel}
           />

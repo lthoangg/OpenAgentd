@@ -560,7 +560,8 @@ desktop-first and walk styles back down.
 **Fixed geometry:**
 
 - `app-header` (36px) — the shared top bar across every platform shell.
-- `status-bar` (24px) — the desktop status footer.
+- `status-bar` (28px) — the desktop status footer; its items are 24px and
+  every one is a Tab stop.
 - `tab-bar` (36px) — the review dock's editor-tab strip.
 - `toolbar` (32px) — the single view toolbar under a tab bar.
 - `list-row` (28px) — sidebar and dock list rows (`ui/list-row.ts` holds the
@@ -916,15 +917,54 @@ already clear. State is carried by words and chips.
   `bg-page` on hover. They are for data surfaces where every row counts, such
   as Telemetry breakdowns.
 
-The sidebar keeps its own caps section headers (below).
+The sidebar has its own section header (below).
 
-**Sidebar sections** stack Pinned, Needs you, the session list and Scheduled
-in one scroller. Each section header is a `label-caps` label with a count; a
-header (32px) or group header (24px) folds its list. The list's header row
+**Sidebar sections.** **New session** (⌘N) sits atop the sidebar, outside the
+scroller, so starting is always one click. Below it one scroller holds
+Pinned, Needs you, the session list and Scheduled; no section scrolls on its
+own, and the session list's header sticks to the top so its actions stay in
+reach. Every section uses one header (`Sidebar/SidebarHeading.tsx`): the
+name in sentence case, `text-xs` medium muted, a count, and a chevron that is
+always visible when the section folds. Needs you counts in a warning chip
+with words ("2 waiting"), so colour is never the only signal. Sections are
+separated by their headers, not by rules. Scheduled is always there, with a
+**+** for a new task and an empty row when nothing is due. The list's header
 holds the icon actions (`md:` 24px, 36px on touch): Search and **View
-options** (which holds Collapse all and Open folder…). There is no New
-session button in the sidebar: sessions start from a folder's **+**, ⌘N or
-the command palette.
+options** (which holds Collapse all and Open folder…). The workspace tree
+shows placeholder rows while it first loads and an error with **Retry** when
+it fails; "No workspaces yet" means the tree loaded empty.
+
+**Workspace rows** split in two: the chevron folds the list, the name opens
+the workspace's latest session (a draft when it has none). The workspace on
+screen just unfolds. From the keyboard ←/→ on the name fold, so the chevron
+is not a Tab stop. The active workspace's name is medium weight in ink.
+
+**Session menu.** ⋯, right-click and the phone's long-press sheet show one
+list in one order: Open in new window (desktop app), Rename, Pin, then Copy
+link and Share… (where the system has a share sheet), then Delete session….
+A link is the `openagentd://session/<id>` deep link in the apps and the
+page address in a browser.
+
+**Header.** Desktop: the sidebar button on the left, then workspace · session
+title; the command palette pill in the middle ("Search or run a command" and
+its shortcut from `md:`, the icon alone below); Task list and Review panel on
+the right. The session title renames in place: double-click it, or press F2
+or Enter on it; a single click does nothing, so a stray click keeps the
+title. A subagent's title is read-only, like its sidebar row. Phones keep
+four controls: the menu (drawer), the title over its workspace, Review panel
+and More. Every header control is 36px on touch, tablets included.
+
+**Notices** (toasts, the update card, the LSP prompt) stack at the top right
+under the header, newest first, so the run deck and Send stay clear. Phones
+span the width between the safe-area insets.
+
+**Command palette** (⌘K) is one overlay. Empty, it lists commands; typed, it
+shows up to three headed groups in order: Commands, Sessions (by title) and
+Files, which the arrow keys walk as one list. ⌘P opens it on Files
+("Find file…"); Backspace in the empty field, or a click on the Files label,
+widens it to every group, and a leading ">" keeps to commands. A page that is
+still loading shows a Loading… row, never "Nothing here yet". The field is
+16px on phones, so iOS does not zoom on focus.
 View options is a context menu of `menuitemradio` groups (Group by, Sort by)
 and a `menuitemcheckbox` (Show details); it stays open while choices apply.
 Rows in flat views and Pinned name their workspace in mono 11px subtle text,
@@ -935,7 +975,8 @@ which gives way first when the row is narrow.
 global focus ring, 36px on touch. They take the place of the row's meta (age,
 tags) on hover or keyboard focus and hold no room at rest, so titles and
 folder names keep the row; touch shows them always, except Pin, which stays
-in More on touch so the title keeps the room. Session rows offer **Pin**
+in More on touch so the title keeps the room; the pin mark itself stays on
+touch. Session rows offer **Pin**
 and **More**, subagent rows **More**, folder rows **+** and **More**. More
 opens the same menu as right-click, so destructive actions are never one
 click from a row. Text actions in rows ("Show all") use `ROW_TEXT_ACTION`

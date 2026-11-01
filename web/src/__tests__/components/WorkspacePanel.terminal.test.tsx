@@ -105,7 +105,7 @@ describe('WorkspacePanel terminal tabs', () => {
     const lower = screen.getByRole('group', { name: 'Lower group' })
 
     await act(async () => {
-      within(lower).getByRole('button', { name: 'Open in the review panel' }).click()
+      within(lower).getByRole('button', { name: 'Open in Review panel' }).click()
     })
     await act(async () => {
       screen.getByRole('menuitem', { name: 'Terminal' }).click()

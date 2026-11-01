@@ -118,9 +118,9 @@ describe('splitting the Review panel', () => {
     await update({ layoutRequest: { action: 'split', key: 1 } })
     const lower = lowerGroup()!
     expect(lower).toBeTruthy()
-    expect(within(lower).getByRole('group', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(within(lower).getByRole('group', { name: 'Open in Review panel' })).toBeTruthy()
     expect(within(screen.getByRole('group', { name: 'Upper group' })).getByRole('button', { name: 'Git' })).toBeTruthy()
-    expect(screen.getByRole('separator', { name: 'Resize review panel groups' })).toBeTruthy()
+    expect(screen.getByRole('separator', { name: 'Resize Review panel groups' })).toBeTruthy()
 
     await update({ layoutRequest: { action: 'split', key: 2 } })
     expect(lowerGroup()).toBeNull()

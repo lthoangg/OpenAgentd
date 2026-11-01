@@ -84,8 +84,8 @@ async function renderPanel({ mobile = false, plan = PLAN, chatWorkspace = false,
 }
 
 async function openMenu() {
-  await userEvent.setup().click(screen.getByRole('button', { name: 'Open in the review panel' }))
-  return screen.getByRole('menu', { name: 'Open in the review panel' })
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Open in Review panel' }))
+  return screen.getByRole('menu', { name: 'Open in Review panel' })
 }
 
 const rowNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))
@@ -122,9 +122,9 @@ describe('Review dock "+" menu', () => {
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
     // Refresh is for Git, diff, commit and file tabs only
     expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open in Review panel' })).toBeTruthy()
     // Icon only on phones: the + carries the name, no "Open…" text.
-    expect(screen.getByRole('button', { name: 'Open in the review panel' }).textContent).toBe('')
+    expect(screen.getByRole('button', { name: 'Open in Review panel' }).textContent).toBe('')
     // Tasks and side questions open above the chat on phones, not in the
     // dock; the plan and the goal open here everywhere.
     expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
@@ -136,7 +136,7 @@ describe('Review dock "+" menu', () => {
     expect(screen.queryByRole('button', { name: 'New terminal' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open in dock' })).toBeNull()
-    const open = screen.getByRole('button', { name: 'Open in the review panel' })
+    const open = screen.getByRole('button', { name: 'Open in Review panel' })
     expect(open.textContent).toBe('')
   })
 
@@ -185,8 +185,8 @@ describe('Review dock "+" menu', () => {
 
   it('puts a live goal on the empty launcher', async () => {
     await renderPanel({ plan: null, goal: GOAL })
-    const launcher = screen.getByRole('group', { name: 'Open in the review panel' })
+    const launcher = screen.getByRole('group', { name: 'Open in Review panel' })
     expect(launcher.textContent).toContain('Goal')
-    expect(screen.getByRole('heading', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Open in Review panel' })).toBeTruthy()
   })
 })

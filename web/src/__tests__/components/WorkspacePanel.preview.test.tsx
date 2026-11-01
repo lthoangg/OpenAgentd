@@ -119,7 +119,7 @@ describe('Review dock preview tabs', () => {
   it('opens the last dev server from Open… → Preview and closes its listener with the tab', async () => {
     localStorage.setItem(`oa-preview-last-url:${WORKSPACE}`, 'http://localhost:3000/app')
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Open in the review panel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Review panel' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }))
     await screen.findByRole('button', { name: 'Preview localhost:3000' })
     await waitFor(() => expect(posts()[0]?.body).toEqual({ workspace: WORKSPACE, url: 'http://localhost:3000/app' }))

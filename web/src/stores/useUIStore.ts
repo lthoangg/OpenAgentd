@@ -44,7 +44,10 @@ interface UIStore {
   telemetryOpen: boolean
   /** Keyboard Shortcuts sheet (app root). */
   shortcutsHelpOpen: boolean
-  /** Task the scheduler should open on next (a sidebar click); taken once. */
+  /**
+   * Task the scheduler should open on next (a sidebar click), or
+   * ``NEW_SCHEDULED_TASK`` for its create form; taken once.
+   */
   scheduledTaskFocus: string | null
   focusScheduledTask: (taskId: string | null) => void
   /**
@@ -85,6 +88,8 @@ interface UIStore {
 
 export type RunPickerFocus = 'model' | 'thinking'
 export type PlusMenuSection = 'mcp'
+/** ``scheduledTaskFocus`` value that opens the scheduler's create form. */
+export const NEW_SCHEDULED_TASK = ':new'
 
 export const useUIStore = create<UIStore>()(
   immer((set, get) => ({

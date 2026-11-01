@@ -126,7 +126,7 @@ export function useAgentCommands({
           action: handleOpenPlan,
         }]
       : []),
-    { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Panel', description: 'Show or hide the review panel and its open tabs', keywords: 'changed files dock panel review', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
+    { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Panel', description: 'Show or hide the Review panel and its open tabs', keywords: 'changed files dock panel review', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleOpenSideQuestions
       ? [{
           id: 'side-questions',
@@ -138,19 +138,19 @@ export function useAgentCommands({
         }]
       : []),
     ...(handleOpenGit
-      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
+      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the Review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
       : []),
     ...(handleToggleDockMaximized
-      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
+      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the Review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
       : []),
     ...(handleSplitDock
       ? [{ id: 'split-dock', group: 'View' as const, label: 'Split Review Panel', description: 'Two tab groups, one above the other, or one again', keywords: 'dock split group top bottom', shortcut: shortcutLabel(KEYS.splitDock, os), action: handleSplitDock }]
       : []),
     ...(handleToggleTerminalGroup
-      ? [{ id: 'toggle-terminal', group: 'View' as const, label: 'Terminal', description: 'Show or hide the terminals under the review panel tabs; they keep running', keywords: 'shell console panel', shortcut: shortcutLabel(KEYS.toggleTerminal, os), action: handleToggleTerminalGroup }]
+      ? [{ id: 'toggle-terminal', group: 'View' as const, label: 'Terminal', description: 'Show or hide the terminals under the Review panel tabs; they keep running', keywords: 'shell console panel', shortcut: shortcutLabel(KEYS.toggleTerminal, os), action: handleToggleTerminalGroup }]
       : []),
     ...(handleToggleFocusMode
-      ? [{ id: 'focus-mode', group: 'View' as const, label: focusMode ? 'Leave Focus Mode' : 'Focus Mode', description: focusMode ? 'Bring the sidebar and review panel back' : 'Hide the sidebar and review panel; again to bring them back', keywords: 'zen distraction free hide panels', shortcut: shortcutLabel(KEYS.focusMode, os), action: handleToggleFocusMode }]
+      ? [{ id: 'focus-mode', group: 'View' as const, label: focusMode ? 'Leave Focus Mode' : 'Focus Mode', description: focusMode ? 'Bring the sidebar and Review panel back' : 'Hide the sidebar and Review panel; again to bring them back', keywords: 'zen distraction free hide panels', shortcut: shortcutLabel(KEYS.focusMode, os), action: handleToggleFocusMode }]
       : []),
     ...(handleFindInSession
       ? [{ id: 'find-in-session', group: 'Session' as const, label: 'Find in Session', description: 'Search this conversation', keywords: 'search text transcript', shortcut: shortcutLabel(KEYS.findInSession, os), action: handleFindInSession }]
@@ -162,7 +162,7 @@ export function useAgentCommands({
           id: 'open-preview',
           group: 'View' as const,
           label: 'Open Preview',
-          description: 'Show a local dev server or HTML file in the review panel',
+          description: 'Show a local dev server or HTML file in the Review panel',
           keywords: 'browser web view localhost dev server design inspect',
           action: handleOpenPreview,
         }]
@@ -205,7 +205,7 @@ export function useAgentCommands({
       },
       action: () => {},
     },
-    { id: 'reset-layout', group: 'View', label: 'Reset Layout', description: 'Sidebar and review panel sizes back to their defaults', keywords: 'restore default width panels', action: () => useLayoutStore.getState().resetLayout() },
+    { id: 'reset-layout', group: 'View', label: 'Reset Layout', description: 'Sidebar and Review panel sizes back to their defaults', keywords: 'restore default width panels', action: () => useLayoutStore.getState().resetLayout() },
     {
       id: 'toggle-reader-mode',
       group: 'View',

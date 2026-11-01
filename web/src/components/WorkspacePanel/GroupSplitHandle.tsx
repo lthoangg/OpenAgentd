@@ -53,7 +53,7 @@ export function GroupSplitHandle({
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize review panel groups"
+      aria-label="Resize Review panel groups"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(ratio * 100)}

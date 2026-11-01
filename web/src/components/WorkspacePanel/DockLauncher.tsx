@@ -66,7 +66,7 @@ export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActio
     <div data-dock-launcher className="flex h-full flex-col px-4 pt-[12vh] md:items-center">
       <div role="group" aria-labelledby="dock-launcher-title" className="flex w-full max-w-64 flex-col gap-0.5">
         <h2 id="dock-launcher-title" className="mb-2 px-2 text-xs font-medium text-(--color-text-2)">
-          Open in the review panel
+          Open in Review panel
         </h2>
         {rows.map((row) => (
           <button

@@ -82,11 +82,11 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
     {
       title: 'Review panel',
       entries: [
-        app('workspaceFiles', 'Show or hide the review panel'),
-        app('splitDock', 'Split or join the review panel'),
+        app('workspaceFiles', 'Show or hide the Review panel'),
+        app('splitDock', 'Split or join the Review panel'),
         app('toggleTerminal', 'Show or hide the terminal'),
         app('openGit', 'Open Git'),
-        app('maximizeDock', 'Maximize the review panel'),
+        app('maximizeDock', 'Maximize the Review panel'),
         app('closeTab', 'Close tab'),
         keys(appOnly('Dock tab 1 to 8, and the last'), chordOf(APP_SHORTCUTS.dockTab1), chordOf(APP_SHORTCUTS.dockTab9)),
         keys(appOnly('Next and previous dock tab'), NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD),

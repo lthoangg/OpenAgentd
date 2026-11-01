@@ -78,7 +78,7 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ centerWidth: 1000 })
 
     expect(dock.className).toContain('md:relative')
-    const separator = screen.getByRole('separator', { name: 'Resize review panel' })
+    const separator = screen.getByRole('separator', { name: 'Resize Review panel' })
     // 45% of a 1000px center, capped so the chat keeps 400px.
     expect(separator.getAttribute('aria-valuenow')).toBe('450')
     expect(separator.getAttribute('aria-valuemax')).toBe('600')
@@ -100,15 +100,15 @@ describe('Review dock layout', () => {
     const user = userEvent.setup()
     const { dock } = await renderPanel({ centerWidth: 1000 })
 
-    await user.click(screen.getByRole('button', { name: /^Maximize review panel/ }))
+    await user.click(screen.getByRole('button', { name: /^Maximize Review panel/ }))
 
     expect(useLayoutStore.getState().dockMaximized).toBe(true)
     expect(dock.className).toContain('md:absolute')
-    expect(screen.queryByRole('separator', { name: 'Resize review panel' })).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'Resize Review panel' })).toBeNull()
     // Reading-column tabs widen off this marker.
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: /^Restore review panel/ }))
+    await user.click(screen.getByRole('button', { name: /^Restore Review panel/ }))
     expect(useLayoutStore.getState().dockMaximized).toBe(false)
     expect(dock.className).toContain('md:relative')
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
@@ -118,7 +118,7 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ centerWidth: 600 })
 
     expect(dock.className).toContain('md:absolute')
-    expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review panel/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Maximize|Restore) Review panel/ })).toBeNull()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 
@@ -171,7 +171,7 @@ describe('Review dock layout', () => {
     })
 
     // 45% of the 1100px center the sidebar leaves, not of the 1000px now.
-    expect(screen.getByRole('separator', { name: 'Resize review panel' }).getAttribute('aria-valuenow')).toBe('495')
+    expect(screen.getByRole('separator', { name: 'Resize Review panel' }).getAttribute('aria-valuenow')).toBe('495')
   })
 
   it('takes focus stranded in the covered chat so keyboard users land on the active tab', async () => {
@@ -218,7 +218,7 @@ describe('Review dock layout', () => {
   it('leaves hiding to the header toggle: the tab bar has no hide button', async () => {
     await renderPanel()
 
-    expect(screen.queryByRole('button', { name: /^(Hide|Close) review panel/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Hide|Close) Review panel/ })).toBeNull()
   })
 
   it('keeps mobile on the full-screen sheet without desktop window controls', async () => {
@@ -226,10 +226,10 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ mobile: true })
 
     expect(dock.className).toContain('mobile-safe-top')
-    expect(screen.queryByRole('separator', { name: 'Resize review panel' })).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'Resize Review panel' })).toBeNull()
     // No window controls; the "Open…" button is the one control that stays
-    expect(screen.queryByRole('button', { name: /^(Maximize|Restore|Hide|Close) review panel/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^(Maximize|Restore|Hide|Close) Review panel/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open in Review panel' })).toBeTruthy()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 

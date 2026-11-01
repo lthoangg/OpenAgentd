@@ -16,7 +16,7 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
   {
     id: 'btw',
-    label: 'BTW',
+    label: 'Side question',
     description: 'Ask a side question without adding it to the chat',
     keepInputOpen: true,
     insertText: 'btw',
@@ -25,7 +25,7 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
   { id: 'redo', label: 'Redo', description: 'Redo the next undone message' },
   { id: 'redo-all', label: 'Redo All', description: 'Restore all undone messages back to the live tip' },
-  { id: 'new', label: 'New Chat', description: 'Start a fresh agent conversation' },
+  { id: 'new', label: 'New session', description: 'Start a fresh agent conversation' },
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
   { id: 'model', label: 'Model', description: 'Choose the model, thinking level and account' },
   { id: 'think', label: 'Think', description: 'Change the thinking level' },

@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useScheduledTasksQuery } from '@/queries'
-import { useUIStore } from '@/stores/useUIStore'
+import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { CreateTaskForm } from './CreateTaskForm'
 import { TaskDetailView } from './TaskDetailView'
 import { TaskListPane } from './TaskListPane'
@@ -34,8 +34,14 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
 
   useEffect(() => {
     if (!focusTaskId) return
-    setSelectedTaskId(focusTaskId)
-    setPane('detail')
+    // The sidebar's Scheduled "+" asks for the create form.
+    if (focusTaskId === NEW_SCHEDULED_TASK) {
+      setSelectedTaskId(null)
+      setPane('create')
+    } else {
+      setSelectedTaskId(focusTaskId)
+      setPane('detail')
+    }
     useUIStore.getState().focusScheduledTask(null)
   }, [focusTaskId])
 

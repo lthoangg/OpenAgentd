@@ -689,6 +689,27 @@ run from the terminal (the native Rust binary since v3.0.0).
     each Review panel group and the status bar.
   - Code blocks, tables, diagrams and an expanded tool's output can widen to
     960px when the chat has room; prose keeps its reading width.
+- **Sidebar and header: fewer steps** `[v3.40.0]`:
+  - **New session** sits at the top of the sidebar at all times (it does what
+    `⌘N`/`Ctrl+N` does).
+  - A workspace's name opens its latest session (a new one when it has
+    none); the chevron beside it folds the list.
+  - Pinned, Needs you, the sessions and Scheduled scroll together in one
+    list, under one style of section header with an always-visible chevron.
+    Needs you counts in words ("2 waiting"). Scheduled is always there, with
+    **+** for a new task.
+  - While the workspace list first loads it shows placeholder rows, and if it
+    fails, **Retry**; "No workspaces yet" only means there are none.
+  - A session's menu (⋯, right-click, long-press) has **Open in new window**
+    (desktop app), **Rename**, **Pin**, **Copy link**, **Share…** (where the
+    system has a share sheet) and **Delete session…**. A copied link opens
+    the session again: an `openagentd://` link from the apps, the page
+    address from a browser. Touch keeps the pin mark on pinned rows.
+  - Double-click the session title in the header (or press F2 or Enter on
+    it) to rename it there.
+  - The status bar's items are all reachable with Tab, the fast mode pill too.
+  - One name for each thing: **Review panel**, **New session**, **Side
+    question**.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

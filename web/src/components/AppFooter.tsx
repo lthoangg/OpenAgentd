@@ -197,9 +197,17 @@ export const AppFooter = memo(function AppFooter({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-meta font-medium text-(--accent-orange-text)">
+                // Not a control, but a Tab stop all the same, so its tooltip
+                // is reachable from the keyboard like every other item here.
+                <span
+                  tabIndex={0}
+                  role="img"
+                  aria-label="Fast mode is on"
+                  data-status-fast=""
+                  className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-meta font-medium text-(--accent-orange-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                >
                   <Zap size={11} aria-hidden="true" />
-                  <span>fast</span>
+                  <span aria-hidden="true">fast</span>
                 </span>
               }
             />

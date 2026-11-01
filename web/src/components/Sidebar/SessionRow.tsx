@@ -87,6 +87,9 @@ function SessionRowView({
   const metaVisibility = mobileLongPressActions
     ? ''
     : 'group-hover/row:hidden group-focus-within/row:hidden pointer-coarse:hidden'
+  // Touch shows ⋯ at all times and drops the meta for it, but the pin mark
+  // is small and says why the row is where it is, so it stays.
+  const pinMarkVisibility = mobileLongPressActions ? '' : 'group-hover/row:hidden group-focus-within/row:hidden'
   // "Show details" off hides the at-rest meta; the tooltip still carries it.
   const ageVisibility = showDetails ? metaVisibility : 'hidden'
 
@@ -268,7 +271,7 @@ function SessionRowView({
           </span>
         )}
         {pinned && !isEditing && (
-          <span className={`ml-1 flex shrink-0 items-center text-(--color-text-subtle) ${metaVisibility}`} aria-hidden="true">
+          <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-subtle) ${pinMarkVisibility}`} aria-hidden="true">
             <Pin size={11} />
           </span>
         )}

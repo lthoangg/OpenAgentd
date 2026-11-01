@@ -1,5 +1,5 @@
 /**
- * Sidebar and dock list rows (DESIGN.md → list-row): 28px (44px on touch,
+ * Sidebar and dock list rows (DESIGN.md → list-row): 28px (36px on touch,
  * via ``--spacing-list-row``) ``rounded-sm`` rows in ``text-xs``, a keycap
  * wash on hover and a deeper one on the current row. Touch has no hover, so
  * a finger press shows the current-row wash right away instead; a mouse
@@ -27,7 +27,7 @@ export function listRowClass({ current = false }: { current?: boolean } = {}): s
 
 /**
  * An icon action inside a list row (DESIGN.md → Sidebar sections): 24px,
- * borderless, keycap wash on hover, 44px on touch so it fills the row. Not
+ * borderless, keycap wash on hover, 36px on touch so it fills the row. Not
  * `Button`, whose padding and radius suit a toolbar rather than a row. The
  * focus ring is the global `:focus-visible` one.
  */

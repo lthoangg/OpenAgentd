@@ -28,8 +28,8 @@ describe('shortcutHelp', () => {
     // The file finder is "Find file", not "Quick Open"
     expect(find('macos', 'Find file')?.keys).toEqual(['⌘P'])
     expect(find('macos', 'Quick Open')).toBeUndefined()
-    expect(find('macos', 'Show or hide the review panel')?.keys).toEqual(['⌘D'])
-    expect(find('macos', 'Maximize the review panel')?.keys).toEqual(['⌘⇧D'])
+    expect(find('macos', 'Show or hide the Review panel')?.keys).toEqual(['⌘D'])
+    expect(find('macos', 'Maximize the Review panel')?.keys).toEqual(['⌘⇧D'])
     expect(find('windows', 'Close tab')?.keys).toEqual(['Ctrl+W'])
     expect(find('macos', 'Keyboard shortcuts')?.keys).toEqual(['⌘/'])
     expect(find('macos', 'Toggle Design picking')?.keys).toEqual(['⌥C'])
@@ -52,7 +52,7 @@ describe('shortcutHelp', () => {
   })
 
   it('lists the layout keys: split, terminal group, focus mode, find, areas', () => {
-    expect(find('macos', 'Split or join the review panel')?.keys).toEqual(['⌘\\'])
+    expect(find('macos', 'Split or join the Review panel')?.keys).toEqual(['⌘\\'])
     expect(find('macos', 'Show or hide the terminal')?.keys).toEqual(['⌃`'])
     expect(find('windows', 'Show or hide the terminal')?.keys).toEqual(['Ctrl+`'])
     expect(find('macos', 'Focus mode')?.keys).toEqual(['⌘⇧F'])

@@ -161,6 +161,12 @@ describe('AppFooter', () => {
     expect((await screen.findByRole('tooltip')).textContent).toMatch(/^Fast mode is on/)
   })
 
+  it('lets the keyboard reach every status item, the fast mode pill too', () => {
+    renderWithQueryClient(<AppFooter sessionFastMode={true} />)
+    const pill = screen.getByRole('img', { name: 'Fast mode is on' })
+    expect(pill.tabIndex).toBe(0)
+  })
+
 
   it('keeps only the settings gear among the utilities', () => {
     renderWithQueryClient(<AppFooter />)

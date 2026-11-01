@@ -428,7 +428,7 @@ export function DockTabBar({
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:h-9 pointer-coarse:w-9',
                     openMenuAt !== null && 'bg-(--bg-key) text-(--color-text)',
                   )}
-                  aria-label="Open in the review panel"
+                  aria-label="Open in Review panel"
                   aria-haspopup="menu"
                   aria-expanded={openMenuAt !== null}
                 >
@@ -446,7 +446,7 @@ export function DockTabBar({
         )}
         {!mobile && maximized !== null && (
           <ActionButton
-            label={`${maximized ? 'Restore' : 'Maximize'} review panel (${shortcutLabel(APP_SHORTCUTS.maximizeDock, os)})`}
+            label={`${maximized ? 'Restore' : 'Maximize'} Review panel (${shortcutLabel(APP_SHORTCUTS.maximizeDock, os)})`}
             onClick={onToggleMaximized}
           >
             {maximized
@@ -479,7 +479,7 @@ export function DockTabBar({
         </ContextMenu>
       )}
       {openMenuAt && (
-        <ContextMenu at={openMenuAt} label="Open in the review panel" onDismiss={() => setOpenMenuAt(null)} className="w-48">
+        <ContextMenu at={openMenuAt} label="Open in Review panel" onDismiss={() => setOpenMenuAt(null)} className="w-48">
           {openItems.map((item, index) => (
             <Fragment key={item.id}>
               {index > 0 && openItems[index - 1].group !== item.group && <ContextMenuSeparator />}

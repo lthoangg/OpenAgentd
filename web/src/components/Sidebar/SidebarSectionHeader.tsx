@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { WorkspaceGroup } from '@/api/types'
 import type { SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { SidebarViewMenu } from './SidebarViewMenu'
+import { SidebarHeading } from './SidebarHeading'
 
 const ACTION_CLASS =
   'flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 pointer-coarse:size-9'
@@ -53,8 +54,9 @@ function HeaderAction({
 /**
  * The sessions section header: its name with Search and View options.
  * Collapse all and Open folder… live in View options. New sessions start
- * from a folder's "+", ⌘N or the command palette. It stays put however
- * long the list below is.
+ * from New session at the top of the sidebar, a workspace's "+", ⌘N or the
+ * command palette. It sticks to the top of the sidebar's one scroller, so its
+ * actions stay reachable however long the list is.
  */
 export function SidebarSectionHeader({
   groupBy,
@@ -78,12 +80,11 @@ export function SidebarSectionHeader({
   const project = groupBy === 'project'
 
   return (
-    <div className="shrink-0">
-      <div className="flex h-8 items-center justify-between gap-2 pl-3 pr-1.5">
-        <span className="truncate text-xs font-medium text-(--color-text-muted)">
-          {project ? 'Workspaces' : 'Sessions'}
-        </span>
-        <div className="flex shrink-0 items-center gap-0.5">
+    <div className="sticky top-0 z-10 shrink-0 bg-(--bg-page) dark:bg-(--bg-sidebar)">
+      <SidebarHeading
+        label={project ? 'Workspaces' : 'Sessions'}
+        actions={(
+          <>
           <HeaderAction
             label="Search sessions"
             active={searchOpen}
@@ -104,8 +105,9 @@ export function SidebarSectionHeader({
           >
             <ListFilter size={13} aria-hidden="true" />
           </HeaderAction>
-        </div>
-      </div>
+          </>
+        )}
+      />
       {viewMenuAt && (
         <SidebarViewMenu
           at={viewMenuAt}

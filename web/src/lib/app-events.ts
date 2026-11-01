@@ -13,8 +13,6 @@ export const APP_EVENTS = {
   // The terminal key is matched on the physical Backquote code, which a
   // synthetic key press does not carry.
   openTerminal: 'oa:open-terminal',
-  // Opens the sidebar's session search.
-  searchSessions: 'oa:search-sessions',
   // A transcript plan-review card or ``plan`` row asks for the session plan.
   openPlan: 'oa:open-plan',
   // View menu: layout commands (their keys match physical codes or Control).

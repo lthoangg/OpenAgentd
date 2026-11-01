@@ -865,6 +865,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
             draftWorkspace={sessionId ? null : workspace}
+            onNewSession={handleNewSession}
             onCollapse={() => (sidebarDrawer ? setSidebarDrawerOpen(false) : setSidebarCollapsed(true))}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
             desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}

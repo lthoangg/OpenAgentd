@@ -87,7 +87,7 @@ const tab = (name: string) => screen.getByRole('button', { name })
 const group = (index: 0 | 1) => document.querySelector<HTMLElement>(`[data-dock-group="${index}"]`)!
 /** New terminals open from the lower strip's "Open…" menu. */
 const newTerminal = async () => {
-  await act(async () => { within(group(1)).getByRole('button', { name: 'Open in the review panel' }).click() })
+  await act(async () => { within(group(1)).getByRole('button', { name: 'Open in Review panel' }).click() })
   await act(async () => { screen.getByRole('menuitem', { name: 'Terminal' }).click() })
 }
 /** Tab titles in strip order: one group, or both (upper first). */

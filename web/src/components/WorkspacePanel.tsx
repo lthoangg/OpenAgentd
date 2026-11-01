@@ -343,7 +343,7 @@ export function WorkspacePanel({
     onCommit: (width: number) => useLayoutStore.getState().setDockRatio(ratioFromWidth(width, center)),
     onReset: () => useLayoutStore.getState().resetDockRatio(),
     disabled: mobile || overlay || !open,
-    label: 'Resize review panel',
+    label: 'Resize Review panel',
   }
   // Desktop sets the width through the same motion value, but never tweens
   // it: showing or hiding the panel is a straight cut, so the chat beside it

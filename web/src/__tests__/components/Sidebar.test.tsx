@@ -9,7 +9,7 @@ import { loadLastWorkspace, loadWorkspaces, saveLastWorkspace } from '@/utils/wo
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
-import { useUIStore } from '@/stores/useUIStore'
+import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -196,6 +196,7 @@ mock.module('@/lib/app-backend', () => ({
 const Icon = () => null
 mock.module('lucide-react', () => ({
   SlidersHorizontal: Icon, Activity: Icon,
+  AppWindow: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
@@ -213,6 +214,7 @@ mock.module('lucide-react', () => ({
   Globe: Icon,
   HelpCircle: Icon,
   Home: Icon,
+  Link: Icon,
   ListFilter: Icon,
   Loader2: Icon,
   MessageCircle: Icon,
@@ -221,6 +223,7 @@ mock.module('lucide-react', () => ({
   PinOff: Icon,
   Plus: Icon,
   Search: Icon,
+  Share: Icon,
   SquarePen: Icon,
   Settings: Icon,
   Settings2: Icon,
@@ -1540,17 +1543,17 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
   })
 
-  it('opens session search on the searchSessions event and closes it on Escape', async () => {
+  it('opens session search from its button and gives focus back on Escape', async () => {
     const user = userEvent.setup()
     await renderSidebarForSessions(undefined)
 
-    act(() => { window.dispatchEvent(new Event(APP_EVENTS.searchSessions)) })
+    await user.click(screen.getByRole('button', { name: 'Search sessions' }))
     const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
     await waitFor(() => expect(document.activeElement).toBe(input))
 
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('searchbox')).toBeNull()
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' })))
   })
 
   it('lists upcoming scheduled tasks soonest first and opens the scheduler on one', async () => {
@@ -1591,6 +1594,148 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(useUIStore.getState().scheduledTaskFocus).toBe('soon')
     expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Scheduled when nothing is scheduled, with a + that opens a new task', async () => {
+    const user = userEvent.setup()
+    const baseFetch = globalThis.fetch
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      if (String(input).includes('/api/scheduler/tasks')) return new Response(JSON.stringify({ tasks: [] }))
+      return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+    }) as typeof fetch
+    const opened = mock(() => {})
+    window.addEventListener(APP_EVENTS.openScheduler, opened)
+
+    await renderSidebarForSessions(undefined)
+    const section = await screen.findByRole('region', { name: 'Scheduled' })
+    await waitFor(() => expect(section.textContent).toContain('No scheduled tasks'))
+
+    await user.click(within(section).getByRole('button', { name: 'New scheduled task' }))
+    window.removeEventListener(APP_EVENTS.openScheduler, opened)
+    expect(useUIStore.getState().scheduledTaskFocus).toBe(NEW_SCHEDULED_TASK)
+    expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  describe('getting around', () => {
+    const twoWorkspaces = () => {
+      sessionsData = [
+        { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+        { id: 'session-2', title: 'Other work', agent_name: 'lead', created_at: '2026-05-12T00:00:00Z', updated_at: '2026-05-12T00:00:00Z', mode: 'coding', workspace: '/repo/other' },
+      ]
+      workspaceSessionsData = sessionsData
+    }
+
+    it('starts a new session from the New session row the way ⌘N does', async () => {
+      twoWorkspaces()
+      const onNewSession = mock(() => {})
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', onNewSession })
+
+      const row = screen.getByRole('button', { name: 'New session' })
+      expect(row.getAttribute('aria-keyshortcuts')).toBe('Meta+N')
+      fireEvent.click(row)
+      expect(onNewSession).toHaveBeenCalledTimes(1)
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('opens a draft in the current workspace when the chat has no handler', async () => {
+      twoWorkspaces()
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+      expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false })
+    })
+
+    it('opens a workspace’s latest session from its name, and folds only from the chevron', async () => {
+      twoWorkspaces()
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open workspace other' }))
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-2' } }))
+
+      // The workspace on screen has nothing to open: its name never folds it.
+      navigate.mockClear()
+      fireEvent.click(screen.getByRole('button', { name: 'Open workspace project' }))
+      expect(navigate).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Collapse workspace project' })).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse workspace project' }))
+      expect(screen.getByRole('button', { name: 'Expand workspace project' }).getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('opens a draft from a workspace name when the workspace has no sessions', async () => {
+      twoWorkspaces()
+      worktreesByRepo = {}
+      // Only the tree knows /repo/empty; no list has a session there.
+      const baseFetch = globalThis.fetch
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        const url = String(input)
+        if (url.includes('/api/agent/workspace/tree')) {
+          const tree = workspaceTreeResponse()
+          return new Response(JSON.stringify({ ...tree, repositories: [...tree.repositories, { path: '/repo/empty', name: 'empty', worktrees: [], group_ids: [] }] }))
+        }
+        if (url.includes('/api/agent/sessions?')) return new Response(JSON.stringify({ data: [], has_more: false, next_cursor: null }))
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Open workspace empty' }))
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false }))
+    })
+
+    it('shows placeholders while the tree loads and Retry when it fails, never "No workspaces yet"', async () => {
+      let treeRequests = 0
+      let failTree = true
+      const baseFetch = globalThis.fetch
+      let releaseTree: () => void = () => {}
+      const treeGate = new Promise<void>((resolve) => { releaseTree = resolve })
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        if (String(input).includes('/api/agent/workspace/tree')) {
+          treeRequests += 1
+          await treeGate
+          if (failTree) return new Response(JSON.stringify({ detail: 'boom' }), { status: 500 })
+          return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [], group_ids: [] }], chat: null, groups: [] }))
+        }
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
+      const { Sidebar } = await import('@/components/Sidebar')
+      // No automatic retries, so the failure shows at once.
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <Sidebar workspace={null} />
+        </QueryClientProvider>,
+      )
+
+      expect(screen.getByRole('status', { name: 'Loading workspaces' })).toBeTruthy()
+      expect(screen.queryByText('No workspaces yet.')).toBeNull()
+
+      await act(async () => { releaseTree() })
+      const retry = await screen.findByRole('button', { name: 'Retry' })
+      expect(screen.getByText('Couldn’t load workspaces.')).toBeTruthy()
+      expect(screen.queryByText('No workspaces yet.')).toBeNull()
+
+      failTree = false
+      fireEvent.click(retry)
+      expect(await screen.findByRole('button', { name: 'Open workspace project' })).toBeTruthy()
+      expect(treeRequests).toBe(2)
+    })
+
+    it('lists every section in one scroller under an always-visible New session row', async () => {
+      twoWorkspaces()
+      pinnedSessionsData = [{ id: 'pinned-1', title: 'Pinned review', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', pinned_at: '2026-05-14T00:00:00Z' }]
+      const view = await renderSidebarForSessions('session-1')
+
+      const scroller = view!.container.querySelector('[data-sidebar-scroller]') as HTMLElement
+      expect(scroller.className).toContain('overflow-y-auto')
+      expect(scroller.contains(screen.getByRole('region', { name: 'Pinned' }))).toBe(true)
+      expect(scroller.contains(screen.getByRole('region', { name: 'Scheduled' }))).toBe(true)
+      expect(scroller.contains(screen.getByRole('button', { name: 'New session' }))).toBe(false)
+      // No section scrolls on its own.
+      expect(Array.from(view!.container.querySelectorAll('.overflow-y-auto'))).toEqual([scroller])
+      // Touch keeps the pin mark, though it drops the rest of the row meta for ⋯.
+      const pinMark = view!.container.querySelector('[data-pin-mark]') as HTMLElement
+      expect(pinMark.className).not.toContain('pointer-coarse:hidden')
+    })
   })
 
   it('keeps the sidebar on the page tone in light mode and the rail in dark', async () => {
@@ -1812,7 +1957,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarWithProps({ workspace: '/repo/project' })
 
-    const repoRow = await waitFor(() => screen.getByLabelText(/(Expand|Collapse) workspace project/))
+    const repoRow = await waitFor(() => screen.getByLabelText('Open workspace project'))
     // Desktop says "folder not found"; phones show the shorter "missing".
     expect(repoRow.querySelector('[data-sidebar-missing]')?.textContent).toBe('folder not foundmissing')
     // Neither the subfolder nor the outside worktree is a repository row.
@@ -2140,11 +2285,13 @@ describe('Sidebar workspace trust flow', () => {
       for (const el of [
         row('First'),
         row('Second'),
-        screen.getByLabelText('Collapse workspace project'),
+        screen.getByLabelText('Open workspace project'),
         screen.getByLabelText('Pin session First'),
         screen.getByLabelText('More actions for First'),
         screen.getByLabelText('Actions for project'),
       ]) expect(el.tabIndex).toBe(0)
+      // The chevron is a pointer target; ←/→ on the name fold from the keyboard.
+      expect(screen.getByLabelText('Collapse workspace project').tabIndex).toBe(-1)
     })
 
     it('climbs and folds the workspace with Left/Right', async () => {
@@ -2153,12 +2300,15 @@ describe('Sidebar workspace trust flow', () => {
       await renderSidebarForSessions('session-1')
       row('Second').focus()
       await user.keyboard('{ArrowLeft}')
-      const header = screen.getByLabelText('Collapse workspace project')
+      const header = screen.getByLabelText('Open workspace project')
       expect(document.activeElement).toBe(header)
+      expect(header.getAttribute('aria-description')).toBe('Expanded')
       await user.keyboard('{ArrowLeft}')
-      expect(screen.getByLabelText('Expand workspace project')).toBe(header)
+      expect(header.getAttribute('aria-description')).toBe('Collapsed')
+      expect(screen.getByLabelText('Expand workspace project').getAttribute('aria-expanded')).toBe('false')
       await user.keyboard('{ArrowRight}')
-      expect(screen.getByLabelText('Collapse workspace project')).toBe(header)
+      expect(header.getAttribute('aria-description')).toBe('Expanded')
+      expect(document.activeElement).toBe(header)
     })
 
     it('renames with F2, deletes with Delete and opens the row menu with Shift+F10', async () => {
@@ -2182,7 +2332,7 @@ describe('Sidebar workspace trust flow', () => {
       const user = userEvent.setup()
       twoSessions()
       await renderSidebarForSessions('session-1')
-      const header = screen.getByLabelText('Collapse workspace project')
+      const header = screen.getByLabelText('Open workspace project')
       header.focus()
 
       await user.keyboard('{ArrowDown}')
@@ -2202,7 +2352,7 @@ describe('Sidebar workspace trust flow', () => {
       const user = userEvent.setup()
       twoSessions()
       await renderSidebarForSessions('session-1')
-      const header = screen.getByLabelText('Collapse workspace project')
+      const header = screen.getByLabelText('Open workspace project')
       header.focus()
       await user.keyboard('{ArrowLeft}')
 
@@ -2418,15 +2568,15 @@ describe('Sidebar workspace trust flow', () => {
     await renderSidebarForSessions('session-1')
 
     expect(screen.getByRole('img', { name: 'Groups: acme' })).toBeTruthy()
-    expect(screen.getByLabelText(/workspace other/)).toBeTruthy()
+    expect(screen.getByLabelText('Open workspace other')).toBeTruthy()
 
     await act(async () => { useSidebarViewStore.getState().setGroupFilter('g-acme') })
-    expect(screen.queryByLabelText(/workspace other/)).toBeNull()
-    expect(screen.getByLabelText(/workspace project/)).toBeTruthy()
+    expect(screen.queryByLabelText('Open workspace other')).toBeNull()
+    expect(screen.getByLabelText('Open workspace project')).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Show all workspaces' }))
     expect(useSidebarViewStore.getState().groupFilter).toBeNull()
-    expect(screen.getByLabelText(/workspace other/)).toBeTruthy()
+    expect(screen.getByLabelText('Open workspace other')).toBeTruthy()
   })
 
   it('toggles a repository\'s groups from its actions menu and links to group settings', async () => {
@@ -2515,11 +2665,16 @@ describe('Sidebar workspace trust flow', () => {
       mobileOpen: true,
     })
 
-    const chatRow = screen.getByRole('button', { name: /workspace Chat$/ })
+    const chatRow = screen.getByRole('button', { name: 'Open workspace Chat' })
     fireEvent.pointerDown(chatRow, { pointerType: 'touch', clientX: 20, clientY: 20 })
 
     const newSession = await waitFor(
-      () => screen.getByRole('button', { name: 'New session' }),
+      () => {
+        // Not the sidebar's own New session row: the one in the action sheet.
+        const inSheet = screen.getAllByRole('button', { name: 'New session' }).find((el) => !el.hasAttribute('data-sidebar-new-session'))
+        if (!inSheet) throw new Error('no action sheet yet')
+        return inSheet
+      },
       { timeout: 1500 },
     )
 
@@ -2576,12 +2731,13 @@ describe('Sidebar workspace trust flow', () => {
       useSidebarViewStore.setState({ groupBy: 'project', showDetails: true, pinnedCollapsed: false, collapsedGroups: [] })
     })
 
-    it('has no header New session in Project mode, and keeps Collapse all in View options', async () => {
+    it('has New session only atop the sidebar in Project mode, and keeps Collapse all in View options', async () => {
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
       await renderSidebarForSessions('session-1')
 
-      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+      // One entry per place: the row atop the sidebar, not the section header.
+      expect(screen.getAllByRole('button', { name: 'New session' }).map((el) => el.hasAttribute('data-sidebar-new-session'))).toEqual([true])
       fireEvent.click(screen.getByRole('button', { name: 'View options' }))
       expect(screen.getByRole('menuitem', { name: 'Collapse all workspaces' })).toBeTruthy()
       expect(allSessionsQueryArgs).toEqual([])
@@ -2610,7 +2766,7 @@ describe('Sidebar workspace trust flow', () => {
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 
-      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'New session' }).map((el) => el.hasAttribute('data-sidebar-new-session'))).toEqual([true])
       for (const name of ['Settings', 'Usage', /^Theme:/]) {
         const button = screen.getByRole('button', { name })
         expect(button.textContent).toBe('')
@@ -2649,7 +2805,9 @@ describe('Sidebar workspace trust flow', () => {
       )
     })
 
-    it('pins a session from its context menu', async () => {
+    it('lists the session actions in one order and pins from the context menu', async () => {
+      isTauri = true
+      platformOs = 'macos'
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
 
@@ -2657,13 +2815,35 @@ describe('Sidebar workspace trust flow', () => {
 
       fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
       const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
-      // Pin leads the menu.
-      expect(items[0].textContent).toContain('Pin')
-      fireEvent.click(items[0])
+      // Share… needs a system share sheet, which this window has not.
+      expect(items.map((item) => item.textContent)).toEqual([
+        'Open in new window',
+        'Rename',
+        'Pin',
+        'Copy link',
+        'Delete session…',
+      ])
+      fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
       expect(setSessionPinnedMutate).toHaveBeenCalledWith(
         { id: 'session-1', pinned: true },
         expect.anything(),
       )
+    })
+
+    it('copies a browser link to the session, with no new-window entry outside the app', async () => {
+      isTauri = false
+      const writeText = mock(async (_text: unknown) => {})
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
+      expect(screen.queryByRole('menuitem', { name: 'Open in new window' })).toBeNull()
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy link' }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+      expect(writeText.mock.calls[0][0]).toBe(`${window.location.origin}/session-1`)
     })
 
     it('pins from the row action left of More', async () => {

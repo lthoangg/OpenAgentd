@@ -74,7 +74,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "agent-info").label).toBe("Model and Thinking…")
     expect(byId(result.current, "agent-info").description).toBe("Model, thinking level and account for the next message")
     expect(byId(result.current, "scheduled-tasks").description).toBe("Create, pause and run scheduled agent tasks")
-    expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the review panel")
+    expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the Review panel")
     expect(byId(result.current, "go-settings").description).toBe("Agents, skills, providers and more")
   })
 
@@ -121,7 +121,7 @@ describe("useAgentCommands — shortcut labels", () => {
   it("names Ctrl+D Toggle Review Panel and lists Open Git only for project workspaces", () => {
     const noGit = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(noGit.result.current, "workspace-files").label).toBe("Toggle Review Panel")
-    expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the review panel and its open tabs")
+    expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the Review panel and its open tabs")
     expect(noGit.result.current.find((c) => c.id === "open-git")).toBeUndefined()
 
     const handleOpenGit = mock(() => {})

@@ -849,8 +849,9 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
 - **Panel**: `rounded-md`, one 1px `border-(--color-border-subtle)` hairline, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
 - **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with Bark and its text and icons invert to `on-accent` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
+- **Keyed lists** (`oa-menu-item-keyed`, the command palette): only the row the list marks active (`data-highlighted`) fills; a real mouse move makes a row active (`hoverIntent`), a pointer resting over the list lights nothing, so ↑/↓ never leave two rows lit. Palette rows have no border.
 - **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns error and the text inverts.
-- **Native in the desktop app**: `ContextMenu` reads its items (label, disabled, checked, separators) from the hidden page menu and asks the shell to pop up the OS's own menu at the same point (`lib/native-menu.ts` → `show_context_menu`); the chosen item is clicked, so callers keep one menu definition. A menu whose items carry more than words (chips, badges) passes `native={false}`. Browsers, phones and a shell without the command show the page menu.
+- **Native in the desktop app**: `ContextMenu` reads its items (label, disabled, checked, separators) from the hidden page menu and asks the shell to pop up the OS's own menu at the same point (`lib/native-menu.ts` → `show_context_menu`); the chosen item is clicked, so callers keep one menu definition. A menu whose items carry more than words (chips, badges) passes `native={false}`. In the iOS app the same items are an iOS action sheet (`pick_one`: rows that can run, the checked one marked, the menu's label as its title). Browsers, Android and a shell without the command show the page menu.
 - In the desktop app, command-only context menus (tabs, sessions, messages, files, Changes rows) are the OS's own menu; these styles are the browser fallback and the menus that hold chips or switches.
 - **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
 
@@ -918,8 +919,10 @@ stopped turn says why and since when, lists its ways forward and has
 **Copy details**. Content text in cards is at least 12px (`text-xs`);
 `text-meta` is for chips and meta lines.
 
-**Touch menus.** A long press on a message, a code block or a link opens
-the same items as right-click, as a bottom sheet with a light haptic.
+**Touch menus.** A long press on a message, a code block, a link or a tool
+row (Copy arguments, Copy result) opens the same items as right-click, as a
+bottom sheet with a light haptic; in the iOS app it is the system's action
+sheet, and so is a session row's menu.
 
 **Confirmations** (`ui/confirm-dialog.tsx`): every action that cannot be
 undone (stop a server, regenerate a key, delete, discard edits, revert a
@@ -973,8 +976,8 @@ A link is the `openagentd://session/<id>` deep link in the apps and the
 page address in a browser.
 
 **Header.** Desktop: the sidebar button on the left, then workspace · session
-title; the command palette pill in the middle ("Search or run a command" and
-its shortcut from `md:`, the icon alone below); Task list and Review panel on
+title; the command palette pill in the middle ("Command palette" and its
+shortcut from `md:`, the icon alone below); Task list and Review panel on
 the right. The session title renames in place: double-click it, or press F2
 or Enter on it; a single click does nothing, so a stray click keeps the
 title. A subagent's title is read-only, like its sidebar row. Phones keep
@@ -1042,6 +1045,9 @@ the text sits the run deck, which says how the next message runs:
 - **The context ring** opens the numbers and "Summarize now".
 - **Send** is a keycap fill until there is something to send, then Bark. It is
   the phone's one 44px target.
+- **The tray** above the text holds what waits on the composer: the queued
+  messages (each with Remove), the side question, the Undo notice and the
+  "↓ N new" chip. The transcript never shows them a second time.
 
 Bottom sheets (`ui/bottom-sheet.tsx`) are the phone form of any picker or
 menu: a grab handle, drag or Esc to dismiss, safe-area padding, 44px rows.
@@ -1301,9 +1307,13 @@ content, 360px wide and up to 600px tall.
 Tab follows the DOM order: every control is its own Tab stop. Composite
 widgets (tablists, menus, listboxes, comboboxes) keep their own arrow keys.
 
-- **Row actions** show at rest (dimmed until the row is hovered or holds
-  focus), and keep a keyboard shortcut: F2, Delete, Shift+F10 / the Menu
-  key (`lib/focus/item-keys.ts`).
+- **Row actions** are never hover-only. Transcript and Review panel rows
+  show theirs at rest (dimmed until the row is hovered or holds focus).
+  Dense list rows (sidebar sessions and folders, commit history) swap their
+  icon actions in for the row's meta on hover or keyboard focus, and every
+  one of those is also in the row's right-click / long-press menu, which
+  touch shows at all times. All keep a keyboard shortcut: F2, Delete,
+  Shift+F10 / the Menu key (`lib/focus/item-keys.ts`).
 - **Quiet focus**: focus a script hands back without a key press (the
   composer pill on page load) goes through `focusQuietly`
   (`lib/focus/quiet.ts`), so it draws no ring until the keyboard moves on.
@@ -1353,23 +1363,25 @@ The phone apps use the system's own controls where a value is simple: a
 choice of a few values (theme, text size) opens an iOS action sheet or an
 Android single-choice dialog (`ui/native-select.tsx`, `pick_one`), and
 Share… opens the system share sheet (`share_text`). A long press opens the
-item's menu as a bottom sheet, edge swipe goes back, a sheet closes with a
-downward drag, and haptics mark a send, an arriving question, a mode
-change and a sheet dismissed by drag.
+item's menu as an action sheet on iOS and a bottom sheet on Android. A swipe
+from the left edge brings back the session list (the app's one level up, as
+iOS's back swipe does), a sheet closes with a downward drag, and haptics
+mark a send, an arriving question, a mode change and a sheet dismissed by
+drag.
 
 ### Native per platform
 
 | | macOS | Windows | Linux | iOS / iPadOS | Android |
 |---|---|---|---|---|---|
 | UI font | SF Pro | Segoe UI Variable | desktop font | SF Pro | Roboto |
-| Context menu | OS menu | OS menu | OS menu | long-press sheet | long-press sheet |
+| Context menu | OS menu | OS menu | OS menu | long-press action sheet | long-press sheet |
 | App menu | menu bar | ☰ / Alt | ☰ / Alt | — | — |
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | Cancel · Action | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
 | Share | share menu | Share window | copy link | share sheet | share sheet |
 | Simple picks | app control | app control | app control | action sheet | single-choice dialog |
 | System text size | — | — | — | Dynamic Type | font scale |
-| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | edge swipe | Back gesture |
+| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | edge swipe (session list) | Back gesture |
 
 ## Brand mark
 

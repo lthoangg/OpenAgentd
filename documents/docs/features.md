@@ -271,8 +271,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     found**; Help opens the keyboard shortcuts; MCP never shows "Connect
     required" for a running server; the browser build hides **Updates**.
   - **Status bar** shows the server (`built-in`), the model ID with its
-    provider and thinking level as chips, and spend with its period
-    (`$0.55 · 24h`), each with a tooltip.
+    provider and thinking level as chips (moved to the run deck in
+    v3.40.0), and spend with its period (`$0.55 · 24h`), each with a tooltip.
   - **Review panel** (was the review dock) has one **+** (Open) button for
     views, terminals, previews and files; Refresh appears only where it
     reloads something and names what it reloads. Tab menus use sentence case
@@ -594,8 +594,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Buttons, chips, tabs and segmented controls have no borders. The primary
     button and the chosen segment (Code / Plan, for example) are filled with
     the theme's Bark colour edge to edge, with inverted text; the highlighted
-    menu item is filled the same way. Menus, cards and dialogs keep one thin
-    frame, and nothing inside them adds another.
+    menu item and the command palette's active row are filled the same way
+    (in the palette only the row the keys or a real mouse move chose, never a
+    second one under a resting pointer). Menus, cards and dialogs keep one
+    thin frame, and nothing inside them adds another.
   - Review panel tabs are borderless pills; the open tab is filled with the
     page colour and set in medium weight, with no coloured edge.
   - Dialog buttons follow the operating system: Cancel then the action on
@@ -604,17 +606,23 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Settings → General is now **Appearance**, with a new **Text size** choice
     (Compact, Default, Large) remembered per device. Default is 1px larger than
     before (13px interface text, 12px captions); Compact keeps the old density.
-    On iOS the system text size multiplies on top.
+    On iOS the system text size multiplies on top. **Previews** chooses whether
+    a page the agent previews opens in the Review panel by itself or waits for
+    a click on its card.
   - Every text colour pair reaches WCAG AA with the existing palette: subtle
     text moves to the muted tone on washes and cards, coloured words and light
     mode status dots use their darker text tone, and checkbox and radio
     outlines are heavier.
-  - Nothing appears on hover only: copy buttons, close buttons, row actions and
-    expand chevrons are always visible (dimmed until used).
+  - Nothing appears on hover only: copy buttons, close buttons, turn actions
+    and expand chevrons are always visible (dimmed until used). A sidebar or
+    commit row's Pin and **⋯** appear in place of its time on hover or
+    keyboard focus; the same items are always on right-click and long-press.
   - Native tooltips (`title`) render as the app's own tooltip, with the same
     delay and look everywhere.
   - The status bar is 28px with 24px items, and header controls are 36px on
-    touch screens.
+    touch screens. On a phone every primary button is 44px tall.
+  - Text fields' placeholders use the muted tone, which reads at AA on every
+    surface.
   - Error toasts stay until you close them, and a toast can carry an action.
     Deleting a session shows **Session deleted · Undo** for 5 seconds; Undo
     brings the session back (and reopens it if it was open).
@@ -633,28 +641,40 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The run chip opens one picker for model, thinking and account: search
     models (recent ones first), step thinking with ←/→, pick an account with
     its state and quota left, or **Reset to default** / **Make default**.
-    Every pick is saved on the session at once and survives a reload. Open it
+    Every pick is saved on the session at once and survives a reload; if the
+    save fails, a toast says so and offers **Retry**. Open it
     with `⌘⇧A`/`Ctrl+Shift+A`, `/model`, `/think`, or **Model and Thinking…**
     in the palette. On phones it is a bottom sheet.
   - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
     servers (state in words, Sign in, on/off); `/mcp` opens it there.
+  - A model reads `provider:model` in mono wherever it appears: the run
+    chip, each answer's and prompt's details, the waiting and retry notes,
+    Usage, the first-run card and Settings → Agents. When space runs out the
+    `provider:` part gives way first; the full ID is in the tooltip.
   - The context ring opens the token numbers and **Summarize now**. The
     header and status bar no longer show the context meter or the model.
   - On phones the header keeps four controls (sidebar, title, Review panel,
     More), and Send is a 44px target.
+  - Messages queued while a turn runs sit in the tray above the text, with
+    the side question and the **Jump to latest** chip.
   - On a touch tablet, in the app or a browser, the composer rides up on the
     soft keyboard as it does on phones, and Settings ends above the keyboard
     so its Save bar stays reachable.
 - **Pin a session to one account** `[v3.40.0]` — when a provider has several
   keys or OAuth profiles, the run picker can pin the session to one of them;
   **Auto** keeps today's rotation. A pinned session only ever uses that
-  account, and so do its subagents on the same provider, its title and its
-  summaries. If the account is cooling down or needs reconnecting, the turn
-  waits and says so, with **Use Auto for this session**, **Choose account…**
-  and **Stop**; if the account is deleted or disabled, the session goes back
-  to Auto with a note. Each answer's footer names the account it ran on, and
+  account, and so do its subagents on the same provider, its title (also a
+  separate title model on the same provider) and its summaries. If the
+  account is cooling down, the turn waits and says so, with **Use Auto for
+  this session**, **Choose account…** and **Stop**. If the provider rejects
+  it (signed out, out of credit), the turn stops with the same choices and
+  **Reconnect…**, and the run picker offers **Reconnect** beside that
+  account. If the account is deleted or disabled, the session goes back to
+  Auto with a note. Each answer's footer names the account it ran on, and
   Settings → Providers shows how many sessions pin each account. The desktop
-  tray names the account a pinned session runs on (**Pinned to Work**).
+  tray names the account a pinned session runs on (**Pinned to Work**), and
+  its Provider limits name the account in use when a provider has several
+  (**OpenAI Codex · Work**).
 - **Review panel splits in two; terminals below** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
@@ -664,7 +684,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     double-click it to reset; closing a group's last tab joins the groups.
   - Terminals open in the lower group, so a diff and a shell show at once.
     **Terminal** (Control and the backquote key, on every system) shows or
-    hides that group; hidden shells keep running. `⌘⇧` (`Ctrl+Shift`) with the
+    hides that group; hidden shells keep running, and the status bar says
+    **N terminals running** (a click shows them). `⌘⇧` (`Ctrl+Shift`) with the
     backquote key still opens a new terminal.
   - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
     files. A file or diff opened from a list or a link opens as an *italic*
@@ -701,7 +722,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Pinned, Needs you, the sessions and Scheduled scroll together in one
     list, under one style of section header with an always-visible chevron.
     Needs you counts in words ("2 waiting"). Scheduled is always there, with
-    **+** for a new task.
+    **+** for a new task. A row whose session is busy, waiting, finished
+    unseen or failed says so in words in place of its time: **Running**,
+    **Needs you**, **Done**, **Failed**.
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
@@ -713,7 +736,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     it) to rename it there.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
   - One name for each thing: **Review panel**, **New session**, **Side
-    question**.
+    questions**, **Open workspace…**, **Workspace** and **Worktree** (never
+    folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
+    server**. The header's search pill reads **Command palette**.
 - **Transcript: act where you read** `[v3.40.0]`:
   - Under the last finished answer, **Copy · Regenerate · Edit prompt · N
     files changed · Undo** show at rest. While a turn runs, Edit prompt shows
@@ -732,12 +757,15 @@ run from the terminal (the native Rust binary since v3.0.0).
     (`3 new`).
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running
-    clock. A subagent's question offers **Answer in subagent session**.
+    clock. A subagent's question lists its options, says the main agent
+    answers it, and offers **Open subagent session**.
   - Copy buttons on code blocks, tool arguments, commands and output are
     always visible and say "Copied"; a bare code fence gets the same header.
     Tool section headers are real buttons.
   - On touch, a long press on a message, a code block or a link opens its
-    menu as a bottom sheet.
+    menu as a bottom sheet (an action sheet in the iOS app). A tool row has
+    a menu too (right-click or long-press): **Copy arguments** and **Copy
+    result**.
   - The plan tool's chip reads **Open plan**, like every other way to the
     plan.
   - A question card always ends in **Send**, dimmed with its reason until
@@ -812,8 +840,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Share…** on a session opens the system share sheet: the macOS share
     menu, the Windows Share window, the iOS and Android share sheets, or
     Web Share in a browser that has it. Linux copies the link.
-  - Zoom is remembered, and a new window opens at the zoom of the window it
-    came from.
+  - Zoom is remembered, and a new window opens at the zoom and in the theme
+    of the window it came from; Text size is shared by every window.
   - On macOS, a two-finger swipe goes back and forward between the sessions
     opened in the window, and scroll bars follow System Settings.
   - Optional global shortcuts, off by default: **Global Shortcuts** in the
@@ -822,6 +850,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - In the phone apps, Theme and Text size open the system's own picker (an
     action sheet on iOS, a dialog on Android), and on Android the system
     font size now enlarges text, up to 125%, as Dynamic Type does on iOS.
+  - In the iPhone and iPad app, right-click and long-press menus (sessions,
+    tabs, tool rows, messages) are iOS action sheets; Android keeps the
+    bottom sheet. Bottom sheets close with a downward drag, and a swipe from
+    the left edge brings back the session list.
 - **Needs you everywhere, answered in place** `[v3.40.0]`:
   - The notch status, the pet, the tray and system notifications share one
     feed and one set of words: **Needs you**, **Running**, **Done**,
@@ -1037,15 +1069,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     still run, and the list and a click on the pill follow the same order.
     A session that
     finishes on screen in the focused window, a turn you stopped yourself,
-    and a background idle compaction show nothing. Hover it to list the
+    and a background idle compaction show nothing. Click it to list the
     sessions, waiting ones first with their question, then the finished
-    ones with a × to dismiss, then running ones; click a row or the pill to
-    open that session. The pill grows out of the notch, springs open on hover and
-    shrinks back in, and clicks beside it still reach the menu bar. It never
-    takes focus and steps aside for full-screen apps. Settings → General →
-    Desktop turns it off, and can also keep it up while OpenAgentd is in
-    front (off by default), stop keeping finished sessions, or stop hover
-    from expanding it.
+    ones with a × to dismiss, then running ones; click a row to open that
+    session, or the pill again to close the list. Pointing at it opens the
+    list only with **Expand on hover** on (off by default); a click on the
+    pill then opens the session it names. The pill grows out of the notch,
+    springs open and shrinks back in, and clicks beside it still reach the
+    menu bar. It never takes focus and steps aside for full-screen apps.
+    Settings → General → Desktop turns it off, and can also keep it up
+    while OpenAgentd is in front (off by default), stop keeping finished
+    sessions, or turn on **Expand on hover**.
     Since `[v3.29.0]` it follows every server that has a window open,
     instead of one server picked from the focused window (with a saved
     server as fallback): a server that is down no longer leaves it empty,

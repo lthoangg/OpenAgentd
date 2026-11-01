@@ -55,6 +55,8 @@ export interface TrayUsageItem {
   retry_at?: number | null
   /** Seconds to wait as of the response; ``retry_at`` is preferred. */
   retry_after?: number | null
+  /** The account whose limits these are, when the provider pools several. */
+  account?: string | null
 }
 
 export interface TrayUsageSummary {

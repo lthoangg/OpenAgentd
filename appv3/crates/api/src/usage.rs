@@ -487,12 +487,32 @@ async fn fetch_item(provider: String, label: String, visible: Vec<String>, force
     it
 }
 
+/// The account the provider's next request uses, named, when it pools more
+/// than one: the tray says whose limits it shows. One account (or one an
+/// exported variable overrides) needs no name.
+fn in_use_account(provider: &str) -> Option<String> {
+    use appv3_providers::pool;
+    if !pool::is_poolable(provider) || pool::env_pinned(provider) {
+        return None;
+    }
+    let file = appv3_core::credentials::snapshot();
+    if pool::enabled_credentials(provider, &file).len() < 2 {
+        return None;
+    }
+    pool::active_credential(provider).map(|c| pool::label_of(&c))
+}
+
 async fn fresh_snapshot(force: bool) -> Value {
     let rt = rs::load_runtime_settings().unwrap_or_default();
     let cands = candidates(&rt);
     let items = futures::future::join_all(cands.into_iter().map(|(p, l)| {
         let vis = rt.providers.get(&p).map(|x| x.visible_models.clone()).unwrap_or_default();
-        fetch_item(p, l, vis, force)
+        let account = in_use_account(&p);
+        async move {
+            let mut it = fetch_item(p, l, vis, force).await;
+            it["account"] = json!(account);
+            it
+        }
     }))
     .await;
     json!({"items": items, "checked_at": chrono::Utc::now().timestamp(), "cached": false})

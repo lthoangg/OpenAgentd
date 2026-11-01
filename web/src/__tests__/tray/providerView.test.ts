@@ -41,6 +41,11 @@ describe('providerView', () => {
     expect(view.tone).toBe('warn')
   })
 
+  it('names the account in use when the provider pools several', () => {
+    expect(providerView({ ...codex, account: 'Work' }, NOW).name).toBe('OpenAI Codex · Work')
+    expect(providerView({ ...codex, account: null }, NOW).name).toBe('OpenAI Codex')
+  })
+
   it('keeps a limit name that says more than the provider name', () => {
     const grok = item({
       provider: 'xai',

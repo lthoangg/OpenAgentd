@@ -107,6 +107,8 @@ async fn rate_limits_share_one_account_gate_without_affecting_other_accounts() {
     let (_, _, summary) = get(&app, "/api/settings/providers/usage-summary?force_refresh=true").await;
     let item = summary["items"].as_array().unwrap().iter().find(|i| i["provider"] == "usage-test").unwrap();
     assert_eq!(item["status"], "rate_limited");
+    // With two accounts the tray names the one whose limits it shows.
+    assert_eq!(item["account"], "a");
     assert_eq!(plugin.discover_models(&CredentialStore::for_account("usage-test", "a")).await.unwrap(), ["1"]);
 
     // A refresh that hits a limit retains the exact timestamp of its last good reading.
@@ -121,6 +123,7 @@ async fn rate_limits_share_one_account_gate_without_affecting_other_accounts() {
     assert_eq!(item["status"], "rate_limited");
     assert_eq!(item["stale"], true);
     assert_eq!(item["usage"]["updated_at"], updated_at);
+    assert_eq!(item["account"], "b");
     assert_eq!(plugin.discover_models(&CredentialStore::for_account("usage-test", "b")).await.unwrap(), ["2"]);
 
     // Disabling a profile prevents its fetch; toggling it back does not evade Retry-After.

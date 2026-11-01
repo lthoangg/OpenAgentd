@@ -1447,7 +1447,7 @@ impl AgentSession {
                 pool: self.pool.clone(),
                 support_interrupt: provider_for_hooks.support_interrupt(),
             }));
-            if let Some(t) = build_title_generation_hook(provider_for_hooks.clone(), self.pool.clone()) {
+            if let Some(t) = build_title_generation_hook(provider_for_hooks.clone(), self.pool.clone(), credential.as_deref()) {
                 hooks.push(Arc::new(t));
             }
         } else if let Some(lead) = &self.parent_session_id {
@@ -1469,7 +1469,7 @@ impl AgentSession {
             let plan_dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
             if let Some(h) = build_summarization_hook(provider_for_hooks.clone(), agent_mode, effective_model.as_deref(), provider_for_hooks.support_interrupt()) {
                 let mut h = h.with_plan_dir(plan_dir);
-                if let Some(retitle) = build_summary_retitle(provider_for_hooks.clone(), self.pool.clone()) {
+                if let Some(retitle) = build_summary_retitle(provider_for_hooks.clone(), self.pool.clone(), credential.as_deref()) {
                     h = h.with_on_summary(retitle);
                 }
                 hooks.push(Arc::new(h));

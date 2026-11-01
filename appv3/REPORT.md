@@ -201,7 +201,8 @@ names all six fields. `POST /api/agent/chat` (form field) and
 A pinned session's requests go to that credential only: the pool never
 rotates past it and never moves the provider's shared "in use" choice, and
 its members (subagents) follow the lead's pin, as do goal checks, side
-questions and titles generated on the session's provider. Cooldowns stay
+questions and titles generated on the session's provider (also by a
+configured title model on that provider). Cooldowns stay
 shared. While the pin cools down the turn waits instead of calling the
 provider: `provider_status` reports the new status value
 `waiting_credential` (same fields as `waiting_quota`; no new event name).
@@ -212,7 +213,10 @@ turn, with a `provider_status` `pin_released` note.
 Assistant rows' `extra` gains `credential_id` and `credential_label`, the
 stored credential that answered (pooled providers only). `GET
 /api/settings/providers/{id}/credentials` adds `pinned_sessions` per
-credential.
+credential. Each `GET /api/settings/providers/usage-summary` item adds
+`account`, the label of the credential its limits belong to (the one the
+provider's next request uses) when the provider pools two or more enabled
+credentials, else `null`.
 
 ### Account-scoped provider usage and throttling
 

@@ -133,6 +133,10 @@ pub struct UsageSummaryItem {
     /// Seconds to wait, as of the response; ``retry_at`` is preferred.
     #[serde(default, deserialize_with = "lenient_i64")]
     pub retry_after: Option<i64>,
+    /// The account whose limits these are, when the provider pools more than
+    /// one (the one its next request uses). Older servers omit it.
+    #[serde(default)]
+    pub account: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
@@ -1095,6 +1099,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: provider.to_string(),
                 updated_at: None,
@@ -1199,6 +1204,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "grok".to_string(),
                 updated_at: None,
@@ -1238,6 +1244,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "copilot".to_string(),
                 updated_at: None,
@@ -1282,6 +1289,7 @@ mod tests {
                     stale: false,
                     retry_at: None,
                     retry_after: None,
+                    account: None,
                     usage: None,
                 },
                 UsageSummaryItem {
@@ -1292,6 +1300,7 @@ mod tests {
                     stale: false,
                     retry_at: None,
                     retry_after: None,
+                    account: None,
                     usage: None,
                 },
             ],
@@ -1470,6 +1479,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "codex".to_string(),
                 updated_at: None,
@@ -1512,6 +1522,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "codex".to_string(),
                 updated_at: None,
@@ -1567,6 +1578,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse { provider: "codex".to_string(), limits, updated_at: None }),
         };
         let rows = format_item_rows(&item, 1_000, 3);
@@ -1654,6 +1666,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "agy".to_string(),
                 updated_at: None,
@@ -1707,6 +1720,7 @@ mod tests {
             stale: false,
             retry_at: None,
             retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "codex".to_string(),
                 updated_at: None,

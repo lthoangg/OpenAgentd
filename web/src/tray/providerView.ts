@@ -213,7 +213,8 @@ export function providerView(item: TrayUsageItem, now: number = Date.now() / 100
   const stale = item.stale || rateLimited || unavailableWithNumbers
   const base = {
     key: item.provider,
-    name: item.label,
+    // With several accounts, say whose limits these are (the one in use).
+    name: item.account ? `${item.label} · ${item.account}` : item.label,
     stale,
     rateLimited,
     held: false,

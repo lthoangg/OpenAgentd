@@ -34,6 +34,7 @@ afterEach(() => {
   localStorage.clear()
   delete window.__OAD_APP_ID__
   delete window.__OAD_WINDOW_ID__
+  delete window.__OAD_OPENER_THEME__
 })
 
 describe('theme-init pre-paint script', () => {
@@ -47,6 +48,19 @@ describe('theme-init pre-paint script', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(document.documentElement.dataset.openagentdAppId).toBe('com.openagentd.desktop')
     expect(document.documentElement.dataset.openagentdWindowId).toBe('main-2')
+  })
+
+  it("paints a new window with its opener's pick until it has its own", () => {
+    window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+    window.__OAD_WINDOW_ID__ = 'main-3'
+    window.__OAD_OPENER_THEME__ = 'dark'
+
+    runThemeInit()
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+    localStorage.setItem('oa-theme:com.openagentd.desktop:main-3', 'light')
+    runThemeInit()
+    expect(document.documentElement.classList.contains('light')).toBe(true)
   })
 
   it('falls back to the URL params when no identity is injected', () => {

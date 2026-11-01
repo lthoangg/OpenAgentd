@@ -14,7 +14,12 @@
       ? 'oa-theme:' + appId + ':' + windowId
       : appId ? 'oa-theme:' + appId : 'oa-theme';
     var stored = localStorage.getItem(storageKey);
-    var pref = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+    // A new desktop window opens with the pick of the window it came from
+    // (window.rs injects __OAD_OPENER_THEME__) until it has one of its own.
+    var opener = window.__OAD_OPENER_THEME__;
+    var pref = stored === 'light' || stored === 'dark' || stored === 'system'
+      ? stored
+      : opener === 'light' || opener === 'dark' ? opener : 'system';
     var resolved = pref === 'system'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : pref;

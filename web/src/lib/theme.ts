@@ -37,6 +37,13 @@ function isTheme(value: unknown): value is ThemePreference {
   return value === 'light' || value === 'dark' || value === 'system'
 }
 
+declare global {
+  interface Window {
+    /** The opener window's explicit pick, injected into a new desktop window (window.rs). */
+    __OAD_OPENER_THEME__?: string
+  }
+}
+
 export function readStoredPreference(): ThemePreference {
   try {
     const raw = localStorage.getItem(themeStorageKey())
@@ -44,7 +51,10 @@ export function readStoredPreference(): ThemePreference {
   } catch {
     // localStorage unavailable (SSR, privacy mode) — fall through
   }
-  return 'system'
+  // A new desktop window keeps the theme of the window it was opened from
+  // until it gets a pick of its own.
+  const opener = typeof window === 'undefined' ? undefined : window.__OAD_OPENER_THEME__
+  return opener === 'light' || opener === 'dark' ? opener : 'system'
 }
 
 export function resolveTheme(preference: ThemePreference): ResolvedTheme {

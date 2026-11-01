@@ -39,6 +39,26 @@ fn opener_zoom(app: &AppHandle) -> Option<f64> {
     zoom
 }
 
+/// The explicit theme pick of the window a new one is opened from (`None`
+/// when it follows the system). Read before the new window exists, like
+/// [`opener_zoom`].
+fn opener_theme(app: &AppHandle) -> Option<tauri::Theme> {
+    let window = target_webview_window(app)?;
+    crate::config::saved_window_theme(app, window.label())
+}
+
+/// Hands the opener's theme pick to a new window's page
+/// (`__OAD_OPENER_THEME__`): the page uses it until the window has a pick of
+/// its own (`web/public/theme-init.js`, `web/src/lib/theme.ts`).
+pub fn opener_theme_init_script(theme: Option<tauri::Theme>) -> String {
+    let name = match theme {
+        Some(tauri::Theme::Dark) => "dark",
+        Some(_) => "light",
+        None => return String::new(),
+    };
+    format!("Object.defineProperty(window, '__OAD_OPENER_THEME__', {{ value: '{name}', writable: true, configurable: true }});")
+}
+
 pub const THROTTLE_RESUME_SCRIPT: &str = r#"
 try {
     document.documentElement.removeAttribute('data-app-hidden');
@@ -386,11 +406,13 @@ async fn build_app_window_sized(
 ) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url(app, &label)?;
     let opener_zoom = opener_zoom(app);
+    let opener_theme = opener_theme(app);
     // Re-applied on every document load by the webview, so the frontend keeps
     // its window identity across reloads even when `window.location` no longer
     // carries the `oa-app-id` / `oa-window-id` query params.
     let identity_script = window_identity_init_script(&app.config().identifier, &label);
-    let init_script = format!("{identity_script}{init_script}");
+    let theme_script = opener_theme_init_script(opener_theme);
+    let init_script = format!("{identity_script}{theme_script}{init_script}");
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
         height: 820,
@@ -463,9 +485,11 @@ async fn build_app_window_sized(
     // A Windows taskbar overlay belongs to one window: this one starts with
     // the count the others show.
     crate::badge::apply_to_window(&win);
-    // The page paints its saved theme pick, or the system theme without
-    // one, so match it before the page has painted.
-    let theme = crate::config::saved_window_theme(app, win.label()).or_else(|| win.theme().ok());
+    // The page paints its saved theme pick, else the opener's, else the
+    // system theme, so match it before the page has painted.
+    let theme = crate::config::saved_window_theme(app, win.label())
+        .or(opener_theme)
+        .or_else(|| win.theme().ok());
     if let Some(theme) = theme {
         win.set_background_color(Some(window_background(theme))).ok();
     }
@@ -746,6 +770,14 @@ mod tests {
 
     // The page paints ~150 ms after the window shows; until then the window
     // shows its own background, so it must be the boot page's in each theme.
+    #[test]
+    fn a_new_window_is_handed_the_openers_theme_pick() {
+        assert!(opener_theme_init_script(Some(tauri::Theme::Dark)).contains("__OAD_OPENER_THEME__', { value: 'dark'"));
+        assert!(opener_theme_init_script(Some(tauri::Theme::Light)).contains("value: 'light'"));
+        // An opener that follows the system hands nothing: the new one follows it too.
+        assert_eq!(opener_theme_init_script(None), "");
+    }
+
     #[test]
     fn window_background_matches_the_boot_page_in_both_themes() {
         let html = include_str!("../../../web/index.html").to_ascii_lowercase();

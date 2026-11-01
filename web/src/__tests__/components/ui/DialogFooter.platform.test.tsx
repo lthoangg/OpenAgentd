@@ -1,25 +1,34 @@
 /**
  * Dialog buttons follow the host OS (DESIGN.md → Overlays & Dialogs): Cancel
- * before the primary action on macOS, iOS, Linux and Android; the primary
- * action first on Windows. The footer is not a separate strip: no border, no
- * fill of its own.
+ * before the primary action on macOS, iOS and Linux; the primary action first
+ * on Windows; a row of text buttons on Android. The footer is not a separate
+ * strip: no border, no fill of its own. The default button follows native
+ * alerts: Enter confirms a safe action and never a destructive one.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 
 const realPlatform = Object.getOwnPropertyDescriptor(Navigator.prototype, 'platform')
+const realUserAgent = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgent')
 
 function setPlatform(value: string) {
   Object.defineProperty(navigator, 'platform', { value, configurable: true })
+}
+
+function setUserAgent(value: string) {
+  Object.defineProperty(navigator, 'userAgent', { value, configurable: true })
 }
 
 afterEach(() => {
   cleanup()
   // Drop the instance override so the prototype getter shows through again.
   delete (navigator as unknown as Record<string, unknown>).platform
+  delete (navigator as unknown as Record<string, unknown>).userAgent
   if (realPlatform) Object.defineProperty(Navigator.prototype, 'platform', realPlatform)
+  if (realUserAgent) Object.defineProperty(Navigator.prototype, 'userAgent', realUserAgent)
 })
 
 function renderFooter() {
@@ -58,5 +67,30 @@ describe('DialogFooter', () => {
     const footer = renderFooter()
     expect(footer.dataset.buttonOrder).toBe('primary-first')
     expect(footer.className).toContain('sm:flex-row-reverse')
+  })
+
+  it('ends in a row of text buttons on Android, never a stack', () => {
+    setPlatform('Linux armv8l')
+    setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36')
+    const footer = renderFooter()
+    expect(footer.dataset.buttonStyle).toBe('text')
+    expect(footer.dataset.buttonOrder).toBe('cancel-first')
+    expect(footer.className).toContain('flex-row')
+    expect(footer.className).not.toContain('flex-col-reverse')
+  })
+})
+
+describe('ConfirmDialog default button', () => {
+  it('gives focus to a safe confirm, so Enter confirms', async () => {
+    setPlatform('MacIntel')
+    render(<ConfirmDialog open onOpenChange={() => {}} title="Reset layout?" confirmLabel="Reset" tone="default" onConfirm={() => {}} />)
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reset' })))
+  })
+
+  it('never makes a destructive confirm the default: Cancel takes focus', async () => {
+    setPlatform('MacIntel')
+    render(<ConfirmDialog open onOpenChange={() => {}} title="Delete this session?" confirmLabel="Delete" onConfirm={() => {}} />)
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' })))
+    expect(screen.getByRole('button', { name: 'Delete' }).dataset.variant).toBe('danger')
   })
 })

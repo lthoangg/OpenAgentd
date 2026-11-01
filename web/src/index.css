@@ -341,6 +341,21 @@ html[data-mobile-shell] .mobile-safe-header {
   left: max(1rem, env(safe-area-inset-left, 0px));
 }
 
+/* Android dialogs end in text buttons (Material): the footer's buttons drop
+   their fill and take the ink of the action, accent for the rest and error
+   for a destructive one. The press wash stays so a tap still shows. */
+[data-slot="dialog-footer"][data-button-style="text"] > [data-slot="button"] {
+  background-color: transparent;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+[data-slot="dialog-footer"][data-button-style="text"] > [data-slot="button"]:active {
+  background-color: color-mix(in srgb, var(--bg-key) 70%, transparent);
+}
+[data-slot="dialog-footer"][data-button-style="text"] > [data-slot="button"]:is([data-variant="danger"], [data-variant="danger-subtle"]) {
+  color: var(--color-error);
+}
+
 /* Settings is an app-level overlay, so its bounds must respect both mobile
    cutouts/home indicators and the desktop shell header / macOS traffic-light
    region. Keep this geometry in CSS instead of Tailwind arbitrary classes so

@@ -309,6 +309,18 @@ export function useSessionBootstrap({
     composerDrafts.delete(key)
   }, [sessionId, workspace])
 
+  // The same session open in another window: what is typed there shows here
+  // while this window is in the background. The window the user types in
+  // keeps its own text (it has focus), so the two never fight.
+  useEffect(() => {
+    return composerDrafts.subscribe((key, draft) => {
+      if (typeof document !== 'undefined' && document.hasFocus()) return
+      const current = useAgentStore.getState().sessionId ?? (!sessionId && workspace ? draftComposerKey(workspace) : null)
+      if (key !== current) return
+      inputRef.current?.setValue(draft?.value ?? '')
+    })
+  }, [inputRef, sessionId, workspace])
+
   // A new-session draft keeps its unsent text per folder. Switching the
   // draft to another folder carries what is typed along; an empty composer
   // picks up that folder's saved text instead. When the first message

@@ -534,3 +534,55 @@ describe('useSessionBootstrap new-session draft', () => {
     expect(stored().some(([key]) => key === 'draft:/repo/other')).toBe(false)
   })
 })
+
+describe('useSessionBootstrap draft in two windows', () => {
+  function composerRef(setValue: (value: string) => void): RefObject<InputComposerHandle | null> {
+    const inputRef = createRef<InputComposerHandle>()
+    inputRef.current = {
+      focus: () => {},
+      setValue,
+      appendValue: () => {},
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+    }
+    return inputRef
+  }
+
+  /** Another window on the same origin saved its composer drafts. */
+  function otherWindowSaves(pairs: Array<[string, { value: string }]>) {
+    const newValue = JSON.stringify(pairs)
+    localStorage.setItem('oa.drafts.composer.v1', newValue)
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'oa.drafts.composer.v1', newValue })) })
+  }
+
+  const originalHasFocus = document.hasFocus.bind(document)
+  afterEach(() => {
+    document.hasFocus = originalHasFocus
+    localStorage.removeItem('oa.drafts.composer.v1')
+  })
+
+  it('shows what the other window types while this one is in the background', () => {
+    document.hasFocus = () => false
+    const setValue = mock((_value: unknown) => {})
+    render(<Harness isMobile={false} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={composerRef(setValue)} />)
+    setValue.mockClear()
+
+    otherWindowSaves([['session-1', { value: 'typed over there' }], ['session-2', { value: 'elsewhere' }]])
+
+    expect(setValue.mock.calls).toEqual([['typed over there']])
+  })
+
+  it('leaves the composer alone in the window the user is typing in', () => {
+    document.hasFocus = () => true
+    const setValue = mock((_value: unknown) => {})
+    render(<Harness isMobile={false} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={composerRef(setValue)} />)
+    setValue.mockClear()
+
+    otherWindowSaves([['session-1', { value: 'stale text' }]])
+
+    expect(setValue).not.toHaveBeenCalled()
+  })
+})

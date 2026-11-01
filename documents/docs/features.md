@@ -835,7 +835,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     is **Provider limits**. On Windows and Linux the tray menu starts with
     the sessions that need you.
   - Opening a session from anywhere (notch, pet, tray, a notification, Open
-    in new window) focuses the window that already shows it.
+    in new window) focuses the window that already shows it. When one
+    session is open in two windows anyway, the window in the background
+    shows the draft as it is typed in the other.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

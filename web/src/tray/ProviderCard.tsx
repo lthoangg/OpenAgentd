@@ -10,7 +10,7 @@ import type { MeterRow, ProviderView, Row } from './providerView'
  */
 export function ProviderCard({ view, onManage }: { view: ProviderView; onManage: () => void }) {
   const tone = view.reached ? 'crit' : view.tone
-  const stale = view.stale ? <StaleMark /> : null
+  const stale = view.stale ? <StaleMark view={view} /> : null
 
   if (view.status) {
     return (
@@ -21,6 +21,8 @@ export function ProviderCard({ view, onManage }: { view: ProviderView; onManage:
             <button type="button" className="small-btn" onClick={onManage} aria-label={`Reconnect ${view.name}`} title="Opens Settings → Providers">
               Reconnect
             </button>
+          ) : view.status === 'rate-limited' ? (
+            <span className="line-muted">{throttleText(view)}</span>
           ) : (
             <span className="line-muted">{view.status === 'unavailable' ? 'Unavailable' : 'No usage data'}</span>
           )}
@@ -131,12 +133,26 @@ function Meter({ row, owner, named = false, stale = null }: {
   )
 }
 
-function StaleMark() {
+function throttleText(view: ProviderView): string {
+  return `Rate limited · ${view.retry ?? 'Retry later'}`
+}
+
+function StaleMark({ view }: { view: ProviderView }) {
   return (
-    <span className="stale" title="The last refresh failed for this provider; this is the last value seen">
-      <Clock size={11} strokeWidth={2} aria-hidden="true" />
-      Last known
-    </span>
+    <>
+      <span
+        className="stale"
+        title={view.rateLimited
+          ? 'This provider is limiting usage checks; this is the last value seen'
+          : 'The last refresh failed for this provider; this is the last value seen'}
+      >
+        <Clock size={11} strokeWidth={2} aria-hidden="true" />
+        Last known
+        {view.updated && <span title="When these numbers were read"> · {view.updated}</span>}
+      </span>
+      {view.rateLimited && <span className="stale">{throttleText(view)}</span>}
+      {view.held && !view.rateLimited && <span className="stale">Unavailable</span>}
+    </>
   )
 }
 

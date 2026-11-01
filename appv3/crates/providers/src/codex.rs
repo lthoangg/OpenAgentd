@@ -410,9 +410,15 @@ pub fn model_registry_overlay(data: Option<&Value>) -> Map<String, Value> {
 
 // ── usage ───────────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageError {
     Credentials(String),
     Unavailable(String),
+    /// The usage endpoint answered HTTP 429. `retry_after` is the validated
+    /// `Retry-After` wait in whole seconds (never shortened), when sent.
+    RateLimited {
+        retry_after: Option<u64>,
+    },
 }
 
 async fn usage_headers(slot: &TokenSlot) -> Result<Vec<(String, String)>, UsageError> {
@@ -533,7 +539,7 @@ pub async fn get_usage_for(slot: &TokenSlot) -> Result<Value, UsageError> {
             .map_err(|e| UsageError::Unavailable(e.to_string()))?;
         let st = r.status().as_u16();
         if st >= 400 {
-            return Err(UsageError::Unavailable(http_status_message(st, "https://chatgpt.com/backend-api/wham/usage")));
+            return Err(crate::usage::usage_http_error(&r, "https://chatgpt.com/backend-api/wham/usage"));
         }
         r.json::<Value>().await.map_err(|e| UsageError::Unavailable(e.to_string()))
     }
@@ -541,6 +547,7 @@ pub async fn get_usage_for(slot: &TokenSlot) -> Result<Value, UsageError> {
     let payload = match res {
         Ok(p) => p,
         Err(UsageError::Credentials(m)) => return Err(UsageError::Credentials(m)),
+        Err(e @ UsageError::RateLimited { .. }) => return Err(e),
         Err(UsageError::Unavailable(e)) => {
             tracing::info!("provider_usage_unavailable provider=codex error={}", e);
             return Err(UsageError::Unavailable("Provider usage unavailable.".into()));

@@ -272,6 +272,11 @@ export type ProviderInfo = {
   supports_multiple_credentials?: boolean
   /** Usage can be read per stored credential. Omitted by older backends. */
   supports_credential_usage?: boolean
+  /**
+   * The provider reports usage at all. Omitted by older backends: an API-key
+   * provider is then still probed, and an OAuth one is assumed to have it.
+   */
+  supports_usage?: boolean
 }
 
 export type StoredCredentialStatus = 'ready' | 'cooling_down' | 'needs_reconnect' | 'disabled'
@@ -336,6 +341,8 @@ export type ProviderUsageLimit = {
   spend?: {
     reached: boolean
     source?: string | null
+    /** ISO 4217 code when the source reports money; absent for unknown units. */
+    currency?: string | null
     limit?: number | null
     used?: number | null
     remaining?: number | null
@@ -352,6 +359,8 @@ export type ProviderUsageLimit = {
 export type ProviderUsageResponse = {
   provider: string
   limits: ProviderUsageLimit[]
+  /** Unix seconds the daemon fetched this snapshot. Omitted by older backends. */
+  updated_at?: number
 }
 
 export type ProviderSaveResponse = {
@@ -452,8 +461,16 @@ export async function saveProviderVisibleModels(
   return res.json()
 }
 
-export async function getProviderUsage(providerId: string, credentialId?: string): Promise<ProviderUsageResponse> {
-  const query = credentialId ? `?credential_id=${encodeURIComponent(credentialId)}` : ''
+/**
+ * `force` skips the daemon's short usage cache (`force_refresh=true`). Only a
+ * person pressing Refresh asks for it; polling and focus never do, and the
+ * daemon still refuses it while the provider has said to wait.
+ */
+export async function getProviderUsage(providerId: string, credentialId?: string, force = false): Promise<ProviderUsageResponse> {
+  const params: string[] = []
+  if (credentialId) params.push(`credential_id=${encodeURIComponent(credentialId)}`)
+  if (force) params.push('force_refresh=true')
+  const query = params.length > 0 ? `?${params.join('&')}` : ''
   const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage${query}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
   return res.json()

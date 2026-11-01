@@ -581,23 +581,28 @@ pub async fn get_usage() -> Result<Value, UsageError> {
 /// Usage of one stored account.
 pub async fn get_usage_for(slot: &TokenSlot) -> Result<Value, UsageError> {
     let Some(auth) = GrokAuth::load(slot) else { return Err(UsageError::Credentials("Grok Build OAuth credentials not found.".into())) };
-    let res: Result<Value, String> = async {
-        let auth = if auth.is_expired() { auth.refresh(slot).await.map_err(|e| e.to_string())? } else { auth };
+    let res: Result<Value, UsageError> = async {
+        let auth = if auth.is_expired() { auth.refresh(slot).await.map_err(|e| UsageError::Unavailable(e.to_string()))? } else { auth };
         let url = format!("{API_BASE}/billing?format=credits");
-        let r = with_headers(shared_client().get(&url), &session_headers(&auth.access_token, None)).timeout(Duration::from_secs(5)).send().await.map_err(|e| e.to_string())?;
+        let r = with_headers(shared_client().get(&url), &session_headers(&auth.access_token, None))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .map_err(|e| UsageError::Unavailable(e.to_string()))?;
         let st = r.status().as_u16();
         if st >= 400 {
-            return Err(http_status_message(st, &url));
+            return Err(crate::usage::usage_http_error(&r, &url));
         }
-        r.json::<Value>().await.map_err(|e| e.to_string())
+        r.json::<Value>().await.map_err(|e| UsageError::Unavailable(e.to_string()))
     }
     .await;
     let payload = match res {
         Ok(p) => p,
-        Err(e) => {
+        Err(UsageError::Unavailable(e)) => {
             tracing::info!("provider_usage_unavailable provider=grok error={}", e);
             return Err(UsageError::Unavailable("Provider usage unavailable.".into()));
         }
+        Err(e) => return Err(e),
     };
     usage_from_payload(&payload)
 }

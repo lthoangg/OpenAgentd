@@ -178,6 +178,44 @@ idle memory unchanged: 20 ms handshake, 18.8 MB idle RSS.
 
 ## 3. Remaining differences from v2
 
+### Account-scoped provider usage and throttling
+
+Provider metadata adds `supports_usage` alongside `supports_credential_usage`.
+Successful `GET /api/settings/providers/{id}/usage` responses keep `provider`
+and `limits` and add `updated_at` (Unix seconds when fetched successfully).
+The endpoint accepts `force_refresh=true`; it bypasses the measurement TTL,
+not an active Retry-After cooldown or an in-flight request.
+
+An upstream usage HTTP 429 now returns HTTP 429 (previously generic 502), a
+`Retry-After` header and an object `detail` containing `code:
+"usage_rate_limited"`, a safe message, `retry_after` seconds, `retry_at` Unix
+seconds, and nullable `last_good`. The last-good value is a normal usage
+response with its original `updated_at` and `stale: true`, retained for at
+most 30 minutes. Other usage errors have stable codes `usage_unsupported`
+(404), `usage_credentials` (404), `usage_rejected` (422) and
+`usage_unavailable` (502); transient failures may also include `last_good`.
+Raw upstream bodies, secrets and arbitrary headers are not forwarded.
+
+The summary keeps its envelope and adds item status `rate_limited` plus
+optional `retry_after`/`retry_at`. Stale readings retain an explicit failure
+status rather than masquerading as fresh success. Its `checked_at` describes
+the summary check; nested `usage.updated_at` describes the measurement.
+The summary envelope is assembled per call (`cached: false`); measurements
+share the same 60-second, per-resolved-account cache as the detail endpoint.
+This replaces the provider-only summary cache and prevents mixing readings
+when the active account changes. In-flight requests are joined per account,
+and requests across accounts have bounded concurrency. A valid Retry-After
+is honored without shortening; missing/invalid values use bounded backoff.
+Cache and usage cooldown live only in memory and never affect chat-pool
+cooldowns. Reconnect, credential replacement and removal invalidate account
+state; ordinary token refresh and quota redemption do not bypass cooldown.
+
+The existing plugin `HttpError` headers option is used to carry Retry-After;
+there is no new plugin API. Old plugins without headers use default backoff.
+Spend payloads may include optional `currency` for client formatting; unknown
+units remain numeric instead of being assumed to be money. No on-disk
+credential or database format changes.
+
 No v2 feature is left unported. Each item below is a deliberate, documented
 deviation. The harnesses in §1 either did not reach it or normalised it
 explicitly.

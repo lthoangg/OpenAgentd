@@ -56,9 +56,15 @@ pub struct BuildContext {
 }
 
 /// Error raised by a plugin `get_usage` (`ValueError` → credentials problem).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginUsageError {
     Value(String),
     Other(String),
+    /// The plugin's usage call failed with HTTP 429. Only the validated
+    /// `Retry-After` wait (seconds) crosses over; no body or message.
+    RateLimited {
+        retry_after: Option<u64>,
+    },
 }
 
 #[async_trait]

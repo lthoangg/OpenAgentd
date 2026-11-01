@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { ProviderUsageLimit } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
+import { Chip } from '@/components/ui/chip'
 import {
   Dialog,
   DialogContent,
@@ -11,27 +13,34 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useResetProviderUsageMutation } from '@/queries/useProvidersQuery'
+import { useNowMs } from './useNowMs'
 import { useToastStore } from '@/stores/useToastStore'
 
 /**
- * CodexBar-style usage panel — bold section labels, a thin flat progress
- * bar with a leading dot, and a plain "N% used · Resets in Xh Ym" line.
- * See https://github.com/steipete/CodexBar for the reference aesthetic.
+ * One profile's usage: quota bars, spend and credits, then a single footer
+ * line (when it was read, plan, resets). Compact on purpose: the profile's
+ * header names whose it is, so there is no "Usage" heading here unless the
+ * caller asks for one (the API-key block does). Quotas sit in two columns when
+ * the panel itself is wide enough, one when it is narrow.
  */
 
-function formatUpdatedAgo(updatedAt?: number): string | null {
-  if (!updatedAt) return null
-  const ageMs = Date.now() - updatedAt
-  if (ageMs < 45_000) return 'Updated just now'
+function ago(ms: number, now: number): string {
+  const ageMs = now - ms
+  if (ageMs < 45_000) return 'just now'
   const minutes = Math.round(ageMs / 60_000)
-  if (minutes < 60) return `Updated ${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  return `Updated ${hours}h ago`
+  if (minutes < 60) return `${minutes}m ago`
+  return `${Math.round(minutes / 60)}h ago`
 }
 
-function formatResetIn(resetsAt?: number | null): string | null {
+/** `Updated 4m ago`, or for a held-over snapshot `Last updated 4m ago` (never "just now" as if fresh). */
+function formatUpdatedAgo(updatedAt: number | undefined, stale: boolean, now: number): string | null {
+  if (!updatedAt) return null
+  return `${stale ? 'Last updated' : 'Updated'} ${ago(updatedAt, now)}`
+}
+
+function formatResetIn(resetsAt: number | null | undefined, now: number): string | null {
   if (typeof resetsAt !== 'number') return null
-  const remainingS = resetsAt - Date.now() / 1000
+  const remainingS = resetsAt - now / 1000
   if (remainingS <= 0) return 'Resetting now'
   const minutes = Math.round(remainingS / 60)
   if (minutes < 1) return 'Resets in <1m'
@@ -44,9 +53,9 @@ function formatResetIn(resetsAt?: number | null): string | null {
   return remHours === 0 ? `Resets in ${days}d` : `Resets in ${days}d ${remHours}h`
 }
 
-function formatPeriodEndIn(periodEndAt?: number | null): string | null {
+function formatPeriodEndIn(periodEndAt: number | null | undefined, now: number): string | null {
   if (typeof periodEndAt !== 'number') return null
-  const remainingS = periodEndAt - Date.now() / 1000
+  const remainingS = periodEndAt - now / 1000
   if (remainingS <= 0) return 'Ending now'
   const minutes = Math.round(remainingS / 60)
   if (minutes < 1) return 'Ends in <1m'
@@ -72,44 +81,106 @@ function formatWindowDuration(minutes?: number | null): string {
   return `${Math.round(minutes / (60 * 24))}d`
 }
 
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
+
+/** The name already says how long the window is ("Five Hour", "5-hour", "Weekly"). */
+function nameCarriesDuration(name: string, minutes?: number | null): boolean {
+  if (typeof minutes !== 'number' || minutes <= 0) return false
+  const flat = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const says = (n: number, units: string) => {
+    const words = NUMBER_WORDS[n] ? `|${NUMBER_WORDS[n]}` : ''
+    return new RegExp(`(^|[^0-9])(${n}${words})(${units})`).test(flat)
+  }
+  if (minutes < 60) return says(minutes, 'm|min|mins|minute|minutes')
+  if (minutes < 60 * 24) return minutes % 60 === 0 && says(minutes / 60, 'h|hr|hrs|hour|hours')
+  if (minutes % (60 * 24) !== 0) return false
+  const days = minutes / (60 * 24)
+  if (says(days, 'd|day|days')) return true
+  if (days === 7) return /week/.test(flat)
+  if (days === 1) return /daily/.test(flat)
+  if (days >= 28 && days <= 31) return /month/.test(flat)
+  return false
+}
+
+function windowLabel(base: string, minutes?: number | null): string {
+  const duration = formatWindowDuration(minutes)
+  return !duration || nameCarriesDuration(base, minutes) ? base : `${base} \u00B7 ${duration}`
+}
+
+const flat = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+const NUMBER = `(?:\\d+|${NUMBER_WORDS.slice(1).join('|')})`
+const WINDOW_ONLY = new RegExp(
+  `^(?:${NUMBER}(?:min|minute|hour|hr|day|week|month)s?|(?:hourly|daily|weekly|monthly))(?:window|limit|usage)?$`,
+)
+
+/**
+ * A limit name that tells nothing a person could not read off the window
+ * ("Five Hour", "Seven Day", "Weekly") or that is just the provider's own name.
+ * A name that tells models or products apart ("Opus", "Sonnet") is kept.
+ */
+function isGenericLimitName(name: string, providerId?: string, providerLabel?: string): boolean {
+  const n = flat(name)
+  if (n.length === 0) return true
+  if (WINDOW_ONLY.test(n)) return true
+  const id = providerId ? flat(providerId) : ''
+  const label = providerLabel ? flat(providerLabel) : ''
+  return (id !== '' && n === id) || (label !== '' && n.length >= 3 && label.startsWith(n))
+}
+
+function genericWindowLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes}-minute window`
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}-hour window`
+  return `${Math.round(minutes / (60 * 24))}-day window`
+}
+
+interface Naming {
+  generic: boolean
+}
+
+/** Window rows: a generic name becomes "5-hour window"; any other keeps its name plus the length. */
+function quotaLabel(base: string, minutes: number | null | undefined, { generic }: Naming): string {
+  if (generic && typeof minutes === 'number' && minutes > 0) return genericWindowLabel(minutes)
+  return windowLabel(base, minutes)
+}
+
 function barColor(percent: number): string {
   if (percent >= 90) return 'bg-(--color-error)'
   if (percent >= 70) return 'bg-(--accent-orange)'
   return 'bg-(--accent-green)'
 }
 
+/** A real but sub-percent use reads "<1%", never a false "0%"; only a true zero is 0%. */
+function formatPercent(raw: number): string {
+  return raw > 0 && raw < 1 ? '<1%' : `${Math.round(raw)}%`
+}
+
+function Meta({ children }: { children: string }) {
+  return <p className="text-[11px] text-(--color-text-subtle) tabular-nums">{children}</p>
+}
+
 function UsageRow({
   label,
   window,
+  now,
 }: {
   label: string
   window: NonNullable<ProviderUsageLimit['primary']>
+  now: number
 }) {
   const percent = Math.max(0, Math.min(100, window.used_percent))
-  const reset = formatResetIn(window.resets_at)
+  const reset = formatResetIn(window.resets_at, now)
   const color = barColor(percent)
 
   return (
-    <div className="py-1.5 space-y-1">
-      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
-        <span className="font-medium truncate text-(--color-text)">{label}</span>
-        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
-          <span>{Math.round(percent)}% used</span>
-          {reset && (
-            <>
-              <span className="text-(--color-text-subtle)">·</span>
-              <span>{reset}</span>
-            </>
-          )}
-        </div>
+    <div className="min-w-0 space-y-1">
+      <div className="flex min-w-0 items-baseline justify-between gap-2 text-xs">
+        <span className="truncate font-medium text-(--color-text)">{label}</span>
+        <span className="shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">{formatPercent(percent)} used</span>
       </div>
       <div className="relative h-1 rounded-full bg-(--bg-key)">
         {percent > 0 && (
           <>
-            <div
-              className={cn('absolute inset-y-0 left-0 rounded-full', color)}
-              style={{ width: `${percent}%` }}
-            />
+            <div className={cn('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${percent}%` }} />
             <div
               className={cn('absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full', color)}
               style={{ left: `${percent}%` }}
@@ -125,22 +196,36 @@ function UsageRow({
           aria-label={label}
         />
       </div>
+      {reset && <Meta>{reset}</Meta>}
     </div>
   )
 }
 
 const amountFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
+const moneyFormatters = new Map<string, Intl.NumberFormat | null>()
 
-function formatAmount(value: number): string {
-  return amountFormatter.format(value)
+/** A formatter only for a real ISO 4217 code; anything else is an unknown unit and stays a bare number. */
+function moneyFormatter(currency?: string | null): Intl.NumberFormat | null {
+  if (!currency || !/^[A-Za-z]{3}$/.test(currency)) return null
+  const code = currency.toUpperCase()
+  if (!moneyFormatters.has(code)) {
+    try {
+      moneyFormatters.set(code, new Intl.NumberFormat('en-US', { style: 'currency', currency: code }))
+    } catch {
+      moneyFormatters.set(code, null)
+    }
+  }
+  return moneyFormatters.get(code) ?? null
 }
 
 function SpendRow({
   label,
   spend,
+  now,
 }: {
   label: string
   spend: NonNullable<ProviderUsageLimit['spend']>
+  now: number
 }) {
   const rawPercent =
     typeof spend.used_percent === 'number'
@@ -149,37 +234,63 @@ function SpendRow({
         ? (spend.used / spend.limit) * 100
         : 0
   const percent = Math.max(0, Math.min(100, rawPercent))
-  const reset = formatResetIn(spend.resets_at)
+  const reset = formatResetIn(spend.resets_at, now)
   const color = spend.reached ? 'bg-(--color-error)' : barColor(percent)
+  const money = moneyFormatter(spend.currency)
+  const fmt = (n: number) => (money ? money.format(n) : amountFormatter.format(n))
+
+  // A known currency: the used amount leads, the cap and what is left are secondary.
+  if (money && typeof spend.used === 'number' && typeof spend.limit === 'number') {
+    return (
+      <div className="min-w-0 space-y-1 @md:col-span-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <span className="truncate text-xs font-medium text-(--color-text)">{label}</span>
+          <span className="shrink-0 tabular-nums">
+            <span className="text-sm font-semibold text-(--color-text)">{fmt(spend.used)}</span>
+            {' '}
+            <span className="text-[11px] text-(--color-text-muted)">{`/ ${fmt(spend.limit)}`}</span>
+          </span>
+        </div>
+        <div className="relative h-1 rounded-full bg-(--bg-key)">
+          {percent > 0 && <div className={cn('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${percent}%` }} />}
+          <div
+            className="absolute inset-0"
+            role="progressbar"
+            aria-valuenow={Math.round(percent)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={label}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-(--color-text-subtle) tabular-nums">
+          <span>{formatPercent(rawPercent)} used</span>
+          {typeof spend.remaining === 'number' && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{`${fmt(spend.remaining)} remaining in this cap`}</span>
+            </>
+          )}
+        </div>
+        {reset && <Meta>{reset}</Meta>}
+      </div>
+    )
+  }
   const detail =
     typeof spend.used === 'number' && typeof spend.limit === 'number'
-      ? `${formatAmount(spend.used)} of ${formatAmount(spend.limit)} used${
-          typeof spend.remaining === 'number' ? ` \u00B7 ${formatAmount(spend.remaining)} left` : ''
+      ? `${fmt(spend.used)} of ${fmt(spend.limit)} used${
+          typeof spend.remaining === 'number' ? ` \u00B7 ${fmt(spend.remaining)} left` : ''
         }`
       : null
 
   return (
-    <div className="py-1.5 space-y-1">
-      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
-        <span className="font-medium truncate text-(--color-text)">{label}</span>
-        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
-          {/* Unclamped — an overage is the whole point of this row. */}
-          <span>{Math.round(rawPercent)}% used</span>
-          {reset && (
-            <>
-              <span className="text-(--color-text-subtle)">·</span>
-              <span>{reset}</span>
-            </>
-          )}
-        </div>
+    <div className="min-w-0 space-y-1 @md:col-span-2">
+      <div className="flex min-w-0 items-baseline justify-between gap-2 text-xs">
+        <span className="truncate font-medium text-(--color-text)">{label}</span>
+        {/* Unclamped — an overage is the whole point of this row. */}
+        <span className="shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">{formatPercent(rawPercent)} used</span>
       </div>
       <div className="relative h-1 rounded-full bg-(--bg-key)">
-        {percent > 0 && (
-          <div
-            className={cn('absolute inset-y-0 left-0 rounded-full', color)}
-            style={{ width: `${percent}%` }}
-          />
-        )}
+        {percent > 0 && <div className={cn('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${percent}%` }} />}
         <div
           className="absolute inset-0"
           role="progressbar"
@@ -189,7 +300,8 @@ function SpendRow({
           aria-label={label}
         />
       </div>
-      {detail && <p className="text-[11px] text-(--color-text-subtle) tabular-nums">{detail}</p>}
+      {detail && <Meta>{detail}</Meta>}
+      {reset && <Meta>{reset}</Meta>}
     </div>
   )
 }
@@ -213,10 +325,10 @@ function CreditsRow({
         : 'No usage credits left'
   const showBalance = Boolean(credits.balance) && text !== credits.balance
   return (
-    <div className="py-1.5 space-y-1">
-      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
-        <span className="font-medium truncate text-(--color-text)">{label}</span>
-        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
+    <div className="min-w-0 space-y-1 @md:col-span-2">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
+        <span className="truncate font-medium text-(--color-text)">{label}</span>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 text-[11px] text-(--color-text-muted) tabular-nums">
           <span>{text}</span>
           {showBalance && (
             <>
@@ -231,13 +343,13 @@ function CreditsRow({
   )
 }
 
-function PeriodRow({ label, periodEndAt }: { label: string; periodEndAt?: number | null }) {
-  const periodEnd = formatPeriodEndIn(periodEndAt)
+function PeriodRow({ label, periodEndAt, now }: { label: string; periodEndAt?: number | null; now: number }) {
+  const periodEnd = formatPeriodEndIn(periodEndAt, now)
   return (
-    <div className="py-1.5 space-y-1">
-      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
-        <span className="font-medium truncate text-(--color-text)">{label}</span>
-        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
+    <div className="min-w-0 space-y-1 @md:col-span-2">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
+        <span className="truncate font-medium text-(--color-text)">{label}</span>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 text-[11px] text-(--color-text-muted) tabular-nums">
           <span>Usage period available</span>
           {periodEnd && (
             <>
@@ -252,10 +364,11 @@ function PeriodRow({ label, periodEndAt }: { label: string; periodEndAt?: number
   )
 }
 
-function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
+function LimitSections({ limit, providerId, providerLabel, now }: { limit: ProviderUsageLimit; providerId?: string; providerLabel?: string; now: number }) {
   const base = usageLabel(limit)
-  const primaryDuration = formatWindowDuration(limit.primary?.window_minutes)
-  const secondaryDuration = formatWindowDuration(limit.secondary?.window_minutes)
+  const generic = isGenericLimitName(limit.limit_name || limit.limit_id || '', providerId, providerLabel)
+  // Spend and credits rows named for the provider or a window just say what they are.
+  const spendLabel = generic ? 'Spend cap' : `${base} \u00B7 Spend cap`
   const spend = limit.spend
   const hasSpendFigures = typeof spend?.limit === 'number' || typeof spend?.used === 'number'
   const hasBalance = Boolean(limit.credits?.balance)
@@ -266,44 +379,67 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
   )
   return (
     <>
-      {limit.primary && (
-        <UsageRow label={primaryDuration ? `${base} \u00B7 ${primaryDuration}` : base} window={limit.primary} />
-      )}
-      {limit.secondary && (
-        <UsageRow label={secondaryDuration ? `${base} \u00B7 ${secondaryDuration}` : base} window={limit.secondary} />
-      )}
-      {spend && hasSpendFigures && <SpendRow label={`${base} \u00B7 Spend cap`} spend={spend} />}
+      {limit.primary && <UsageRow label={quotaLabel(base, limit.primary.window_minutes, { generic })} window={limit.primary} now={now} />}
+      {limit.secondary && <UsageRow label={quotaLabel(base, limit.secondary.window_minutes, { generic })} window={limit.secondary} now={now} />}
+      {spend && hasSpendFigures && <SpendRow label={spendLabel} spend={spend} now={now} />}
       {shouldRenderCredits && limit.credits && (
-        <CreditsRow label={base} credits={limit.credits} spend={spend} />
+        <CreditsRow label={generic ? 'Credits' : base} credits={limit.credits} spend={spend} />
       )}
       {!limit.primary && !limit.secondary && !limit.credits && !hasSpendFigures &&
         (typeof limit.period_start_at === 'number' || typeof limit.period_end_at === 'number') && (
-          <PeriodRow label={base} periodEndAt={limit.period_end_at} />
+          <PeriodRow label={base} periodEndAt={limit.period_end_at} now={now} />
         )}
     </>
   )
 }
 
+/** The plan name as the source reports it, or null: never guessed. */
+export function usagePlan(limits: ProviderUsageLimit[]): string | null {
+  return limits[0]?.plan_type || null
+}
+
 export function UsagePanel({
   providerId,
+  providerLabel,
   credentialId,
   limits,
   updatedAt,
+  stale = false,
+  footnote,
+  title,
+  ariaLabel,
+  showPlan = true,
 }: {
   providerId?: string
+  /** The provider's catalogue name; a limit named after it is shown as a plain window. */
+  providerLabel?: string
   /** The account the usage belongs to (a reset redeems on that account). */
   credentialId?: string
   limits: ProviderUsageLimit[]
+  /** When the numbers were read (ms). */
   updatedAt?: number
+  /** The numbers are held over from an earlier read, not just fetched. */
+  stale?: boolean
+  /** A short note beside the "updated" time, e.g. that refreshing is paused. */
+  footnote?: string
+  /** An optional heading; per-profile panels leave it off. */
+  title?: string
+  ariaLabel?: string
+  /** Show the plan name here; a profile header may show it instead. */
+  showPlan?: boolean
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
   const resetMutation = useResetProviderUsageMutation()
+  // Relative times are computed from this, so they keep moving between fetches.
+  const now = useNowMs(true, 30_000)
 
   if (limits.length === 0) return null
   const primary = limits[0]
-  const updated = formatUpdatedAgo(updatedAt)
+  const updated = formatUpdatedAgo(updatedAt, stale, now)
   const resetCredits = primary?.reset_credits_available
+  const plan = showPlan ? usagePlan(limits) : null
+  const hasResets = typeof resetCredits === 'number' && resetCredits > 0
   const targetProviderId = providerId || primary?.limit_id || 'codex'
 
   const primaryUsed = primary?.primary?.used_percent ?? 0
@@ -340,11 +476,12 @@ export function UsagePanel({
             description: 'Your rate limit has been successfully reset.',
           })
         },
-        onError: (err) => {
+        onError: () => {
           useToastStore.getState().push({
             tone: 'error',
             title: 'Reset failed',
-            description: err instanceof Error ? err.message : 'Failed to redeem rate limit reset.',
+            // Fixed words: the server's text is not shown.
+            description: 'The reset could not be redeemed. Try again later.',
           })
         },
       },
@@ -352,56 +489,44 @@ export function UsagePanel({
   }
 
   return (
-    // A plain section inside the provider's details, not a card in a card.
-    <section aria-label="Usage">
-      {/* Header line */}
-      <div className="flex items-center justify-between gap-2 pb-1">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <p className="text-xs font-medium leading-none text-(--color-text)">Usage</p>
-          {updated && (
-            <>
-              <span className="text-[11px] text-(--color-text-subtle)">·</span>
-              <span className="text-[11px] text-(--color-text-subtle)">{updated}</span>
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {typeof resetCredits === 'number' && resetCredits > 0 && (
-            <div className="flex items-center gap-1.5">
+    // A plain section inside the profile, not a card in a card. `@container`:
+    // columns follow the panel's own width, not the viewport's.
+    <section aria-label={ariaLabel ?? title ?? 'Usage'} className="@container space-y-2.5">
+      {title && <p className="text-xs font-medium leading-none text-(--color-text)">{title}</p>}
+
+      <div data-slot="usage-grid" className="grid grid-cols-1 gap-x-6 gap-y-3 @md:grid-cols-2">
+        {limits.map((limit, index) => (
+          <LimitSections key={`${limit.limit_id || 'usage'}-${index}`} limit={limit} providerId={providerId} providerLabel={providerLabel} now={now} />
+        ))}
+      </div>
+
+      {primary?.rate_limit_reached_type && (
+        <Callout tone="error" title="Limit reached">
+          {/* Only a plain snake_case code is shown, never free-form text. */}
+          {/^[a-z][a-z0-9_]{0,59}$/i.test(primary.rate_limit_reached_type) ? primary.rate_limit_reached_type.replaceAll('_', ' ') : null}
+        </Callout>
+      )}
+
+      {(updated || plan || hasResets || footnote) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {updated && <span className="text-[11px] text-(--color-text-subtle)">{updated}</span>}
+            {footnote && <span className="text-[11px] text-(--color-text-subtle)">{footnote}</span>}
+            {plan && <Chip>{plan}</Chip>}
+          </div>
+          {hasResets && (
+            <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className="text-[11px] font-medium text-(--accent-green)"
+                className="text-[11px] font-medium text-(--accent-green-text)"
                 title="A reset clears this usage limit right away. Redeem one once you reach the limit."
               >
                 {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
               </span>
-              <Button
-                variant="default"
-                size="xs"
-                onClick={handleResetClick}
-              >
+              <Button variant="default" size="xs" className="pointer-coarse:min-h-9" onClick={handleResetClick}>
                 Redeem reset
               </Button>
             </div>
           )}
-          {primary?.plan_type && (
-            <span className="text-[11px] font-medium text-(--color-text-muted)">{primary.plan_type}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Usage rows */}
-      <div className="divide-y divide-(--color-border)/60 py-0.5">
-        {limits.map((limit, index) => (
-          <LimitSections key={`${limit.limit_id || 'usage'}-${index}`} limit={limit} />
-        ))}
-      </div>
-
-      {/* Rate-limit warning */}
-      {primary?.rate_limit_reached_type && (
-        <div className="flex items-center justify-between gap-2 rounded-sm bg-(--color-error-subtle) px-3 py-1.5">
-          <p className="text-[11px] font-medium text-(--color-error)">
-            Limit reached · {primary.rate_limit_reached_type.replaceAll('_', ' ')}
-          </p>
         </div>
       )}
 

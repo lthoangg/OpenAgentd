@@ -2,20 +2,20 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 
-import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@/api/client'
+import type { ProviderInfo, ProvidersListBody } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Chip, type ChipTone } from '@/components/ui/chip'
 import { cn } from '@/lib/utils'
-import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
+import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { DAEMON_BASE_URL, providerKindLabel, supportsMultipleCredentials } from './providerUtils'
-import { UsagePanel } from './UsagePanel'
+import { DAEMON_BASE_URL, providerKindLabel, supportsCredentialUsage, supportsMultipleCredentials, supportsUsage } from './providerUtils'
+import { ProviderUsageBlock } from './ProfileUsage'
 import { ModelsPanel } from './ModelsPanel'
 import { OAuthLoginDialog } from './OAuthLoginDialog'
-import { CredentialList } from './CredentialList'
+import { CredentialList, ProviderSignInRow } from './CredentialList'
 
 /** Kind as a person reads it in the row's subline. */
 function kindSubline(kind: ProviderInfo['kind']): string {
@@ -68,6 +68,11 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const hasCredentialList = multiCredential && (storedCredentials.length > 0 || Boolean(provider.env_pinned))
   const hasStoredKeys = multiCredential && provider.kind === 'api_key' && storedCredentials.length > 0
   const hasStoredAccounts = multiCredential && provider.kind === 'oauth' && storedCredentials.length > 0
+  // OAuth usage lives in the profile rows. Per account when the backend reads
+  // it that way; otherwise one explicit "Provider sign-in" row.
+  const usageAvailable = supportsUsage(provider) && provider.is_configured
+  const perAccountUsage = provider.kind === 'oauth' && hasCredentialList && supportsCredentialUsage(provider)
+  const showSignInUsage = provider.kind === 'oauth' && usageAvailable && !perAccountUsage
   const cloudExtra = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {}
     for (const credential of provider.credentials) {
@@ -108,11 +113,6 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     enabled: autoFetchEnabled,
     staleTime: 60_000,
   })
-  const usageQ = useProviderUsageQuery(
-    provider.id,
-    provider.is_configured,
-  )
-
   const models = useMemo<string[]>(() => {
     // Models listed by an explicit refresh in this session are known-good.
     const justListed = modelsMutation.data?.models
@@ -164,7 +164,8 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         if (provider.kind === 'cloud_creds') setVerifiedCloudSignature(cloudSignature)
         setModelsExpanded(true)
         if (provider.is_configured) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(provider.id) })
+          // Only the provider-wide reading: each account's usage is its own row's.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(provider.id), exact: true })
         }
         push({
           tone: 'success',
@@ -467,6 +468,9 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             }
           />
         )}
+        {showSignInUsage && (
+          <ProviderSignInRow provider={provider} accountInUse={hasCredentialList} onReconnect={() => setOauthTarget({})} />
+        )}
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
           <Button
             type="button"
@@ -532,28 +536,10 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         </div>
       )}
 
-      {provider.is_configured && (
+      {/* API-key, local and cloud providers keep one provider-wide usage block; it mounts only while the details are open. */}
+      {provider.kind !== 'oauth' && usageAvailable && (
         <div className="space-y-2 pt-1">
-          {usageQ.isLoading ? (
-            <p role="status" className="inline-flex items-center gap-1 text-[11px] text-(--color-text-subtle)">
-              <Loader2 className="h-3 w-3 animate-spin mr-1" aria-hidden="true" />
-              Loading usage…
-            </p>
-          ) : usageQ.data && usageQ.data.limits.length > 0 ? (
-            <UsagePanel providerId={provider.id} limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
-          ) : usageQ.isError ? (
-            provider.kind === 'oauth' ? (
-              <p className="text-[11px] text-(--color-text-subtle)">
-                {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
-                  ? 'Usage monitoring is not supported for this OAuth provider yet.'
-                  : 'Usage monitor unavailable right now.'}
-              </p>
-            ) : usageQ.error instanceof ApiValidationError && usageQ.error.status !== 404 ? (
-              <p className="text-[11px] text-(--color-text-subtle)">
-                Usage monitor unavailable right now.
-              </p>
-            ) : null
-          ) : null}
+          <ProviderUsageBlock providerId={provider.id} label={provider.label} />
         </div>
       )}
 
@@ -690,6 +676,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
           }}
           credentialId={multiCredential ? oauthTarget.credentialId : undefined}
           accountLabel={oauthTarget.label}
+          renewsProviderSignIn={!hasStoredAccounts}
         />
       )}
       </div>

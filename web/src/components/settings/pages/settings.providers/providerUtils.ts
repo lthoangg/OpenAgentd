@@ -23,8 +23,18 @@ export function supportsMultipleCredentials(provider: ProviderInfo): boolean {
   return provider.supports_multiple_credentials ?? true
 }
 
+/**
+ * Whether the provider reports usage at all. The backend flag wins; an older
+ * backend omits it, and every provider was then probed, so only an explicit
+ * `false` opts out.
+ */
+export function supportsUsage(provider: ProviderInfo): boolean {
+  return provider.supports_usage !== false
+}
+
 /** Whether usage can be shown per stored credential (backend flag, else the built-in set). */
 export function supportsCredentialUsage(provider: ProviderInfo): boolean {
+  if (!supportsUsage(provider)) return false
   return provider.supports_credential_usage ?? (provider.kind === 'oauth' && BUILTIN_CREDENTIAL_USAGE.has(provider.id))
 }
 

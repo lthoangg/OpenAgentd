@@ -139,11 +139,15 @@ export const queryKeys = {
     multimodal: () => ['settings', 'multimodal'] as const,
     providers: () => ['settings', 'providers'] as const,
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,
-    /** Without `credentialId`: the credential in use (and, as a prefix, every account's usage). */
+    /**
+     * Without `credentialId`: the credential in use (and, as a prefix, every
+     * account's usage). Deliberately not under `providers()`: that key is
+     * invalidated and cancelled by prefix, and must not drag usage with it.
+     */
     providerUsage: (providerId: string, credentialId?: string) =>
       credentialId
-        ? (['settings', 'providers', providerId, 'usage', credentialId] as const)
-        : (['settings', 'providers', providerId, 'usage'] as const),
+        ? (['settings', 'provider-usage', providerId, credentialId] as const)
+        : (['settings', 'provider-usage', providerId] as const),
   },
   memory: {
     tree: () => ['memory', 'tree'] as const,

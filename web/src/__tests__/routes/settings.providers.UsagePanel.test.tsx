@@ -92,10 +92,122 @@ describe('UsagePanel', () => {
     rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ limit_id: 'custom-limit', limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} /></QueryClientProvider>)
     expect(screen.getByText('custom-limit')).toBeTruthy()
 
-    // "Usage" also appears as the static panel header, so the fallback
-    // label row renders it a second time.
     rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ limit_id: null, limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} /></QueryClientProvider>)
-    expect(screen.getAllByText('Usage')).toHaveLength(2)
+    // No static panel heading repeats it: the row label is the only "Usage".
+    expect(screen.getAllByText('Usage')).toHaveLength(1)
+  })
+
+  it('replaces a name that only says the window with a generic window label', () => {
+    renderWithQuery(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            limit_name: 'Five Hour',
+            primary: { used_percent: 4, window_minutes: 300, resets_at: null },
+            secondary: { used_percent: 9, window_minutes: 60 * 24 * 7, resets_at: null },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('5-hour window')).toBeTruthy()
+    expect(screen.getByText('7-day window')).toBeTruthy()
+    expect(screen.queryByText(/Five Hour/)).toBeNull()
+  })
+
+  it('treats Seven Day, Weekly and the provider’s own name as generic, but keeps meaningful per-model names', () => {
+    const { unmount } = renderWithQuery(
+      <UsagePanel limits={[makeLimit({ limit_name: 'Seven Day', primary: { used_percent: 1, window_minutes: 10080, resets_at: null }, secondary: null })]} />,
+    )
+    expect(screen.getByText('7-day window')).toBeTruthy()
+    unmount()
+    const weekly = renderWithQuery(
+      <UsagePanel limits={[makeLimit({ limit_name: 'Weekly', primary: { used_percent: 1, window_minutes: 10080, resets_at: null }, secondary: null })]} />,
+    )
+    expect(screen.getByText('7-day window')).toBeTruthy()
+    weekly.unmount()
+
+    const own = renderWithQuery(
+      <UsagePanel
+        providerId="claude"
+        providerLabel="Claude OAuth"
+        limits={[makeLimit({ limit_id: 'claude', limit_name: 'Claude', primary: { used_percent: 2, window_minutes: 300, resets_at: null }, secondary: { used_percent: 3, window_minutes: 10080, resets_at: null } })]}
+      />,
+    )
+    expect(screen.getByText('5-hour window')).toBeTruthy()
+    expect(screen.getByText('7-day window')).toBeTruthy()
+    own.unmount()
+
+    renderWithQuery(
+      <UsagePanel
+        providerId="claude"
+        providerLabel="Claude OAuth"
+        limits={[makeLimit({ limit_name: 'Opus', primary: { used_percent: 2, window_minutes: 300, resets_at: null }, secondary: { used_percent: 3, window_minutes: 10080, resets_at: null } })]}
+      />,
+    )
+    expect(screen.getByText('Opus \u00B7 5h')).toBeTruthy()
+    expect(screen.getByText('Opus \u00B7 7d')).toBeTruthy()
+  })
+
+  it('has no inner Usage heading unless the caller asks for one', () => {
+    const { unmount } = renderWithQuery(<UsagePanel limits={[makeLimit({ limit_name: 'Session' })]} />)
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(screen.queryByText('Usage')).toBeNull()
+    unmount()
+    renderWithQuery(<UsagePanel title="Usage" limits={[makeLimit({ limit_name: 'Session' })]} />)
+    expect(screen.getByText('Usage')).toBeTruthy()
+  })
+
+  it('formats spend as money only when the source names a currency', () => {
+    const spend = { reached: false, source: null, limit: 50, used: 0, remaining: 50, used_percent: 0, resets_at: null }
+    const { unmount, container } = renderWithQuery(
+      <UsagePanel limits={[makeLimit({ primary: null, secondary: null, spend: { ...spend, currency: 'USD', limit: 3000, used: 10.68, remaining: 2989.32 } })]} />,
+    )
+    // The used amount leads; the cap and the remainder are secondary.
+    expect(screen.getByText('$10.68')).toBeTruthy()
+    expect(screen.getByText('/ $3,000.00')).toBeTruthy()
+    expect(screen.getByText('$2,989.32 remaining in this cap')).toBeTruthy()
+    expect(screen.getByText('$10.68').className).toContain('font-semibold')
+    expect(screen.getByText('/ $3,000.00').className).not.toContain('font-semibold')
+    expect(container.querySelector('[data-slot="usage-grid"] > div')?.className).toContain('@md:col-span-2')
+    unmount()
+    renderWithQuery(<UsagePanel limits={[makeLimit({ primary: null, secondary: null, spend: { ...spend, currency: 'credits?' } })]} />)
+    expect(screen.getByText('0 of 50 used \u00B7 50 left')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('$')
+  })
+
+  it('renders a 0% window and a spend cap that is not a balance', () => {
+    renderWithQuery(
+      <UsagePanel
+        limits={[makeLimit({ limit_name: 'Cap', primary: { used_percent: 0, window_minutes: null, resets_at: null }, spend: { reached: false, limit: 50, used: 10, remaining: 40, currency: 'USD' } })]}
+      />,
+    )
+    expect(screen.getByText('0% used')).toBeTruthy()
+    expect(screen.getByText('20% used')).toBeTruthy()
+    expect(screen.getByText('$10.00')).toBeTruthy()
+    expect(screen.getByText('/ $50.00')).toBeTruthy()
+    expect(screen.getByText('$40.00 remaining in this cap')).toBeTruthy()
+    expect(screen.getByText('Cap \u00B7 Spend cap')).toBeTruthy()
+    expect(screen.queryByText(/balance/i)).toBeNull()
+  })
+
+  it('shows an "updates paused" note beside a held-over snapshot', () => {
+    renderWithQuery(<UsagePanel limits={[makeLimit()]} updatedAt={Date.now() - 60_000} stale footnote="Updates paused until retry time" />)
+    expect(screen.getByText('Updates paused until retry time')).toBeTruthy()
+    expect(screen.getByText('Last updated 1m ago')).toBeTruthy()
+  })
+
+  it('marks a stale snapshot with its original time rather than as fresh', () => {
+    renderWithQuery(<UsagePanel limits={[makeLimit()]} updatedAt={Date.now() - 4 * 60_000} stale />)
+    expect(screen.getByText('Last updated 4m ago')).toBeTruthy()
+    expect(screen.queryByText(/^Updated/)).toBeNull()
+  })
+
+  it('lays quotas out in a container-sized grid so narrow panels use one column', () => {
+    const { container } = renderWithQuery(<UsagePanel limits={[makeLimit({ secondary: { used_percent: 3, window_minutes: 60, resets_at: null } })]} />)
+    const grid = container.querySelector('[data-slot="usage-grid"]')
+    expect(grid?.className).toContain('grid-cols-1')
+    expect(grid?.className).toMatch(/@\w+:grid-cols-2/)
+    expect(container.querySelector('section')?.className).toContain('@container')
   })
 
   it('clamps out-of-range percentages into the progressbar aria attributes', () => {
@@ -315,7 +427,56 @@ describe('UsagePanel', () => {
 
   it('renders the rate-limit-reached banner using the first limit', () => {
     renderWithQuery(<UsagePanel limits={[makeLimit({ rate_limit_reached_type: 'workspace_member_usage_limit_reached' })]} />)
-    expect(screen.getByText('Limit reached \u00B7 workspace member usage limit reached')).toBeTruthy()
+    expect(screen.getByText('Limit reached')).toBeTruthy()
+    expect(screen.getByText('workspace member usage limit reached')).toBeTruthy()
+  })
+
+  it('never puts a free-form reached-limit string into the banner', () => {
+    renderWithQuery(<UsagePanel limits={[makeLimit({ rate_limit_reached_type: 'Please visit https://evil.example and pay!' })]} />)
+    expect(screen.getByText('Limit reached')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('evil.example')
+  })
+
+  it('shows "<1%" for a real but sub-percent use, and a true zero as 0%', () => {
+    const { unmount } = renderWithQuery(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            primary: { used_percent: 0.4, window_minutes: 300, resets_at: null },
+            secondary: { used_percent: 0, window_minutes: 10080, resets_at: null },
+            spend: { reached: false, currency: 'USD', limit: 3000, used: 10.68, remaining: 2989.32, used_percent: 0.356 },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getAllByText('<1% used')).toHaveLength(2)
+    expect(screen.getAllByText('0% used')).toHaveLength(1)
+    expect(screen.queryByText('1% used')).toBeNull()
+    unmount()
+    renderWithQuery(<UsagePanel limits={[makeLimit({ primary: { used_percent: 0.4, window_minutes: 300, resets_at: null } })]} />)
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0')
+  })
+
+  it('lets value clusters and the plan wrap or truncate on a narrow panel, with touch-sized actions', () => {
+    renderWithQuery(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            primary: null,
+            secondary: null,
+            plan_type: 'A very long plan name that would otherwise push the footer wide',
+            credits: { has_credits: true, unlimited: false, balance: '$12.50 of included credits this month' },
+            reset_credits_available: 1,
+          }),
+        ]}
+      />,
+    )
+    const balance = screen.getByText('$12.50 of included credits this month')
+    expect(balance.parentElement?.className).toContain('flex-wrap')
+    const redeem = screen.getByRole('button', { name: 'Redeem reset' })
+    expect(redeem.className).toContain('pointer-coarse:min-h-9')
+    expect(redeem.closest('div.flex')?.className).toContain('flex-wrap')
+    expect(screen.getByText('A very long plan name that would otherwise push the footer wide').closest('[data-slot="chip"]')?.className).toContain('max-w-full')
   })
 
   it('does not render the rate-limit banner when unset', () => {

@@ -93,6 +93,67 @@ describe('TrayPopup', () => {
     expect(screen.getByRole('meter', { name: 'OpenAI Codex Weekly' })).toHaveAttribute('aria-valuenow', '76')
   })
 
+  it('marks throttled usage as old with its retry time, not as a reached limit', async () => {
+    answer = async () => ({
+      ...usageResult,
+      summary: {
+        checked_at: NOW,
+        cached: false,
+        items: [
+          {
+            provider: 'openai',
+            label: 'OpenAI Codex',
+            status: 'rate_limited',
+            stale: true,
+            retry_at: NOW + 600,
+            retry_after: 600,
+            usage: { provider: 'openai', limits: [{ primary: { used_percent: 97, window_minutes: 300 } }] },
+          },
+          { provider: 'copilot', label: 'GitHub Copilot', status: 'rate_limited', stale: false, usage: null },
+        ],
+      },
+    })
+    render(<TrayPopup />)
+
+    const card = await screen.findByRole('group', { name: 'OpenAI Codex' })
+    expect(within(card).getByRole('meter')).toHaveAttribute('aria-valuenow', '97')
+    expect(within(card).getByText('Last known')).toBeInTheDocument()
+    expect(within(card).getByText(/Rate limited · Retry in \d+m/)).toBeInTheDocument()
+    expect(within(card).queryByText(/limit reached|near limit/i)).not.toBeInTheDocument()
+
+    const bare = screen.getByRole('group', { name: 'GitHub Copilot' })
+    expect(within(bare).getByText('Rate limited · Retry later')).toBeInTheDocument()
+    expect(within(bare).queryByRole('button', { name: /reconnect/i })).not.toBeInTheDocument()
+
+    expect(screen.getByText('Usage delayed')).toBeInTheDocument()
+    expect(screen.queryByText('Limit reached')).not.toBeInTheDocument()
+  })
+
+  it('keeps an unavailable provider\'s last numbers, marked old, without an alert', async () => {
+    answer = async () => ({
+      ...usageResult,
+      summary: {
+        checked_at: NOW,
+        cached: false,
+        items: [{
+          provider: 'openai',
+          label: 'OpenAI Codex',
+          status: 'unavailable',
+          stale: true,
+          usage: { provider: 'openai', limits: [{ primary: { used_percent: 97, window_minutes: 300 } }] },
+        }],
+      },
+    })
+    render(<TrayPopup />)
+
+    const card = await screen.findByRole('group', { name: 'OpenAI Codex' })
+    expect(within(card).getByRole('meter')).toHaveAttribute('aria-valuenow', '97')
+    expect(within(card).getByText('Last known')).toBeInTheDocument()
+    expect(within(card).getByText('Unavailable')).toBeInTheDocument()
+    expect(within(card).queryByText(/limit reached|near limit|rate limited/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Limit reached')).not.toBeInTheDocument()
+  })
+
   it('shows placeholders, not an empty message, while the first reading loads', async () => {
     answer = () => new Promise(() => {})
     render(<TrayPopup />)

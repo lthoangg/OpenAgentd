@@ -242,9 +242,45 @@ describe('ProviderCard — several OAuth accounts', () => {
   it('removes only the chosen account', async () => {
     renderCard(codex)
     const rows = within(screen.getByRole('list', { name: 'Codex accounts' })).getAllByRole('listitem')
-    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Remove…' }))
+    expect(within(rows[0]).queryByRole('button', { name: 'Remove…' })).toBeNull()
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Manage me@example.com' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }))
     expect(mockDisconnectOauth).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: 'Remove account' }))
     await waitFor(() => expect(mockDisconnectOauth).toHaveBeenCalledWith('codex', 'cred_me'))
+  })
+
+  it('moves rename, reorder, disable and remove into each account’s menu, keeping Reconnect visible when needed', async () => {
+    renderCard(codex)
+    const rows = within(screen.getByRole('list', { name: 'Codex accounts' })).getAllByRole('listitem')
+    for (const row of rows) {
+      expect(within(row).queryByRole('button', { name: 'Rename' })).toBeNull()
+      expect(within(row).queryByRole('button', { name: 'More' })).toBeNull()
+    }
+    expect(within(rows[0]).queryByRole('button', { name: 'Reconnect' })).toBeNull()
+    expect(within(rows[1]).getByRole('button', { name: 'Reconnect' })).toBeTruthy()
+
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Manage me@example.com' }))
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Rename', 'Try earlier', 'Try later', 'Reconnect', 'Disable', 'Remove…'])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Try later' }))
+    await waitFor(() => expect(mockOrder).toHaveBeenCalledTimes(1))
+    expect(mockOrder.mock.calls[0]).toEqual(['codex', ['cred_team', 'cred_me']])
+  })
+
+  it('renames from the menu', async () => {
+    renderCard(codex)
+    const rows = within(screen.getByRole('list', { name: 'Codex accounts' })).getAllByRole('listitem')
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Manage me@example.com' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'New name for me@example.com' }), { target: { value: 'Home' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('codex', 'cred_me', { label: 'Home' }))
+  })
+
+  it('disables from the menu', async () => {
+    renderCard(codex)
+    fireEvent.click(screen.getByRole('button', { name: 'Manage team@example.com' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Disable' }))
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('codex', 'cred_team', { disabled: true }))
   })
 })

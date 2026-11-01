@@ -605,10 +605,48 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Plugin OAuth')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText('Usage')).toBeTruthy())
+    // A lone provider opens by itself; usage lives in one sign-in row, not an outer block.
+    await waitFor(() => expect(screen.getByText('Provider sign-in')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('42% used')).toBeTruthy())
+    expect(screen.queryByText('Usage')).toBeNull()
     expect(screen.getByText('Model A')).toBeTruthy()
-    expect(screen.getByText('42% used')).toBeTruthy()
     expect(screen.getByText('Live')).toBeTruthy()
+  })
+
+  it('does not poll usage for a collapsed provider', async () => {
+    const hits: string[] = []
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'one', label: 'One', description: 'd', kind: 'oauth', credentials: [], saved_credentials: {},
+            env_var: '', env_vars: [], oauth_command: '', docs_url: '', is_configured: true, is_saved: true,
+            is_reachable: true, cached_models: [], visible_models: [], is_disconnected: false,
+            supports_fast_mode: false, public_access: false,
+          },
+          {
+            id: 'two', label: 'Two', description: 'd', kind: 'oauth', credentials: [], saved_credentials: {},
+            env_var: '', env_vars: [], oauth_command: '', docs_url: '', is_configured: true, is_saved: true,
+            is_reachable: true, cached_models: [], visible_models: [], is_disconnected: false,
+            supports_fast_mode: false, public_access: false,
+          },
+        ],
+      })),
+      http.get('http://localhost/api/settings/providers/:id/usage', ({ params }) => {
+        hits.push(String(params.id))
+        return HttpResponse.json({ provider: params.id, limits: [] })
+      }),
+    )
+    renderPage()
+    const one = await screen.findByRole('button', { name: /One/ })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hits).toEqual([])
+    fireEvent.click(one)
+    await waitFor(() => expect(hits).toEqual(['one']))
+    fireEvent.click(one)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hits).toEqual(['one'])
   })
 
   it('shows active usage and credits for a configured API key provider', async () => {

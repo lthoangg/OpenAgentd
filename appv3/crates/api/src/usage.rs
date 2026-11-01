@@ -6,23 +6,35 @@ use appv3_core::runtime_settings as rs;
 use appv3_providers::oauth::TokenSlot;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+#[derive(Clone, Debug)]
 pub enum UsageError {
     Unsupported(String),
     Credentials(String),
     Unavailable(String),
+    UnavailableWithData(Value),
     /// The request names a credential the provider cannot scope to (a
     /// plugin that has not opted in to multiple credentials).
     Rejected(String),
+    RateLimited {
+        retry_after: Option<u64>,
+        retry_at: Option<i64>,
+        last_good: Option<Value>,
+    },
 }
 
 impl UsageError {
     pub fn msg(&self) -> String {
         match self {
             UsageError::Unsupported(m) | UsageError::Credentials(m) | UsageError::Unavailable(m) | UsageError::Rejected(m) => m.clone(),
+            UsageError::RateLimited { .. } => "Usage is rate-limited.".into(),
+            UsageError::UnavailableWithData(_) => "Provider usage is unavailable right now.".into(),
         }
+    }
+
+    pub(crate) fn rate_limited(retry_after: Option<u64>) -> Self {
+        Self::RateLimited { retry_after, retry_at: None, last_good: None }
     }
 }
 
@@ -33,6 +45,7 @@ fn oauth_err(e: appv3_providers::codex::UsageError) -> UsageError {
     match e {
         appv3_providers::codex::UsageError::Credentials(m) => UsageError::Credentials(m),
         appv3_providers::codex::UsageError::Unavailable(m) => UsageError::Unavailable(m),
+        appv3_providers::codex::UsageError::RateLimited { retry_after } => UsageError::rate_limited(retry_after),
     }
 }
 
@@ -245,13 +258,14 @@ fn slot(provider_id: &str, credential_id: Option<&str>) -> Result<TokenSlot, Usa
             }
             Ok(s)
         }
+        None if appv3_providers::pool::env_pinned(provider_id) => Ok(TokenSlot::new(provider_id, "")),
         None => Ok(TokenSlot::active(provider_id)),
     }
 }
 
 /// `get_provider_usage` — of one stored credential when `credential_id`
 /// is given, else of the credential in use.
-pub async fn get_provider_usage(provider_id: &str, token: Option<&str>, credential_id: Option<&str>) -> Result<Value, UsageError> {
+async fn fetch_provider_usage(provider_id: &str, token: Option<&str>, credential_id: Option<&str>) -> Result<Value, UsageError> {
     match provider_id {
         "openrouter" => openrouter_usage(token, credential_id).await,
         "deepseek" => deepseek_usage(token, credential_id).await,
@@ -264,11 +278,72 @@ pub async fn get_provider_usage(provider_id: &str, token: Option<&str>, credenti
                 p.get_usage(&store).await.map_err(|e| match e {
                     appv3_providers::plugin::PluginUsageError::Value(m) => UsageError::Credentials(m),
                     appv3_providers::plugin::PluginUsageError::Other(m) => UsageError::Unavailable(m),
+                    appv3_providers::plugin::PluginUsageError::RateLimited { retry_after } => UsageError::rate_limited(retry_after),
                 })
             }
             _ => Err(UsageError::Unsupported(id.to_string())),
         },
     }
+}
+
+fn cache() -> &'static crate::usage_cache::UsageCache {
+    static CACHE: std::sync::OnceLock<crate::usage_cache::UsageCache> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+fn usage_key(provider: &str, credential_id: Option<&str>) -> Result<crate::usage_cache::Key, UsageError> {
+    if !prov::supports_usage(provider) {
+        return Err(UsageError::Unsupported(provider.into()));
+    }
+    if credential_id.is_some() && !prov::supports_credential_usage(provider) {
+        return Err(UsageError::Rejected("This provider does not support per-account usage.".into()));
+    }
+    let credential = match credential_id {
+        Some(id) => {
+            let file = appv3_core::credentials::snapshot();
+            let account = file.find(provider, id).ok_or_else(|| UsageError::Credentials("Account not found.".into()))?;
+            if account.disabled {
+                return Err(UsageError::Rejected("Usage is paused for this disabled account.".into()));
+            }
+            let oauth = prov::find(provider).is_some_and(|entry| prov::s(entry, "kind") == "oauth");
+            if oauth && account.oauth.is_none() && (prov::is_optin_plugin(provider) || !account.has_secret()) {
+                return Err(UsageError::Credentials("Reconnect this account to check usage.".into()));
+            }
+            Some(id.to_string())
+        }
+        None if !prov::supports_credential_usage(provider) || appv3_providers::pool::env_pinned(provider) => None,
+        None => appv3_providers::pool::active_credential(provider).map(|account| account.id),
+    };
+    Ok(crate::usage_cache::Key { provider: provider.into(), credential })
+}
+
+/// Both summary and profile reads resolve to the same account gate before fetching.
+pub async fn get_provider_usage(provider: &str, token: Option<&str>, credential_id: Option<&str>) -> Result<Value, UsageError> {
+    get_usage(provider, token, credential_id, false).await
+}
+
+pub async fn get_usage(provider: &str, token: Option<&str>, credential_id: Option<&str>, force: bool) -> Result<Value, UsageError> {
+    let key = usage_key(provider, credential_id)?;
+    // A candidate key must never share a cache with a stored credential.
+    if token.is_some_and(|t| !t.is_empty()) {
+        if prov::find(provider).is_some_and(|entry| prov::s(entry, "kind") == "oauth") {
+            return Err(UsageError::Rejected("Usage uses this account's saved sign-in.".into()));
+        }
+        return cache().uncached(|| fetch_provider_usage(provider, token, credential_id)).await;
+    }
+    let resolved = key.credential.clone();
+    cache()
+        .get(key, force, || async {
+            let result = fetch_provider_usage(provider, None, resolved.as_deref()).await;
+            // A token refresh can revoke the sign-in without going through an API route.
+            usage_key(provider, resolved.as_deref())?;
+            result
+        })
+        .await
+}
+
+pub fn invalidate_usage(provider: &str, credential_id: Option<&str>) {
+    cache().invalidate(provider, credential_id.filter(|_| prov::supports_credential_usage(provider)));
 }
 
 /// The store a plugin's `getUsage` reads. A plugin that opted in to
@@ -284,6 +359,7 @@ fn plugin_usage_store(id: &str, multiple: bool, credential_id: Option<&str>) -> 
             Ok(CredentialStore::for_account(id, cid))
         }
         (Some(_), false) => Err(UsageError::Rejected(format!("Provider '{id}' does not support per-credential usage; it keeps a single credential."))),
+        (None, true) if appv3_providers::pool::env_pinned(id) => Ok(CredentialStore::for_provider(id, HashMap::new())),
         (None, true) => Ok(match appv3_providers::pool::active_credential(id) {
             Some(c) => CredentialStore::for_account(id, &c.id),
             None => CredentialStore::for_provider(id, HashMap::new()),
@@ -295,10 +371,9 @@ fn plugin_usage_store(id: &str, multiple: bool, credential_id: Option<&str>) -> 
 /// `consume_provider_reset` — codex only.
 pub async fn consume_provider_reset(provider_id: &str, credential_id: Option<&str>) -> Result<Value, UsageError> {
     if provider_id == "codex" {
+        let key = usage_key(provider_id, credential_id)?;
         let res = appv3_providers::codex::consume_reset(None, &slot("codex", credential_id)?).await.map_err(oauth_err)?;
-        let mut st = state().lock().unwrap();
-        st.cache = None;
-        st.last_good.remove(provider_id);
+        cache().invalidate_measurements(&key).await;
         return Ok(res);
     }
     Err(UsageError::Unsupported(format!("Rate limit reset unsupported for '{provider_id}'.")))
@@ -306,26 +381,7 @@ pub async fn consume_provider_reset(provider_id: &str, credential_id: Option<&st
 
 // ── summary ─────────────────────────────────────────────────────────────────
 
-const TTL: Duration = Duration::from_secs(45);
-const STALE_TTL: Duration = Duration::from_secs(15 * 60);
-const LAST_GOOD_MAX_AGE: Duration = Duration::from_secs(30 * 60);
 const ITEM_TIMEOUT: Duration = Duration::from_secs(6);
-
-struct SummaryState {
-    cache: Option<(Instant, Value)>,
-    last_good: HashMap<String, (Instant, Value)>,
-    refreshing: bool,
-}
-
-fn state() -> &'static Mutex<SummaryState> {
-    static S: std::sync::OnceLock<Mutex<SummaryState>> = std::sync::OnceLock::new();
-    S.get_or_init(|| Mutex::new(SummaryState { cache: None, last_good: HashMap::new(), refreshing: false }))
-}
-
-fn fetch_lock() -> &'static tokio::sync::Mutex<()> {
-    static L: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    L.get_or_init(Default::default)
-}
 
 fn candidates(rt: &rs::RuntimeSettings) -> Vec<(String, String)> {
     let mut out = vec![];
@@ -398,92 +454,51 @@ fn item(provider: &str, label: &str, status: &str, error: Option<String>, usage:
     json!({"provider": provider, "label": label, "status": status, "error": error, "usage": usage, "stale": false})
 }
 
-fn last_good(provider: &str, error: &str) -> Option<Value> {
-    let st = state().lock().unwrap();
-    let (at, it) = st.last_good.get(provider)?;
-    if at.elapsed() > LAST_GOOD_MAX_AGE {
-        return None;
-    }
-    let mut it = it.clone();
-    it["stale"] = json!(true);
-    it["error"] = json!(error);
-    Some(it)
-}
-
-async fn fetch_item(provider: String, label: String, visible: Vec<String>) -> Value {
-    let res = tokio::time::timeout(ITEM_TIMEOUT, get_provider_usage(&provider, None, None)).await;
+async fn fetch_item(provider: String, label: String, visible: Vec<String>, force: bool) -> Value {
+    let res = tokio::time::timeout(ITEM_TIMEOUT, get_usage(&provider, None, None, force)).await;
     let err = match res {
         Ok(Ok(u)) => {
-            let it = item(&provider, &label, "ok", None, filter_visible(u, &visible));
-            state().lock().unwrap().last_good.insert(provider.clone(), (Instant::now(), it.clone()));
+            return item(&provider, &label, "ok", None, filter_visible(u, &visible));
+        }
+        Ok(Err(UsageError::RateLimited { retry_after, retry_at, last_good })) => {
+            let stale = last_good.is_some();
+            let mut it = item(&provider, &label, "rate_limited", Some("Usage is rate-limited.".into()), last_good.map(|u| filter_visible(u, &visible)).unwrap_or(Value::Null));
+            it["stale"] = json!(stale);
+            it["retry_after"] = json!(retry_after);
+            it["retry_at"] = json!(retry_at);
             return it;
         }
-        Ok(Err(UsageError::Credentials(m))) => return item(&provider, &label, "credentials_missing", Some(m), Value::Null),
-        Ok(Err(e)) => e.msg(),
+        Ok(Err(UsageError::UnavailableWithData(usage))) => {
+            let mut it = item(&provider, &label, "unavailable", Some("Provider usage is unavailable right now.".into()), filter_visible(usage, &visible));
+            it["stale"] = json!(true);
+            return it;
+        }
+        Ok(Err(UsageError::Credentials(_))) => return item(&provider, &label, "credentials_missing", Some("Reconnect this account to check usage.".into()), Value::Null),
+        Ok(Err(_)) => "Provider usage is unavailable right now.".to_string(),
         Err(_) => "Timed out waiting for provider usage.".to_string(),
     };
-    last_good(&provider, &err).unwrap_or_else(|| item(&provider, &label, "unavailable", Some(err), Value::Null))
+    let last_good = match usage_key(&provider, None) {
+        Ok(key) => cache().last_good(&key).await,
+        Err(_) => None,
+    };
+    let stale = last_good.is_some();
+    let mut it = item(&provider, &label, "unavailable", Some(err), last_good.map(|u| filter_visible(u, &visible)).unwrap_or(Value::Null));
+    it["stale"] = json!(stale);
+    it
 }
 
-async fn fresh_snapshot() -> Value {
+async fn fresh_snapshot(force: bool) -> Value {
     let rt = rs::load_runtime_settings().unwrap_or_default();
     let cands = candidates(&rt);
     let items = futures::future::join_all(cands.into_iter().map(|(p, l)| {
         let vis = rt.providers.get(&p).map(|x| x.visible_models.clone()).unwrap_or_default();
-        fetch_item(p, l, vis)
+        fetch_item(p, l, vis, force)
     }))
     .await;
     json!({"items": items, "checked_at": chrono::Utc::now().timestamp(), "cached": false})
 }
 
-fn with_cached(mut v: Value) -> Value {
-    v["cached"] = json!(true);
-    v
-}
-
-fn schedule_background_refresh() {
-    {
-        let mut st = state().lock().unwrap();
-        if st.refreshing {
-            return;
-        }
-        st.refreshing = true;
-    }
-    tokio::spawn(async {
-        let _g = fetch_lock().lock().await;
-        let fresh = state().lock().unwrap().cache.as_ref().map(|(at, _)| at.elapsed() < TTL).unwrap_or(false);
-        if !fresh {
-            let body = fresh_snapshot().await;
-            state().lock().unwrap().cache = Some((Instant::now(), body));
-        }
-        state().lock().unwrap().refreshing = false;
-    });
-}
-
 /// `get_connected_provider_usage_summary`.
 pub async fn usage_summary(force_refresh: bool) -> Value {
-    if !force_refresh {
-        let cached = state().lock().unwrap().cache.clone();
-        if let Some((at, body)) = cached {
-            let age = at.elapsed();
-            if age < TTL {
-                return with_cached(body);
-            }
-            if age < STALE_TTL {
-                schedule_background_refresh();
-                return with_cached(body);
-            }
-        }
-    }
-    let _g = fetch_lock().lock().await;
-    if !force_refresh {
-        if let Some((at, body)) = state().lock().unwrap().cache.clone() {
-            if at.elapsed() < TTL {
-                return with_cached(body);
-            }
-        }
-    }
-    let body = fresh_snapshot().await;
-    state().lock().unwrap().cache = Some((Instant::now(), body.clone()));
-    body
+    fresh_snapshot(force_refresh).await
 }

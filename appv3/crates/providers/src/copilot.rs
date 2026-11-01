@@ -348,7 +348,7 @@ fn usage_token(slot: &TokenSlot) -> Option<String> {
 async fn usage_payload(slot: &TokenSlot) -> Result<Map<String, Value>, UsageError> {
     let Some(token) = usage_token(slot) else { return Err(UsageError::Credentials("Copilot OAuth credentials not found.".into())) };
     let url = "https://api.github.com/copilot_internal/user";
-    let res: Result<Value, String> = async {
+    let res: Result<Value, UsageError> = async {
         let r = shared_client()
             .get(url)
             .header("Authorization", format!("token {token}"))
@@ -357,21 +357,22 @@ async fn usage_payload(slot: &TokenSlot) -> Result<Map<String, Value>, UsageErro
             .timeout(Duration::from_secs(5))
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| UsageError::Unavailable(e.to_string()))?;
         let st = r.status().as_u16();
         if st >= 400 {
-            return Err(http_status_message(st, url));
+            return Err(crate::usage::usage_http_error(&r, url));
         }
-        r.json::<Value>().await.map_err(|e| e.to_string())
+        r.json::<Value>().await.map_err(|e| UsageError::Unavailable(e.to_string()))
     }
     .await;
     match res {
         Ok(Value::Object(m)) => Ok(m),
         Ok(_) => Err(UsageError::Unavailable("Provider usage response was invalid.".into())),
-        Err(e) => {
+        Err(UsageError::Unavailable(e)) => {
             tracing::info!("provider_usage_unavailable provider=copilot error={}", e);
             Err(UsageError::Unavailable("Provider usage unavailable.".into()))
         }
+        Err(e) => Err(e),
     }
 }
 

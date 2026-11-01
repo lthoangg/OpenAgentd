@@ -37,7 +37,8 @@ function renderCard(provider: ProviderInfo) {
 
 /** Opens a credential's "More actions" menu and returns its menu items' names. */
 function openMore(label: string): string[] {
-  fireEvent.click(screen.getByRole('button', { name: `More actions for ${label}` }))
+  const trigger = screen.queryByRole('button', { name: `More actions for ${label}` }) ?? screen.getByRole('button', { name: `Manage ${label}` })
+  fireEvent.click(trigger)
   return screen.getAllByRole('menuitem').map((item) => item.textContent ?? '')
 }
 
@@ -170,21 +171,26 @@ describe('ProviderCard — multi-credential capability', () => {
     expect(mockLoginStream.mock.calls[0][4]).toBeUndefined()
   })
 
-  it('shows per-account usage in the More menu only when the backend says the provider has it', () => {
+  it('never offers a Show usage toggle on an OAuth account, whatever the capability flags say', () => {
     const { unmount } = renderCard({ ...pluginOauth, id: 'codex', supports_multiple_credentials: true, supports_credential_usage: false })
-    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
     expect(openMore('me@example.com')).not.toContain('Show usage')
     unmount()
     renderCard({ ...pluginOauth, supports_multiple_credentials: true, supports_credential_usage: true })
-    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
-    expect(openMore('me@example.com')).toContain('Show usage')
+    expect(openMore('me@example.com')).not.toContain('Show usage')
   })
 
-  it('falls back to the built-in usage set when the flag is missing', () => {
-    const { unmount } = renderCard({ ...pluginOauth, id: 'codex' })
-    expect(openMore('me@example.com')).toContain('Show usage')
+  it('keeps the Show usage toggle on API keys when the backend has per-key usage', () => {
+    const two = [credential({ id: 'cred_a', label: 'Personal', in_use: true }), credential({ id: 'cred_b', label: 'Work' })]
+    const { unmount } = renderCard({ ...pluginKey, stored_credentials: two, supports_credential_usage: true })
+    expect(openMore('Personal')).toContain('Show usage')
     unmount()
-    renderCard(pluginOauth)
-    expect(openMore('me@example.com')).not.toContain('Show usage')
+    renderCard({ ...pluginKey, stored_credentials: two, supports_credential_usage: false })
+    expect(openMore('Personal')).not.toContain('Show usage')
+  })
+
+  it('does not offer usage for a disabled API key', () => {
+    const two = [credential({ id: 'cred_a', label: 'Personal', in_use: true }), credential({ id: 'cred_b', label: 'Work', disabled: true, status: 'disabled' })]
+    renderCard({ ...pluginKey, stored_credentials: two, supports_credential_usage: true })
+    expect(openMore('Work')).not.toContain('Show usage')
   })
 })

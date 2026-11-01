@@ -2355,6 +2355,15 @@ agnostic by design.
   they opt in with `supportsMultipleCredentials: true`; they then get the same
   account list, switching, and cooldowns, with per-account OAuth tokens kept in
   `credentials.yaml` `[v3.30.0]`.
+- **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Providers
+  shows each enabled profile's quota windows, spend caps and credits in its
+  own row, without a duplicate provider-wide usage block. Disabled profiles
+  do not request usage. Usage checks share a per-account cache across clients
+  of the same server; provider rate limits show a retry countdown and pause
+  checks until that time, including manual refresh. Last-known measurements
+  keep their original timestamp and are marked old. A usage-check rate limit
+  does not put the profile's chat requests into cooldown. Plan names and
+  currency appear when reported by the provider.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or

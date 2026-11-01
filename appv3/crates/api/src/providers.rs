@@ -44,6 +44,11 @@ pub fn is_optin_plugin(id: &str) -> bool {
     find_provider_plugin(id).is_some_and(|p| p.info().supports_multiple_credentials)
 }
 
+/// Whether this provider exposes a usage reader at any scope.
+pub fn supports_usage(id: &str) -> bool {
+    matches!(id, "openrouter" | "deepseek" | "codex" | "copilot" | "grok") || find_provider_plugin(id).is_some_and(|p| p.has_usage())
+}
+
 /// Whether usage can be read for one named credential.
 pub fn supports_credential_usage(id: &str) -> bool {
     matches!(id, "openrouter" | "deepseek" | "codex" | "copilot" | "grok") || find_provider_plugin(id).is_some_and(|p| p.info().supports_multiple_credentials && p.has_usage())

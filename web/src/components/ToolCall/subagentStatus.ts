@@ -65,3 +65,17 @@ export function parseStartedAt(value: unknown): number | null {
   const ms = Date.parse(value)
   return Number.isFinite(ms) ? ms : null
 }
+
+/**
+ * The subagent a ``team`` call reached, read from the plain text the backend
+ * answers with (``Subagent 'explorer#1' dispatched…``, ``Message delivered to
+ * subagent 'explorer#1'…``; ``appv3_agent::tools::team::delegate_result_text``).
+ * ``null`` for an error, a list, or a JSON result, whose details carry their
+ * own rows.
+ */
+export function teamMemberFromResult(result: string | null | undefined): string | null {
+  const text = result?.trim()
+  if (!text || text.startsWith('{') || text.startsWith('[') || /^error\b/i.test(text)) return null
+  const match = /\bsubagent '([^'\n]+)'/i.exec(text.split('\n', 1)[0])
+  return match ? match[1] : null
+}

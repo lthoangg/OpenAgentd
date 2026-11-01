@@ -43,6 +43,8 @@ import { CopyButton } from './CopyButton'
 import { SectionHeader } from './SectionHeader'
 import { ToolRow } from './ToolRow'
 import { subscribeLiveClock } from './liveClock'
+import { RosterSubagentRow } from './SubagentRow'
+import { teamMemberFromResult } from './subagentStatus'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome, toolRowSummary } from './summary'
@@ -58,6 +60,7 @@ const ASK_USER = 'ask_user'
 /** Matches ``appv3_agent::tools::plan::PLAN_TOOL``. */
 const PLAN_TOOL = 'plan'
 const WORKSPACE_TOOL = 'workspace'
+const TEAM_TOOL = 'team'
 
 interface ToolCallProps {
   name: string
@@ -225,6 +228,12 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   )
   // A saved plan opens in the Plan tab.
   const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'Open plan' : null
+  // The subagent a team call started or messaged: its row sits under the
+  // call, so following it takes one click, not an expand and then a click.
+  const teamMember = useMemo(
+    () => (canonicalToolName(name) === TEAM_TOOL && done ? teamMemberFromResult(result) : null),
+    [name, done, result],
+  )
   // An image the agent read opens in the dock.
   const imageRead = useMemo(() => (name === 'read' && done ? parseImageRead(result) : null), [name, done, result])
   // Pending-state header comes from getToolDisplay's no-args branch
@@ -448,6 +457,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         )}
           </div>
         )}
+        {teamMember && <RosterSubagentRow handle={teamMember} className="mb-0.5" />}
       </div>
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}

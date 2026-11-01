@@ -7,12 +7,17 @@
  * the action. Outside the desktop app it answers ``undefined`` so the caller
  * shows its own HTML menu instead.
  *
+ * In the iPhone and iPad app the same menu is an iOS action sheet
+ * (``pickNative``): a long press there gets the system's own sheet. Android
+ * keeps the app's bottom sheet, which is what Android apps show.
+ *
  * ``showAppMenu`` pops the application menu up for Windows and Linux, where
  * the native menu bar is hidden and the header's ☰ button (or a bare Alt tap)
  * opens it.
  */
 import { getPlatform } from '@/hooks/use-platform'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { pickNative } from '@/lib/native-picker'
 
 /** A point in CSS pixels from the page's top-left corner (client coordinates). */
 export interface NativeMenuPoint {
@@ -38,7 +43,8 @@ export type NativeMenuItem =
  * menu to show (a browser, the mobile app, an older shell), so the caller
  * falls back to its HTML menu.
  */
-export async function showNativeMenu(items: readonly NativeMenuItem[], at: NativeMenuPoint): Promise<string | null | undefined> {
+export async function showNativeMenu(items: readonly NativeMenuItem[], at: NativeMenuPoint, title = ''): Promise<string | null | undefined> {
+  if (isIosApp()) return showActionSheet(items, title)
   if (!isDesktopShell()) return undefined
   try {
     const { invoke } = await import('@tauri-apps/api/core')
@@ -49,6 +55,22 @@ export async function showNativeMenu(items: readonly NativeMenuItem[], at: Nativ
     console.debug('native menu unavailable', err)
     return undefined
   }
+}
+
+/** The iPhone and iPad app, where a menu is an iOS action sheet. */
+export function isIosApp(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && os === 'ios'
+}
+
+/**
+ * A menu as an iOS action sheet: one row per item that can run (an action
+ * sheet has no disabled rows or separators), the checked one marked.
+ */
+function showActionSheet(items: readonly NativeMenuItem[], title: string): Promise<string | null | undefined> {
+  const rows = items.filter((item): item is Extract<NativeMenuItem, { label: string }> => !item.separator && item.enabled !== false)
+  const checked = rows.find((item) => item.checked)?.id
+  return pickNative(title, rows.map(({ id, label }) => ({ id, label })), checked)
 }
 
 /** The header's ☰ button exists only where the OS menu bar is hidden: Windows and Linux. */

@@ -19,7 +19,8 @@
  * In the desktop app the operating system draws it: the items are read from
  * the (hidden) page menu and handed to ``showNativeMenu``, and the chosen one
  * is clicked, so every caller gets the native menu with no change of its own.
- * Menus whose items are more than a label (a field, a chip) pass
+ * In the iPhone and iPad app it is an iOS action sheet the same way. Menus
+ * whose items are more than a label (a field, a chip) pass
  * ``native={false}``. When the shell cannot show a menu, the page menu shows.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
@@ -28,7 +29,7 @@ import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { DURATIONS_S } from '@/lib/motion'
-import { showNativeMenu, type NativeMenuItem } from '@/lib/native-menu'
+import { isIosApp, showNativeMenu, type NativeMenuItem } from '@/lib/native-menu'
 import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 
 /** Gap kept between the menu and the viewport edge. */
@@ -53,12 +54,13 @@ function isDisabled(item: HTMLElement): boolean {
 }
 
 /**
- * Whether the OS can draw this menu: the desktop app, with its IPC bridge
- * loaded. Without the bridge the native request could only fail a tick
- * later, so the page menu shows at once instead.
+ * Whether the OS can draw this menu: the desktop app (or the iOS app, as an
+ * action sheet), with its IPC bridge loaded. Without the bridge the native
+ * request could only fail a tick later, so the page menu shows at once
+ * instead.
  */
 function canShowNativeMenu(): boolean {
-  return isDesktopShell() && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+  return (isDesktopShell() || isIosApp()) && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
 function enabledItems(menu: HTMLElement | null): HTMLElement[] {
@@ -177,13 +179,14 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
   // The native menu answers once per opening; a later ``at`` while it is up
   // cannot move it, so it reads the point it opened at.
   const openedAtRef = useRef(at)
+  const openedLabelRef = useRef(label)
   useEffect(() => {
     if (mode !== 'native') return
     const menu = menuRef.current
     if (!menu) return
     let live = true
     const { items, elements } = readNativeItems(menu)
-    void showNativeMenu(items, openedAtRef.current).then((chosen) => {
+    void showNativeMenu(items, openedAtRef.current, openedLabelRef.current).then((chosen) => {
       if (!live) return
       if (chosen === undefined) {
         setMode('page')

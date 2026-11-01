@@ -47,8 +47,22 @@ describe('showNativeMenu', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('answers undefined in the phone apps', async () => {
+  it('shows an iOS action sheet in the iPhone and iPad app: rows that can run, the checked one marked', async () => {
     platform = { isTauri: true, os: 'ios' }
+    invokeResult = async () => 'rename'
+    const items = [...ITEMS, { id: 'sort', label: 'Newest first', checked: true }]
+
+    expect(await showNativeMenu(items, { x: 1, y: 2 }, 'Session')).toBe('rename')
+
+    expect(invoke.mock.calls).toEqual([['pick_one', {
+      title: 'Session',
+      options: [{ id: 'rename', label: 'Rename' }, { id: 'sort', label: 'Newest first' }],
+      selected: 'sort',
+    }]])
+  })
+
+  it('answers undefined in the Android app, which keeps its bottom sheet', async () => {
+    platform = { isTauri: true, os: 'android' }
     expect(await showNativeMenu(ITEMS, { x: 1, y: 2 })).toBeUndefined()
     expect(invoke).not.toHaveBeenCalled()
   })

@@ -160,6 +160,8 @@ import {
 } from './Sidebar.window'
 import { SessionSearch } from './Sidebar/SessionSearch'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { isIosApp } from '@/lib/native-menu'
+import { pickNative } from '@/lib/native-picker'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
@@ -927,12 +929,12 @@ export function Sidebar({
     onSessionEdit: handleSessionEdit,
     onSessionRename: handleSessionRename,
     onSessionRenameCancel: () => setEditingSessionId(null),
-    onSessionLongPress: (session: SessionResponse) => setMobileSessionActions({ session, workspacePath: session.workspace ?? '' }),
+    onSessionLongPress: (session: SessionResponse) => openMobileSessionActions(session, session.workspace ?? ''),
     onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
       // Phones (browser too): the titled sheet, since a truncated title has
       // no tooltip on touch.
       if (isMobile) {
-        setMobileSessionActions({ session, workspacePath: session.workspace ?? '' })
+        openMobileSessionActions(session, session.workspace ?? '')
         return
       }
       setDesktopSessionActions({ session, workspacePath: session.workspace ?? '', x: event.clientX, y: event.clientY })
@@ -985,6 +987,20 @@ export function Sidebar({
     }
     actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: true, run: () => setDeleteTarget(session) })
     return actions
+  }
+
+  // The titled sheet on a phone; in the iOS app, the system's action sheet
+  // (the app's sheet only if it cannot show).
+  const openMobileSessionActions = (session: SessionResponse, workspacePath: string) => {
+    if (!isIosApp()) {
+      setMobileSessionActions({ session, workspacePath })
+      return
+    }
+    const actions = sessionMenuActions(session)
+    void pickNative(session.title || 'Untitled', actions.map(({ id, label }) => ({ id, label }))).then((chosen) => {
+      if (chosen === undefined) setMobileSessionActions({ session, workspacePath })
+      else actions.find((action) => action.id === chosen)?.run()
+    })
   }
 
   const confirmSessionDelete = () => {
@@ -1460,10 +1476,10 @@ export function Sidebar({
                     mobileLongPressActions={mobileLongPressActions}
                     editingSessionId={editingSessionId}
                     {...sessionRowHandlers}
-                    onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: session.workspace || path })}
+                    onSessionLongPress={(session) => openMobileSessionActions(session, session.workspace || path)}
                     onSessionContextActions={(session, event) => {
                       if (isMobile) {
-                        setMobileSessionActions({ session, workspacePath: session.workspace || path })
+                        openMobileSessionActions(session, session.workspace || path)
                         return
                       }
                       setDesktopSessionActions({ session, workspacePath: session.workspace || path, x: event.clientX, y: event.clientY })

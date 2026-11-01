@@ -2788,6 +2788,27 @@ describe('Sidebar workspace trust flow', () => {
       expect(screen.queryByRole('menu')).toBeNull()
     })
 
+    it("opens a session's actions as an iOS action sheet in the iPhone app", async () => {
+      isMobile = true
+      isTauri = true
+      platformOs = 'ios'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+      invokeMock.mockImplementation((async (command: string) => (command === 'pick_one' ? 'rename' : undefined)) as never)
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
+
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Session title' })).toBeTruthy())
+      const calls = invokeMock.mock.calls as unknown as Array<[string, { title: string; options: Array<{ id: string }> }]>
+      const pick = calls.find(([command]) => command === 'pick_one')!
+      expect(pick[1].title).toBe('Feature')
+      expect(pick[1].options.map((option) => option.id)).toContain('delete')
+      // The system sheet replaced the app's.
+      expect(screen.queryByText('Choose a session action.')).toBeNull()
+      invokeMock.mockImplementation(async () => undefined)
+    })
+
     it('lists pinned sessions above the tree and unpins from the row menu', async () => {
       pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
       sessionsData = [projectSession('session-1', 'Feature')]

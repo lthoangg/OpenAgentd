@@ -850,6 +850,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Panel**: `rounded-md`, one 1px `border-(--color-border-subtle)` hairline, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
 - **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with Bark and its text and icons invert to `on-accent` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
 - **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns error and the text inverts.
+- **Native in the desktop app**: `ContextMenu` reads its items (label, disabled, checked, separators) from the hidden page menu and asks the shell to pop up the OS's own menu at the same point (`lib/native-menu.ts` → `show_context_menu`); the chosen item is clicked, so callers keep one menu definition. A menu whose items carry more than words (chips, badges) passes `native={false}`. Browsers, phones and a shell without the command show the page menu.
 - In the desktop app, command-only context menus (tabs, sessions, messages, files, Changes rows) are the OS's own menu; these styles are the browser fallback and the menus that hold chips or switches.
 - **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
 
@@ -1251,6 +1252,40 @@ While another app has focus, `data-window-inactive` hides focus rings, turns
 text selection to `--bg-key` and mutes `aria-current` items, the way Finder
 greys its selection. The browser build keeps the browser's behaviour.
 
+The desktop shell hands the OS what the OS already draws:
+
+- **Context menus**: right-click menus are the OS's own (`ContextMenu` →
+  `show_context_menu`; see Floating Menus & Context Menus).
+- **App menu**: macOS keeps the menu bar. On Windows and Linux the menu bar
+  is hidden and the header's ☰ (or a bare Alt tap outside a text field)
+  pops the same menu up (`show_app_menu`). The View menu carries every
+  layout command (Sidebar, Review Panel, Split Review Panel, Terminal,
+  Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size, Reset
+  Layout). Windows keeps the system title bar.
+- **Dialogs**: button order follows the OS (`DialogFooter`): Cancel before
+  the action on macOS, iOS and Linux, the action first on Windows, a row of
+  text buttons on Android. The footer has no border or fill. A safe confirm
+  is the default button (Enter); a destructive one never is, Cancel is.
+- **Attention badge**: the Needs you count on the Dock (macOS), the launcher
+  (Linux) and as a taskbar overlay (Windows); `(n)` in a browser tab's title.
+- **Share**: the macOS share menu and the Windows Share window
+  (`share_url`); Linux copies the link.
+- **Zoom** is saved, and a new window opens at the zoom of the window it
+  came from.
+- **macOS**: two-finger swipes go back and forward through the window's
+  sessions, and scroll bars are the system's (they follow "Show scroll
+  bars"); the app's thin bars are for the other platforms.
+- **Global shortcuts** (Show OpenAgentd, Next session that needs you) are
+  off until "Global Shortcuts" is ticked in the OpenAgentd menu.
+
+**Companions** (the notch island, the pet, the tray popup, OS
+notifications) read one Needs you feed and use one vocabulary: Needs you,
+Running, Done, Failed, Can't reach. A question with a few choices is
+answered in place (island, pet, notification buttons); anything else says
+**Open to answer**. × means Later: the question stays until answered. Every
+way of opening a session goes through one router, which focuses the window
+that already shows it.
+
 The macOS tray popup (`web/tray.html`) is a separate, small entry with no
 Tailwind. Its stylesheet `tray/tray.css` imports `styles/tokens.css`, the same
 palette and motion tokens as the app; only its glass surface and shadows are
@@ -1263,8 +1298,9 @@ content, 360px wide and up to 600px tall.
 Tab follows the DOM order: every control is its own Tab stop. Composite
 widgets (tablists, menus, listboxes, comboboxes) keep their own arrow keys.
 
-- **Hover-revealed row actions** also show on `focus-within`, and keep a
-  keyboard shortcut: F2, Delete, Shift+F10 / the Menu key (`lib/focus/item-keys.ts`).
+- **Row actions** show at rest (dimmed until the row is hovered or holds
+  focus), and keep a keyboard shortcut: F2, Delete, Shift+F10 / the Menu
+  key (`lib/focus/item-keys.ts`).
 - **Quiet focus**: focus a script hands back without a key press (the
   composer pill on page load) goes through `focusQuietly`
   (`lib/focus/quiet.ts`), so it draws no ring until the keyboard moves on.
@@ -1307,6 +1343,30 @@ iOS's default of 17px. The scale never goes below 1, because the type scale
 assumes the design size, and stops at 1.25. Everything in rem scales with it:
 text, spacing, and touch targets. Px sizes do not. The app's own Text size
 setting multiplies on top (type only).
+Android scales text in the shell instead: `ShellPlugin` sets the WebView's
+`textZoom` from the system font scale, between 100% and 125%.
+
+The phone apps use the system's own controls where a value is simple: a
+choice of a few values (theme, text size) opens an iOS action sheet or an
+Android single-choice dialog (`ui/native-select.tsx`, `pick_one`), and
+Share… opens the system share sheet (`share_text`). A long press opens the
+item's menu as a bottom sheet, edge swipe goes back, a sheet closes with a
+downward drag, and haptics mark a send, an arriving question, a mode
+change and a sheet dismissed by drag.
+
+### Native per platform
+
+| | macOS | Windows | Linux | iOS / iPadOS | Android |
+|---|---|---|---|---|---|
+| UI font | SF Pro | Segoe UI Variable | desktop font | SF Pro | Roboto |
+| Context menu | OS menu | OS menu | OS menu | long-press sheet | long-press sheet |
+| App menu | menu bar | ☰ / Alt | ☰ / Alt | — | — |
+| Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | Cancel · Action | text buttons |
+| Badge | Dock | taskbar overlay | launcher | — | — |
+| Share | share menu | Share window | copy link | share sheet | share sheet |
+| Simple picks | app control | app control | app control | action sheet | single-choice dialog |
+| System text size | — | — | — | Dynamic Type | font scale |
+| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | edge swipe | Back gesture |
 
 ## Brand mark
 

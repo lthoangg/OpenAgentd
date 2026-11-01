@@ -15,12 +15,20 @@
  * caller's ``onDismiss`` runs when the fade ends. Dismissed from the keyboard
  * (Escape, Tab) it closes at once, so the next key lands where it should; an
  * item that closes the menu itself unmounts it straight away too.
+ *
+ * In the desktop app the operating system draws it: the items are read from
+ * the (hidden) page menu and handed to ``showNativeMenu``, and the chosen one
+ * is clicked, so every caller gets the native menu with no change of its own.
+ * Menus whose items are more than a label (a field, a chip) pass
+ * ``native={false}``. When the shell cannot show a menu, the page menu shows.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { DURATIONS_S } from '@/lib/motion'
+import { showNativeMenu, type NativeMenuItem } from '@/lib/native-menu'
 import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 
 /** Gap kept between the menu and the viewport edge. */
@@ -38,11 +46,63 @@ export function ContextMenuSeparator() {
   return <div role="separator" className={MENU_SEPARATOR_CLASS} />
 }
 
+const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]'
+
+function isDisabled(item: HTMLElement): boolean {
+  return item.hasAttribute('disabled') || item.getAttribute('aria-disabled') === 'true'
+}
+
+/**
+ * Whether the OS can draw this menu: the desktop app, with its IPC bridge
+ * loaded. Without the bridge the native request could only fail a tick
+ * later, so the page menu shows at once instead.
+ */
+function canShowNativeMenu(): boolean {
+  return isDesktopShell() && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
 function enabledItems(menu: HTMLElement | null): HTMLElement[] {
   if (!menu) return []
-  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]')).filter(
-    (item) => !item.hasAttribute('disabled') && item.getAttribute('aria-disabled') !== 'true',
-  )
+  return Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)).filter((item) => !isDisabled(item))
+}
+
+/** An item's words, without icons and decorative hints such as a shortcut. */
+function itemLabel(item: HTMLElement): string {
+  const own = item.dataset.nativeLabel
+  if (own) return own
+  const copy = item.cloneNode(true) as HTMLElement
+  copy.querySelectorAll('svg, kbd, [aria-hidden="true"]').forEach((node) => node.remove())
+  // Words in separate elements ("main" + a "folder" chip) stay separate words.
+  const words: string[] = []
+  const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent?.trim()
+    if (text) words.push(text)
+  }
+  return words.join(' ').replace(/\s+/g, ' ') || (item.getAttribute('aria-label') ?? '')
+}
+
+/**
+ * The page menu as native items: each item's id is its index among the
+ * items, separators keep their place, and neither leads nor doubles up.
+ */
+function readNativeItems(menu: HTMLElement): { items: NativeMenuItem[]; elements: HTMLElement[] } {
+  const items: NativeMenuItem[] = []
+  const elements: HTMLElement[] = []
+  for (const node of menu.querySelectorAll<HTMLElement>(`${ITEM_SELECTOR}, [role="separator"]`)) {
+    if (node.getAttribute('role') === 'separator') {
+      const last = items[items.length - 1]
+      if (last && !('separator' in last && last.separator)) items.push({ separator: true })
+      continue
+    }
+    const role = node.getAttribute('role')
+    const checked = role === 'menuitem' ? undefined : node.getAttribute('aria-checked') === 'true'
+    items.push({ id: String(elements.length), label: itemLabel(node), enabled: !isDisabled(node), ...(checked === undefined ? {} : { checked }) })
+    elements.push(node)
+  }
+  const last = items[items.length - 1]
+  if (last && 'separator' in last && last.separator) items.pop()
+  return { items, elements }
 }
 
 interface ContextMenuProps {
@@ -54,14 +114,19 @@ interface ContextMenuProps {
   className?: string
   /** Stacking layer for the backdrop; raise it inside overlays above ``z-50``. */
   layerClassName?: string
+  /** ``false`` keeps the page menu in the desktop app too, for items that are more than a label. */
+  native?: boolean
   children: ReactNode
 }
 
-export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', layerClassName = 'z-50', children }: ContextMenuProps) {
+export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', layerClassName = 'z-50', native = true, children }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const reduced = useReducedMotion() ?? false
   const [closing, setClosing] = useState(false)
+  // ``native``: the OS menu is up (or being asked for) and the page menu
+  // stays hidden; ``page``: the page menu shows.
+  const [mode, setMode] = useState<'native' | 'page'>(() => (native && canShowNativeMenu() ? 'native' : 'page'))
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onDismissRef = useRef(onDismiss)
   useEffect(() => {
@@ -96,7 +161,6 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
     const menu = menuRef.current
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     openerRef.current = opener
-    enabledItems(menu)[0]?.focus({ preventScroll: true })
     return () => {
       if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
       // Only reclaim focus the menu took; an item that opened a dialog keeps it.
@@ -105,6 +169,36 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
       if (lost && opener?.isConnected) opener.focus({ preventScroll: true })
     }
   }, [])
+
+  useEffect(() => {
+    if (mode === 'page') enabledItems(menuRef.current)[0]?.focus({ preventScroll: true })
+  }, [mode])
+
+  // The native menu answers once per opening; a later ``at`` while it is up
+  // cannot move it, so it reads the point it opened at.
+  const openedAtRef = useRef(at)
+  useEffect(() => {
+    if (mode !== 'native') return
+    const menu = menuRef.current
+    if (!menu) return
+    let live = true
+    const { items, elements } = readNativeItems(menu)
+    void showNativeMenu(items, openedAtRef.current).then((chosen) => {
+      if (!live) return
+      if (chosen === undefined) {
+        setMode('page')
+        return
+      }
+      const item = chosen === null ? undefined : elements[Number(chosen)]
+      // React handles the click synchronously, so an item that closes the
+      // menu has unmounted it (``live`` false) by the time this returns.
+      if (item?.isConnected) item.click()
+      if (live) onDismissRef.current()
+    })
+    return () => {
+      live = false
+    }
+  }, [mode])
 
   const dismiss = useCallback((fade: boolean) => {
     if (reduced || !fade) {
@@ -158,7 +252,8 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
   return (
     <div
       role="presentation"
-      className={cn('fixed inset-0 bg-transparent', closing && 'pointer-events-none', layerClassName)}
+      className={cn('fixed inset-0 bg-transparent', (closing || mode === 'native') && 'pointer-events-none', mode === 'native' && 'invisible', layerClassName)}
+      aria-hidden={mode === 'native' || undefined}
       onClick={() => dismiss(true)}
       onContextMenu={(event) => {
         event.preventDefault()

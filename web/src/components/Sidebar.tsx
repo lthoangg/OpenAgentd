@@ -65,7 +65,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { copySessionLink, shareSessionLink } from '@/lib/session-link'
+import { canShareSession, copySessionLink, shareSessionLink } from '@/lib/session-link'
 import { sessionWorking } from '@/lib/active-sessions'
 import {
   useDeleteSessionMutation,
@@ -970,7 +970,7 @@ export function Sidebar({
       },
     })
     // Only where the system has a share sheet; elsewhere it would just copy.
-    if (typeof navigator.share === 'function') {
+    if (canShareSession()) {
       actions.push({
         id: 'share',
         label: 'Share…',
@@ -1917,6 +1917,7 @@ export function Sidebar({
           label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}
           onDismiss={() => setCheckoutMenu(null)}
           className="min-w-48 max-w-64"
+          native={false}
         >
           <CheckoutMenuItem
             checked={checkoutMenuRepository.selected === null}

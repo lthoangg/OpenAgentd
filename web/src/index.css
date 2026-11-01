@@ -611,33 +611,36 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   /* Scrollbars are invisible at rest and only fade in while the element
    * carrying them is hovered/focused (or, on WebKit, while it is actively
    * being scrolled). This keeps the UI free of always-on scrollbar chrome
-   * without removing scroll affordance when it's actually needed. */
-  * {
+   * without removing scroll affordance when it's actually needed.
+   * The macOS app keeps the system's overlay scroll bars, which follow
+   * System Settings → "Show scroll bars": any ::-webkit-scrollbar style
+   * would replace them, so none of these rules reach it. */
+  :where(html:not([data-platform="mac-overlay"])) * {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
   }
-  *:hover,
-  *:focus-within {
+  :where(html:not([data-platform="mac-overlay"])) *:hover,
+  :where(html:not([data-platform="mac-overlay"])) *:focus-within {
     scrollbar-color: var(--color-border) transparent;
   }
 
-  ::-webkit-scrollbar {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
   }
-  ::-webkit-scrollbar-track {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar-track {
     background: transparent;
   }
-  ::-webkit-scrollbar-thumb {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: var(--radius-xs);
     transition: background-color var(--motion-fast) var(--ease-in-out);
   }
-  :hover::-webkit-scrollbar-thumb,
-  :focus-within::-webkit-scrollbar-thumb {
+  :where(html:not([data-platform="mac-overlay"])) :hover::-webkit-scrollbar-thumb,
+  :where(html:not([data-platform="mac-overlay"])) :focus-within::-webkit-scrollbar-thumb {
     background: var(--color-border);
   }
-  ::-webkit-scrollbar-thumb:hover {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
   /* Let internal scrollers chain to their parent when they hit a

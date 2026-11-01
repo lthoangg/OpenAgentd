@@ -22,6 +22,7 @@ import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
+import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { getPlatform } from '@/hooks/use-platform'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { CAPABILITY, useServerCapability } from '@/queries'
@@ -60,6 +61,13 @@ function SettingsSurface() {
 function TelemetrySurface() {
   const open = useUIStore((s) => s.telemetryOpen)
   return useSurfaceMounted(open) ? <TelemetryOverlay /> : null
+}
+
+// The app badge and the tab/window title count follow the user to every
+// route, not only the chat layout.
+function NeedsYouBadgeSync() {
+  useNeedsYouBadge()
+  return null
 }
 
 export function Root() {
@@ -116,6 +124,7 @@ export function Root() {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
+      <NeedsYouBadgeSync />
       {widgetsSupported() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />

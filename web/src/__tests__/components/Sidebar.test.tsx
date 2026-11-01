@@ -2815,12 +2815,13 @@ describe('Sidebar workspace trust flow', () => {
 
       fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
       const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
-      // Share… needs a system share sheet, which this window has not.
+      // The macOS app has its own share sheet, so Share… is there.
       expect(items.map((item) => item.textContent)).toEqual([
         'Open in new window',
         'Rename',
         'Pin',
         'Copy link',
+        'Share…',
         'Delete session…',
       ])
       fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
@@ -2844,6 +2845,19 @@ describe('Sidebar workspace trust flow', () => {
       fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy link' }))
       await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
       expect(writeText.mock.calls[0][0]).toBe(`${window.location.origin}/session-1`)
+    })
+
+    it('has no Share… in the Linux app, which has no share sheet', async () => {
+      isTauri = true
+      platformOs = 'linux'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
+      expect(await screen.findByRole('menuitem', { name: 'Copy link' })).toBeTruthy()
+      expect(screen.queryByRole('menuitem', { name: 'Share…' })).toBeNull()
     })
 
     it('pins from the row action left of More', async () => {

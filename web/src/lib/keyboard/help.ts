@@ -120,5 +120,16 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('save', 'Save settings'),
       ],
     },
+    // The desktop app's global shortcuts (desktop/src-tauri/src/global_shortcuts.rs):
+    // off until "Global Shortcuts" is ticked in the OpenAgentd menu.
+    ...(desktopApp
+      ? [{
+          title: 'From any app (when Global Shortcuts is on)',
+          entries: [
+            keys('Show OpenAgentd', { key: 'O', mod: true, alt: true }),
+            keys('Next session that needs you', { key: 'J', mod: true, alt: true }),
+          ],
+        }]
+      : []),
   ]
 }

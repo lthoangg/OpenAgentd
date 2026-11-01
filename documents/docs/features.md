@@ -363,7 +363,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
   background, so mobile notifications arrive only while it is running.
   Notifications are shorter `[v3.3.0]`: the title is a status and the workspace
-  name (`Done · openagentd`, `Failed · …`, `Needs input · …`, `Plan ready · …`),
+  name (`Done · openagentd`, `Failed · …`, `Needs you · …` (`Needs input` before v3.40.0), `Plan ready · …`),
   and the session title, question, or plan summary shows as one line of up to
   100 characters. A failed turn now notifies too. Stopping a turn or dismissing
   a question does not, and a lead that is waiting on subagents notifies once,
@@ -790,6 +790,52 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The first-run card names the action ("Use Ollama"), and the section is
     called **Retention** (with "Local history" inside it).
   - Below 900px wide the Settings navigation shows icons only.
+- **Native on every platform** `[v3.40.0]`:
+  - In the desktop app, right-click menus (sessions, tabs, terminals, Git,
+    messages, files) are the operating system's own menus, with the same
+    items as ⋯.
+  - On Windows and Linux the menu bar is hidden: **☰** at the left of the
+    header, or tapping Alt, opens the application menu. Its View menu has
+    Sidebar, Review Panel, Split Review Panel, Terminal, Maximize Review
+    Panel, Focus Mode, Model and Thinking…, Text Size and Reset Layout
+    (macOS has them in its menu bar), and Quick Open is now **Find File…**.
+  - Dialog buttons follow the system's order (the action first on Windows,
+    after Cancel elsewhere; text buttons on Android). Enter confirms a safe
+    action; a destructive one never takes Enter, Cancel does.
+  - The number of sessions that need you shows on the Dock (macOS), the
+    taskbar (Windows) and the launcher (Linux), and in a browser tab's
+    title.
+  - **Share…** on a session opens the system share sheet: the macOS share
+    menu, the Windows Share window, the iOS and Android share sheets, or
+    Web Share in a browser that has it. Linux copies the link.
+  - Zoom is remembered, and a new window opens at the zoom of the window it
+    came from.
+  - On macOS, a two-finger swipe goes back and forward between the sessions
+    opened in the window, and scroll bars follow System Settings.
+  - Optional global shortcuts, off by default: **Global Shortcuts** in the
+    OpenAgentd menu turns on `⌥⌘O`/`Ctrl+Alt+O` (Show OpenAgentd) and
+    `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you).
+  - In the phone apps, Theme and Text size open the system's own picker (an
+    action sheet on iOS, a dialog on Android), and on Android the system
+    font size now enlarges text, up to 125%, as Dynamic Type does on iOS.
+- **Needs you everywhere, answered in place** `[v3.40.0]`:
+  - The notch status, the pet, the tray and system notifications share one
+    feed and one set of words: **Needs you**, **Running**, **Done**,
+    **Failed** and **Can't reach**. "Builtin" is now "Built-in server".
+  - A question with a few choices can be answered from the notch list, the
+    pet's bubble or the notification's buttons; anything else offers **Open
+    to answer**. Answering anywhere clears it everywhere.
+  - The notch status opens on click; pointing at it opens it only with
+    **Expand on hover** on. Its × means Later. When a server stops
+    answering, a **Can't reach** row offers Retry.
+  - The pet keeps a question until it is answered: × folds it behind the
+    badge, and its menu lists questions first.
+  - The tray popup lists the sessions that need you and the running ones,
+    says **No server connected** when there is none, and its usage section
+    is **Provider limits**. On Windows and Linux the tray menu starts with
+    the sessions that need you.
+  - Opening a session from anywhere (notch, pet, tray, a notification, Open
+    in new window) focuses the window that already shows it.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

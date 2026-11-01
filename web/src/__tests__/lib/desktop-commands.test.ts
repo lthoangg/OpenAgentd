@@ -21,6 +21,30 @@ describe('router coupling', () => {
   })
 })
 
+describe('shell command coverage', () => {
+  const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+
+  // A command the menus emit but the bridge does not know is a dead menu item.
+  it('handles every command the app menu, text size items and global shortcuts emit', () => {
+    const bridge = read('../../lib/desktop-commands.ts')
+    const handled = new Set(Array.from(bridge.matchAll(/case '([a-z_]+)':/g), (m) => m[1]))
+
+    const emitted = new Set<string>()
+    for (const match of read('../../../../desktop/src-tauri/src/menu.rs').matchAll(/emit_frontend_command\(app, "([a-z_]+)"\)/g)) emitted.add(match[1])
+    // Text Size items emit `text_size_<size>`; the global shortcut emits its own command.
+    const sizes = read('../../../../desktop/src-tauri/src/app_menu.rs').match(/TEXT_SIZES: \[\(&str, &str\); 3\] = \[(.*)\];/)?.[1] ?? ''
+    for (const match of sizes.matchAll(/\("([a-z]+)",/g)) emitted.add(`text_size_${match[1]}`)
+    const shortcut = read('../../../../desktop/src-tauri/src/global_shortcuts.rs').match(/NEXT_NEEDS_YOU_COMMAND: &str = "([a-z_]+)"/)?.[1]
+    if (shortcut) emitted.add(shortcut)
+
+    // The scan found the View menu's new items, so an empty or partial match cannot pass.
+    for (const id of ['review_panel', 'split_review_panel', 'toggle_terminal', 'maximize_review_panel', 'focus_mode', 'reset_layout', 'text_size_compact', 'text_size_large', 'next_needs_you']) {
+      expect(emitted.has(id)).toBe(true)
+    }
+    expect(Array.from(emitted).filter((id) => !handled.has(id))).toEqual([])
+  })
+})
+
 describe('openNotificationSession', () => {
   it('opens the linked coding session from a desktop notification click', () => {
     openNotificationSession({ sessionId: 'session-123', mode: 'coding' }, router)

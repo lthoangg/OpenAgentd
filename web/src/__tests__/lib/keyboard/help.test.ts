@@ -72,4 +72,11 @@ describe('shortcutHelp', () => {
     expect(find('macos', 'Previous and next sidebar row')?.keys).toEqual(['↑', '↓'])
     expect(find('macos', 'First and last sidebar row')?.keys).toEqual(['Home', 'End'])
   })
+
+  it('lists the opt-in global shortcuts of the desktop app', () => {
+    expect(find('macos', 'Show OpenAgentd', true)?.keys).toEqual(['⌥⌘O'])
+    expect(find('windows', 'Next session that needs you', true)?.keys).toEqual(['Ctrl+Alt+J'])
+    // A browser has no global shortcuts to list.
+    expect(find('windows', 'Show OpenAgentd')).toBeUndefined()
+  })
 })

@@ -12,7 +12,7 @@ import { queryKeys } from '@/queries'
 import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLastWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
-import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
+import { useNeedsYouCount } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
 import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-window'
 
@@ -63,7 +63,8 @@ function AgentLayoutBase() {
     : draftWorkspace
   const chatWorkspace = useChatWorkspace()
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
-  const needsYou = useNeedsYouBadge()
+  // Only the number, for the title: the app root runs the badge itself.
+  const needsYou = useNeedsYouCount()
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)

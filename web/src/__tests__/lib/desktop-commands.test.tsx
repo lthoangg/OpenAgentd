@@ -4,7 +4,9 @@ import { render, waitFor } from '@testing-library/react'
 // The hook reads the router from context; supply a stub without mounting the
 // route tree.
 const navigate = mock(async () => {})
-mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }))
+let pathname = '/'
+const router = { navigate, state: { location: { get pathname() { return pathname } } } }
+mock.module('@tanstack/react-router', () => ({ useRouter: () => router }))
 
 // Mobile notification taps come from the notification library, not the event bus.
 let tapListener: ((sessionId: string) => void) | null = null
@@ -16,9 +18,13 @@ mock.module('@/lib/desktop-notifications', () => ({
 }))
 
 import { useDesktopCommands } from '@/lib/desktop-commands'
+import { nextNeedsYouSessionId } from '@/lib/desktop-commands'
 import { APP_EVENTS } from '@/lib/app-events'
+import { queryClient } from '@/lib/query-client'
+import { queryKeys } from '@/queries/keys'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 let listener: ((event: { payload: unknown }) => void) | null = null
 let notificationListener: ((event: { payload: unknown }) => void) | null = null
@@ -65,6 +71,9 @@ function resetUIStore(): void {
   tapListener = null
   unlistenCalls = 0
   navigate.mockClear()
+  pathname = '/'
+  queryClient.removeQueries({ queryKey: queryKeys.session.sessions.active() })
+  useDisplayPrefsStore.setState({ textSize: 'default' })
 }
 
 afterEach(resetUIStore)
@@ -141,6 +150,99 @@ describe('useDesktopCommands', () => {
 
     listener?.({ payload: 'agent_capabilities' })
     expect(useUIStore.getState().runPickerOpen).toBe(true)
+  })
+
+  it.each([
+    ['split_review_panel', APP_EVENTS.splitReviewPanel],
+    ['toggle_terminal', APP_EVENTS.toggleTerminalGroup],
+    ['focus_mode', APP_EVENTS.toggleFocusMode],
+    ['reset_layout', APP_EVENTS.resetLayout],
+  ])('routes the View menu item %s to its layout event', async (command, event) => {
+    let keys: KeyboardEvent[] = []
+    const appEvents = await captureAppEvents(async () => {
+      keys = await captureKeys(async () => {
+        await renderBridge()
+        listener?.({ payload: command })
+      })
+    })
+
+    expect(appEvents).toEqual([event])
+    expect(keys).toHaveLength(0)
+  })
+
+  it.each([
+    ['review_panel', 'd', false],
+    ['maximize_review_panel', 'd', true],
+  ])('routes the View menu item %s through its in-app shortcut', async (command, key, shift) => {
+    const events = await captureKeys(async () => {
+      await renderBridge()
+      listener?.({ payload: command })
+    })
+
+    expect(events.map((e) => [e.key, e.ctrlKey, e.metaKey, e.shiftKey])).toEqual([[key, true, false, shift]])
+  })
+
+  it.each([
+    ['text_size_compact', 'compact'],
+    ['text_size_default', 'default'],
+    ['text_size_large', 'large'],
+  ] as const)('applies the Text Size item %s to the display preferences', async (command, size) => {
+    useDisplayPrefsStore.setState({ textSize: size === 'large' ? 'compact' : 'large' })
+    await renderBridge()
+
+    listener?.({ payload: command })
+
+    expect(useDisplayPrefsStore.getState().textSize).toBe(size)
+  })
+
+  describe('next_needs_you', () => {
+    function waiting(ids: string[]) {
+      queryClient.setQueryData(queryKeys.session.sessions.active(), {
+        pages: [{
+          data: ids.map((id) => ({ id, title: id, agent_name: 'lead', created_at: null, updated_at: null, workspace: '/w', running: true, needs_input: true })),
+          next_cursor: null,
+          has_more: false,
+        }],
+        pageParams: [null],
+      })
+    }
+
+    it('opens the first session waiting on the user', async () => {
+      waiting(['a', 'b'])
+      await renderBridge()
+
+      listener?.({ payload: 'next_needs_you' })
+
+      expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'a' } })
+    })
+
+    it('moves on to the next one when the first is already on screen', async () => {
+      waiting(['a', 'b'])
+      pathname = '/a'
+      await renderBridge()
+
+      listener?.({ payload: { command: 'next_needs_you', id: 90 } })
+
+      expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'b' } })
+    })
+
+    it('does nothing when no session waits on the user', async () => {
+      waiting([])
+      await renderBridge()
+
+      listener?.({ payload: 'next_needs_you' })
+
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('picks by the same rule as the unit: skip the open one, else the first', () => {
+      const sessions = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+      expect(nextNeedsYouSessionId(sessions, null)).toBe('a')
+      expect(nextNeedsYouSessionId(sessions, 'a')).toBe('b')
+      expect(nextNeedsYouSessionId(sessions, 'c')).toBe('a')
+      expect(nextNeedsYouSessionId([{ id: 'a' }], 'a')).toBe('a')
+      expect(nextNeedsYouSessionId([], 'a')).toBeNull()
+    })
   })
 
   it('dispatches the same Ctrl+K keyboard event used by the in-app command palette shortcut', async () => {

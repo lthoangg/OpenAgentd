@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
@@ -8,6 +8,7 @@ import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { createAltTapDetector, hasAppMenuButton, showAppMenu } from '@/lib/native-menu'
 import { useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -60,6 +61,59 @@ interface AgentChatHeaderProps {
   onOpenPalette?: () => void
   /** Mobile drawer's file search; disabled when omitted (no workspace). */
   onQuickOpen?: () => void
+}
+
+/**
+ * ☰: the application menu where the OS menu bar is hidden (Windows, Linux),
+ * opened at the button's bottom-left. A bare Alt tap opens it there too, the
+ * way those platforms open a menu bar. A narrow window uses the phone layout,
+ * whose ☰ is the sidebar drawer, so the button hides and Alt still works.
+ */
+function AppMenuButton({ hidden }: { hidden: boolean }) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const opening = useRef(false)
+  const open = useCallback(() => {
+    if (opening.current) return
+    opening.current = true
+    const rect = buttonRef.current?.getBoundingClientRect()
+    void showAppMenu({ x: rect?.left ?? 8, y: rect?.bottom ?? 36 }).finally(() => {
+      opening.current = false
+    })
+  }, [])
+  useEffect(() => {
+    const alt = createAltTapDetector(open)
+    // Capture: a handler further in that stops the event must not hide the key.
+    window.addEventListener('keydown', alt.onKeyDown, true)
+    window.addEventListener('keyup', alt.onKeyUp, true)
+    window.addEventListener('pointerdown', alt.onPointerDown, true)
+    window.addEventListener('blur', alt.onBlur)
+    return () => {
+      window.removeEventListener('keydown', alt.onKeyDown, true)
+      window.removeEventListener('keyup', alt.onKeyUp, true)
+      window.removeEventListener('pointerdown', alt.onPointerDown, true)
+      window.removeEventListener('blur', alt.onBlur)
+    }
+  }, [open])
+  if (hidden) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={open}
+            aria-label="Application menu"
+            aria-haspopup="menu"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
+          >
+            <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>Application menu (Alt)</TooltipContent>
+    </Tooltip>
+  )
 }
 
 export const AgentChatHeader = memo(function AgentChatHeader({
@@ -126,6 +180,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       }`}
     >
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+          {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}
           {/* Toggles the desktop sidebar, or the drawer on mobile. */}
           <Tooltip>
             <TooltipTrigger

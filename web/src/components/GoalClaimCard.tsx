@@ -7,7 +7,9 @@
  * Colour carries the outcome only, on the chip: blue while checking or once
  * achieved, orange for "not yet", red for blocked. The evidence starts open
  * on an achieved goal, since it is what the user judges, and closed while
- * the agent keeps working.
+ * the agent keeps working. One thin frame, nothing bordered inside; what the
+ * check says and the reasons are content, so they read at 12px (meta size is
+ * for the chip and the evidence toggle).
  */
 import { memo, useId, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
@@ -88,23 +90,23 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
     <section
       aria-label={`Goal check: ${outcomeLabel}`}
       data-goal-claim={claim.kind}
-      className={cn('my-2 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)', animatesIn && 'tool-row-enter')}
+      className={cn('my-2 overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)', animatesIn && 'tool-row-enter')}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-(--color-border) px-3 py-1.5">
+      <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1">
         <span className="label-caps text-(--color-text-muted)">Goal check</span>
         <Chip tone={outcome.tone} dot={outcome.dot} role={claim.kind === 'checking' ? 'status' : undefined}>{outcomeLabel}</Chip>
       </div>
-      <div className="flex min-w-0 flex-col gap-1.5 px-3 py-2">
+      <div className="flex min-w-0 flex-col gap-1.5 px-3 pt-1 pb-2.5">
         {claim.kind === 'checking' && (
-          <span className="text-meta leading-relaxed text-(--color-text-muted)">A separate check is reviewing the claim.</span>
+          <span className="text-xs leading-relaxed text-(--color-text-muted)">A separate check is reviewing the claim.</span>
         )}
         {claim.kind === 'rejected' && (
-          <span className="text-meta leading-relaxed text-(--color-text-muted)">
+          <span className="text-xs leading-relaxed text-(--color-text-muted)">
             {claim.paused ? 'Goal paused until you resume it.' : 'The agent keeps working.'}
           </span>
         )}
         {claim.kind === 'unchecked' && (
-          <span className="text-meta leading-relaxed text-(--color-text-muted)">
+          <span className="text-xs leading-relaxed text-(--color-text-muted)">
             {claim.paused ? 'The check could not run. Goal paused until you resume it.' : 'The check could not run. The agent can claim again.'}
           </span>
         )}
@@ -112,7 +114,7 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
           <p className="text-xs leading-relaxed break-words text-(--color-text) selectable-text"><InlineCodeText text={claim.reason} /></p>
         )}
         {claim.kind === 'blocked' && (
-          <span className="text-meta leading-relaxed text-(--color-text-muted)">Goal paused until you resume it.</span>
+          <span className="text-xs leading-relaxed text-(--color-text-muted)">Goal paused until you resume it.</span>
         )}
         {claim.kind !== 'blocked' && claim.evidence.length > 0 && (
           <Evidence items={claim.evidence} label="Evidence" defaultOpen={claim.kind === 'achieved'} />

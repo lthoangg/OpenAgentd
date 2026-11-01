@@ -2,23 +2,26 @@
  * The plan review card, rendered inline in the transcript for a ``plan`` call
  * with ``submit: true`` (or the former ``submit_plan`` tool).
  *
- * The review itself happens in the Plan tab (the dock, or the full-screen
- * sheet on mobile); this card marks where the agent submitted the plan, says
- * how the review ended, and opens the plan.
+ * It marks where the agent submitted the plan, says how the review ended, and
+ * opens the plan. While its review is open it also decides it: Approve and
+ * Request changes sit right here (``PlanDecisionBar``), sending what the Plan
+ * tab sends, so the review never needs a trip to the dock or the phone sheet.
  *
  * The outcome comes from the store while this client saw the review close,
  * and otherwise from the persisted tool result, which is all a cold load has.
  * The result sentences mirror ``plan::review_result_text``, the question
  * closing texts in ``queries/questions.rs``, and the agent loop's
  * ``SUBMIT_DEFERRED`` / ``SUBMIT_MERGED`` and ``tools::plan::UNATTENDED_SUBMIT``.
+ *
+ * One thin frame and nothing bordered inside; no icon before the title.
  */
-import { FileText } from 'lucide-react'
-
 import { Button } from '@/components/ui/button'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
+import type { PendingQuestion } from '@/api/types'
+import { PlanDecisionBar } from './PlanDecisionBar'
 import { parsePlanReview } from './plan-comments'
 
 /** Mirrors the pending-question placeholder the server writes as the result. */
@@ -135,24 +138,24 @@ function ReviewFeedback({ feedback }: { feedback: string }) {
       {shown.map((comment, index) => (
         <div key={index} className="flex min-w-0 flex-col gap-0.5">
           {comment.quote && (
-            <span className="truncate border-l-2 border-(--color-border-strong) pl-1.5 text-meta leading-relaxed text-(--color-text-subtle)">
+            <span className="truncate border-l-2 border-(--color-border-strong) pl-1.5 text-xs leading-relaxed text-(--color-text-muted)">
               {comment.quote.replace(/\s+/g, ' ')}
             </span>
           )}
           {comment.text && (
-            <span className="line-clamp-2 text-meta leading-relaxed break-words whitespace-pre-line text-(--color-text)">
+            <span className="line-clamp-2 text-xs leading-relaxed break-words whitespace-pre-line text-(--color-text)">
               {comment.text}
             </span>
           )}
         </div>
       ))}
       {hidden > 0 && (
-        <span className="text-meta text-(--color-text-subtle)">
+        <span className="text-meta text-(--color-text-muted)">
           +{hidden} more {hidden === 1 ? 'comment' : 'comments'}
         </span>
       )}
       {overall && (
-        <span className="line-clamp-3 text-meta leading-relaxed break-words whitespace-pre-line text-(--color-text)">{overall}</span>
+        <span className="line-clamp-3 text-xs leading-relaxed break-words whitespace-pre-line text-(--color-text)">{overall}</span>
       )}
     </div>
   )
@@ -177,11 +180,11 @@ function revisionIn(text: string | undefined): number | null {
   return match ? Number(match[1]) : null
 }
 
-/** The ``tool_call_id`` of the plan review open in this session, or ``null``. */
-function selectOpenReviewCallId(state: AgentStoreState): string | null {
+/** The plan review open in this session, or ``null``. */
+function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
   const question = state.pendingQuestion
   return question !== null && question.kind === 'plan_review' && state.sessionId !== null && question.sessionId === state.sessionId
-    ? question.toolCallId
+    ? question
     : null
 }
 
@@ -196,13 +199,12 @@ export function PlanReviewCard({
   result?: string
   done?: boolean
 }) {
-  const openCallId = useAgentStore(selectOpenReviewCallId)
-  const openRevision = useAgentStore((state) => state.pendingQuestion?.planRevision)
+  const openReview = useAgentStore(selectOpenReview)
   const resolved = useAgentStore((state) => (toolCallId ? state.resolvedQuestions[toolCallId] : undefined))
 
-  const open = openCallId !== null && openCallId === toolCallId
+  const open = openReview !== null && openReview.toolCallId === toolCallId
   const state = planReviewState({ open, resolved, result, done })
-  const revision = open ? (openRevision ?? null) : (revisionIn(resolved?.questions[0]?.question) ?? revisionIn(result))
+  const revision = open ? (openReview?.planRevision ?? null) : (revisionIn(resolved?.questions[0]?.question) ?? revisionIn(result))
   const summary = parseSummary(args)
   const waiting = state.kind === 'waiting'
   const comments = commentCount(state)
@@ -211,18 +213,17 @@ export function PlanReviewCard({
   return (
     <div
       data-question-waiting={open ? '' : undefined}
-      className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)"
+      className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--bg-card)"
     >
-      <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 label-caps text-(--color-text-muted)">
-        <FileText size={12} aria-hidden />
+      <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 label-caps text-(--color-text-muted)">
         Plan review
         {revision !== null && <span className="font-mono tracking-normal normal-case tabular-nums">rev {revision}</span>}
       </div>
-      <div className="flex items-start gap-3 px-3 py-2">
+      <div className={cn('flex items-start gap-3 px-3', open ? 'pb-2' : 'pb-2.5')}>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span
             className={cn(
-              'text-meta leading-relaxed font-medium',
+              'text-xs leading-relaxed font-medium',
               waiting && 'text-(--accent-orange-text)',
               state.kind === 'approved' && 'text-(--accent-green-text)',
               state.kind === 'submitting' && 'text-(--color-text-muted)',
@@ -233,20 +234,15 @@ export function PlanReviewCard({
             {comments > 0 && ` · ${comments} ${comments === 1 ? 'comment' : 'comments'}`}
           </span>
           {state.kind === 'changes' && state.feedback && <ReviewFeedback feedback={state.feedback} />}
-          {summary && <span className="text-meta leading-relaxed break-words text-(--color-text-subtle)">{summary}</span>}
+          {summary && <span className="text-xs leading-relaxed break-words text-(--color-text-muted)">{summary}</span>}
         </div>
-        {canOpen && (
-          <Button
-            type="button"
-            variant={open ? 'primary' : 'default'}
-            size="xs"
-            className="shrink-0"
-            onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}
-          >
-            {open ? 'Review plan' : 'View plan'}
+        {canOpen && !open && (
+          <Button type="button" variant="ghost" size="xs" className="shrink-0" onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}>
+            Open plan
           </Button>
         )}
       </div>
+      {open && openReview && <PlanDecisionBar review={openReview} />}
     </div>
   )
 }

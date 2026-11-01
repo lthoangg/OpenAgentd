@@ -1,5 +1,15 @@
+/**
+ * The notice above the composer after Undo: one container, the caption in
+ * words, one row of actions.
+ *
+ * One word pair for the whole feature — Undo and Redo. The caption says what
+ * is undone and what happens next (Redo brings it back; a new message
+ * discards it), so nothing here lives in a tooltip alone. The undone messages
+ * can be opened under the row.
+ */
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Redo2 } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Collapsible } from '@/components/ui/collapsible'
 import { designFeedbackPlainText } from '@/lib/design-feedback'
@@ -13,51 +23,29 @@ interface RevertNoticeProps {
 
 export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: RevertNoticeProps) {
   const [expanded, setExpanded] = useState(false)
-  // Collapse whenever the revert count resets to 0 (redo or new session),
+  // Collapse whenever the undone count resets to 0 (redo or new session),
   // so the next undo doesn't open already-expanded.
   useEffect(() => {
     if (count === 0) setExpanded(false)
   }, [count])
   if (count <= 0) return null
-  const label = count === 1 ? '1 message undone' : `${count} messages undone`
+  const caption =
+    count === 1
+      ? 'Last message undone. Redo brings it back; sending a new message discards it.'
+      : `Last ${count} messages undone. Redo brings them back; sending a new message discards them.`
+  const canShow = messages.length > 0
 
   return (
     <div className="my-2 flex justify-center">
-      <div className="flex w-full max-w-xl flex-col gap-1.5 text-xs text-(--color-text-muted)">
-        <Collapsible open={expanded && messages.length > 0}>
-          <div className="max-h-44 overflow-y-auto overscroll-contain touch-pan-y rounded-sm border border-(--color-border) bg-(--bg-card) p-2">
-            {messages.map((message, index) => (
-              <div
-                key={`${message.role}-${index}`}
-                className="px-2 py-1.5 not-last:border-b not-last:border-(--color-border)"
-              >
-                <div className="whitespace-pre-wrap text-(--color-text-muted)">{designFeedbackPlainText(message.content)}</div>
-              </div>
-            ))}
-          </div>
-        </Collapsible>
-        <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-1.5">
-        <div className="flex items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text)"
-            aria-expanded={expanded}
-          >
-            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            <span>{label}</span>
-          </button>
+      <div className="flex w-full max-w-xl flex-col gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2.5 text-xs text-(--color-text-muted)">
+        <p className="leading-relaxed">{caption}</p>
+        <div className="flex flex-wrap items-center gap-1.5">
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
-                  onClick={onRedo}
-                  className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
-                >
-                  <Redo2 size={13} aria-hidden="true" className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
-                  <span>Redo next message</span>
-                </button>
+                <Button type="button" variant="default" size="xs" onClick={onRedo}>
+                  Redo
+                </Button>
               }
             />
             <TooltipContent>Restore the next undone message and its file changes</TooltipContent>
@@ -66,20 +54,37 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
-                    type="button"
-                    onClick={onRedoAll}
-                    className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
-                  >
-                    <span>Redo all</span>
-                  </button>
+                  <Button type="button" variant="ghost" size="xs" onClick={onRedoAll}>
+                    Redo all
+                  </Button>
                 }
               />
               <TooltipContent>Restore every undone message and its file changes</TooltipContent>
             </Tooltip>
           )}
+          {canShow && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="ml-auto"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+              {expanded ? 'Hide messages' : 'Show messages'}
+            </Button>
+          )}
         </div>
-        </div>
+        <Collapsible open={expanded && canShow}>
+          <ul aria-label="Undone messages" className="flex max-h-44 flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y">
+            {messages.map((message, index) => (
+              <li key={`${message.role}-${index}`} className="whitespace-pre-wrap text-(--color-text)">
+                {designFeedbackPlainText(message.content)}
+              </li>
+            ))}
+          </ul>
+        </Collapsible>
       </div>
     </div>
   )

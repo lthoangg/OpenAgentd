@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject 
 import { MessageSquarePlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   PLAN_COMMENT_ACTIVE_HIGHLIGHT,
   PLAN_COMMENT_HIGHLIGHT,
@@ -113,7 +114,7 @@ export function CommentComposer({
       }
       style={docked || !anchor ? undefined : { top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
     >
-      <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-meta leading-relaxed text-(--color-text-subtle)">
+      <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-xs leading-relaxed text-(--color-text-muted)">
         {quote}
       </p>
       <Textarea
@@ -152,19 +153,23 @@ export function CommentList({
   return (
     <ul aria-label="Comments on the plan" className="max-h-36 space-y-1 overflow-y-auto overscroll-contain">
       {comments.map((comment, index) => (
-        <li
-          key={comment.id}
-          className="flex items-start gap-1 rounded-sm border border-(--color-border-subtle) bg-(--bg-input) py-1 pr-1 pl-2"
-        >
+        <li key={comment.id} className="flex items-start gap-1 rounded-sm bg-(--bg-key) py-1 pr-1 pl-2">
           <div className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={() => onShow(comment)}
-              title="Show in the plan"
-              className="block w-full truncate border-l-2 border-(--color-border-strong) pl-1.5 text-left text-meta leading-relaxed text-(--color-text-subtle) hover:text-(--color-text-muted) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
-            >
-              {comment.quote}
-            </button>
+            <Tooltip className="w-full">
+              <TooltipTrigger
+                className="w-full"
+                render={
+                  <button
+                    type="button"
+                    onClick={() => onShow(comment)}
+                    className="block w-full truncate border-l-2 border-(--color-border-strong) pl-1.5 text-left text-xs leading-relaxed text-(--color-text-muted) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
+                  >
+                    {comment.quote}
+                  </button>
+                }
+              />
+              <TooltipContent side="top">Show in the plan</TooltipContent>
+            </Tooltip>
             <p className="mt-0.5 line-clamp-3 text-xs leading-relaxed break-words whitespace-pre-wrap text-(--color-text)">
               {comment.text}
             </p>

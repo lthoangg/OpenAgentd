@@ -78,10 +78,11 @@ describe('AskUser — waiting state', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
-    // Nothing picked yet: sending blank skips the question.
-    expect(screen.getByRole('button', { name: 'Skip' })).toBeInTheDocument()
+    // Nothing picked yet: Send waits, and skipping is its own named action.
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Skip and send' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
-    expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send' })).not.toBeDisabled()
   })
 
   it('does not show the form on a different tool call', () => {
@@ -116,11 +117,20 @@ describe('AskUser — waiting state', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(answerQuestion).toHaveBeenCalledTimes(1))
     expect(answerQuestion.mock.calls[0]).toEqual(['s-1', 'q-1', [['bun']]])
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+  })
+
+  it('sends a skip only when asked to, as an empty answer', async () => {
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+
+    await waitFor(() => expect(answerQuestion).toHaveBeenCalledTimes(1))
+    expect(answerQuestion.mock.calls[0]).toEqual(['s-1', 'q-1', [[]]])
   })
 
   it('dismisses without sending an answer', async () => {
@@ -137,7 +147,7 @@ describe('AskUser — waiting state', () => {
     answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: false }))
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
 
     await waitFor(() => expect(pushToast).toHaveBeenCalledTimes(1))
   })
@@ -147,7 +157,7 @@ describe('AskUser — waiting state', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Network unreachable'))
     expect(screen.getByRole('radio', { name: /bun/ })).toBeChecked()
@@ -166,11 +176,11 @@ describe('AskUser — waiting state', () => {
     })
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
 
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByRole('button', { name: /send answer|skip/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /send|skip/i })).toBeNull()
     expect(screen.queryByText(/needs your input/i)).toBeNull()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
     expect(pushToast).not.toHaveBeenCalled()
@@ -302,7 +312,7 @@ describe('AskUser — resolution ordering', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
 
     // The broadcast lands afterwards, with the open question already closed.
@@ -342,7 +352,7 @@ describe('AskUser — resolution ordering', () => {
       answers: [['bun']],
     })
     // The local path still runs and must not undo what the broadcast recorded.
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(screen.getByText('bun')).toBeInTheDocument())
     expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
@@ -606,5 +616,61 @@ describe('AskUser — card label', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/needs your input/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * One thin frame, nothing bordered inside it, no icon before the title, and
+ * content (answers, reasons) at 12px — 11px stays for meta and chips.
+ */
+describe('AskUser — frame and type', () => {
+  const BORDER = /(?<![\w-:])border-[btlrxy](?![\w-])|(?<![\w-:])border(?![\w-])/g
+
+  it('draws one frame around the open card and no icon before its label', () => {
+    const { container } = render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    const frame = container.querySelector('[data-question-waiting]') as HTMLElement
+    expect(frame.className).toContain('border-(--color-border-subtle)')
+    // Only the frame carries a border class: not the header, the steps, the options or the footer.
+    const inside = Array.from(frame.querySelectorAll('*')).filter((el) => (el.getAttribute('class') ?? '').match(BORDER))
+    expect(inside.map((el) => el.tagName)).toEqual([])
+    const label = screen.getByText('Needs your input')
+    expect(label.querySelector('svg')).toBeNull()
+    expect(label.previousElementSibling).toBeNull()
+  })
+
+  it('draws one frame around an answered card too', () => {
+    useAgentStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: { 'call-1': { questions: QUESTION.questions, answers: [['bun']], reason: null } },
+    })
+    const { container } = render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    const frame = container.firstElementChild as HTMLElement
+    expect(frame.className).toContain('border-(--color-border-subtle)')
+    expect(Array.from(frame.querySelectorAll('*')).filter((el) => (el.getAttribute('class') ?? '').match(BORDER))).toEqual([])
+  })
+
+  it('reads the answers, the skipped marker and the closing reason at 12px', () => {
+    useAgentStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {
+        'call-1': { questions: [...QUESTION.questions, { ...QUESTION.questions[0], question: 'And the registry?' }], answers: [['bun'], []], reason: null },
+      },
+    })
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    for (const text of ['Which package manager?', 'bun', 'Skipped']) {
+      expect(screen.getByText(text).className).toContain('text-xs')
+      expect(screen.getByText(text).className).not.toContain('text-meta')
+    }
+    cleanup()
+
+    useAgentStore.setState({
+      resolvedQuestions: { 'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' } },
+    })
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+    expect(screen.getByText('Dismissed').className).toContain('text-xs')
+    expect(screen.getByText('Which package manager?').className).toContain('text-xs')
   })
 })

@@ -82,9 +82,9 @@ describe('design feedback blocks', () => {
   it('lists workspace mentions and a short summary', () => {
     expect(designFeedbackMentions(feedback)).toEqual(['src/Pricing.tsx#L42-L71'])
     expect(designFeedbackMentions({ ...feedback, where: '@designs/landing.html' })).toEqual(['designs/landing.html', 'src/Pricing.tsx#L42-L71'])
-    expect(designFeedbackSummary(feedback)).toBe('Design feedback · 2 comments')
-    expect(designFeedbackSummary({ ...feedback, items: feedback.items.slice(0, 1) })).toBe('Design feedback · 1 comment')
-    expect(designFeedbackPlainText(composeWithDesignFeedback('Fix', [feedback]))).toBe('Fix\n[Design feedback · 2 comments on localhost:5173/pricing]')
+    expect(designFeedbackSummary(feedback)).toBe('Preview comments · 2 comments')
+    expect(designFeedbackSummary({ ...feedback, items: feedback.items.slice(0, 1) })).toBe('Preview comments · 1 comment')
+    expect(designFeedbackPlainText(composeWithDesignFeedback('Fix', [feedback]))).toBe('Fix\n[Preview comments · 2 comments on localhost:5173/pricing]')
     expect(designFeedbackPlainText('plain')).toBe('plain')
   })
 })

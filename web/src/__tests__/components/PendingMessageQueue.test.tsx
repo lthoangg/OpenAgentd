@@ -274,6 +274,132 @@ describe('PendingMessageQueue', () => {
     expect(icon?.getAttribute('class')).toContain('lucide-pencil')
   })
 
+  describe('Remove', () => {
+    it('removes a queued steer without handing its text back to the composer', async () => {
+      const user = userEvent.setup()
+      const restoreListener = mock(() => {})
+      window.addEventListener('queue:restore-draft', restoreListener)
+      answerCancel(204)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Never mind this' }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useAgentStore.getState()._pendingMessages).toEqual([])
+      expect(restoreListener).not.toHaveBeenCalled()
+      window.removeEventListener('queue:restore-draft', restoreListener)
+    })
+
+    it('offers Undo after a removal, which puts the text and files back in the composer', async () => {
+      const user = userEvent.setup()
+      let restored: { content?: string; files?: File[] } | undefined
+      const restoreListener = mock((e: unknown) => {
+        restored = (e as CustomEvent<{ content?: string; files?: File[] }>).detail
+      })
+      window.addEventListener('queue:restore-draft', restoreListener)
+      answerCancel(204)
+      const file = new File(['data'], 'doc.txt', { type: 'text/plain' })
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Oops', files: [file] }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      const toast = useToastStore.getState().toasts[0]
+      expect(toast?.title).toBe('Queued message removed')
+      expect(toast?.action?.label).toBe('Undo')
+      expect(restoreListener).not.toHaveBeenCalled()
+      toast?.action?.onAction()
+      expect(restored).toEqual({ content: 'Oops', files: [file] })
+      window.removeEventListener('queue:restore-draft', restoreListener)
+    })
+
+    it('says so when the agent read the steer before it could be removed', async () => {
+      const user = userEvent.setup()
+      answerCancel(404)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Too late' }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useToastStore.getState().toasts.map((t) => t.title)).toEqual(['Already sent to the agent'])
+      expect(useToastStore.getState().toasts[0]?.description).toContain('removed')
+      expect(useAgentStore.getState()._pendingMessages).toEqual([])
+    })
+
+    it('keeps a steer queued when the cancel fails', async () => {
+      const user = userEvent.setup()
+      answerCancel(500)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        error: null,
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Still queued' }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useAgentStore.getState()._pendingMessages.map((m) => m.id)).toEqual(['pending-1'])
+      expect(useAgentStore.getState().error).toBeTruthy()
+      // The failure is the store's to report; nothing claims the message was removed.
+      expect(useToastStore.getState().toasts.map((t) => t.title)).not.toContain('Queued message removed')
+    })
+
+    it('removes a message held for the end of the turn, with Undo', async () => {
+      const user = userEvent.setup()
+      useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn' })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useHeldMessagesStore.getState().messages).toEqual([])
+      expect(screen.queryByText('After the turn')).toBeNull()
+      expect(useToastStore.getState().toasts[0]?.action?.label).toBe('Undo')
+    })
+
+    it('sits beside Edit on every queued message, drawn as a cross, 24px and 36px on touch', () => {
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [
+          { id: 'pending-1', sessionId: 'session-1', content: 'One' },
+          { id: 'pending-2', sessionId: 'session-1', content: 'Two' },
+        ],
+      })
+
+      render(<PendingMessageQueue />)
+
+      const removes = screen.getAllByRole('button', { name: 'Remove queued message' })
+      expect(removes).toHaveLength(2)
+      expect(screen.getAllByRole('button', { name: 'Edit queued message' })).toHaveLength(2)
+      expect(removes[0]?.querySelector('svg')?.getAttribute('class')).toContain('lucide-x')
+      expect(removes[0]?.className).toContain('md:h-6 md:w-6')
+      expect(removes[0]?.className).toContain('pointer-coarse:size-9')
+    })
+
+    it('names itself in a tooltip, not a native title', async () => {
+      const user = userEvent.setup()
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Queued' }],
+      })
+
+      render(<PendingMessageQueue />)
+      const remove = screen.getByRole('button', { name: 'Remove queued message' })
+      expect(remove.hasAttribute('title')).toBe(false)
+      await user.hover(remove)
+
+      expect((await screen.findByRole('tooltip')).textContent).toBe('Remove queued message')
+    })
+  })
+
   it('keeps the queued bubble flat: it sits in the transcript, it does not float', () => {
     useAgentStore.setState({
       sessionId: 'session-1',

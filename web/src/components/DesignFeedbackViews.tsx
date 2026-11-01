@@ -25,7 +25,7 @@ export function DesignFeedbackStrip({ items, onRemove, below = false }: { items:
   return (
     <div className={cn(below ? 'mt-3' : 'mb-3', '-mx-2 -my-2')}>
       <div className="overflow-x-auto px-2 py-2">
-        <ul aria-label="Design feedback" className="flex w-max flex-nowrap items-center gap-2">
+        <ul aria-label="Preview comments" className="flex w-max flex-nowrap items-center gap-2">
           {items.map((feedback, index) => (
             <li key={index} className="group relative inline-block shrink-0">
               <Tooltip>

@@ -1,10 +1,10 @@
 /**
  * SideQuestionsTabView — `/btw` side questions as a review-dock tab: every
  * exchange of the session in one list, newest last, with Copy and Stop per
- * answer and a two-press Clear for the whole thread.
+ * answer and a Clear for the whole thread that asks in the shared dialog first.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
 import type { SideQuestion } from '@/api/types'
@@ -121,13 +121,38 @@ describe('SideQuestionsTabView', () => {
     expect(writeText).toHaveBeenCalledWith('**bold** answer')
   })
 
-  it('Clear deletes only on the confirming second press', async () => {
+  it('Clear asks in a dialog first, and deletes only when confirmed', async () => {
     renderTab()
     await screen.findByText('second answer')
     fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+
+    expect(await screen.findByText('Delete all side questions?')).toBeTruthy()
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm: delete all side questions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete all' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url === BASE)).toBe(true))
     expect(await screen.findByText('No side questions yet')).toBeTruthy()
+  })
+
+  it('keeps every side question when the dialog is cancelled', async () => {
+    renderTab()
+    await screen.findByText('second answer')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+    await screen.findByText('Delete all side questions?')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })
+
+    expect(screen.queryByText('Delete all side questions?')).toBeNull()
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+    expect(screen.getByText('second answer')).toBeTruthy()
+  })
+
+  it('has no native title on its controls', async () => {
+    renderTab()
+    await screen.findByText('second answer')
+
+    for (const button of screen.getAllByRole('button')) expect(button.hasAttribute('title')).toBe(false)
   })
 })

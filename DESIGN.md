@@ -893,6 +893,32 @@ mono, then a short result summary in muted sans. A running row has a 6px
 blue dot before the name and a live timer in the meta column; text never
 blinks. A failed row shows its summary in error colour and an `exit 1` or
 `error` chip. Rows without details render as a `div`, not a button.
+A subagent row is a button to its session, with its state in words
+(Running, Done, Failed, Needs you, Stopped) and a live clock. A tool section
+header (arguments, command, output) is a `button` with `aria-expanded`; its
+Copy is a sibling, always visible, and says "Copied" for a moment.
+
+**Turn footer** (`AssistantTurnFooter.tsx`): under the last finished answer
+the actions show at rest as muted text: Copy · Regenerate · Edit prompt ·
+N files changed · Undo. Older answers keep Copy and the meta line. An
+action that cannot run now stays visible, dimmed (`aria-disabled`, so it
+keeps focus), and its tooltip says when it can. The meta line names the
+model and the account the turn ran on. **N files changed** opens the
+files the turn edited (both transcript styles), each opening its diff.
+
+**Cards in the transcript** (a question, a plan review, a goal claim, a
+waiting or stopped turn, the undo notice): one `border-subtle` frame, no
+icon before the title, nothing framed inside. The decision sits on the card:
+a question has a fixed **Send** (disabled with its reason until answered)
+and keys 1–9 for its options; a plan review has **Approve** (or **Approve
+and keep going (N turns)** while a goal would start), **Request changes**,
+which opens a focused comment box at once, and **Open plan**. A waiting or
+stopped turn says why and since when, lists its ways forward and has
+**Copy details**. Content text in cards is at least 12px (`text-xs`);
+`text-meta` is for chips and meta lines.
+
+**Touch menus.** A long press on a message, a code block or a link opens
+the same items as right-click, as a bottom sheet with a light haptic.
 
 **Confirmations** (`ui/confirm-dialog.tsx`): every action that cannot be
 undone (stop a server, regenerate a key, delete, discard edits, revert a

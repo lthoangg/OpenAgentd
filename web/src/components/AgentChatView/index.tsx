@@ -1041,7 +1041,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
                 }}
                 className="shrink-0"
               >
-                Return to Lead
+                Return to main agent
               </Button>
             </div>
           </div>

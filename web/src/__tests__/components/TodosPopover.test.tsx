@@ -42,13 +42,13 @@ describe('TodosPopover', () => {
     const plan = { content: '## Summary\nDo it.', updated_at: new Date().toISOString() }
     render(<TodosPopover open onOpenChange={() => {}} todos={[]} plan={plan} onClearPlan={() => {}} />)
 
-    expect(screen.getByRole('button', { name: 'View plan' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open plan' })).toBeTruthy()
     expect(screen.getByText('No tasks yet')).toBeTruthy()
   })
 
   it('has no plan row without a saved plan', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
-    expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open plan' })).toBeNull()
   })
 
   it('closes itself and opens the Plan tab from the plan row', () => {

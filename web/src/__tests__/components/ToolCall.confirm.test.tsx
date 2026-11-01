@@ -57,7 +57,7 @@ describe('confirming tool calls', () => {
     expect(screen.getByText('Needs your input')).toBeInTheDocument()
     expect(screen.queryByText(PLACEHOLDER)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /Apply/ }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(answerQuestion).toHaveBeenCalled())
     expect(answerQuestion.mock.calls[0]).toEqual(expect.arrayContaining(['s-1', 'q-confirm']))
   })

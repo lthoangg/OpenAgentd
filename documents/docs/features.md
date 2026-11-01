@@ -710,6 +710,48 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The status bar's items are all reachable with Tab, the fast mode pill too.
   - One name for each thing: **Review panel**, **New session**, **Side
     question**.
+- **Transcript: act where you read** `[v3.40.0]`:
+  - Under the last finished answer, **Copy · Regenerate · Edit prompt · N
+    files changed · Undo** show at rest. While a turn runs, Edit prompt shows
+    dimmed and says it is available when the turn ends.
+  - **N files changed** lists the files the turn edited, with their line
+    counts, in both transcript styles (Reader and Detailed); a file opens its
+    diff.
+  - A turn that waits (a pinned account cooling down, a reconnect) or stops
+    shows one card: what happened, since when, what you can do, and **Copy
+    details**.
+  - Each answer's footer names the account it ran on.
+  - A long thinking trace scrolls inside a capped box; **Show full
+    reasoning** lifts the cap.
+  - Scrolling up shows a **Loading earlier messages…** row while older
+    turns load, and one **Jump to latest** chip counts what arrived since
+    (`3 new`).
+  - A subagent row is a button that opens the subagent's session, with its
+    state in words (Running, Done, Failed, Needs you, Stopped) and a running
+    clock. A subagent's question offers **Answer in subagent session**.
+  - Copy buttons on code blocks, tool arguments, commands and output are
+    always visible and say "Copied"; a bare code fence gets the same header.
+    Tool section headers are real buttons.
+  - On touch, a long press on a message, a code block or a link opens its
+    menu as a bottom sheet.
+  - The plan tool's chip reads **Open plan**, like every other way to the
+    plan.
+  - A question card always ends in **Send**, dimmed with its reason until
+    something is answered; **Skip this question** is its own button. Keys
+    1–9 pick an option (the next number is "Type your own answer"), Enter
+    sends, and Back / Next page through several questions.
+  - A plan review is decided on its card: **Approve** (or **Approve and keep
+    going (N turns)** when a goal would start, with the real count),
+    **Request changes**, which opens a comment box straight away, and **Open
+    plan**. In the Plan tab every paragraph, list item and heading has a
+    **Comment** action, and the tab and the card share one draft.
+  - Each queued message has **Remove**, and the notice that follows has
+    **Undo**.
+  - The undo notice is one card: "Last 2 messages undone. Redo brings them
+    back; sending a new message discards them.", then **Redo**, **Redo all**
+    and **Show messages**.
+  - Deleting all side questions asks first, in a dialog.
+  - A subagent's session offers **Return to main agent**.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

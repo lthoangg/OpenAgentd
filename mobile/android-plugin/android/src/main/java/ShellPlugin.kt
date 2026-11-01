@@ -4,6 +4,7 @@
 package app.openagentd.shell
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
@@ -18,10 +19,31 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import java.io.File
+import kotlin.math.roundToInt
 
 @InvokeArg
 class ShareArgs {
     lateinit var path: String
+}
+
+@InvokeArg
+class ShareTextArgs {
+    var text: String? = null
+    var url: String? = null
+    var title: String? = null
+}
+
+@InvokeArg
+class PickOptionArgs {
+    lateinit var id: String
+    lateinit var label: String
+}
+
+@InvokeArg
+class PickArgs {
+    lateinit var title: String
+    lateinit var options: Array<PickOptionArgs>
+    var selected: String? = null
 }
 
 @InvokeArg
@@ -46,6 +68,22 @@ class ThemeArgs {
 @TauriPlugin
 class ShellPlugin(private val activity: Activity) : Plugin(activity) {
     companion object {
+        /**
+         * Largest system font scale the web UI follows: the same cap as iOS
+         * Dynamic Type (`web/src/lib/dynamic-type.ts`), past which a phone
+         * has too little width left for the layout.
+         */
+        const val MAX_FONT_SCALE = 1.25f
+
+        /**
+         * The WebView `textZoom` (percent) for a system font scale. Like iOS
+         * it never shrinks the UI below its design size, and it ignores a
+         * scale that is not a usable number.
+         */
+        fun textZoomPercent(fontScale: Float): Int =
+            if (!fontScale.isFinite() || fontScale <= 0f) 100
+            else (fontScale.coerceIn(1f, MAX_FONT_SCALE) * 100).roundToInt()
+
         /**
          * Whether the app's webview is up in this process. WidgetLinkActivity
          * reads it to pick how to hand a widget's deep link to the app.
@@ -80,11 +118,43 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         super.load(webView)
         this.webView = webView
         webViewLoaded = true
+        applyFontScale(activity.resources.configuration.fontScale)
         // Tauri applies the config's single (light) backgroundColor right
         // after this hook. Repaint once it has, in the theme the page will
         // paint, so a dark launch shows dark paper until the page does.
         val dark = isDark(themePrefs.getString("preference", null))
         webView.post { webView.setBackgroundColor(paper(dark)) }
+    }
+
+    /**
+     * Android's WebView ignores the system font size unless the app sets
+     * `textZoom` (it is 100 by default, and neither wry's `RustWebView` nor
+     * Tauri touches it), so the page stayed at design size however large the
+     * user's text was. Zoom it by the system scale, capped at
+     * [MAX_FONT_SCALE].
+     *
+     * `textZoom` is the page's only system-size factor: iOS's Dynamic Type
+     * hook (`useDynamicType`) is iOS-only, and the app's own Text size is CSS
+     * (`--oa-text-scale`) applied before the zoom. So the result is system
+     * scale x Text size, each counted once.
+     *
+     * The manifest does not list `fontScale` in `configChanges`, so changing
+     * the system font size recreates the activity and [load] reads the new
+     * value; [onConfigurationChanged] covers a manifest that starts handling
+     * it.
+     */
+    private fun applyFontScale(fontScale: Float) {
+        val view = webView ?: return
+        val percent = textZoomPercent(fontScale)
+        // WebSettings belong to the UI thread; posting also queues this ahead
+        // of the page load Tauri posts after `load`, so the first paint is
+        // already zoomed.
+        view.post { view.settings.textZoom = percent }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyFontScale(newConfig.fontScale)
     }
 
     override fun onDestroy() {
@@ -131,6 +201,101 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             }
         } catch (ex: Exception) {
             invoke.reject(ex.message ?: "Could not share the file")
+        }
+    }
+
+    /**
+     * Share a link and/or text through the system chooser. The URL goes in
+     * the body (after any text) so every target app gets it; the title is the
+     * subject for mail-like targets and the chooser's heading.
+     */
+    @Command
+    fun shareText(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(ShareTextArgs::class.java)
+            val body = listOfNotNull(args.text, args.url)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString("\n")
+            if (body.isEmpty()) {
+                invoke.reject("Nothing to share")
+                return
+            }
+            val title = args.title?.trim()?.takeIf { it.isNotEmpty() }
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, body)
+                if (title != null) {
+                    putExtra(Intent.EXTRA_SUBJECT, title)
+                    // Heading of the share sheet's preview on Android 10+.
+                    putExtra(Intent.EXTRA_TITLE, title)
+                }
+            }
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(Intent.createChooser(send, title))
+                    invoke.resolve()
+                } catch (ex: Exception) {
+                    invoke.reject(ex.message ?: "Could not open the share sheet")
+                }
+            }
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Could not share the link")
+        }
+    }
+
+    /**
+     * Ask the user to pick one of a few options in a system single-choice
+     * dialog. Resolves with `{ id }` for a choice and `{}` when the dialog is
+     * dismissed (Cancel, Back, or a tap outside). A tap on a row picks it at
+     * once; there is no separate confirm step.
+     */
+    @Command
+    fun pickOne(invoke: Invoke) {
+        val args = try {
+            invoke.parseArgs(PickArgs::class.java)
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Invalid options")
+            return
+        }
+        if (args.options.isEmpty()) {
+            invoke.reject("A picker needs at least one option")
+            return
+        }
+        activity.runOnUiThread {
+            try {
+                var chosen: String? = null
+                // -1 checks no row.
+                val checked = args.options.indexOfFirst { it.id == args.selected }
+                // Follow the app's own light/dark pick, as the status bar and
+                // webview do, not only the system's.
+                val dark = isDark(themePrefs.getString("preference", null))
+                val theme = if (dark) {
+                    android.R.style.Theme_DeviceDefault_Dialog_Alert
+                } else {
+                    android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
+                }
+                AlertDialog.Builder(activity, theme)
+                    .setTitle(args.title)
+                    .setSingleChoiceItems(
+                        args.options.map { it.label }.toTypedArray(),
+                        checked,
+                    ) { dialog, which ->
+                        chosen = args.options[which].id
+                        // Single-choice rows do not dismiss on their own.
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    // Every way out ends here, so this resolves exactly once.
+                    .setOnDismissListener {
+                        val answer = JSObject()
+                        chosen?.let { answer.put("id", it) }
+                        invoke.resolve(answer)
+                    }
+                    .show()
+            } catch (ex: Exception) {
+                invoke.reject(ex.message ?: "Could not show the picker")
+            }
         }
     }
 

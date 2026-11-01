@@ -11,6 +11,13 @@ integration for the mobile shell.
 - `src/widgets.rs`: the home-screen widget snapshot: its shape (unknown
   fields refused), limits, and the hand-off to the iOS Swift bridge
   (`../ios-widget/App/`) or the Android plugin.
+- `src/native_ui.rs`: `share_text` (the system share sheet for a link) and
+  `pick_one` (a native single-choice picker: iOS action sheet, Android
+  dialog). Input is validated and bounded once, for both platforms; the iOS
+  UIKit code runs on the main queue and answers over a channel, the Android
+  half is `ShellPlugin.kt`'s `shareText`/`pickOne`. The web side
+  (`web/src/lib/mobile-share.ts`, `native-picker.ts`) falls back to its own UI
+  when a command fails, so keep errors as `Err`, never a silent success.
 - `../../native/shell-core/`: server config persistence, URL normalization,
   keyring access, and download limits shared with the desktop shell. Change
   those behaviours there, with their tests, not in `lib.rs`.
@@ -19,9 +26,10 @@ integration for the mobile shell.
 - `capabilities/default.json`: frontend-to-native permissions.
 - `Info.ios.plist` and `PrivacyInfo.xcprivacy`: iOS platform declarations.
 - `../android-plugin/`: Android-only Tauri plugin (Rust + Kotlin). It holds the
-  Keystore-backed `keyring` credential store, FileProvider file sharing, and
-  the cleartext network security config. It's registered first in `run()` on
-  Android.
+  Keystore-backed `keyring` credential store, FileProvider file sharing, link
+  sharing and the picker dialog, the WebView's `textZoom` (the system font
+  size, capped at 1.25x like iOS Dynamic Type), and the cleartext network
+  security config. It's registered first in `run()` on Android.
 
 ## Boundaries
 
@@ -41,6 +49,10 @@ integration for the mobile shell.
   it that way, and close relays when the active server changes.
 - Keep platform-specific code behind `cfg` gates and retain portable behavior
   for the host-side Cargo check.
+- The host `cargo check` compiles none of the iOS or Android code. After
+  changing a `cfg(target_os = ...)` block, also run
+  `cargo check --locked --target aarch64-apple-ios` (and, with the NDK's clang
+  as `CC_aarch64_linux_android`/linker, `--target aarch64-linux-android`).
 
 ## Checks
 

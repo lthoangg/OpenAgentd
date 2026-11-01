@@ -2,11 +2,16 @@
  * Settings → Appearance — how OpenAgentd looks on this device: color theme,
  * text size and transcript style. Each pick applies at once. The desktop
  * app's notch status and pet live on Settings → Desktop.
+ *
+ * In the phone apps each choice opens the system's own picker (an iOS action
+ * sheet, an Android single-choice dialog); elsewhere it is a segmented
+ * control.
  */
 import { type ComponentType } from 'react'
 
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsPage } from '@/components/settings/SettingsPage'
+import { NativeSelect } from '@/components/ui/native-select'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -19,7 +24,7 @@ function SegmentedChoice<T extends string>({ label, options, value, onChange }: 
   value: T
   onChange: (next: T) => void
 }) {
-  return (
+  const segmented = (
     <SegmentedControl
       label={label}
       value={value}
@@ -29,6 +34,15 @@ function SegmentedChoice<T extends string>({ label, options, value, onChange }: 
         label: optionLabel,
         icon: Icon ? <Icon size={13} aria-hidden="true" /> : undefined,
       }))}
+    />
+  )
+  return (
+    <NativeSelect
+      title={label}
+      value={value}
+      onValueChange={(next) => onChange(next as T)}
+      options={options.map(({ value: option, label: optionLabel }) => ({ value: option, label: optionLabel }))}
+      fallback={segmented}
     />
   )
 }
@@ -51,7 +65,7 @@ export function GeneralSettingsPage() {
         </PanelRow>
         <PanelRow
           label="Text size"
-          description="Compact is the densest. On iPhone and iPad, the system text size adds to it."
+          description="Compact is the densest. On iPhone, iPad and Android, the system text size adds to it."
         >
           <SegmentedChoice label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} />
         </PanelRow>

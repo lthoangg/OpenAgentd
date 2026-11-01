@@ -15,6 +15,8 @@ fn main() {
                 "widget_update_snapshot",
                 "app_move_to_background",
                 "set_app_theme",
+                "share_text",
+                "pick_one",
             ]),
         ),
     )

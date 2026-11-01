@@ -40,6 +40,40 @@ struct WidgetPayload<'a> {
     snapshot: &'a str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShareTextPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<&'a str>,
+}
+
+/// One row of a [`AndroidShell::pick_one`] dialog.
+#[derive(Serialize)]
+pub struct PickChoice<'a> {
+    pub id: &'a str,
+    pub label: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PickPayload<'a> {
+    title: &'a str,
+    options: &'a [PickChoice<'a>],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+struct PickAnswer {
+    /// Absent when the dialog was dismissed.
+    #[serde(default)]
+    id: Option<String>,
+}
+
 impl<R: Runtime> AndroidShell<R> {
     /// Offer `path` (a file inside the app cache directory) to other apps
     /// through the system share chooser. Blocks until the chooser is shown;
@@ -49,6 +83,47 @@ impl<R: Runtime> AndroidShell<R> {
             .run_mobile_plugin::<serde::de::IgnoredAny>("shareFile", SharePayload { path })
             .map(|_| ())
             .map_err(|e| format!("Share file: {e}"))
+    }
+
+    /// Offer a link and/or text to other apps through the system share
+    /// chooser. Blocks until the chooser is shown; call it off the async
+    /// runtime.
+    pub fn share_text(
+        &self,
+        text: Option<&str>,
+        url: Option<&str>,
+        title: Option<&str>,
+    ) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>(
+                "shareText",
+                ShareTextPayload { text, url, title },
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Share text: {e}"))
+    }
+
+    /// Show a single-choice dialog and wait for the answer: the chosen
+    /// option's id, or `None` when the user dismissed it. Async because the
+    /// dialog stays up for as long as the user takes.
+    pub async fn pick_one(
+        &self,
+        title: &str,
+        options: &[PickChoice<'_>],
+        selected: Option<&str>,
+    ) -> Result<Option<String>, String> {
+        self.0
+            .run_mobile_plugin_async::<PickAnswer>(
+                "pickOne",
+                PickPayload {
+                    title,
+                    options,
+                    selected,
+                },
+            )
+            .await
+            .map(|answer| answer.id)
+            .map_err(|e| format!("Pick one: {e}"))
     }
 
     /// Save the home-screen widget snapshot and redraw every placed widget.

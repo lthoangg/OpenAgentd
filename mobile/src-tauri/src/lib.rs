@@ -12,6 +12,7 @@ use openagentd_shell_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+mod native_ui;
 mod theme;
 mod widgets;
 
@@ -529,6 +530,8 @@ pub fn run() {
             widget_update_snapshot,
             app_move_to_background,
             theme::set_app_theme,
+            native_ui::share_text,
+            native_ui::pick_one,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

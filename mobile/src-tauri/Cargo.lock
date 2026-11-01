@@ -2519,6 +2519,7 @@ version = "3.39.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "block2",
  "dispatch2",
  "keyring",
  "objc2",

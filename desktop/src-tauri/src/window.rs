@@ -458,18 +458,7 @@ async fn build_app_window_sized(
     if let Some(size) = saved_size {
         win.set_size(PhysicalSize::new(size.width, size.height))
             .ok();
-        let screens: Vec<ScreenArea> = win
-            .available_monitors()
-            .unwrap_or_default()
-            .iter()
-            .map(|m| ScreenArea {
-                x: m.position().x,
-                y: m.position().y,
-                width: m.size().width,
-                height: m.size().height,
-            })
-            .collect();
-        if let Some((x, y)) = restorable_position(&size, &screens) {
+        if let Some((x, y)) = restorable_position(&size, &screen_areas(&win)) {
             win.set_position(PhysicalPosition::new(x, y)).ok();
         }
     }
@@ -505,6 +494,42 @@ async fn build_app_window_sized(
     win.set_focus().ok();
     log::info!("startup: window shown window={} theme={theme:?} at_ms={}", win.label(), crate::launch_ms());
     Ok(win)
+}
+
+/// Every screen, in physical pixels.
+fn screen_areas(win: &tauri::WebviewWindow) -> Vec<ScreenArea> {
+    win.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| ScreenArea {
+            x: m.position().x,
+            y: m.position().y,
+            width: m.size().width,
+            height: m.size().height,
+        })
+        .collect()
+}
+
+/// How far each new window steps down and right of its opener on macOS, in
+/// points (about a title bar, as AppKit cascades).
+#[cfg(target_os = "macos")]
+const CASCADE_STEP_POINTS: f64 = 22.0;
+
+/// The size (and, on macOS, the place) of a window opened from `opener`.
+/// Windows and Linux place a new window themselves; tao on macOS would put
+/// it in the top-left corner over its opener's, so it cascades from it.
+fn opened_from(opener: &tauri::WebviewWindow, state: SavedWindowState) -> SavedWindowState {
+    #[cfg(target_os = "macos")]
+    {
+        let scale = opener.scale_factor().unwrap_or(1.0);
+        let step = (CASCADE_STEP_POINTS * scale).round() as i32;
+        crate::config::cascaded_from(&state, &screen_areas(opener), step)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = opener;
+        state.size_only()
+    }
 }
 
 pub async fn create_app_window(
@@ -585,13 +610,14 @@ async fn create_app_window_with(
     } else {
         None
     };
-    // Open at the size of the window you are in, like a browser does, and
-    // let the OS place it. With no window open, reopen at the size and place
-    // saved on the last close/quit.
+    // Open at the size of the window you are in, like a browser does, placed
+    // the platform's way (`opened_from`). With no window open, reopen at the
+    // size and place saved on the last close/quit.
     let size = match target_webview_window(app) {
-        Some(window) => window_size(&window)
-            .or_else(|| load_window_state(app).ok().flatten())
-            .map(SavedWindowState::size_only),
+        Some(window) => match window_size(&window) {
+            Some(state) => Some(opened_from(&window, state)),
+            None => load_window_state(app).ok().flatten().map(SavedWindowState::size_only),
+        },
         None => load_window_state(app).ok().flatten(),
     };
     let built = build_app_window_sized(app, window_label.clone(), init_script, size).await;

@@ -61,6 +61,30 @@ pub fn restorable_position(state: &SavedWindowState, screens: &[ScreenArea]) -> 
         .then_some((x as i32, y as i32))
 }
 
+/// Where New Window opens beside `opener`, the way AppKit cascades
+/// document windows: the opener's size, one `step` (physical pixels) down
+/// and right of it. When that would run past the right or bottom edge of
+/// the opener's screen there is no position, and the OS starts the cascade
+/// again at the top-left of the screen.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn cascaded_from(opener: &SavedWindowState, screens: &[ScreenArea], step: i32) -> SavedWindowState {
+    let placed = (|| {
+        let (x, y) = (i64::from(opener.x?), i64::from(opener.y?));
+        let screen = screens.iter().find(|s| {
+            let (sx, sy) = (i64::from(s.x), i64::from(s.y));
+            (sx..sx + i64::from(s.width)).contains(&x) && (sy..sy + i64::from(s.height)).contains(&y)
+        })?;
+        let (nx, ny) = (x + i64::from(step), y + i64::from(step));
+        let fits = nx + i64::from(opener.width) <= i64::from(screen.x) + i64::from(screen.width)
+            && ny + i64::from(opener.height) <= i64::from(screen.y) + i64::from(screen.height);
+        fits.then(|| (i32::try_from(nx).ok(), i32::try_from(ny).ok()))
+    })();
+    match placed {
+        Some((Some(x), Some(y))) => SavedWindowState { x: Some(x), y: Some(y), ..*opener },
+        _ => opener.size_only(),
+    }
+}
+
 #[derive(Clone, Serialize)]
 pub struct AppBackendStatus {
     pub base_url: String,
@@ -360,5 +384,35 @@ mod tests {
         // No position saved yet.
         let size_only = SavedWindowState { x: None, y: None, ..at(0, 0) };
         assert_eq!(restorable_position(&size_only, &[LAPTOP]), None);
+    }
+
+    // ── cascaded_from ───────────────────────────────────────────────────
+
+    #[test]
+    fn a_new_window_opens_one_step_down_and_right_of_its_opener() {
+        let next = cascaded_from(&at(400, 160), &[LAPTOP], 44);
+        assert_eq!((next.width, next.height, next.x, next.y), (1280, 820, Some(444), Some(204)));
+    }
+
+    #[test]
+    fn a_new_window_cascades_on_its_openers_screen() {
+        let next = cascaded_from(&at(3000, -100), &[LAPTOP, EXTERNAL], 44);
+        assert_eq!((next.x, next.y), (Some(3044), Some(-56)));
+    }
+
+    #[test]
+    fn a_cascade_that_would_leave_the_screen_starts_again_where_the_os_puts_it() {
+        // Past the bottom edge (1800), then past the right edge (2880).
+        let low = cascaded_from(&at(100, 960), &[LAPTOP], 44);
+        assert_eq!((low.width, low.height, low.x, low.y), (1280, 820, None, None));
+        let right = cascaded_from(&at(1580, 100), &[LAPTOP], 44);
+        assert_eq!((right.x, right.y), (None, None));
+    }
+
+    #[test]
+    fn an_opener_without_a_position_gives_only_its_size() {
+        let unplaced = SavedWindowState { x: None, y: None, ..at(0, 0) };
+        let next = cascaded_from(&unplaced, &[LAPTOP], 44);
+        assert_eq!((next.width, next.x, next.y), (1280, None, None));
     }
 }

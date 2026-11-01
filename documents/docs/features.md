@@ -852,7 +852,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     menu, the Windows Share window, the iOS and Android share sheets, or
     Web Share in a browser that has it. Linux copies the link.
   - Zoom is remembered, and a new window opens at the zoom and in the theme
-    of the window it came from; Text size is shared by every window.
+    of the window it came from; Text size is shared by every window. On
+    macOS it opens one step down and right of that window, as Mac windows
+    cascade.
   - On macOS, a two-finger swipe goes back and forward between the sessions
     opened in the window, and scroll bars follow System Settings.
   - Optional global shortcuts, off by default: **Global Shortcuts** in the

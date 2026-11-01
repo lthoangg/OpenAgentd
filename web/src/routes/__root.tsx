@@ -6,6 +6,7 @@ import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
 import { RunStatusAnnouncer } from '@/components/RunStatusAnnouncer'
 import { Seal } from '@/components/brand/Logo'
 import { Home } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
 import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
 import { lazySurface, prefetchSurfacesWhenIdle, useSurfaceMounted } from '@/lib/lazy-surface'
 import { SkipLink } from '@/components/motion'
@@ -166,7 +167,7 @@ export function NotFound() {
       </div>
       <Link
         to="/"
-        className="interactive-weight flex items-center gap-2 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-4 py-2 text-sm text-(--color-accent) transition-colors hover:bg-(--bg-key)"
+        className={buttonVariants({ variant: 'primary', size: 'lg' })}
       >
         <Home size={14} />
         Go home

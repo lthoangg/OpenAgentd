@@ -28,6 +28,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -282,12 +283,8 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
 function ReconnectButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="min-h-8 rounded-sm border border-(--color-border) px-3 py-1 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--bg-key)"
-    >
+    <Button type="button" size="sm" onClick={onClick}>
       Reconnect
-    </button>
+    </Button>
   )
 }

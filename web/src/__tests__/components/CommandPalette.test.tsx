@@ -231,9 +231,8 @@ describe("CommandPalette", () => {
     await user.click(input)
     await user.keyboard("{ArrowDown}")
 
-    // Second item (idx=1) should now be active (has accent-subtle bg)
-    const activeItems = container.querySelectorAll("[class*='bg-(--bg-key)']")
-    expect(activeItems.length).toBeGreaterThan(0)
+    // Second item (idx=1) is now the highlighted row
+    expect(container.querySelector("[data-idx='1']")?.hasAttribute("data-highlighted")).toBe(true)
   })
 
   it("navigates up with ArrowUp (stays at 0 when at top)", async () => {
@@ -675,14 +674,14 @@ describe("CommandPalette — nested pages", () => {
     const { container } = render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
 
     await user.keyboard("{ArrowDown}{ArrowRight}{ArrowLeft}")
-    expect(container.querySelector("[data-idx='1']")?.className).toContain("border-(--color-border-strong)")
+    expect(container.querySelector("[data-idx='1']")?.hasAttribute("data-highlighted")).toBe(true)
 
     // Enter runs the highlighted page command again, not New Chat.
     await user.keyboard("{Enter}")
     expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
 
     await user.keyboard("{Escape}")
-    expect(container.querySelector("[data-idx='1']")?.className).toContain("border-(--color-border-strong)")
+    expect(container.querySelector("[data-idx='1']")?.hasAttribute("data-highlighted")).toBe(true)
   })
 
   it("hints → while a page command is highlighted and ← inside a page", async () => {
@@ -732,7 +731,7 @@ describe("CommandPalette — pages inside pages", () => {
     ]
   }
   const activeLabel = (container: HTMLElement) =>
-    Array.from(container.querySelectorAll("[data-idx]")).find((row) => row.className.includes("border-(--color-border-strong)"))?.textContent
+    Array.from(container.querySelectorAll("[data-idx]")).find((row) => row.hasAttribute("data-highlighted"))?.textContent
 
   it("walks down three levels with → and back up with ←, one level at a time", async () => {
     const user = userEvent.setup()
@@ -829,7 +828,7 @@ describe("CommandPalette — pages inside pages", () => {
 describe("CommandPalette — hover follows the mouse, not the layout", () => {
   afterEach(resetHoverIntent)
   const row = (container: HTMLElement, idx: number) => container.querySelector(`[data-idx='${idx}']`) as HTMLElement
-  const isActive = (el: HTMLElement) => el.className.includes("border-(--color-border-strong)")
+  const isActive = (el: HTMLElement) => el.hasAttribute("data-highlighted")
 
   it("keeps the keyboard's row when a row appears under a still pointer", () => {
     const { container } = render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
@@ -1029,7 +1028,7 @@ const sessionsOf = (items: PaletteSession[], over: Partial<PaletteSessions> = {}
   ({ items, loading: false, onSearch: () => {}, ...over })
 const rowTexts = () => Array.from(document.querySelectorAll("[data-idx]")).map((row) => row.textContent ?? "")
 const groupRows = (name: string) => within(screen.getByRole("group", { name })).getAllByRole("button")
-const isActiveRow = (idx: number) => document.querySelector(`[data-idx='${idx}']`)?.className.includes("border-(--color-border-strong)")
+const isActiveRow = (idx: number) => document.querySelector(`[data-idx='${idx}']`)?.hasAttribute("data-highlighted")
 
 describe("CommandPalette — names and placeholders", () => {
   it("is the Command palette whichever way it opens", () => {

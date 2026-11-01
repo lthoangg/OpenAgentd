@@ -10,6 +10,7 @@ import { Check, Copy, Download, ExternalLink, FileHeadphone, FileText, Loader2, 
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
@@ -238,7 +239,7 @@ const FileLine = memo(function FileLine({
                   event.stopPropagation()
                   comment.onAdd(comment.start, comment.end)
                 }}
-                className="flex h-4 w-4 items-center justify-center rounded-xs border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="flex h-4 w-4 items-center justify-center rounded-xs bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) hover:bg-(--bg-key) hover:text-(--color-text)"
                 aria-label={comment.start === comment.end ? `Add comment for line ${comment.start}` : `Add comment for lines ${comment.start}-${comment.end}`}
               >
                 <Plus size={13} aria-hidden="true" />
@@ -644,12 +645,12 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
         <p className="mt-0.5 text-xs text-(--color-text-subtle)">{file.mime} · {formatBytes(file.size)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)">
+        <a href={url} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <button type="button" onClick={() => void downloadWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
+        <Button type="button" size="sm" onClick={() => void downloadWorkspaceFile(workspace, file)}>
           <Download size={12} /> Download
-        </button>
+        </Button>
       </div>
     </div>
   )

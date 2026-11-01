@@ -190,7 +190,7 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
           'w-full max-w-[calc(100%-2rem)]',
           DIALOG_SIZE[size],
           'max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
-          'rounded-lg border border-(--color-border) bg-(--bg-card)',
+          'rounded-lg border border-(--color-border-subtle) bg-(--bg-card)',
           DIALOG_PADDING[padding],
           'text-sm text-(--color-text) shadow-(--shadow-depth) outline-none',
           closing

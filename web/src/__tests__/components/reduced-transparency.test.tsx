@@ -19,7 +19,7 @@ describe('reduced transparency', () => {
     expect(css).toContain('@custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));')
   })
 
-  it('makes the lightbox arrows and counter opaque', () => {
+  it('keeps the lightbox arrows opaque and makes the counter opaque under the preference', () => {
     const items = [
       { type: 'image' as const, src: '/a.png', name: 'a.png' },
       { type: 'image' as const, src: '/b.png', name: 'b.png' },
@@ -27,7 +27,11 @@ describe('reduced transparency', () => {
     render(<FileLightbox items={items} index={0} isOpen onClose={() => {}} />)
 
     for (const button of screen.getAllByRole('button', { name: /previous|next/i })) {
-      expect(button.className.split(' ')).toEqual(expect.arrayContaining(['reduce-transparency:bg-(--bg-card)', 'reduce-transparency:backdrop-blur-none']))
+      // Floating over the image: an opaque card fill and a shadow, no border, no blur to drop.
+      const classes = button.className.split(' ')
+      expect(classes).toEqual(expect.arrayContaining(['bg-(--bg-card)', 'shadow-(--shadow-depth)']))
+      expect(classes).not.toContain('border')
+      expect(classes).not.toContain('backdrop-blur')
     }
     expect(screen.getByText('1 / 2').className.split(' ')).toEqual(expect.arrayContaining(['reduce-transparency:bg-(--bg-card)', 'reduce-transparency:backdrop-blur-none']))
   })

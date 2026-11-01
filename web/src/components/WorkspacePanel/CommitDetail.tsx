@@ -38,7 +38,7 @@ export function CommitSyncBadge({
         render={
           <span
             className={cn(
-              'rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-meta font-semibold leading-none',
+              'rounded-xs bg-(--bg-card) px-1 py-0.5 font-mono text-meta font-semibold leading-none',
               isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
             )}
           >

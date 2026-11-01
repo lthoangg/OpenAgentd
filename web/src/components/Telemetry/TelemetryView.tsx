@@ -28,7 +28,7 @@ import { TraceView } from './TraceView'
 const TURNS_PAGE_SIZE = 25
 
 const SECONDARY_BUTTON_CLASS =
-  'h-7 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 text-xs text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9'
+  'h-7 rounded-sm bg-(--bg-key) px-3 text-xs text-(--color-text) transition-colors hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9'
 
 export interface TelemetryViewProps {
   /** Navigate to a session (the overlay closes itself around this). */

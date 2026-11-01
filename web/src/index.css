@@ -260,23 +260,25 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
  * keyboard fills with the theme accent and every word in it inverts, the way
  * an OS menu highlights. Unlayered, so it wins over a row's own hover wash and
  * muted text. A pointer hover counts only where hover exists, so a tap on a
- * phone does not leave a row lit. */
+ * phone does not leave a row lit. A keyed list (``oa-menu-item-keyed``, the
+ * command palette) lights only the row it marks active, so a parked pointer
+ * never lights a second one. */
 .oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
   background-color: var(--color-accent);
   color: var(--color-text-on-accent);
 }
 @media (hover: hover) {
-  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"]) {
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
     background-color: var(--color-accent);
     color: var(--color-text-on-accent);
   }
-  .oa-menu-item.oa-menu-item-danger:hover:not(:disabled, [aria-disabled="true"]) {
+  .oa-menu-item.oa-menu-item-danger:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
     background-color: var(--color-error);
   }
-  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"]) * {
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) * {
     color: inherit;
   }
-  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"]) :is(kbd, [data-slot="chip"]) {
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) :is(kbd, [data-slot="chip"]) {
     background-color: color-mix(in srgb, currentColor 16%, transparent);
     border-color: transparent;
   }

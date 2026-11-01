@@ -737,6 +737,15 @@ function LoadingRow() {
   )
 }
 
+/**
+ * A palette row: transparent at rest; the active row (keyboard, or a real
+ * mouse move via ``hoverIntent``) fills with the theme accent and inverts
+ * every word in it, like an OS menu (``.oa-menu-item`` in index.css). It is
+ * keyed: a parked pointer does not light a second row (``oa-menu-item-keyed``).
+ */
+const PALETTE_ROW_CLASS =
+  'oa-menu-item oa-menu-item-keyed group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 text-left text-(--color-text-2) focus:outline-none focus-visible:outline-none pointer-coarse:min-h-9'
+
 interface FileRowProps {
   file: WorkspaceFileInfo
   idx: number
@@ -752,11 +761,8 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
       type="button"
       onClick={() => onRun(file)}
       {...hoverIntent(() => onActivate(idx))}
-      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors focus:outline-none focus-visible:outline-none ${
-        isActive
-          ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
-          : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
-      }`}
+      data-highlighted={isActive ? '' : undefined}
+      className={PALETTE_ROW_CLASS}
     >
       <div className="min-w-0 flex-1 overflow-hidden">
         <span className={`block truncate font-mono text-xs font-medium ${file.ignored ? 'text-(--color-text-muted)' : 'text-(--color-text)'}`}>
@@ -791,11 +797,8 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
       type="button"
       onClick={() => onRun(cmd)}
       {...hoverIntent(() => onActivate(idx))}
-      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors focus:outline-none focus-visible:outline-none ${
-        isActive
-          ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
-          : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
-      }`}
+      data-highlighted={isActive ? '' : undefined}
+      className={PALETTE_ROW_CLASS}
     >
       <div className="min-w-0 flex-1 overflow-hidden">
         <span className="block truncate text-xs font-medium text-(--color-text)">{cmd.label}</span>

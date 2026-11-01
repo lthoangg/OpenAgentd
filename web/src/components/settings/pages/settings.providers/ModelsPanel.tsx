@@ -306,7 +306,7 @@ function ModelRow({
                     'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-meta tabular-nums select-none',
                     priceBadge.isFree
                       ? 'bg-(--color-success-subtle) text-(--accent-green-text) font-medium'
-                      : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
+                      : 'bg-(--bg-key) text-(--color-text-muted)',
                   )}
                 >
                   {priceBadge.label}

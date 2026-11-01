@@ -211,7 +211,7 @@ function ListRow({ row }: { row: ListViewRow }) {
     >
       {row.icon && (
         <span
-          className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
+          className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-muted)"
           aria-hidden="true"
         >
           {row.icon}

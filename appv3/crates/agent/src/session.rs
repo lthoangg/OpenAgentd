@@ -1315,6 +1315,7 @@ impl AgentSession {
         let state = self.state();
         let qs = self.question_suspended.lock().unwrap().clone();
         let ls = self.lead_suspended.lock().unwrap().clone();
+        let suspended = qs.is_some() || ls.is_some();
         if state == "error" || (qs.is_none() && ls.is_none()) {
             self.apply_pending_interaction_mode().await;
         }
@@ -1374,7 +1375,19 @@ impl AgentSession {
                     tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", marked_sid, e);
                 }
             }
-            self.set_active_turn(false);
+            // Read as idle only under the senders' lock, after a second look
+            // at the queue. A sender that saw this turn running queued its row
+            // for it, but the look above may have come first; without this the
+            // row waits for the next message (a member's report delivered as
+            // its lead's turn closed sat queued for good).
+            let _senders = self.user_message_lock.lock().await;
+            let may_continue = !errored && !suspended && !self.cancel.is_set() && !sid.is_empty();
+            if may_continue && self.activate_queued_user_messages(&sid).await {
+                // The late row's turn is now the active one.
+                completed = false;
+            } else {
+                self.set_active_turn(false);
+            }
         }
         let lead = self.parent_session_id.is_none();
         if completed && lead && !opts.force_compaction && !sid.is_empty() && !self.cancel.is_set() {

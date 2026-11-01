@@ -82,6 +82,7 @@ import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { Chip } from '@/components/ui/chip'
 import {
   CONTEXT_MENU_ITEM_CLASS,
@@ -89,6 +90,7 @@ import {
   ContextMenu,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
+import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -170,6 +172,8 @@ const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
+/** A row of a phone's long-press sheet: a menu row at the 44px touch height. */
+const SHEET_ROW_CLASS = cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')
 
 /** One entry of a session's menu (⋯, right-click, the phone's sheet). */
 interface SessionMenuAction {
@@ -1044,6 +1048,12 @@ export function Sidebar({
     setDeleteTarget(null)
   }
 
+  const mobileWorkspaceActionsTitle = mobileWorkspaceActions?.kind === 'chat'
+    ? (chatWorkspace?.name ?? 'Chat')
+    : mobileWorkspaceActions
+      ? workspaceLabel(mobileWorkspaceActions.path)
+      : 'Workspace actions'
+
   return (
     <>
       {/* Mobile backdrop — closes the drawer on tap. Fades with the drag. */}
@@ -1631,71 +1641,64 @@ export function Sidebar({
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      {/* A workspace's long-press menu on a phone: a sheet from the bottom
+          edge, like the session one below. */}
+      <BottomSheet
         open={mobileWorkspaceActions !== null}
-        onOpenChange={(open) => { if (!open) setMobileWorkspaceActions(null) }}
+        onClose={() => setMobileWorkspaceActions(null)}
+        label={mobileWorkspaceActionsTitle}
       >
-        <DialogContent>
-          <DialogHeader className="pr-8">
-            <DialogTitle>
-              {mobileWorkspaceActions?.kind === 'chat'
-                ? (chatWorkspace?.name ?? 'Chat')
-                : mobileWorkspaceActions
-                  ? workspaceLabel(mobileWorkspaceActions.path)
-                  : 'Workspace actions'}
-            </DialogTitle>
-            <DialogDescription>
-              {mobileWorkspaceActions?.kind === 'chat'
-                ? 'Choose a chat action.'
-                : 'Choose a main workspace action.'}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-            <Button
+        <div className="px-4 pb-1">
+          <p className="text-sm font-medium text-(--color-text) [overflow-wrap:anywhere]">{mobileWorkspaceActionsTitle}</p>
+          <p className="text-xs text-(--color-text-muted)">
+            {mobileWorkspaceActions?.kind === 'chat'
+              ? 'Choose a chat action.'
+              : 'Choose a main workspace action.'}
+          </p>
+        </div>
+        <div className="flex flex-col px-2 pb-3">
+            <button
               type="button"
-              variant="ghost"
-              className="justify-start"
+              className={SHEET_ROW_CLASS}
               onClick={() => {
                 const action = mobileWorkspaceActions
                 setMobileWorkspaceActions(null)
                 if (action) newSessionIn(action.sessionPath)
               }}
             >
-              <Plus size={14} aria-hidden="true" />
+              <Plus size={16} aria-hidden="true" />
               New session
-            </Button>
+            </button>
             {/* Chat's root is the home directory — the path is noise there,
                 and there is no repository to act on. */}
             {mobileWorkspaceActions?.kind !== 'chat' && (
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                className="justify-start"
+                className={SHEET_ROW_CLASS}
                 onClick={() => {
                   const action = mobileWorkspaceActions
                   setMobileWorkspaceActions(null)
                   if (action) void navigator.clipboard.writeText(action.path)
                 }}
               >
-                <Copy size={14} aria-hidden="true" />
+                <Copy size={16} aria-hidden="true" />
                 Copy path
-              </Button>
+              </button>
             )}
             {mobileWorkspaceActions?.kind === 'main' && (
               <>
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  className="justify-start"
+                  className={SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
                     if (action) void openWorktreeDialog(action.path)
                   }}
                 >
-                  <GitBranch size={14} aria-hidden="true" />
+                  <GitBranch size={16} aria-hidden="true" />
                   Create worktree…
-                </Button>
+                </button>
                 <WorkspaceGroupToggles
                   workspace={mobileWorkspaceActions.path}
                   variant="sheet"
@@ -1704,24 +1707,22 @@ export function Sidebar({
                     openSettings('workspaces')
                   }}
                 />
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  className="justify-start"
+                  className={SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
                     if (action) setRemoveWorkspaceTarget(action.path)
                   }}
                 >
-                  <span className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="size-4 shrink-0" aria-hidden="true" />
                   Hide from sidebar…
-                </Button>
+                </button>
               </>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </BottomSheet>
 
       <Dialog
         open={worktreeTarget !== null}
@@ -2056,34 +2057,37 @@ export function Sidebar({
         </ContextMenu>
       )}
 
-      <Dialog
+      {/* A phone's long-press menu is a sheet from the bottom edge (Android,
+          and phone browsers); the iOS app shows the system action sheet
+          instead (openMobileSessionActions). */}
+      <BottomSheet
         open={mobileSessionActions !== null}
-        onOpenChange={(open) => { if (!open) setMobileSessionActions(null) }}
+        onClose={() => setMobileSessionActions(null)}
+        label={mobileSessionActions?.session.title || 'Untitled'}
       >
-        <DialogContent>
-          <DialogHeader className="pr-8">
-            <DialogTitle>{mobileSessionActions?.session.title || 'Untitled'}</DialogTitle>
-            <DialogDescription>Choose a session action.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-            {mobileSessionActions && sessionMenuActions(mobileSessionActions.session).map(({ id, label, icon: Icon, danger, run }) => (
-              <Button
-                key={id}
+        <div className="px-4 pb-1">
+          <p className="text-sm font-medium text-(--color-text) [overflow-wrap:anywhere]">{mobileSessionActions?.session.title || 'Untitled'}</p>
+          <p className="text-xs text-(--color-text-muted)">Choose a session action.</p>
+        </div>
+        <div className="flex flex-col px-2 pb-3">
+          {mobileSessionActions && sessionMenuActions(mobileSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
+            <Fragment key={id}>
+              {separatorBefore && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
+              <button
                 type="button"
-                variant={danger ? 'danger-subtle' : 'ghost'}
-                className="justify-start"
+                className={cn(SHEET_ROW_CLASS, danger && cn(MENU_ITEM_DANGER, 'text-(--color-error)'))}
                 onClick={() => {
                   setMobileSessionActions(null)
                   run()
                 }}
               >
-                <Icon size={14} aria-hidden="true" />
+                <Icon size={16} aria-hidden="true" />
                 {label}
-              </Button>
-            ))}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      </BottomSheet>
 
       <Dialog
         open={worktreeEditTarget !== null}

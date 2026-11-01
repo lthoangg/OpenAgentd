@@ -165,17 +165,25 @@ mock.module('@/hooks/use-mobile', () => ({
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useReducedMotion: () => false,
+  // The phone's session-actions bottom sheet drags to close.
+  useDragControls: () => ({ start: () => {} }),
   motion: {
     aside: ({ children, animate, initial, exit, transition, ...props }: React.ComponentProps<'aside'> & { animate?: unknown; initial?: unknown; exit?: unknown; transition?: unknown }) => {
       void initial
       void exit
       return <aside data-animate={JSON.stringify(animate)} data-transition={JSON.stringify(transition)} {...props}>{children}</aside>
     },
-    div: ({ children, initial, animate, exit, transition, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown }) => {
+    div: ({ children, initial, animate, exit, transition, drag, dragConstraints, dragElastic, dragControls, dragListener, onDragEnd, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown; drag?: unknown; dragConstraints?: unknown; dragElastic?: unknown; dragControls?: unknown; dragListener?: unknown; onDragEnd?: unknown }) => {
       void initial
       void animate
       void exit
       void transition
+      void drag
+      void dragConstraints
+      void dragElastic
+      void dragControls
+      void dragListener
+      void onDragEnd
       return <div {...props}>{children}</div>
     },
   },
@@ -2683,6 +2691,8 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.queryByRole('button', { name: /^copy path$/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /create worktree/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /hide from sidebar/i })).toBeNull()
+    // The phone's long-press menu is a bottom sheet.
+    expect(newSession.closest('[data-bottom-sheet]')).not.toBeNull()
 
     fireEvent.click(newSession)
 
@@ -2787,6 +2797,30 @@ describe('Sidebar workspace trust flow', () => {
       expect(screen.getByText('Choose a session action.')).toBeTruthy()
       expect(screen.getAllByText('A session title far too long for a phone row').length).toBeGreaterThan(1)
       expect(screen.queryByRole('menu')).toBeNull()
+      // A bottom sheet, as the phone's own long-press menus are, not a
+      // centred dialog whose footer lays the actions out as a button row.
+      const sheet = screen.getByRole('dialog', { name: 'A session title far too long for a phone row' })
+      expect(sheet.hasAttribute('data-bottom-sheet')).toBe(true)
+      // Delete reads as destructive at rest, as the desktop menu's does.
+      expect(within(sheet).getByRole('button', { name: 'Delete session…' }).className).toContain('text-(--color-error)')
+    })
+
+    it("opens a session's actions as a bottom sheet in the Android app", async () => {
+      isMobile = true
+      isTauri = true
+      platformOs = 'android'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
+
+      const sheet = screen.getByRole('dialog', { name: 'Feature' })
+      expect(sheet.hasAttribute('data-bottom-sheet')).toBe(true)
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Rename' }))
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Session title' })).toBeTruthy())
+      const calls = invokeMock.mock.calls as unknown as Array<[string]>
+      expect(calls.some(([command]) => command === 'pick_one')).toBe(false)
     })
 
     it("opens a session's actions as an iOS action sheet in the iPhone app", async () => {

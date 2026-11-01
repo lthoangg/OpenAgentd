@@ -43,7 +43,11 @@ describe('phone layout contracts', () => {
     expect(src('ToolResult.tsx')).toContain('data-team-member-output="" className="text-xs md:max-h-48 md:overflow-y-auto"')
   })
 
-  it('keeps phone action-sheet titles clear of the close button', () => {
-    expect(src('Sidebar.tsx').match(/<DialogHeader className="pr-8">/g)?.length).toBeGreaterThanOrEqual(2)
+  // The session and workspace long-press menus are bottom sheets, which
+  // have no close button for a long title to run under; the title wraps.
+  it('lets phone action-sheet titles wrap instead of running under a close button', () => {
+    const sidebar = src('Sidebar.tsx')
+    expect(sidebar).not.toContain('<DialogHeader className="pr-8">')
+    expect(sidebar.match(/<p className="text-sm font-medium text-\(--color-text\) \[overflow-wrap:anywhere\]">/g)?.length).toBe(2)
   })
 })

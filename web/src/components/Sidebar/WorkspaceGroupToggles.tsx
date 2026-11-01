@@ -1,12 +1,13 @@
 import { Check, Settings2 } from 'lucide-react'
 
-import { buttonVariants } from '@/components/ui/button'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenuSeparator } from '@/components/ui/context-menu'
+import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
 import { useSetWorkspaceGroupsMutation, useWorkspaceGroups } from '@/queries/useWorkspaceGroups'
 import { groupColor } from './groupColor'
 
-const SHEET_ITEM_CLASS = buttonVariants({ variant: 'ghost', className: 'justify-start' })
+/** A row of the phone's workspace actions sheet (44px, like its other rows). */
+const SHEET_ITEM_CLASS = cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')
 
 /**
  * A repository's workspace groups as toggles in its actions menu, plus a way
@@ -14,8 +15,8 @@ const SHEET_ITEM_CLASS = buttonVariants({ variant: 'ghost', className: 'justify-
  * briefed and deleted. A toggle saves at once and leaves the menu open, so
  * several groups can be set in one go.
  *
- * `menu` renders context-menu rows; `sheet` renders buttons for the mobile
- * workspace actions dialog.
+ * `menu` renders context-menu rows; `sheet` renders rows for the phone's
+ * workspace actions sheet.
  */
 export function WorkspaceGroupToggles({
   workspace,
@@ -31,7 +32,7 @@ export function WorkspaceGroupToggles({
   const setGroups = useSetWorkspaceGroupsMutation()
   const tags = groupIdsByRepo.get(workspace) ?? []
   const menu = variant === 'menu'
-  const iconSize = menu ? 12 : 14
+  const iconSize = menu ? 12 : 16
 
   const toggle = (id: string) => {
     const next = tags.includes(id) ? tags.filter((t) => t !== id) : [...tags, id]

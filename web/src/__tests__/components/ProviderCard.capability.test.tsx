@@ -37,8 +37,7 @@ function renderCard(provider: ProviderInfo) {
 
 /** Opens a credential's "More actions" menu and returns its menu items' names. */
 function openMore(label: string): string[] {
-  const trigger = screen.queryByRole('button', { name: `More actions for ${label}` }) ?? screen.getByRole('button', { name: `Manage ${label}` })
-  fireEvent.click(trigger)
+  fireEvent.click(screen.getByRole('button', { name: `More actions for ${label}` }))
   return screen.getAllByRole('menuitem').map((item) => item.textContent ?? '')
 }
 
@@ -95,35 +94,36 @@ const pluginOauth: ProviderInfo = {
   ],
 }
 
+const originalFetch = globalThis.fetch
+
 describe('ProviderCard — multi-credential capability', () => {
   beforeEach(() => {
     for (const m of [mockAdd, mockSave, mockListModels, mockDisconnectOauth, mockLoginStream]) m.mockClear()
+    // The account rows ask the daemon how many sessions pin each one.
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ credentials: [] }))) as unknown as typeof fetch
   })
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    globalThis.fetch = originalFetch
+  })
 
-  it('keeps the single-key form for an api-key plugin that did not opt in', async () => {
+  it('keeps the single-key form for an api-key plugin that did not opt in, and Save checks the key first', async () => {
     renderCard({ ...pluginKey, supports_multiple_credentials: false })
     expect(screen.queryByRole('list', { name: 'PlugKey keys' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Add key' })).toBeNull()
     expect(screen.queryByPlaceholderText('Name (e.g. Work)')).toBeNull()
     fireEvent.change(screen.getByPlaceholderText('Enter a new key to replace current key'), { target: { value: 'sk-test-only' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
-    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
-    await waitFor(() => expect(save.disabled).toBe(false))
-    fireEvent.click(save)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1))
+    expect(mockListModels).toHaveBeenCalledTimes(1)
     expect(mockSave.mock.calls[0][0]).toBe('plugkey')
     expect(mockAdd).not.toHaveBeenCalled()
   })
 
-  it('lists keys and adds another one for an api-key plugin that opted in', async () => {
+  it('lists keys and adds another one for an api-key plugin that opted in, with the same Save', async () => {
     renderCard({ ...pluginKey, supports_multiple_credentials: true })
     expect(screen.getByRole('list', { name: 'PlugKey keys' })).toBeTruthy()
     fireEvent.change(screen.getByPlaceholderText('Paste another API key'), { target: { value: 'sk-test-more' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
-    const add = screen.getByRole('button', { name: 'Add key' }) as HTMLButtonElement
-    await waitFor(() => expect(add.disabled).toBe(false))
-    fireEvent.click(add)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mockAdd).toHaveBeenCalledTimes(1))
     expect(mockAdd.mock.calls[0][0]).toBe('plugkey')
     expect(mockSave).not.toHaveBeenCalled()
@@ -132,7 +132,8 @@ describe('ProviderCard — multi-credential capability', () => {
   it('keeps the previous behaviour when an older backend omits the flag', () => {
     renderCard(pluginKey)
     expect(screen.getByRole('list', { name: 'PlugKey keys' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Add key' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Add key' })).toBeNull()
   })
 
   it('reconnects a non-opted-in oauth plugin as one connection, never with an account', async () => {

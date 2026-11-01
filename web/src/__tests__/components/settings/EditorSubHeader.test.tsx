@@ -5,7 +5,7 @@ import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 
 afterEach(cleanup)
 
-function renderHeader() {
+function renderHeader(props: Partial<Parameters<typeof EditorSubHeader>[0]> = {}) {
   return render(
     <EditorSubHeader
       name="code-reviewer"
@@ -16,8 +16,8 @@ function renderHeader() {
       saving={false}
       mode="form"
       onModeChange={() => {}}
-      onSave={() => {}}
       onBack={() => {}}
+      {...props}
     />,
   )
 }
@@ -32,9 +32,23 @@ describe('EditorSubHeader — phone layout', () => {
     expect(tabs.className).toContain('max-sm:w-full')
   })
 
-  it('keeps Save named while its label is hidden below sm', () => {
+})
+
+describe('EditorSubHeader — one way to save', () => {
+  it('has no Save of its own: the editor saves with the SaveBar under its form', () => {
     renderHeader()
-    const save = screen.getByRole('button', { name: 'Save' })
-    expect(save.querySelector('.max-sm\\:sr-only')?.textContent).toBe('Save')
+    expect(screen.queryByRole('button', { name: /save|create/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Back to list' })).toBeTruthy()
+  })
+
+  it('still says why a save failed, or what to fix', () => {
+    const failed = renderHeader({ error: 'disk is full' })
+    expect(screen.getByRole('alert').textContent).toContain("Couldn't save")
+    expect(screen.getByRole('alert').textContent).toContain('disk is full')
+    failed.unmount()
+
+    renderHeader({ invalid: true, validationHint: 'name is required' })
+    expect(screen.getByRole('alert').textContent).toContain('Fix this to save')
+    expect(screen.getByRole('alert').textContent).toContain('name is required')
   })
 })

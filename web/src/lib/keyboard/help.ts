@@ -105,8 +105,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
     {
       title: 'Preview',
       entries: [
-        keys('Toggle Design picking', { key: 'C', code: 'KeyC', alt: true }),
-        keys('Stop picking', { key: 'Escape' }),
+        keys('Comment on an element (toggle)', { key: 'C', code: 'KeyC', alt: true }),
+        keys('Stop commenting', { key: 'Escape' }),
       ],
     },
     {
@@ -117,7 +117,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Open and leave a Command Palette list', { key: 'ArrowRight' }, { key: 'ArrowLeft' }),
         keys('Zoom in and out', { key: '+' }, { key: '-' }),
         keys('Reset zoom', { key: '0' }),
-        keys('Save settings', { key: 'S', mod: true }),
+        app('save', 'Save settings'),
       ],
     },
   ]

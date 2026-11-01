@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ProviderInfo } from '@/api/client'
@@ -102,7 +102,7 @@ describe('ModelSetupCard', () => {
       'GitHub CopilotSign in',
     ])
     expect(screen.queryByRole('list', { name: 'Ready to use' })).toBeNull()
-    screen.getByRole('button', { name: 'More providers…' }).click()
+    screen.getByRole('button', { name: 'Open Providers' }).click()
     expect(onOpenProviders).toHaveBeenCalledTimes(1)
   })
 
@@ -164,5 +164,49 @@ describe('ModelSetupCard', () => {
     expect(screen.queryByRole('group', { name: 'Providers' })).toBeNull()
     // Its key field is already open.
     expect(screen.getByLabelText('anthropic API key')).toBeTruthy()
+  })
+
+  it('says what each Use button uses: "Use Ollama", "Use OpenAI"', () => {
+    const providers = [
+      ...FRESH.filter((p) => p.id !== 'openai' && p.id !== 'ollama'),
+      provider('openai', { is_configured: true, env_pinned: true }),
+      provider('ollama', { kind: 'local', is_configured: true }),
+    ]
+    renderCard({ providers })
+    const ready = within(screen.getByRole('list', { name: 'Ready to use' }))
+    expect(ready.getByRole('button', { name: 'Use Ollama' }).textContent).toBe('Use Ollama')
+    expect(ready.getByRole('button', { name: 'Use OpenAI' }).textContent).toBe('Use OpenAI')
+    expect(ready.queryByRole('button', { name: 'Use' })).toBeNull()
+  })
+
+  it('points its footer at Settings → Providers, in the words and in the link', () => {
+    const { onOpenProviders } = renderCard()
+    const card = screen.getByTestId('model-setup-card')
+    expect(card.textContent).toContain('Settings → Providers')
+    expect(card.textContent).not.toContain('Settings → Agents')
+    screen.getByRole('button', { name: 'Open Providers' }).click()
+    expect(onOpenProviders).toHaveBeenCalledTimes(1)
+  })
+
+  it('points to Providers when it asks for one missing provider, too', () => {
+    renderCard({ readiness: { status: 'needs-provider', model: 'anthropic:claude-sonnet-5-5', provider: provider('anthropic') } })
+    const card = screen.getByTestId('model-setup-card')
+    expect(card.textContent).toContain('Settings → Providers')
+    expect(card.textContent).not.toContain('Settings → Agents')
+  })
+
+  it('draws no border around anything inside the card, and keeps green text on the green wash', () => {
+    const providers = [
+      ...FRESH.filter((p) => p.id !== 'ollama'),
+      provider('ollama', { kind: 'local', is_configured: true }),
+    ]
+    renderCard({ providers })
+    const card = screen.getByTestId('model-setup-card')
+    const bordered = [...card.querySelectorAll('button, li, form')].filter((el) => /(^|\s)border(-|\s|$)/.test(el.getAttribute('class') ?? ''))
+    expect(bordered).toEqual([])
+    const title = screen.getByText('Ollama is running')
+    expect(title.className).toContain('text-(--accent-green-text)')
+    expect(title.className).not.toContain('text-(--color-success)')
+    expect(card.querySelector('li svg')?.getAttribute('class')).toContain('text-(--accent-green-text)')
   })
 })

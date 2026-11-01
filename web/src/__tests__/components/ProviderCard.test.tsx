@@ -97,9 +97,10 @@ describe('ProviderCard — OAuth disconnect and reconnect', () => {
     expect(within(header).getByText('Not connected').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
   })
 
-  it('tests the sign-in with a Test sign-in button, not List models', () => {
+  it('tests the sign-in with a plain Test button, not List models or Test sign-in', () => {
     renderComponent(connectedOAuthProvider)
-    expect(screen.getByRole('button', { name: 'Test sign-in' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Test' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Test sign-in' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'List models' })).toBeNull()
   })
 

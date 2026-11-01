@@ -2,11 +2,12 @@
  * ModelSetupCard — connect a model without leaving the new-session screen.
  *
  * Shown while no message could run (see `lib/model-readiness.ts`). Three
- * ways in: **Use** a provider that already works (a saved key, a key exported
- * in the environment, a running Ollama), paste a key for one of the quick
- * picks and **Connect** (check → save; the server then gives agents with no
- * model the provider's suggested one), or sign in with a subscription. Every
- * other provider stays one click away in Settings → Providers.
+ * ways in: **Use <provider>** for one that already works (a saved key, a key
+ * exported in the environment, a running Ollama), paste a key for one of the
+ * quick picks and **Connect** (check → save; the server then gives agents
+ * with no model the provider's suggested one), or sign in with a
+ * subscription. Every other provider stays one click away in Settings →
+ * Providers.
  */
 import { useMemo, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -145,7 +146,7 @@ export function ModelSetupCard({
     <section
       aria-label="Connect a model"
       data-testid="model-setup-card"
-      className="w-full rounded-sm border border-(--color-border) bg-(--bg-card) p-3 text-left"
+      className="w-full rounded-sm border border-(--color-border-subtle) bg-(--bg-card) p-3 text-left"
     >
       <h2 className="text-xs font-semibold text-(--color-text)">{title}</h2>
       <p className="mt-0.5 text-xs text-(--color-text-muted)">{subtitle}</p>
@@ -157,8 +158,9 @@ export function ModelSetupCard({
             return (
               <li
                 key={item.provider.id}
-                className="flex items-center gap-2.5 rounded-sm border border-(--color-success)/30 bg-(--color-success-subtle) px-2.5 py-2"
+                className="flex items-center gap-2.5 rounded-sm bg-(--color-success-subtle) px-2.5 py-2"
               >
+                {/* Green text (not the solid state hue) on the green wash: AA. */}
                 <CheckCircle2 size={14} className="shrink-0 text-(--accent-green-text)" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-(--accent-green-text)">{text.title}</p>
@@ -169,10 +171,9 @@ export function ModelSetupCard({
                   variant="primary"
                   disabled={pending !== null}
                   onClick={() => { void handleUse(item.provider) }}
-                  aria-label={`Use ${shortLabel(item.provider)}`}
                 >
                   {pending === item.provider.id && <Loader2 className="animate-spin" aria-hidden="true" />}
-                  Use
+                  {`Use ${shortLabel(item.provider)}`}
                 </Button>
               </li>
             )
@@ -193,15 +194,15 @@ export function ModelSetupCard({
                 onClick={() => handlePick(provider)}
                 disabled={pending !== null}
                 className={cn(
-                  'flex h-9 min-w-0 items-center gap-2 rounded-sm border px-2.5 text-left text-xs transition-colors pointer-coarse:h-9',
+                  'flex h-9 min-w-0 items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
                   active
-                    ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-                    : 'border-(--color-border) bg-(--color-surface) text-(--color-text) hover:bg-(--bg-key)/60',
+                    ? 'bg-(--color-accent) text-(--color-text-on-accent)'
+                    : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-border-subtle)',
                 )}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(provider)}</span>
-                <span className="shrink-0 text-meta text-(--color-text-subtle)">
+                <span className={cn('shrink-0 text-meta', active ? 'text-(--color-text-on-accent)' : 'text-(--color-text-muted)')}>
                   {provider.kind === 'oauth' ? 'Sign in' : 'API key'}
                 </span>
               </button>
@@ -211,7 +212,7 @@ export function ModelSetupCard({
       )}
 
       {selected && selected.kind === 'api_key' && (
-        <form onSubmit={(event) => { void handleConnect(event) }} className="mt-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) p-2.5">
+        <form onSubmit={(event) => { void handleConnect(event) }} className="mt-2 rounded-sm bg-(--bg-page) p-2.5">
           <label htmlFor="model-setup-key" className="mb-1 block text-xs font-medium text-(--color-text)">
             {selected.credentials[0]?.label ?? `${shortLabel(selected)} API key`}
           </label>
@@ -234,7 +235,7 @@ export function ModelSetupCard({
               Connect
             </Button>
           </div>
-          <p id="model-setup-hint" className="mt-1.5 text-meta text-(--color-text-subtle)">
+          <p id="model-setup-hint" className="mt-1.5 text-meta text-(--color-text-muted)">
             We check the key, save it on this machine and pick a model for you.
             {selected.docs_url && (
               <>
@@ -275,11 +276,13 @@ export function ModelSetupCard({
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-meta text-(--color-text-muted)">
         <span>
           {needsProvider
-            ? 'Or pick another model in Settings → Agents.'
-            : localRunning ? 'Every other provider is in Settings.' : 'Running models locally? Start Ollama and it shows up here.'}
+            ? 'Or use a different provider in Settings → Providers.'
+            : localRunning
+              ? 'Every other provider is in Settings → Providers.'
+              : 'Running models locally? Start Ollama and it shows up here. Other providers are in Settings → Providers.'}
         </span>
         <Button type="button" variant="link" size="xs" onClick={onOpenProviders}>
-          More providers…
+          Open Providers
         </Button>
       </div>
 

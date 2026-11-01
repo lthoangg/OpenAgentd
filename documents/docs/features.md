@@ -771,6 +771,25 @@ run from the terminal (the native Rust binary since v3.0.0).
     "Preview comments · 2 comments".
   - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
+- **Settings: one way to save, every setting findable** `[v3.40.0]`:
+  - Every page of fields saves the same way: a bar appears once something
+    changed, with **Discard…** and **Save** (`⌘S`/`Ctrl+S`). The agent,
+    skill and MCP editors use it too, so their headers no longer carry a
+    Save of their own. Switches still apply at once.
+  - The search field finds single settings, not just pages: choosing one
+    opens its page, scrolls to it and focuses it. Search works on phones
+    too.
+  - A provider's accounts are one list under "Tried in this order", with
+    **Use first** to move one to the top; each says how many sessions pin
+    it ("Pinned by 2 sessions").
+  - **Save** on a key checks it first; when the check fails it says why,
+    with **Retry** and **Save anyway**.
+  - The backend panel: selecting a server shows its details, **Use**
+    switches to it, and the one in use is marked **In use**; a stopped
+    built-in server offers **Start and use**.
+  - The first-run card names the action ("Use Ollama"), and the section is
+    called **Retention** (with "Local history" inside it).
+  - Below 900px wide the Settings navigation shows icons only.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

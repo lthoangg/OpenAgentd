@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useCreateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { validateSkillDraft } from '@/components/settings/schema'
 import { PanelSection } from '@/components/ui/panel-section'
 import { Textarea } from '@/components/ui/textarea'
@@ -41,6 +42,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
   const draftErrors = validateSkillDraft(content)
   const invalid = draftErrors !== null
   const firstDraftError = draftErrors ? Object.values(draftErrors)[0] : null
+  const dirty = content !== TEMPLATE
 
   const handleCreate = async () => {
     setSaveError(null)
@@ -61,13 +63,11 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
       <EditorSubHeader
         kind="skill"
         name="New skill"
-        dirty={content !== TEMPLATE}
+        dirty={dirty}
         invalid={invalid}
         saving={createMut.isPending}
         error={saveError}
         validationHint={firstDraftError}
-        onSave={handleCreate}
-        saveLabel="Create skill"
         onBack={onBack}
       />
 
@@ -94,6 +94,25 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
           </PanelSection>
         </div>
       </div>
+
+      <SaveBar
+        shortcut
+        saveLabel="Create skill"
+        draft={{
+          dirty,
+          canSave: dirty && !invalid && !createMut.isPending,
+          isSaving: createMut.isPending,
+          save: handleCreate,
+          reset: () => {
+            setContent(TEMPLATE)
+            setName('new-skill')
+            setSaveError(null)
+          },
+        }}
+        onSave={() => { void handleCreate() }}
+        saveBlockedReason={invalid ? (firstDraftError ?? 'Fix the errors above to create it.') : null}
+        discardDescription="The skill goes back to the starting template."
+      />
     </div>
   )
 }

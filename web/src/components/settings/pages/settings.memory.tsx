@@ -37,8 +37,11 @@ import {
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 import { Callout } from '@/components/ui/callout'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { settingsRoot } from '@/components/settings/settings-root'
+import { getPlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
 
@@ -119,7 +122,7 @@ export function MemorySettingsPage() {
   })
 
   // ⌘S / Ctrl+S saves the open file.
-  useShortcut({ key: 'S', mod: true }, () => {
+  useShortcut(chordOf(APP_SHORTCUTS.save), () => {
     const current = saveActionRef.current
     if (!current.selectedPath || !current.isDirty || current.isSaving) return false
     void current.handleSave()
@@ -342,16 +345,22 @@ export function MemorySettingsPage() {
                       Delete page…
                     </DropdownItem>
                   </Dropdown>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={!fileData || !isDirty || saveMut.isPending}
-                    title="Save (⌘S)"
-                  >
-                    <Save size={11} aria-hidden="true" />
-                    <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSave}
+                          disabled={!fileData || !isDirty || saveMut.isPending}
+                        >
+                          <Save size={11} aria-hidden="true" />
+                          <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{`Save (${shortcutLabel(APP_SHORTCUTS.save, getPlatform().os)})`}</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
               <div className="relative flex min-h-0 flex-1 flex-col">

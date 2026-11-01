@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ProviderUsageError, formatRetryIn, isSnapshotExpired, snapshotUpdatedAtMs } from '@/lib/provider-usage'
 import { useProviderUsageQuery } from '@/queries'
 import { UsagePanel, usagePlan } from './UsagePanel'
@@ -24,13 +25,13 @@ export function useRetryCountdown(error: unknown): number {
 function UsageRefresh({ query, label, cooling, needsSignIn }: { query: UsageQuery; label: string; cooling: boolean; needsSignIn: boolean }) {
   const busy = query.isFetching
   const paused = cooling || needsSignIn
-  return (
+  const reason = needsSignIn ? 'Paused until you sign in again' : cooling ? 'Paused until the provider allows another request' : null
+  const button = (
     <Button
       type="button"
       size="xs"
       variant="ghost"
       aria-label={`Refresh usage for ${label}`}
-      title={needsSignIn ? 'Paused until you sign in again' : cooling ? 'Paused until the provider allows another request' : undefined}
       disabled={busy || paused}
       className="pointer-coarse:min-h-9"
       // The one request that asks the daemon to skip its short cache.
@@ -39,6 +40,13 @@ function UsageRefresh({ query, label, cooling, needsSignIn }: { query: UsageQuer
       {busy && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
       Refresh
     </Button>
+  )
+  if (!reason) return button
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
   )
 }
 

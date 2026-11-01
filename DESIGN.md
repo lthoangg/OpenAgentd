@@ -1154,14 +1154,22 @@ Settings adds its own shell on top:
   skill, MCP server) brings its own Back, so the overlay's Back hides while
   one is open: one Back on screen.
 - **Nav.** Groups in sentence case (App, Agents and tools, Sessions, Models
-  and media, Data and safety, About), no icons, counts in words ("4 skills",
+  and media, Data and safety, About), no icons at full width, counts in words ("4 skills",
   "1 needs sign-in"), a "Search settings" box on top.
 - **One save rule.** A page of fields keeps a draft and saves from the save
-  bar (Save, ⌘S, "Discard…" asks first); when Save is blocked the bar says
-  why. A lone switch or a list action (add a group, hide a provider) saves at
-  once and confirms with a toast. An editor (agent, skill, MCP server,
-  memory page) saves from its header; Discard and Back with unsaved edits
-  ask first. Loading is a skeleton; a load error is a Callout with Retry.
+  bar (`SaveBar`: Save, ⌘S, "Discard…" asks first); when Save is blocked the
+  bar says why. Editors (agent, skill, MCP server, memory page) use the same
+  bar under their form; their header keeps Back, the Form/Source toggle and
+  errors, and Back with unsaved edits asks first. A switch applies at once
+  and its own state is the confirmation, as in the OS's settings (no
+  toast); a list action (add a group, hide a provider) saves at once and
+  confirms with a toast. Saving a key checks it first and, if the check
+  fails, offers Retry and Save anyway. Loading is a skeleton; a load error
+  is a Callout with Retry.
+- **Search.** "Search settings" finds single settings (`settings-index.ts`),
+  not only pages; a hit opens the page, scrolls to the setting and focuses
+  it. The phone section list has the same field. Below 900px the nav is an
+  icon rail whose search opens in a dialog.
 - **Long lists are rows, not cards.** Providers is one bordered list of
   rows (name, a subline such as "API key · 1 key · 13 models", a status
   chip); a row opens in place. Secondary row actions go in a "More" menu.

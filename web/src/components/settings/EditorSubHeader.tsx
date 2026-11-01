@@ -3,13 +3,16 @@
  *
  * Layout (left → right):
  *
- *   ◀ Back │ <kind icon> <name>          [Form/Raw]  ● Unsaved   [Save]
- *                       <path>
+ *   ◀ Back │ <name>                                     [Form/Source]
+ *            <path>
  *
- * The Form/Raw toggle is optional; the skill editor (which has only a raw
- * mode) hides it by passing ``mode={undefined}``.
+ * There is no Save here: an editor saves with the same `SaveBar` as every
+ * other Settings page, under its form. This header keeps the unsaved-changes
+ * guard, the save/validation error, and the Form/Source toggle (optional; the
+ * skill editor, which has only a source mode, hides it by passing
+ * ``mode={undefined}``).
  */
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
@@ -38,12 +41,6 @@ interface EditorSubHeaderProps {
   /** Form/Raw toggle. Hide by leaving both ``mode`` and ``onModeChange`` unset. */
   mode?: 'form' | 'raw'
   onModeChange?: (next: 'form' | 'raw') => void
-  /** Optional reason to disable saving even when the draft is dirty and valid. */
-  saveDisabledReason?: string | null
-  /** Save handler; the button manages its own disabled state. */
-  onSave: () => void
-  /** Label of the save button ("Create skill" on a new item). */
-  saveLabel?: string
   /** Called when the back arrow is clicked. */
   onBack: () => void
 }
@@ -57,31 +54,17 @@ export function EditorSubHeader({
   saving,
   error,
   validationHint,
-  saveDisabledReason,
   mode,
   onModeChange,
-  onSave,
   onBack,
-  saveLabel = 'Save',
 }: EditorSubHeaderProps) {
   useUnsavedSettings(dirty || saving)
   const showToggle = mode != null && onModeChange != null
 
-  // Save is disabled when there is nothing to save, when the draft is
-  // invalid, or when a save is already in flight.
-  const saveDisabled = Boolean(saveDisabledReason) || !dirty || invalid || saving
-  const saveTooltip = saveDisabledReason
-    ? saveDisabledReason
-    : invalid
-      ? (validationHint ?? 'Fix validation errors')
-      : !dirty
-        ? 'No unsaved changes'
-        : 'Save (⌘S)'
-
   return (
     <div className="sticky top-0 z-10 shrink-0 border-b border-(--color-border) bg-(--bg-page)" data-editor-kind={kind}>
-    {/* Phones: the switch drops to a second row and Save to its icon, so
-        the name and path keep the width instead of a few characters. */}
+    {/* Phones: the switch drops to a second row, so the name and path keep
+        the width instead of a few characters. */}
     <header className="flex min-h-14 items-center gap-2 px-2 max-sm:flex-wrap max-sm:py-2 sm:h-14 sm:gap-3 sm:px-4 md:px-6">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
@@ -125,41 +108,6 @@ export function EditorSubHeader({
         </Tabs>
         </div>
       )}
-
-      {/* Status + Save ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-2">
-        {!error && !invalid && dirty && (
-          <span className="hidden items-center gap-1.5 text-xs text-(--color-text-muted) sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-(--color-text)" aria-hidden="true" />
-            Unsaved
-          </span>
-        )}
-
-        {saveTooltip ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  className="min-h-9 md:min-h-0"
-                  onClick={onSave}
-                  disabled={saveDisabled}
-                  aria-label={saving ? 'Saving' : saveLabel}
-                >
-                  <Save size={12} aria-hidden="true" />
-                  <span className="max-sm:sr-only">{saving ? 'Saving…' : saveLabel}</span>
-                </Button>
-              }
-            />
-            <TooltipContent>{saveTooltip}</TooltipContent>
-          </Tooltip>
-        ) : (
-          <Button size="sm" className="min-h-9 md:min-h-0" onClick={onSave} disabled={saveDisabled} aria-label={saving ? 'Saving' : saveLabel}>
-            <Save size={12} aria-hidden="true" />
-            <span className="max-sm:sr-only">{saving ? 'Saving…' : saveLabel}</span>
-          </Button>
-        )}
-      </div>
     </header>
     {(error || (invalid && validationHint)) && (
       <div className="px-2 pb-2 sm:px-4 md:px-6">

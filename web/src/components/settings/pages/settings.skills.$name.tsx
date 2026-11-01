@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react'
 import { useDeleteSkillMutation, useSkillFileQuery, useUpdateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateSkillDraft } from '@/components/settings/schema'
 import { PanelSection } from '@/components/ui/panel-section'
@@ -36,7 +37,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [confirmLeave, setConfirmLeave] = useState<'back' | 'discard' | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
 
   const [seededFor, setSeededFor] = useState<string | null>(data?.content ? name : null)
   if (data?.content && seededFor !== name) {
@@ -53,7 +54,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
   const sourceLabel = data?.built_in ? 'built in' : 'outside your config folder'
   // Back goes through the same unsaved-changes check as closing Settings.
   const guardedBack = () => {
-    if (dirty) setConfirmLeave('back')
+    if (dirty) setConfirmLeave(true)
     else onBack()
   }
 
@@ -95,8 +96,6 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
         saving={updateMut.isPending}
         error={saveError}
         validationHint={firstDraftError}
-        saveDisabledReason={readOnly ? `Read-only: this skill is ${sourceLabel}` : null}
-        onSave={handleSave}
         onBack={guardedBack}
       />
 
@@ -139,23 +138,37 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
               />
             </PanelSection>
           )}
-          <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
-            <div className="flex items-center gap-2">
-              {dirty && (
-                <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                  onClick={() => setConfirmLeave('discard')}>Discard changes…</Button>
-              )}
-            </div>
-            {data && data.editable && !data.built_in && (
+          {data && data.editable && !data.built_in && (
+            <div className="mt-4 flex items-center justify-end gap-2 text-xs text-(--color-text-muted)">
               <Button variant="danger" size="xs" className="min-h-9 md:min-h-0"
                 onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
                 <Trash2 size={11} aria-hidden="true" />
                 Delete skill…
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
+
+      <SaveBar
+        shortcut
+        draft={{
+          dirty,
+          canSave: dirty && !invalid && !readOnly && !updateMut.isPending,
+          isSaving: updateMut.isPending,
+          save: handleSave,
+          reset: () => {
+            if (!data) return
+            setDraft(data.content)
+            setSaveError(null)
+          },
+        }}
+        onSave={() => { void handleSave() }}
+        saveBlockedReason={
+          readOnly ? `Read-only: this skill is ${sourceLabel}.` : invalid ? (firstDraftError ?? 'Fix the errors above to save.') : null
+        }
+        discardDescription={`Your edits to ${name} go back to the last saved version.`}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
@@ -171,15 +184,12 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       </Dialog>
 
       <ConfirmDialog
-        open={confirmLeave !== null}
-        onOpenChange={(open) => { if (!open) setConfirmLeave(null) }}
-        title={confirmLeave === 'back' ? 'Leave without saving?' : 'Discard your changes?'}
+        open={confirmLeave}
+        onOpenChange={setConfirmLeave}
+        title="Leave without saving?"
         description={`Your edits to ${name} go back to the last saved version.`}
-        confirmLabel={confirmLeave === 'back' ? 'Leave without saving' : 'Discard changes'}
-        onConfirm={() => {
-          if (data) setDraft(data.content)
-          if (confirmLeave === 'back') onBack()
-        }}
+        confirmLabel="Leave without saving"
+        onConfirm={onBack}
       />
     </div>
   )

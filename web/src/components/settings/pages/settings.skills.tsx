@@ -12,7 +12,7 @@ interface SkillsListPageProps {
 
 /** Where a skill file lives, in words. */
 export function skillSourceLabel(source: string, builtIn: boolean): string {
-  if (builtIn || source === 'builtin') return 'Built in'
+  if (builtIn || source === 'builtin') return 'Built-in'
   if (source === 'project-agents') return 'From project'
   if (source === 'global-agents') return 'From ~/.agents'
   return 'From config'

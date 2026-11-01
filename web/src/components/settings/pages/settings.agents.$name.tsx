@@ -8,6 +8,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { AgentForm } from '@/components/settings/AgentForm'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateAgentDraft } from '@/components/settings/schema'
 import { Button } from '@/components/ui/button'
@@ -60,7 +61,10 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [mode, setMode] = useState<'form' | 'raw'>('form')
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [confirmLeave, setConfirmLeave] = useState<'back' | 'discard' | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  // Bumped by Discard…: the form keeps its own working copy, so it is
+  // remounted from the saved file rather than told to forget.
+  const [formKey, setFormKey] = useState(0)
 
   // Re-seed draft when navigating to a different agent or when the query
   // first resolves. Using the agent name as the sentinel means switching
@@ -79,7 +83,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
   useUnsavedSettings(dirty || updateMut.isPending)
   // Back goes through the same unsaved-changes check as closing Settings.
   const guardedBack = () => {
-    if (dirty) setConfirmLeave('back')
+    if (dirty) setConfirmLeave(true)
     else onBack()
   }
 
@@ -125,7 +129,6 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
         validationHint={firstDraftError}
         mode={mode}
         onModeChange={setMode}
-        onSave={handleSave}
         onBack={guardedBack}
       />
 
@@ -144,6 +147,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
           )}
           {data && (
             <AgentForm
+              key={formKey}
               initial={data.content}
               agentName={name}
               effectiveTools={data.config?.tools}
@@ -155,16 +159,8 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
             />
           )}
           {data && mode === 'form' && <LiveAgentTools name={name} />}
-          <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
-            <div className="flex items-center gap-2">
-              {dirty && (
-                <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                  onClick={() => setConfirmLeave('discard')}>
-                  Discard changes…
-                </Button>
-              )}
-            </div>
-            {name !== 'code' && (
+          {name !== 'code' && (
+            <div className="mt-4 flex items-center justify-end gap-2 text-xs text-(--color-text-muted)">
               <Button
                 variant="ghost"
                 size="xs"
@@ -174,10 +170,29 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
                 <Trash2 size={12} className="mr-1" />
                 Delete subagent…
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
+
+      <SaveBar
+        shortcut
+        draft={{
+          dirty,
+          canSave: dirty && !invalid && !updateMut.isPending,
+          isSaving: updateMut.isPending,
+          save: handleSave,
+          reset: () => {
+            if (!data) return
+            setDraft(data.content)
+            setSaveError(null)
+            setFormKey((k) => k + 1)
+          },
+        }}
+        onSave={() => { void handleSave() }}
+        saveBlockedReason={invalid ? (firstDraftError ?? 'Fix the errors above to save.') : null}
+        discardDescription={`Your edits to ${name} go back to the last saved version.`}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
@@ -203,15 +218,12 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       </Dialog>
 
       <ConfirmDialog
-        open={confirmLeave !== null}
-        onOpenChange={(open) => { if (!open) setConfirmLeave(null) }}
-        title={confirmLeave === 'back' ? 'Leave without saving?' : 'Discard your changes?'}
+        open={confirmLeave}
+        onOpenChange={setConfirmLeave}
+        title="Leave without saving?"
         description={`Your edits to ${name} go back to the last saved version.`}
-        confirmLabel={confirmLeave === 'back' ? 'Leave without saving' : 'Discard changes'}
-        onConfirm={() => {
-          if (data) setDraft(data.content)
-          if (confirmLeave === 'back') onBack()
-        }}
+        confirmLabel="Leave without saving"
+        onConfirm={onBack}
       />
     </div>
   )

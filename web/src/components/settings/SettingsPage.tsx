@@ -10,13 +10,12 @@
  * with their own panes (Memory).
  *
  * It also owns the one save affordance in the product: a sticky action bar
- * that appears only when the draft is dirty, with Reset, Save, and a Cmd/Ctrl+S
- * binding. Pages pass the `useSettingsDraft` result and stop worrying about it.
+ * (`SaveBar`) that appears only when the draft is dirty, with Discard…, Save,
+ * and a Cmd/Ctrl+S binding. Pages pass the `useSettingsDraft` result and stop
+ * worrying about it.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'framer-motion'
-import { RotateCcw, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -24,12 +23,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { PAGE_BODY, TEXT } from '@/components/settings/tokens'
 import { Callout } from '@/components/ui/callout'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { settingsRoot } from '@/components/settings/settings-root'
+import { APP_SHORTCUTS, chordOf } from '@/lib/app-shortcuts'
 import { useShortcut } from '@/lib/keyboard/hooks'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 interface SettingsPageProps {
   /** Page title (the page's only `h1`). */
@@ -51,12 +50,6 @@ interface SettingsPageProps {
   /** Ask before saving when the save deletes data (e.g. a shorter retention). */
   confirmSave?: { when: boolean; title: string; description: string; confirmLabel: string }
   children: ReactNode
-}
-
-/** Save-bar options a page passes through to the bar. */
-interface SaveBarOptions {
-  saveBlockedReason?: string | null
-  confirmSave?: SettingsPageProps['confirmSave']
 }
 
 export function SettingsPage({
@@ -90,7 +83,7 @@ export function SettingsPage({
   }, [draft])
 
   // ⌘S / Ctrl+S saves without hunting for the button.
-  useShortcut({ key: 'S', mod: true }, () => {
+  useShortcut(chordOf(APP_SHORTCUTS.save), () => {
     const current = draftRef.current
     if (!current?.canSave) return false
     requestSave()
@@ -169,80 +162,6 @@ export function SettingsPageHeader({
         <div className="flex shrink-0 flex-wrap items-center gap-2 select-none">{actions}</div>
       )}
     </header>
-  )
-}
-
-// ── Save bar ──────────────────────────────────────────────────────────────
-
-/** Save-bar enter/exit. Module scope so framer sees a stable target
- *  reference. Reduced motion fades instead of sliding: the global CSS guard in
- *  index.css only covers CSS transitions, not framer's JS-driven transforms. */
-const SAVE_BAR_MOTION = {
-  initial: { y: '100%' },
-  animate: { y: 0 },
-  exit: { y: '100%' },
-} as const
-const SAVE_BAR_MOTION_REDUCED = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  exit: { opacity: 0 },
-} as const
-
-function SaveBar({ draft, onSave, saveBlockedReason }: { draft: DraftControls; onSave: () => void } & SaveBarOptions) {
-  const prefersReducedMotion = useReducedMotion()
-  const [confirmDiscard, setConfirmDiscard] = useState(false)
-  const blocked = !draft.canSave && !draft.isSaving ? saveBlockedReason : null
-  const slide = prefersReducedMotion ? SAVE_BAR_MOTION_REDUCED : SAVE_BAR_MOTION
-
-  return (
-    <AnimatePresence>
-      {draft.dirty && (
-        <motion.div
-          initial={slide.initial}
-          animate={slide.animate}
-          exit={slide.exit}
-          transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
-          className={cn(
-            'sticky bottom-0 z-20 flex shrink-0 items-center gap-3',
-            'border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-2.5 md:px-8',
-          )}
-          role="region"
-          aria-label="Unsaved changes"
-        >
-          <span className={cn('flex-1', TEXT.hint, blocked && 'text-(--color-error)')} aria-live="polite">
-            {blocked || 'Unsaved changes'}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-9 md:min-h-0"
-            onClick={() => setConfirmDiscard(true)}
-            disabled={draft.isSaving}
-          >
-            <RotateCcw size={12} aria-hidden="true" />
-            Discard…
-          </Button>
-          <Button
-            size="sm"
-            className="min-h-9 md:min-h-0"
-            onClick={onSave}
-            disabled={!draft.canSave}
-            title="Save (⌘S)"
-          >
-            <Save size={12} aria-hidden="true" />
-            {draft.isSaving ? 'Saving…' : 'Save'}
-          </Button>
-          <ConfirmDialog
-            open={confirmDiscard}
-            onOpenChange={setConfirmDiscard}
-            title="Discard your changes?"
-            description="The edits on this page go back to the last saved values."
-            confirmLabel="Discard changes"
-            onConfirm={draft.reset}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
   )
 }
 

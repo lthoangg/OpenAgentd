@@ -91,7 +91,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // App
   { id: 'general', label: 'Appearance', description: 'Theme, text size and transcript style', icon: SlidersHorizontal, group: 'app' },
   { id: 'desktop', label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'app', desktopOnly: true },
-  { id: 'connection', label: 'Connection', description: 'Which server this app uses, and access from other devices', icon: Server, group: 'app' },
+  { id: 'connection', label: 'Server', description: 'Which server this app uses, and access from other devices', icon: Server, group: 'app' },
   // Agents and tools
   { id: 'agents', label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'build' },
   { id: 'skills', label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'build' },
@@ -108,7 +108,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // Data and safety
   { id: 'memory', label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'privacy' },
   { id: 'denied_paths', label: 'Denied paths', description: 'Files and folders agents cannot touch', icon: Shield, group: 'privacy' },
-  { id: 'telemetry', label: 'Data retention', description: 'How long local traces and metrics are kept', icon: Activity, group: 'privacy' },
+  { id: 'telemetry', label: 'Retention', description: 'How long local traces and metrics are kept', icon: Activity, group: 'privacy' },
   // About
   { id: 'about', label: 'About OpenAgentd', description: 'Version, updates and community', icon: Info, group: 'about' },
 ]

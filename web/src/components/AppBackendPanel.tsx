@@ -1,19 +1,25 @@
 /**
- * AppBackendPanel — choose which OpenAgentd backend this app talks to.
+ * AppBackendPanel — choose which OpenAgentd server this app talks to.
  *
- * One panel, two hosts: Settings → Connection renders it as a page, and
+ * One panel, two hosts: Settings → Server renders it as a page, and
  * `AppBackendDialog` wraps it for the places that need it before or outside
  * Settings (the loading screen, the footer health dot, a scanned connect
  * link). All connection logic lives here; the hosts only provide chrome.
  *
- * Top to bottom: the current connection, the saved servers (builtin sidecar
- * first), the add / edit form with its test-then-save flow, and, in the
- * desktop shell, network access for other devices.
+ * Top to bottom: the current server, the saved servers (the built-in server
+ * first), the details of the selected one (or the add form, with its
+ * test-then-save flow), and, in the desktop shell, network access for other
+ * devices.
+ *
+ * A row has three separate jobs: clicking it selects it and shows its
+ * details, **Use** switches the app to it, and **In use** marks the one the
+ * app talks to now.
  */
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/chip'
 import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
@@ -62,7 +68,7 @@ function watchNote(state: ServerWatchState | undefined, enabled: boolean): { tex
     case 'connected': return { text: 'Watching', tone: 'ok' }
     case 'connecting': return { text: 'Connecting…', tone: 'muted' }
     case 'reconnecting': return { text: 'Reconnecting · server not reachable', tone: 'warn' }
-    case 'key_rejected': return { text: 'Access key rejected · update it under Edit', tone: 'error' }
+    case 'key_rejected': return { text: 'Access key rejected · update it in its details', tone: 'error' }
     default: return enabled ? null : { text: 'Disabled · not watched', tone: 'muted' }
   }
 }
@@ -100,6 +106,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   const [scanned, setScanned] = useState(false)
   /** Label of the saved server loaded into the form, or null for a new one. */
   const [editing, setEditing] = useState<string | null>(null)
+  /** The row whose details are open: the built-in server, a saved server's URL, or none. */
+  const [selected, setSelected] = useState<'builtin' | string | null>(null)
   const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
   const watchable = isDesktopShell() && status?.supports_bundled !== false
 
@@ -132,6 +140,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       setScanned(Boolean(prefill))
       setTestedBaseUrl(null)
       setEditing(null)
+      setSelected(null)
       const servers = next?.servers ?? DEFAULT_SERVERS
       setServerHealth(Object.fromEntries(servers.map((server) => [normalizeServerBaseUrl(server.base_url), 'checking'])))
       for (const server of servers) {
@@ -229,11 +238,19 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     setTestedBaseUrl(null)
     setError(null)
     setEditing(nextBaseUrl ? (nextName || nextBaseUrl) : null)
+    setSelected(nextBaseUrl ? nextBaseUrl : null)
     if (!nextBaseUrl) {
       setAccessKeyInput('')
       return
     }
     void getStoredAccessKey(nextBaseUrl).then((storedKey) => setAccessKeyInput(storedKey ?? ''))
+  }
+
+  /** Select the built-in server: its details replace the form. */
+  function selectBuiltin() {
+    setSelected('builtin')
+    setEditing(null)
+    setError(null)
   }
 
   async function toggleEnabled(server: SavedAppServer, enabled: boolean) {
@@ -296,7 +313,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     ? 'Current: this server'
     : onExternal
       ? `Current: ${activeServer?.name || hostnameOf(currentUrl) || 'a saved server'}`
-      : 'Current: built-in server'
+      : 'Current: Built-in server'
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
 
   return (
@@ -309,20 +326,20 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             <p className="truncate text-sm font-semibold text-(--color-text)">{currentTitle}</p>
             <p className={cn('mt-0.5 truncate font-mono', TEXT.hint)}>{currentUrl}</p>
           </div>
-          {status ? <Badge>{onExternal ? 'Saved server' : 'Built in'}</Badge> : null}
+          {status ? <Chip>{onExternal ? 'Saved server' : 'Built-in server'}</Chip> : null}
         </div>
       </SectionCard>
 
       {scanned ? (
         <Callout tone="info" role="status">
-          Scanned from another device. Check the server, then save and connect.
+          Scanned from another device. Check the server, then save and use it.
         </Callout>
       ) : null}
 
       {/* Saved servers */}
       <PanelSection
         title="Servers"
-        description="Select a server to edit it below."
+        description="Select a server to see its details. Use switches the app to it."
         flush
       >
         {status?.supports_bundled !== false ? (
@@ -330,15 +347,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             health={status?.sidecar_running ? 'online' : undefined}
             title="Built-in server"
             subtitle="Runs inside this app"
-            active={!status?.external}
-            onSelect={() => editServer('', '')}
+            inUse={!status?.external}
+            selected={selected === 'builtin'}
+            onSelect={selectBuiltin}
             disabled={pending}
           >
             {status?.sidecar_running ? (
               <>
                 {status?.external ? (
-                  <Button type="button" variant="subtle" size="sm" onClick={() => { void connectBundled() }} disabled={pending}>
-                    Connect
+                  <Button type="button" variant="subtle" size="sm" aria-label="Use built-in server" onClick={() => { void connectBundled() }} disabled={pending}>
+                    Use
                   </Button>
                 ) : null}
                 <Button type="button" variant="danger-subtle" size="sm" onClick={() => setConfirm({ kind: 'stop' })} disabled={pending}>
@@ -346,8 +364,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 </Button>
               </>
             ) : (
+              // Stopped: Use also starts it, and says so.
               <Button type="button" variant="subtle" size="sm" onClick={() => { void connectBundled() }} disabled={pending}>
-                Use built-in server
+                Start and use
               </Button>
             )}
           </ServerRow>
@@ -366,7 +385,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               subtitle={server.name ? server.base_url : undefined}
               mono={!server.name}
               note={note}
-              active={active}
+              inUse={active}
+              selected={selected === normalizedServerUrl}
               onSelect={() => editServer(normalizedServerUrl, server.name ?? '')}
               disabled={pending}
             >
@@ -381,24 +401,18 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                   />
                 </label>
               ) : null}
-              <Button
-                type="button"
-                variant="subtle"
-                size="sm"
-                onClick={() => { void connectExternal(normalizedServerUrl, server.name ?? '', true) }}
-                disabled={pending}
-              >
-                Connect
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => editServer(normalizedServerUrl, server.name ?? '')}
-                disabled={pending}
-              >
-                Edit
-              </Button>
+              {active ? null : (
+                <Button
+                  type="button"
+                  variant="subtle"
+                  size="sm"
+                  aria-label={`Use ${label}`}
+                  onClick={() => { void connectExternal(normalizedServerUrl, server.name ?? '', true) }}
+                  disabled={pending}
+                >
+                  Use
+                </Button>
+              )}
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -422,10 +436,34 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         })}
       </PanelSection>
 
-      {/* Add / edit */}
+      {/* Details of the selected server, or the add form */}
+      {selected === 'builtin' ? (
+        <PanelSection
+          title="Built-in server"
+          description="Runs inside this app, so there is nothing to configure."
+          actions={
+            <Button type="button" size="sm" variant="ghost" onClick={() => editServer('', '')}>
+              <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
+              New server
+            </Button>
+          }
+          flush
+        >
+          <dl className="grid gap-y-2 px-4 py-4 text-xs sm:grid-cols-[8rem_minmax(0,1fr)]">
+            <dt className="text-(--color-text-muted)">State</dt>
+            <dd className="text-(--color-text)">{status?.sidecar_running ? 'Running' : 'Stopped'}{!status?.external ? ' · In use' : ''}</dd>
+            {!status?.external ? (
+              <>
+                <dt className="text-(--color-text-muted)">Address</dt>
+                <dd className="truncate font-mono text-(--color-text)">{currentUrl}</dd>
+              </>
+            ) : null}
+          </dl>
+        </PanelSection>
+      ) : (
       <PanelSection
         title={editing ? `Edit ${editing}` : 'Add a server'}
-        description="Test the connection first. Save and connect stores the server and switches to it."
+        description="Test checks the server. Save and use stores it and switches the app to it."
         actions={
           editing ? (
             <Button type="button" size="sm" variant="ghost" onClick={() => editServer('', '')} disabled={pending}>
@@ -479,12 +517,12 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             ) : tested ? (
               <p role="status" className="font-medium text-(--accent-green-text)">Connection successful.</p>
             ) : (
-              <p className="text-(--color-text-muted)">Test the connection to enable saving.</p>
+              <p className="text-(--color-text-muted)">Test the server to enable saving.</p>
             )}
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             <Button type="button" variant="default" size="sm" onClick={() => void testConnection()} disabled={pending}>
-              {pending ? 'Testing…' : 'Test connection'}
+              {pending ? 'Testing…' : 'Test'}
             </Button>
             <Button
               type="button"
@@ -493,11 +531,12 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               onClick={() => void saveAndConnect()}
               disabled={pending || !tested}
             >
-              Save and connect
+              Save and use
             </Button>
           </div>
         </div>
       </PanelSection>
+      )}
 
       <ConfirmDialog
         open={confirm !== null}
@@ -524,7 +563,8 @@ function ServerRow({
   subtitle,
   mono = false,
   note = null,
-  active,
+  inUse,
+  selected,
   onSelect,
   disabled,
   children,
@@ -536,24 +576,28 @@ function ServerRow({
   mono?: boolean
   /** Background connection state, under the subtitle. */
   note?: { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null
-  active: boolean
+  /** The app talks to this server now. */
+  inUse: boolean
+  /** Its details are open below. */
+  selected: boolean
   onSelect: () => void
   disabled: boolean
   children: React.ReactNode
 }) {
   return (
-    <div className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
+    <div className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD, selected && 'bg-(--bg-key)/50')}>
       <button
         type="button"
         onClick={onSelect}
         disabled={disabled}
+        aria-pressed={selected}
         className="flex min-w-0 flex-1 items-center gap-3 rounded-xs text-left pointer-coarse:min-h-9 focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
       >
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn('truncate', TEXT.label, mono && 'font-mono')}>{title}</span>
-            {active ? <Badge>Active</Badge> : null}
+            {inUse ? <Chip tone="info">In use</Chip> : null}
           </span>
           {subtitle ? (
             <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>
@@ -575,14 +619,6 @@ function ServerRow({
       </button>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-5 sm:pl-0">{children}</div>
     </div>
-  )
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="shrink-0 rounded-full border border-(--color-border) bg-(--bg-key) px-2 py-0.5 text-meta font-medium text-(--color-text-muted) select-none">
-      {children}
-    </span>
   )
 }
 

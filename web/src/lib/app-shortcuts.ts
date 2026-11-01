@@ -47,6 +47,10 @@ export const APP_SHORTCUTS = {
   focusChat: { key: 'I' },
   closeTab: { key: 'W' },
   settings: { key: ',', switcher: true },
+  // Save the form on the open Settings page or editor. Bound only inside the
+  // Settings modal (`within: settingsRoot`), never app-wide; listed here so the
+  // key is spelled out in one place and swallowed behind dialogs like the rest.
+  save: { key: 'S' },
   historyBack: { key: '[' },
   historyForward: { key: ']' },
   // Alt keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean.

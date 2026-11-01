@@ -1,25 +1,39 @@
 /**
- * SettingsMobileIndex — the phone landing view of Settings: every section,
- * grouped as in the desktop sidebar, each with a one-line description.
- * Tapping a row opens that section full-screen; the overlay's Back button
- * returns here.
+ * SettingsMobileIndex — the phone landing view of Settings: a search field
+ * and every section, grouped as in the desktop sidebar, each with a one-line
+ * description. Tapping a row opens that section full-screen; the overlay's
+ * Back button returns here. A query lists matching sections and single
+ * settings instead.
  */
 import { ChevronRight } from 'lucide-react'
 
 import { PanelSection } from '@/components/ui/panel-section'
 import { SETTINGS_GROUPS, type TopLevelSection } from '@/components/settings/sections'
+import { SettingsSearchField, SettingsSearchResults, useSettingsSearch } from '@/components/settings/SettingsSearch'
+import type { SettingsHit } from '@/components/settings/settings-index'
 import { ICON_SIZE, PAGE_BODY, TEXT } from '@/components/settings/tokens'
 import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { cn } from '@/lib/utils'
 
-export function SettingsMobileIndex({ onSelect }: { onSelect: (section: TopLevelSection) => void }) {
+export function SettingsMobileIndex({
+  onSelect,
+  onOpenHit,
+}: {
+  onSelect: (section: TopLevelSection) => void
+  /** A search result: a section, or one setting inside it. Defaults to opening its section. */
+  onOpenHit?: (hit: SettingsHit) => void
+}) {
   const sections = useVisibleSettingsSections()
   const counts = useSettingsSectionCounts()
+  const search = useSettingsSearch(sections)
+  const openHit = onOpenHit ?? ((hit: SettingsHit) => onSelect(hit.section))
 
   return (
     <nav aria-label="Settings sections" className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
       <div className={cn(PAGE_BODY, 'space-y-6 pt-4 pb-12')}>
-        {SETTINGS_GROUPS.map((group) => {
+        <SettingsSearchField search={search} onOpen={openHit} />
+        {search.searching && <SettingsSearchResults search={search} onOpen={openHit} className="pt-0" />}
+        {!search.searching && SETTINGS_GROUPS.map((group) => {
           const items = sections.filter((s) => s.group === group.id)
           if (items.length === 0) return null
           return (

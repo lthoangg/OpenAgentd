@@ -16,12 +16,17 @@ describe('APP_SHORTCUTS', () => {
     expect(new Set(combos).size).toBe(combos.length)
   })
 
-  it('leaves bare ⌘S / Ctrl+S to the surface that saves', () => {
-    // Settings pages and editors bind Save; an app-wide ⌘S would fire too.
+  it('keeps bare ⌘S / Ctrl+S for Settings saves alone', () => {
+    // Settings pages and editors bind Save inside the Settings modal (`within`);
+    // the table lists it so the key is spelled out once. No other shortcut may
+    // take bare S: an app-wide ⌘S would fire on every surface.
     const bareS = Object.entries(APP_SHORTCUTS)
       .filter(([, s]) => s.key.toUpperCase() === 'S' && !('shift' in s && s.shift))
       .map(([name]) => name)
-    expect(bareS).toEqual([])
+    expect(bareS).toEqual(['save'])
+    expect(chordOf(APP_SHORTCUTS.save)).toEqual({ key: 'S', mod: true, shift: false, alt: false })
+    expect(shortcutLabel(APP_SHORTCUTS.save, 'macos')).toBe('⌘S')
+    expect(shortcutLabel(APP_SHORTCUTS.save, 'windows')).toBe('Ctrl+S')
   })
 
   it('registers every shortcut on the platform primary modifier', () => {

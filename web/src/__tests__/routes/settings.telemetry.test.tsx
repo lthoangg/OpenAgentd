@@ -1,4 +1,4 @@
-/** Settings → Telemetry: how many days local traces and metrics are kept. */
+/** Settings → Retention: how many days local traces and metrics are kept. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -15,6 +15,8 @@ mock.module('@/hooks/use-mobile', () => ({
 }))
 
 import { TelemetrySettingsPage } from '@/components/settings/pages/settings.telemetry'
+import { ToastStack } from '@/components/ToastStack'
+import { useToastStore } from '@/stores/useToastStore'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -23,6 +25,7 @@ const TELEMETRY = { retention_days: 90, default_retention_days: 90, max_retentio
 const TELEMETRY_URL = 'http://localhost/api/settings/telemetry'
 
 beforeEach(() => {
+  useToastStore.setState({ toasts: [] })
   server.listen()
   originalFetch = globalThis.fetch
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -42,10 +45,27 @@ afterEach(() => {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><TelemetrySettingsPage /></QueryClientProvider>)
+  return render(<QueryClientProvider client={queryClient}><TelemetrySettingsPage /><ToastStack /></QueryClientProvider>)
 }
 
 describe('TelemetrySettingsPage', () => {
+  it('is called Retention, in the page title, and says "Retention saved" after a save', async () => {
+    server.use(
+      http.get(TELEMETRY_URL, () => HttpResponse.json(TELEMETRY)),
+      http.put(TELEMETRY_URL, async ({ request }) => HttpResponse.json({ ...TELEMETRY, ...((await request.json()) as object) })),
+    )
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Retention' })).toBeTruthy()
+    expect(screen.queryByText('Data retention')).toBeNull()
+    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    await waitFor(() => expect(input.value).toBe('90'))
+    // Longer than the saved window, so nothing is deleted and no confirmation is asked.
+    fireEvent.change(input, { target: { value: '120' } })
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('Retention saved'))
+  })
+
   it('shows the stored retention and saves a new number of days', async () => {
     const bodies: unknown[] = []
     server.use(

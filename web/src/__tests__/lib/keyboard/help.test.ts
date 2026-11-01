@@ -32,7 +32,7 @@ describe('shortcutHelp', () => {
     expect(find('macos', 'Maximize the Review panel')?.keys).toEqual(['⌘⇧D'])
     expect(find('windows', 'Close tab')?.keys).toEqual(['Ctrl+W'])
     expect(find('macos', 'Keyboard shortcuts')?.keys).toEqual(['⌘/'])
-    expect(find('macos', 'Toggle Design picking')?.keys).toEqual(['⌥C'])
+    expect(find('macos', 'Comment on an element (toggle)')?.keys).toEqual(['⌥C'])
     expect(find('macos', 'Close the top dialog, menu or viewer')?.keys).toEqual(['Esc'])
     expect(find('macos', 'Open and leave a Command Palette list')?.keys).toEqual(['→', '←'])
   })

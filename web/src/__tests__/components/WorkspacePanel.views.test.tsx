@@ -217,12 +217,12 @@ describe('Review dock Plan tab', () => {
   })
 })
 
-describe('Review dock BTW tab', () => {
+describe('Review dock side questions tab', () => {
   it('opens and focuses the side questions tab for a btw request and reports the active view', async () => {
     const reported: (DockView | null)[] = []
     await renderPanel({ request: { view: 'btw', key: 1 }, onActiveViewChange: (v) => reported.push(v) })
 
-    const tab = await screen.findByRole('button', { name: 'BTW side questions' })
+    const tab = await screen.findByRole('button', { name: 'Side questions' })
     expect(tab.getAttribute('aria-current')).toBe('true')
     expect(await screen.findByText('Which file holds the router?')).toBeTruthy()
     expect(reported.at(-1)).toBe('btw')

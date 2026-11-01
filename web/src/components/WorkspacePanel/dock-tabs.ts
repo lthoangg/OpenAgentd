@@ -172,7 +172,7 @@ export function dockTabLabel(tab: DockTab): string {
     case 'plan':
       return 'Session plan'
     case 'btw':
-      return 'BTW side questions'
+      return 'Side questions'
     case 'goal':
       return tab.title === 'Goal' ? 'Session goal' : tab.title
     case 'preview':

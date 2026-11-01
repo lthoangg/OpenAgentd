@@ -179,7 +179,7 @@ export function WorkspacePicker({
             className={`${MENU_ITEM_CLASS} ${activeIndex === openFolderIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2)'}`}
           >
             <FolderPlus size={12} className="shrink-0" aria-hidden="true" />
-            Open folder…
+            Open workspace…
           </div>
         </div>
       </PopoverContent>

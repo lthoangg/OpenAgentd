@@ -18,11 +18,17 @@ describe('RevertNotice', () => {
 
   it('says what is undone and what happens next, as visible text', () => {
     const { unmount } = render(<RevertNotice count={2} onRedo={() => {}} onRedoAll={() => {}} />)
-    expect(screen.getByText('Last 2 messages undone. Redo brings them back; sending a new message discards them.')).toBeTruthy()
+    expect(screen.getByText('Undid the last 2 messages. Redo brings them back; sending a new message discards them.')).toBeTruthy()
     unmount()
 
     render(<RevertNotice count={1} onRedo={() => {}} />)
-    expect(screen.getByText('Last message undone. Redo brings it back; sending a new message discards it.')).toBeTruthy()
+    expect(screen.getByText('Undid the last message. Redo brings it back; sending a new message discards it.')).toBeTruthy()
+  })
+
+  it('words the caption with Undo and Redo, not "undone"', () => {
+    render(<RevertNotice count={2} onRedo={() => {}} />)
+
+    expect(screen.getByText(/^Undid the last 2 messages/).textContent).not.toMatch(/undone/i)
   })
 
   it('uses one word pair, Undo and Redo, and never "revert"', () => {
@@ -82,7 +88,7 @@ describe('RevertNotice', () => {
 
     await user.hover(screen.getByRole('button', { name: 'Redo' }))
 
-    expect((await screen.findByRole('tooltip')).textContent).toContain('next undone message')
+    expect((await screen.findByRole('tooltip')).textContent).toContain('last message you undid')
   })
 
   it('shows the undone messages on request, under the row of actions', async () => {
@@ -105,7 +111,7 @@ describe('RevertNotice', () => {
     await user.click(toggle)
 
     expect(screen.getByRole('button', { name: 'Hide messages' }).getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('list', { name: 'Undone messages' }).textContent).toContain('draft 1')
+    expect(screen.getByRole('list', { name: 'Messages you undid' }).textContent).toContain('draft 1')
     expect(screen.getByText('draft 2')).toBeTruthy()
   })
 
@@ -122,7 +128,7 @@ describe('RevertNotice', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Show messages' }))
 
-    const frame = screen.getByText(/Last 2 messages undone/).parentElement as HTMLElement
+    const frame = screen.getByText(/Undid the last 2 messages/).parentElement as HTMLElement
     expect(frame.className).toContain('border-(--color-border-subtle)')
     const bordered = Array.from(container.querySelectorAll('*')).filter((el) => /(?<![\w-:])border(?:-[btlrxy])?(?![\w-])/.test(el.getAttribute('class') ?? ''))
     expect(bordered).toEqual([frame])
@@ -131,8 +137,8 @@ describe('RevertNotice', () => {
   it('reads the caption at 12px and keeps its actions on one row', () => {
     render(<RevertNotice count={2} messages={[{ role: 'user', content: 'a' }]} onRedo={() => {}} onRedoAll={() => {}} />)
 
-    expect(screen.getByText(/Last 2 messages undone/).className).toContain('leading-relaxed')
-    expect(screen.getByText(/Last 2 messages undone/).parentElement?.className).toContain('text-xs')
+    expect(screen.getByText(/Undid the last 2 messages/).className).toContain('leading-relaxed')
+    expect(screen.getByText(/Undid the last 2 messages/).parentElement?.className).toContain('text-xs')
     const row = screen.getByRole('button', { name: 'Redo' }).closest('div') as HTMLElement
     expect(Array.from(row.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Redo', 'Redo all', 'Show messages'])
   })

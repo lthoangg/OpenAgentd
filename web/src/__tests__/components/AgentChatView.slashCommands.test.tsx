@@ -38,11 +38,11 @@ describe('BASE_SLASH_COMMANDS', () => {
 
     expect(redo).toBeDefined()
     expect(redo?.label).toBe('Redo')
-    expect(redo?.description).toBe('Redo the next undone message')
+    expect(redo?.description).toBe('Redo the last message you undid')
 
     expect(redoAll).toBeDefined()
     expect(redoAll?.label).toBe('Redo All')
-    expect(redoAll?.description).toBe('Restore all undone messages back to the live tip')
+    expect(redoAll?.description).toBe('Redo every message you undid, up to the latest')
   })
 
   it('does not offer /goal: a goal starts from a plan review, not a command', () => {

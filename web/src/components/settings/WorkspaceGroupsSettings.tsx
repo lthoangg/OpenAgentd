@@ -314,7 +314,7 @@ export function WorkspaceGroupsSettings() {
                               type="button"
                               aria-label={`Remove ${repo.name} from ${group.name}`}
                               onClick={() => setMember(group, repo.path, false)}
-                              className="inline-flex size-5 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-9"
+                              className="inline-flex size-6 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-9"
                             >
                               <X size={ICON_SIZE_INLINE} aria-hidden="true" />
                             </button>

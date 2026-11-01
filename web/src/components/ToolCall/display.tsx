@@ -711,7 +711,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
     const waits = parsed.reply === true ? ' · awaiting reply' : ''
     const worktree = str(parsed, 'worktree')
-    const checkout = worktree ? (worktree.toLowerCase() === 'main' ? 'main checkout' : `worktree ${trunc(worktree)}`) : null
+    const checkout = worktree ? (worktree.toLowerCase() === 'main' ? 'main workspace' : `worktree ${trunc(worktree)}`) : null
     if (checkout) {
       const where = label ? `${label} · ${checkout}` : checkout
       return {

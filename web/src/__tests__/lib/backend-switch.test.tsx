@@ -108,14 +108,14 @@ describe('switching servers', () => {
     expect(pendingBackendSwitch()).toBeNull()
   })
 
-  it('shows the builtin server starting, and closes when no reload is needed', async () => {
+  it('shows the built-in server starting, and closes when no reload is needed', async () => {
     bundledStart = deferred()
     status = { ...status, base_url: 'http://127.0.0.1:5999', mode: 'bundled', external: false, sidecar_running: true }
     render(<BackendSwitchScreen />)
     let switching!: ReturnType<typeof connectBundledBackend>
     act(() => { switching = connectBundledBackend('http://127.0.0.1:5999') })
 
-    expect(screen.getByRole('status', { name: 'Switching to the builtin server' }).textContent).toContain("Running sessions continue once it's up.")
+    expect(screen.getByRole('status', { name: 'Switching to the built-in server' }).textContent).toContain("Running sessions continue once it's up.")
 
     bundledStart.resolve(null)
     const result = await act(() => switching)

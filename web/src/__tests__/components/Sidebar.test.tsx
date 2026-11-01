@@ -565,7 +565,7 @@ describe('Sidebar helpers', () => {
     })
     expect(draftNavigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false })
 
-    // Open folder on a folder the sidebar does not list registers it first.
+    // Open workspace on a folder the sidebar does not list registers it first.
     const setVisibility = mock(async (..._args: unknown[]) => ({ workspace: '/repo/new', hidden: false, updated: 0 }))
     let refreshCount = 0
     const folderNavigate = mock((..._args: unknown[]) => {})
@@ -950,7 +950,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(dialogOpen).toHaveBeenCalledWith({
       directory: true,
       multiple: false,
-      title: 'Open folder',
+      title: 'Open workspace',
     })
 
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
@@ -982,7 +982,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(dialogOpen).toHaveBeenCalledWith({
       directory: true,
       multiple: false,
-      title: 'Open folder',
+      title: 'Open workspace',
     })
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
@@ -1097,7 +1097,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(await screen.findByText('Trust this workspace?')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /^back$/i }))
 
-    expect(screen.getByText('Open folder')).toBeTruthy()
+    expect(screen.getByText('Open workspace')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
     expect(loadLastWorkspace()).toBeNull()
   })
@@ -2016,8 +2016,9 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(chip)
     const menu = screen.getByRole('menu', { name: 'Worktrees for project' })
-    expect(within(menu).getByRole('menuitemradio', { name: 'All checkouts' }).getAttribute('aria-checked')).toBe('true')
-    expect(within(menu).getByRole('menuitemradio', { name: 'Main worktree' }).getAttribute('aria-checked')).toBe('false')
+    expect(within(menu).getByRole('menuitemradio', { name: 'Workspace and worktrees' }).getAttribute('aria-checked')).toBe('true')
+    expect(within(menu).getByRole('menuitemradio', { name: 'Workspace' }).getAttribute('aria-checked')).toBe('false')
+    expect(menu.textContent).not.toMatch(/checkout|main worktree/i)
     await user.click(within(menu).getByRole('menuitemradio', { name: 'task-a' }))
 
     expect(screen.queryByRole('menu')).toBeNull()
@@ -2041,7 +2042,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(resolveCalled).toBe(false)
 
     // The list names its filter and clears it in one step.
-    await user.click(screen.getByRole('button', { name: 'Show all checkouts in project' }))
+    await user.click(screen.getByRole('button', { name: 'Show all worktrees in project' }))
     expect(screen.getByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ })).toBeTruthy()
     expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })

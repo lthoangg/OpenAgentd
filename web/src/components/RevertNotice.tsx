@@ -31,8 +31,8 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
   if (count <= 0) return null
   const caption =
     count === 1
-      ? 'Last message undone. Redo brings it back; sending a new message discards it.'
-      : `Last ${count} messages undone. Redo brings them back; sending a new message discards them.`
+      ? 'Undid the last message. Redo brings it back; sending a new message discards it.'
+      : `Undid the last ${count} messages. Redo brings them back; sending a new message discards them.`
   const canShow = messages.length > 0
 
   return (
@@ -48,7 +48,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                 </Button>
               }
             />
-            <TooltipContent>Restore the next undone message and its file changes</TooltipContent>
+            <TooltipContent>Redo the last message you undid, with its file changes</TooltipContent>
           </Tooltip>
           {count > 1 && onRedoAll && (
             <Tooltip>
@@ -59,7 +59,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                   </Button>
                 }
               />
-              <TooltipContent>Restore every undone message and its file changes</TooltipContent>
+              <TooltipContent>Redo every message you undid, with their file changes</TooltipContent>
             </Tooltip>
           )}
           {canShow && (
@@ -77,7 +77,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
           )}
         </div>
         <Collapsible open={expanded && canShow}>
-          <ul aria-label="Undone messages" className="flex max-h-44 flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y">
+          <ul aria-label="Messages you undid" className="flex max-h-44 flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y">
             {messages.map((message, index) => (
               <li key={`${message.role}-${index}`} className="whitespace-pre-wrap text-(--color-text)">
                 {designFeedbackPlainText(message.content)}

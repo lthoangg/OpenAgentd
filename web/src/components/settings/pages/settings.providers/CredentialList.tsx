@@ -550,7 +550,7 @@ export function CredentialList({
               description={isOauth
                 ? 'OpenAgentd signs out of this account. Sign in again to use it.'
                 : 'The key is deleted from this computer. Add it again to use it.'}
-              confirmLabel={isOauth ? 'Sign out' : 'Remove key'}
+              confirmLabel={isOauth ? 'Sign out' : 'Remove'}
               onConfirm={() => (target ? doRemove(target) : undefined)}
             />
           )

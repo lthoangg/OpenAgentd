@@ -220,7 +220,7 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: 'Open folder',
+    title: 'Open workspace',
   })
   return typeof selected === 'string' ? selected : null
 }
@@ -573,7 +573,7 @@ export function Sidebar({
     else newSessionIn(sessionTarget)
   }
 
-  // A folder from Open folder…: register it (so it has a row) and open a
+  // A folder from Open workspace…: register it (so it has a row) and open a
   // draft there.
   const openFolderDraft = async (path: string) => {
     setPendingWorkspace(path)
@@ -1234,7 +1234,7 @@ export function Sidebar({
             <p className="text-xs text-(--color-text-muted)">No workspaces yet.</p>
             <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
               <FolderPlus size={13} aria-hidden="true" />
-              Open folder…
+              Open workspace…
             </Button>
           </div>
         )}
@@ -1277,7 +1277,7 @@ export function Sidebar({
             .filter(sessionWorking)
             .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
-          const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'main worktree' : 'all')
+          const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'Workspace' : 'all')
 
           return (
             <div key={path} className="relative" data-sidebar-workspace-group="">
@@ -1384,8 +1384,8 @@ export function Sidebar({
                     />
                     <TooltipContent>
                       {checkouts.selected
-                        ? `Showing ${selectedWorktree?.name ?? 'the main worktree'} only · change checkout`
-                        : `All checkouts · ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`}
+                        ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
+                        : `Showing the workspace and ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`}
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -1451,13 +1451,13 @@ export function Sidebar({
                           : <Folder size={11} className="text-(--color-accent)" />}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2)">
-                        {selectedWorktree?.name ?? 'main worktree'}
+                        {selectedWorktree?.name ?? 'Workspace'}
                       </span>
                       <button
                         type="button"
                         onClick={() => selectCheckout(path, null)}
                         className={ROW_TEXT_ACTION}
-                        aria-label={`Show all checkouts in ${sourceLabel}`}
+                        aria-label={`Show all worktrees in ${sourceLabel}`}
                       >
                         Show all
                       </button>
@@ -1558,9 +1558,9 @@ export function Sidebar({
           ) : nativeFolderPickerEnabled && !isTauriMobile ? (
             <>
               <DialogHeader>
-                <DialogTitle>Open folder</DialogTitle>
+                <DialogTitle>Open workspace</DialogTitle>
                 <DialogDescription>
-                  Use the desktop folder picker to choose a local project folder.
+                  Use the desktop folder picker to choose a workspace.
                 </DialogDescription>
               </DialogHeader>
               <div className="min-w-0 space-y-2">
@@ -1583,8 +1583,8 @@ export function Sidebar({
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Open folder</DialogTitle>
-                <DialogDescription>Choose a server-local project folder.</DialogDescription>
+                <DialogTitle>Open workspace</DialogTitle>
+                <DialogDescription>Choose a workspace folder on the server.</DialogDescription>
               </DialogHeader>
               <div className="min-w-0 space-y-2">
                 <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
@@ -1734,7 +1734,7 @@ export function Sidebar({
                 <div className="min-w-0 flex-1">
                   <DialogTitle>Create worktree</DialogTitle>
                   <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
-                    Isolated checkout from {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
+                    Isolated copy of {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
                   </DialogDescription>
                 </div>
                 <button
@@ -1939,14 +1939,14 @@ export function Sidebar({
             checked={checkoutMenuRepository.selected === null}
             onSelect={() => { selectCheckout(checkoutMenu.repo, null); setCheckoutMenu(null) }}
           >
-            All checkouts
+            Workspace and worktrees
           </CheckoutMenuItem>
           <CheckoutMenuItem
             checked={checkoutMenuRepository.selected === checkoutMenu.repo}
             onSelect={() => { selectCheckout(checkoutMenu.repo, checkoutMenu.repo); setCheckoutMenu(null) }}
           >
             <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-            Main worktree
+            Workspace
           </CheckoutMenuItem>
           {checkoutMenuRepository.worktrees.map((item) => (
             <CheckoutMenuItem

@@ -121,7 +121,7 @@ export function SidebarViewMenu({
       </CheckItem>
       <ContextMenuSeparator />
       {onCollapseAll && <ActionItem onSelect={() => { onCollapseAll(); onDismiss() }}>Collapse all workspaces</ActionItem>}
-      {onOpenFolder && <ActionItem onSelect={() => { onDismiss(); onOpenFolder() }}>Open folder…</ActionItem>}
+      {onOpenFolder && <ActionItem onSelect={() => { onDismiss(); onOpenFolder() }}>Open workspace…</ActionItem>}
       {(onCollapseAll || onOpenFolder) && <ContextMenuSeparator />}
       <button
         type="button"

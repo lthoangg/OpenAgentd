@@ -28,7 +28,7 @@ describe('send_to_workspace display', () => {
 
   it('names the checkout a worktree send picks', () => {
     expect(getToolDisplay('workspace', JSON.stringify({ worktree: 'auth', message: 'x', reply: true })).headerTitle).toBe('→ worktree auth · awaiting reply')
-    expect(getToolDisplay('workspace', JSON.stringify({ workspace: 'app', worktree: 'main', message: 'x' })).headerTitle).toBe('→ app · main checkout')
+    expect(getToolDisplay('workspace', JSON.stringify({ workspace: 'app', worktree: 'main', message: 'x' })).headerTitle).toBe('→ app · main workspace')
   })
 })
 

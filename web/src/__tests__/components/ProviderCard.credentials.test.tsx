@@ -306,7 +306,7 @@ describe('ProviderCard — several API keys', () => {
     openMore('Work')
     fireEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }))
     expect(mockDelete).not.toHaveBeenCalled()
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove key' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('openai', 'cred_b'))
   })
 

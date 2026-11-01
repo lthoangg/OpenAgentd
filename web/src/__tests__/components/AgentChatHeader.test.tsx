@@ -276,7 +276,7 @@ describe('AgentChatHeader', () => {
     expect(buttons.map((el) => el.getAttribute('aria-label'))).toEqual([
       'Toggle sidebar',
       'Rename session: Fix updater restart',
-      expect.stringMatching(/^Search or run a command/),
+      expect.stringMatching(/^Command palette/),
       'Task list',
       'Review panel',
     ])
@@ -414,7 +414,7 @@ describe('AgentChatHeader', () => {
     const onOpenPalette = mock(() => {})
     renderHeader({ isMobile: false, onOpenPalette })
 
-    await user.click(screen.getByRole('button', { name: /Search or run a command/ }))
+    await user.click(screen.getByRole('button', { name: /Command palette/ }))
 
     expect(onOpenPalette).toHaveBeenCalledTimes(1)
   })
@@ -422,7 +422,7 @@ describe('AgentChatHeader', () => {
   it('keeps the command center off the mobile header', () => {
     renderHeader({ isMobile: true, onOpenPalette: () => undefined })
 
-    expect(screen.queryByRole('button', { name: /Search or run a command/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Command palette/ })).not.toBeInTheDocument()
   })
 
   it('reflects the review dock state on its toggle', () => {

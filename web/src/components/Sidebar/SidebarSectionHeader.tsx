@@ -53,7 +53,7 @@ function HeaderAction({
 
 /**
  * The sessions section header: its name with Search and View options.
- * Collapse all and Open folder… live in View options. New sessions start
+ * Collapse all and Open workspace… live in View options. New sessions start
  * from New session at the top of the sidebar, a workspace's "+", ⌘N or the
  * command palette. It sticks to the top of the sidebar's one scroller, so its
  * actions stay reachable however long the list is.

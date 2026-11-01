@@ -34,19 +34,16 @@ mock.module('@/hooks/use-platform', () => ({
   usePlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
   getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
 }))
-// The mocked aside does not animate: tests finish its tween by hand.
-let finishTween: (() => void) | undefined
+// The mocked aside does not animate; it keeps the inline style the panel
+// sets (desktop widths are a straight cut, not a tween).
 mock.module('framer-motion', () => ({
   motion: {
-    aside: ({ children, className, 'aria-label': ariaLabel, onAnimationComplete }: {
+    aside: ({ children, className, 'aria-label': ariaLabel, style }: {
       children: React.ReactNode
       className?: string
       'aria-label'?: string
-      onAnimationComplete?: () => void
-    }) => {
-      finishTween = onAnimationComplete
-      return <aside className={className} aria-label={ariaLabel}>{children}</aside>
-    },
+      style?: React.CSSProperties
+    }) => <aside className={className} aria-label={ariaLabel} style={style}>{children}</aside>,
   },
 }))
 
@@ -85,12 +82,11 @@ describe('Review dock layout', () => {
     // 45% of a 1000px center, capped so the chat keeps 400px.
     expect(separator.getAttribute('aria-valuenow')).toBe('450')
     expect(separator.getAttribute('aria-valuemax')).toBe('600')
-    // The body keeps that width while the aside tweens open...
+    // Showing it is a straight cut, not a tween: the aside takes its width
+    // as a style at once (no animation frame needed), and the body fills it,
+    // so a later resize moves it with the edge.
+    expect(dock.style.width).toBe('450px')
     const body = dock.querySelector<HTMLElement>('[data-review-dock]')!
-    expect(body.parentElement!.style.width).toBe('450px')
-    // ...then fills it, so a later resize moves it with the edge instead of
-    // clipping its far side or leaving it blank until the tween ends.
-    act(() => finishTween?.())
     expect(body.parentElement!.style.width).toBe('100%')
 
     fireEvent.keyDown(separator, { key: 'ArrowLeft' })

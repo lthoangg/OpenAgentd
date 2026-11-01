@@ -166,6 +166,25 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     return () => window.removeEventListener('paste', onPaste)
   }, [isMobile, placement])
 
+  // Publish the docked composer's height on the workbench center as
+  // ``--composer-h``: a Review panel overlaying a narrow chat stops there.
+  const dockedRef = useRef<HTMLDivElement>(null)
+  const docked = !(placement === 'inline' && !isMobile)
+  useLayoutEffect(() => {
+    const node = dockedRef.current
+    const center = node?.closest<HTMLElement>('[data-workbench-center]')
+    if (!node || !center || !docked) return
+    const publish = () => center.style.setProperty('--composer-h', `${Math.round(node.getBoundingClientRect().height)}px`)
+    publish()
+    if (typeof ResizeObserver === 'undefined') return () => center.style.removeProperty('--composer-h')
+    const observer = new ResizeObserver(publish)
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+      center.style.removeProperty('--composer-h')
+    }
+  }, [docked])
+
   const tray = (
     <>
       <JumpToLatestChip />
@@ -187,7 +206,7 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
 
   if (placement === 'inline' && !isMobile) {
     return (
-      <div ref={rootRef} data-testid="inline-inputbar-container" className="relative mx-auto w-full max-w-[640px]">
+      <div ref={rootRef} data-testid="inline-inputbar-container" data-focus-region="composer" className="relative mx-auto w-full max-w-[640px]">
         {aboveComposer}
         {composer}
       </div>
@@ -199,7 +218,9 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     // nothing is ever hidden under it. Phones clear the home indicator; the
     // shell itself rides up with the soft keyboard (``useMobileViewportGuards``).
     <div
+      ref={dockedRef}
       data-testid="docked-composer"
+      data-focus-region="composer"
       className={isMobile ? 'relative shrink-0 bg-(--bg-page) px-2 pb-safe pt-1.5' : 'relative shrink-0 bg-(--bg-page) px-3 pb-3 pt-1 sm:px-4'}
     >
       <div ref={rootRef} className="relative mx-auto w-full max-w-3xl">

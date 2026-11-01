@@ -772,6 +772,20 @@ export function AgentView({
   // Phone: drag or tap the transcript to put the keyboard away.
   useDismissKeyboardOnTouch(scrollRef)
 
+  // Code, tables, diagrams and diffs may widen past the 768px prose column
+  // to 960px when the chat has room (see `.oa-transcript-col` in index.css).
+  // A variable, not a container query: size containment would also contain
+  // the column's fixed-position descendants.
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root || typeof ResizeObserver === 'undefined') return
+    const sync = () => root.style.setProperty('--oa-transcript-w', `${root.clientWidth}px`)
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [scrollRef])
+
   // A switch fades the next session's transcript in once it has something to
   // show, before paint so its first frame never shows at full strength. The
   // first session on mount, and the first message of a new or empty chat
@@ -1037,14 +1051,23 @@ export function AgentView({
     {/* Vertical only: ``overflow-y: auto`` alone turns ``overflow-x`` to auto, and
         one over-wide row then let the whole transcript pan sideways on touch.
         Code, tables and diagrams scroll inside their own boxes. */}
-    <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto">
+    <div
+      ref={scrollRef}
+      onWheel={cancelPromptJump}
+      onTouchMove={cancelPromptJump}
+      // F6 stops here; focused itself, so the arrow and page keys scroll it.
+      data-focus-region="transcript"
+      data-region-self=""
+      aria-label="Transcript"
+      className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto"
+    >
       {/* A held transcript (a switch in progress) is for looking at only.
           The one being left dims while the next one loads. */}
       <div
         ref={contentRef}
         inert={hold !== null}
         data-session-hold={hold?.kind}
-        className={`mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
+        className={`oa-transcript-col mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
       >
         {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
         {isEmpty && !isLoadingHistory && (

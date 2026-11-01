@@ -45,6 +45,15 @@
  * The session plan opens as a Plan tab on every platform with a workspace
  * (the dock sheet on phones). Desktop brings it forward by itself once per
  * plan review, so the plan the agent submitted is on screen to review.
+ *
+ * ── Desktop layout ──────────────────────────────────────────────────────
+ *
+ * Below ``SIDEBAR_DRAWER_MAX_VIEWPORT`` the desktop sidebar is a drawer over
+ * the content, open only until a click outside, Escape or a pick. Whether
+ * the Review panel is open is remembered per window. Focus mode hides the
+ * sidebar and the Review panel and puts both back on its second press;
+ * opening either in the meantime simply ends it. Splitting the Review panel
+ * and its terminal group (⌃`) reach the dock as keyed requests, like views.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -58,13 +67,13 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { parseMentionRef, resolveWorkspaceRef, workspaceRelativePath, type FileRef } from '@/utils/file-refs'
-import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
+import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT, SIDEBAR_DRAWER_MAX_VIEWPORT } from '@/lib/workbench-layout'
 import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import { useBackHandler } from '@/lib/back-button'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { AttachmentTabRequest, DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
+import type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
 import type { FileLightboxItem } from '../FileLightbox'
 import type { PreviewTarget } from '@/api/preview'
 import type { ChangedFileStatus } from '../WorkspacePanel/diff-helpers'
@@ -72,7 +81,18 @@ import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { sessionTouchedPaths } from './helpers'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
-export type { AttachmentTabRequest, DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest }
+export type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest }
+
+/**
+ * The Review panel reopens as the window left it once per page load: the
+ * first chat view with a workspace takes the remembered state, later mounts
+ * (another route, a remount) start from what is on screen.
+ */
+let dockRestorePending = true
+/** Tests: let the next mount restore the Review panel again. */
+export function _resetDockRestoreForTests(): void {
+  dockRestorePending = true
+}
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
@@ -102,6 +122,9 @@ export interface UseOverlayStateResult {
   handledDockPreviewRequestKeyRef: React.RefObject<number>
   dockAttachmentRequest: AttachmentTabRequest | null
   handledDockAttachmentRequestKeyRef: React.RefObject<number>
+  /** Split / terminal-group requests for the dock (⌘\, ⌃`). */
+  dockLayoutRequest: DockLayoutRequest | null
+  handledDockLayoutKeyRef: React.RefObject<number>
   /** Dock view tab currently focused in the mounted dock, else ``null``. */
   dockActiveView: DockView | null
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
@@ -111,6 +134,17 @@ export interface UseOverlayStateResult {
   schedulerInDock: boolean
   sidebarCollapsed: boolean
   setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
+  /** The desktop window is narrow enough that the sidebar is a drawer. */
+  sidebarDrawer: boolean
+  sidebarDrawerOpen: boolean
+  setSidebarDrawerOpen: Dispatch<SetStateAction<boolean>>
+  /** Focus mode: sidebar and Review panel hidden until it ends. */
+  focusMode: boolean
+  handleToggleFocusMode: () => void
+  /** ⌘\: split the Review panel into two groups, or join them. */
+  handleSplitDock: () => void
+  /** ⌃`: show or hide the Review panel's terminal group. */
+  handleToggleTerminalGroup: () => void
   openWorkspaceDialogKey: number
   showTodos: boolean
   showMobileActions: boolean
@@ -194,6 +228,8 @@ export function useOverlayState({
   const handledDockPreviewRequestKeyRef = useRef(0)
   const [dockAttachmentRequest, setDockAttachmentRequest] = useState<AttachmentTabRequest | null>(null)
   const handledDockAttachmentRequestKeyRef = useRef(0)
+  const [dockLayoutRequest, setDockLayoutRequest] = useState<DockLayoutRequest | null>(null)
+  const handledDockLayoutKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
   const schedulerInDock = Boolean(workspace)
@@ -208,6 +244,18 @@ export function useOverlayState({
       resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, wideViewport),
     )
   }, [wideViewport])
+  // Narrow desktop windows: the sidebar covers the content as a drawer, open
+  // only until it is dismissed; the collapsed choice above is left alone.
+  const sidebarDrawer = !isMobile && !useViewportAtLeast(SIDEBAR_DRAWER_MAX_VIEWPORT)
+  const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false)
+  useEffect(() => {
+    if (!sidebarDrawer) setSidebarDrawerOpen(false)
+  }, [sidebarDrawer])
+  /** Show the sidebar: open the drawer, or expand the column. */
+  const revealSidebar = useCallback(() => {
+    if (sidebarDrawer) setSidebarDrawerOpen(true)
+    else setSidebarCollapsed(false)
+  }, [setSidebarCollapsed, sidebarDrawer])
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showMobileActions, setShowMobileActions] = useState(false)
@@ -216,11 +264,40 @@ export function useOverlayState({
     setFileViewer(null)
   }, [workspace])
 
-  // Maximize is a per-opening affordance: closing the dock always restores
-  // the chat so the next ⌘D opens side by side.
+  // The Review panel reopens as this window left it (desktop only), once a
+  // workspace is there to show; until then nothing is written back.
+  const [dockRestored, setDockRestored] = useState(false)
   useEffect(() => {
-    if (workspacePanel === null) useLayoutStore.getState().setDockMaximized(false)
-  }, [workspacePanel])
+    if (dockRestored || isMobile || !workspace) return
+    setDockRestored(true)
+    if (dockRestorePending) {
+      dockRestorePending = false
+      if (useLayoutStore.getState().dockOpen) setWorkspacePanel((value) => value ?? 'changed')
+    }
+  }, [dockRestored, isMobile, workspace])
+  useEffect(() => {
+    if (!isMobile && dockRestored) useLayoutStore.getState().setDockOpen(workspacePanel !== null)
+  }, [dockRestored, isMobile, workspacePanel])
+
+  // Focus mode keeps what it hid, to put it back on the second press.
+  const [focusRestore, setFocusRestore] = useState<{ sidebarCollapsed: boolean; dockOpen: boolean } | null>(null)
+  const handleToggleFocusMode = useCallback(() => {
+    if (isMobile) return
+    if (focusRestore) {
+      setFocusRestore(null)
+      setSidebarCollapsed(focusRestore.sidebarCollapsed)
+      if (focusRestore.dockOpen) setWorkspacePanel((value) => value ?? 'changed')
+      return
+    }
+    setFocusRestore({ sidebarCollapsed, dockOpen: workspacePanel !== null })
+    setSidebarCollapsed(true)
+    setSidebarDrawerOpen(false)
+    setWorkspacePanel(null)
+  }, [focusRestore, isMobile, setSidebarCollapsed, sidebarCollapsed, workspacePanel])
+  // Showing the sidebar or the Review panel in focus mode ends it, as is.
+  useEffect(() => {
+    if (focusRestore && (!sidebarCollapsed || sidebarDrawerOpen || workspacePanel !== null)) setFocusRestore(null)
+  }, [focusRestore, sidebarCollapsed, sidebarDrawerOpen, workspacePanel])
 
   useEffect(() => {
     if (isMobile) {
@@ -251,10 +328,10 @@ export function useOverlayState({
         if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('workspace-panel') }
         setWorkspacePanel((value) => (value === null ? 'changed' : null))
       } else {
-        setSidebarCollapsed(false)
+        revealSidebar()
         setOpenWorkspaceDialogKey((value) => value + 1)
       }
-  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed, workspace])
+  }, [closeOtherMobileOverlays, isMobile, revealSidebar, workspace])
 
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
@@ -267,8 +344,12 @@ export function useOverlayState({
       })
       return
     }
+    if (sidebarDrawer) {
+      setSidebarDrawerOpen((value) => !value)
+      return
+    }
     setSidebarCollapsed((value) => !value)
-  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed])
+  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed, sidebarDrawer])
 
   const handleOpenGit = useCallback(() => {
     if (!workspace) return
@@ -279,9 +360,9 @@ export function useOverlayState({
   }, [closeOtherMobileOverlays, isMobile, workspace])
 
   const handleOpenWorkspaceDialog = useCallback(() => {
-    setSidebarCollapsed(false)
+    revealSidebar()
     setOpenWorkspaceDialogKey((value) => value + 1)
-  }, [setSidebarCollapsed])
+  }, [revealSidebar])
 
   const handleFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
     setFileViewer(file)
@@ -536,6 +617,29 @@ export function useOverlayState({
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
 
+  const requestDockLayout = useCallback((action: DockLayoutRequest['action']) => {
+    setDockLayoutRequest((prev) => ({ action, key: (prev?.key ?? 0) + 1 }))
+  }, [])
+
+  // ⌘\ — two groups (top/bottom) or one. Desktop only: phones have one sheet.
+  const handleSplitDock = useCallback(() => {
+    if (!workspace || isMobile) return
+    setWorkspacePanel((value) => value ?? 'changed')
+    requestDockLayout('split')
+  }, [isMobile, requestDockLayout, workspace])
+
+  // ⌃` — the terminal group under the open tabs. With the panel closed it
+  // opens on it; phones have no groups, so it is the Terminal tab there.
+  const handleToggleTerminalGroup = useCallback(() => {
+    if (!workspace) return
+    if (isMobile) {
+      handleOpenTerminal()
+      return
+    }
+    requestDockLayout(workspacePanel === null ? 'terminal-show' : 'terminal-toggle')
+    setWorkspacePanel((value) => value ?? 'changed')
+  }, [handleOpenTerminal, isMobile, requestDockLayout, workspace, workspacePanel])
+
   // Native menu items for actions without a keyboard shortcut.
   useEffect(() => {
     const routes: [string, () => void][] = [
@@ -544,12 +648,16 @@ export function useOverlayState({
       [APP_EVENTS.openWorkspace, handleOpenWorkspaceDialog],
       [APP_EVENTS.openTerminal, handleOpenTerminal],
       [APP_EVENTS.openPlan, handleOpenPlan],
+      [APP_EVENTS.splitReviewPanel, handleSplitDock],
+      [APP_EVENTS.toggleTerminalGroup, handleToggleTerminalGroup],
+      [APP_EVENTS.toggleFocusMode, handleToggleFocusMode],
+      [APP_EVENTS.resetLayout, () => useLayoutStore.getState().resetLayout()],
     ]
     for (const [event, handler] of routes) window.addEventListener(event, handler)
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
+  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleToggleFocusMode, handleToggleScheduler, handleToggleTerminalGroup])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -638,12 +746,21 @@ export function useOverlayState({
     handledDockPreviewRequestKeyRef,
     dockAttachmentRequest,
     handledDockAttachmentRequestKeyRef,
+    dockLayoutRequest,
+    handledDockLayoutKeyRef,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
     schedulerInDock,
     sidebarCollapsed,
     setSidebarCollapsed,
+    sidebarDrawer,
+    sidebarDrawerOpen,
+    setSidebarDrawerOpen,
+    focusMode: focusRestore !== null,
+    handleToggleFocusMode,
+    handleSplitDock,
+    handleToggleTerminalGroup,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,

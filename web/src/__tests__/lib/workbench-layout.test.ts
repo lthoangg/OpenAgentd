@@ -4,13 +4,17 @@ import {
   CHAT_MIN_WIDTH,
   DOCK_DEFAULT_RATIO,
   DOCK_MIN_WIDTH,
+  DOCK_GROUP_MIN_HEIGHT,
+  DOCK_SPLIT_DEFAULT_RATIO,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
   clampSidebarWidth,
+  clampSplitRatio,
   dockOverlaysChat,
   ratioFromWidth,
   resolveDockLayout,
   resolveSidebarCollapsed,
+  sidebarIsDrawer,
 } from '@/lib/workbench-layout'
 
 describe('resolveSidebarCollapsed', () => {
@@ -86,5 +90,27 @@ describe('ratioFromWidth', () => {
     expect(ratioFromWidth(500, 1000)).toBe(0.5)
     expect(ratioFromWidth(5000, 1000)).toBe(0.95)
     expect(ratioFromWidth(500, 0)).toBe(DOCK_DEFAULT_RATIO)
+  })
+})
+
+describe('sidebarIsDrawer', () => {
+  it('covers the content below 1180px instead of pushing it', () => {
+    expect(sidebarIsDrawer(1179)).toBe(true)
+    expect(sidebarIsDrawer(1024)).toBe(true)
+    expect(sidebarIsDrawer(1180)).toBe(false)
+    expect(sidebarIsDrawer(1440)).toBe(false)
+  })
+})
+
+describe('clampSplitRatio', () => {
+  it('keeps both Review panel groups at least DOCK_GROUP_MIN_HEIGHT tall', () => {
+    expect(clampSplitRatio(0.5, 800)).toBe(0.5)
+    expect(clampSplitRatio(0.02, 800)).toBe(DOCK_GROUP_MIN_HEIGHT / 800)
+    expect(clampSplitRatio(0.99, 800)).toBe(1 - DOCK_GROUP_MIN_HEIGHT / 800)
+  })
+
+  it('falls back to the default for an invalid ratio or a panel too short to split', () => {
+    expect(clampSplitRatio(Number.NaN, 800)).toBe(DOCK_SPLIT_DEFAULT_RATIO)
+    expect(clampSplitRatio(0.8, 200)).toBe(0.5)
   })
 })

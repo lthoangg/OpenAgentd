@@ -72,6 +72,36 @@ describe('ResizableAside', () => {
     expect(screen.queryByRole('separator')).toBeNull()
   })
 
+  // Desktop panels show and hide as a straight cut. Through an animation the
+  // width waited for a frame, and a throttled frame loop (a hidden window)
+  // left the panel at 0 px; as a style it is there on the first paint.
+  it('sets the width as a plain style with instantWidth, without waiting for a frame', () => {
+    const { rerender } = render(
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0.01 }, instantWidth: true })}
+      >
+        <p>content</p>
+      </ResizableAside>,
+    )
+    const aside = screen.getByRole('complementary', { name: 'Panel' })
+    expect(aside.style.width).toBe('300px')
+    expect(aside.getAttribute('data-panel-target-width')).toBe('300')
+    expect(frames).toHaveLength(0)
+
+    rerender(
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={() => ({ animate: { width: 0 }, transition: { duration: 0.01 }, instantWidth: true })}
+      >
+        <p>content</p>
+      </ResizableAside>,
+    )
+    expect(aside.style.width).toBe('0px')
+  })
+
   // Closing tweens the aside's width to 0. Content that tracked that width
   // reflowed every frame (a long plan: ~10 ms a frame); pinned to the target
   // width it is only clipped by the shrinking aside.

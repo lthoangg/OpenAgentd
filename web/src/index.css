@@ -1110,6 +1110,21 @@ html[data-app-hidden="true"] *::after {
   margin-inline: calc((100% - 100cqi) / 2);
 }
 
+/*
+ * Transcript: prose keeps its 768px column; code, diagrams, tables and an
+ * expanded tool's output widen to 960px when the chat has room, centred on
+ * the column. --oa-transcript-w is the scroller's width (AgentView); below
+ * 768px + gutters the band equals the column and nothing moves. User
+ * bubbles stay as they are.
+ */
+.oa-transcript-col {
+  --oa-breakout: min(960px, var(--oa-transcript-w, 0px) - 2rem);
+}
+.oa-transcript-col :is(.oa-prose > [data-slot='code-block'], .oa-prose > [data-slot='mermaid-block'], .oa-prose > .oa-table-container, [data-breakout]):not([data-user-bubble] *) {
+  width: max(100%, var(--oa-breakout));
+  margin-inline: min(0px, (100% - var(--oa-breakout)) / 2);
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Tool description — compact prose inside the settings panel.
  * Matches the old plain-text style exactly: xs/muted/relaxed.
@@ -1248,4 +1263,19 @@ html[data-app-hidden="true"] *::after {
 }
 ::highlight(plan-comment-active) {
   background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+}
+
+/* Find in session (TranscriptFind): every match on the same soft orange as
+ * plan comments, the current one deeper. */
+::highlight(oa-find) {
+  background-color: var(--accent-orange-soft);
+}
+::highlight(oa-find-current) {
+  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+}
+
+/* The docked composer's height (set by Composer); a narrow window's Review
+ * panel overlay stops there. Zero while no composer is docked. */
+[data-workbench-center] {
+  --composer-h: 0px;
 }

@@ -5,6 +5,7 @@
  */
 import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
+import { NEXT_REGION_CHORD, PREV_REGION_CHORD } from '@/lib/focus-regions'
 
 import { formatChord, type KeyChord } from './chord'
 import { HISTORY_ALT_BACK, HISTORY_ALT_FORWARD, usesAltArrowHistory } from './history-keys'
@@ -43,6 +44,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('settings', 'Settings'),
         app('shortcutsHelp', 'Keyboard shortcuts'),
         app('sidebar', 'Toggle sidebar'),
+        app('focusMode', 'Focus mode'),
         app('sessionSettings', 'Model and thinking'),
         altHistory ? keys('Back', chordOf(APP_SHORTCUTS.historyBack), HISTORY_ALT_BACK) : app('historyBack', 'Back'),
         altHistory ? keys('Forward', chordOf(APP_SHORTCUTS.historyForward), HISTORY_ALT_FORWARD) : app('historyForward', 'Forward'),
@@ -52,6 +54,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       title: 'Moving around',
       entries: [
         keys('Next and previous control', { key: 'Tab' }, { key: 'Tab', shift: true }),
+        keys('Next and previous area', NEXT_REGION_CHORD, PREV_REGION_CHORD),
         keys('Previous and next sidebar row', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
         keys('First and last sidebar row', { key: 'Home' }, { key: 'End' }),
         keys('Collapse and expand a sidebar workspace', { key: 'ArrowLeft' }, { key: 'ArrowRight' }),
@@ -70,7 +73,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Send after the current turn', { key: 'Enter', alt: true }),
         keys('Switch Plan and Code mode', { key: 'Tab' }),
         keys('Earlier and later sent messages', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
-        keys('Minimize the input', { key: 'Escape' }),
+        app('findInSession', 'Find in this session'),
         app('previousPrompt', 'Previous prompt'),
         app('nextPrompt', 'Next prompt'),
         app('tasks', 'Tasks'),
@@ -80,6 +83,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       title: 'Review panel',
       entries: [
         app('workspaceFiles', 'Show or hide the review panel'),
+        app('splitDock', 'Split or join the review panel'),
+        app('toggleTerminal', 'Show or hide the terminal'),
         app('openGit', 'Open Git'),
         app('maximizeDock', 'Maximize the review panel'),
         app('closeTab', 'Close tab'),

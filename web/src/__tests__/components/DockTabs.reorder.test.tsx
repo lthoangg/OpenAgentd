@@ -1,12 +1,14 @@
 /**
- * Dock tab order: new tabs open after the active one (new terminals at the
- * end), terminal sync never re-sorts the strip, and tabs move by drag,
+ * Dock tab order: views open in the upper group, terminals at the end of the
+ * lower one; terminal sync never re-sorts a strip, and tabs move by drag,
  * ⌥⇧←/→ (Alt+Shift on Linux), or Move Left / Move Right in the tab menu.
+ * (Order within a strip, views before documents, is covered by
+ * ``dock-groups.test.ts``.)
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
@@ -63,9 +65,9 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-/** Two terminals, Terminal 1 active: [Terminal 1, Terminal 2]. */
-async function renderDock() {
-  for (let i = 0; i < 2; i++) useTerminalStore.getState().open({ workspace: WORKSPACE }, WORKSPACE)
+/** Two terminals (or ``terminals``) in the lower group, Terminal 1 active. */
+async function renderDock(terminals = 2) {
+  for (let i = 0; i < terminals; i++) useTerminalStore.getState().open({ workspace: WORKSPACE }, WORKSPACE)
   const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const ui = (viewRequest: DockViewRequest | null) => (
@@ -82,12 +84,15 @@ async function renderDock() {
 }
 
 const tab = (name: string) => screen.getByRole('button', { name })
-/** New terminals open from the strip's "Open…" menu. */
+const group = (index: 0 | 1) => document.querySelector<HTMLElement>(`[data-dock-group="${index}"]`)!
+/** New terminals open from the lower strip's "Open…" menu. */
 const newTerminal = async () => {
-  await act(async () => { tab('Open in the review panel').click() })
+  await act(async () => { within(group(1)).getByRole('button', { name: 'Open in the review panel' }).click() })
   await act(async () => { screen.getByRole('menuitem', { name: 'Terminal' }).click() })
 }
-const order = () => Array.from(document.querySelectorAll('[data-dock-tab]')).map((node) => node.textContent)
+/** Tab titles in strip order: one group, or both (upper first). */
+const order = (index?: 0 | 1) =>
+  Array.from((index === undefined ? document : group(index)).querySelectorAll('[data-dock-tab]')).map((node) => node.textContent)
 const frame = () => act(async () => { await new Promise((resolve) => requestAnimationFrame(() => resolve(null))) })
 
 function altShift(target: Element, key: 'ArrowLeft' | 'ArrowRight') {
@@ -97,24 +102,27 @@ function altShift(target: Element, key: 'ArrowLeft' | 'ArrowRight') {
 }
 
 describe('dock tab order', () => {
-  it('opens a new tab right after the active one; reopening only activates it', async () => {
+  it('opens a view in the upper group beside the terminals; reopening only activates it', async () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
-    expect(order()).toEqual(['Terminal 1', 'Git', 'Terminal 2'])
+    expect(order(0)).toEqual(['Git'])
+    expect(order(1)).toEqual(['Terminal 1', 'Terminal 2'])
     expect(tab('Git').getAttribute('aria-current')).toBe('true')
 
     act(() => tab('Terminal 2').click())
     await request({ view: 'review', key: 2 })
-    expect(order()).toEqual(['Terminal 1', 'Git', 'Terminal 2'])
+    expect(order()).toEqual(['Git', 'Terminal 1', 'Terminal 2'])
     expect(tab('Git').getAttribute('aria-current')).toBe('true')
+    expect(tab('Terminal 2').getAttribute('aria-current')).toBe('true')
   })
 
-  it('puts new terminals at the end', async () => {
+  it('puts new terminals at the end of the lower group', async () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
     act(() => tab('Terminal 1').click())
     await newTerminal()
-    await waitFor(() => expect(order()).toEqual(['Terminal 1', 'Git', 'Terminal 2', 'Terminal 3']))
+    await waitFor(() => expect(order(1)).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3']))
+    expect(order(0)).toEqual(['Git'])
   })
 
   it('keeps a moved terminal where it is when the terminal store changes', async () => {
@@ -131,33 +139,45 @@ describe('dock tab order', () => {
 
 describe('moving tabs from the keyboard and the menu', () => {
   it('Alt+Shift+Left/Right moves the focused tab and keeps focus on it', async () => {
-    const { request } = await renderDock()
-    await request({ view: 'review', key: 1 })
-    act(() => tab('Git').focus())
+    await renderDock(3)
+    act(() => tab('Terminal 1').focus())
 
-    await altShift(tab('Git'), 'ArrowRight')
+    await altShift(tab('Terminal 1'), 'ArrowRight')
     await frame()
-    expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Git'])
-    expect(document.activeElement).toBe(tab('Git'))
+    expect(order()).toEqual(['Terminal 2', 'Terminal 1', 'Terminal 3'])
+    expect(document.activeElement).toBe(tab('Terminal 1'))
 
+    await altShift(tab('Terminal 1'), 'ArrowRight')
     // At the end: nothing to move past.
-    await altShift(tab('Git'), 'ArrowRight')
-    expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Git'])
+    await altShift(tab('Terminal 1'), 'ArrowRight')
+    expect(order()).toEqual(['Terminal 2', 'Terminal 3', 'Terminal 1'])
 
-    await altShift(tab('Git'), 'ArrowLeft')
-    await altShift(tab('Git'), 'ArrowLeft')
-    expect(order()).toEqual(['Git', 'Terminal 1', 'Terminal 2'])
+    await altShift(tab('Terminal 1'), 'ArrowLeft')
+    await altShift(tab('Terminal 1'), 'ArrowLeft')
+    expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
   })
 
   it('Move Left and Move Right in the tab menu', async () => {
     await renderDock()
     fireEvent.contextMenu(tab('Terminal 1'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Move right' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move Right' }).click() })
     expect(order()).toEqual(['Terminal 2', 'Terminal 1'])
 
     fireEvent.contextMenu(tab('Terminal 1'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Move left' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move Left' }).click() })
     expect(order()).toEqual(['Terminal 1', 'Terminal 2'])
+  })
+
+  it('Move to Other Group takes a tab to the upper group; a lone tab cannot leave its group', async () => {
+    await renderDock()
+    fireEvent.contextMenu(tab('Terminal 2'))
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move to Other Group' }).click() })
+    expect(order(0)).toEqual(['Terminal 2'])
+    expect(order(1)).toEqual(['Terminal 1'])
+
+    // Terminal 1 is alone in its group: it cannot leave it empty.
+    fireEvent.contextMenu(tab('Terminal 1'))
+    expect((screen.getByRole('menuitem', { name: 'Move to Other Group' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
 
@@ -180,34 +200,33 @@ describe('dragging tabs', () => {
   const shift = (name: string) => node(name).style.transform
 
   it('picks the tab up: it follows the pointer, neighbours make room, and it drops on release', async () => {
-    const { request } = await renderDock()
-    await request({ view: 'review', key: 1 })
+    await renderDock(3)
     layOut()
     const handle = tab('Terminal 1')
     await pointer('pointerDown', handle, 50)
     await pointer('pointerMove', handle, 140)
     expect(shift('Terminal 1')).toBe('translateX(90px)')
-    expect(shift('Git')).toBe('')
+    expect(shift('Terminal 2')).toBe('')
     expect(node('Terminal 1').hasAttribute('data-dragging')).toBe(true)
 
-    // Past Git's midpoint: Git slides left into the gap; the DOM order holds.
+    // Past Terminal 2's midpoint: it slides left into the gap; the DOM order holds.
     await pointer('pointerMove', handle, 160)
-    expect(shift('Git')).toBe('translateX(-100px)')
-    expect(shift('Terminal 2')).toBe('')
-    expect(order()).toEqual(['Terminal 1', 'Git', 'Terminal 2'])
+    expect(shift('Terminal 2')).toBe('translateX(-100px)')
+    expect(shift('Terminal 3')).toBe('')
+    expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
 
     await pointer('pointerMove', handle, 260)
-    expect(shift('Terminal 2')).toBe('translateX(-100px)')
-    expect(order()).toEqual(['Terminal 1', 'Git', 'Terminal 2'])
+    expect(shift('Terminal 3')).toBe('translateX(-100px)')
+    expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
 
     await pointer('pointerUp', handle, 260)
-    expect(order()).toEqual(['Git', 'Terminal 2', 'Terminal 1'])
-    for (const name of ['Terminal 1', 'Git', 'Terminal 2']) expect(shift(name)).toBe('')
+    expect(order()).toEqual(['Terminal 2', 'Terminal 3', 'Terminal 1'])
+    for (const name of ['Terminal 1', 'Terminal 2', 'Terminal 3']) expect(shift(name)).toBe('')
     expect(node('Terminal 1').hasAttribute('data-dragging')).toBe(false)
 
     // Released: further moves do nothing.
     await pointer('pointerMove', handle, 10)
-    expect(order()).toEqual(['Git', 'Terminal 2', 'Terminal 1'])
+    expect(order()).toEqual(['Terminal 2', 'Terminal 3', 'Terminal 1'])
   })
 
   it('keeps the tab inside the strip, and Escape or a cancelled pointer puts it back', async () => {

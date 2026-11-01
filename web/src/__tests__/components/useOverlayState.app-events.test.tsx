@@ -13,6 +13,13 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 
+const DEFAULT_WIDTH = window.innerWidth
+
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 }
@@ -40,7 +47,10 @@ beforeEach(() => {
     scheduledTaskFocus: null,
   })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setViewportWidth(DEFAULT_WIDTH)
+})
 
 describe('useOverlayState app events', () => {
   it('opens the scheduler dock tab on toggleScheduler', () => {
@@ -79,6 +89,7 @@ describe('useOverlayState app events', () => {
   })
 
   it('expands the sidebar and requests the folder picker on openWorkspace', () => {
+    setViewportWidth(1440)
     useLayoutStore.getState().setSidebarCollapsed(true, false)
     const { result } = renderOverlay()
 
@@ -86,6 +97,95 @@ describe('useOverlayState app events', () => {
 
     expect(result.current.openWorkspaceDialogKey).toBe(1)
     expect(result.current.sidebarCollapsed).toBe(false)
+  })
+
+  // Below 1180 px the sidebar is a drawer over the chat: it opens instead,
+  // and the remembered column state is left alone.
+  it('opens the sidebar drawer on openWorkspace in a narrow window', () => {
+    setViewportWidth(1024)
+    useLayoutStore.getState().setSidebarCollapsed(true, false)
+    const { result } = renderOverlay()
+    expect(result.current.sidebarDrawer).toBe(true)
+
+    act(() => dispatchAppEvent(APP_EVENTS.openWorkspace))
+
+    expect(result.current.openWorkspaceDialogKey).toBe(1)
+    expect(result.current.sidebarDrawerOpen).toBe(true)
+    expect(useLayoutStore.getState().sidebarCollapsed).toBe(true)
+  })
+
+  it('closes the drawer once the window is wide enough for the sidebar column', () => {
+    setViewportWidth(1024)
+    const { result } = renderOverlay()
+    act(() => result.current.handleSidebarToggle())
+    expect(result.current.sidebarDrawerOpen).toBe(true)
+
+    act(() => setViewportWidth(1440))
+
+    expect(result.current.sidebarDrawer).toBe(false)
+    expect(result.current.sidebarDrawerOpen).toBe(false)
+  })
+
+  it('focus mode hides the sidebar and the Review panel, and puts both back', () => {
+    setViewportWidth(1440)
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    const { result } = renderOverlay()
+    act(() => result.current.handleOpenGit())
+    expect(result.current.workspacePanel).toBe('changed')
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
+    expect(result.current.focusMode).toBe(true)
+    expect(result.current.sidebarCollapsed).toBe(true)
+    expect(result.current.workspacePanel).toBeNull()
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
+    expect(result.current.focusMode).toBe(false)
+    expect(result.current.sidebarCollapsed).toBe(false)
+    expect(result.current.workspacePanel).toBe('changed')
+  })
+
+  it('showing the sidebar in focus mode ends it, as is', () => {
+    setViewportWidth(1440)
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    const { result } = renderOverlay()
+    act(() => result.current.handleOpenGit())
+    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
+
+    act(() => result.current.handleSidebarToggle())
+
+    expect(result.current.focusMode).toBe(false)
+    expect(result.current.sidebarCollapsed).toBe(false)
+    // The Review panel stays hidden: focus mode ended without restoring it.
+    expect(result.current.workspacePanel).toBeNull()
+  })
+
+  it('opens the Review panel and asks it to split on splitReviewPanel', () => {
+    const { result } = renderOverlay()
+
+    act(() => dispatchAppEvent(APP_EVENTS.splitReviewPanel))
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'split', key: 1 })
+  })
+
+  it('asks to show the terminal group with the panel closed, and to toggle it once open', () => {
+    const { result } = renderOverlay()
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleTerminalGroup))
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'terminal-show', key: 1 })
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleTerminalGroup))
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'terminal-toggle', key: 2 })
+  })
+
+  it('opens a terminal tab for the terminal key on phones (one strip, no groups)', () => {
+    const { result } = renderOverlay({ isMobile: true })
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleTerminalGroup))
+
+    expect(result.current.dockLayoutRequest).toBeNull()
+    expect(result.current.terminalOpenKey).toBe(1)
   })
 
   it('opens a terminal tab on openTerminal', () => {

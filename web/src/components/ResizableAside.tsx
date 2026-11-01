@@ -61,16 +61,24 @@ export interface LiveWidth {
 interface ResizableAsideProps
   extends Omit<ComponentProps<typeof motion.aside>, 'animate' | 'transition' | 'children'> {
   resize: PanelResizeOptions
-  /** ``pinWidth`` pins the body width (a panel tweening open or closed keeps its open width). */
-  getMotion: (live: LiveWidth) => { animate: TargetAndTransition; transition: Transition; pinWidth?: number }
+  /**
+   * ``pinWidth`` pins the body width (a panel tweening open or closed keeps
+   * its open width). ``instantWidth`` applies ``animate.width`` as a plain
+   * style instead: a straight cut that needs no animation frame (desktop
+   * panels never tween their width; a throttled frame loop, as in a hidden
+   * window, must not leave them stuck at 0).
+   */
+  getMotion: (live: LiveWidth) => { animate: TargetAndTransition; transition: Transition; pinWidth?: number; instantWidth?: boolean }
   /** Lay the children out at ``pinWidth`` rather than the tweening width. */
   pinContentWidth?: boolean
   children: ReactNode
 }
 
-export function ResizableAside({ resize, getMotion, pinContentWidth = false, children, ...asideProps }: ResizableAsideProps) {
+export function ResizableAside({ resize, getMotion, pinContentWidth = false, children, style, ...asideProps }: ResizableAsideProps) {
   const state = usePanelResize(resize)
-  const { animate, transition, pinWidth } = getMotion({ width: state.width, isResizing: state.isResizing })
+  const { animate, transition, pinWidth, instantWidth = false } = getMotion({ width: state.width, isResizing: state.isResizing })
+  const { width: targetWidth, ...animateRest } = animate
+  const cut = instantWidth && targetWidth !== undefined
   // Always the same wrapper, so a change of target (mobile has none) never
   // remounts the panel body.
   const pinnedWidth = pinWidth ?? '100%'
@@ -78,8 +86,9 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, chi
     <ResizeContext.Provider value={state}>
       <motion.aside
         {...asideProps}
-        data-panel-target-width={typeof animate.width === 'number' ? animate.width : undefined}
-        animate={animate}
+        data-panel-target-width={typeof targetWidth === 'number' ? targetWidth : undefined}
+        style={cut ? { ...style, width: targetWidth as number | string } : style}
+        animate={cut ? animateRest : animate}
         transition={transition}
       >
         {pinContentWidth ? <div className="h-full" style={{ width: pinnedWidth }}>{children}</div> : children}

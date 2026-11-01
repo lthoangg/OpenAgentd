@@ -642,6 +642,44 @@ run from the terminal (the native Rust binary since v3.0.0).
   and **Stop**; if the account is deleted or disabled, the session goes back
   to Auto with a note. Each answer's footer names the account it ran on, and
   Settings → Providers shows how many sessions pin each account.
+- **Review panel splits in two; terminals below** `[v3.40.0]`:
+  - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
+    Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
+    one button for each.
+  - **Split Review Panel** (`⌘\`/`Ctrl+\`) stacks a second tab group under
+    the first, or joins them. Drag the line between them to resize it, or
+    double-click it to reset; closing a group's last tab joins the groups.
+  - Terminals open in the lower group, so a diff and a shell show at once.
+    **Terminal** (Control and the backquote key, on every system) shows or
+    hides that group; hidden shells keep running. `⌘⇧` (`Ctrl+Shift`) with the
+    backquote key still opens a new terminal.
+  - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
+    files. A file or diff opened from a list or a link opens as an *italic*
+    preview tab that the next one replaces; double-click it or choose **Keep
+    Open** to keep it. When the strip is full, a tab count lists every tab.
+    The tab menu has Close, Close Others, Close to the Right, Keep Open, Move
+    to Other Group (or Split Down), Move Left, Move Right, Copy Path and
+    Reveal in Git.
+  - Each session remembers its own tabs and groups, so switching back shows
+    the same diff and plan; terminals belong to the workspace; whether the
+    panel is open, and its sizes, belong to the window. **Reset Layout** in
+    the palette puts the sizes back.
+  - Below 1180px wide the sidebar opens as a drawer over the chat. When the
+    chat gets narrower than 740px, the Review panel covers the transcript but
+    not the composer, so you can write while reading a diff; maximized
+    (`⌘⇧D`/`Ctrl+Shift+D`) it covers both until you restore it or press
+    Escape.
+  - Showing or hiding the sidebar or the Review panel is instant: the
+    transcript stays on the passage you were reading and the composer keeps
+    its focus and draft.
+  - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
+    panel; press it again to bring both back.
+  - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the
+    loaded conversation, with the match count and ↑/↓ to step through.
+  - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
+    each Review panel group and the status bar.
+  - Code blocks, tables, diagrams and an expanded tool's output can widen to
+    960px when the chat has room; prose keeps its reading width.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

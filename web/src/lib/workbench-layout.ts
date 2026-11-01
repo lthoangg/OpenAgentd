@@ -19,6 +19,11 @@ export const SIDEBAR_MIN_WIDTH = 220
 export const SIDEBAR_MAX_WIDTH = 440
 /** Viewports at least this wide open with the sidebar expanded on first run. */
 export const SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT = 1280
+/**
+ * Below this window width the desktop sidebar is a drawer over the content
+ * (closed by a click outside or Escape) instead of a column that pushes it.
+ */
+export const SIDEBAR_DRAWER_MAX_VIEWPORT = 1180
 
 /** Narrowest chat column kept beside an open dock. */
 export const CHAT_MIN_WIDTH = 400
@@ -28,6 +33,11 @@ export const DOCK_DEFAULT_RATIO = 0.45
 /** Keyboard resize steps for panel separators. */
 export const RESIZE_KEY_STEP = 16
 export const RESIZE_KEY_STEP_LARGE = 64
+
+/** The Review panel's two groups (top/bottom): default share of the upper one. */
+export const DOCK_SPLIT_DEFAULT_RATIO = 0.55
+/** Shortest a Review panel group gets: a tab strip and a few rows. */
+export const DOCK_GROUP_MIN_HEIGHT = 120
 
 export type DockMode = 'side' | 'overlay'
 
@@ -47,6 +57,23 @@ function clamp(value: number, min: number, max: number): number {
 export function resolveSidebarCollapsed(stored: boolean | null | undefined, wideViewport: boolean): boolean {
   if (typeof stored === 'boolean') return stored
   return !wideViewport
+}
+
+/** Whether the desktop sidebar is a drawer at this window width. */
+export function sidebarIsDrawer(viewportWidth: number): boolean {
+  return viewportWidth < SIDEBAR_DRAWER_MAX_VIEWPORT
+}
+
+/**
+ * The upper group's share of a split Review panel ``height`` px tall, kept
+ * so neither group drops below ``DOCK_GROUP_MIN_HEIGHT``. A panel too short
+ * for that splits evenly.
+ */
+export function clampSplitRatio(ratio: number, height: number): number {
+  const safe = Number.isFinite(ratio) && ratio > 0 && ratio < 1 ? ratio : DOCK_SPLIT_DEFAULT_RATIO
+  if (!(height > DOCK_GROUP_MIN_HEIGHT * 2)) return 0.5
+  const min = DOCK_GROUP_MIN_HEIGHT / height
+  return clamp(safe, min, 1 - min)
 }
 
 /** Largest sidebar that still leaves room for the chat and a side dock. */

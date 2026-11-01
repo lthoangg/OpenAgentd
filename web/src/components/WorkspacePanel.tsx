@@ -1,15 +1,17 @@
 /**
  * WorkspacePanel — the review dock.
  *
- * Editor-style tab strip (Git review, file previews, full-height diffs,
+ * Editor-style tab strips (Git review, file previews, full-height diffs,
  * commits, web previews, terminals, the session's Plan and Goal, and on
  * desktop the agent Tasks, `/btw` side questions, and Schedule views)
- * over one content area. Desktop geometry is a ratio of the shell's center
+ * over their content, in one group or two stacked top/bottom (⌘\; terminals
+ * open in the lower one). Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
- * side-by-side split). Mobile keeps the fixed full-screen sheet.
+ * side-by-side split; then it leaves the composer uncovered unless
+ * maximized). Mobile keeps the fixed full-screen sheet with one strip.
  *
- * Tab state lives in ``useDockTabs`` and Git write actions in
+ * Tab state lives in ``useDockTabs`` (remembered per session) and Git write actions in
  * ``useGitActions``; this component owns the queries and the layout.
  *
  * Once opened, the shell keeps the dock mounted: closing it (``open``
@@ -17,7 +19,7 @@
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
@@ -80,6 +82,7 @@ import { AttachmentTabView } from './WorkspacePanel/AttachmentTabView'
 import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
+import { GroupSplitHandle } from './WorkspacePanel/GroupSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
 import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
@@ -95,6 +98,7 @@ import {
 import {
   type AttachmentTabRequest,
   type DiffTabRequest,
+  type DockLayoutRequest,
   type DockTab,
   type DockView,
   type DockViewRequest,
@@ -106,8 +110,10 @@ import {
   SCHEDULE_TAB,
   TASKS_TAB,
   basename,
+  fileTabId,
   resolveFileTabInfo,
 } from './WorkspacePanel/dock-tabs'
+import type { GroupIndex } from './WorkspacePanel/dock-groups'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
@@ -155,6 +161,8 @@ export function WorkspacePanel({
   handledPreviewRequestKeyRef,
   attachmentRequest = null,
   handledAttachmentRequestKeyRef,
+  layoutRequest = null,
+  handledLayoutRequestKeyRef,
   onActiveViewChange,
   todos = EMPTY_TODOS,
   sessionId = null,
@@ -194,6 +202,9 @@ export function WorkspacePanel({
   /** Shell request to open (or focus) a message attachment's tab. */
   attachmentRequest?: AttachmentTabRequest | null
   handledAttachmentRequestKeyRef?: React.RefObject<number>
+  /** Shell request to split the groups or show/hide the terminal group. */
+  layoutRequest?: DockLayoutRequest | null
+  handledLayoutRequestKeyRef?: React.RefObject<number>
   /** Reports the focused view tab (``null`` for other tabs or on unmount). */
   onActiveViewChange?: (view: DockView | null) => void
   /** Agent task list for the Tasks tab. */
@@ -234,11 +245,12 @@ export function WorkspacePanel({
   }, [])
   // Tab state comes first: the Git queries below are gated on the active tab.
   const {
-    tabs,
+    strips,
+    activeTabs,
+    lowerShown,
+    focused,
     visibleTabs,
     activeTabId,
-    setActiveTabId,
-    activeTab,
     terminalMetas,
     openTab,
     openFileTab,
@@ -247,7 +259,13 @@ export function WorkspacePanel({
     openPreviewTab,
     openGitTab,
     openTerminal,
+    activate,
+    focusGroup,
+    keep,
     moveTab,
+    moveToOther,
+    canMoveToOther,
+    toggleLower,
     closeTab,
     closeOtherTabs,
     closeTabsToRight,
@@ -255,8 +273,11 @@ export function WorkspacePanel({
     confirmCloseTitles,
     confirmCloseTab,
     cancelCloseTab,
+    groups,
   } = useDockTabs({
     workspace,
+    sessionId,
+    mobile,
     open,
     chatWorkspace,
     onFileSelect,
@@ -271,6 +292,8 @@ export function WorkspacePanel({
     handledPreviewRequestKeyRef,
     attachmentRequest,
     handledAttachmentRequestKeyRef,
+    layoutRequest,
+    handledLayoutRequestKeyRef,
     onTabClosed: handleTabClosed,
     focusTab: (id) => requestAnimationFrame(() => {
       const button = tabButtonRefs.current.get(id)
@@ -300,8 +323,9 @@ export function WorkspacePanel({
   // Whether the open or close tween (mounting counts as opening) is still
   // running. Only then, and while closed, is the body pinned to the open
   // width; any other width change moves the body with the dock's edge.
-  const [toggle, setToggle] = useState({ open, running: true })
-  if (toggle.open !== open) setToggle({ open, running: true })
+  // Desktop shows and hides as a straight cut: nothing to wait for.
+  const [toggle, setToggle] = useState({ open, running: mobile })
+  if (toggle.open !== open) setToggle({ open, running: mobile })
   const settleToggle = () => setToggle((current) => (current.running ? { ...current, running: false } : current))
 
   // ── Geometry ───────────────────────────────────────────────────────────────
@@ -321,9 +345,10 @@ export function WorkspacePanel({
     disabled: mobile || overlay || !open,
     label: 'Resize review panel',
   }
-  // Desktop always animates width (instantly while dragging or under reduced
-  // motion) so the aside is sized even when motion is off. Closed, it tweens
-  // to nothing while the body keeps its open width (clipped, not reflowed).
+  // Desktop sets the width through the same motion value, but never tweens
+  // it: showing or hiding the panel is a straight cut, so the chat beside it
+  // does not reflow frame by frame. Closed, the body keeps its open width
+  // (clipped, not reflowed). Only the phone sheet fades and follows a swipe.
   const dockMotion = ({ width, isResizing }: LiveWidth) => ({
     animate: !open
       ? (mobile ? { opacity: 0 } : { width: 0 })
@@ -334,8 +359,9 @@ export function WorkspacePanel({
           : mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 },
     transition: mobile && mobileDragOffset !== null
       ? { duration: 0 }
-      : { duration: isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+      : { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
     pinWidth: !mobile && (!open || toggle.running) ? (overlay ? layout.width : width) : undefined,
+    instantWidth: !mobile,
   })
   // The toggle is meaningless while a narrow window already forces overlay.
   const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized
@@ -376,6 +402,8 @@ export function WorkspacePanel({
 
   const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
   const subTab = gitState.subTab
+  // Git's own queries run only while its tab shows in a group on screen.
+  const reviewShown = activeTabs[0]?.id === REVIEW_TAB_ID || (lowerShown && activeTabs[1]?.id === REVIEW_TAB_ID)
   // Each Git view (changes, commits, tree) keeps its place across tab switches.
   const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
   const allBranches = gitState.allBranches
@@ -406,7 +434,7 @@ export function WorkspacePanel({
     queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, historyAllBranches, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
-    enabled: open && !chatWorkspace && activeTabId === REVIEW_TAB_ID && (subTab === 'commits' || subTab === 'tree'),
+    enabled: open && !chatWorkspace && reviewShown && (subTab === 'commits' || subTab === 'tree'),
     staleTime: 10_000,
   })
 
@@ -427,7 +455,7 @@ export function WorkspacePanel({
 
   const commitDiff = useQuery({
     ...commitDiffQueryOptions(workspace, expandedCommitSha ?? ''),
-    enabled: open && !chatWorkspace && activeTabId === REVIEW_TAB_ID && subTab === 'commits' && expandedCommitSha !== null,
+    enabled: open && !chatWorkspace && reviewShown && subTab === 'commits' && expandedCommitSha !== null,
     staleTime: COMMIT_DIFF_STALE_MS,
   })
   const commitDiffText = commitDiff.data?.diff
@@ -458,27 +486,31 @@ export function WorkspacePanel({
   }, [commitDiffText, workspace])
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
+  // Files, diffs and commits opened from a list or a link are previews: the
+  // next one replaces them until they are kept (double-click, Keep Open).
   /** Open a changed path, synthesising file info when the listing lacks it. */
   const openChangedFile = useCallback((path: string) => {
     const file = filesByPath.get(path) ?? { path, name: basename(path), size: 0, mtime: 0, mime: 'text/plain' }
-    openFileTab(file)
+    openFileTab(file, { preview: true })
   }, [filesByPath, openFileTab])
   const isListedFile = useCallback((path: string) => filesByPath.has(path), [filesByPath])
+  const openDiffPreview = useCallback((file: ChangedFileInfo) => openDiffTab(file, { preview: true }), [openDiffTab])
+  const openCommitPreview = useCallback((commit: Parameters<typeof openCommitTab>[0]) => openCommitTab(commit, { preview: true }), [openCommitTab])
 
   const openCommitTabBySha = (sha: string) => {
     const commit = commits.find((item) => item.sha === sha)
-    if (commit) openCommitTab(commit)
+    if (commit) openCommitPreview(commit)
   }
 
   const canPreview = previewsAvailable()
-  const openNewPreview = useCallback(() => {
-    openPreviewTab({ kind: 'url', url: lastPreviewUrl(workspace) ?? DEFAULT_PREVIEW_URL })
+  const openNewPreview = useCallback((group?: GroupIndex) => {
+    openPreviewTab({ kind: 'url', url: lastPreviewUrl(workspace) ?? DEFAULT_PREVIEW_URL }, { group })
   }, [openPreviewTab, workspace])
   const openFilePreview = useCallback((path: string) => {
     openPreviewTab({ kind: 'file', path })
   }, [openPreviewTab])
   const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
-  const previewTabs = visibleTabs.filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
+  const previewTabsOf = (group: GroupIndex) => strips[group].filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
   const openQuickOpen = () => useUIStore.getState().openQuickOpen('')
   // The Goal tab's title follows the goal ("Goal 7/50", "Goal paused").
   const { data: goalData } = useSessionGoalQuery(sessionId)
@@ -487,27 +519,28 @@ export function WorkspacePanel({
   const agentWorking = useAgentStore((s) => s.isAgentWorking)
   const goalTitle = goalTabTitle(goal, agentWorking)
   const stripTabs = useMemo(
-    () => (visibleTabs.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
-      ? visibleTabs.map((tab) => (tab.type === 'goal' ? { ...tab, title: goalTitle } : tab))
-      : visibleTabs),
-    [visibleTabs, goalTitle],
+    () => strips.map((strip) => (strip.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
+      ? strip.map((tab) => (tab.type === 'goal' ? { ...tab, title: goalTitle } : tab))
+      : strip)) as [DockTab[], DockTab[]],
+    [strips, goalTitle],
   )
-  const openGoal = sessionId ? () => openTab(GOAL_TAB) : undefined
+  const openGoal = sessionId ? (group?: GroupIndex) => openTab(GOAL_TAB, { group }) : undefined
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
   // above the chat on phones, so only desktop lists them here; the plan and
-  // the goal open here everywhere.
-  const openItems = dockOpenItems(os, {
-    onOpenGit: chatWorkspace ? undefined : openGitTab,
-    onOpenGoal: openGoal,
-    onOpenPlan: plan ? () => openTab(PLAN_TAB) : undefined,
-    onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB),
-    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB),
-    onOpenSchedule: () => openTab(SCHEDULE_TAB),
-    onOpenTerminal: openTerminal,
-    onOpenPreview: canPreview ? openNewPreview : undefined,
+  // the goal open here everywhere. Each group's menu opens in that group.
+  const openIds = new Set(visibleTabs.map((tab) => tab.id))
+  const openItemsFor = (group: GroupIndex) => dockOpenItems(os, {
+    onOpenGit: chatWorkspace ? undefined : () => openGitTab(group),
+    onOpenGoal: openGoal ? () => openGoal(group) : undefined,
+    onOpenPlan: plan ? () => openTab(PLAN_TAB, { group }) : undefined,
+    onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB, { group }),
+    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB, { group }),
+    onOpenSchedule: () => openTab(SCHEDULE_TAB, { group }),
+    onOpenTerminal: () => openTerminal(group),
+    onOpenPreview: canPreview ? () => openNewPreview(group) : undefined,
     onOpenFile: openQuickOpen,
-  }, new Set(visibleTabs.map((tab) => tab.id)))
+  }, openIds)
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -545,13 +578,13 @@ export function WorkspacePanel({
     const file = files.data.files.find((item) => item.path === selectedFilePath)
     if (file) {
       handledFileOpenKeyRef.current = selectedFileOpenKey
-      openFileTab(file)
+      openFileTab(file, { preview: true })
     }
   }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
   useEffect(() => {
-    tabButtonRefs.current.get(activeTabId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [activeTabId, tabs.length])
+    for (const tab of activeTabs) tabButtonRefs.current.get(tab?.id ?? '')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeTabs, visibleTabs.length])
 
   useEffect(() => {
     const sha = pendingScrollShaRef.current
@@ -624,7 +657,7 @@ export function WorkspacePanel({
             expandedDiffs={expandedDiffs}
             toggleDiffExpanded={toggleDiffExpanded}
             openChangedFile={openChangedFile}
-            openDiffTab={openDiffTab}
+            openDiffTab={openDiffPreview}
             mobile={mobile}
             setMobileFileActions={setMobileFileActions}
             setDesktopFileActions={setDesktopFileActions}
@@ -646,7 +679,7 @@ export function WorkspacePanel({
             commitsScrollRef={commitsScrollRef}
             pendingScrollShaRef={pendingScrollShaRef}
             setSubTab={setSubTab}
-            openCommitTab={openCommitTab}
+            openCommitTab={openCommitPreview}
             mobile={mobile}
             setMobileCommitActions={setMobileCommitActions}
             setDesktopCommitActions={setDesktopCommitActions}
@@ -658,11 +691,187 @@ export function WorkspacePanel({
     </div>
   )
 
+  // ── Groups ────────────────────────────────────────────────────────────────
+  // Maximized while split: the focused group takes the whole panel.
+  const maximizedGroup: GroupIndex | null = maximizeState === true && lowerShown ? focused : null
+  const groupsShown: GroupIndex[] = !lowerShown ? [0] : maximizedGroup !== null ? [maximizedGroup] : [0, 1]
+  const splitRatio = useLayoutStore((s) => s.dockSplitRatio)
+  const [liveSplit, setLiveSplit] = useState<number | null>(null)
+  const groupsRef = useRef<HTMLDivElement>(null)
+  const upperShare = liveSplit ?? splitRatio
+
+  /** Reveal in Git: the Changes list with this file's diff open. */
+  const revealInGit = useCallback((path: string) => {
+    const store = useGitPanelStore.getState()
+    store.setSubTab(workspace, 'changes')
+    const expanded = store.workspaces[workspace]?.expandedDiffs ?? []
+    if (!expanded.includes(path)) store.setExpandedDiffs(workspace, [...expanded, path])
+    openGitTab()
+  }, [openGitTab, workspace])
+
+  // An edit (a comment on its lines) keeps a preview tab.
+  const handleAddComment = useCallback((path: string, startLine: number, endLine: number) => {
+    keep(fileTabId(path))
+    onAddComment?.(path, startLine, endLine)
+  }, [keep, onAddComment])
+
+  const refreshLabelFor = (tab: DockTab | undefined) =>
+    tab?.type === 'review' || tab?.type === 'diff' || tab?.type === 'commit'
+      ? chatWorkspace ? 'Refresh files' : 'Refresh Git status'
+      : tab?.type === 'file'
+        ? 'Refresh files'
+        : null
+
+  const renderContent = (tab: DockTab | undefined, group: GroupIndex) => {
+    if (!chatWorkspace && tab?.type === 'review') return reviewView
+    switch (tab?.type) {
+      case 'file':
+        return (
+          <FilePreviewSubPanel
+            workspace={workspace}
+            file={resolveFileTabInfo(tab.file, filesByPath.get(tab.file.path), changedPaths.get(tab.file.path))}
+            onAddComment={onAddComment ? handleAddComment : undefined}
+            onOpenPreview={canPreview && !chatWorkspace ? openFilePreview : undefined}
+            onOpenFile={openChangedFile}
+            isListed={isListedFile}
+            listingTruncated={files.data?.truncated === true}
+          />
+        )
+      case 'diff':
+        return <DiffTabView key={tab.id} workspace={workspace} path={tab.path} onOpenFile={openChangedFile} />
+      case 'commit':
+        return <CommitTabView key={tab.id} workspace={workspace} commit={tab.commit} />
+      case 'attachment':
+        return <AttachmentTabView key={tab.id} item={tab.item} />
+      case 'terminal':
+        // Unmounted while closed: the session lives in the terminal store,
+        // and a hidden terminal detaches so the idle reaper can close it.
+        return open ? <TerminalSubPanel key={tab.termId} termId={tab.termId} workspace={workspace} /> : null
+      case 'tasks':
+        return (
+          <TasksTabView
+            todos={todos}
+            sessionId={sessionId}
+            plan={plan}
+            onClearPlan={onClearPlan}
+            onOpenPlan={() => openTab(PLAN_TAB)}
+            goal={goal}
+            onOpenGoal={openGoal}
+            onGoalAction={goalControls}
+          />
+        )
+      case 'plan':
+        return (
+          <PlanTabView
+            plan={plan}
+            sessionId={sessionId}
+            todos={todos}
+            onClearPlan={onClearPlan}
+            onOpenFile={openChangedFile}
+            onOpenPreview={canPreview ? openFilePreview : undefined}
+            workspace={workspace}
+          />
+        )
+      case 'btw':
+        return <SideQuestionsTabView sessionId={sessionId} active={open} />
+      case 'goal':
+        return <GoalTabView sessionId={sessionId} plan={plan} todos={todos} onOpenPlan={plan ? () => openTab(PLAN_TAB) : undefined} />
+      case 'schedule':
+        return <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
+      case 'preview':
+        return null
+      default:
+        return (
+          <DockLauncher
+            os={os}
+            onOpenGit={chatWorkspace ? undefined : () => openGitTab(group)}
+            // A live goal is one tap away from the empty dock.
+            onOpenGoal={isLiveGoal(goal) && openGoal ? () => openGoal(group) : undefined}
+            onOpenTerminal={() => openTerminal(group)}
+            onOpenPreview={canPreview ? () => openNewPreview(group) : undefined}
+            onOpenFile={mobile ? undefined : openQuickOpen}
+          />
+        )
+    }
+  }
+
+  const renderGroup = (group: GroupIndex) => {
+    const shown = activeTabs[group]
+    const two = groupsShown.length === 2
+    return (
+      <div
+        key={group}
+        data-dock-group={group}
+        data-focus-region={group === 0 ? 'dock-upper' : 'dock-lower'}
+        aria-label={two ? (group === 0 ? 'Upper group' : 'Lower group') : undefined}
+        role={two ? 'group' : undefined}
+        className="flex min-h-0 min-w-0 flex-col"
+        style={{ flex: two ? `${group === 0 ? upperShare : 1 - upperShare} 1 0px` : '1 1 0px' }}
+        onFocusCapture={() => focusGroup(group)}
+        onPointerDownCapture={() => focusGroup(group)}
+      >
+        <DockTabBar
+          tabs={stripTabs[group]}
+          activeTabId={shown?.id ?? ''}
+          previewTabId={groups.preview[group]}
+          workspace={workspace}
+          terminalMetas={terminalMetas}
+          mobile={mobile}
+          os={os}
+          registerTabRef={(id, node) => {
+            if (node) tabButtonRefs.current.set(id, node)
+            else tabButtonRefs.current.delete(id)
+          }}
+          onActivate={activate}
+          onClose={closeTab}
+          onCloseOthers={closeOtherTabs}
+          onCloseToRight={closeTabsToRight}
+          onMove={moveTab}
+          onKeep={keep}
+          onMoveToOtherGroup={mobile ? undefined : moveToOther}
+          canMoveToOtherGroup={canMoveToOther}
+          split={lowerShown}
+          onRevealInGit={chatWorkspace ? undefined : revealInGit}
+          onHideGroup={group === 1 ? toggleLower : undefined}
+          onRefresh={handleRefresh}
+          refreshLabel={refreshLabelFor(shown)}
+          openItems={openItemsFor(group)}
+          maximized={group === groupsShown[0] ? maximizeState : null}
+          onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
+        />
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          {/* Preview tabs stay mounted so the page and its comments survive tab switches. */}
+          {previewTabsOf(group).map((tab) => (
+            <div key={tab.id} className={cn('absolute inset-0', shown?.id !== tab.id && 'hidden')}>
+              <PreviewTabView
+                workspace={workspace}
+                tabId={tab.id}
+                target={tab.target}
+                navKey={tab.navKey}
+                onPreviewId={handlePreviewId}
+                onSendComments={onSendPreviewComments}
+                onOpenTarget={openPreviewTarget}
+                active={open && shown?.id === tab.id && groupsShown.includes(group)}
+                onRequestClose={closeTab}
+              />
+            </div>
+          ))}
+          {renderContent(shown, group)}
+        </div>
+      </div>
+    )
+  }
+
+  // Overlaying a narrow chat, the panel stops above the composer so the
+  // message can be written beside the diff; maximized, it covers both.
+  const leavesComposer = overlay && !dockMaximized
+
   return (
     <ResizableAside
       aria-label="Review panel"
-      initial={mobile ? { opacity: 0 } : { width: 0 }}
-      exit={mobile ? { opacity: 0 } : { width: 0 }}
+      // Desktop sets its width as a style (``instantWidth``): no tween in or out.
+      initial={mobile ? { opacity: 0 } : false}
+      exit={mobile ? { opacity: 0 } : undefined}
       resize={dockResize}
       getMotion={dockMotion}
       onAnimationComplete={settleToggle}
@@ -678,7 +887,10 @@ export function WorkspacePanel({
           : cn(
               'h-full md:w-auto md:shadow-none',
               overlay
-                ? 'md:absolute md:inset-y-0 md:right-0 md:z-20'
+                ? cn(
+                    'md:absolute md:top-0 md:right-0 md:z-20',
+                    leavesComposer ? 'md:bottom-(--composer-h) md:h-auto md:border-b' : 'md:bottom-0',
+                  )
                 : 'md:relative md:inset-y-auto md:right-auto md:z-auto md:shrink-0',
             ),
         !open && 'pointer-events-none',
@@ -688,119 +900,42 @@ export function WorkspacePanel({
       <div
         data-review-dock
         data-dock-parked={parked || undefined}
+        data-dock-split={lowerShown || undefined}
         // Lets reading-column tabs (Plan, Side questions) drop their width cap.
         data-dock-maximized={maximizeState === true || undefined}
         inert={parked}
         className="relative flex h-full min-h-0 w-full flex-col"
+        onKeyDown={(event) => {
+          // Escape gives the chat back from a maximized panel, unless a shell
+          // or a field inside it wants the key.
+          if (event.key !== 'Escape' || event.defaultPrevented || maximizeState !== true) return
+          if ((event.target as Element).closest('.xterm, input, textarea, [contenteditable="true"]')) return
+          event.preventDefault()
+          useLayoutStore.getState().setDockMaximized(false)
+        }}
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
-        <DockTabBar
-          tabs={stripTabs}
-          activeTabId={activeTabId}
-          workspace={workspace}
-          terminalMetas={terminalMetas}
-          mobile={mobile}
-          os={os}
-          registerTabRef={(id, node) => {
-            if (node) tabButtonRefs.current.set(id, node)
-            else tabButtonRefs.current.delete(id)
-          }}
-          onActivate={setActiveTabId}
-          onClose={closeTab}
-          onCloseOthers={closeOtherTabs}
-          onCloseToRight={closeTabsToRight}
-          onMove={moveTab}
-          onRefresh={handleRefresh}
-          refreshLabel={
-            activeTab?.type === 'review' || activeTab?.type === 'diff' || activeTab?.type === 'commit'
-              ? chatWorkspace ? 'Refresh files' : 'Refresh Git status'
-              : activeTab?.type === 'file'
-                ? 'Refresh files'
-                : null
-          }
-          openItems={openItems}
-          maximized={maximizeState}
-          onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
-        />
-        <div className="relative min-h-0 flex-1 overflow-hidden">
-          {/* Preview tabs stay mounted so the page and its comments survive tab switches. */}
-          {previewTabs.map((tab) => (
-            <div key={tab.id} className={cn('absolute inset-0', activeTab?.id !== tab.id && 'hidden')}>
-              <PreviewTabView
-                workspace={workspace}
-                tabId={tab.id}
-                target={tab.target}
-                navKey={tab.navKey}
-                onPreviewId={handlePreviewId}
-                onSendComments={onSendPreviewComments}
-                onOpenTarget={openPreviewTarget}
-                active={open && activeTab?.id === tab.id}
-                onRequestClose={closeTab}
-              />
-            </div>
+        <div ref={groupsRef} className="flex min-h-0 flex-1 flex-col">
+          {groupsShown.map((group, index) => (
+            <Fragment key={group}>
+              {index > 0 && (
+                <GroupSplitHandle
+                  ratio={upperShare}
+                  containerRef={groupsRef}
+                  onLive={setLiveSplit}
+                  onCommit={(ratio) => {
+                    setLiveSplit(null)
+                    useLayoutStore.getState().setDockSplitRatio(ratio)
+                  }}
+                  onReset={() => {
+                    setLiveSplit(null)
+                    useLayoutStore.getState().resetDockSplitRatio()
+                  }}
+                />
+              )}
+              {renderGroup(group)}
+            </Fragment>
           ))}
-          {!chatWorkspace && activeTab?.type === 'review' ? (
-            reviewView
-          ) : activeTab?.type === 'file' ? (
-            <FilePreviewSubPanel
-              workspace={workspace}
-              file={resolveFileTabInfo(activeTab.file, filesByPath.get(activeTab.file.path), changedPaths.get(activeTab.file.path))}
-              onAddComment={onAddComment}
-              onOpenPreview={canPreview && !chatWorkspace ? openFilePreview : undefined}
-              onOpenFile={openChangedFile}
-              isListed={isListedFile}
-              listingTruncated={files.data?.truncated === true}
-            />
-          ) : activeTab?.type === 'diff' ? (
-            <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />
-          ) : activeTab?.type === 'commit' ? (
-            <CommitTabView key={activeTab.id} workspace={workspace} commit={activeTab.commit} />
-          ) : activeTab?.type === 'attachment' ? (
-            <AttachmentTabView key={activeTab.id} item={activeTab.item} />
-          ) : activeTab?.type === 'terminal' ? (
-            // Unmounted while closed: the session lives in the terminal store,
-            // and a hidden terminal detaches so the idle reaper can close it.
-            open ? <TerminalSubPanel key={activeTab.termId} termId={activeTab.termId} workspace={workspace} /> : null
-          ) : activeTab?.type === 'tasks' ? (
-            <TasksTabView
-              todos={todos}
-              sessionId={sessionId}
-              plan={plan}
-              onClearPlan={onClearPlan}
-              onOpenPlan={() => openTab(PLAN_TAB)}
-              goal={goal}
-              onOpenGoal={openGoal}
-              onGoalAction={goalControls}
-            />
-          ) : activeTab?.type === 'plan' ? (
-            <PlanTabView
-              plan={plan}
-              sessionId={sessionId}
-              todos={todos}
-              onClearPlan={onClearPlan}
-              onOpenFile={openChangedFile}
-              onOpenPreview={canPreview ? openFilePreview : undefined}
-              workspace={workspace}
-            />
-          ) : activeTab?.type === 'btw' ? (
-            <SideQuestionsTabView sessionId={sessionId} active={open} />
-          ) : activeTab?.type === 'goal' ? (
-            <GoalTabView sessionId={sessionId} plan={plan} todos={todos} onOpenPlan={plan ? () => openTab(PLAN_TAB) : undefined} />
-          ) : activeTab?.type === 'schedule' ? (
-            <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
-          ) : activeTab?.type === 'preview' ? (
-            null
-          ) : (
-            <DockLauncher
-              os={os}
-              onOpenGit={chatWorkspace ? undefined : openGitTab}
-              // A live goal is one tap away from the empty dock.
-              onOpenGoal={isLiveGoal(goal) ? openGoal : undefined}
-              onOpenTerminal={openTerminal}
-              onOpenPreview={canPreview ? openNewPreview : undefined}
-              onOpenFile={mobile ? undefined : openQuickOpen}
-            />
-          )}
         </div>
         <CloseTerminalDialog
           open={confirmCloseOpen}
@@ -822,7 +957,7 @@ export function WorkspacePanel({
           gitActionPending={gitActionPending}
           hasWorkingDiff={(path) => changedPaths.has(path)}
           onOpenFile={openChangedFile}
-          onOpenDiffTab={openDiffTab}
+          onOpenDiffTab={openDiffPreview}
           onOpenCommitTab={openCommitTabBySha}
           onUndoCommit={handleUndoCommit}
           onRevertCommit={handleRevertCommit}

@@ -12,7 +12,7 @@ const LITERAL_SHORTCUT = /['"`]Mod\+|formatShortcut\(\s*['"`]|dispatchShortcutKe
 describe('APP_SHORTCUTS', () => {
   it('assigns each key combination to exactly one command', () => {
     const combos = Object.values(APP_SHORTCUTS).map((s) =>
-      `${'alt' in s && s.alt ? 'Alt+' : ''}${'shift' in s && s.shift ? 'Shift+' : ''}${s.key.toUpperCase()}`)
+      `${'ctrl' in s && s.ctrl ? 'Ctrl+' : ''}${'alt' in s && s.alt ? 'Alt+' : ''}${'shift' in s && s.shift ? 'Shift+' : ''}${s.key.toUpperCase()}`)
     expect(new Set(combos).size).toBe(combos.length)
   })
 
@@ -29,6 +29,18 @@ describe('APP_SHORTCUTS', () => {
     expect(chordOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false, alt: false })
     expect(chordOf(APP_SHORTCUTS.previousPrompt)).toEqual({ key: 'ArrowUp', mod: true, shift: false, alt: true })
     expect(chordOf(APP_SHORTCUTS.terminal)).toEqual({ key: '`', code: 'Backquote', mod: true, shift: true, alt: false })
+  })
+
+  it('keeps the terminal toggle on the Control key itself, as in editors', () => {
+    expect(chordOf(APP_SHORTCUTS.toggleTerminal)).toEqual({ key: '`', code: 'Backquote', ctrl: true, shift: false, alt: false })
+    expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'macos')).toBe('⌃`')
+    expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'linux')).toBe('Ctrl+`')
+  })
+
+  it('has the layout shortcuts of the View menu', () => {
+    expect(shortcutLabel(APP_SHORTCUTS.splitDock, 'macos')).toBe('⌘\\')
+    expect(shortcutLabel(APP_SHORTCUTS.focusMode, 'macos')).toBe('⌘⇧F')
+    expect(shortcutLabel(APP_SHORTCUTS.findInSession, 'windows')).toBe('Ctrl+F')
   })
 
   it('formats labels for each platform', () => {

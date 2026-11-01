@@ -58,7 +58,6 @@ import {
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
 } from '@/components/Sidebar.worktrees'
-import { DURATIONS_S } from '@/lib/motion'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -986,11 +985,21 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByText('/repo/project')).toBeTruthy()
   })
 
-  it('animates desktop collapse width', async () => {
+  it('shows and hides on desktop as a straight cut, never a width tween', async () => {
     const view = await renderSidebarWithProps({ desktopCollapsed: true })
     const sidebar = view.container.querySelector('aside')
 
-    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: DURATIONS_S.base })
+    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.01 })
+  })
+
+  it('covers the content as a drawer in a narrow window, closing on a click outside', async () => {
+    const onCollapse = mock(() => {})
+    const view = await renderSidebarWithProps({ desktopCollapsed: false, drawer: true, onCollapse })
+    const sidebar = view.container.querySelector('aside') as HTMLElement
+    expect(sidebar.className).toContain('absolute')
+    expect(sidebar.className).toContain('shadow-(--shadow-depth)')
+    fireEvent.pointerDown(view.container.querySelector('[data-sidebar-drawer-backdrop]') as HTMLElement)
+    expect(onCollapse).toHaveBeenCalledTimes(1)
   })
 
   it('keeps a collapsed sidebar out of Tab order', async () => {

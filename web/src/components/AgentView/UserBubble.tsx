@@ -482,6 +482,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
   return (
     <div
+      data-user-bubble=""
       className="group mb-3 flex justify-end"
       onMouseEnter={() => setShowTime(true)}
       onMouseLeave={() => setShowTime(false)}

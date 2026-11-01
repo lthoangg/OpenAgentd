@@ -94,6 +94,17 @@ export interface AttachmentTabRequest {
   key: number
 }
 
+/**
+ * A layout request for the dock: ``split`` joins or splits its two groups
+ * (⌘\); ``terminal-toggle`` shows or hides the terminal group (⌃`), and
+ * ``terminal-show`` shows it (the dock was closed).
+ */
+export interface DockLayoutRequest {
+  action: 'split' | 'terminal-toggle' | 'terminal-show'
+  /** Monotonic; the dock handles each key once. */
+  key: number
+}
+
 export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Git' }
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
 export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Scheduled tasks' }

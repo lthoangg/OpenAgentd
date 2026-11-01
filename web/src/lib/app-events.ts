@@ -17,6 +17,11 @@ export const APP_EVENTS = {
   searchSessions: 'oa:search-sessions',
   // A transcript plan-review card or ``plan`` row asks for the session plan.
   openPlan: 'oa:open-plan',
+  // View menu: layout commands (their keys match physical codes or Control).
+  splitReviewPanel: 'oa:split-review-panel',
+  toggleTerminalGroup: 'oa:toggle-terminal-group',
+  toggleFocusMode: 'oa:toggle-focus-mode',
+  resetLayout: 'oa:reset-layout',
 } as const
 
 export type AppEvent = (typeof APP_EVENTS)[keyof typeof APP_EVENTS]

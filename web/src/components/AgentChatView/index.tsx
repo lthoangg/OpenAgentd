@@ -60,6 +60,7 @@ import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { FolderCode, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
@@ -83,6 +84,7 @@ import type {
   MessageAttachment,
 } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
+import { TranscriptFind } from '@/components/TranscriptFind'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -294,6 +296,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handledDockPreviewRequestKeyRef,
     dockAttachmentRequest,
     handledDockAttachmentRequestKeyRef,
+    dockLayoutRequest,
+    handledDockLayoutKeyRef,
     handleOpenAttachment,
     handleOpenPreview,
     dockActiveView,
@@ -301,6 +305,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     dockViewsEnabled,
     sidebarCollapsed,
     setSidebarCollapsed,
+    sidebarDrawer,
+    sidebarDrawerOpen,
+    setSidebarDrawerOpen,
+    focusMode,
+    handleToggleFocusMode,
+    handleSplitDock,
+    handleToggleTerminalGroup,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,
@@ -337,6 +348,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     togglePalette,
     toggleQuickOpen,
   })
+  // F6 / ⇧F6 walk the window's areas (sidebar, transcript, composer, the
+  // Review panel's groups, status bar). Phones have no keyboard areas.
+  useFocusRegions(!isMobile)
 
   // The other end of a workspace message: the sender's session from the
   // request's chip, the replier's session from a reply report.
@@ -487,6 +501,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
+  // ⌘F from the chat: find in the transcript on screen; a new session or a
+  // switch closes it.
+  const [findOpen, setFindOpen] = useState(false)
+  const handleFindInSession = useCallback(() => setFindOpen(true), [])
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    returnFocusToComposer()
+  }, [returnFocusToComposer])
+  useEffect(() => {
+    setFindOpen(false)
+  }, [sessionIdState])
+
   const handleOpenNewPreview = useCallback(() => {
     if (!workspace) return
     handleOpenPreview({ kind: 'url', url: lastPreviewUrl(workspace) ?? 'http://localhost:5173' })
@@ -594,6 +620,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
+    handleSplitDock,
+    handleToggleTerminalGroup,
+    handleToggleFocusMode,
+    focusMode,
+    handleFindInSession: sessionIdState ? handleFindInSession : undefined,
     handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
     planAwaitingReview,
     handleOpenPreview: workspace && previewsAvailable() ? handleOpenNewPreview : undefined,
@@ -618,7 +649,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const dockOpen = workspacePanel !== null
   const [dockKept, setDockKept] = useState(dockOpen)
   if (dockOpen && !dockKept) setDockKept(true)
-  const chatCoveredByDock = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
+  // Over a narrow chat the dock covers the transcript but stops above the
+  // composer, so a message can be written beside the diff; maximized, it
+  // covers both. Whatever it covers stays mounted, inert.
+  const dockOverChat = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
+  const chatCoveredByDock = dockOverChat && dockMaximized
+  const transcriptCoveredByDock = dockOverChat && !dockMaximized
   // The dock claims focus while it covers the chat; give it back when it
   // closes or uncovers the chat so it is never left on <body>.
   useReturnFocusFromDock({
@@ -821,20 +857,24 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       {/* Body row — sidebar + main content column. On
           mobile the Sidebar is position:fixed (overlay drawer), so it
           takes no space here and the main column is always full-width. */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
             draftWorkspace={sessionId ? null : workspace}
-            onCollapse={() => setSidebarCollapsed(true)}
+            onCollapse={() => (sidebarDrawer ? setSidebarDrawerOpen(false) : setSidebarCollapsed(true))}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            desktopCollapsed={sidebarCollapsed}
+            desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
+            drawer={sidebarDrawer}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
-            onMobileClose={() => setMobileSidebarOpen(false)}
+            onMobileClose={() => {
+              setMobileSidebarOpen(false)
+              setSidebarDrawerOpen(false)
+            }}
         />
 
-        <div ref={centerRef} className="relative flex min-w-0 flex-1 overflow-hidden">
+        <div ref={centerRef} data-workbench-center="" className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
@@ -845,6 +885,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           data-file-drop-zone
         >
         <ConnectionBanner />
+        {findOpen && !isMobile && <TranscriptFind onClose={closeFind} />}
         {/* The draft screen carries its own setup card instead. */}
         {!isDraft && (
           <ProviderSetupNotice
@@ -944,7 +985,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <motion.div
             // Opening a session whose workspace is still being looked up: the
             // chat on screen stays, for looking at only, until it is known.
-            inert={isSessionLoading}
+            // A narrow window's Review panel covers it too.
+            inert={isSessionLoading || transcriptCoveredByDock}
+            aria-hidden={transcriptCoveredByDock || undefined}
             className="flex flex-1 flex-col min-h-0"
             initial={draftHandoff.active && !reducedMotion ? { opacity: 0, y: 8 } : false}
             animate={{ opacity: isSessionLoading ? 0.7 : 1, y: 0 }}
@@ -1026,6 +1069,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               handledPreviewRequestKeyRef={handledDockPreviewRequestKeyRef}
               attachmentRequest={dockAttachmentRequest}
               handledAttachmentRequestKeyRef={handledDockAttachmentRequestKeyRef}
+              layoutRequest={dockLayoutRequest}
+              handledLayoutRequestKeyRef={handledDockLayoutKeyRef}
               onSendPreviewComments={handleSendPreviewComments}
               onActiveViewChange={setDockActiveView}
               todos={todos}

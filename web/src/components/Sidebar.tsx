@@ -27,8 +27,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { cn } from '@/lib/utils'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -174,6 +176,12 @@ interface SidebarProps {
   openWorkspaceDialogKey?: number
   /** Desktop only: when true, the inline panel collapses to width=0. */
   desktopCollapsed?: boolean
+  /**
+   * Desktop windows under 1180px: the sidebar is a drawer over the content
+   * (``desktopCollapsed`` false while open). A click outside it or Escape
+   * calls ``onCollapse``.
+   */
+  drawer?: boolean
   /** Mobile only: whether the overlay drawer is open. */
   mobileOpen?: boolean
   /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
@@ -228,6 +236,7 @@ export function Sidebar({
   onCollapse,
   openWorkspaceDialogKey = 0,
   desktopCollapsed = false,
+  drawer = false,
   mobileOpen = false,
   mobileDragOffset = null,
   onMobileClose,
@@ -238,10 +247,10 @@ export function Sidebar({
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
-  // ``onCollapse`` is wired by AgentChatView's left-chrome hamburger.
-  // We don't render an inline collapse toggle anymore — the topbar
-   // hamburger and ⌘B/Ctrl+B own that surface.
-  void onCollapse
+  // The header's sidebar button and ⌘B open and close the column; a drawer
+  // also closes on a click outside it or Escape.
+  const drawerOpen = drawer && !isMobile && !desktopCollapsed
+  useKeyLayer(drawerOpen, { kind: 'transient', onClose: () => onCollapse?.() })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
@@ -676,9 +685,12 @@ export function Sidebar({
     animate: isMobile
       ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
       : { width: desktopCollapsed ? 0 : width },
+    // Desktop: showing or hiding is a straight cut (the chat beside it never
+    // animates its width); only the phone drawer slides.
     transition: mobileDragOffset !== null
       ? { duration: 0 }
-      : { duration: isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+      : { duration: !isMobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+    instantWidth: !isMobile,
   })
 
   const collapseAllWorkspaces = () => {
@@ -901,6 +913,15 @@ export function Sidebar({
           />
         )}
       </AnimatePresence>
+      {/* A desktop drawer closes on a click anywhere outside it. */}
+      {drawerOpen && (
+        <div
+          aria-hidden="true"
+          data-sidebar-drawer-backdrop=""
+          className="absolute inset-0 z-20"
+          onPointerDown={() => onCollapse?.()}
+        />
+      )}
 
     <ResizableAside
       initial={false}
@@ -915,12 +936,17 @@ export function Sidebar({
       className={
         isMobile
           ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
-          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
+          : drawer
+            // Closed, the drawer is 0 wide: hide it so its edge and shadow do not show.
+            ? cn('absolute inset-y-0 left-0 z-30 flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)', desktopCollapsed && 'invisible')
+            : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
       }
+      data-sidebar-drawer={drawer && !isMobile ? '' : undefined}
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
 
       <div
+        data-focus-region="sidebar"
         className="flex min-h-0 flex-1 flex-col"
         onKeyDown={(event) => {
           if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return

@@ -493,7 +493,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <section className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
+            {/* data-breakout: in the transcript, may widen past the prose column (index.css). */}
+            <section data-breakout="" className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
               {usesDiffView ? (
                 <DiffView
                   toolName={name}

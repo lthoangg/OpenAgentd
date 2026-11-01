@@ -5,7 +5,8 @@
  * labels in tooltips and the command palette, the chords swallowed behind
  * dialogs, and synthetic dispatch from native menu commands all read from
  * here, so a key changes in one place. Every shortcut uses the platform's
- * primary modifier (⌘ on macOS, Ctrl elsewhere); see ``keyboard-shortcut.ts``.
+ * primary modifier (⌘ on macOS, Ctrl elsewhere; see ``keyboard-shortcut.ts``),
+ * except the few marked ``ctrl``, which are the Control key on every OS (⌃`).
  */
 import type { OS } from '@/hooks/use-platform'
 import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
@@ -17,6 +18,8 @@ export interface AppShortcut {
   code?: string
   shift?: boolean
   alt?: boolean
+  /** The Control key itself on every OS instead of the primary modifier. */
+  ctrl?: boolean
   /** May replace an open overlay instead of being blocked by it. */
   switcher?: boolean
 }
@@ -27,6 +30,12 @@ export const APP_SHORTCUTS = {
   sessionSettings: { key: 'A', shift: true },
   workspaceFiles: { key: 'D' },
   maximizeDock: { key: 'D', shift: true },
+  // Split the Review panel into two groups (top/bottom), or join them.
+  splitDock: { key: '\\', code: 'Backslash' },
+  // Hide everything but the chat; again to put the layout back.
+  focusMode: { key: 'F', shift: true },
+  // Find in this session's transcript (only while focus is in the chat).
+  findInSession: { key: 'F' },
   tasks: { key: 'T' },
   quickOpen: { key: 'P', switcher: true },
   commandPalette: { key: 'K', switcher: true },
@@ -46,6 +55,8 @@ export const APP_SHORTCUTS = {
   // Matched on the physical Backquote key: layouts report Shift+` as `~`,
   // `` ` `` or `Dead`, which a character match cannot express.
   terminal: { key: '`', code: 'Backquote', shift: true },
+  // Show or hide the Review panel's terminal group, as in editors (⌃`).
+  toggleTerminal: { key: '`', code: 'Backquote', ctrl: true },
   openGit: { key: 'G', shift: true },
   shortcutsHelp: { key: '/', switcher: true },
   // Dock tabs by position; matched on the digit key so layouts that print
@@ -74,6 +85,11 @@ export const PREV_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true, shift: tr
 
 /** The chord the keyboard dispatcher matches for a shortcut. */
 export function chordOf(shortcut: AppShortcut): KeyChord {
+  if (shortcut.ctrl) {
+    const chord: KeyChord = { key: shortcut.key, ctrl: true, shift: shortcut.shift ?? false, alt: shortcut.alt ?? false }
+    if (shortcut.code) chord.code = shortcut.code
+    return chord
+  }
   const chord: KeyChord = { key: shortcut.key, mod: true, alt: shortcut.alt ?? false }
   // A symbol key leaves Shift open: some layouts need it to type "/" or "[".
   const symbol = !shortcut.code && shortcut.key.length === 1 && !/[a-z0-9]/i.test(shortcut.key)
@@ -87,10 +103,10 @@ export const APP_SHORTCUT_CHORDS: readonly KeyChord[] = Object.values(APP_SHORTC
 
 /** Human-readable label, e.g. ``⌘⇧D`` or ``Ctrl+Shift+D``. */
 export function shortcutLabel(shortcut: AppShortcut, os: OS): string {
-  return formatShortcut(shortcut.key, os, { shift: shortcut.shift, alt: shortcut.alt })
+  return formatShortcut(shortcut.key, os, { shift: shortcut.shift, alt: shortcut.alt, ctrl: shortcut.ctrl })
 }
 
 /** Fire the shortcut as a synthetic key press (palette items, native menus). */
 export function dispatchAppShortcut(shortcut: AppShortcut, os: OS): void {
-  dispatchShortcutKey(shortcut.key.toLowerCase(), os, { shift: shortcut.shift, alt: shortcut.alt, code: shortcut.code })
+  dispatchShortcutKey(shortcut.key.toLowerCase(), os, { shift: shortcut.shift, alt: shortcut.alt, code: shortcut.code, ctrl: shortcut.ctrl })
 }

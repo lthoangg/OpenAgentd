@@ -20,7 +20,8 @@ import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { usePlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { TEXT_SIZES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
@@ -48,6 +49,15 @@ interface UseAgentCommandsArgs {
   handleOpenTerminal: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
   handleToggleDockMaximized?: () => void
+  /** Desktop with a workspace: split the Review panel into two groups (⌘\). */
+  handleSplitDock?: () => void
+  /** With a workspace: show or hide the terminal group (⌃`). */
+  handleToggleTerminalGroup?: () => void
+  /** Desktop: hide the sidebar and the Review panel, or bring them back. */
+  handleToggleFocusMode?: () => void
+  focusMode?: boolean
+  /** Desktop: find in this session's transcript (⌘F). */
+  handleFindInSession?: () => void
   /** Only while the session has a plan: opens it (dock Plan tab, or the task popover without a workspace). */
   handleOpenPlan?: () => void
   /** The plan is waiting for the user's review. */
@@ -83,6 +93,11 @@ export function useAgentCommands({
   handleNewSession,
   handleOpenTerminal,
   handleToggleDockMaximized,
+  handleSplitDock,
+  handleToggleTerminalGroup,
+  handleToggleFocusMode,
+  focusMode = false,
+  handleFindInSession,
   handleOpenPlan,
   planAwaitingReview = false,
   handleOpenPreview,
@@ -93,6 +108,8 @@ export function useAgentCommands({
   const { preference: theme, setPreference: setTheme } = useThemePreference()
   const readerMode = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
   const toggleReaderMode = useDisplayPrefsStore((s) => s.toggleTranscriptStyle)
+  const textSize = useDisplayPrefsStore((s) => s.textSize)
+  const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
   const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
@@ -125,6 +142,18 @@ export function useAgentCommands({
       : []),
     ...(handleToggleDockMaximized
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
+      : []),
+    ...(handleSplitDock
+      ? [{ id: 'split-dock', group: 'View' as const, label: 'Split Review Panel', description: 'Two tab groups, one above the other, or one again', keywords: 'dock split group top bottom', shortcut: shortcutLabel(KEYS.splitDock, os), action: handleSplitDock }]
+      : []),
+    ...(handleToggleTerminalGroup
+      ? [{ id: 'toggle-terminal', group: 'View' as const, label: 'Terminal', description: 'Show or hide the terminals under the review panel tabs; they keep running', keywords: 'shell console panel', shortcut: shortcutLabel(KEYS.toggleTerminal, os), action: handleToggleTerminalGroup }]
+      : []),
+    ...(handleToggleFocusMode
+      ? [{ id: 'focus-mode', group: 'View' as const, label: focusMode ? 'Leave Focus Mode' : 'Focus Mode', description: focusMode ? 'Bring the sidebar and review panel back' : 'Hide the sidebar and review panel; again to bring them back', keywords: 'zen distraction free hide panels', shortcut: shortcutLabel(KEYS.focusMode, os), action: handleToggleFocusMode }]
+      : []),
+    ...(handleFindInSession
+      ? [{ id: 'find-in-session', group: 'Session' as const, label: 'Find in Session', description: 'Search this conversation', keywords: 'search text transcript', shortcut: shortcutLabel(KEYS.findInSession, os), action: handleFindInSession }]
       : []),
     { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.sidebar, os), action: handleSidebarToggle },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Create, pause and run scheduled agent tasks', keywords: 'scheduler schedule cron', action: toggleScheduler },
@@ -160,6 +189,24 @@ export function useAgentCommands({
       action: () => {},
     },
     {
+      id: 'text-size',
+      group: 'View',
+      label: 'Text Size…',
+      description: `Compact, Default or Large. Now: ${TEXT_SIZES.find((size) => size.value === textSize)?.label ?? 'Default'}`,
+      keywords: 'font zoom bigger smaller density',
+      page: {
+        placeholder: 'Text size…',
+        commands: TEXT_SIZES.map(({ value, label }) => ({
+          id: `text-size-${value}`,
+          label,
+          description: value === textSize ? 'Current' : undefined,
+          action: () => setTextSize(value),
+        })),
+      },
+      action: () => {},
+    },
+    { id: 'reset-layout', group: 'View', label: 'Reset Layout', description: 'Sidebar and review panel sizes back to their defaults', keywords: 'restore default width panels', action: () => useLayoutStore.getState().resetLayout() },
+    {
       id: 'toggle-reader-mode',
       group: 'View',
       label: 'Toggle Reader Mode',
@@ -174,5 +221,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleToggleTerminalGroup, handleToggleFocusMode, focusMode, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

@@ -952,6 +952,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         autoCorrect={isMobile ? undefined : 'off'}
         autoCapitalize={isMobile ? undefined : 'off'}
         aria-label="Message input"
+        // F6 lands here when it enters the composer (lib/focus-regions).
+        data-region-entry=""
         aria-expanded={menu !== null}
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}

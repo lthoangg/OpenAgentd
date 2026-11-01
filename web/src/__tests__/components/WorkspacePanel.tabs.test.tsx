@@ -178,6 +178,8 @@ describe('Review dock diff tabs', () => {
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Open src/app.ts' }))
+    // Opened from the list it is a preview tab; keep it, or the diff would replace it.
+    await user.dblClick(screen.getByRole('button', { name: 'app.ts' }))
     await user.click(screen.getByRole('button', { name: 'Git' }))
     // [Git, app.ts] → the diff opens right after Git: [Git, app.ts diff, app.ts].
     await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))

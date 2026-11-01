@@ -37,12 +37,12 @@ export function isPrimaryShortcut(
 const KEY_GLYPHS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }
 
 /** Human-readable label, e.g. ``formatShortcut('B', 'macos') === '⌘B'``. */
-export function formatShortcut(key: string, os: OS, opts: { shift?: boolean; alt?: boolean } = {}): string {
+export function formatShortcut(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; ctrl?: boolean } = {}): string {
   const shift = opts.shift ?? false
   const alt = opts.alt ?? false
   const glyph = KEY_GLYPHS[key] ?? key
   if (isPrimaryModifierOS(os)) {
-    return `${alt ? '⌥' : ''}⌘${shift ? '⇧' : ''}${glyph}`
+    return `${alt ? '⌥' : ''}${opts.ctrl ? '⌃' : '⌘'}${shift ? '⇧' : ''}${glyph}`
   }
   return `Ctrl+${alt ? 'Alt+' : ''}${shift ? 'Shift+' : ''}${glyph}`
 }
@@ -69,8 +69,9 @@ export function findSelectContainer(el: Element | null): Element | null {
  * a palette item or native-menu command is activated in place of a real
  * key press.
  */
-export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; code?: string } = {}): void {
-  const mac = isPrimaryModifierOS(os)
+export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; code?: string; ctrl?: boolean } = {}): void {
+  // ``ctrl`` chords are the Control key on every OS, never ⌘.
+  const mac = isPrimaryModifierOS(os) && !opts.ctrl
   // Dispatch from the document rather than window. Consumers such as the
   // sidebar's `useHotkey` listener attach to `document`; an event dispatched
   // on window cannot bubble down to that listener, so toolbar buttons that

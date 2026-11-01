@@ -154,6 +154,7 @@ export const AppFooter = memo(function AppFooter({
         className,
       )}
       aria-label="Status bar"
+      data-focus-region="status"
     >
       {/* Left cluster — workspace scope: connection, repository state. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">

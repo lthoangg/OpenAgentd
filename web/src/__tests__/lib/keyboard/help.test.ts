@@ -51,6 +51,17 @@ describe('shortcutHelp', () => {
     expect(new Set(labels).size).toBe(labels.length)
   })
 
+  it('lists the layout keys: split, terminal group, focus mode, find, areas', () => {
+    expect(find('macos', 'Split or join the review panel')?.keys).toEqual(['⌘\\'])
+    expect(find('macos', 'Show or hide the terminal')?.keys).toEqual(['⌃`'])
+    expect(find('windows', 'Show or hide the terminal')?.keys).toEqual(['Ctrl+`'])
+    expect(find('macos', 'Focus mode')?.keys).toEqual(['⌘⇧F'])
+    expect(find('macos', 'Find in this session')?.keys).toEqual(['⌘F'])
+    expect(find('macos', 'Next and previous area')?.keys).toEqual(['F6', '⇧F6'])
+    // The composer no longer minimizes.
+    expect(find('macos', 'Minimize the input')).toBeUndefined()
+  })
+
   it('lists Alt+arrows for back and forward off macOS only', () => {
     expect(find('windows', 'Back')?.keys).toEqual(['Ctrl+[', 'Alt+←'])
     expect(find('windows', 'Forward')?.keys).toEqual(['Ctrl+]', 'Alt+→'])

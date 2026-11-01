@@ -47,6 +47,15 @@ export interface UseCommandPaletteArgs {
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
   handleOpenTerminal: () => void
+  /** ⌘\ — split / join the Review panel's groups (desktop + workspace). */
+  handleSplitDock: () => void
+  /** ⌃` — the Review panel's terminal group. */
+  handleToggleTerminalGroup: () => void
+  /** ⇧⌘F — focus mode (desktop). */
+  handleToggleFocusMode: () => void
+  focusMode: boolean
+  /** ⌘F — find in the session; omitted where there is no transcript to search. */
+  handleFindInSession?: () => void
   /** Only while the session has a plan; lists Open Plan. */
   handleOpenPlan?: () => void
   planAwaitingReview?: boolean
@@ -86,6 +95,11 @@ export function useCommandPalette({
   handleToggleQuickOpen,
   handleToggleScheduler,
   handleOpenTerminal,
+  handleSplitDock,
+  handleToggleTerminalGroup,
+  handleToggleFocusMode,
+  focusMode,
+  handleFindInSession,
   handleOpenPlan,
   planAwaitingReview,
   handleOpenPreview,
@@ -125,6 +139,11 @@ export function useCommandPalette({
     handleNewSession,
     handleOpenTerminal,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
+    handleSplitDock: workspace && !isMobile ? handleSplitDock : undefined,
+    handleToggleTerminalGroup: workspace ? handleToggleTerminalGroup : undefined,
+    handleToggleFocusMode: isMobile ? undefined : handleToggleFocusMode,
+    focusMode,
+    handleFindInSession: isMobile ? undefined : handleFindInSession,
     handleOpenPlan,
     planAwaitingReview,
     handleOpenPreview,
@@ -187,6 +206,15 @@ export function useCommandPalette({
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     }),
     appShortcut('terminal', () => { handleOpenTerminal() }),
+    appShortcut('toggleTerminal', () => { handleToggleTerminalGroup() }, { enabled: Boolean(workspace), allowInEditable: true }),
+    appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
+    appShortcut('focusMode', () => { handleToggleFocusMode() }, { enabled: !isMobile }),
+    // Only from the chat: in a file or a terminal ⌘F stays theirs (and the
+    // browser's own Find elsewhere).
+    appShortcut('findInSession', () => { handleFindInSession?.() }, {
+      enabled: !isMobile && handleFindInSession !== undefined,
+      within: () => document.getElementById('main'),
+    }),
     appShortcut('openGit', () => { handleOpenGit?.() }, { enabled: handleOpenGit !== undefined }),
   ])
 

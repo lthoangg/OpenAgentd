@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
@@ -89,17 +89,29 @@ describe('WorkspacePanel terminal tabs', () => {
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 
-  it('"Open…" → Terminal opens additional numbered sessions', async () => {
+  it('opens the first terminal in the lower group, under an empty upper one', async () => {
     await renderPanel(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    const lower = screen.getByRole('group', { name: 'Lower group' })
+    expect(within(lower).getByRole('button', { name: 'Terminal 1' })).toBeTruthy()
+    // The upper group shows the launcher until something opens there.
+    const upper = screen.getByRole('group', { name: 'Upper group' })
+    expect(within(upper).queryAllByRole('button', { name: /^Close / })).toHaveLength(0)
+  })
+
+  it('"Open…" → Terminal opens additional numbered sessions in that group', async () => {
+    await renderPanel(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    const lower = screen.getByRole('group', { name: 'Lower group' })
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Open in the review panel' }).click()
+      within(lower).getByRole('button', { name: 'Open in the review panel' }).click()
     })
     await act(async () => {
       screen.getByRole('menuitem', { name: 'Terminal' }).click()
     })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 2' })).toBeTruthy())
+    expect(within(lower).getByRole('button', { name: 'Terminal 2' })).toBeTruthy()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(2)
   })
 

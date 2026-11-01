@@ -274,3 +274,59 @@ describe("useAgentCommands — navigation", () => {
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")
   })
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Layout — split, terminal group, focus mode, find, text size, reset
+// ════════════════════════════════════════════════════════════════════════════
+describe("useAgentCommands — layout", () => {
+  it("lists the layout commands only when the shell can run them", () => {
+    const none = renderHook(() => useAgentCommands(makeArgs()))
+    for (const id of ["split-dock", "toggle-terminal", "focus-mode", "find-in-session"]) {
+      expect(none.result.current.find((c) => c.id === id)).toBeUndefined()
+    }
+  })
+
+  it("runs each layout handler, with its shortcut", () => {
+    const split = mock(() => {})
+    const terminal = mock(() => {})
+    const focus = mock(() => {})
+    const find = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({
+      handleSplitDock: split,
+      handleToggleTerminalGroup: terminal,
+      handleToggleFocusMode: focus,
+      handleFindInSession: find,
+    })))
+    expect(byId(result.current, "split-dock").label).toBe("Split Review Panel")
+    expect(byId(result.current, "split-dock").shortcut).toBe("Ctrl+\\")
+    expect(byId(result.current, "toggle-terminal").label).toBe("Terminal")
+    expect(byId(result.current, "toggle-terminal").shortcut).toBe("Ctrl+`")
+    expect(byId(result.current, "focus-mode").shortcut).toBe("Ctrl+Shift+F")
+    expect(byId(result.current, "find-in-session").shortcut).toBe("Ctrl+F")
+    byId(result.current, "split-dock").action()
+    byId(result.current, "toggle-terminal").action()
+    byId(result.current, "focus-mode").action()
+    byId(result.current, "find-in-session").action()
+    expect([split, terminal, focus, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1, 1, 1])
+  })
+
+  it("names Focus Mode by what it will do", () => {
+    const off = renderHook(() => useAgentCommands(makeArgs({ handleToggleFocusMode: () => {} })))
+    expect(byId(off.result.current, "focus-mode").label).toBe("Focus Mode")
+    const on = renderHook(() => useAgentCommands(makeArgs({ handleToggleFocusMode: () => {}, focusMode: true })))
+    expect(byId(on.result.current, "focus-mode").label).toBe("Leave Focus Mode")
+  })
+
+  it("sets the text size from its page, marking the current one", () => {
+    useDisplayPrefsStore.getState().setTextSize("default")
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const page = () => byId(result.current, "text-size").page!
+    expect(page().commands.map((c) => c.label)).toEqual(["Compact", "Default", "Large"])
+    expect(byId(page().commands, "text-size-default").description).toBe("Current")
+
+    act(() => byId(page().commands, "text-size-large").action())
+    expect(useDisplayPrefsStore.getState().textSize).toBe("large")
+    expect(byId(result.current, "text-size").description).toMatch(/Now: Large$/)
+    act(() => useDisplayPrefsStore.getState().setTextSize("default"))
+  })
+})

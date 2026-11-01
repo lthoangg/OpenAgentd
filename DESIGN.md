@@ -581,15 +581,18 @@ height change mid-animation causes visible reflow.
 ### Workbench layout (desktop)
 
 From `md:` up the coding view is a workbench: header, sidebar, a center region
-holding the chat and the review dock, and a status bar. Mobile keeps its drawer
-and full-screen dock sheet unchanged.
+holding the chat and the Review panel, and a status bar. There is no bottom
+dock: two areas sit around the chat, the sidebar on the left (`Mod+B`) and the
+Review panel on the right (`Mod+D`), full window height. Mobile keeps its
+drawer and full-screen sheet.
 
 ```
 ┌────────────── app-header 36 · bg-page (light) / bg-sidebar (dark) ─────────┐
-│ sidebar 264 │ chat · bg-page (≥ 400)         │ review dock (≥ 340)          │
-│ page / rail │                                │ tab-bar 36 · bg-sidebar      │
-│ 28px rows   │                                │ toolbar 32 · bg-page         │
-│             │                                │ one scroller                 │
+│ sidebar 264 │ chat · bg-page (≥ 400)         │ Review panel (≥ 340)         │
+│ page / rail │ transcript (prose ≤ 768,       │ upper group: tab-bar 36      │
+│ 28px rows   │   code/tables/tools ≤ 960)     │   toolbar 32 · one scroller  │
+│             │                                ├─ split handle (⌘\) ──────────┤
+│             │ composer + run deck (≤ 768)    │ lower group: terminals (⌃`)  │
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
@@ -602,11 +605,28 @@ and full-screen dock sheet unchanged.
   `useLayoutStore` (`oa.layout.v1`) persists the choices. The sidebar defaults
   to 264px (220–440px) and opens expanded on first run at ≥1280px. The dock is
   stored as a ratio of the center (default 45%), clamped so the dock keeps
-  340px and the chat keeps 400px.
-- **Overlay instead of squeeze.** When the dock is maximized (`Mod+Shift+D`) or
-  the center is narrower than 740px, the dock covers the chat instead of
-  shrinking it. The chat stays mounted underneath (`inert`) so its scroll
-  position and live stream survive. Maximize is session-only.
+  340px and the chat keeps 400px. Open/closed, sizes and the split ratio are
+  per window (`sessionStorage`); tabs and groups per session
+  (`oa.dockTabs.v1`); terminals per workspace. Reset Layout puts the sizes back.
+- **Narrow windows.** Below 1180px the sidebar is a drawer over the content
+  (shadow, backdrop; a click outside or Escape closes it) and the column choice
+  is left alone. When the center is narrower than 740px the Review panel covers
+  the transcript but stops above the composer (`--composer-h`), so a message
+  can be written beside the diff; maximized (`Mod+Shift+D`) it covers both.
+  What it covers stays mounted, `inert`. Maximize lasts until toggled or Escape;
+  with two groups it shows the focused one.
+- **Toggles are cuts, not tweens.** Showing or hiding the sidebar or the
+  Review panel sets the width as a style at once (`ResizableAside`
+  `instantWidth`): no width animation, so the transcript keeps the passage
+  being read and the composer keeps focus and draft. Only the phone drawer and
+  sheet slide.
+- **Focus mode** (`Mod+Shift+F`) hides the sidebar and the Review panel and
+  puts both back on the second press; showing either one ends it as is.
+- **Find in session** (`Mod+F`, while focus is in the chat) searches the loaded
+  turns and paints matches with the CSS Custom Highlight API.
+- **F6 areas.** F6 / Shift+F6 move focus sidebar → transcript → composer →
+  upper group → lower group → status bar (`lib/focus-regions.ts`,
+  `data-focus-region`), returning to where focus was in each.
 - **Separators are controls.** Resize handles are 6px, keyboard-focusable
   `role="separator"` elements (arrows ±16px, Shift ±64px, Home/End, Enter or
   double-click to reset) whose 1px line lights up in `focus-ring`.
@@ -614,12 +634,20 @@ and full-screen dock sheet unchanged.
   under the tab bar and one scrolling region. Lists are flat `divide-y` rows at
   `list-row` height; row actions swap in for trailing metadata on hover/focus
   instead of nesting controls inside the row button.
-- **The dock holds views, not just files.** Besides Git, file, diff, commit,
-  and terminal tabs, the agent's Tasks and the Scheduled tasks list open as
-  closable dock tabs (`Mod+T`, `Mod+S`); pressing the shortcut again while the
-  tab is focused hides the dock. The header's review-dock button (`Mod+D`) is
-  the one show/hide control. The dock never covers the header, so the tab bar
-  carries no hide button. Inline diff peeks never scroll their ancestors.
+- **The Review panel holds views, not just files.** Besides Git, file, diff,
+  commit, and terminal tabs, the agent's Tasks, Plan, Goal, Side questions and
+  Scheduled tasks open as closable tabs. The header's Review panel button
+  (`Mod+D`) is the one show/hide control; the panel never covers the header.
+  Inline diff peeks never scroll their ancestors.
+- **Two groups, top and bottom.** `Mod+\` splits into an empty lower group
+  (its launcher) or joins the two; at most two, never side by side (the panel
+  is rarely wide enough for two diffs). Terminals open in the lower group, so
+  a diff and a shell show at once; Control and the backquote key (`toggleTerminal`) show or hide that group without
+  stopping its shells (its strip has a Hide button too), and hiding it with
+  nothing above closes the panel. Closing a group's last tab joins the groups.
+  The handle between them drags, takes the arrow keys, and resets on
+  double-click; each group keeps 120px. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`)
+  act on the focused group. Phones have one strip.
 
 ## Elevation & Depth
 
@@ -833,6 +861,10 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height (37px, 45px on touch) on `bg-sidebar` with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
+- **Order**: views (Git, Plan, Tasks…) first, a hairline, then documents (files, diffs, commits, terminals, previews). A tab moves only among its own kind.
+- **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the group's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
+- **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
+- **Menu** (right-click, Shift+F10): Close, Close Others, Close to the Right, Keep Open, Move to Other Group / Split Down, Move Left, Move Right, Copy Path, Reveal in Git. Close Others and Close to the Right act on the tab's own group.
 - **Active Tab**: filled with `bg-page`, `font-medium`, `text-(--color-text)`. No coloured edge, no border.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, hover `bg-key` wash.
 - **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.

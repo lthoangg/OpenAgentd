@@ -13,9 +13,12 @@ const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.m
 describe('system UI font', () => {
   const tokens = read('../../styles/tokens.css')
 
-  it('defines one native stack: Apple, Windows, Android, then the desktop default', () => {
+  // system-ui comes before Roboto: on Linux it is the desktop's own face,
+  // which an installed Roboto would otherwise replace; on Android it is
+  // Roboto or the maker's font. Roboto stays for browsers without system-ui.
+  it('defines one native stack: Apple, Windows, the system face, then Roboto', () => {
     const stack = /--font-ui:\s*([^;]+);/.exec(tokens)?.[1] ?? ''
-    const order = ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI Variable Text"', '"Segoe UI"', 'Roboto', 'system-ui']
+    const order = ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI Variable Text"', '"Segoe UI"', 'system-ui', 'Roboto']
     const at = order.map((name) => stack.indexOf(name))
     expect(at.every((i) => i >= 0)).toBe(true)
     expect([...at].sort((a, b) => a - b)).toEqual(at)

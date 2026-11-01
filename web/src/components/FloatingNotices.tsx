@@ -1,9 +1,10 @@
 /**
- * FloatingNotices — the one bottom-right column for the app's non-blocking
+ * FloatingNotices — the one top-right column for the app's non-blocking
  * cards: toasts, the TypeScript tools prompt, and the update card. Sharing a
- * column makes them stack instead of landing on the same spot. On desktop the
- * column clears the status bar (``.mobile-safe-floating``); on phones toasts
- * keep their own top slot (see ``ToastStack``).
+ * column makes them stack instead of landing on the same spot. It hangs under
+ * the app header (``.mobile-safe-floating``, safe areas included) on every
+ * screen, full width on phones, so the composer and its run deck own the
+ * bottom. Toasts come first, newest nearest the top edge (see ``ToastStack``).
  */
 import { LspInstallPrompt } from '@/components/LspInstallPrompt'
 import { ToastStack } from '@/components/ToastStack'

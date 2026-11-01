@@ -218,3 +218,54 @@ describe('ToastStack status-message semantics (WCAG 4.1.3)', () => {
     expect(info.getAttribute('aria-live')).toBe('polite')
   })
 })
+
+describe('ToastStack placement', () => {
+  it('lists the newest toast first, so it sits nearest the top edge of its column', () => {
+    useToastStore.setState({
+      toasts: [
+        { id: 't-1', tone: 'info', title: 'First', durationMs: null },
+        { id: 't-2', tone: 'error', title: 'Second', durationMs: null },
+        { id: 't-3', tone: 'success', title: 'Third', durationMs: null },
+      ],
+    })
+    render(<ToastStack />)
+
+    const shown = Array.from(document.querySelectorAll('[role="status"], [role="alert"]')).map((el) => el.querySelector('p')?.textContent)
+    expect(shown).toEqual(['Third', 'Second', 'First'])
+  })
+
+  it('keeps each toast live-region role when the order flips', () => {
+    useToastStore.setState({
+      toasts: [
+        { id: 't-1', tone: 'info', title: 'First', durationMs: null },
+        { id: 't-2', tone: 'error', title: 'Second', durationMs: null },
+      ],
+    })
+    render(<ToastStack />)
+
+    expect(screen.getByText('Second').closest('[role]')?.getAttribute('role')).toBe('alert')
+    expect(screen.getByText('First').closest('[role]')?.getAttribute('role')).toBe('status')
+  })
+
+  it('does not reorder the store while reversing for display', () => {
+    useToastStore.setState({
+      toasts: [
+        { id: 't-1', tone: 'info', title: 'First', durationMs: null },
+        { id: 't-2', tone: 'info', title: 'Second', durationMs: null },
+      ],
+    })
+    render(<ToastStack />)
+
+    expect(useToastStore.getState().toasts.map((t) => t.id)).toEqual(['t-1', 't-2'])
+  })
+
+  it('leaves positioning to the notice column: not fixed itself, full width on phones', () => {
+    const { container } = render(<ToastStack />)
+    const classes = (container.firstElementChild as HTMLElement).className.split(/\s+/)
+
+    expect(classes).not.toContain('fixed')
+    expect(classes).not.toContain('mobile-safe-toast')
+    expect(classes).toContain('w-full')
+    expect(classes).toContain('sm:max-w-sm')
+  })
+})

@@ -835,6 +835,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           workspace={workspace}
           chatWorkspace={chatWorkspace}
           sessionTitle={sessionTitle}
+          canRenameSession={!parentSessionId}
           onSidebarToggle={handleSidebarToggle}
           headerTokens={headerTokens}
           sessionId={sessionIdState}

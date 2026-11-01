@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
+ * ``row`` sits inside a list row or tab (the focus colour is its edge);
+ * ``field`` is a standalone text field on the page: the usual border and
+ * input fill, with the focus ring while it is open.
+ */
+const VARIANT_CLASS = {
+  row: 'rounded-xs border border-(--focus-ring) bg-(--bg-page) px-1 text-(--color-text) outline-none ring-2 ring-(--focus-ring)/25',
+  field: 'rounded-xs border border-(--color-border) bg-(--bg-input) px-1.5 text-(--color-text) outline-none focus:ring-2 focus:ring-(--focus-ring)',
+} as const
+
+/**
  * A title that turns into a text field in place. Enter or leaving the field
  * saves; Escape, an empty title, or an unchanged one cancels. Settles once,
  * so the blur that follows Enter or Escape does not save a second time.
@@ -12,6 +22,7 @@ export function InlineTitleInput({
   onCancel,
   className = '',
   maxLength = 255,
+  variant = 'row',
 }: {
   initial: string
   label: string
@@ -19,6 +30,7 @@ export function InlineTitleInput({
   onCancel: () => void
   className?: string
   maxLength?: number
+  variant?: keyof typeof VARIANT_CLASS
 }) {
   const [value, setValue] = useState(initial)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -61,7 +73,7 @@ export function InlineTitleInput({
       onClick={(event) => event.stopPropagation()}
       aria-label={label}
       maxLength={maxLength}
-      className={`min-w-0 rounded-xs border border-(--focus-ring) bg-(--bg-page) px-1 text-(--color-text) outline-none ring-2 ring-(--focus-ring)/25 ${className}`}
+      className={`min-w-0 ${VARIANT_CLASS[variant]} ${className}`}
     />
   )
 }

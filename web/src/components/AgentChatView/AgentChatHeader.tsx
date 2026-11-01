@@ -1,17 +1,20 @@
-import { memo, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
+import { memo, useCallback, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { ListTodo, PanelLeft, PanelRight } from 'lucide-react'
+import { ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
+import { HeaderSessionTitle } from './HeaderSessionTitle'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import type { GoalHeaderState } from '@/lib/work'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
@@ -26,6 +29,12 @@ interface AgentChatHeaderProps {
   /** Chat entry from the workspace tree — labels the chat root as "Chat". */
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
+  /**
+   * Whether the desktop title renames on double-click / F2. False for a
+   * subagent's session, which the sidebar does not rename either; phones
+   * rename from the drawer and never show the field.
+   */
+  canRenameSession?: boolean
   onSidebarToggle: () => void
   /** Context use for the phone's More sheet; the run deck's ring shows it everywhere else. */
   headerTokens?: AgentTopbarTokens
@@ -60,6 +69,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   workspace,
   chatWorkspace = null,
   sessionTitle,
+  canRenameSession = true,
   onSidebarToggle,
   headerTokens,
   sessionId,
@@ -80,6 +90,15 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onQuickOpen,
 }: AgentChatHeaderProps) {
   const { os } = usePlatform()
+  // The sidebar's mutation, so a rename here shows in both at once.
+  const { mutate: mutateSessionTitle } = useUpdateSessionTitleMutation()
+  const pushToast = useToastStore((s) => s.push)
+  const renameSession = useCallback(
+    (id: string, title: string) => {
+      mutateSessionTitle({ id, title }, { onError: () => pushToast({ tone: 'error', title: 'Could not rename session' }) })
+    },
+    [mutateSessionTitle, pushToast],
+  )
   // Published by the mounted transcript; a new chat has no prompts to step.
   const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
   const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
@@ -119,31 +138,38 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                   aria-label="Toggle sidebar"
                   className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
                 >
-                  <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                  {/* Phones open a drawer (menu); desktop folds a rail (panel). */}
+                  {isMobile ? (
+                    <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
+                  ) : (
+                    <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                  )}
                 </button>
               }
             />
             <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
           </Tooltip>
-          {/* Read-only: sessions are renamed from their sidebar row. */}
+          {/* Workspace · session. Double-click the session (or F2 on it) to
+              rename it here too; phones rename from the drawer. */}
           {workspace && !isMobile ? (
-            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
-              <TooltipTrigger
-                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
-                render={
-                  <span className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
-                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
-                    {sessionTitle && (
-                      <>
-                        <TitleSeparator sessionId={sessionId} title={sessionTitle} />
-                        <AnimatedTitle text={sessionTitle} sessionId={sessionId} className="text-(--color-text-muted)" />
-                      </>
-                    )}
-                  </span>
-                }
-              />
-              <TooltipContent>{sessionTitle ? `${workspaceName}: ${sessionTitle}` : workspaceTooltip}</TooltipContent>
-            </Tooltip>
+            <div className="ml-1 flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
+              <Tooltip className="shrink-0">
+                <TooltipTrigger render={<span className="font-semibold text-(--color-text)">{workspaceName}</span>} />
+                <TooltipContent>{workspaceTooltip}</TooltipContent>
+              </Tooltip>
+              {sessionTitle && (
+                <>
+                  <TitleSeparator sessionId={sessionId} title={sessionTitle} />
+                  <HeaderSessionTitle
+                    // A new session starts closed: no field carries over.
+                    key={sessionId ?? 'new'}
+                    sessionId={sessionId}
+                    title={sessionTitle}
+                    onRename={canRenameSession && sessionId ? (title) => renameSession(sessionId, title) : undefined}
+                  />
+                </>
+              )}
+            </div>
           ) : null}
         </div>
 
@@ -221,8 +247,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             filesAction={workspace ? {
                   Icon: PanelRight,
                   onClick: onWorkspaceFiles,
-                  title: `${dockOpen ? 'Close' : 'Open'} review dock (${dockShortcut})`,
-                  ariaLabel: 'Changed files and workspace files',
+                  title: `${dockOpen ? 'Hide' : 'Show'} Review panel (${dockShortcut})`,
+                  ariaLabel: 'Review panel',
                   pressed: dockOpen,
                   className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
                 } : undefined}

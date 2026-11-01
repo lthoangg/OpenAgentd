@@ -1,11 +1,23 @@
 import type { ComponentProps } from 'react'
-import { describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 
+// The header renames through the sidebar's mutation; the real one needs a QueryClient.
+const renameMutate = mock((..._args: unknown[]) => {})
+mock.module('@/queries/useSessionsQuery', () => ({
+  useUpdateSessionTitleMutation: () => ({ mutate: renameMutate }),
+}))
+
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
+import { useToastStore } from '@/stores/useToastStore'
+
+beforeEach(() => {
+  renameMutate.mockClear()
+  useToastStore.setState({ toasts: [] })
+})
 
 function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
@@ -90,17 +102,198 @@ describe('AgentChatHeader', () => {
     expect(screen.getByRole('button', { name: 'Toggle sidebar' }).tabIndex).toBe(0)
   })
 
-  // Sessions are renamed from the sidebar; the header only shows the title.
-  it('shows the desktop session title as text, not a rename control', async () => {
-    const user = userEvent.setup()
+  describe('renaming from the header', () => {
+    const TITLE_BUTTON = 'Rename session: Fix updater restart'
+
+    it('shows the desktop title as a button that names its action, with no field until asked', () => {
+      renderHeader({ isMobile: false })
+
+      const button = screen.getByRole('button', { name: TITLE_BUTTON })
+      expect(button).toHaveTextContent('Fix updater restart')
+      expect(button.tabIndex).toBe(0)
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    })
+
+    it('hints at the double-click in a tooltip', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.hover(screen.getByRole('button', { name: TITLE_BUTTON }))
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Double-click to rename')
+    })
+
+    it('turns into a selected text field on double-click, in the title font, with a 1px field border', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+
+      const field = screen.getByLabelText('Session title') as HTMLInputElement
+      expect(document.activeElement).toBe(field)
+      expect(field.value).toBe('Fix updater restart')
+      expect(field.selectionStart).toBe(0)
+      expect(field.selectionEnd).toBe('Fix updater restart'.length)
+      const classes = field.className.split(/\s+/)
+      expect(classes).toContain('bg-(--bg-input)')
+      expect(classes).toContain('border')
+      expect(classes).toContain('border-(--color-border)')
+      // Size and weight come from the header's title, not a field-specific class.
+      expect(classes.some((c) => /^text-(xs|sm|base|\[)/.test(c))).toBe(false)
+      expect(screen.queryByRole('button', { name: TITLE_BUTTON })).not.toBeInTheDocument()
+    })
+
+    it('saves through the sidebar mutation on Enter, then shows the button again with focus on it', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      // Typing straight away replaces the whole title: it opened selected.
+      await user.keyboard('Shorter title{Enter}')
+
+      expect(renameMutate).toHaveBeenCalledTimes(1)
+      expect(renameMutate.mock.calls[0]?.[0]).toEqual({ id: 'session-1', title: 'Shorter title' })
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: TITLE_BUTTON }))
+    })
+
+    it('saves when focus leaves the field, without pulling focus back', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('{End} v2')
+      await user.click(screen.getByRole('button', { name: 'Toggle sidebar' }))
+
+      expect(renameMutate).toHaveBeenCalledTimes(1)
+      expect(renameMutate.mock.calls[0]?.[0]).toEqual({ id: 'session-1', title: 'Fix updater restart v2' })
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Toggle sidebar' }))
+    })
+
+    it('cancels on Escape, and hands focus back to the title', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('Never saved{Escape}')
+
+      expect(renameMutate).not.toHaveBeenCalled()
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: TITLE_BUTTON }))
+    })
+
+    it('cancels an empty or an unchanged title', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('{Backspace}   {Enter}')
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      fireEvent.blur(screen.getByLabelText('Session title'))
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+
+      expect(renameMutate).not.toHaveBeenCalled()
+    })
+
+    it('opens with F2 while the title has focus', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      screen.getByRole('button', { name: TITLE_BUTTON }).focus()
+      await user.keyboard('{F2}')
+
+      expect(screen.getByLabelText('Session title')).toHaveValue('Fix updater restart')
+    })
+
+    it('opens with Enter, but not on a single mouse click', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.click(screen.getByRole('button', { name: TITLE_BUTTON }))
+      expect(screen.queryByLabelText('Session title')).toBeNull()
+
+      screen.getByRole('button', { name: TITLE_BUTTON }).focus()
+      await user.keyboard('{Enter}')
+      expect(screen.getByLabelText('Session title')).toHaveValue('Fix updater restart')
+    })
+
+    it('says so when the server refuses the new name', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('{End}!{Enter}')
+      const options = renameMutate.mock.calls[0]?.[1] as { onError: () => void }
+      options.onError()
+
+      expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['Could not rename session'])
+    })
+
+    it('keeps a subagent session read-only, like its sidebar row', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false, canRenameSession: false })
+
+      expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+      await user.dblClick(screen.getByText('Fix updater restart'))
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    })
+
+    it('has nothing to rename before a session exists', () => {
+      renderHeader({ isMobile: false, sessionId: null })
+
+      expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+    })
+
+    it('leaves renaming to the drawer on phones', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: true })
+
+      expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+      await user.dblClick(screen.getByText('Fix updater restart'))
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    })
+  })
+
+  it('opens the drawer from a menu icon on phones and folds the rail with a panel icon on desktop', () => {
+    const phone = renderHeader({ isMobile: true })
+    const phoneIcon = screen.getByRole('button', { name: 'Toggle sidebar' }).querySelector('svg')
+    expect(phoneIcon?.getAttribute('class')).toContain('lucide-menu')
+    expect(phoneIcon?.getAttribute('class')).not.toContain('lucide-panel-left')
+    phone.unmount()
+
     renderHeader({ isMobile: false })
+    const desktopIcon = screen.getByRole('button', { name: 'Toggle sidebar' }).querySelector('svg')
+    expect(desktopIcon?.getAttribute('class')).toContain('lucide-panel-left')
+    expect(desktopIcon?.getAttribute('class')).not.toContain('lucide-menu')
+  })
 
-    const title = screen.getByText('Fix updater restart')
-    expect(title.closest('button')).toBeNull()
-    expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+  it('gives every desktop header control a 36px hit area on touch, not only on phones', () => {
+    const { container } = renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    const buttons = Array.from(container.querySelectorAll<HTMLElement>('header button'))
 
-    await user.dblClick(title)
-    expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    expect(buttons.map((el) => el.getAttribute('aria-label'))).toEqual([
+      'Toggle sidebar',
+      'Rename session: Fix updater restart',
+      expect.stringMatching(/^Search or run a command/),
+      'Task list',
+      'Review panel',
+    ])
+    for (const el of buttons) {
+      expect([el.getAttribute('aria-label'), /pointer-coarse:(?:size-9|h-9|min-h-9)/.test(el.className)]).toEqual([el.getAttribute('aria-label'), true])
+      // No ``max-md:`` gate: a touch tablet in the desktop layout needs it too.
+      expect(el.className).not.toContain('max-md:pointer-coarse')
+    }
+  })
+
+  it('has two layout buttons on desktop: the sidebar on the left and the Review panel on the right', () => {
+    const { container } = renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    const labels = Array.from(container.querySelectorAll('header button')).map((el) => el.getAttribute('aria-label'))
+
+    expect(labels[0]).toBe('Toggle sidebar')
+    expect(labels.at(-1)).toBe('Review panel')
+    expect(labels.filter((label) => /sidebar|review|files|panel|dock/i.test(label ?? ''))).toEqual(['Toggle sidebar', 'Review panel'])
   })
 
   it('sizes every mobile header action to the full header height on touch', () => {
@@ -234,7 +427,7 @@ describe('AgentChatHeader', () => {
 
   it('reflects the review dock state on its toggle', () => {
     const { rerender } = renderHeader({ isMobile: false, workspacePanel: null })
-    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Review panel' })).toHaveAttribute('aria-pressed', 'false')
 
     rerender(
       <AgentChatHeader
@@ -257,7 +450,7 @@ describe('AgentChatHeader', () => {
         onCloseMobileActionsMenu={() => undefined}
       />,
     )
-    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Review panel' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('routes the desktop Tasks button through onToggleTasks with progress and pressed state', async () => {

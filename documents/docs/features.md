@@ -335,7 +335,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
-- **In-app auto-updater** `[v1.22.0, v1.99.8, v1.115.1]` — bottom-right update card + Settings → About
+- **In-app auto-updater** `[v1.22.0, v1.99.8, v1.115.1]` — top-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads, draggable and minimizable floating update card `[v2.3.0]`,
   GitHub release notes rendered inline. Desktop checks at startup and every 6
   hours, including on a foreground return once that interval is due; choosing
@@ -723,9 +723,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
-- **Floating surfaces keep content visible** `[v3.0.0]` — on desktop, toasts,
-  the update card, and the language-tools prompt stack in one bottom-right
-  column above the status bar instead of overlapping each other.
+- **Floating surfaces keep content visible** `[v3.0.0]` — toasts, the update
+  card, and the language-tools prompt stack in one column instead of
+  overlapping each other. The column hangs from the top right, under the app
+  header (full width on phones, safe areas respected, newest toast nearest the
+  top edge), so the composer and its run deck keep the bottom.
 - **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
   errors (rate limits, auth 401, connection drops) are now displayed directly within
   the chat transcript area as persistent error callout cards, while action validation

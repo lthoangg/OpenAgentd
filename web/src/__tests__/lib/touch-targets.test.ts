@@ -67,8 +67,11 @@ describe('coarse-pointer touch targets', () => {
     for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
   })
 
-  it('keeps phone toasts below the app header', () => {
-    expect(css).toMatch(/\.mobile-safe-toast\s*\{\s*top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ var\(--spacing-app-header\) \+ 0\.5rem\);/)
+  it('hangs the notice column from the top right, under the app header', () => {
+    expect(css).toMatch(/\.mobile-safe-floating\s*\{\s*top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ var\(--spacing-app-header\) \+ 0\.5rem\);/)
+    // The composer and its run deck own the bottom: no rule anchors a notice there any more.
+    const rule = /\.mobile-safe-floating\s*\{[^}]*\}/.exec(css)?.[0] ?? ''
+    expect(rule).not.toMatch(/bottom\s*:/)
   })
 
   it('keeps 44px touch sizes to the phone primary action (Send): the rest stays 36px for a mini screen', () => {

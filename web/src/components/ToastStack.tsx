@@ -1,9 +1,9 @@
 /**
- * ToastStack — renders all toasts from ``useToastStore``: across the top on
- * phones, and on desktop inside the ``FloatingNotices`` column above the
- * status bar, so they never cover the header's controls. Handles its own
- * mount/unmount animations; each item owns its auto-dismiss timer (see
- * ToastItem) so it can pause on hover/focus.
+ * ToastStack — renders all toasts from ``useToastStore`` at the head of the
+ * ``FloatingNotices`` column: top right under the app header, full width on
+ * phones, so they never cover the header's controls. The newest toast sits
+ * nearest the top edge. Handles its own mount/unmount animations; each item
+ * owns its auto-dismiss timer (see ToastItem) so it can pause on hover/focus.
  *
  * Swipe right or up to dismiss.
  */
@@ -147,9 +147,10 @@ export function ToastStack() {
   const dismiss = useToastStore(dismissSelector)
 
   return (
-    <div className="mobile-safe-toast pointer-events-none fixed z-60 flex w-auto flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm md:static">
+    <div className="pointer-events-none flex w-full flex-col gap-2 sm:max-w-sm">
       <AnimatePresence initial={false}>
-        {toasts.map((t) => (
+        {/* The store appends; the column reads newest first. */}
+        {[...toasts].reverse().map((t) => (
           <ToastItem key={t.id} t={t} dismiss={dismiss} />
         ))}
       </AnimatePresence>

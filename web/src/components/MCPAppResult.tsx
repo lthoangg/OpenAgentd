@@ -395,7 +395,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
 
   return (
     <div
-      className={isFullscreen ? "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-(--bg-page) [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}
+      className={isFullscreen ? "below-window-caption fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-(--bg-page) [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}
       {...(isFullscreen ? { 'data-swipe-ignore': true } : {})}
     >
       <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-xs md:text-meta text-(--color-text-muted)'}>

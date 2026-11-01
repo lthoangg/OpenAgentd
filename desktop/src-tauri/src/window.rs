@@ -426,6 +426,14 @@ async fn build_app_window_sized(
     config.url = url;
     config.drag_drop_enabled = false;
     config.visible = false;
+    // Windows: the page's header is the title bar, with its own caption
+    // buttons and Snap Layouts (src/caption.rs). The window keeps its drop
+    // shadow and resize edges without the system frame.
+    #[cfg(target_os = "windows")]
+    {
+        config.decorations = false;
+        config.shadow = true;
+    }
     if let Some(size) = saved_size {
         config.width = f64::from(size.width);
         config.height = f64::from(size.height);

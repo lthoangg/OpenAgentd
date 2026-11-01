@@ -13,6 +13,7 @@ import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
+import { WindowCaptionButtons } from '@/components/WindowCaptionButtons'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
 import { isPageReload } from '@/lib/page-reload'
@@ -134,6 +135,7 @@ export function Root() {
       <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />
+      <WindowCaptionButtons />
       <Suspense fallback={<RouteLoadingFallback />}>
         <Outlet />
       </Suspense>

@@ -142,6 +142,15 @@ export function getPlatform(): PlatformInfo {
 }
 
 /**
+ * Whether the page draws the window's caption buttons: the Windows app,
+ * whose window has no system frame (desktop/src-tauri/src/caption.rs), unless
+ * it is full screen, where Windows shows no title bar either.
+ */
+export function hasWindowCaption(info: Pick<PlatformInfo, 'os' | 'isTauri' | 'isFullscreen'>): boolean {
+  return info.os === 'windows' && info.isTauri && !info.isFullscreen
+}
+
+/**
  * Whether the OS suspends this page's sockets while it is backgrounded.
  *
  * iOS and Android freeze background WebViews and drop their connections

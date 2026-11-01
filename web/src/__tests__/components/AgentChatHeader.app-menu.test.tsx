@@ -8,7 +8,7 @@ import '@testing-library/jest-dom'
 // A snapshot, taken before the mock: the module namespace is live and would
 // otherwise point back at the mock itself.
 const actualPlatform = { ...(await import('@/hooks/use-platform')) }
-let platform: { isTauri: boolean; os: string } = { isTauri: true, os: 'windows' }
+let platform: { isTauri: boolean; os: string; isFullscreen?: boolean } = { isTauri: true, os: 'windows' }
 const platformInfo = () => ({ ...actualPlatform.getPlatform(), ...platform })
 mock.module('@/hooks/use-platform', () => ({
   ...actualPlatform,
@@ -163,5 +163,23 @@ describe('AgentChatHeader application menu', () => {
     tapAlt()
     await flush()
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('AgentChatHeader as the Windows title bar', () => {
+  it('leaves the three caption buttons room at its right end in the Windows app', () => {
+    const { container } = renderHeader()
+    expect(container.querySelector('header')).toHaveClass('pr-[138px]')
+  })
+
+  const framed: [string, { isTauri: boolean; os: string; isFullscreen?: boolean }][] = [
+    ['Linux app', { isTauri: true, os: 'linux' }],
+    ['browser on Windows', { isTauri: false, os: 'windows' }],
+    ['full-screen Windows app', { isTauri: true, os: 'windows', isFullscreen: true }],
+  ]
+  it.each(framed)('keeps its usual right edge in the %s', (_name, value) => {
+    platform = value
+    const { container } = renderHeader()
+    expect(container.querySelector('header')).not.toHaveClass('pr-[138px]')
   })
 })

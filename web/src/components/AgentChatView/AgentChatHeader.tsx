@@ -6,7 +6,7 @@ import { ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { usePlatform } from '@/hooks/use-platform'
+import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { createAltTapDetector, hasAppMenuButton, showAppMenu } from '@/lib/native-menu'
 import { useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
@@ -143,7 +143,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onOpenPalette,
   onQuickOpen,
 }: AgentChatHeaderProps) {
-  const { os } = usePlatform()
+  const platform = usePlatform()
+  const { os } = platform
+  // Windows: this header is the title bar, and the page's caption buttons
+  // (WindowCaptionButtons, fixed at the top right) take its last 3 × 46px.
+  const captionInset = hasWindowCaption(platform)
   // The sidebar's mutation, so a rename here shows in both at once.
   const { mutate: mutateSessionTitle } = useUpdateSessionTitleMutation()
   const pushToast = useToastStore((s) => s.push)
@@ -175,9 +179,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       {...dragHandlers}
       // Desktop zoning (dark only): the header joins the sidebar and status
       // bar on the recessed rail tone; light mode keeps one page tone.
-      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar) ${
-        isMacOverlay ? 'select-none pl-[70px]' : ''
-      }`}
+      className={cn(
+        'mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+        isMacOverlay && 'select-none pl-[70px]',
+        captionInset && 'select-none pr-[138px]',
+      )}
     >
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
           {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}

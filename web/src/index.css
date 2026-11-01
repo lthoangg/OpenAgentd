@@ -332,6 +332,22 @@ html[data-mobile-shell] .mobile-safe-header {
   padding-left: env(safe-area-inset-left, 0px);
 }
 
+/* Windows app: the page draws the caption buttons (WindowCaptionButtons) and
+   keeps them above every layer, as a title bar is. A surface that would reach
+   the window's top edge starts under the header instead, so none of its own
+   controls (a viewer's Close above all) sits beneath the window's Close.
+   Desktop-width modal cards already start below the header. */
+html[data-window-caption] .below-window-caption {
+  top: var(--spacing-app-header);
+}
+
+@media (max-width: 767px) {
+  html[data-window-caption] .settings-modal-shell {
+    top: calc(var(--spacing-app-header) + 0.5rem);
+    height: auto;
+  }
+}
+
 /* The notice column (toasts, update card, tools prompt) hangs from the top
    right, under the app header, so it never covers (or catches taps meant
    for) the header's buttons, and the composer and its run deck keep the

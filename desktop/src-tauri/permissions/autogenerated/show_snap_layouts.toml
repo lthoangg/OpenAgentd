@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-snap-layouts"
+description = "Enables the show_snap_layouts command without any pre-configured scope."
+commands.allow = ["show_snap_layouts"]
+
+[[permission]]
+identifier = "deny-show-snap-layouts"
+description = "Denies the show_snap_layouts command without any pre-configured scope."
+commands.deny = ["show_snap_layouts"]

@@ -83,6 +83,9 @@ windows = { version = "0.62", features = [
     # EnumWindows and DWM frame bounds: the desktop pet climbs onto other
     # apps' windows.
     "Win32_UI_WindowsAndMessaging",
+    # SendInput: the page-drawn maximize button opens Snap Layouts (Win+Z,
+    # src/caption.rs).
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_Graphics_Dwm",
     # The share UI (src/share.rs): DataTransferManager through its window
     # interop, with a Uri/TypedEventHandler for the data request.

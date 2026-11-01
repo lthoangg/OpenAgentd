@@ -790,7 +790,9 @@ draws another frame. The lint (`design-lint.test.ts`) and
 
 **Native first.** Whatever the host OS already draws (context menus in the
 desktop app, the title bar, share, simple pickers, the Dock or taskbar badge,
-gestures) is the OS's own. The app draws only what needs its own content: the
+gestures) is the OS's own; the one exception is the Windows caption buttons,
+drawn to the system's own metrics so the header can be the title bar there as
+it is on macOS (Desktop chrome). The app draws only what needs its own content: the
 run picker, the "+" menu, the palette. Type is the OS's UI font, dialog
 buttons follow the OS's order, and every system setting is followed: light or
 dark, reduced motion, increased contrast, text size.
@@ -1251,6 +1253,19 @@ value is ignored for builder-created windows), which centres them against the
 36px header and is why `mac-traffic-inset` is 70px (12px origin + ~58px button
 group). Reference window is 1280×820, floor 820×640.
 
+The Windows window has no system frame (`decorations: false`, shadow kept,
+`window.rs`): the header is the title bar there too. `WindowCaptionButtons`
+draws Minimize, Maximize (Restore Down when maximized) and Close at its right
+end the way Windows 11 does: 46px wide, the header's height, Segoe Fluent
+Icons glyphs, a `bg-key` hover and an `error` fill on Close, dimmed while the
+window is in the background, not tab stops. Resting the mouse on Maximize for
+500ms opens Snap Layouts (`show_snap_layouts`, `caption.rs`), since Windows
+only asks a frame it draws. The header leaves the buttons' 138px empty, and
+`html[data-window-caption]` starts full-window viewers (`.below-window-caption`)
+and phone-width modal cards below the header, so nothing of theirs sits under
+the window's Close. Full screen hides the buttons, as Windows hides its title
+bar. Linux keeps the system frame.
+
 Inside Tauri, `lib/desktop-shell.ts` sets `<html data-shell="desktop">`. Under
 it, chrome is `user-select: none` with the arrow cursor on buttons (links keep
 the pointer), and only content selects: inputs, `.selectable-text`,
@@ -1270,7 +1285,7 @@ The desktop shell hands the OS what the OS already draws:
   pops the same menu up (`show_app_menu`). The View menu carries every
   layout command (Sidebar, Review Panel, Split Review Panel, Terminal,
   Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size, Reset
-  Layout). Windows keeps the system title bar.
+  Layout).
 - **Dialogs**: button order follows the OS (`DialogFooter`): Cancel before
   the action on macOS, iOS and Linux, the action first on Windows, a row of
   text buttons on Android. The footer has no border or fill. A safe confirm

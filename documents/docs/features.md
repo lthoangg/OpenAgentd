@@ -831,6 +831,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     Sidebar, Review Panel, Split Review Panel, Terminal, Maximize Review
     Panel, Focus Mode, Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
+  - On Windows the header is the title bar, as on macOS: Minimize,
+    Maximize and Close sit at its right end, drawn as Windows 11 draws
+    them, and resting the pointer on Maximize opens Snap Layouts. Drag the
+    header to move the window; double-click it to maximize.
   - Dialog buttons follow the system's order (the action first on Windows,
     after Cancel elsewhere; text buttons on Android). Enter confirms a safe
     action; a destructive one never takes Enter, Cancel does.

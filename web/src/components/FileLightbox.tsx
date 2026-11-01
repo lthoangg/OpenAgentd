@@ -535,7 +535,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
   return createPortal(
     <div
       ref={overlayRef}
-      className="mobile-safe-overlay fixed inset-0 z-50 flex select-none flex-col bg-black/80"
+      className="mobile-safe-overlay below-window-caption fixed inset-0 z-50 flex select-none flex-col bg-black/80"
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
       style={{ opacity: 0, transition: 'opacity var(--motion-fast) var(--ease-out)' }}
       onClick={closeLightbox}

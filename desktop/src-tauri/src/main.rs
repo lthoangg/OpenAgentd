@@ -23,6 +23,7 @@ mod context_menu;
 mod app_menu;
 mod share;
 mod global_shortcuts;
+mod caption;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -671,6 +672,7 @@ fn main() {
             app_menu::set_menu_text_size,
             context_menu::show_context_menu,
             context_menu::show_app_menu,
+            caption::show_snap_layouts,
             badge::set_attention_badge,
             share::share_url,
             tray_popup::get_tray_usage_summary,

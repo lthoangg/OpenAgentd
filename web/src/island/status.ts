@@ -22,10 +22,25 @@ export interface IslandSession {
   state: SessionState
   /** What the agent asked, while it waits on the user. */
   question: string | null
+  /** The open question's id; present once the shell has read it from the server. */
+  questionId?: string | null
+  /**
+   * Options that answer the question in place (one plain single-choice
+   * question, at most {@link MAX_QUICK_CHOICES}); empty when it needs the app.
+   */
+  choices?: string[]
   /** The server's name, when the sessions come from more than one server. */
   server?: string | null
   /** Absent from older shells. */
   goal?: IslandGoal | null
+}
+
+/** A followed server the shell can't talk to. */
+export interface UnreachableServer {
+  id: string
+  name: string
+  /** `unreachable`, or `key_rejected` when it refused the saved access key. */
+  reason: 'unreachable' | 'key_rejected'
 }
 
 export interface IslandStatus {
@@ -35,6 +50,8 @@ export interface IslandStatus {
   sessions: IslandSession[]
   /** Finished sessions not opened yet, newest first. */
   unread: IslandSession[]
+  /** Servers that dropped off; absent from older shells. */
+  unreachable?: UnreachableServer[]
 }
 
 export interface NotchGeometry {
@@ -48,6 +65,7 @@ export interface IslandSettings {
   enabled: boolean
   showWhenFrontmost: boolean
   showFinished: boolean
+  /** Open the list when the pointer rests on the pill; off: it opens on a click. */
   expandOnHover: boolean
 }
 
@@ -55,7 +73,7 @@ export const DEFAULT_ISLAND_SETTINGS: IslandSettings = {
   enabled: true,
   showWhenFrontmost: false,
   showFinished: true,
-  expandOnHover: true,
+  expandOnHover: false,
 }
 
 export interface IslandView {
@@ -71,20 +89,24 @@ export interface IslandPointer {
   y: number
 }
 
-export type IslandMode = 'hidden' | 'running' | 'needs_input' | 'done' | 'expanded'
+export type IslandMode = 'hidden' | 'running' | 'needs_input' | 'done' | 'offline' | 'expanded'
+
+/** Option buttons a row shows at most (the shell sends no more than this). */
+export const MAX_QUICK_CHOICES = 4
 
 /**
- * The pill's one wing, left of the notch: the state mark and, for several
- * sessions, their count. Nothing grows right of the notch, where the status
- * icons start (macOS gives no way to read where they are), and the left wing
- * stays this narrow so the frontmost app's menus keep their room. Hover
- * expands it with the full details.
+ * The pill's one wing, left of the notch: the state mark, a short word for
+ * the state ("Needs you", "Running", "Done") and, for several sessions, their
+ * count: words, never a colour alone. Nothing grows right of the notch, where
+ * the status icons start (macOS gives no way to read where they are), and the
+ * wing stays as narrow as those words allow so the frontmost app's menus keep
+ * their room. A click (or hover, if chosen) opens the full details.
  */
-export const WING_WIDTH = 44
+export const WING_WIDTH = 112
 /** What the pill shrinks into on a screen without a notch. */
 export const PLAIN_HIDDEN_WIDTH = 40
-/** Width of the pill on a screen without a notch: the mark and a count. */
-export const PLAIN_WIDTH = 56
+/** Width of the pill on a screen without a notch: the mark, the word and a count. */
+export const PLAIN_WIDTH = 112
 export const EXPANDED_WIDTH = 400
 /** Concave corners where the pill meets the top of the screen (island.css --island-ear). */
 export const EAR_WIDTH = 8
@@ -100,20 +122,28 @@ export const CANVAS_HEIGHT = 380
 export function compactMode(
   sessions: readonly IslandSession[],
   unread: readonly IslandSession[],
+  unreachable: readonly UnreachableServer[] = [],
 ): Exclude<IslandMode, 'expanded'> {
   if (sessions.some((s) => s.state === 'needs_input')) return 'needs_input'
   if (unread.length > 0) return 'done'
-  return sessions.length > 0 ? 'running' : 'hidden'
+  if (sessions.length > 0) return 'running'
+  return unreachable.length > 0 ? 'offline' : 'hidden'
 }
 
+/**
+ * What the island draws. The list opens on hover only when that is chosen
+ * (`settings.expandOnHover`); otherwise on a click (`pinned`).
+ */
 export function islandMode(
   sessions: readonly IslandSession[],
   unread: readonly IslandSession[],
   hovered: boolean,
   settings: IslandSettings,
+  pinned = false,
+  unreachable: readonly UnreachableServer[] = [],
 ): IslandMode {
-  const mode = compactMode(sessions, unread)
-  return mode !== 'hidden' && hovered && settings.expandOnHover ? 'expanded' : mode
+  const mode = compactMode(sessions, unread, unreachable)
+  return mode !== 'hidden' && (pinned || (hovered && settings.expandOnHover)) ? 'expanded' : mode
 }
 
 /** The pill's width. `hidden` is the size it shrinks into: the notch itself. */
@@ -145,10 +175,15 @@ export function islandHitBox(mode: IslandMode, geometry: NotchGeometry, width: n
 }
 
 /** The number behind the compact pill's mark, in {@link compactMode}'s order. */
-export function compactCount(sessions: readonly IslandSession[], unread: readonly IslandSession[]): number {
+export function compactCount(
+  sessions: readonly IslandSession[],
+  unread: readonly IslandSession[],
+  unreachable: readonly UnreachableServer[] = [],
+): number {
   const waiting = sessions.filter((s) => s.state === 'needs_input').length
   if (waiting > 0) return waiting
-  return unread.length > 0 ? unread.length : sessions.length
+  if (unread.length > 0) return unread.length
+  return sessions.length > 0 ? sessions.length : unreachable.length
 }
 
 /** The pill's height: the notch's, or that plus the session list when expanded. */
@@ -170,14 +205,18 @@ export function goalLabel(session: IslandSession): string | null {
   return goal.status === 'active' ? `Goal ${goal.turn}/${goal.maxTurns}` : GOAL_OUTCOMES[goal.status]
 }
 
-/** The two short labels either side of the notch, in {@link compactMode}'s order. */
+/**
+ * The short labels of the pill, in {@link compactMode}'s order. One
+ * vocabulary on every surface: Needs you / Running / Done / Failed / Can't reach.
+ */
 export function compactLabels(
   sessions: readonly IslandSession[],
   unread: readonly IslandSession[],
+  unreachable: readonly UnreachableServer[] = [],
 ): { lead: string; detail: string } {
   const waiting = sessions.filter((s) => s.state === 'needs_input')
   if (waiting.length > 0) {
-    return { lead: 'Needs input', detail: waiting.length === 1 ? waiting[0].title : `${waiting.length} sessions` }
+    return { lead: 'Needs you', detail: waiting.length === 1 ? waiting[0].title : `${waiting.length} sessions` }
   }
   if (unread.length > 0) {
     return {
@@ -186,8 +225,11 @@ export function compactLabels(
     }
   }
   if (sessions.length > 0) {
-    if (sessions.length === 1) return { lead: goalLabel(sessions[0]) ?? 'Working', detail: sessions[0].title }
-    return { lead: 'Working', detail: `${sessions.length} sessions` }
+    if (sessions.length === 1) return { lead: goalLabel(sessions[0]) ?? 'Running', detail: sessions[0].title }
+    return { lead: 'Running', detail: `${sessions.length} sessions` }
+  }
+  if (unreachable.length > 0) {
+    return { lead: "Can't reach", detail: unreachable.length === 1 ? unreachable[0].name : `${unreachable.length} servers` }
   }
   return { lead: '', detail: '' }
 }
@@ -208,4 +250,54 @@ export function listOrder(sessions: readonly IslandSession[], unread: readonly I
   const waiting = sessions.filter((s) => s.state === 'needs_input')
   const running = sessions.filter((s) => s.state !== 'needs_input')
   return [...waiting, ...unread, ...running]
+}
+
+/** The word on a row's state chip. */
+export const STATE_WORD: Record<SessionState, string> = {
+  needs_input: 'Needs you',
+  running: 'Running',
+  done: 'Done',
+  failed: 'Failed',
+}
+
+/** The buttons a waiting row can answer with in place: none when it needs the app. */
+export function quickChoices(session: IslandSession): string[] {
+  const choices = session.choices ?? []
+  if (session.state !== 'needs_input' || !session.questionId) return []
+  return choices.length > 0 && choices.length <= MAX_QUICK_CHOICES ? choices : []
+}
+
+/**
+ * What "Later" remembers about a row: the row comes back when this changes
+ * (a new question, a new outcome), not before.
+ */
+export function rowSignature(session: IslandSession): string {
+  return [session.state, session.questionId ?? '', session.goal?.status ?? ''].join('|')
+}
+
+/** What "Later" remembers about an unreachable server: it comes back after it recovers and drops again. */
+export function serverSignature(server: UnreachableServer): string {
+  return `${server.id}|${server.reason}`
+}
+
+/** `rows` without the ones put off until later and not changed since. */
+export function withoutLater<T extends IslandSession>(rows: readonly T[], later: ReadonlyMap<string, string>): T[] {
+  return rows.filter((row) => later.get(row.id) !== rowSignature(row))
+}
+
+/** The unreachable servers not put off until later. */
+export function serversWithoutLater(servers: readonly UnreachableServer[], later: ReadonlyMap<string, string>): UnreachableServer[] {
+  return servers.filter((server) => later.get(`server:${server.id}`) !== serverSignature(server))
+}
+
+/**
+ * `sessions` with the questions answered here shown as running again at once,
+ * before the shell's next snapshot says so (`answered`: question ids).
+ */
+export function withAnswered(sessions: readonly IslandSession[], answered: ReadonlySet<string>): IslandSession[] {
+  return sessions.map((session) =>
+    session.state === 'needs_input' && session.questionId && answered.has(session.questionId)
+      ? { ...session, state: 'running', question: null, questionId: null, choices: [] }
+      : session,
+  )
 }

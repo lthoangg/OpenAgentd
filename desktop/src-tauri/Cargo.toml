@@ -31,6 +31,9 @@ notify-rust = "4.18.0"
 # advisories. macOS `.app.tar.gz` updates do not depend on it.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-deep-link = "2"
+# Opt-in global shortcuts (Show OpenAgentd, Next Session That Needs You):
+# registered from Rust only, so no capability grants the webview this plugin.
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt", "sync", "time"] }
@@ -56,8 +59,10 @@ nix = { version = "0.31", features = ["signal"] }
 # Cargo.lock and every feature listed is one Tauri already turns on.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "objc2-core-foundation"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "objc2-core-foundation"] }
+# NSString/NSURL/NSObject: the share sheet (src/share.rs) builds an NSURL item.
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "NSString", "NSURL", "NSObject", "objc2-core-foundation"] }
+# NSView/NSSharingService: the share sheet (src/share.rs).
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "NSView", "NSSharingService", "objc2-core-foundation"] }
 # The desktop pet reads where other apps' windows are (CGWindowListCopyWindowInfo:
 # frames only, no window titles, so no Screen Recording permission).
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGGeometry"] }
@@ -79,6 +84,10 @@ windows = { version = "0.62", features = [
     # apps' windows.
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Dwm",
+    # The share UI (src/share.rs): DataTransferManager through its window
+    # interop, with a Uri/TypedEventHandler for the data request.
+    "ApplicationModel_DataTransfer",
+    "Foundation",
 ] }
 
 [features]

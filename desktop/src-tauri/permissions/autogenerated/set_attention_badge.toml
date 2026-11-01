@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-attention-badge"
+description = "Enables the set_attention_badge command without any pre-configured scope."
+commands.allow = ["set_attention_badge"]
+
+[[permission]]
+identifier = "deny-set-attention-badge"
+description = "Denies the set_attention_badge command without any pre-configured scope."
+commands.deny = ["set_attention_badge"]

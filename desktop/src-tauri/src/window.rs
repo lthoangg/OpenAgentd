@@ -24,6 +24,21 @@ pub const ZOOM_MAX: f64 = 3.0;
 pub const ZOOM_STEP: f64 = 1.2;
 pub const ZOOM_DEFAULT: f64 = 1.0;
 
+/// The zoom a new window opens at: the window it was opened from, else the
+/// one last chosen in any window (`shell_prefs`), kept within bounds.
+pub fn initial_zoom(opener: Option<f64>, saved: f64) -> f64 {
+    crate::shell_prefs::clamp_zoom(opener.unwrap_or(saved))
+}
+
+/// The zoom of the window a new one is opened from. Read before the new
+/// window exists: afterwards `target_webview_window` can return the new one.
+fn opener_zoom(app: &AppHandle) -> Option<f64> {
+    let window = target_webview_window(app)?;
+    let state: tauri::State<'_, AppState> = app.state();
+    let zoom = state.window_zoom_factors.lock().unwrap().get(window.label()).copied();
+    zoom
+}
+
 pub const THROTTLE_RESUME_SCRIPT: &str = r#"
 try {
     document.documentElement.removeAttribute('data-app-hidden');
@@ -323,6 +338,37 @@ pub fn window_background(theme: tauri::Theme) -> tauri::window::Color {
     }
 }
 
+/// Two-finger swipes go back and forward through the window's history (the
+/// sessions opened in it), as in Safari and other Mac apps. Tauri has no
+/// setting for WKWebView's switch, so it is flipped on the platform view.
+/// WebKit only starts the gesture once a horizontal scroller (a diff, a code
+/// block) has reached its edge.
+#[cfg(target_os = "macos")]
+fn enable_history_swipe(win: &tauri::WebviewWindow) {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{msg_send, sel};
+
+    let shown = win.with_webview(|webview| {
+        let view = webview.inner().cast::<AnyObject>();
+        if view.is_null() {
+            return;
+        }
+        // SAFETY: on macOS `inner()` is the window's live WKWebView, and
+        // `with_webview` runs this on the main thread, where AppKit and
+        // WebKit objects may be used.
+        let view = unsafe { &*view };
+        let set = sel!(setAllowsBackForwardNavigationGestures:);
+        // SAFETY: WKWebView answers this selector (checked first); it takes one BOOL.
+        let responds: bool = unsafe { msg_send![view, respondsToSelector: set] };
+        if responds {
+            let _: () = unsafe { msg_send![view, setAllowsBackForwardNavigationGestures: Bool::YES] };
+        }
+    });
+    if let Err(e) = shown {
+        log::warn!("could not turn on history swipes: {e}");
+    }
+}
+
 pub async fn build_app_window(
     app: &AppHandle,
     label: String,
@@ -339,6 +385,7 @@ async fn build_app_window_sized(
     saved_size: Option<SavedWindowState>,
 ) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url(app, &label)?;
+    let opener_zoom = opener_zoom(app);
     // Re-applied on every document load by the webview, so the frontend keeps
     // its window identity across reloads even when `window.location` no longer
     // carries the `oa-app-id` / `oa-window-id` query params.
@@ -376,6 +423,8 @@ async fn build_app_window_sized(
         });
     let builder = configure_window_chrome(builder);
     let win = builder.build().context("build webview window")?;
+    #[cfg(target_os = "macos")]
+    enable_history_swipe(&win);
     if let Some(size) = saved_size {
         win.set_size(PhysicalSize::new(size.width, size.height))
             .ok();
@@ -395,18 +444,25 @@ async fn build_app_window_sized(
         }
     }
     let state: tauri::State<'_, AppState> = app.state();
-    let zoom = state
+    let zoom = initial_zoom(opener_zoom, crate::shell_prefs::load(app).zoom);
+    // Recorded so ⌘+/⌘- steps from here, and a window opened from this one
+    // inherits it.
+    state
         .window_zoom_factors
         .lock()
         .unwrap()
-        .get(win.label())
-        .copied()
-        .unwrap_or(ZOOM_DEFAULT);
+        .insert(win.label().to_string(), zoom);
     win.set_zoom(zoom).ok();
-    // Windows keeps the app menu for keyboard accelerators, but the native
-    // OpenAgentd/File/Edit/View/Window bar duplicates the in-app chrome.
-    #[cfg(target_os = "windows")]
-    win.hide_menu().context("hide Windows application menu")?;
+    // Windows and Linux keep the app menu for keyboard accelerators, but the
+    // native OpenAgentd/File/Edit/View/Window bar duplicates the in-app
+    // chrome. The menu opens from the header's ☰ button (`show_app_menu`).
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    if let Err(e) = win.hide_menu() {
+        log::warn!("could not hide the application menu bar on {}: {e}", win.label());
+    }
+    // A Windows taskbar overlay belongs to one window: this one starts with
+    // the count the others show.
+    crate::badge::apply_to_window(&win);
     // The page paints its saved theme pick, or the system theme without
     // one, so match it before the page has painted.
     let theme = crate::config::saved_window_theme(app, win.label()).or_else(|| win.theme().ok());
@@ -551,6 +607,10 @@ pub fn set_window_zoom(app: &AppHandle, label: &str, update: impl FnOnce(f64) ->
         next
     };
     apply_zoom_to_window(app, label, next);
+    // The next window opens at the zoom last chosen, here or in any window.
+    if let Err(e) = crate::shell_prefs::update(app, |prefs| prefs.zoom = next) {
+        log::warn!("could not save the zoom factor: {e:#}");
+    }
 }
 
 pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
@@ -564,6 +624,21 @@ pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_window_takes_the_zoom_of_its_opener_else_the_saved_one() {
+        assert_eq!(initial_zoom(Some(1.44), 1.0), 1.44);
+        assert_eq!(initial_zoom(None, 1.2), 1.2);
+        // An opener at actual size still wins over a saved zoom.
+        assert_eq!(initial_zoom(Some(1.0), 1.7), 1.0);
+    }
+
+    #[test]
+    fn a_new_windows_zoom_stays_within_bounds() {
+        assert_eq!(initial_zoom(Some(9.0), 1.0), ZOOM_MAX);
+        assert_eq!(initial_zoom(None, 0.1), ZOOM_MIN);
+        assert_eq!(initial_zoom(Some(f64::NAN), 1.5), ZOOM_DEFAULT);
+    }
 
     fn external_on(label: &str, base: &str) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::from([(label.to_string(), base.to_string())])

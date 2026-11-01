@@ -3,6 +3,7 @@
 
 mod config;
 mod diagnostics;
+mod answers;
 mod window;
 mod updater;
 mod menu;
@@ -16,6 +17,12 @@ mod watchdog;
 mod network_access;
 mod preview_relay;
 mod servers;
+mod shell_prefs;
+mod badge;
+mod context_menu;
+mod app_menu;
+mod share;
+mod global_shortcuts;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -661,12 +668,21 @@ fn main() {
             preview_relay::preview_relay_open,
             preview_relay::preview_relay_close,
             menu::set_tray_session,
+            app_menu::set_menu_text_size,
+            context_menu::show_context_menu,
+            context_menu::show_app_menu,
+            badge::set_attention_badge,
+            share::share_url,
             tray_popup::get_tray_usage_summary,
+            tray_popup::tray_sessions,
+            tray_popup::tray_open_session,
             tray_popup::tray_action,
             tray_popup::tray_fit,
             island::island_state,
             island::island_fit,
             island::island_open_session,
+            island::island_answer,
+            island::island_retry,
             island::island_context_menu,
             island::island_dismiss,
             island::island_viewing,
@@ -677,6 +693,7 @@ fn main() {
             pet::pet_state,
             pet::pet_fit,
             pet::pet_open,
+            pet::pet_answer,
             pet::pet_dismiss,
             pet::pet_drag_end,
             pet::pet_menu,

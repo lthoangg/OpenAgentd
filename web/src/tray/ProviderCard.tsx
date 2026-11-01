@@ -18,7 +18,7 @@ export function ProviderCard({ view, onManage }: { view: ProviderView; onManage:
         <div className="line">
           <span className="line-name">{view.name}</span>
           {view.status === 'reconnect' ? (
-            <button type="button" className="small-btn" onClick={onManage} aria-label={`Reconnect ${view.name}`} title="Opens Settings → Providers">
+            <button type="button" className="small-btn" onClick={onManage} aria-label={`Reconnect ${view.name}`}>
               Reconnect
             </button>
           ) : view.status === 'rate-limited' ? (

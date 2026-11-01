@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
-#[cfg(not(target_os = "macos"))]
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
@@ -17,6 +16,7 @@ use crate::usage::{
     UsageSummaryBody,
 };
 use crate::servers::ServerId;
+use crate::island::{IslandStatus, SessionState};
 use crate::window::{
     adjust_zoom, create_fresh_app_window, emit_frontend_command, set_zoom,
     show_main_window, ZOOM_DEFAULT, ZOOM_STEP,
@@ -37,6 +37,12 @@ pub const MENU_SWITCH_WORKSPACE: &str = "switch_workspace";
 pub const MENU_WORKSPACE_SESSIONS: &str = "workspace_sessions";
 pub const MENU_SCHEDULER: &str = "scheduler";
 pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
+pub const MENU_REVIEW_PANEL: &str = "review_panel";
+pub const MENU_SPLIT_REVIEW_PANEL: &str = "split_review_panel";
+pub const MENU_TOGGLE_TERMINAL: &str = "toggle_terminal";
+pub const MENU_MAXIMIZE_REVIEW_PANEL: &str = "maximize_review_panel";
+pub const MENU_FOCUS_MODE: &str = "focus_mode";
+pub const MENU_RESET_LAYOUT: &str = "reset_layout";
 pub const MENU_SETTINGS: &str = "settings";
 #[cfg(not(target_os = "macos"))]
 pub const MENU_STATUS: &str = "status";
@@ -126,6 +132,8 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     )?;
     let app_settings =
         MenuItem::with_id(app, MENU_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?;
+    // Off until ticked: these keys are taken from every other app.
+    let app_global_shortcuts = crate::global_shortcuts::menu_item(app)?;
     let app_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
 
     // In-app shortcuts are listed here too. The webview sees a key press
@@ -156,7 +164,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_quick_open = MenuItem::with_id(
         app,
         MENU_QUICK_OPEN,
-        "Quick Open…",
+        "Find File…",
         true,
         Some("CmdOrCtrl+P"),
     )?;
@@ -191,10 +199,50 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_toggle_sidebar = MenuItem::with_id(
         app,
         MENU_TOGGLE_SIDEBAR,
-        "Toggle Sidebar",
+        "Sidebar",
         true,
         Some("CmdOrCtrl+B"),
     )?;
+    // The layout items match the in-app shortcuts (web/src/lib/app-shortcuts.ts).
+    let view_review_panel = MenuItem::with_id(
+        app,
+        MENU_REVIEW_PANEL,
+        "Review Panel",
+        true,
+        Some("CmdOrCtrl+D"),
+    )?;
+    let view_split_review_panel = MenuItem::with_id(
+        app,
+        MENU_SPLIT_REVIEW_PANEL,
+        "Split Review Panel",
+        true,
+        Some("CmdOrCtrl+\\"),
+    )?;
+    // The Control key on every OS, as in editors: ⌘` already switches windows on macOS.
+    let view_toggle_terminal = MenuItem::with_id(
+        app,
+        MENU_TOGGLE_TERMINAL,
+        "Terminal",
+        true,
+        Some("Ctrl+`"),
+    )?;
+    let view_maximize_review_panel = MenuItem::with_id(
+        app,
+        MENU_MAXIMIZE_REVIEW_PANEL,
+        "Maximize Review Panel",
+        true,
+        Some("CmdOrCtrl+Shift+D"),
+    )?;
+    let view_focus_mode = MenuItem::with_id(
+        app,
+        MENU_FOCUS_MODE,
+        "Focus Mode",
+        true,
+        Some("CmdOrCtrl+Shift+F"),
+    )?;
+    let view_text_size = crate::app_menu::text_size_submenu(app)?;
+    let view_reset_layout =
+        MenuItem::with_id(app, MENU_RESET_LAYOUT, "Reset Layout", true, None::<&str>)?;
     let view_terminal = MenuItem::with_id(
         app,
         MENU_TERMINAL,
@@ -202,13 +250,13 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+`"),
     )?;
-    // Bare CmdOrCtrl+A is "Select All" on macOS, so Session Settings
-    // requires Shift to avoid clobbering it — matches the in-app
+    // Bare CmdOrCtrl+A is "Select All" on macOS, so the run picker (model,
+    // thinking, account) requires Shift to avoid clobbering it — matches the in-app
     // ⌘⇧A / Ctrl+Shift+A binding (see web/src/lib/keyboard-shortcut.ts).
     let view_agent_capabilities = MenuItem::with_id(
         app,
         MENU_AGENT_CAPABILITIES,
-        "Session Settings",
+        "Model and Thinking…",
         true,
         Some("CmdOrCtrl+Shift+A"),
     )?;
@@ -289,6 +337,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&app_check_updates)
         .separator()
         .item(&app_settings)
+        .item(&app_global_shortcuts)
         .separator();
     // Services / Hide / Hide Others / Show All only work on macOS; elsewhere
     // they would render as inert rows.
@@ -328,9 +377,18 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&view_workspace_sessions)
         .separator()
         .item(&view_toggle_sidebar)
+        .item(&view_review_panel)
+        .item(&view_split_review_panel)
+        .item(&view_toggle_terminal)
         .item(&view_terminal)
+        .item(&view_maximize_review_panel)
+        .item(&view_focus_mode)
+        .separator()
         .item(&view_agent_capabilities)
         .item(&view_scheduler)
+        .separator()
+        .item(&view_text_size)
+        .item(&view_reset_layout)
         .separator()
         .item(&view_zoom_in)
         .item(&view_zoom_out)
@@ -364,6 +422,8 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu, &help_menu],
     )?;
     app.set_menu(menu)?;
+    // Opted-in global shortcuts are live from launch.
+    crate::global_shortcuts::start(app.handle());
     // macOS lists open windows in the Window menu.
     #[cfg(target_os = "macos")]
     window_menu.set_as_windows_menu_for_nsapp()?;
@@ -422,7 +482,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let status = MenuItem::with_id(app, MENU_STATUS, "Status: Starting", false, None::<&str>)?;
     // Informational only; updated from ``set_tray_session``.
     let session = MenuItem::with_id(app, MENU_SESSION, TRAY_SESSION_IDLE, false, None::<&str>)?;
-    let tray_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
+    let tray_show = MenuItem::with_id(app, MENU_SHOW, "Open OpenAgentd", true, None::<&str>)?;
     let tray_new_window =
         MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, None::<&str>)?;
     let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
@@ -466,7 +526,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let tray_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload Window", true, None::<&str>)?;
     let tray_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
 
-    // "Usage Limits" — dynamic OAuth provider usage submenu. Starts with a
+    // "Provider Limits" — dynamic OAuth provider usage submenu. Starts with a
     // single placeholder row; ``run_usage_poll_loop`` / the manual refresh
     // action mutate the submenu's children in place from here on (see
     // ``update_tray_usage``), so this initial shape is the only thing built
@@ -482,7 +542,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let usage_refresh = MenuItem::with_id(
         app,
         MENU_USAGE_REFRESH,
-        "Refresh Usage Now",
+        "Refresh Provider Limits",
         true,
         None::<&str>,
     )?;
@@ -493,7 +553,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
-    let usage_submenu = SubmenuBuilder::new(app, "Usage Limits")
+    let usage_submenu = SubmenuBuilder::new(app, "Provider Limits")
         .item(&usage_placeholder_row)
         .separator()
         .item(&usage_footer)
@@ -544,6 +604,9 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
         tray = tray.icon(icon.clone());
     }
     let tray_icon = tray.build(app)?;
+
+    // The "Needs you" rows go at the top of this menu as sessions ask.
+    needs_you_menu().lock().unwrap().replace(NeedsYouMenu { menu: tray_menu.clone(), inserted: 0, rendered: Vec::new() });
 
     let state: tauri::State<'_, AppState> = app.state();
     tauri::async_runtime::block_on(async {
@@ -609,6 +672,11 @@ pub fn set_tray_session(app: AppHandle, text: String) -> Result<(), String> {
 }
 
 pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
+    // The page's own pop-up menus and the Text Size items, which have ids of
+    // their own kind; everything else is a plain app menu item.
+    if crate::context_menu::handle_menu_event(id) || crate::app_menu::handle_menu_event(app, id) {
+        return;
+    }
     match id {
         MENU_SHOW => show_main_window(app),
         MENU_NEW_WINDOW => {
@@ -623,6 +691,13 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_OPEN_WORKSPACE => emit_frontend_command(app, "open_workspace"),
         MENU_TOGGLE_SIDEBAR => emit_frontend_command(app, "toggle_sidebar"),
         MENU_TERMINAL => emit_frontend_command(app, "terminal"),
+        MENU_REVIEW_PANEL => emit_frontend_command(app, "review_panel"),
+        MENU_SPLIT_REVIEW_PANEL => emit_frontend_command(app, "split_review_panel"),
+        MENU_TOGGLE_TERMINAL => emit_frontend_command(app, "toggle_terminal"),
+        MENU_MAXIMIZE_REVIEW_PANEL => emit_frontend_command(app, "maximize_review_panel"),
+        MENU_FOCUS_MODE => emit_frontend_command(app, "focus_mode"),
+        MENU_RESET_LAYOUT => emit_frontend_command(app, "reset_layout"),
+        crate::global_shortcuts::MENU_GLOBAL_SHORTCUTS => crate::global_shortcuts::toggle(app),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
         MENU_SWITCH_WORKSPACE => emit_frontend_command(app, "switch_workspace"),
@@ -751,28 +826,147 @@ pub(crate) fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
-/// Redraw the "Usage Limits" submenu from a fetch outcome.
-///
-/// On success the fresh snapshot is cached in ``AppState`` and rendered.
-/// On failure the *previous* snapshot (if any) is re-rendered — a
-/// transient network hiccup shouldn't blank out numbers the user was
-/// just looking at — with the footer surfacing the error instead.
-/// Toggle the tray icon's subtle "!" title badge (macOS shows tray-icon
-/// titles as text right next to the icon in the menu bar) when any
-/// connected provider's usage is at or above the critical threshold.
-/// Idempotent — safe to call every poll regardless of whether the state
-/// actually changed since the underlying Tauri call is cheap.
-async fn update_tray_critical_badge(state: &tauri::State<'_, AppState>, critical: bool) {
+/// Whether a connected provider is at or above the critical usage threshold,
+/// as the last poll saw it; one of the two reasons for the tray's mark.
+static USAGE_CRITICAL: AtomicBool = AtomicBool::new(false);
+/// Sessions waiting on the user, as the feed last saw them.
+static NEEDS_YOU: AtomicUsize = AtomicUsize::new(0);
+
+/// The tray icon's title (macOS shows it as text right beside the icon in the
+/// menu bar) and its tooltip, for the sessions that need the user and a
+/// provider near its limit. A session waiting on you comes first: it blocks
+/// an agent, a quota only threatens to. The title is the count (read by
+/// VoiceOver as the button's value) or "!" for a quota alone; the tooltip
+/// says in words what the mark means, so it never rests on a glyph alone.
+pub fn tray_mark(needs_you: usize, usage_critical: bool) -> (Option<String>, String) {
+    let quota = "a connected provider is near its limit";
+    match (needs_you, usage_critical) {
+        (0, false) => (None, "OpenAgentd".to_string()),
+        (0, true) => (Some("!".to_string()), format!("OpenAgentd — {quota}")),
+        (n, critical) => {
+            let sessions = if n == 1 { "1 session needs you".to_string() } else { format!("{n} sessions need you") };
+            let tooltip = if critical { format!("OpenAgentd — {sessions}; {quota}") } else { format!("OpenAgentd — {sessions}") };
+            (Some(n.to_string()), tooltip)
+        }
+    }
+}
+
+/// Put the mark for the current reasons on the tray icon. Idempotent: the
+/// underlying Tauri calls are cheap, so callers need not diff.
+async fn apply_tray_mark(state: &tauri::State<'_, AppState>) {
     let Some(tray_icon) = state.tray_icon.lock().await.clone() else {
         return;
     };
-    if critical {
-        let _ = tray_icon.set_title(Some("!"));
-        let _ = tray_icon.set_tooltip(Some("OpenAgentd — a connected provider is near its usage limit"));
-    } else {
-        let _ = tray_icon.set_title(None::<&str>);
-        let _ = tray_icon.set_tooltip(Some("OpenAgentd"));
+    let (title, tooltip) = tray_mark(NEEDS_YOU.load(Ordering::SeqCst), USAGE_CRITICAL.load(Ordering::SeqCst));
+    let _ = tray_icon.set_title(title.as_deref());
+    let _ = tray_icon.set_tooltip(Some(tooltip));
+}
+
+/// Record whether usage is critical (``critical``, from the usage poll) and
+/// redraw the tray's mark.
+async fn update_tray_critical_badge(state: &tauri::State<'_, AppState>, critical: bool) {
+    USAGE_CRITICAL.store(critical, Ordering::SeqCst);
+    apply_tray_mark(state).await;
+}
+
+/// How many sessions the native tray menu lists under "Needs you", at most.
+#[cfg(any(not(target_os = "macos"), test))]
+const TRAY_NEEDS_YOU_MAX: usize = 5;
+
+/// The "Needs you" rows of the native tray menu, as (menu id, label): the
+/// waiting sessions in the feed's order. A row opens its session through the
+/// shared router (its id is the island's "open" id).
+#[cfg(any(not(target_os = "macos"), test))]
+fn needs_you_rows(status: &IslandStatus) -> Vec<(String, String)> {
+    status
+        .sessions
+        .iter()
+        .filter(|s| s.state == SessionState::NeedsInput)
+        .take(TRAY_NEEDS_YOU_MAX)
+        .map(|s| {
+            let title = s.title.trim();
+            let title = if title.chars().count() > TRAY_SESSION_MAX_LEN - 12 {
+                format!("{}…", title.chars().take(TRAY_SESSION_MAX_LEN - 13).collect::<String>())
+            } else {
+                title.to_string()
+            };
+            (crate::island::open_menu_id(&s.id), format!("Needs you · {title}"))
+        })
+        .collect()
+}
+
+/// The native tray menu, with how many "Needs you" items sit at its top.
+#[cfg(not(target_os = "macos"))]
+struct NeedsYouMenu {
+    menu: Menu<tauri::Wry>,
+    inserted: usize,
+    /// What those items say, to skip a redraw that would change nothing.
+    rendered: Vec<(String, String)>,
+}
+
+#[cfg(not(target_os = "macos"))]
+fn needs_you_menu() -> &'static std::sync::Mutex<Option<NeedsYouMenu>> {
+    static MENU: std::sync::OnceLock<std::sync::Mutex<Option<NeedsYouMenu>>> = std::sync::OnceLock::new();
+    MENU.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Windows/Linux: draw `rows` as a "Needs you" section at the top of the
+/// native tray menu, replacing what was there. Menu changes run on the main
+/// thread.
+#[cfg(not(target_os = "macos"))]
+fn redraw_needs_you_rows(app: &AppHandle, rows: Vec<(String, String)>) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let mut guard = needs_you_menu().lock().unwrap();
+        let Some(entry) = guard.as_mut() else {
+            return;
+        };
+        if entry.rendered == rows {
+            return;
+        }
+        for _ in 0..entry.inserted {
+            let _ = entry.menu.remove_at(0);
+        }
+        entry.inserted = 0;
+        if !rows.is_empty() {
+            let mut position = 0;
+            let mut put = |item: &dyn tauri::menu::IsMenuItem<tauri::Wry>| {
+                if entry.menu.insert(item, position).is_ok() {
+                    position += 1;
+                }
+            };
+            match MenuItem::with_id(&handle, "needs_you_heading", "Needs you", false, None::<&str>) {
+                Ok(heading) => put(&heading),
+                Err(e) => log::warn!("failed to build the tray's Needs you heading: {e:#}"),
+            }
+            for (id, label) in &rows {
+                match MenuItem::with_id(&handle, id, label, true, None::<&str>) {
+                    Ok(item) => put(&item),
+                    Err(e) => log::warn!("failed to build a Needs you menu item: {e:#}"),
+                }
+            }
+            if let Ok(separator) = PredefinedMenuItem::separator(&handle) {
+                put(&separator);
+            }
+            entry.inserted = position;
+        }
+        entry.rendered = rows;
+    });
+}
+
+/// The sessions waiting on the user changed (the feed's snapshot): redraw the
+/// tray's mark, and on Windows/Linux the "Needs you" rows of its menu.
+pub fn update_tray_needs_you(app: &AppHandle, status: &IslandStatus) {
+    let waiting = status.sessions.iter().filter(|s| s.state == SessionState::NeedsInput).count();
+    if NEEDS_YOU.swap(waiting, Ordering::SeqCst) != waiting {
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let state: tauri::State<'_, AppState> = handle.state();
+            apply_tray_mark(&state).await;
+        });
     }
+    #[cfg(not(target_os = "macos"))]
+    redraw_needs_you_rows(app, needs_you_rows(status));
 }
 
 /// Fire one native notification for the providers that newly crossed the
@@ -800,6 +994,12 @@ fn notify_critical_crossings(app: &AppHandle, body: &UsageSummaryBody, to_notify
     }
 }
 
+/// Redraw the "Provider Limits" submenu from a fetch outcome.
+///
+/// On success the fresh snapshot is cached in ``AppState`` and rendered.
+/// On failure the *previous* snapshot (if any) is re-rendered — a
+/// transient network hiccup shouldn't blank out numbers the user was
+/// just looking at — with the footer surfacing the error instead.
 async fn update_tray_usage(app: &AppHandle, server: &ServerId, result: Result<UsageSummaryBody, String>) {
     let state: tauri::State<'_, AppState> = app.state();
 
@@ -1001,8 +1201,10 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        external_usage_access_key, macos_tray_icon, MENU_NEW_SESSION, MENU_NEW_WINDOW,
-        MENU_OPEN_WORKSPACE, MENU_TERMINAL, MENU_TOGGLE_SIDEBAR,
+        external_usage_access_key, macos_tray_icon, MENU_FOCUS_MODE, MENU_MAXIMIZE_REVIEW_PANEL,
+        MENU_NEW_SESSION, MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_RESET_LAYOUT,
+        MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_TERMINAL, MENU_TOGGLE_SIDEBAR,
+        MENU_TOGGLE_TERMINAL,
     };
 
     #[test]
@@ -1014,6 +1216,12 @@ mod tests {
         assert_eq!(MENU_OPEN_WORKSPACE, "open_workspace");
         assert_eq!(MENU_TOGGLE_SIDEBAR, "toggle_sidebar");
         assert_eq!(MENU_TERMINAL, "terminal");
+        assert_eq!(MENU_REVIEW_PANEL, "review_panel");
+        assert_eq!(MENU_SPLIT_REVIEW_PANEL, "split_review_panel");
+        assert_eq!(MENU_TOGGLE_TERMINAL, "toggle_terminal");
+        assert_eq!(MENU_MAXIMIZE_REVIEW_PANEL, "maximize_review_panel");
+        assert_eq!(MENU_FOCUS_MODE, "focus_mode");
+        assert_eq!(MENU_RESET_LAYOUT, "reset_layout");
     }
 
     #[test]
@@ -1044,5 +1252,64 @@ mod tests {
             None,
             "a store failure leaves the request unauthenticated"
         );
+    }
+}
+
+#[cfg(test)]
+mod tray_mark_tests {
+    use super::{needs_you_rows, tray_mark, TRAY_NEEDS_YOU_MAX, TRAY_SESSION_MAX_LEN};
+    use crate::island::{IslandSession, IslandStatus, SessionState};
+
+    fn session(id: &str, title: &str, state: SessionState) -> IslandSession {
+        IslandSession {
+            id: id.into(),
+            title: title.into(),
+            workspace: None,
+            state,
+            question: None,
+            question_id: None,
+            choices: Vec::new(),
+            server: None,
+            server_id: None,
+            goal: None,
+        }
+    }
+
+    // The menu-bar mark used to mean one thing ("!", at 90% of a quota),
+    // with no words, and said nothing of a session waiting on you.
+    #[test]
+    fn the_mark_names_what_it_marks_and_a_waiting_session_comes_first() {
+        assert_eq!(tray_mark(0, false), (None, "OpenAgentd".to_string()));
+        assert_eq!(tray_mark(0, true), (Some("!".to_string()), "OpenAgentd — a connected provider is near its limit".to_string()));
+        assert_eq!(tray_mark(1, false), (Some("1".to_string()), "OpenAgentd — 1 session needs you".to_string()));
+        assert_eq!(tray_mark(3, false), (Some("3".to_string()), "OpenAgentd — 3 sessions need you".to_string()));
+        let (title, tooltip) = tray_mark(2, true);
+        assert_eq!(title.as_deref(), Some("2"));
+        assert_eq!(tooltip, "OpenAgentd — 2 sessions need you; a connected provider is near its limit");
+    }
+
+    #[test]
+    fn the_native_menu_lists_the_sessions_that_need_you_and_opens_them_through_the_router() {
+        let status = IslandStatus {
+            seq: 1,
+            sessions: vec![
+                session("aa", "Plan review", SessionState::NeedsInput),
+                session("bb", "Docs", SessionState::Running),
+                session("cc", &"A very long title ".repeat(8), SessionState::NeedsInput),
+            ],
+            unread: vec![session("dd", "Done one", SessionState::Done)],
+            unreachable: Vec::new(),
+        };
+        let rows = needs_you_rows(&status);
+        assert_eq!(rows.len(), 2, "running and finished sessions are not Needs you");
+        assert_eq!(rows[0], ("island:open:aa".to_string(), "Needs you · Plan review".to_string()));
+        assert!(rows[1].1.chars().count() <= TRAY_SESSION_MAX_LEN, "{}", rows[1].1);
+        assert!(rows[1].1.ends_with('…'));
+
+        let many = IslandStatus {
+            sessions: (0..TRAY_NEEDS_YOU_MAX + 3).map(|i| session(&format!("s{i}"), "T", SessionState::NeedsInput)).collect(),
+            ..IslandStatus::default()
+        };
+        assert_eq!(needs_you_rows(&many).len(), TRAY_NEEDS_YOU_MAX);
     }
 }

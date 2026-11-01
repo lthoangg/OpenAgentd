@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pet-answer"
+description = "Enables the pet_answer command without any pre-configured scope."
+commands.allow = ["pet_answer"]
+
+[[permission]]
+identifier = "deny-pet-answer"
+description = "Denies the pet_answer command without any pre-configured scope."
+commands.deny = ["pet_answer"]

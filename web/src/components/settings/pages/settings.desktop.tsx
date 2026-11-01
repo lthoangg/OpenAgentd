@@ -30,7 +30,7 @@ const NOTCH_OPTIONS: ReadonlyArray<{ key: Exclude<keyof IslandSettings, 'enabled
   {
     key: 'expandOnHover',
     label: 'Expand on hover',
-    description: 'Point at it to list the sessions, their questions and what finished.',
+    description: 'Open the list just by pointing at it. Off, a click opens it, so passing the notch does not.',
   },
 ]
 

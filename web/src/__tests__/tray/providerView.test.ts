@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { TRAY_STATUS_LABEL, providerView, trayStatus, windowLabel } from '@/tray/providerView'
+import { TRAY_STATUS_LABEL, failureReason, hasNoServer, providerView, trayStatus, windowLabel } from '@/tray/providerView'
 import type { TrayUsageItem, TrayUsageResult } from '@/tray/usage'
 
 const NOW = 1_700_000_000
@@ -111,6 +111,29 @@ describe('trayStatus', () => {
     expect(trayStatus(null, null)).toBe('loading')
     expect(trayStatus(null, 'connection refused')).toBe('offline')
     expect(trayStatus({ ...result([]), summary: null, error: 'connection refused' }, null)).toBe('offline')
+  })
+
+  // "Can't reach No Server Connected": every failure used to read as offline.
+  it('tells having no server apart from not reaching one', () => {
+    const none: TrayUsageResult = { ...result([]), summary: null, server_name: 'No server connected', server_id: 'auto', error: 'No server is connected.' }
+    expect(hasNoServer(none)).toBe(true)
+    expect(trayStatus(none, null)).toBe('no-server')
+    expect(hasNoServer({ ...none, server_id: 'bundled' })).toBe(false)
+    expect(hasNoServer(result([]))).toBe(false)
+    expect(hasNoServer(null)).toBe(false)
+  })
+
+  it('uses one vocabulary with the notch and the pet', () => {
+    expect(TRAY_STATUS_LABEL.offline).toBe("Can't reach")
+    expect(TRAY_STATUS_LABEL['no-server']).toBe('No server connected')
+    expect(Object.values(TRAY_STATUS_LABEL)).not.toContain('Offline')
+  })
+
+  it('says in words why a refresh failed, without the raw error', () => {
+    expect(failureReason('operation timed out')).toBe('The server took too long to answer.')
+    expect(failureReason('provider usage summary returned an error status: 401 Unauthorized')).toBe('The server rejected the access key.')
+    expect(failureReason('error sending request for url (http://127.0.0.1:4082)')).toBe("The server didn't answer. It may be stopped or asleep.")
+    expect(failureReason(null)).toBe("The server didn't answer. It may be stopped or asleep.")
   })
 
   it('ranks providers by their worst limit', () => {

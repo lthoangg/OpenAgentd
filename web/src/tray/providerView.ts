@@ -237,11 +237,13 @@ export function providerView(item: TrayUsageItem, now: number = Date.now() / 100
   }
 }
 
-export type TrayStatus = 'loading' | 'offline' | 'none' | 'delayed' | 'ok' | 'warn' | 'crit' | 'reached'
+export type TrayStatus = 'loading' | 'no-server' | 'offline' | 'none' | 'delayed' | 'ok' | 'warn' | 'crit' | 'reached'
 
+/** One vocabulary with the notch and the pet: "Can't reach", never "Offline". */
 export const TRAY_STATUS_LABEL: Record<TrayStatus, string> = {
   loading: 'Checking',
-  offline: 'Offline',
+  'no-server': 'No server connected',
+  offline: "Can't reach",
   none: 'No providers',
   delayed: 'Usage delayed',
   ok: 'Within limits',
@@ -251,11 +253,28 @@ export const TRAY_STATUS_LABEL: Record<TrayStatus, string> = {
 }
 
 /**
+ * The app is on no server: the shell answers "auto" (not a server's id) when
+ * it has none to read the limits from.
+ */
+export function hasNoServer(result: TrayUsageResult | null): boolean {
+  return result !== null && !result.summary && result.server_id === 'auto'
+}
+
+/** In words, why a refresh failed; the raw error stays in the log. */
+export function failureReason(error: string | null | undefined): string {
+  const text = (error ?? '').toLowerCase()
+  if (/timed out|timeout|deadline/.test(text)) return 'The server took too long to answer.'
+  if (/\b(401|403)\b|access key|unauthori[sz]ed|forbidden|rejected/.test(text)) return 'The server rejected the access key.'
+  return "The server didn't answer. It may be stopped or asleep."
+}
+
+/**
  * The popup's headline. Offline only when there is nothing to show; a
  * failed refresh over a last reading keeps that reading's status.
  */
 export function trayStatus(result: TrayUsageResult | null, loadError: string | null): TrayStatus {
   const summary = result?.summary
+  if (hasNoServer(result)) return 'no-server'
   if (!summary) return result?.error || loadError ? 'offline' : 'loading'
   const views = summary.items.map((item) => providerView(item))
   if (views.length === 0) return 'none'

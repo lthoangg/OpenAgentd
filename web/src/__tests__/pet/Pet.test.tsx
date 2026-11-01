@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { DEFAULT_PET_SETTINGS, type PetBubble, type PetSettings, type PetView } from '@/pet/state'
 import { useFakeTimers } from '../fake-timers'
@@ -8,6 +8,8 @@ type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let view: PetView
 let closeMenu: () => void = () => {}
+/** What `pet_answer` does next: take the answer, or refuse it. */
+let answerResult: 'ok' | 'fail' = 'ok'
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -16,6 +18,10 @@ mock.module('@tauri-apps/api/core', () => ({
     if (cmd === 'pet_state') return view
     // The shell answers once the menu closes.
     if (cmd === 'pet_menu') return new Promise<void>((resolve) => (closeMenu = resolve))
+    if (cmd === 'pet_answer') {
+      if (answerResult === 'fail') throw new Error('The server refused the answer')
+      return 'answered'
+    }
     return undefined
   },
 }))
@@ -47,7 +53,10 @@ const bubble = (patch: Partial<PetBubble> = {}): PetBubble => ({
 })
 
 const fits = () => calls.filter(([cmd]) => cmd === 'pet_fit').map(([, args]) => args as { rects: unknown[]; capture: boolean })
-const petEl = () => screen.getByRole('img', { name: /Desktop pet/ })
+const petEl = () => document.querySelector('.pet') as HTMLElement
+const bubbleEl = () => document.querySelector('.pet-bubble') as HTMLElement
+const question = (patch: Partial<PetBubble> = {}): PetBubble =>
+  bubble({ id: 'q1', kind: 'input_needed', tone: 'input', title: 'Needs you · api', body: 'Keep the v1 endpoints?', ...patch })
 /** The pet's top-left corner, from its transform. */
 function petAt() {
   const match = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(petEl().style.transform)
@@ -62,6 +71,7 @@ async function mount(next: Partial<PetView> = {}) {
 
 beforeEach(() => {
   calls = []
+  answerResult = 'ok'
   handlers.clear()
   view = { settings: settings(), status: { running: 0, needsInput: 0 }, shown: true }
 })
@@ -89,7 +99,21 @@ describe('Pet', () => {
     expect(petEl()).toHaveClass('pet--work')
     emit('pet-state', { ...view, status: { running: 1, needsInput: 1 } })
     expect(petEl()).toHaveClass('pet--alert')
-    expect(petEl()).toHaveAttribute('aria-label', 'Desktop pet: an agent needs your answer')
+    expect(screen.getByRole('img', { name: 'Desktop pet: an agent needs you' })).toBeInTheDocument()
+  })
+
+  // A role="img" around the badge made a live button unreachable for
+  // assistive technology; what the pet is doing is now a region of its own.
+  it('keeps what it says apart from what can be pressed', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', question({ choices: ['Keep', 'Drop'], questionId: 'qid-1' }))
+    emit('pet-notification', bubble({ id: 'a', title: 'First' }))
+    for (const region of screen.getAllByRole('status')) expect(within(region).queryAllByRole('button')).toEqual([])
+    expect(within(bubbleEl()).getByRole('status')).toHaveTextContent('Keep the v1 endpoints?')
+    expect(petEl().querySelector('[role="img"] button')).toBeNull()
+    expect(screen.getByRole('button', { name: '1 unread' })).not.toHaveAttribute('role', 'img')
   })
 
   it('folds its laptop away before a walk, carries it, and opens it again when it stops', async () => {
@@ -167,7 +191,7 @@ describe('Pet', () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-notification', bubble())
-    expect(screen.getByText('Finished')).toBeInTheDocument()
+    expect(screen.getByText('Done')).toBeInTheDocument()
     expect(screen.getByText('Fix the flaky login test')).toBeInTheDocument()
     expect(petEl()).toHaveClass('pet--hop')
     await waitFor(() => expect(fits().at(-1)?.rects).toHaveLength(2))
@@ -181,10 +205,66 @@ describe('Pet', () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
-    emit('pet-notification', bubble({ id: 'q1', kind: 'input_needed', tone: 'input', title: 'Needs input · api', body: 'Keep the v1 endpoints?' }))
-    expect(screen.getByRole('button', { name: 'Answer' })).toBeInTheDocument()
+    emit('pet-notification', question())
+    expect(screen.getByText('Needs you', { selector: '.pet-chip' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open to answer' })).toBeInTheDocument()
     emit('pet-state', { ...view, status: { running: 1, needsInput: 0 } })
     expect(screen.queryByText('Keep the v1 endpoints?')).toBeNull()
+  })
+
+  it('answers a question with one of its options, then drops the bubble', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', question({ questionId: 'qid-1', choices: ['Keep', 'Drop'] }))
+    expect(screen.getByRole('button', { name: 'Keep' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open to answer' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drop' }))
+    await waitFor(() => expect(calls).toContainEqual(['pet_answer', { notificationId: 'q1', questionId: 'qid-1', answers: [['Drop']] }]))
+    await waitFor(() => expect(screen.queryByText('Keep the v1 endpoints?')).toBeNull())
+    expect(calls.some(([cmd]) => cmd === 'pet_open')).toBe(false)
+  })
+
+  it('says so when an answer could not be sent, and keeps the question and its buttons', async () => {
+    answerResult = 'fail'
+    const consoleError = console.error
+    console.error = () => {}
+    try {
+      await mount()
+      await waitFor(() => expect(petEl()).toBeInTheDocument())
+      emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+      emit('pet-notification', question({ questionId: 'qid-1', choices: ['Keep', 'Drop'] }))
+      fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send")
+      expect(screen.getByRole('button', { name: 'Keep' })).toBeEnabled()
+      expect(screen.getByText('Keep the v1 endpoints?')).toBeInTheDocument()
+    } finally {
+      console.error = consoleError
+    }
+  })
+
+  it('offers only "Open to answer" for a question that needs typing', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', question({ questionId: 'qid-1', choices: [] }))
+    expect(within(bubbleEl()).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['Later', 'Open to answer'])
+    fireEvent.click(screen.getByRole('button', { name: 'Open to answer' }))
+    expect(calls).toContainEqual(['pet_open', { notificationId: 'q1' }])
+    expect(calls.some(([cmd]) => cmd === 'pet_answer')).toBe(false)
+  })
+
+  it('drops a question that was answered somewhere else', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 2 } })
+    emit('pet-notification', question({ sessionId: 'aa-bb' }))
+    emit('pet-notification', question({ id: 'q2', sessionId: 'cc', body: 'Second?' }))
+    expect(screen.getByText('Keep the v1 endpoints?')).toBeInTheDocument()
+    emit('pet-question-answered', { sessionKey: 'aabb' })
+    expect(screen.queryByText('Keep the v1 endpoints?')).toBeNull()
+    expect(screen.getByText('Second?')).toBeInTheDocument()
   })
 
   it('dismisses a bubble without opening it', async () => {
@@ -202,10 +282,51 @@ describe('Pet', () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
-    emit('pet-notification', bubble({ id: 'q1', kind: 'input_needed', tone: 'input', body: 'Keep v1?' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    emit('pet-notification', question({ body: 'Keep v1?' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(screen.queryByText('Keep v1?')).toBeNull()
     expect(calls.some(([cmd]) => cmd === 'pet_dismiss')).toBe(false)
+  })
+
+  // × used to throw the question away: the pet still said "!" but showed no
+  // bubble, no badge, and listed nothing.
+  it('folds a question behind the badge on Later and brings it back from there', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', question({ body: 'Keep v1?', choices: ['Keep', 'Drop'], questionId: 'qid-1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }))
+    expect(screen.queryByText('Keep v1?')).toBeNull()
+    expect(petEl()).toHaveClass('pet--alert')
+
+    const badge = screen.getByRole('button', { name: '1 needs you' })
+    expect(badge).toHaveAttribute('data-needs-you')
+    fireEvent.click(badge)
+    expect(within(bubbleEl()).getByText('Needs you')).toBeInTheDocument()
+    fireEvent.click(within(bubbleEl()).getByRole('button', { name: 'Needs you · api' }))
+    expect(screen.getByText('Keep v1?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Keep' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /needs you/ })).toBeNull()
+  })
+
+  it('shows a newer question even after the older one was put off', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', question({ body: 'First?' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }))
+    emit('pet-notification', question({ id: 'q2', body: 'Second?' }))
+    expect(screen.getByText('Second?')).toBeInTheDocument()
+  })
+
+  it('lists its questions before what it missed in its right-click menu', async () => {
+    await mount()
+    await waitFor(() => expect(petEl()).toBeInTheDocument())
+    emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
+    emit('pet-notification', bubble({ id: 'a', title: 'First' }))
+    emit('pet-notification', question({ title: 'Needs you · api' }))
+    fireEvent.contextMenu(petEl(), { clientX: 30, clientY: 40 })
+    expect(calls).toContainEqual(['pet_menu', { x: 30, y: 40, unread: [{ id: 'a', title: 'First' }], questions: [{ id: 'q1', title: 'Needs you · api' }] }])
   })
 
   it('drops the bubbles of a session read somewhere else, keeping its question', async () => {
@@ -255,7 +376,7 @@ describe('Pet', () => {
     emit('pet-notification', bubble({ id: 'b', title: 'Second' }))
     const shown = fireEvent.contextMenu(petEl(), { clientX: 30, clientY: 40 })
     expect(shown).toBe(false)
-    expect(calls).toContainEqual(['pet_menu', { x: 30, y: 40, unread: [{ id: 'a', title: 'First' }] }])
+    expect(calls).toContainEqual(['pet_menu', { x: 30, y: 40, unread: [{ id: 'a', title: 'First' }], questions: [] }])
     expect(screen.queryByText('Meow!')).toBeNull()
   })
 
@@ -311,14 +432,14 @@ describe('Pet', () => {
     await mount({ settings: settings({ position: { display: '', x: 0.5, y: 0 } }) })
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-notification', bubble())
-    expect(screen.getByRole('status')).toHaveClass('pet-bubble--below')
+    expect(bubbleEl()).toHaveClass('pet-bubble--below')
   })
 
   it('opens its bubble above when it stands on the bottom edge', async () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-notification', bubble())
-    expect(screen.getByRole('status')).not.toHaveClass('pet-bubble--below')
+    expect(bubbleEl()).not.toHaveClass('pet-bubble--below')
   })
 
   it('draws the chosen colour and size', async () => {

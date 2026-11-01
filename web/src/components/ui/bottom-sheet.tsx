@@ -6,8 +6,14 @@
  * picker and the composer's "+" menu. Like the native sheets on iOS and
  * Android it has a grab handle, clears the home indicator, and stops at
  * 85% of the visible height so the page behind it stays in view.
+ *
+ * It renders into document.body: the composer is a size container, and
+ * older WebKit and Chromium (Android 15's Chrome 124 among them) place a
+ * fixed child inside such a container, so the sheet and its backdrop sat
+ * in the composer instead of over the page.
  */
-import { type ReactNode, type RefObject } from 'react'
+import { useRef, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
 
 import { useModalFocus } from '@/hooks/useModalFocus'
@@ -26,7 +32,11 @@ export interface BottomSheetProps {
   /** Accessible name of the sheet. */
   label: string
   children: ReactNode
-  /** Element focused as the sheet opens (defaults to the first control). */
+  /**
+   * Element focused as the sheet opens. Defaults to the sheet itself: like a
+   * native sheet it opens without raising the on-screen keyboard, which a
+   * focused search field would do, covering the list.
+   */
   initialFocus?: RefObject<HTMLElement | null>
   className?: string
 }
@@ -34,7 +44,8 @@ export interface BottomSheetProps {
 export function BottomSheet({ open, onClose, label, children, initialFocus, className }: BottomSheetProps) {
   const reduced = useReducedMotion()
   const dragControls = useDragControls()
-  useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
+  const sheetRef = useRef<HTMLDivElement>(null)
+  useModalFocus(open, onClose, initialFocus ?? sheetRef, { kind: 'overlay' })
 
   const handleDragEnd = (_event: unknown, info: PanInfo) => {
     if (info.offset.y > CLOSE_DISTANCE_PX || info.velocity.y > CLOSE_VELOCITY) {
@@ -43,7 +54,7 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
     }
   }
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -60,6 +71,8 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
           />
           <motion.div
             key="sheet"
+            ref={sheetRef}
+            tabIndex={-1}
             data-swipe-ignore
             data-bottom-sheet=""
             role="dialog"
@@ -77,7 +90,7 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
             dragListener={false}
             onDragEnd={handleDragEnd}
             className={cn(
-              'fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-lg border-t border-(--color-border-subtle) bg-(--bg-page) pb-safe shadow-(--shadow-depth)',
+              'fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-lg border-t border-(--color-border-subtle) bg-(--bg-page) pb-safe shadow-(--shadow-depth) outline-none',
               className,
             )}
           >
@@ -86,7 +99,8 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 

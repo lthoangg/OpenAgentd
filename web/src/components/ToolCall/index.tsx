@@ -470,10 +470,14 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.base, ease: EASINGS.out }}
+            // data-breakout: in the transcript, the details widen past the
+            // prose column (index.css). It sits on this box, not the section
+            // inside: this one clips for the height animation, and would cut a
+            // wider child off at the column's edges.
+            data-breakout=""
             className="overflow-hidden"
           >
-            {/* data-breakout: in the transcript, may widen past the prose column (index.css). */}
-            <section data-breakout="" className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
+            <section className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
               {usesDiffView ? (
                 <DiffView
                   toolName={name}

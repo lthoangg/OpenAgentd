@@ -1,8 +1,9 @@
 /**
  * Cross-platform keyboard-shortcut helpers.
  *
- * Policy: the "primary" modifier is ``⌘`` (Meta) on macOS and ``Ctrl``
- * everywhere else — mirroring the OS-native convention already used for
+ * Policy: the "primary" modifier is ``⌘`` (Meta) on Apple platforms (macOS,
+ * and iPadOS / iOS with a hardware keyboard) and ``Ctrl`` everywhere else —
+ * mirroring the OS-native convention already used for
  * click-modifiers (see ``Sidebar.tsx``'s ``shouldOpenSessionInNewWindow``)
  * and for the native Tauri menu accelerators (``CmdOrCtrl+…`` in
  * ``menu.rs``). The *other* modifier is always required to be absent so a
@@ -15,7 +16,7 @@
 import type { OS } from '@/hooks/use-platform'
 
 export function isPrimaryModifierOS(os: OS): boolean {
-  return os === 'macos'
+  return os === 'macos' || os === 'ios'
 }
 
 /**

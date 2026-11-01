@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
+import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 
 const srcDir = fileURLToPath(new URL('../../', import.meta.url))
 /** Only the table and the low-level helpers may spell out a key. */
@@ -27,6 +28,15 @@ describe('APP_SHORTCUTS', () => {
     expect(chordOf(APP_SHORTCUTS.save)).toEqual({ key: 'S', mod: true, shift: false, alt: false })
     expect(shortcutLabel(APP_SHORTCUTS.save, 'macos')).toBe('⌘S')
     expect(shortcutLabel(APP_SHORTCUTS.save, 'windows')).toBe('Ctrl+S')
+  })
+
+  // An iPad's hardware keyboard drives apps with ⌘, as a Mac's does; Ctrl
+  // shortcuts there read wrong and fight the system's own ⌘ set.
+  it('uses ⌘ on iPad and iPhone keyboards, as on a Mac', () => {
+    expect(shortcutLabel(APP_SHORTCUTS.newSession, 'ios')).toBe('⌘N')
+    expect(isPrimaryShortcut(new KeyboardEvent('keydown', { key: 'n', metaKey: true }), 'ios')).toBe(true)
+    expect(isPrimaryShortcut(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }), 'ios')).toBe(false)
+    expect(shortcutLabel(APP_SHORTCUTS.newSession, 'android')).toBe('Ctrl+N')
   })
 
   it('registers every shortcut on the platform primary modifier', () => {

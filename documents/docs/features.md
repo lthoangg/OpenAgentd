@@ -591,6 +591,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Interface text uses the operating system's own font (SF Pro on macOS and
     iOS, Segoe UI Variable on Windows, Roboto on Android, the desktop font on
     Linux). Code, paths and model names stay in JetBrains Mono.
+  - With a keyboard on an iPad or iPhone, shortcuts use ⌘ as on a Mac
+    (⌘N, ⌘K, ⇧⌘A) and their hints say so.
   - Buttons, chips, tabs and segmented controls have no borders. The primary
     button and the chosen segment (Code / Plan, for example) are filled with
     the theme's Bark colour edge to edge, with inverted text; the highlighted

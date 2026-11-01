@@ -1391,6 +1391,7 @@ drag.
 | | macOS | Windows | Linux | iOS / iPadOS | Android |
 |---|---|---|---|---|---|
 | UI font | SF Pro | Segoe UI Variable | desktop font | SF Pro | Roboto |
+| Shortcut modifier | ⌘ | Ctrl | Ctrl | ⌘ (hardware keyboard) | Ctrl |
 | Context menu | OS menu | OS menu | OS menu | long-press action sheet | long-press sheet |
 | App menu | menu bar | ☰ / Alt | ☰ / Alt | — | — |
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | Cancel · Action | text buttons |

@@ -4,6 +4,7 @@
  * it. These are the keyboard paths for row actions that only show on hover.
  */
 import { getPlatform } from '@/hooks/use-platform'
+import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 
 type KeyLike = Pick<KeyboardEvent, 'key' | 'shiftKey' | 'altKey' | 'ctrlKey' | 'metaKey'>
 
@@ -15,7 +16,7 @@ export function isDeleteKey(event: KeyLike): boolean {
   if (event.altKey || event.shiftKey) return false
   if (event.key === 'Delete') return !event.ctrlKey && !event.metaKey
   if (event.key !== 'Backspace') return false
-  return getPlatform().os === 'macos' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+  return isPrimaryModifierOS(getPlatform().os) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
 }
 
 export function isRenameKey(event: KeyLike): boolean {

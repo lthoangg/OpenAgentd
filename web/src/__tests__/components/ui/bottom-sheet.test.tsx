@@ -1,10 +1,20 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import '@testing-library/jest-dom'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 
 afterEach(cleanup)
+
+const sheetNamed = (label: string) => document.querySelector<HTMLElement>(`[data-bottom-sheet][aria-label="${label}"]`)
+
+/**
+ * Wait for focus without a failing expect per poll: bun formats the DOM
+ * element of each failed toBe into its message, which took most of a second
+ * a time and timed the test out when the full suite loaded the machine.
+ */
+const focusLandsOn = (target: Element | null) => waitFor(() => {
+  if (document.activeElement !== target) throw new Error('focus is elsewhere')
+})
 
 describe('BottomSheet', () => {
   // A native sheet never raises the on-screen keyboard as it opens: focus on
@@ -16,9 +26,10 @@ describe('BottomSheet', () => {
         <button type="button">fake-model</button>
       </BottomSheet>,
     )
-    const sheet = screen.getByRole('dialog', { name: 'Model and thinking' })
-    await waitFor(() => expect(document.activeElement).toBe(sheet))
-    expect(screen.getByRole('textbox', { name: 'Search models' })).not.toHaveFocus()
+    const sheet = sheetNamed('Model and thinking')
+    expect(sheet?.getAttribute('role')).toBe('dialog')
+    await focusLandsOn(sheet)
+    expect(document.activeElement?.tagName).toBe('DIV')
   })
 
   it('still focuses the element it is asked to', async () => {
@@ -29,7 +40,9 @@ describe('BottomSheet', () => {
         <button type="button" ref={ref}>Attach file</button>
       </BottomSheet>,
     )
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Attach file' })).toHaveFocus())
+    const attach = screen.getByText('Attach file')
+    await focusLandsOn(attach)
+    expect(document.activeElement?.textContent).toBe('Attach file')
   })
 
   // The composer is a size container; older WebKit and Chromium make a
@@ -43,8 +56,9 @@ describe('BottomSheet', () => {
         </BottomSheet>
       </div>,
     )
-    const sheet = screen.getByRole('dialog', { name: 'Model and thinking' })
+    const sheet = sheetNamed('Model and thinking')
+    expect(sheet).not.toBeNull()
     expect(screen.getByTestId('composer').contains(sheet)).toBe(false)
-    expect(sheet.parentElement).toBe(document.body)
+    expect(sheet?.parentElement).toBe(document.body)
   })
 })

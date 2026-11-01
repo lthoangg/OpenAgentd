@@ -16,6 +16,7 @@ pub struct NewSession {
     pub model: Option<String>,
     pub thinking_level: Option<String>,
     pub interaction_mode: Option<String>,
+    pub credential_id: Option<String>,
 }
 
 pub async fn create_session(pool: &DbPool, new: NewSession) -> Result<ChatSession> {
@@ -26,8 +27,8 @@ pub async fn create_session(pool: &DbPool, new: NewSession) -> Result<ChatSessio
            (id, parent_session_id, agent_name, title, scheduled_task_name,
             created_at, updated_at, workspace, revert, model, thinking_level,
             history_revision, history_structure_revision, interaction_mode,
-            last_message_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, 0, 0, ?, ?)"#,
+            last_message_at, credential_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, 0, 0, ?, ?, ?)"#,
     )
     .bind(&id)
     .bind(new.parent_session_id.as_deref().map(db_id))
@@ -41,6 +42,7 @@ pub async fn create_session(pool: &DbPool, new: NewSession) -> Result<ChatSessio
     .bind(new.thinking_level)
     .bind(new.interaction_mode.unwrap_or_else(|| "code".into()))
     .bind(&now)
+    .bind(new.credential_id)
     .execute(pool)
     .await?;
     get_session(pool, &id).await?.ok_or_else(|| anyhow!("session vanished after insert"))
@@ -231,6 +233,8 @@ pub struct SessionUpdate {
     pub revert: Option<Option<serde_json::Value>>,
     /// Set with a title the user typed; automatic retitling skips the session.
     pub title_locked: Option<bool>,
+    /// `Some(None)` returns the session to Auto.
+    pub credential_id: Option<Option<String>>,
 }
 
 impl SessionUpdate {
@@ -273,6 +277,9 @@ pub async fn update_session(pool: &DbPool, id: &str, upd: SessionUpdate) -> Resu
     if let Some(n) = upd.scheduled_task_name {
         push("scheduled_task_name", n, cur.scheduled_task_name.clone());
     }
+    if let Some(c) = upd.credential_id {
+        push("credential_id", c, cur.credential_id.clone());
+    }
     if let Some(l) = upd.title_locked {
         push("title_locked", Some(i64::from(l).to_string()), Some(i64::from(cur.title_locked).to_string()));
     }
@@ -294,6 +301,15 @@ pub async fn update_session(pool: &DbPool, id: &str, upd: SessionUpdate) -> Resu
     }
     q.bind(now_db()).bind(&sid).execute(pool).await?;
     get_session(pool, &sid).await
+}
+
+/// How many top-level sessions are pinned to each stored credential.
+pub async fn pinned_credential_counts(pool: &DbPool) -> Result<std::collections::HashMap<String, i64>> {
+    let rows: Vec<(String, i64)> =
+        sqlx::query_as("SELECT credential_id, COUNT(*) FROM chat_sessions WHERE credential_id IS NOT NULL AND parent_session_id IS NULL GROUP BY credential_id")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows.into_iter().collect())
 }
 
 /// v2 `bump_history_revision`. SQLAlchemy's `onupdate=_utcnow` also fires for

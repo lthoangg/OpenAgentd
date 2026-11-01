@@ -178,6 +178,39 @@ idle memory unchanged: 20 ms handshake, 18.8 MB idle RSS.
 
 ## 3. Remaining differences from v2
 
+### Session-pinned credentials and run settings
+
+Migration 00000030 adds `chat_sessions.credential_id` (nullable; NULL is
+Auto). `SessionResponse` gains `credential_id`, omitted on Auto, so v2
+response shapes are unchanged.
+
+`PATCH /api/agent/sessions/{id}` additionally accepts `model`,
+`thinking_level` and `credential_id`: a present key sets the field, `null`
+clears it (the agent's model or level, or Auto). The model must be in the
+registry; the credential must exist, be enabled, belong to the session
+model's provider, and that provider must pool its credentials without an
+exported key overriding them (422 otherwise). Changing the model to another
+provider returns the session to Auto. The body error for an empty PATCH now
+names all six fields. `POST /api/agent/chat` (form field) and
+`POST /api/agent/sessions/resolve` (new sessions only) accept
+`credential_id`, saved before the first turn starts.
+
+A pinned session's requests go to that credential only: the pool never
+rotates past it and never moves the provider's shared "in use" choice, and
+its members (subagents) follow the lead's pin, as do goal checks, side
+questions and titles generated on the session's provider. Cooldowns stay
+shared. While the pin cools down the turn waits instead of calling the
+provider: `provider_status` reports the new status value
+`waiting_credential` (same fields as `waiting_quota`; no new event name).
+A rejected or spend-capped pin fails the turn with a message offering Auto.
+A pin whose credential was removed or turned off is cleared at the next
+turn, with a `provider_status` `pin_released` note.
+
+Assistant rows' `extra` gains `credential_id` and `credential_label`, the
+stored credential that answered (pooled providers only). `GET
+/api/settings/providers/{id}/credentials` adds `pinned_sessions` per
+credential.
+
 ### Account-scoped provider usage and throttling
 
 Provider metadata adds `supports_usage` alongside `supports_credential_usage`.

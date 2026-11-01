@@ -176,6 +176,13 @@ struct TurnSettings {
     needs_runtime: bool,
 }
 
+/// Whether pinned credential `id` belongs to the provider of `model`
+/// (`provider:model`); a pin to another provider's credential is ignored.
+fn pin_fits(model: Option<&str>, id: &str) -> bool {
+    let Some((provider, _)) = model.and_then(|m| m.split_once(':')) else { return false };
+    appv3_providers::pool::credential_provider(id).as_deref() == Some(provider)
+}
+
 impl TurnSettings {
     fn resolve(agent: &Agent, runtime_model: Option<&str>, runtime_thinking: Option<&str>) -> Self {
         let runtime_model = runtime_model.filter(|m| !m.is_empty());
@@ -299,19 +306,61 @@ impl AgentSession {
 
     /// The provider for the session's `model` / `thinking_level` overrides
     /// (from its row), or the agent's own when neither changes anything.
-    pub fn resolve_runtime_provider(&self, agent: &Agent, runtime_model: Option<&str>, runtime_thinking: Option<&str>) -> Result<RuntimeProvider, ProviderError> {
+    /// A pinned credential (`credential`) of the model's provider always
+    /// gets its own provider, which sends every request to that credential.
+    pub fn resolve_runtime_provider(
+        &self,
+        agent: &Agent,
+        runtime_model: Option<&str>,
+        runtime_thinking: Option<&str>,
+        credential: Option<&str>,
+    ) -> Result<RuntimeProvider, ProviderError> {
         let settings = TurnSettings::resolve(agent, runtime_model, runtime_thinking);
+        let pin = credential.filter(|id| pin_fits(settings.model.as_deref(), id));
         let mut runtime = None;
-        if settings.needs_runtime {
+        if settings.needs_runtime || pin.is_some() {
             if let Some(em) = settings.model.as_deref() {
                 let mut kw = Kwargs::new();
-                if let Some(t) = runtime_thinking {
+                if let Some(t) = settings.thinking_level.as_deref() {
                     kw.insert("thinking_level".into(), json!(t));
+                }
+                if let Some(id) = pin {
+                    kw.insert(appv3_providers::pool::PIN_KWARG.into(), json!(id));
                 }
                 runtime = Some((self.provider_factory)(Some(em), kw)?);
             }
         }
         Ok(RuntimeProvider { effective_model: settings.model, runtime, thinking_level: settings.thinking_level })
+    }
+
+    /// The credential this session's turns are pinned to: its own row's, or
+    /// for a member, its lead's (members follow the lead's choice live).
+    pub async fn pinned_credential(&self, row: &db::ChatSession) -> Option<String> {
+        match &self.parent_session_id {
+            Some(lead) => db::get_session(&self.pool, lead).await.ok().flatten().and_then(|r| r.credential_id),
+            None => row.credential_id.clone(),
+        }
+    }
+
+    /// A lead whose pinned credential was removed or turned off goes back
+    /// to Auto, and the transcript says so.
+    async fn release_stale_pin(&self, sid: &str, row: &db::ChatSession) {
+        let Some(id) = row.credential_id.as_deref() else { return };
+        if self.parent_session_id.is_some() {
+            return;
+        }
+        let provider = appv3_providers::pool::credential_provider(id);
+        if provider.as_deref().is_some_and(|p| appv3_providers::pool::pin_usable(p, id)) {
+            return;
+        }
+        if let Err(e) = db::update_session(&self.pool, sid, db::SessionUpdate { credential_id: Some(None), ..Default::default() }).await {
+            tracing::warn!("session_pin_release_failed session_id={} error={}", sid, e);
+            return;
+        }
+        tracing::info!("session_pin_released session_id={} credential={}", sid, id);
+        let mut extra = Map::new();
+        extra.insert("message".into(), json!("The account this session was pinned to was removed or turned off, so it is back on Auto."));
+        self.emit("provider_status", Some("pin_released"), Some(extra));
     }
 
     /// `<openagentd_memory>` as of the session's first turn (frozen so the
@@ -1345,6 +1394,7 @@ impl AgentSession {
 
         let mut runtime_model = opts.runtime_model.clone().filter(|m| !m.is_empty());
         let mut runtime_thinking = opts.runtime_thinking_level.clone().filter(|m| !m.is_empty());
+        let mut credential = None;
         db::cleanup_reverted_tail(&self.pool, &sid).await.map_err(dberr)?;
         if let Some(row) = db::get_session(&self.pool, &sid).await.map_err(dberr)? {
             interaction = interaction_mode::normalize(&row.interaction_mode).to_string();
@@ -1357,6 +1407,8 @@ impl AgentSession {
             if runtime_thinking.is_none() {
                 runtime_thinking = row.thinking_level.clone();
             }
+            self.release_stale_pin(&sid, &row).await;
+            credential = self.pinned_credential(&row).await;
         }
         if self.parent_session_id.is_none() {
             let plan_dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
@@ -1367,7 +1419,7 @@ impl AgentSession {
         let history = crate::history::get_messages_for_llm(&self.pool, &sid).await.map_err(dberr)?;
 
         let RuntimeProvider { effective_model, runtime: runtime_provider, thinking_level } =
-            self.resolve_runtime_provider(&agent, runtime_model.as_deref(), runtime_thinking.as_deref()).map_err(provider_error_to_agent)?;
+            self.resolve_runtime_provider(&agent, runtime_model.as_deref(), runtime_thinking.as_deref(), credential.as_deref()).map_err(provider_error_to_agent)?;
         let provider_for_hooks = runtime_provider.clone().unwrap_or_else(|| agent.provider.clone());
         let is_lead = self.parent_session_id.is_none();
         // A lead turn in Code mode while a goal is active works on it.

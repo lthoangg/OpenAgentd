@@ -217,7 +217,8 @@ impl AgentSession {
         let pool = self.pool.clone();
         let row = db::get_session(&pool, session_id).await?.ok_or_else(|| precondition("Session not found.", 404))?;
         let agent = self.agent();
-        let rp = self.resolve_runtime_provider(&agent, row.model.as_deref(), row.thinking_level.as_deref()).map_err(provider_error)?;
+        let pin = self.pinned_credential(&row).await;
+        let rp = self.resolve_runtime_provider(&agent, row.model.as_deref(), row.thinking_level.as_deref(), pin.as_deref()).map_err(provider_error)?;
         let provider = rp.provider(&agent);
         let sid = db::codec::api_uuid(&row.id);
         let recorded = self.request_frame().lock().unwrap().clone().filter(|f| f.session_id == sid && !f.system_prompt.is_empty());

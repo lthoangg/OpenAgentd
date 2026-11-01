@@ -51,6 +51,8 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
     put(&mut m, "pending_interaction_mode", o.pending_interaction_mode.clone().map(Value::String));
     put(&mut m, "model", s.model.clone().map(Value::String));
     put(&mut m, "thinking_level", s.thinking_level.clone().map(Value::String));
+    // v3 addition, omitted on Auto: the credential the session is pinned to.
+    put(&mut m, "credential_id", s.credential_id.clone().map(Value::String));
     put(&mut m, "revert", s.revert_json());
     m.insert("running".into(), Value::Bool(o.running));
     put(&mut m, "estimated_cost_usd", o.estimated_cost_usd.map(|c| serde_json::json!(c)));

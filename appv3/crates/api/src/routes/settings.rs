@@ -930,12 +930,19 @@ pub fn credentials_json(entry: &Value) -> Value {
     Value::Array(f.provider(id).iter().map(|c| credential_meta(entry, c, in_use.as_deref() == Some(c.id.as_str()))).collect())
 }
 
-async fn list_credentials(AxPath(id): AxPath<String>) -> ApiResult<Response> {
+async fn list_credentials(axum::extract::State(st): axum::extract::State<AppState>, AxPath(id): AxPath<String>) -> ApiResult<Response> {
     let entry = find_or_404(&id)?;
     cred_store::load().map_err(store_err)?;
+    // v3 addition: how many sessions are pinned to each credential.
+    let pinned = appv3_db::pinned_credential_counts(&st.pool).await?;
+    let mut credentials = credentials_json(entry);
+    for c in credentials.as_array_mut().into_iter().flatten() {
+        let n = c.get("id").and_then(Value::as_str).and_then(|id| pinned.get(id)).copied().unwrap_or(0);
+        c["pinned_sessions"] = json!(n);
+    }
     Ok(json(json!({
         "provider": id,
-        "credentials": credentials_json(entry),
+        "credentials": credentials,
         "env_pinned": appv3_providers::pool::env_pinned(&id),
         "supports_multiple_credentials": prov::supports_multiple_credentials(&id),
         "supports_credential_usage": prov::supports_credential_usage(&id),

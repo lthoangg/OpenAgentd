@@ -423,6 +423,12 @@ impl LlmProvider for RetryingProvider {
     fn credential_recovery_secs(&self) -> Option<f64> {
         self.built.get()?.credential_recovery_secs()
     }
+    fn served_credential(&self) -> Option<(String, String)> {
+        self.built.get()?.served_credential()
+    }
+    fn pinned_credential(&self) -> Option<String> {
+        self.built.get()?.pinned_credential()
+    }
 }
 
 #[cfg(test)]

@@ -2,6 +2,11 @@
 //! request goes to the credential selected by `appv3_core::credentials`
 //! (sticky, falling through in priority order); `rotate_credential` moves
 //! the provider on after a quota, rate-limit, or auth failure.
+//!
+//! A session may pin one credential ([`PIN_KWARG`]): then every request goes
+//! to it alone, the shared "in use" choice is never moved, and a cooling or
+//! rejected pin is reported to the caller (which waits or asks the user)
+//! instead of falling through to another key.
 
 use crate::creds::CredentialStore;
 use crate::factory::build_member;
@@ -15,6 +20,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// Header added to a pooled request's HTTP error naming the credential
 /// that served it (never a secret: the stored id).
 pub const CREDENTIAL_HEADER: &str = "x-openagentd-credential";
+
+/// Build kwarg naming the credential a session is pinned to
+/// (`chat_sessions.credential_id`). The pool takes it out before any member
+/// is built, so no provider ever sees it.
+pub const PIN_KWARG: &str = "__openagentd_credential_id";
 
 /// How long a credential whose member failed to build (a revoked login, a
 /// bad stored value) is skipped.
@@ -66,18 +76,42 @@ pub fn enabled_credentials<'a>(provider_id: &str, f: &'a store::CredentialsFile)
     enabled
 }
 
+/// Whether a session can be pinned to credential `id` of `provider_id`
+/// now: it is stored and enabled, and the provider pools its credentials
+/// (no exported variable overrides them).
+pub fn pin_usable(provider_id: &str, id: &str) -> bool {
+    is_poolable(provider_id) && !env_pinned(provider_id) && enabled_credentials(provider_id, &store::snapshot()).iter().any(|c| c.id == id)
+}
+
+/// The provider a stored credential belongs to.
+pub fn credential_provider(id: &str) -> Option<String> {
+    store::snapshot().providers.iter().find(|(_, cs)| cs.iter().any(|c| c.id == id)).map(|(p, _)| p.clone())
+}
+
+/// How a credential is named to the user.
+pub fn label_of(c: &Credential) -> String {
+    if c.label.is_empty() {
+        c.id.clone()
+    } else {
+        c.label.clone()
+    }
+}
+
 pub fn active_credential(provider_id: &str) -> Option<Credential> {
     let f = store::snapshot();
     store::select(provider_id, &enabled_credentials(provider_id, &f)).cloned()
 }
 
 /// The factory entry for `"<name>:<model>"`.
-pub fn build_pooled(name: &str, model: &str, kw: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
+pub fn build_pooled(name: &str, model: &str, mut kw: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
+    // A pin that no longer fits (removed, turned off, another provider's)
+    // is Auto; the session notices and clears it.
+    let pinned = kw.remove(PIN_KWARG).and_then(|v| v.as_str().map(String::from)).filter(|id| pin_usable(name, id));
     let has_stored = !enabled_credentials(name, &store::snapshot()).is_empty();
     if !is_poolable(name) || env_pinned(name) || !has_stored {
         return build_member(name, model, kw, &CredentialStore::for_provider(name, Default::default()), None);
     }
-    let pool = PooledProvider { provider_id: name.into(), model: model.into(), kw, members: Mutex::default(), first: OnceLock::new() };
+    let pool = PooledProvider { provider_id: name.into(), model: model.into(), kw, members: Mutex::default(), first: OnceLock::new(), pinned, served: Mutex::default() };
     // Build the credential in use now, so a bad model or credential fails
     // the build as it did before pooling.
     pool.member_blocking()?;
@@ -95,6 +129,10 @@ pub struct PooledProvider {
     /// The first member built; answers the synchronous metadata calls,
     /// which are the same for every credential of a provider and model.
     first: OnceLock<Arc<dyn LlmProvider>>,
+    /// The one credential a pinned session uses.
+    pinned: Option<String>,
+    /// The credential the latest request went to.
+    served: Mutex<Option<String>>,
 }
 
 /// An OAuth document whose access token is (about to be) expired.
@@ -130,7 +168,11 @@ impl PooledProvider {
             self.members.lock().unwrap().insert(c.id.clone(), (fresh, p.clone()));
             let _ = self.first.set(p.clone());
         }
-        store::set_current(&self.provider_id, &c.id);
+        // A pinned session never moves the choice Auto sessions share.
+        if self.pinned.is_none() {
+            store::set_current(&self.provider_id, &c.id);
+        }
+        *self.served.lock().unwrap() = Some(c.id.clone());
         (c.id, p)
     }
 
@@ -139,6 +181,15 @@ impl PooledProvider {
     fn candidates(&self) -> ProviderResult<Vec<Credential>> {
         let f = store::snapshot();
         let enabled = enabled_credentials(&self.provider_id, &f);
+        if let Some(pin) = &self.pinned {
+            return match enabled.iter().find(|c| &c.id == pin) {
+                Some(c) => Ok(vec![(*c).clone()]),
+                None => Err(ProviderError::Unconfigured(format!(
+                    "The account this session is pinned to was removed or turned off. Choose another account for '{}', or use Auto.",
+                    self.provider_id
+                ))),
+            };
+        }
         let Some(first) = store::select(&self.provider_id, &enabled).cloned() else {
             return Err(ProviderError::Unconfigured(format!("No enabled credential for '{}'. Add or enable one in Settings → Providers.", self.provider_id)));
         };
@@ -172,9 +223,33 @@ impl PooledProvider {
         Err(last.expect("at least one candidate"))
     }
 
+    /// A pinned credential that is cooling down (or was rejected) answers
+    /// without a request: an error naming it, which the caller waits out
+    /// (429 with `retry-after`) or shows (401, 402), and never rotates past.
+    fn pinned_unavailable(&self) -> Option<ProviderError> {
+        let pin = self.pinned.as_ref()?;
+        let cd = store::cooldown(&self.provider_id, pin)?;
+        let label = store::snapshot().find(&self.provider_id, pin).map(label_of).unwrap_or_else(|| pin.clone());
+        let mut headers = vec![(CREDENTIAL_HEADER.to_string(), pin.clone())];
+        let (status, message) = match cd.reason.as_str() {
+            "auth" => (401, format!("{label} was rejected by the provider. Reconnect it in Settings → Providers, or use Auto for this session.")),
+            "spend_limit" => (402, format!("{label} reached its spend limit. Raise it in the provider's console, choose another account, or use Auto for this session.")),
+            _ => {
+                let secs = (cd.until - store::now_s()).ceil().max(1.0) as i64;
+                headers.push(("retry-after".to_string(), secs.to_string()));
+                (429, format!("{label} is at its usage limit and is pinned for this session."))
+            }
+        };
+        let body = serde_json::json!({"error": {"code": "pinned_credential_unavailable", "message": message}}).to_string();
+        Some(ProviderError::Http { status, body, headers, message })
+    }
+
     /// The member for the next request; builds run off the async workers
     /// (an OAuth refresh blocks on the network).
     async fn member(&self) -> ProviderResult<(String, Arc<dyn LlmProvider>)> {
+        if let Some(e) = self.pinned_unavailable() {
+            return Err(e);
+        }
         let mut last = None;
         for c in self.candidates()? {
             if let Some(p) = self.cached(&c) {
@@ -246,7 +321,16 @@ impl LlmProvider for PooledProvider {
     }
     fn rotate_credential(&self, err: &ProviderError, reason: &str, cooldown_secs: f64) -> Option<String> {
         let failed = err.header(CREDENTIAL_HEADER)?.to_string();
-        store::set_cooldown(&self.provider_id, &failed, store::now_s() + cooldown_secs.max(1.0), reason);
+        let until = store::now_s() + cooldown_secs.max(1.0);
+        if self.pinned.is_some() {
+            // The cooldown is still shared (Auto sessions skip the key), but
+            // a pinned session stays on it; never shorten a longer one.
+            if store::cooldown(&self.provider_id, &failed).is_none_or(|c| c.until < until) {
+                store::set_cooldown(&self.provider_id, &failed, until, reason);
+            }
+            return None;
+        }
+        store::set_cooldown(&self.provider_id, &failed, until, reason);
         let f = store::snapshot();
         let enabled = enabled_credentials(&self.provider_id, &f);
         let label = |c: &Credential| if c.label.is_empty() { c.id.clone() } else { c.label.clone() };
@@ -261,12 +345,24 @@ impl LlmProvider for PooledProvider {
         Some(label(next))
     }
     fn credential_recovery_secs(&self) -> Option<f64> {
+        if let Some(pin) = &self.pinned {
+            return store::cooldown(&self.provider_id, pin).map(|c| (c.until - store::now_s()).max(0.0));
+        }
         let f = store::snapshot();
         let enabled = enabled_credentials(&self.provider_id, &f);
         if enabled.len() < 2 {
             return None;
         }
         store::earliest_recovery(&self.provider_id, &enabled, None)
+    }
+    fn served_credential(&self) -> Option<(String, String)> {
+        let id = self.served.lock().unwrap().clone()?;
+        let label = store::snapshot().find(&self.provider_id, &id).map(label_of).unwrap_or_else(|| id.clone());
+        Some((id, label))
+    }
+    fn pinned_credential(&self) -> Option<String> {
+        let pin = self.pinned.as_ref()?;
+        Some(store::snapshot().find(&self.provider_id, pin).map(label_of).unwrap_or_else(|| pin.clone()))
     }
 }
 

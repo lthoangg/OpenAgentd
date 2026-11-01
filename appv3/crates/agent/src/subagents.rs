@@ -614,7 +614,7 @@ impl StallWatch {
     pub fn on_retry(&mut self, info: &ProviderStatus, now: tokio::time::Instant) -> Option<String> {
         let model = info.model.as_deref().filter(|m| !m.is_empty()).unwrap_or("its model");
         let reason = match info.status.as_str() {
-            "waiting_quota" => {
+            "waiting_quota" | "waiting_credential" => {
                 let wait = info.delay_seconds.map(crate::retry::format_duration).unwrap_or_else(|| "a while".into());
                 format!("{model} is out of quota, and it is waiting {wait} for the reset")
             }

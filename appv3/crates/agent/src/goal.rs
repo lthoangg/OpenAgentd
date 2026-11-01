@@ -1193,7 +1193,8 @@ impl AgentSession {
     async fn run_goal_check(&self, sid: &str, goal: &SessionGoal, history: &[ChatMessage], evidence: &str) -> Result<(Option<Verdict>, i64)> {
         let row = db::get_session(&self.pool, sid).await?.ok_or_else(|| anyhow!("session not found"))?;
         let agent = self.agent();
-        let rp = self.resolve_runtime_provider(&agent, row.model.as_deref(), row.thinking_level.as_deref()).map_err(|e| anyhow!(e.to_string()))?;
+        let pin = self.pinned_credential(&row).await;
+        let rp = self.resolve_runtime_provider(&agent, row.model.as_deref(), row.thinking_level.as_deref(), pin.as_deref()).map_err(|e| anyhow!(e.to_string()))?;
         let (provider, model) = (rp.provider(&agent), rp.effective_model.clone());
         let recorded = self.request_frame().lock().unwrap().clone().filter(|f| f.session_id == sid && !f.system_prompt.is_empty());
         let frame = match recorded {

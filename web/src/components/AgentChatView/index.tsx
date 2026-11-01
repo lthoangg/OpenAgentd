@@ -44,7 +44,7 @@ import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useReportShownSession } from '@/lib/island-setting'
 import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { settledWidthBesidePanels } from '@/components/ResizableAside'
-import { isFocusStranded, useReturnFocusFromDock, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
+import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
 import { lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
@@ -668,12 +668,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     onReturn: returnFocusToComposer,
   })
   // A desktop app always has a focused control: never leave focus on
-  // <body>, and start in the composer once a session is on screen.
+  // <body>, and start in the composer once a session is on screen (with a
+  // mouse or trackpad; a touch tablet waits for a tap, see useStartInComposer).
   useStrandedFocusGuard(!isMobile, returnFocusToComposer)
-  useEffect(() => {
-    if (isMobile || isSessionLoading || typeof document === 'undefined') return
-    if (document.hasFocus() && isFocusStranded()) returnFocusToComposer()
-  }, [isMobile, isSessionLoading, sessionIdState, returnFocusToComposer])
+  useStartInComposer(!isMobile && !isSessionLoading, sessionIdState, returnFocusToComposer)
 
   const handleRetry = useCallback(() => {
     if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)

@@ -335,6 +335,22 @@ describe('PreviewTabView', () => {
     expect(screen.getByText('boom')).toBeTruthy()
   })
 
+  it('on touch, keeps every phone toolbar control at 28px so they fit the 32px toolbar', async () => {
+    isMobile = true
+    await renderView()
+    const controls = [
+      screen.getByRole('textbox', { name: 'Preview address' }),
+      screen.getByRole('button', { name: 'Device size' }),
+      screen.getByRole('button', { name: 'More preview actions' }),
+      screen.getByRole('button', { name: 'Reload' }),
+    ]
+    for (const control of controls) {
+      // No 36px touch growth (h-9, min-h-9, size-9) on any of them.
+      expect(control.className).not.toMatch(/pointer-coarse:(min-)?h-9|pointer-coarse:size-9/)
+      expect(control.className).toMatch(/pointer-coarse:h-7|pointer-coarse:size-7|(^|\s)h-7(\s|$)/)
+    }
+  })
+
   it('keeps the tools when the page reloads again before the first load is judged', async () => {
     const { iframe, frameWindow, commands } = await renderView({ kind: 'url', url: 'http://localhost:5173/#features' })
     // Page 1: ready on DOMContentLoaded, then load, answered hello.

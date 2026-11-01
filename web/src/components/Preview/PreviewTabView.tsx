@@ -546,7 +546,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               }
             }}
             spellCheck={false}
-            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-[11px] text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-9 pointer-coarse:text-xs"
+            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-[11px] text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-7 pointer-coarse:text-xs"
           />
         </form>
         {agentAction && (
@@ -565,7 +565,9 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           value={deviceId}
           onValueChange={(value) => setDeviceId(devicePreset(value).id)}
           align="end"
+          dense
           // rounded-xs: the address bar's corners, not the form trigger's rounded-md.
+          // dense: 28px on touch too, so it fits the 32px toolbar.
           className="h-7 shrink-0 gap-1 rounded-xs px-1.5 text-[11px]"
           trigger={
             <span className="flex items-center gap-1">
@@ -585,6 +587,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           <Dropdown
             aria-label="More preview actions"
             align="end"
+            dense
             trigger={
               <span className="relative flex items-center">
                 <MoreHorizontal size={14} aria-hidden="true" />

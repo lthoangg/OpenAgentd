@@ -143,6 +143,9 @@ export interface DropdownProps {
   'aria-invalid'?: boolean | 'true' | 'false'
   'aria-describedby'?: string
   disabled?: boolean
+  /** Keep the trigger's own height on touch instead of growing it to 36px,
+   *  for triggers inside a 32px toolbar (they size themselves). */
+  dense?: boolean
 }
 
 function Dropdown({
@@ -159,6 +162,7 @@ function Dropdown({
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedby,
   disabled,
+  dense = false,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
   // Matches the exit's ``animation-duration-(--motion-fast)`` below.
@@ -356,7 +360,8 @@ function Dropdown({
         data-popup-open={open || undefined}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
-          'justify-between pointer-coarse:min-h-9',
+          'justify-between',
+          !dense && 'pointer-coarse:min-h-9',
           open && 'border-(--focus-ring)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,

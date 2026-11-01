@@ -164,7 +164,7 @@ function ShellResult({ result }: { result: string }) {
 
       {/* stdout / stderr output */}
       {body && (
-        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-meta leading-relaxed text-(--color-text-2)">
+        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)">
           <LinkifiedText text={body} />
         </pre>
       )}
@@ -195,7 +195,7 @@ function FileListResult({ result }: { result: string }) {
         {entries.map((e, i) => (
           <li
             key={i}
-            className="font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
+            className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
           >
             <LinkifiedText text={e} />
           </li>
@@ -222,7 +222,7 @@ function FileReadResult({ result }: { result: string }) {
           {rangeLabel}
         </span>
       </div>
-      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text)">
+      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
         {body}
       </pre>
     </div>
@@ -281,7 +281,7 @@ function BackgroundOutputBlock({
         </button>
         {headerAction}
       </div>
-      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text-2) sm:max-h-64">
+      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text-2) sm:max-h-64">
         <LinkifiedText text={truncateForDisplay(body)} />
       </pre>
     </div>
@@ -320,7 +320,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
         </div>
         <ul className="max-h-40 overflow-y-auto sm:max-h-64">
           {listRows.map((process) => (
-            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-meta last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
+            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-xs last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
               <span className="text-(--color-text)">pid {process.pid}</span>
               <span><Chip tone={statusTone(process.status)} dot={statusTone(process.status) === 'info'}>{process.status}</Chip></span>
               <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
@@ -353,7 +353,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
           {headerAction}
         </div>
         {command && (
-          <code className="block break-words px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text-2)">
+          <code className="block break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text-2)">
             {command}
           </code>
         )}
@@ -378,7 +378,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
           {headerAction}
         </div>
         {body && (
-          <p className="px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text-2)">
+          <p className="px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text-2)">
             {body}
           </p>
         )}
@@ -402,7 +402,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
           </button>
           {headerAction}
         </div>
-        <p className="px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-error)">
+        <p className="px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-error)">
           {body}
         </p>
       </div>
@@ -418,7 +418,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   return (
     <div className="relative">
       {headerAction && <div className="absolute top-0 right-1.5">{headerAction}</div>}
-      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-meta leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-xs leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
         <LinkifiedText text={truncateForDisplay(result)} />
       </pre>
     </div>
@@ -474,7 +474,7 @@ function ScheduleTaskListResult({ result }: { result: string }) {
 
   return (
     <div className="oa-table-wrap">
-      <table className="w-full min-w-max font-mono text-meta leading-relaxed text-(--color-text-2)">
+      <table className="w-full min-w-max font-mono text-xs leading-relaxed text-(--color-text-2)">
         <thead className="border-b border-(--color-border) bg-(--bg-key) text-left label-caps text-(--color-text-muted)">
           <tr>
             <th className="px-3 py-1.5 font-semibold">Task</th>
@@ -612,7 +612,7 @@ function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
-    return <div className="text-meta text-(--color-text-muted)">No todos.</div>
+    return <div className="text-xs text-(--color-text-muted)">No todos.</div>
   }
   const parsed = parseTodoList(result)
   if (!parsed) return <GenericResult result={result} />
@@ -628,7 +628,7 @@ function TodoListResult({ result }: { result: string }) {
             return (
               <div
                 key={idx}
-                className={`font-mono text-meta leading-relaxed ${
+                className={`font-mono text-xs leading-relaxed ${
                   isError ? 'text-(--accent-orange-text)' : 'text-(--color-text-muted)'
                 }`}
               >
@@ -671,12 +671,12 @@ function TodoListResult({ result }: { result: string }) {
                     <span className="text-(--color-text-subtle)">{task.taskId}</span>
                   </div>
                   {task.instructions && (
-                    <div className="mt-1 text-meta leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
+                    <div className="mt-1 text-xs leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
                       <span className="font-semibold">instructions:</span> {task.instructions}
                     </div>
                   )}
                   {task.result && (
-                    <div className="mt-1 text-meta leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
+                    <div className="mt-1 text-xs leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
                       <span className="font-semibold">result:</span> {task.result}
                     </div>
                   )}
@@ -770,7 +770,7 @@ function LspNavigationResult({
   const opener = useContext(FileRefContext)
   if (result.trim() === 'No results.') {
     return (
-      <p className="font-mono text-meta leading-relaxed text-(--color-text-muted)">
+      <p className="font-mono text-xs leading-relaxed text-(--color-text-muted)">
         {lspEmptyLabel(operation)}
       </p>
     )
@@ -788,7 +788,7 @@ function LspNavigationResult({
         {locations.map((location, index) => (
           <li
             key={`${location.path}:${location.position}:${location.name ?? ''}:${index}`}
-            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-meta leading-relaxed"
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-xs leading-relaxed"
           >
             <span className="min-w-0 break-words text-(--color-text-2)">
               {location.name && (
@@ -806,7 +806,7 @@ function LspNavigationResult({
               {location.position}
             </span>
             {location.code && (
-              <span className="col-span-2 min-w-0 truncate text-xs md:text-meta text-(--color-text-muted)">
+              <span className="col-span-2 min-w-0 truncate text-xs text-(--color-text-muted)">
                 {location.code}
               </span>
             )}
@@ -836,7 +836,7 @@ function GenericResult({ result }: { result: string }) {
   const clipped = truncateForDisplay(display)
 
   return (
-    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-meta leading-relaxed text-(--color-text-2)">
+    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)">
       <LinkifiedText text={clipped} />
     </pre>
   )
@@ -909,7 +909,7 @@ function TeamResult({ obj }: { obj: Record<string, unknown> }) {
   const stillAsking = !live || live.has_pending_question || live.status === 'waiting_lead'
 
   return (
-    <div className="flex flex-col gap-2 font-mono text-meta leading-relaxed text-(--color-text-2)">
+    <div className="flex flex-col gap-2 font-mono text-xs leading-relaxed text-(--color-text-2)">
       {header ? (
         <SubagentRow {...header} status={header.status ?? status} />
       ) : (
@@ -926,9 +926,9 @@ function TeamResult({ obj }: { obj: Record<string, unknown> }) {
         <div className="rounded-sm border border-(--color-warning)/30 bg-(--color-warning-subtle)/50 p-2.5 font-sans text-xs text-(--color-text)">
           <div className="mb-1 font-medium text-(--accent-orange-text)">Question for the main agent</div>
           <div className="text-(--color-text) mb-1.5">{pendingQuestion.question}</div>
-          {/* The main agent answers, through its team tool: the user has no
-              route to answer for a subagent, so the choices are listed, not
-              offered as buttons that would do nothing. */}
+          {/* A subagent's session has no composer: the main agent answers, through
+              its team tool. The choices are a plain list for the reader (nothing
+              here to press), and the one control opens the subagent's session. */}
           {pendingQuestion.options && pendingQuestion.options.length > 0 && (
             <ul aria-label="Options" className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-(--color-text-2)">
               {pendingQuestion.options.map((opt, i) => (
@@ -936,6 +936,7 @@ function TeamResult({ obj }: { obj: Record<string, unknown> }) {
               ))}
             </ul>
           )}
+          <p className="mt-1.5 text-xs text-(--color-text-muted)">The main agent answers subagent questions.</p>
           {header?.sessionId && stillAsking && (
             <Button
               type="button"
@@ -944,7 +945,7 @@ function TeamResult({ obj }: { obj: Record<string, unknown> }) {
               className="mt-2"
               onClick={() => openSubagentSession(header.sessionId!)}
             >
-              Answer in subagent session
+              Open subagent session
               <ArrowUpRight size={12} aria-hidden="true" />
             </Button>
           )}
@@ -1073,7 +1074,7 @@ export function LspDiagnosticsView({
         const locationColor = 'text-(--color-text-muted)'
 
         return (
-          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs md:text-meta leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
+          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
             <span className={`${labelColor} shrink-0 font-sans font-medium`}>
               {label}
             </span>

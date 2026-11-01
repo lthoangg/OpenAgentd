@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
+import { copyText, type ChatMenuItem } from '../ChatContextMenu'
 import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
@@ -40,11 +41,12 @@ import { parseImageRead } from './imageRead'
 import { TOOL_CHIP_CLASS } from './chipStyles'
 import { CopyButton } from './CopyButton'
 import { SectionHeader } from './SectionHeader'
+import { ToolRow } from './ToolRow'
 import { subscribeLiveClock } from './liveClock'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome, toolRowSummary } from './summary'
-import { MetaRow, formatMetaDuration } from '@/components/ui/meta-row'
+import { formatMetaDuration } from '@/components/ui/meta-row'
 import { Chip } from '@/components/ui/chip'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
@@ -299,6 +301,19 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const exitChip = !isShell && failed ? <Chip tone="error" mono>error</Chip> : null
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
+  // The row's right-click menu and touch long-press sheet. Like the Copy
+  // controls in the details, it copies what the details show: a tool that hides
+  // its args (a search, a glob) has none to copy, and one that hides its result
+  // (a generated image) has none either. A result only exists once the tool is done.
+  const menuItems = (): ChatMenuItem[] => {
+    const argsText = isShellTerminal ? formattedArgs : formatArgsDetails(formattedArgs)
+    const resultText = done && (shownResult || hasReadResult) ? result : undefined
+    return [
+      ...(argsText ? [{ label: 'Copy arguments', run: () => copyText(argsText) }] : []),
+      ...(resultText ? [{ label: 'Copy result', run: () => copyText(resultText) }] : []),
+    ]
+  }
+
   // ``ask_user`` owns its whole card — frame and label included, since
   // both track whether the question is still open. An unanswered question must
   // not be hidden behind a disclosure triangle, and once answered it is a
@@ -322,7 +337,12 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           meta column (exit code, duration). A row with nothing to open is a
           plain div, so it adds no empty Tab stop. */}
       <div className={cn(pinned && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
-        <MetaRow
+        <ToolRow
+          // The row is a div until it has details, then a button: a new element
+          // remounts it, so the menu re-registers its touch surface.
+          key={hasDetails ? 'details' : 'plain'}
+          menuLabel={`Actions for ${displayName}`}
+          menuItems={menuItems}
           {...(hasDetails
             ? {
                 as: 'button' as const,
@@ -373,7 +393,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           ) : state === 'running' ? (
             <span className="shrink-0 text-(--color-text-muted)">running…</span>
           ) : null}
-        </MetaRow>
+        </ToolRow>
         {(previewTarget || planLink || imageRead || sentSession) && (
           <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1">
         {previewTarget && (
@@ -498,7 +518,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       <pre
                         ref={liveOutputRef}
                         onScroll={handleScroll}
-                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-meta leading-relaxed text-(--color-text)"
+                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>

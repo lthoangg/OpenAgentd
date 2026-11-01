@@ -1,8 +1,9 @@
 /**
  * Subagent rows in a team tool result: each opens the subagent's session,
  * reads its state in words, and runs a live elapsed timer while it works.
- * A subagent's question has no answer route for the user, so its card
- * links to the subagent's session instead.
+ * A subagent's question has no answer route for the user (the main agent
+ * answers, and the subagent's session has no composer), so its card lists the
+ * options as plain text, says who answers, and links to the session to read.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -213,22 +214,50 @@ describe('a subagent\'s question', () => {
       ...extra,
     })
 
-  it('links to the subagent session instead of offering answers that go nowhere', () => {
+  it('lists the options as plain text, says who answers, and links to the session to read', () => {
     render(<ToolResult toolName="team_send" result={asked()} />)
-    // Not buttons: the options are a list; the one control is the link.
+    expect(screen.getByText('Question for the main agent')).toBeTruthy()
+    // Not buttons or chips: the options are a plain list with nothing to press.
     const options = screen.getByRole('list', { name: 'Options' })
     expect(options.querySelector('button')).toBeNull()
-    const link = screen.getByRole('button', { name: /Answer in subagent session/ })
+    expect(options.querySelector('[role="button"], a, input, [data-slot="chip"], [tabindex]')).toBeNull()
+    expect(Array.from(options.querySelectorAll('li')).map((item) => item.textContent)).toEqual(['yes', 'no'])
+    for (const item of options.querySelectorAll('li')) {
+      expect(item.className).not.toMatch(/cursor-pointer|hover:|border|rounded|bg-/)
+    }
+    // A muted caption in content size (12px), not meta.
+    const caption = screen.getByText('The main agent answers subagent questions.')
+    expect(caption.className).toContain('text-xs')
+    expect(caption.className).toContain('text-(--color-text-muted)')
+    expect(caption.className).not.toContain('text-meta')
+    // The one control opens the session; it no longer promises an answer there.
+    expect(screen.queryByRole('button', { name: /Answer in subagent session/ })).toBeNull()
+    const link = screen.getByRole('button', { name: /Open subagent session/ })
     expect(link.getAttribute('data-slot')).toBe('button')
     expect(link.className).not.toMatch(/(?<![\w-])border(?![\w-])/)
     fireEvent.click(link)
     expect(opened).toEqual([{ sessionId: SUB, workspace: '' }])
   })
 
+  it('keeps the caption and the options where no session link is shown', () => {
+    render(<ToolResult toolName="team_send" result={asked({ session_id: undefined })} />)
+    expect(screen.getByRole('list', { name: 'Options' })).toBeTruthy()
+    expect(screen.getByText('The main agent answers subagent questions.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Open subagent session/ })).toBeNull()
+  })
+
+  it('says who answers even for a question with no options', () => {
+    render(<ToolResult toolName="team_send" result={asked({ pending_question: { question: 'Which branch?' } })} />)
+    expect(screen.getByText('Which branch?')).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Options' })).toBeNull()
+    expect(screen.getByText('The main agent answers subagent questions.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Open subagent session/ })).toBeTruthy()
+  })
+
   it('has no link where the member\'s session is not known', () => {
     render(<ToolResult toolName="team_send" result={asked({ session_id: undefined })} />)
     expect(screen.getByText('Should I include OAuth routes?')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Answer in subagent session/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Open subagent session/ })).toBeNull()
   })
 
   it('drops the link once the roster shows the member moved on', () => {
@@ -237,7 +266,7 @@ describe('a subagent\'s question', () => {
     roster(qc, 'lead-1', [{ member_id: 'explorer#2', status: 'working', session_id: SUB, has_pending_question: false }])
     withClient(qc, <ToolResult toolName="team_send" result={asked()} />)
     expect(screen.getByText('Should I include OAuth routes?')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Answer in subagent session/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Open subagent session/ })).toBeNull()
     // The row reads the live state, not the stale one.
     expect(screen.getByText('Running')).toBeTruthy()
   })
@@ -247,6 +276,6 @@ describe('a subagent\'s question', () => {
     useAgentStore.setState({ sessionId: 'lead-1' })
     roster(qc, 'lead-1', [{ member_id: 'explorer#2', status: 'waiting_lead', session_id: SUB, has_pending_question: true }])
     withClient(qc, <ToolResult toolName="team_send" result={asked({ session_id: undefined })} />)
-    expect(screen.getByRole('button', { name: /Answer in subagent session/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Open subagent session/ })).toBeTruthy()
   })
 })

@@ -167,7 +167,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-9 text-left font-mono text-meta font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 pointer-coarse:min-h-9 text-left font-mono text-xs font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >

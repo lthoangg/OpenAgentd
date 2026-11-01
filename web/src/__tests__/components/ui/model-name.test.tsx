@@ -18,7 +18,10 @@ describe('ModelName', () => {
     const [provider, model] = Array.from(container.querySelectorAll('[data-model-name] > span')) as HTMLElement[]
     expect(provider.textContent).toBe('googlegenai:')
     expect(provider.className).toMatch(/(^| )shrink( |$)/)
-    expect(model.className).toContain('shrink-[0.001]')
+    // Never shrinks (a sliver would already cut it); capped, it truncates
+    // only once the provider part is gone.
+    expect(model.className).toContain('shrink-0')
+    expect(model.className).toContain('max-w-full')
   })
 
   it('shows a bare ID as it is', () => {

@@ -63,8 +63,10 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
     >
       <span className="flex min-w-0 items-baseline gap-1.5 leading-tight @max-[520px]:flex-col @max-[520px]:items-start @max-[520px]:gap-0">
         <span className="flex min-w-0 max-w-full font-mono">
+          {/* The provider part gives way first; the model part only truncates
+              once that is gone (see ui/model-name). */}
           {provider && <span className="min-w-0 shrink truncate text-(--color-text-muted)">{provider}:</span>}
-          <span className="shrink-0 whitespace-nowrap @max-[520px]:min-w-0 @max-[520px]:shrink @max-[520px]:truncate">{model}</span>
+          <span className="max-w-full shrink-0 truncate">{model}</span>
         </span>
         {meta && (
           <span className="max-w-full shrink-0 truncate whitespace-nowrap text-(--color-text-muted) @max-[520px]:text-meta">

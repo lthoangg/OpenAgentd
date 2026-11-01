@@ -21,9 +21,12 @@ export function ModelName({ id, className, providerClassName, ...rest }: {
       <TooltipTrigger
         render={
           <span {...rest} data-model-name className={cn('inline-flex min-w-0 max-w-full font-mono', className)}>
+            {/* The model part never shrinks (any share of the overflow, even a
+                fraction of a pixel, would cut it with an ellipsis); it is only
+                capped at the full width, so it truncates once the provider
+                part has given all of its width away. */}
             {provider && <span className={cn('min-w-0 shrink truncate', providerClassName)}>{provider}:</span>}
-            {/* Shrinks only once the provider part has given its width away. */}
-            <span className="min-w-0 shrink-[0.001] truncate">{model}</span>
+            <span className="max-w-full shrink-0 truncate">{model}</span>
           </span>
         }
       />

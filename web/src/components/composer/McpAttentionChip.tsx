@@ -1,7 +1,9 @@
 /**
  * McpAttentionChip — on the run deck only while one of the agent's MCP
  * servers needs the user (sign in, or it failed). A click opens the "+" menu
- * at its MCP section. Servers that work stay out of sight.
+ * at its MCP section. Servers that work stay out of sight. On a narrow deck
+ * (under 400px, a phone) it is the plug alone, a full touch target; its name
+ * still says which server and what it needs.
  */
 import { Plug } from 'lucide-react'
 
@@ -25,10 +27,10 @@ export function McpAttentionChip({ workspace }: { workspace: string | null }) {
       onClick={() => useUIStore.getState().openPlusMenu('mcp')}
       aria-label={`${text}. Open MCP servers`}
       data-mcp-attention=""
-      className="flex h-6 min-w-0 shrink items-center gap-1 rounded-sm bg-(--accent-orange-soft) px-1.5 text-meta font-medium text-(--accent-orange-text) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9"
+      className="flex h-6 min-w-0 shrink items-center gap-1 rounded-sm bg-(--accent-orange-soft) px-1.5 text-meta font-medium text-(--accent-orange-text) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 @max-[400px]:shrink-0 @max-[400px]:justify-center pointer-coarse:@max-[400px]:w-9"
     >
       <Plug size={11} aria-hidden="true" className="shrink-0" />
-      <span className="truncate">{text}</span>
+      <span className="truncate @max-[400px]:hidden">{text}</span>
     </button>
   )
 }

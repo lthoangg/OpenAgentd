@@ -88,9 +88,12 @@ describe('RunChip', () => {
     wrap(<RunChip settings={runSettings()} />)
     const chip = document.querySelector('[data-run-chip]') as HTMLElement
     const [provider, model] = Array.from(chip.querySelectorAll('.font-mono > span'))
-    expect(provider.className).toContain('shrink')
+    expect(provider.className).toMatch(/(^| )shrink( |$)/)
     expect(provider.className).toContain('truncate')
+    // The model never shrinks; capped at the chip's width it truncates only
+    // once the provider part is gone.
     expect(model.className).toContain('shrink-0')
+    expect(model.className).toContain('max-w-full')
     expect(chip.innerHTML).toContain('@max-[520px]:flex-col')
   })
 
@@ -142,5 +145,12 @@ describe('McpAttentionChip', () => {
     fireEvent.click(chip)
     expect(useUIStore.getState().plusMenuOpen).toBe(true)
     expect(useUIStore.getState().plusMenuSection).toBe('mcp')
+  })
+
+  it('is the plug alone on a narrow deck, still named in full', () => {
+    wrap(<McpAttentionChip workspace="/repo" />)
+    const chip = screen.getByRole('button', { name: /github: Sign in/ })
+    expect(chip.querySelector('span')?.className).toContain('@max-[400px]:hidden')
+    expect(chip.className).toContain('pointer-coarse:@max-[400px]:w-9')
   })
 })

@@ -47,7 +47,7 @@ beforeEach(() => {
   globalCallbacks = null
   globalSignals = []
   useLspInstallStore.setState({ request: null })
-  useUnreadStore.setState({ ids: [] })
+  useUnreadStore.setState({ ids: [], failed: [] })
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })
 
@@ -724,6 +724,8 @@ describe('handleGlobalEvent', () => {
     await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'failed', status: 'error' }, 1, () => 1)
 
     expect(useUnreadStore.getState().ids).toEqual(['done', 'failed'])
+    // The sidebar says Failed for the one whose turn ended in an error.
+    expect(useUnreadStore.getState().failed).toEqual(['failed'])
   })
 
   it('marks the shown session unread only while the window is hidden', async () => {

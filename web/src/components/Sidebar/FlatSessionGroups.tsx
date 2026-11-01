@@ -19,7 +19,7 @@ function uniqueById(sessions: readonly SessionResponse[]): SessionResponse[] {
 
 /**
  * The sidebar's flat views: every session across workspaces in one list,
- * grouped by status (Needs you · Working · Recent), by date, or not at all.
+ * grouped by status (Needs you · Running · Recent), by date, or not at all.
  * Rows name their workspace. One Show more row at the bottom pages the
  * shared list, so the sidebar keeps its single scroller.
  */

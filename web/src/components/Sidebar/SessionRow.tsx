@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
-import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
+import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
@@ -72,7 +72,8 @@ function SessionRowView({
   onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
-  const status = sessionStatus(session, unread)
+  const failed = useUnreadStore((state) => state.failed.includes(session.id))
+  const status = sessionStatus(session, unread, failed)
   const sessionTitle = session.title || 'Untitled'
   const rowRef = useRef<HTMLDivElement>(null)
   useTitleWash(rowRef, session.id, sessionTitle)
@@ -90,6 +91,10 @@ function SessionRowView({
   // Touch shows ⋯ at all times and drops the meta for it, but the pin mark
   // is small and says why the row is where it is, so it stays.
   const pinMarkVisibility = mobileLongPressActions ? '' : 'group-hover/row:hidden group-focus-within/row:hidden'
+  // The state word is the row's state in words, so "Show details" off does
+  // not hide it. It gives way to the actions like the pin mark does, and
+  // stays on touch, where the title truncates before it does.
+  const stateWord = sessionStateWord(status)
   // "Show details" off hides the at-rest meta; the tooltip still carries it.
   const ageVisibility = showDetails ? metaVisibility : 'hidden'
 
@@ -217,7 +222,7 @@ function SessionRowView({
               </LongPressButton>
             }
           />
-          <TooltipContent>{[sessionTitle, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}</TooltipContent>
+          <TooltipContent>{[sessionTitle, stateWord, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}</TooltipContent>
         </Tooltip>
         )}
         </div>
@@ -285,11 +290,13 @@ function SessionRowView({
             <Target size={11} />
           </span>
         )}
-        {sessionAge && !isEditing && (
-          <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
-            {sessionAge}
-          </span>
-        )}
+        {!isEditing && (stateWord
+          ? <SessionStateWord status={status} className={pinMarkVisibility} />
+          : sessionAge && (
+            <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+              {sessionAge}
+            </span>
+          ))}
         <div className={`shrink-0 items-center ${isEditing ? 'hidden' : actionsVisibility}`}>
           {canPin && (
             <button

@@ -74,7 +74,7 @@ afterEach(() => {
 })
 
 describe('FlatSessionGroups', () => {
-  it('groups by status: needs you, working, then the rest', () => {
+  it('groups by status: needs you, running, then the rest', () => {
     const waiting = session('s-wait', 'Migrate auth tokens', '/repo/openagentd', HOUR, { needs_input: true })
     const running = session('s-run', 'Sidebar redesign', '/repo/openagentd', 2 * HOUR, { running: true })
     setup({
@@ -83,7 +83,7 @@ describe('FlatSessionGroups', () => {
       active: [waiting, running],
     })
 
-    expect(groupLabels()).toEqual(['Needs you', 'Working', 'Recent'])
+    expect(groupLabels()).toEqual(['Needs you', 'Running', 'Recent'])
     const recent = screen.getByRole('region', { name: 'Recent' })
     // Active sessions are not repeated under Recent.
     expect(within(recent).queryByText('Sidebar redesign')).toBeNull()
@@ -155,5 +155,48 @@ describe('FlatSessionGroups', () => {
     setup({ groupBy: 'status', all: [] })
     expect(screen.getByText('No sessions yet.')).toBeTruthy()
     expect(screen.queryByRole('status', { name: 'Loading sessions' })).toBeNull()
+  })
+
+  it('heads every group with the one sidebar heading: sentence case, 32px, a visible chevron', () => {
+    const waiting = session('s-wait', 'Migrate auth tokens', '/repo/openagentd', HOUR, { needs_input: true })
+    const running = session('s-run', 'Sidebar redesign', '/repo/openagentd', 2 * HOUR, { running: true })
+    setup({
+      groupBy: 'status',
+      all: [waiting, running, session('s-idle', 'Weekly notes', '/home/user', 3 * HOUR)],
+      active: [waiting, running],
+    })
+
+    const headings = Array.from(document.querySelectorAll<HTMLElement>('[data-sidebar-heading]'))
+    expect(headings.map((heading) => heading.querySelector('span.truncate')?.textContent)).toEqual(['Needs you', 'Running', 'Recent'])
+    for (const heading of headings) {
+      // The same classes as the Pinned and Needs you sections' SidebarHeading.
+      expect(heading.className).toContain('h-8')
+      expect(heading.className).toContain('pointer-coarse:h-(--spacing-list-row)')
+      const button = heading.querySelector('button') as HTMLElement
+      expect(button.className).toContain('text-xs')
+      expect(button.className).toContain('font-medium')
+      expect(button.className).toContain('text-(--color-text-muted)')
+      expect(button.querySelector('svg')).not.toBeNull()
+    }
+    // No caps strip, and no 24px header left.
+    expect(document.querySelector('.label-caps')).toBeNull()
+    expect(document.querySelector('[aria-expanded]')?.className).not.toContain('h-6')
+  })
+
+  it('counts a group of sessions waiting on you in words, and the others by number', () => {
+    const waiting = session('s-wait', 'Migrate auth tokens', '/repo/openagentd', HOUR, { needs_input: true })
+    const running = session('s-run', 'Sidebar redesign', '/repo/openagentd', 2 * HOUR, { running: true })
+    setup({ groupBy: 'status', all: [waiting, running], active: [waiting, running] })
+
+    expect(within(screen.getByRole('button', { name: /Needs you/ })).getByText('1 waiting')).toBeTruthy()
+    expect(within(screen.getByRole('button', { name: /Running/ })).getByText('1')).toBeTruthy()
+  })
+
+  it('keeps the heading sentence case for date groups too', () => {
+    setup({ groupBy: 'date', all: [session('s-today', 'Today work', '/repo/web', 0)] })
+
+    const button = screen.getByRole('button', { name: /Today/, expanded: true })
+    expect(button.textContent).toBe('Today1')
+    expect(button.querySelector('.label-caps')).toBeNull()
   })
 })

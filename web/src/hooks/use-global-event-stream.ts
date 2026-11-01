@@ -163,7 +163,7 @@ export async function handleGlobalEvent(
     // already read; none has anything new to read.
     const shown = before.sessionId === sessionId && document.visibilityState === 'visible'
     if (!parentSessionId && event.status !== 'stopped' && event.idle_compaction !== true && !shown) {
-      useUnreadStore.getState().markUnread(sessionId)
+      useUnreadStore.getState().markUnread(sessionId, { failed: event.status === 'error' })
     }
     if (before.sessionId !== sessionId) return true
     // This notification travels over a *separate* global SSE connection from

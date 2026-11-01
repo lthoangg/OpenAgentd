@@ -1,8 +1,11 @@
-import { ChevronRight } from 'lucide-react'
+import { SidebarHeading } from './SidebarHeading'
 
 /**
- * A collapsible group label in ``label-caps`` with its count: the Pinned
- * section and the groups of the flat views.
+ * A collapsible group label of the flat views (Needs you, Running, Today …)
+ * with its count. It is a ``SidebarHeading``, the one header every sidebar
+ * section uses: sentence case, 32px, a chevron that shows the fold. A group
+ * of sessions waiting on you counts them in words ("2 waiting"), as the
+ * Needs you section does.
  */
 export function SessionGroupHeader({
   label,
@@ -11,7 +14,6 @@ export function SessionGroupHeader({
   onToggle,
   controls,
   tone = 'subtle',
-  tall = false,
 }: {
   label: string
   count: number
@@ -19,27 +21,19 @@ export function SessionGroupHeader({
   onToggle: () => void
   /** Id of the list this header folds. */
   controls?: string
-  /** ``warning`` colours the count (sessions waiting on you). */
+  /** ``warning`` marks the count (sessions waiting on you). */
   tone?: 'subtle' | 'warning'
-  /** A section header (32px) rather than a group header (24px). */
-  tall?: boolean
 }) {
+  const waiting = tone === 'warning'
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={!collapsed}
-      aria-controls={controls}
-      className={`group/header flex w-full items-center gap-1.5 rounded-sm pl-3 pr-2 text-left text-meta leading-none transition-colors hover:bg-(--bg-key)/35 pointer-coarse:h-(--spacing-list-row) ${tall ? 'h-8' : 'h-6'}`}
-    >
-      <span className="label-caps text-(--color-text-subtle)">{label}</span>
-      <span className={`tabular-nums ${tone === 'warning' ? 'text-(--accent-orange-text)' : 'text-(--color-text-subtle)'}`}>{count}</span>
-      <span className="flex-1" />
-      <ChevronRight
-        size={11}
-        aria-hidden="true"
-        className={`shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ${collapsed ? '' : 'rotate-90'}`}
-      />
-    </button>
+    <SidebarHeading
+      label={label}
+      count={count}
+      countLabel={waiting ? `${count} waiting` : undefined}
+      tone={waiting ? 'warning' : 'neutral'}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      controls={controls}
+    />
   )
 }

@@ -9,7 +9,7 @@ function setVisibility(state: DocumentVisibilityState) {
 }
 
 beforeEach(() => {
-  useUnreadStore.setState({ ids: [] })
+  useUnreadStore.setState({ ids: [], failed: [] })
   localStorage.removeItem(UNREAD_STORAGE_KEY)
   setVisibility('visible')
 })
@@ -29,7 +29,21 @@ describe('useUnreadStore', () => {
   it('persists the unread ids', () => {
     useUnreadStore.getState().markUnread('a')
     const saved = JSON.parse(localStorage.getItem(UNREAD_STORAGE_KEY) ?? '{}') as { state?: unknown }
-    expect(saved.state).toEqual({ ids: ['a'] })
+    expect(saved.state).toEqual({ ids: ['a'], failed: [] })
+  })
+
+  it('remembers which unread sessions ended in an error, until read', () => {
+    useUnreadStore.getState().markUnread('ok')
+    useUnreadStore.getState().markUnread('broken', { failed: true })
+    expect(useUnreadStore.getState().failed).toEqual(['broken'])
+
+    // A later clean finish replaces the failure.
+    useUnreadStore.getState().markUnread('broken')
+    expect(useUnreadStore.getState().failed).toEqual([])
+
+    useUnreadStore.getState().markUnread('broken', { failed: true })
+    useUnreadStore.getState().markRead('broken')
+    expect(useUnreadStore.getState()).toMatchObject({ ids: ['ok'], failed: [] })
   })
 
   it('keeps only the newest 200 sessions', () => {
@@ -42,12 +56,13 @@ describe('useUnreadStore', () => {
 
   it('takes the list another window wrote', async () => {
     useUnreadStore.getState().markUnread('mine')
-    localStorage.setItem(UNREAD_STORAGE_KEY, JSON.stringify({ state: { ids: ['theirs'] }, version: 0 }))
+    localStorage.setItem(UNREAD_STORAGE_KEY, JSON.stringify({ state: { ids: ['theirs'], failed: ['theirs'] }, version: 0 }))
 
     window.dispatchEvent(new StorageEvent('storage', { key: UNREAD_STORAGE_KEY }))
     await Promise.resolve()
 
     expect(useUnreadStore.getState().ids).toEqual(['theirs'])
+    expect(useUnreadStore.getState().failed).toEqual(['theirs'])
   })
 })
 

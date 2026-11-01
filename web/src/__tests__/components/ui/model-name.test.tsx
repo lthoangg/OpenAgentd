@@ -24,6 +24,16 @@ describe('ModelName', () => {
     expect(model.className).toContain('max-w-full')
   })
 
+  // Narrower than its ellipsis, a truncating box shows a clipped sliver of
+  // its first letter ("ıfake-model" at Android's 125% text); one character
+  // wide, it always has room for the "…".
+  it('keeps the provider part at least an ellipsis wide', () => {
+    const { container } = render(<ModelName id="router9:fake-model" />)
+    const provider = container.querySelector('[data-model-name] > span') as HTMLElement
+    expect(provider.className).toContain('min-w-[1ch]')
+    expect(provider.className).not.toContain('min-w-0')
+  })
+
   it('shows a bare ID as it is', () => {
     const { container } = render(<ModelName id="local-model" />)
     expect(container.textContent).toBe('local-model')

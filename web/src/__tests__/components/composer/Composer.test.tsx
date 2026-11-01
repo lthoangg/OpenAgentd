@@ -90,6 +90,8 @@ describe('RunChip', () => {
     const [provider, model] = Array.from(chip.querySelectorAll('.font-mono > span'))
     expect(provider.className).toMatch(/(^| )shrink( |$)/)
     expect(provider.className).toContain('truncate')
+    // Never a clipped sliver of a letter: always room for its "…".
+    expect(provider.className).toContain('min-w-[1ch]')
     // The model never shrinks; capped at the chip's width it truncates only
     // once the provider part is gone.
     expect(model.className).toContain('shrink-0')

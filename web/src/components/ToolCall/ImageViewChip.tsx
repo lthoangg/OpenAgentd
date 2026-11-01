@@ -2,6 +2,7 @@ import { useContext } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Image } from 'lucide-react'
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { WORKSPACE_FILES_STALE_MS, workspaceFileListQueryOptions } from '@/queries/workspace-files'
 import { workspaceRelativePath } from '@/utils/file-refs'
@@ -28,14 +29,16 @@ function ListedImageChip({ opener, workspace, path }: { opener: FileRefOpener; w
   })
   if (!listed) return null
   return (
-    <button
-      type="button"
-      onClick={() => opener.open({ path })}
-      title={`Open ${path} in the panel`}
-      className={TOOL_CHIP_CLASS}
-    >
-      <Image size={11} aria-hidden="true" />
-      View image
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button type="button" onClick={() => opener.open({ path })} className={TOOL_CHIP_CLASS}>
+            <Image size={11} aria-hidden="true" />
+            View image
+          </button>
+        }
+      />
+      <TooltipContent>{`Open ${path} in the panel`}</TooltipContent>
+    </Tooltip>
   )
 }

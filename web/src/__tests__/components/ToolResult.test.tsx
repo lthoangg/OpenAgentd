@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { render, screen, cleanup, within } from "@testing-library/react"
 import { ToolResult } from "@/components/ToolResult"
 
 afterEach(cleanup)
@@ -538,23 +538,24 @@ describe("ToolResult — team tools", () => {
       output: "Audit finished: 5 endpoints found.",
     })
     render(<ToolResult toolName="team_spawn" result={res} />)
-    // The member id is a neutral mono chip (soft, no border); the status is a success chip
-    const member = screen.getByText("explorer#1").closest('[data-slot="chip"]')
-    expect(member?.className).toContain("font-mono")
-    expect(member?.getAttribute("data-tone")).toBe("neutral")
-    expect(screen.getByText("completed").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    // The member is a row: its handle in mono, its state in words as a success chip
+    const row = screen.getByText("explorer#1").closest("[data-subagent-row]")
+    expect(row).toBeTruthy()
+    expect(screen.getByText("explorer#1").className).toContain("font-mono")
+    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    expect(screen.queryByText("completed")).toBeNull()
     expect(screen.getByText(/Audit finished: 5 endpoints found\./)).toBeTruthy()
   })
 
   it("labels a spawned subagent as running", () => {
     const res = JSON.stringify({ status: "spawned", member_id: "explorer#3" })
     render(<ToolResult toolName="team_spawn" result={res} />)
-    const status = screen.getByText("running").closest('[data-slot="chip"]')
+    const status = screen.getByText("Running").closest('[data-slot="chip"]')
     expect(status?.getAttribute("data-tone")).toBe("info")
     expect(screen.queryByText("spawned")).toBeNull()
   })
 
-  it("renders waiting_lead pending question and discrete options", () => {
+  it("renders waiting_lead pending question and lists its options without dead buttons", () => {
     const res = JSON.stringify({
       status: "waiting_lead",
       member_id: "explorer#2",
@@ -565,14 +566,17 @@ describe("ToolResult — team tools", () => {
     })
     render(<ToolResult toolName="team_send" result={res} />)
     expect(screen.getByText("explorer#2")).toBeTruthy()
-    const status = screen.getByText("waiting for main agent").closest('[data-slot="chip"]')
+    const status = screen.getByText("Needs you").closest('[data-slot="chip"]')
     expect(status?.getAttribute("data-tone")).toBe("warning")
+    expect(screen.queryByText("waiting for main agent")).toBeNull()
     expect(screen.queryByText("waiting for lead decision")).toBeNull()
     expect(screen.getByText("Question for the main agent")).toBeTruthy()
     expect(screen.queryByText("Clarification needed from lead:")).toBeNull()
     expect(screen.getByText("Should I include OAuth routes?")).toBeTruthy()
-    expect(screen.getByText("yes")).toBeTruthy()
-    expect(screen.getByText("no")).toBeTruthy()
+    // The options are a plain list: nothing here can be pressed, so nothing looks pressable.
+    const options = screen.getByRole("list", { name: "Options" })
+    expect(within(options).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["yes", "no"])
+    expect(screen.queryByRole("button")).toBeNull()
   })
 
   it("renders multi-member results for team_wait", () => {
@@ -603,8 +607,8 @@ describe("ToolResult — team tools", () => {
     expect(screen.queryByText("Subagent Roster")).toBeNull()
     expect(screen.getByText("explorer#1")).toBeTruthy()
     // Roster statuses are chips; an unknown status keeps its raw text
-    expect(screen.getByText("working").closest('[data-slot="chip"]')).toBeTruthy()
-    expect(screen.getByText("completed").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    expect(screen.getByText("Running").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("info")
+    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
     expect(screen.getByText("researcher#1")).toBeTruthy()
   })
 })

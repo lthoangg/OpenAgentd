@@ -1,7 +1,5 @@
-import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { copyText, useChatMenu } from './ChatContextMenu'
+import { CopyButton } from './ToolCall/CopyButton'
 
 interface CodeBlockProps {
   children: React.ReactNode
@@ -11,42 +9,9 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ children, language, rawText, noHeader = false }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false)
   const chatMenu = useChatMenu(language ? `Actions for ${language} code` : 'Actions for code', () => [
     { label: 'Copy code', run: () => copyText(rawText) },
   ])
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(rawText)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Clipboard access is best-effort.
-    }
-  }
-
-  const copyButton = (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="touch-hit relative flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs"
-            aria-label="Copy code"
-          >
-            {copied ? (
-              <Check size={13} className="text-(--accent-green-text)" />
-            ) : (
-              <Copy size={13} />
-            )}
-          </button>
-        }
-      />
-      <TooltipContent>Copy</TooltipContent>
-    </Tooltip>
-  )
 
   if (noHeader) {
     return (
@@ -62,18 +27,16 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
       onContextMenu={chatMenu.onContextMenu}
       onKeyDown={chatMenu.onKeyDown}
       data-slot="code-block"
-      className="group relative my-1.5 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)"
+      className="relative my-1.5 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)"
     >
-      {language ? (
-        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
-          <span className="font-mono label-caps text-(--color-text-muted)">
-            {language}
-          </span>
-          {copyButton}
-        </div>
-      ) : (
-        <div className="absolute top-1.5 right-1.5 z-10">{copyButton}</div>
-      )}
+      {/* Every block has a header with Copy at rest (muted), the same
+          control the tool sections use; a bare fence is captioned "text". */}
+      <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
+        <span className="font-mono label-caps text-(--color-text-muted)">
+          {language || 'text'}
+        </span>
+        <CopyButton label="Copy code" text={rawText} />
+      </div>
       <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
         <code>{children}</code>
       </pre>

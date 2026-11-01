@@ -12,7 +12,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
+import { ArrowUpRight, Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useContext, type ReactNode } from 'react'
 import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
@@ -20,7 +20,12 @@ import type { FileRef } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
 import { canonicalToolName } from '@/utils/tool-names'
+import { Button } from '@/components/ui/button'
 import { Chip, type ChipTone } from '@/components/ui/chip'
+import type { LiveSubagent } from '@/api/types'
+import { SubagentRow, openSubagentSession, type SubagentRowProps } from './ToolCall/SubagentRow'
+import { parseStartedAt, subagentStatusView } from './ToolCall/subagentStatus'
+import { useSubagentRoster } from './ToolCall/useSubagentRoster'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -849,20 +854,29 @@ const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 const SCHEDULE_TOOLS = new Set(['schedule'])
 const TEAM_TOOLS = new Set(['team', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
 
-/** Subagent states as chips: blue while it runs, orange when it waits on you, green once done. */
-const TEAM_STATUS_TONE: Record<string, ChipTone> = {
-  completed: 'success',
-  done: 'success',
-  spawned: 'info',
-  running: 'info',
-  waiting_lead: 'warning',
-  stopped: 'neutral',
-  idle: 'neutral',
+/** A non-empty string field, or ``null``. */
+function str(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null
 }
-const TEAM_STATUS_LABEL: Record<string, string> = {
-  completed: 'completed',
-  spawned: 'running',
-  waiting_lead: 'waiting for main agent',
+
+/**
+ * What a subagent row shows for ``handle``: the live roster first (it knows
+ * where the member is now: its session, its state, when it started), the
+ * call's own snapshot behind it for a result read with no roster.
+ */
+function memberRow(
+  handle: string,
+  snapshot: Record<string, unknown> | null,
+  roster: Map<string, LiveSubagent> | null,
+): SubagentRowProps {
+  const live = roster?.get(handle)
+  return {
+    handle,
+    status: live?.status ?? str(snapshot?.status),
+    sessionId: live?.session_id || str(snapshot?.session_id),
+    startedAt: parseStartedAt(live?.created_at ?? snapshot?.created_at),
+    hasPendingQuestion: live ? live.has_pending_question : snapshot?.has_pending_question === true,
+  }
 }
 
 function TeamToolResult({ result }: { result: string }) {
@@ -870,8 +884,10 @@ function TeamToolResult({ result }: { result: string }) {
   if (!parsed || typeof parsed !== 'object') {
     return <GenericResult result={result} />
   }
+  return <TeamResult obj={parsed as Record<string, unknown>} />
+}
 
-  const obj = parsed as Record<string, unknown>
+function TeamResult({ obj }: { obj: Record<string, unknown> }) {
   const status = typeof obj.status === 'string' ? obj.status : null
   const memberId = typeof obj.member_id === 'string' ? obj.member_id : null
   const output = typeof obj.output === 'string' ? obj.output : typeof obj.result === 'string' ? obj.result : null
@@ -884,29 +900,53 @@ function TeamToolResult({ result }: { result: string }) {
     ? (obj.live_members as Record<string, unknown>[])
     : (Array.isArray(obj.subagents) ? (obj.subagents as Record<string, unknown>[]) : null)
 
+  const roster = useSubagentRoster(Boolean(memberId || results || liveMembers))
+  const header = memberId ? memberRow(memberId, obj, roster) : null
+  const headerView = subagentStatusView(status)
+  // Its question is open until the roster says the member moved on; with no
+  // roster to say so, it is shown as asked.
+  const live = memberId ? roster?.get(memberId) : undefined
+  const stillAsking = !live || live.has_pending_question || live.status === 'waiting_lead'
+
   return (
     <div className="flex flex-col gap-2 font-mono text-meta leading-relaxed text-(--color-text-2)">
-      <div className="flex flex-wrap items-center gap-1.5 font-sans">
-        {memberId && <Chip mono>{memberId}</Chip>}
-        {status && (
-          <Chip tone={TEAM_STATUS_TONE[status] ?? 'error'} dot={status === 'spawned' || status === 'waiting_lead'} data-team-status={status}>
-            {TEAM_STATUS_LABEL[status] ?? status}
-          </Chip>
-        )}
-      </div>
+      {header ? (
+        <SubagentRow {...header} status={header.status ?? status} />
+      ) : (
+        headerView && (
+          <div className="flex flex-wrap items-center gap-1.5 font-sans">
+            <Chip tone={headerView.tone} dot={headerView.running || headerView.waiting} data-team-status={status}>
+              {headerView.label}
+            </Chip>
+          </div>
+        )
+      )}
 
       {pendingQuestion?.question && (
         <div className="rounded-sm border border-(--color-warning)/30 bg-(--color-warning-subtle)/50 p-2.5 font-sans text-xs text-(--color-text)">
           <div className="mb-1 font-medium text-(--accent-orange-text)">Question for the main agent</div>
           <div className="text-(--color-text) mb-1.5">{pendingQuestion.question}</div>
+          {/* The main agent answers, through its team tool: the user has no
+              route to answer for a subagent, so the choices are listed, not
+              offered as buttons that would do nothing. */}
           {pendingQuestion.options && pendingQuestion.options.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
+            <ul aria-label="Options" className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-(--color-text-2)">
               {pendingQuestion.options.map((opt, i) => (
-                <span key={i} className="rounded-xs border border-(--color-warning)/30 bg-(--bg-card) px-2 py-0.5 text-meta font-medium text-(--color-text)">
-                  {opt}
-                </span>
+                <li key={i}>{opt}</li>
               ))}
-            </div>
+            </ul>
+          )}
+          {header?.sessionId && stillAsking && (
+            <Button
+              type="button"
+              variant="subtle"
+              size="xs"
+              className="mt-2"
+              onClick={() => openSubagentSession(header.sessionId!)}
+            >
+              Answer in subagent session
+              <ArrowUpRight size={12} aria-hidden="true" />
+            </Button>
           )}
         </div>
       )}
@@ -928,12 +968,10 @@ function TeamToolResult({ result }: { result: string }) {
           {Object.entries(results).map(([handle, resObj]) => {
             const resStatus = typeof resObj.status === 'string' ? resObj.status : 'done'
             const resOutput = typeof resObj.output === 'string' ? resObj.output : typeof resObj.result === 'string' ? resObj.result : null
+            const row = memberRow(handle, resObj, roster)
             return (
               <div key={handle} className="rounded-xs border border-(--color-border-subtle) bg-(--bg-card)/40 p-2 font-sans">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="font-mono text-meta font-semibold text-(--color-text)">{handle}</span>
-                  <Chip tone={TEAM_STATUS_TONE[resStatus] ?? 'neutral'}>{TEAM_STATUS_LABEL[resStatus] ?? resStatus}</Chip>
-                </div>
+                <SubagentRow {...row} status={row.status ?? resStatus} className="mb-1.5" />
                 {resOutput && (
                   // Phones: no scroller per member inside the transcript scroll.
                   <div data-team-member-output="" className="text-xs md:max-h-48 md:overflow-y-auto">
@@ -949,13 +987,11 @@ function TeamToolResult({ result }: { result: string }) {
       {liveMembers && liveMembers.length > 0 && (
         <div className="space-y-1 font-sans">
           <div className="label-caps text-(--color-text-muted)">Subagents</div>
-          <div className="grid gap-1">
-            {liveMembers.map((m, idx) => (
-              <div key={idx} className="flex items-center justify-between rounded-xs bg-(--bg-key)/30 px-2 py-1 text-xs">
-                <span className="font-mono font-medium text-(--color-text)">{String(m.member_id || m.profile)}</span>
-                <Chip tone={TEAM_STATUS_TONE[String(m.status)] ?? 'neutral'}>{TEAM_STATUS_LABEL[String(m.status)] ?? String(m.status)}</Chip>
-              </div>
-            ))}
+          <div className="grid gap-0.5">
+            {liveMembers.map((m, idx) => {
+              const handle = String(m.member_id || m.profile)
+              return <SubagentRow key={`${handle}:${idx}`} {...memberRow(handle, m, roster)} />
+            })}
           </div>
         </div>
       )}

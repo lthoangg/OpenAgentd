@@ -1,8 +1,6 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import "@testing-library/jest-dom"
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
-
-mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
+import { act, render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
 
 import { CodeBlock } from "@/components/CodeBlock"
 
@@ -69,5 +67,48 @@ describe("CodeBlock", () => {
     fireEvent.click(copyBtn)
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("echo 'hello world'"))
+  })
+
+  it("keeps Copy in the header at rest, muted and large enough to hit", () => {
+    render(
+      <CodeBlock language="bash" rawText="ls">
+        ls
+      </CodeBlock>,
+    )
+    const copyBtn = screen.getByRole("button", { name: "Copy code" })
+    // In the header beside the language, not floating over the code.
+    expect(copyBtn.closest("div")?.textContent).toContain("bash")
+    expect(copyBtn.closest("pre")).toBeNull()
+    expect(copyBtn.className).toContain("size-6")
+    expect(copyBtn.className).toContain("pointer-coarse:size-9")
+    expect(copyBtn.className).toContain("text-(--color-text-muted)")
+    expect(copyBtn.className).not.toContain("opacity-0")
+    expect(copyBtn.className).not.toContain("group-hover")
+    // The app tooltip names it; no native title.
+    expect(copyBtn.getAttribute("title")).toBeNull()
+  })
+
+  it("gives a block with no language the same header, captioned 'text'", () => {
+    render(<CodeBlock rawText="plain">plain</CodeBlock>)
+    const copyBtn = screen.getByRole("button", { name: "Copy code" })
+    expect(copyBtn.closest("div")?.textContent).toContain("text")
+    expect(copyBtn.closest("pre")).toBeNull()
+  })
+
+  it("says Copied for a moment: a check icon and a note for screen readers", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: mock(() => Promise.resolve()) },
+      configurable: true,
+    })
+    render(
+      <CodeBlock language="bash" rawText="ls">
+        ls
+      </CodeBlock>,
+    )
+    const header = screen.getByRole("button", { name: "Copy code" }).closest("div") as HTMLElement
+    expect(header.querySelector('[aria-live="polite"]')?.textContent).toBe("")
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy code" })) })
+    expect(header.querySelector('[aria-live="polite"]')?.textContent).toBe("Copied")
+    expect(screen.getByRole("button", { name: "Copy code" }).querySelector("svg.lucide-check")).toBeTruthy()
   })
 })

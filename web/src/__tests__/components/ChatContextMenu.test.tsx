@@ -1,7 +1,8 @@
 /**
- * App right-click menus in the transcript (desktop app): links, code blocks,
- * assistant and user messages. The innermost surface wins, selected text
- * keeps the native menu, and Shift+F10 opens the app menu everywhere.
+ * App right-click menus in the transcript: links, code blocks, assistant and
+ * user messages. The innermost surface wins, selected text keeps the native
+ * menu, and Shift+F10 opens the app menu everywhere. The browser gets the
+ * same menu as the desktop app (touch: ``ChatContextMenu.touch.test.tsx``).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -95,11 +96,18 @@ describe('chat right-click menus', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  it('keeps the browser menu on right-click outside the desktop app, but Shift+F10 still opens the app menu', async () => {
+  it('opens the same app menu on right-click in a plain browser, and on Shift+F10', async () => {
     platform.isTauri = false
     renderAnswer('See [the docs](https://example.com/docs) here')
     const link = screen.getByRole('link', { name: 'the docs' })
-    expect(fireEvent.contextMenu(link)).toBe(true)
+    expect(fireEvent.contextMenu(link)).toBe(false)
+    expect(screen.getByRole('menu', { name: 'Actions for link https://example.com/docs' })).toBeTruthy()
+    expect(items()).toEqual(['Open link', 'Copy link'])
+
+    // Escape closes it, so the key path starts from a clean page.
+    await act(async () => {
+      screen.getByRole('menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    })
     expect(screen.queryByRole('menu')).toBeNull()
 
     act(() => link.focus())

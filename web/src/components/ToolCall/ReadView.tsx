@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Check, Copy, FileText } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { FileText } from 'lucide-react'
 import { Collapsible } from '@/components/ui/collapsible'
+import { CopyButton } from './CopyButton'
 import { truncateForDisplay, parsePartialJSON } from './displayText'
 
 interface ReadViewProps {
@@ -32,7 +32,6 @@ function parseReadResult(result?: string): { label: string; body: string; startL
 
 export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   const [expanded, setExpanded] = useState(true)
-  const [copied, setCopied] = useState(false)
   const { path } = useMemo(() => parseArgs(args), [args])
   const { label, body, startLine } = useMemo(() => parseReadResult(result), [result])
   const lines = useMemo(() => {
@@ -48,16 +47,6 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
       return
     }
     setExpanded(false)
-  }
-
-  const copyBody = async () => {
-    try {
-      await navigator.clipboard.writeText(body)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // ignore
-    }
   }
 
   return (
@@ -76,30 +65,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         <span className="shrink-0 px-1 font-sans text-meta font-normal tabular-nums text-(--color-text-muted)">
           {label}
         </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onPointerDown={(event) => event.stopPropagation()}
-                onMouseDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void copyBody()
-                }}
-                className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
-                aria-label="Copy read result"
-              >
-                {copied ? (
-                  <Check size={12} className="text-(--accent-green-text)" aria-hidden />
-                ) : (
-                  <Copy size={12} aria-hidden />
-                )}
-              </button>
-            }
-          />
-          <TooltipContent>Copy read result</TooltipContent>
-        </Tooltip>
+        <CopyButton label="Copy read result" text={body} />
       </div>
 
       <Collapsible open={expanded}>

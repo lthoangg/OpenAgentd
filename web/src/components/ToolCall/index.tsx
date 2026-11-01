@@ -16,9 +16,9 @@
  * this module owns only the chrome (collapse, copy, motion).
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
+import { useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowUpRight, ChevronRight, Copy, Check, FileText, GitBranch, Globe } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
@@ -38,6 +38,9 @@ import { ReadView } from './ReadView'
 import { ImageViewChip } from './ImageViewChip'
 import { parseImageRead } from './imageRead'
 import { TOOL_CHIP_CLASS } from './chipStyles'
+import { CopyButton } from './CopyButton'
+import { SectionHeader } from './SectionHeader'
+import { subscribeLiveClock } from './liveClock'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome, toolRowSummary } from './summary'
@@ -120,34 +123,9 @@ function formatArgsDetails(formattedArgs: string | null | undefined): string {
 
 const MAX_LIVE_LINES = 100
 
-let liveClockInterval: number | null = null
-const liveClockListeners = new Set<(now: number) => void>()
-
-/**
- * One shared once-a-second clock for live elapsed labels (running tool rows,
- * reader mode's work row), paused while the page is hidden. Returns the
- * unsubscribe; the interval stops with its last listener.
- */
-export function subscribeLiveClock(listener: (now: number) => void) {
-  liveClockListeners.add(listener)
-  if (liveClockInterval === null && typeof window !== 'undefined') {
-    const tick = () => {
-      if (typeof document === 'undefined' || !document.hidden) {
-        const timestamp = Date.now()
-        liveClockListeners.forEach((fn) => fn(timestamp))
-      }
-    }
-    liveClockInterval = window.setInterval(tick, 1000)
-    document.addEventListener('visibilitychange', tick)
-  }
-  return () => {
-    liveClockListeners.delete(listener)
-    if (liveClockListeners.size === 0 && liveClockInterval !== null) {
-      window.clearInterval(liveClockInterval)
-      liveClockInterval = null
-    }
-  }
-}
+// The shared live clock moved to ./liveClock (ToolResult uses it too); the
+// reader's work row still imports it from here.
+export { subscribeLiveClock }
 
 function clampLiveOutput(output: string | undefined): string | undefined {
   if (!output) return undefined
@@ -190,8 +168,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // height. Also skips framer's per-frame height measurement of the details
   // subtree, which can be a large diff.
   const prefersReducedMotion = useReducedMotion()
-  const [copiedArgs, setCopiedArgs] = useState(false)
-  const [copiedResult, setCopiedResult] = useState(false)
+  // The open details region: the row's toggle and every section header point at it.
+  const detailsId = useId()
   const liveOutputRef = useRef<HTMLPreElement>(null)
   const isAttachedRef = useRef(true)
   const [now, setNow] = useState(() => Date.now())
@@ -244,7 +222,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     [name, done, result],
   )
   // A saved plan opens in the Plan tab.
-  const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'View plan' : null
+  const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'Open plan' : null
   // An image the agent read opens in the dock.
   const imageRead = useMemo(() => (name === 'read' && done ? parseImageRead(result) : null), [name, done, result])
   // Pending-state header comes from getToolDisplay's no-args branch
@@ -286,52 +264,15 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     }
   }, [shownLiveOutput, shellOutput])
 
-  const handleCopyArgs = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const text = isShellTerminal
+  // What the arguments' Copy control takes: a terminal block is the command
+  // with its output; any other section is the args as the details show them.
+  const argsCopyText = () =>
+    isShellTerminal
       ? `${formattedArgs}${shellOutput ? `\n${shellOutput}` : ''}`
       : formatArgsDetails(formattedArgs) || args || ''
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopiedArgs(true)
-      setTimeout(() => setCopiedArgs(false), 1500)
-    } catch {
-      // ignore
-    }
-  }
+  const argsCopyLabel = isShellTerminal ? (shellOutput ? 'Copy command and output' : 'Copy command') : 'Copy arguments'
 
-  const handleCopyResult = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const text = result || ''
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopiedResult(true)
-      setTimeout(() => setCopiedResult(false), 1500)
-    } catch {
-      // ignore
-    }
-  }
-
-  const resultCopyButton = (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            onClick={handleCopyResult}
-            className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
-            aria-label="Copy result"
-          >
-            {copiedResult ? (
-              <Check size={12} className="text-(--accent-green-text)" />
-            ) : (
-              <Copy size={12} />
-            )}
-          </button>
-        }
-      />
-      <TooltipContent>Copy result</TooltipContent>
-    </Tooltip>
-  )
+  const resultCopyButton = <CopyButton label="Copy result" text={result || ''} />
 
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
   const autoOpen = Boolean(shownLiveOutput)
@@ -391,6 +332,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   else setManualExpanded(true)
                 },
                 'aria-expanded': expanded,
+                'aria-controls': expanded ? detailsId : undefined,
                 'aria-label': `${expanded ? 'Collapse' : 'Expand'} ${displayName} details`,
               }
             : { 'aria-label': `${displayName} (no details)` })}
@@ -456,15 +398,21 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         )}
         {imageRead && <ImageViewChip path={imageRead.path} />}
         {sentSession && (
-          <button
-            type="button"
-            onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
-            title={`Switch to the session in ${sentSession.workspace}`}
-            className="inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:py-2"
-          >
-            <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
-            <span className="truncate">Open in {sentSession.workspaceName}</span>
-          </button>
+          <Tooltip className="max-w-[60%]">
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
+                  className={cn(TOOL_CHIP_CLASS, 'ml-0 max-w-full')}
+                >
+                  <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+                  <span className="truncate">Open in {sentSession.workspaceName}</span>
+                </button>
+              }
+            />
+            <TooltipContent>{`Switch to the session in ${sentSession.workspace}`}</TooltipContent>
+          </Tooltip>
         )}
         {sentSession?.createdWorktree && (
           <span
@@ -487,6 +435,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         {expanded && hasDetails && (
           <motion.div
             key="tool-details"
+            id={detailsId}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -510,32 +459,15 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 />
               ) : (
                 <>
-                  {/* Args section — caption + copy sit above the content. */}
+                  {/* Args section — caption (closes the row) and Copy sit above the content. */}
                   {formattedArgs && (
                     <div>
-                      <div onClick={(event) => collapse(event.currentTarget)} className="group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
-                        <span className="label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
-                          {isShellTerminal ? 'terminal' : 'arguments'}
-                        </span>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                onClick={handleCopyArgs}
-                                className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
-                                aria-label="Copy arguments"
-                              >
-                                {copiedArgs ? (
-                                  <Check size={12} className="text-(--accent-green-text)" />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
-                            }
-                          />
-                          <TooltipContent>Copy</TooltipContent>
-                        </Tooltip>
-                      </div>
+                      <SectionHeader
+                        label={isShellTerminal ? 'terminal' : 'arguments'}
+                        controls={detailsId}
+                        onCollapse={collapse}
+                        action={<CopyButton label={argsCopyLabel} text={argsCopyText} />}
+                      />
                       {isShellTerminal ? (
                         <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
                           <pre
@@ -556,11 +488,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
-                      <div onClick={(event) => collapse(event.currentTarget)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
-                        <span className="label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
-                          output
-                        </span>
-                      </div>
+                      <SectionHeader
+                        label="output"
+                        controls={detailsId}
+                        onCollapse={collapse}
+                        divided={Boolean(formattedArgs)}
+                        action={<CopyButton label="Copy output" text={shownLiveOutput} />}
+                      />
                       <pre
                         ref={liveOutputRef}
                         onScroll={handleScroll}
@@ -580,12 +514,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       <ToolResult toolName={name} operation={toolOperation} result={shownResult} />
                     ) : (
                       <div>
-                        <div onClick={(event) => collapse(event.currentTarget)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
-                          <span className="label-caps text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
-                            result
-                          </span>
-                          {resultCopyButton}
-                        </div>
+                        <SectionHeader
+                          label="result"
+                          controls={detailsId}
+                          onCollapse={collapse}
+                          divided={Boolean(formattedArgs || shownLiveOutput)}
+                          action={resultCopyButton}
+                        />
                         <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
                           <ToolResult toolName={name} operation={toolOperation} result={shownResult} />
                         </div>

@@ -1133,12 +1133,15 @@ primitives in `components/ui/`:
   Words that only exist inside this codebase never reach the UI: say
   "built-in server" not "builtin", "main agent / subagent" not
   "lead / member", "summarize" not "compact", `exit 0` not `[Succeeded]`.
-  Model IDs show short and mono (`claude-sonnet-4-6`) with a provider tag
-  (`agy`); the full ID is in the tooltip.
+  A model always shows as `provider:model` in mono
+  (`anthropic:claude-sonnet-4-6`); when space runs out the `provider:` part
+  gives way first (it ellipsizes), and the full ID is in the tooltip.
 - **One name per thing.** Workspace (not project or repo), Worktree,
   Rename, Tasks, Scheduled tasks, Review panel, Side questions, Find file,
   Session, Built-in server, Main agent / Subagent, Run now, Usage (the
-  spend and trace overlay), Data retention (its Settings page).
+  spend and trace overlay), Provider limits (a provider's quota), Retention
+  (its Settings page), Comment (on a Preview page), Needs you / Running /
+  Done / Failed / Can't reach (session states).
 
 Settings adds its own shell on top:
 

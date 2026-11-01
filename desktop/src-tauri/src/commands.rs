@@ -142,15 +142,21 @@ fn open_question(app: &AppHandle, server: &ServerId, payload: &DesktopNotificati
         return None;
     }
     let session_id = payload.session_id.as_deref()?;
-    let fetch = tokio::time::timeout(QUESTION_WAIT, crate::answers::fetch_question(app, server, session_id));
-    match tauri::async_runtime::block_on(fetch) {
-        Ok(Ok(question)) => question,
-        Ok(Err(error)) => {
+    match wait_on_thread(QUESTION_WAIT, crate::answers::fetch_question(app, server, session_id)) {
+        Some(Ok(question)) => question,
+        Some(Err(error)) => {
             log::debug!("desktop_notification_question_unavailable error={error:#}");
             None
         }
-        Err(_) => None,
+        None => None,
     }
+}
+
+/// Run `work` to completion from a plain thread, giving up after `wait`.
+/// The timeout is made inside the future `block_on` drives: a Tokio timer
+/// needs the runtime when it is created, and a plain thread has none.
+fn wait_on_thread<F: std::future::Future>(wait: Duration, work: F) -> Option<F::Output> {
+    tauri::async_runtime::block_on(async move { tokio::time::timeout(wait, work).await.ok() })
 }
 
 /// A click on a notification: open its session through the shared router
@@ -809,14 +815,37 @@ mod health_tests {
 mod notification_tests {
     use super::{
         claim_notification_slot, first_notification_request, notification_actions, picked_choice,
-        MAX_PENDING_NOTIFICATIONS, MAX_SEEN_NOTIFICATIONS, PENDING_NOTIFICATIONS,
+        wait_on_thread, MAX_PENDING_NOTIFICATIONS, MAX_SEEN_NOTIFICATIONS, PENDING_NOTIFICATIONS,
     };
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
     #[cfg(target_os = "macos")]
     use super::notification_application_identifier;
 
     // Access-key and download behaviour is tested once in
     // `openagentd-shell-core`; the desktop keeps only what is desktop-only.
+
+    // ── wait_on_thread ──────────────────────────────────────────────────
+    //
+    // A notification asks the server for its question from its own std
+    // thread, outside any Tokio context. A question notification panicked
+    // there ("there is no reactor running") and never showed.
+
+    #[test]
+    fn a_timed_wait_runs_from_a_plain_thread() {
+        let got = std::thread::spawn(|| wait_on_thread(Duration::from_secs(5), async { 7 }))
+            .join()
+            .expect("the wait must not panic outside the async runtime");
+        assert_eq!(got, Some(7));
+    }
+
+    #[test]
+    fn a_timed_wait_gives_up_after_its_limit() {
+        let got = std::thread::spawn(|| wait_on_thread(Duration::from_millis(20), std::future::pending::<()>()))
+            .join()
+            .expect("the wait must not panic outside the async runtime");
+        assert_eq!(got, None);
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

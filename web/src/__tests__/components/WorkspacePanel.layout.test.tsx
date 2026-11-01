@@ -79,9 +79,9 @@ describe('Review dock layout', () => {
 
     expect(dock.className).toContain('md:relative')
     const separator = screen.getByRole('separator', { name: 'Resize Review panel' })
-    // 45% of a 1000px center, capped so the chat keeps 400px.
+    // 45% of a 1000px center, capped so the chat keeps 520px.
     expect(separator.getAttribute('aria-valuenow')).toBe('450')
-    expect(separator.getAttribute('aria-valuemax')).toBe('600')
+    expect(separator.getAttribute('aria-valuemax')).toBe('480')
     // Showing it is a straight cut, not a tween: the aside takes its width
     // as a style at once (no animation frame needed), and the body fills it,
     // so a later resize moves it with the edge.

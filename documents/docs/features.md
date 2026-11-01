@@ -701,8 +701,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     panel is open, and its sizes, belong to the window. **Reset Layout** in
     the palette puts the sizes back.
   - Below 1180px wide the sidebar opens as a drawer over the chat. When the
-    chat gets narrower than 740px, the Review panel covers the transcript but
-    not the composer, so you can write while reading a diff; maximized
+    chat and the panel share less than 860px (an 820px tablet in portrait),
+    the Review panel covers the transcript but not the composer, so you can
+    write while reading a diff; maximized
     (`⌘⇧D`/`Ctrl+Shift+D`) it covers both until you restore it or press
     Escape.
   - Showing or hiding the sidebar or the Review panel is instant: the

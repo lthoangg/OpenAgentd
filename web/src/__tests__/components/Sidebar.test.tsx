@@ -1029,13 +1029,13 @@ describe('Sidebar workspace trust flow', () => {
       const separator = screen.getByRole('separator', { name: 'Resize sidebar' })
       expect(separator.getAttribute('aria-valuemax')).toBe('440')
 
-      // 1000 - 400 (chat) - 340 (dock) leaves 260px for the sidebar.
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+      // 1100 - 520 (chat) - 340 (dock) leaves 240px for the sidebar.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 })
       act(() => {
         window.dispatchEvent(new Event('resize'))
       })
-      expect(separator.getAttribute('aria-valuemax')).toBe('260')
-      expect(separator.getAttribute('aria-valuenow')).toBe('260')
+      expect(separator.getAttribute('aria-valuemax')).toBe('240')
+      expect(separator.getAttribute('aria-valuenow')).toBe('240')
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
     }

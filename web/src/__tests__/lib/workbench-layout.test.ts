@@ -37,7 +37,7 @@ describe('clampSidebarWidth', () => {
   })
 
   it('never exceeds what leaves room for chat + dock, but never drops below the minimum', () => {
-    expect(clampSidebarWidth(440, 1024)).toBe(1024 - CHAT_MIN_WIDTH - DOCK_MIN_WIDTH)
+    expect(clampSidebarWidth(440, 1180)).toBe(1180 - CHAT_MIN_WIDTH - DOCK_MIN_WIDTH)
     expect(clampSidebarWidth(440, 820)).toBe(SIDEBAR_MIN_WIDTH)
   })
 
@@ -57,7 +57,7 @@ describe('resolveDockLayout', () => {
   })
 
   it('keeps the chat at least CHAT_MIN wide and the dock at least DOCK_MIN wide', () => {
-    const center = 1024 - 264
+    const center = 1280 - 264
     expect(resolveDockLayout({ centerWidth: center, ratio: 0.95, maximized: false }).width).toBe(center - CHAT_MIN_WIDTH)
     expect(resolveDockLayout({ centerWidth: center, ratio: 0.05, maximized: false }).width).toBe(DOCK_MIN_WIDTH)
   })
@@ -82,6 +82,16 @@ describe('resolveDockLayout', () => {
     }
     expect(dockOverlaysChat(split - 0.6, false)).toBe(true)
     expect(dockOverlaysChat(split - 0.4, false)).toBe(false)
+  })
+
+  // layout.html: an 820px tablet in portrait gets the overlay, the composer
+  // full width under it; a 1024px window keeps the chat beside the panel,
+  // wide enough for a one-line run deck (it stacks under 520px).
+  it('covers the chat on an 820px tablet and sits beside it in a 1024px window', () => {
+    expect(dockOverlaysChat(820, false)).toBe(true)
+    const side = resolveDockLayout({ centerWidth: 1024, ratio: DOCK_DEFAULT_RATIO, maximized: false })
+    expect(side.mode).toBe('side')
+    expect(1024 - side.width).toBeGreaterThanOrEqual(520)
   })
 })
 

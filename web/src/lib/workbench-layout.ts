@@ -25,8 +25,14 @@ export const SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT = 1280
  */
 export const SIDEBAR_DRAWER_MAX_VIEWPORT = 1180
 
-/** Narrowest chat column kept beside an open dock. */
-export const CHAT_MIN_WIDTH = 400
+/**
+ * Narrowest chat column kept beside an open dock: the width under which the
+ * run deck stacks onto two lines (`RunChip`, `@max-[520px]`). Narrower, the
+ * dock covers the transcript instead and the composer keeps the full width,
+ * so the split starts at 860px of center: an 820px tablet in portrait gets
+ * the overlay, a 1024px window keeps the chat beside the panel (layout.html).
+ */
+export const CHAT_MIN_WIDTH = 520
 export const DOCK_MIN_WIDTH = 340
 export const DOCK_DEFAULT_RATIO = 0.45
 

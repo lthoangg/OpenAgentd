@@ -606,14 +606,16 @@ drawer and full-screen sheet.
   `useLayoutStore` (`oa.layout.v1`) persists the choices. The sidebar defaults
   to 264px (220–440px) and opens expanded on first run at ≥1280px. The dock is
   stored as a ratio of the center (default 45%), clamped so the dock keeps
-  340px and the chat keeps 400px. Open/closed, sizes and the split ratio are
-  per window (`sessionStorage`); tabs and groups per session
-  (`oa.dockTabs.v1`); terminals per workspace. Reset Layout puts the sizes back.
+  340px and the chat keeps 520px (narrower, the run deck would stack).
+  Open/closed, sizes and the split ratio are per window (`sessionStorage`);
+  tabs and groups per session (`oa.dockTabs.v1`); terminals per workspace.
+  Reset Layout puts the sizes back.
 - **Narrow windows.** Below 1180px the sidebar is a drawer over the content
   (shadow, backdrop; a click outside or Escape closes it) and the column choice
-  is left alone. When the center is narrower than 740px the Review panel covers
-  the transcript but stops above the composer (`--composer-h`), so a message
-  can be written beside the diff; maximized (`Mod+Shift+D`) it covers both.
+  is left alone. When the center is narrower than 860px (an 820px tablet in
+  portrait; a 1024px window still splits) the Review panel covers the
+  transcript but stops above the composer (`--composer-h`), so a message can
+  be written beside the diff; maximized (`Mod+Shift+D`) it covers both.
   What it covers stays mounted, `inert`. Maximize lasts until toggled or Escape;
   with two groups it shows the focused one.
 - **Toggles are cuts, not tweens.** Showing or hiding the sidebar or the

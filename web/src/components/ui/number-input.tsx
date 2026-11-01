@@ -94,7 +94,7 @@ function NumberInputField({ className, onChange, onKeyDown, ...props }: Omit<Com
       value={value ?? ''}
       disabled={disabled}
       className={cn(
-        'min-w-0 flex-1 border-none bg-transparent px-3 font-mono text-sm tabular-nums outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 placeholder:text-(--color-text-subtle) disabled:cursor-not-allowed disabled:opacity-60',
+        'min-w-0 flex-1 border-none bg-transparent px-3 font-mono text-sm tabular-nums outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 placeholder:text-(--color-text-muted) disabled:cursor-not-allowed disabled:opacity-60',
         className,
       )}
       onChange={(event) => {

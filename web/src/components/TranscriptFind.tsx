@@ -144,7 +144,7 @@ export function TranscriptFind({ onClose }: { onClose: () => void }) {
         aria-label="Find in session"
         autoComplete="off"
         spellCheck={false}
-        className="h-7 w-48 bg-transparent text-sm text-(--color-text) placeholder-(--color-text-subtle) outline-none"
+        className="h-7 w-48 bg-transparent text-sm text-(--color-text) placeholder-(--color-text-muted) outline-none"
       />
       <span role="status" className={cn('min-w-16 text-right font-mono text-meta tabular-nums text-(--color-text-muted)', !status && 'invisible')}>
         {status}

@@ -146,6 +146,12 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'subtle-placeholder',
+    why: 'fields sit on surfaces and cards, where subtle falls under 4.5:1 in dark mode; placeholders use text-muted',
+    pattern: /placeholder(?:-|:text-)\(--color-text-subtle\)/g,
+    allow: {},
+  },
+  {
     name: 'solid-hue-text',
     why: 'solid state hues are ~2:1 on paper; text and icons use the -text tones (accent-orange-text, accent-green-text, accent-blue-text)',
     pattern: /(?<![\w-])text-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)/g,

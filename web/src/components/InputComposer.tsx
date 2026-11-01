@@ -925,7 +925,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         // glyphs so the syntax-highlight overlay (``MentionOverlay``) is
         // the one painting visible text. The caret stays visible. The
         // placeholder is exempt from ``text-transparent`` — it's owned by
-        // ``::placeholder`` and ``placeholder-(--color-text-subtle)``
+        // ``::placeholder`` and ``placeholder-(--color-text-muted)``
         // keeps it readable.
         // ``scrollbar-none`` hides the textarea's own scrollbar. Without it,
         // the textarea grows a ~15px-wide vertical scrollbar once content
@@ -933,7 +933,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         // it wrap a few characters earlier than the overlay mirror (which
         // has no scrollbar), and the spellcheck squiggle drifts off its word.
         className={cn(
-          'block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50',
+          'block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words caret-(--color-text) placeholder-(--color-text-muted) selection:bg-(--color-accent)/30 selection:text-(--color-text) outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50',
           // 16px on a phone: iOS zooms the page into any smaller field.
           'max-md:pointer-coarse:text-base',
           isComposing ? 'text-(--color-text)' : 'text-transparent',

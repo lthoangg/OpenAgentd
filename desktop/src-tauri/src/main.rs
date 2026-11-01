@@ -721,12 +721,18 @@ fn main() {
             // The backend and the HTTP client's TLS roots (~190 ms on macOS)
             // are the slowest parts of a launch, so they start before the
             // menus. Nothing is published to the tray or a window before
-            // `setup` returns: the main window can only build after it.
+            // `setup` returns: the main window can only be created after it.
             std::thread::spawn(|| {
                 crate::usage::shared_client();
             });
             let handle = app.handle().clone();
             let backend = tauri::async_runtime::spawn(start_backend(handle.clone()));
+            // But the window's task reads the app menu while `setup` still
+            // runs, and on Windows and Linux that menu is the window's bar
+            // and its shortcuts (Ctrl+Q, Ctrl+=…): install it before the
+            // task starts, or the main window often had none.
+            install_desktop_menus(app)?;
+            log::info!("startup: menus built at_ms={}", launch_ms());
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = start_backend_and_window(handle.clone(), backend).await {
                     log::error!("failed to start backend: {e:#}");
@@ -741,8 +747,6 @@ fn main() {
                         .ok();
                 }
             });
-            install_desktop_menus(app)?;
-            log::info!("startup: menus built at_ms={}", launch_ms());
             match desktop_log_path(app.handle()) {
                 Ok(path) => log::info!("desktop log path={}", path.display()),
                 Err(e) => log::warn!("desktop log path unavailable: {e:#}"),

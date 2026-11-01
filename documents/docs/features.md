@@ -840,6 +840,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Sidebar, Review Panel, Split Review Panel, Terminal, Maximize Review
     Panel, Focus Mode, Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
+    Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
+    window, and on Linux the bar no longer comes back when the window is
+    shown again.
   - On Windows the header is the title bar, as on macOS: Minimize,
     Maximize and Close sit at its right end, drawn as Windows 11 draws
     them, and resting the pointer on Maximize opens Snap Layouts. Drag the

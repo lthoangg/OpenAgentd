@@ -475,10 +475,12 @@ async fn build_app_window_sized(
     // Windows and Linux keep the app menu for keyboard accelerators, but the
     // native OpenAgentd/File/Edit/View/Window bar duplicates the in-app
     // chrome. The menu opens from the header's ☰ button (`show_app_menu`).
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(target_os = "windows")]
     if let Err(e) = win.hide_menu() {
         log::warn!("could not hide the application menu bar on {}: {e}", win.label());
     }
+    #[cfg(target_os = "linux")]
+    keep_menu_bar_hidden(&win);
     // A Windows taskbar overlay belongs to one window: this one starts with
     // the count the others show.
     crate::badge::apply_to_window(&win);
@@ -494,6 +496,47 @@ async fn build_app_window_sized(
     win.set_focus().ok();
     log::info!("startup: window shown window={} theme={theme:?} at_ms={}", win.label(), crate::launch_ms());
     Ok(win)
+}
+
+/// Linux: hide the window's GTK menu bar for good. `hide_menu` does not
+/// last there: showing a window is GTK's `show_all`, which shows the bar
+/// again, at startup when the show request runs after the hide, and each
+/// time the window comes back (tray, a second launch). `no_show_all`
+/// exempts the bar from that.
+///
+/// GTK also fires a menu item's shortcut only while the item is on screen,
+/// so with the bar hidden Ctrl+Q, Ctrl+= and the rest did nothing. Each
+/// item now answers `can-activate-accel` itself: its shortcut works while
+/// it is enabled, as it did with the bar showing.
+#[cfg(target_os = "linux")]
+fn keep_menu_bar_hidden(win: &tauri::WebviewWindow) {
+    let window = win.clone();
+    let queued = win.run_on_main_thread(move || {
+        use gtk::prelude::*;
+        let Ok(vbox) = window.default_vbox() else {
+            return;
+        };
+        // Tauri packs the app menu's bar at the top of this box.
+        for bar in vbox.children().into_iter().filter_map(|child| child.downcast::<gtk::MenuBar>().ok()) {
+            bar.set_no_show_all(true);
+            bar.hide();
+            allow_shortcuts_while_hidden(bar.upcast_ref());
+        }
+    });
+    if let Err(e) = queued {
+        log::warn!("could not hide the application menu bar on {}: {e}", win.label());
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn allow_shortcuts_while_hidden(shell: &gtk::MenuShell) {
+    use gtk::prelude::*;
+    for item in shell.children().into_iter().filter_map(|child| child.downcast::<gtk::MenuItem>().ok()) {
+        item.connect_can_activate_accel(|item, _signal| item.is_sensitive());
+        if let Some(menu) = item.submenu().and_then(|menu| menu.downcast::<gtk::MenuShell>().ok()) {
+            allow_shortcuts_while_hidden(&menu);
+        }
+    }
 }
 
 /// Every screen, in physical pixels.

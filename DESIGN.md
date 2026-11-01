@@ -1289,7 +1289,9 @@ The desktop shell hands the OS what the OS already draws:
   pops the same menu up (`show_app_menu`). The View menu carries every
   layout command (Sidebar, Review Panel, Split Review Panel, Terminal,
   Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size, Reset
-  Layout).
+  Layout). Its shortcuts work with the bar hidden; on Linux each item
+  answers GTK's `can-activate-accel` itself, since GTK only fires the
+  shortcuts of a menu on screen.
 - **Dialogs**: button order follows the OS (`DialogFooter`): Cancel before
   the action on macOS, iOS and Linux, the action first on Windows, a row of
   text buttons on Android. The footer has no border or fill. A safe confirm

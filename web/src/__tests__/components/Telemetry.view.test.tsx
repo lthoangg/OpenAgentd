@@ -685,7 +685,7 @@ describe('TelemetryView trace', () => {
     useTelemetryStore.setState({ traceId: 'expired' })
     renderView()
     expect(await screen.findByText('Trace not found')).toBeTruthy()
-    expect(screen.getByText("It isn't in the last 7 days. It may be older, or past the data retention limit.")).toBeTruthy()
+    expect(screen.getByText("It isn't in the last 7 days. It may be older, or already removed by Settings → Retention.")).toBeTruthy()
   })
 
   it('offers to search the last 90 days for a trace that is not in the range', async () => {
@@ -699,7 +699,7 @@ describe('TelemetryView trace', () => {
     // Nothing wider to offer once the longest range was searched
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Search the last 90 days' })).toBeNull())
     expect(await screen.findByText('Trace not found')).toBeTruthy()
-    expect(screen.getByText('It may be past the data retention limit.')).toBeTruthy()
+    expect(screen.getByText('It may have been removed by Settings → Retention.')).toBeTruthy()
   })
 
   it('says so when a turn cannot be loaded, and retries', async () => {

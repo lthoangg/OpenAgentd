@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
+import { Loader2, MoreHorizontal, Pause, Play, Trash2, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { CONTEXT_MENU_ITEM_CLASS, CONTEXT_MENU_ITEM_DANGER_CLASS, ContextMenu } from '@/components/ui/context-menu'
@@ -10,11 +10,14 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
-import { listRowSurface } from '@/components/ui/list-row'
+import { ROW_ACTION, listRowSurface } from '@/components/ui/list-row'
 import { TEXT } from '@/components/ui/panel-tokens'
 import { formatScheduleLabel, lastRunLabel, nextRunLabel, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { Chip } from '@/components/ui/chip'
 import { WorkspaceBadge } from './ModeBadge'
+
+/** Width the row's ⋯ menu is laid out for, so it opens right-aligned under the button. */
+const ACTIONS_MENU_WIDTH = 176
 
 export function TaskListItem({
   task,
@@ -61,6 +64,7 @@ export function TaskListItem({
 
   const state = taskState(task)
   const nextRun = nextRunLabel(task)
+  const actionPending = triggerMutation.isPending || pauseMutation.isPending || resumeMutation.isPending
 
   return (
     <>
@@ -139,59 +143,33 @@ export function TaskListItem({
           )}
         </div>
 
-        {/* Action buttons. Hidden on touch, where they squeezed the name: a tap
-            opens the detail (which has every action) and a long press opens
-            the same menu. */}
-        <div className="-mr-1.5 flex shrink-0 items-center gap-0.5 pointer-coarse:hidden">
+        {/* One ⋯ on every platform (24px, 36px on touch) opens the menu with
+            Run now, Pause / Resume and Delete in words: the same menu as a
+            right-click or a long press. It shows a spinner while one runs. */}
+        <div className="-mr-1.5 flex shrink-0 items-center">
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
+                <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    triggerTask()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    setActionsPoint({ x: rect.right - ACTIONS_MENU_WIDTH, y: rect.bottom + 2 })
                   }}
-                  disabled={triggerMutation.isPending}
-                  aria-label="Run now"
-                  className="text-(--color-text-muted) hover:text-(--color-text)"
+                  // Enter and Space here must not reach the row, which would open the task.
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className={ROW_ACTION}
+                  aria-haspopup="menu"
+                  aria-label={`More actions for ${task.name}`}
                 >
-                  {triggerMutation.isPending ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Zap size={12} />
-                  )}
-                </Button>
+                  {actionPending
+                    ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                    : <MoreHorizontal size={12} aria-hidden="true" />}
+                </button>
               }
             />
-            <TooltipContent>Run now</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    togglePaused()
-                  }}
-                  disabled={pauseMutation.isPending || resumeMutation.isPending}
-                  aria-label={task.status === 'paused' ? 'Resume' : 'Pause'}
-                  className="text-(--color-text-muted) hover:text-(--color-text)"
-                >
-                  {pauseMutation.isPending || resumeMutation.isPending ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : task.status === 'paused' ? (
-                    <Play size={12} />
-                  ) : (
-                    <Pause size={12} />
-                  )}
-                </Button>
-              }
-            />
-            <TooltipContent>{task.status === 'paused' ? 'Resume' : 'Pause'}</TooltipContent>
+            <TooltipContent>Run now, pause or delete</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -207,6 +185,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
+            disabled={triggerMutation.isPending}
             className={CONTEXT_MENU_ITEM_CLASS}
             onClick={() => {
               setActionsPoint(null)
@@ -219,6 +198,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
+            disabled={pauseMutation.isPending || resumeMutation.isPending}
             className={CONTEXT_MENU_ITEM_CLASS}
             onClick={() => {
               setActionsPoint(null)

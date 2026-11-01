@@ -1,5 +1,5 @@
 /**
- * Design comments in the Preview tab: the composer anchored under a picked
+ * Comments in the Preview tab: the composer anchored under a picked
  * element and the numbered list with **Send to agent**.
  */
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
@@ -56,7 +56,7 @@ export function PreviewCommentComposer({
     <div
       ref={ref}
       role="group"
-      aria-label="New design comment"
+      aria-label="New comment"
       className="shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
       style={{ top, left, width }}
     >
@@ -105,7 +105,7 @@ export function PreviewCommentList({
     setEditing(null)
   }
   return (
-    <section aria-label="Design comments" className="shrink-0 border-t border-(--color-border) bg-(--bg-page)">
+    <section aria-label="Comments" className="shrink-0 border-t border-(--color-border) bg-(--bg-page)">
       <div className="flex h-(--spacing-toolbar) items-center gap-2 pr-1 pl-3">
         <p className="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">
           {comments.length} {comments.length === 1 ? 'comment' : 'comments'}

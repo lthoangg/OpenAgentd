@@ -752,6 +752,25 @@ run from the terminal (the native Rust binary since v3.0.0).
     and **Show messages**.
   - Deleting all side questions asks first, in a dialog.
   - A subagent's session offers **Return to main agent**.
+- **Review panel views** `[v3.40.0]`:
+  - **Changes**: clicking a row opens its diff as a preview tab, and the
+    chevron peeks at it in place. Every row has **⋯** with the same items as
+    right-click and the long-press sheet. A footer totals the changes
+    ("3 files · +69 · −9") and has **Ask agent to commit**, which writes the
+    request into the composer for you to send.
+  - A tab's close button is always visible, dimmed on tabs that are not
+    open; terminal tabs show it on touch too.
+  - **Git**: one **View** menu holds Graph view and All branches. History
+    rows are 28px (36px on touch), and a failed load has **Retry**.
+  - **Scheduled**: **New task** is a regular button, and **Run now**,
+    **Pause** and **Resume** sit in each task's ⋯ menu, in words, on every
+    platform.
+  - **Preview**: the address field is taller, and a dimmed Back or Forward
+    says why. Annotating a page is called commenting everywhere: **Comment
+    on an element**, **Stop commenting**, and the composer chip reads
+    "Preview comments · 2 comments".
+  - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
+    are always visible and touch-sized.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

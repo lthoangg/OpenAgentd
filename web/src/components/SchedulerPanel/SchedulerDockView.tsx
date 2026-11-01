@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useScheduledTasksQuery } from '@/queries'
 import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { CreateTaskForm } from './CreateTaskForm'
@@ -69,24 +70,26 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
           />
         ) : (
           <>
-            <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pr-1 pl-3">
+            {/* min-h, not h: on touch the 36px "New task" button grows the bar. */}
+            <div className="flex min-h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) pr-1 pl-3">
               <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">All workspaces</span>
               {tasks.length > 0 && (
                 <span className="shrink-0 text-meta tabular-nums text-(--color-text-subtle)">
                   {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
                 </span>
               )}
-              <button
+              <Button
                 type="button"
+                variant="default"
+                size="xs"
                 onClick={() => {
                   setSelectedTaskId(null)
                   setPane('create')
                 }}
-                className="flex h-6 shrink-0 items-center gap-1 rounded-sm border border-(--color-border) px-2 text-xs font-medium text-(--color-text) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key)"
               >
                 <Plus size={12} aria-hidden="true" />
                 New task
-              </button>
+              </Button>
             </div>
             <div className="flex min-h-0 flex-1 flex-col">
               <TaskListPane

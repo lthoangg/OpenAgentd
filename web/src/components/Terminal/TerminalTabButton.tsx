@@ -5,7 +5,8 @@
  * Desktop: right-click opens a small menu (Rename / Clear / Close).
  * Mobile: long-press opens the same choice as a bottom sheet — no native
  * context menu on touch, matching the LongPressButton pattern used
- * elsewhere (Sidebar sessions, changed-files, commits).
+ * elsewhere (Sidebar sessions, changed-files, commits). The × is on every
+ * platform (36px on touch), as on the dock's other tabs.
  * Rename edits the title in place, like a sidebar session; F2 or a
  * double-click on a desktop tab starts it too.
  * Both funnel into useTerminalStore.rename() / .clear() / .close().
@@ -140,7 +141,7 @@ export function TerminalTabButton({
                   e.preventDefault()
                   close()
                 }}
-                className={cn(dockTabButtonClass(!mobile), 'flex-1')}
+                className={cn(dockTabButtonClass(true), 'flex-1')}
               >
                 <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
                 <span className="truncate font-mono">{meta.title}</span>
@@ -150,7 +151,7 @@ export function TerminalTabButton({
           <TooltipContent>{meta.title}</TooltipContent>
         </Tooltip>
         )}
-        {!mobile && !renaming && (
+        {!renaming && (
           <button
             type="button"
             data-dock-tab-close

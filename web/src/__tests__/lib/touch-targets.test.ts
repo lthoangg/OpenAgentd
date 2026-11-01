@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, DOCK_TEXT_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
 import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
 
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
@@ -23,6 +23,26 @@ describe('coarse-pointer touch targets', () => {
     expect(DOCK_ROW_ACTION_CLASS).toContain('pointer-coarse:size-9')
     expect(dockTabCloseClass(false)).toContain('pointer-coarse:size-9')
     expect(dockTabCloseClass(true)).toContain('pointer-coarse:size-9')
+  })
+
+  it('shows every tab close at rest: 24px, dimmed to 60% on tabs that are not open, full on hover or focus', () => {
+    for (const active of [false, true]) {
+      const close = dockTabCloseClass(active)
+      expect(close).toContain('size-6')
+      expect(close).not.toMatch(/(^|\s)(hidden|opacity-0|size-5)(\s|$)/)
+    }
+    const inactive = dockTabCloseClass(false)
+    expect(inactive).toContain('opacity-60')
+    expect(inactive).toContain('group-hover/tab:opacity-100')
+    expect(inactive).toContain('group-focus-within/tab:opacity-100')
+    expect(inactive).toContain('focus-visible:opacity-100')
+    expect(dockTabCloseClass(true)).toContain('opacity-100')
+  })
+
+  it('keeps the dock toolbar text action (View ▾) inside the 32px toolbar with a 36px hit area', () => {
+    expect(DOCK_TEXT_ACTION_CLASS).toContain('h-7')
+    expect(DOCK_TEXT_ACTION_CLASS).toContain('touch-hit')
+    expect(DOCK_TEXT_ACTION_CLASS).not.toMatch(/pointer-coarse:(min-)?h-9/)
   })
 
   it('sizes buttons 36px on touch, and 40px in the Android app', () => {
@@ -63,6 +83,12 @@ describe('coarse-pointer touch targets', () => {
       ['PendingMessageQueue.tsx', /aria-label="Edit queued message"\s*className="[^"]*pointer-coarse:size-9/],
       ['settings/WorkspaceGroupsSettings.tsx', /aria-label=\{`Remove \$\{repo\.name\} from[\s\S]{0,300}className="[^"]*pointer-coarse:size-9/],
       ['settings/pages/settings.providers/CredentialList.tsx', /aria-label=\{`New name for[\s\S]{0,300}className="[^"]*pointer-coarse:h-9/],
+      // Review panel views (audit R10-R12): scheduler ⋯, preview address, model list controls.
+      // ROW_ACTION is 24px and pointer-coarse:size-9 (see list-row.ts).
+      ['SchedulerPanel/TaskListItem.tsx', /className=\{ROW_ACTION\}\s*aria-haspopup="menu"\s*aria-label=\{`More actions for/],
+      ['Preview/PreviewTabView.tsx', /aria-label="Preview address"[\s\S]{0,900}className="[^"]*pointer-coarse:h-9/],
+      ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-pressed=\{selected\}[\s\S]{0,500}pointer-coarse:h-9/],
+      ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-label=\{`Copy \$\{qualifiedId\}`\}\s*className="[^"]*pointer-coarse:size-9/],
     ]
     for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
   })

@@ -19,6 +19,7 @@ import {
   renderGraphPrefix,
 } from './CommitDetail'
 import { DOCK_ROW_ACTION_CLASS } from './dock-tab-styles'
+import { DockLoadError } from './DockLoadError'
 import { DockListNotice } from './GitReviewSubPanel'
 
 type CommitTarget = { sha: string; shortSha: string; subject: string }
@@ -29,6 +30,7 @@ export interface CommitHistorySubPanelProps {
   gitHistory: {
     isLoading: boolean
     isError: boolean
+    isFetching?: boolean
     isFetchingNextPage: boolean
     hasNextPage?: boolean
     fetchNextPage: () => Promise<unknown>
@@ -61,11 +63,11 @@ export interface CommitHistorySubPanelProps {
   setDesktopFileActions: React.Dispatch<React.SetStateAction<{ file: ChangedFileInfo; x: number; y: number } | null>>
 }
 
-/** Graph ref chip tone: HEAD reads as "here", remotes as "elsewhere". */
+/** Graph ref chip tone (a soft fill, no border): HEAD reads as "here", remotes as "elsewhere". */
 function refChipClass(ref: string): string {
-  if (ref.includes('HEAD ->')) return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text) border-(--color-success)/20'
-  if (ref.includes('origin/')) return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text) border-(--color-error)/20'
-  return 'bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20'
+  if (ref.includes('HEAD ->')) return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)'
+  if (ref.includes('origin/')) return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)'
+  return 'bg-(--color-accent)/10 text-(--color-accent)'
 }
 
 function CommitHistorySubPanelView({
@@ -144,11 +146,14 @@ function CommitHistorySubPanelView({
   if (subTab === 'commits') {
     if (gitHistory.isLoading) return <DockListNotice>Loading commits…</DockListNotice>
     if (gitHistory.isError) {
+      const refetch = gitHistory.refetch
+      if (!refetch) return <DockListNotice tone="error">Failed to load commits. Your repository is unchanged.</DockListNotice>
       return (
-        <div className="space-y-2 px-3 py-4" role="alert">
-          <p className="text-xs text-(--color-error)">Failed to load commits. Your repository is unchanged.</p>
-          {gitHistory.refetch && <Button size="sm" onClick={() => void gitHistory.refetch?.()}>Retry commits</Button>}
-        </div>
+        <DockLoadError
+          message="Failed to load commits. Your repository is unchanged."
+          onRetry={() => void refetch()}
+          retrying={gitHistory.isFetching}
+        />
       )
     }
     if (gitHistory.data?.pages[0]?.is_git_repo === false) return <DockListNotice>Not a git repository</DockListNotice>
@@ -201,7 +206,7 @@ function CommitHistorySubPanelView({
                           {refs.map((ref) => (
                             <span
                               key={ref}
-                              className="max-w-32 min-w-0 shrink truncate rounded-xs border border-(--color-border-subtle) bg-(--bg-key) px-1 font-mono text-(--color-text-2)"
+                              className="max-w-32 min-w-0 shrink truncate rounded-xs bg-(--bg-key) px-1 font-mono text-(--color-text-2)"
                             >
                               {ref}
                             </span>
@@ -273,7 +278,11 @@ function CommitHistorySubPanelView({
 
   // subTab === 'tree'
   if (gitHistory.isLoading) return <DockListNotice>Loading tree graph…</DockListNotice>
-  if (gitHistory.isError) return <DockListNotice tone="error">Failed to load tree graph</DockListNotice>
+  if (gitHistory.isError) {
+    const refetch = gitHistory.refetch
+    if (!refetch) return <DockListNotice tone="error">Failed to load tree graph</DockListNotice>
+    return <DockLoadError message="Failed to load the tree graph." onRetry={() => void refetch()} retrying={gitHistory.isFetching} />
+  }
   if (gitHistory.data?.pages[0]?.is_git_repo === false) return <DockListNotice>Not a git repository</DockListNotice>
   if (parsedGraphLines.length === 0) return <DockListNotice>No graph history.</DockListNotice>
 
@@ -285,7 +294,7 @@ function CommitHistorySubPanelView({
       {parsedGraphLines.map((line) => (
         <div
           key={line.key}
-          className="group flex h-5 items-center gap-2 rounded-xs px-1 transition-colors hover:bg-(--bg-key)/40"
+          className="group flex h-(--spacing-list-row) items-center gap-2 rounded-xs px-1 transition-colors hover:bg-(--bg-key)/40"
         >
           <span className="shrink-0 font-mono text-meta leading-none tracking-widest whitespace-pre select-none">
             {renderGraphPrefix(line.graphPart)}
@@ -299,7 +308,7 @@ function CommitHistorySubPanelView({
                     <button
                       type="button"
                       onClick={() => { if (line.sha) showCommitFromGraph(line.sha) }}
-                      className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 font-mono text-meta leading-4 text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key) hover:text-(--color-text)"
+                      className="relative touch-hit shrink-0 cursor-pointer rounded-xs bg-(--bg-key) px-1 font-mono text-meta leading-4 text-(--color-text-muted) transition-colors hover:bg-(--color-border-subtle) hover:text-(--color-text)"
                     >
                       {line.sha.substring(0, 7)}
                     </button>
@@ -317,7 +326,7 @@ function CommitHistorySubPanelView({
                         <TooltipTrigger
                           className="min-w-0"
                           render={
-                            <span className={cn('truncate rounded-xs border px-1 text-xs leading-4 font-semibold select-none md:text-meta', refChipClass(trimmed))}>
+                            <span className={cn('truncate rounded-xs px-1 text-xs leading-4 font-semibold select-none md:text-meta', refChipClass(trimmed))}>
                               {trimmed}
                             </span>
                           }

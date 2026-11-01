@@ -46,6 +46,14 @@ describe('TerminalTabButton', () => {
     expect(useTerminalStore.getState().sessions[id]).toBeUndefined()
   })
 
+  it('keeps the × on touch too, at 36px, so a phone can close a terminal without a long press', async () => {
+    const { id } = await setup(true)
+    const close = screen.getByRole('button', { name: 'Close Terminal 1' })
+    expect(close.className).toContain('pointer-coarse:size-9')
+    fireEvent.click(close)
+    expect(useTerminalStore.getState().sessions[id]).toBeUndefined()
+  })
+
   it('desktop right-click opens a menu with Rename and Close', async () => {
     await setup()
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal 1' }))

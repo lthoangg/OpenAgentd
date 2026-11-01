@@ -177,7 +177,9 @@ describe('Review dock diff tabs', () => {
     const user = userEvent.setup()
     await renderPanel()
 
-    await user.click(screen.getByRole('button', { name: 'Open src/app.ts' }))
+    // Open file is in the row's ⋯ menu.
+    await user.click(screen.getByRole('button', { name: 'More actions for src/app.ts' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
     // Opened from the list it is a preview tab; keep it, or the diff would replace it.
     await user.dblClick(screen.getByRole('button', { name: 'app.ts' }))
     await user.click(screen.getByRole('button', { name: 'Git' }))
@@ -201,13 +203,93 @@ describe('Review dock diff tabs', () => {
 
   it('offers row actions on Shift+F10', async () => {
     await renderPanel()
-    const row = screen.getByRole('button', { name: /diff for src\/app\.ts/ })
+    const row = screen.getByRole('button', { name: 'Open diff tab for src/app.ts' })
 
     await act(async () => {
       row.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }))
     })
     const menu = screen.getByRole('menu', { name: 'Actions for src/app.ts' })
     expect(within(menu).getByRole('menuitem', { name: /Open diff in tab/ })).toBeTruthy()
+  })
+
+  it('opens the diff as a preview tab from a click on the row; the chevron only peeks', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Expand diff for src/app.ts' }))
+    expect(screen.getByText('const after = 3')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
+    expect(diffTab.closest('[data-dock-tab-preview]')).toBeTruthy()
+  })
+
+  it('keeps a ⋯ button on every row, with the same actions as the right-click menu', async () => {
+    const user = userEvent.setup()
+    const onFileSelect = mock(() => {})
+    await renderPanel(onFileSelect)
+
+    const more = screen.getByRole('button', { name: 'More actions for src/app.ts' })
+    // Nothing to reveal: no hover or focus-only classes on it or its row.
+    expect(more.className).not.toMatch(/hidden|opacity-0/)
+    expect(more.className).toContain('pointer-coarse:size-9')
+    await user.click(more)
+    const menu = screen.getByRole('menu', { name: 'Actions for src/app.ts' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open diff in tab',
+      'Open file',
+      'Copy file path',
+      'Discard changes…',
+    ])
+
+    await user.click(within(menu).getByRole('menuitem', { name: 'Open file' }))
+    expect(onFileSelect).toHaveBeenCalledWith(appFile)
+  })
+})
+
+describe('Review dock "Ask agent to commit"', () => {
+  async function renderWithPrompt(props: { mobile?: boolean; onRequestClose?: () => void }) {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const onInsertPrompt = mock((_text: unknown) => {})
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspacePanel workspace={WORKSPACE} open viewRequest={{ view: 'review', key: 1 }} onInsertPrompt={onInsertPrompt} {...props} />
+        </QueryClientProvider>,
+      )
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Ask agent to commit' })).toBeTruthy())
+    return onInsertPrompt
+  }
+
+  it('puts the commit request in the composer and leaves the panel open on desktop', async () => {
+    const user = userEvent.setup()
+    const onRequestClose = mock(() => {})
+    const onInsertPrompt = await renderWithPrompt({ onRequestClose })
+
+    await user.click(screen.getByRole('button', { name: 'Ask agent to commit' }))
+
+    expect(onInsertPrompt).toHaveBeenCalledWith('Commit the current changes with a clear message.')
+    expect(onRequestClose).not.toHaveBeenCalled()
+  })
+
+  it('closes the sheet on a phone, so the filled composer is what shows', async () => {
+    const user = userEvent.setup()
+    const onRequestClose = mock(() => {})
+    const onInsertPrompt = await renderWithPrompt({ mobile: true, onRequestClose })
+
+    await user.click(screen.getByRole('button', { name: 'Ask agent to commit' }))
+
+    expect(onInsertPrompt).toHaveBeenCalledTimes(1)
+    expect(onRequestClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('is not offered when the shell passes no way to the composer', async () => {
+    await renderPanel()
+
+    expect(screen.queryByRole('button', { name: 'Ask agent to commit' })).toBeNull()
   })
 })
 
@@ -260,15 +342,18 @@ describe('Git view toolbar', () => {
     await waitFor(() => expect(screen.getByText('docs: refresh readme')).toBeTruthy())
     const history = screen.getByRole('tab', { name: 'History' })
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
-    const graph = screen.getByRole('checkbox', { name: 'Graph view' }) as HTMLInputElement
-    expect(graph.checked).toBe(false)
-    expect(screen.queryByRole('checkbox', { name: 'All branches' })).toBeNull()
+    // One View menu with checkable items, the same on every platform.
+    await user.click(screen.getByRole('button', { name: 'View' }))
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'All branches' })).toBeNull()
 
-    await user.click(graph)
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }))
 
     expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('tree')
-    expect((screen.getByRole('checkbox', { name: 'Graph view' }) as HTMLInputElement).checked).toBe(true)
-    expect(screen.getByRole('checkbox', { name: 'All branches' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'View' }))
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('menuitemcheckbox', { name: 'All branches' })).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
   })
 
@@ -341,7 +426,8 @@ describe('Review dock tabs keep their scroll position', () => {
   it('a file tab opens where it was left after visiting another tab', async () => {
     const user = userEvent.setup()
     await renderPanel()
-    await user.click(screen.getByRole('button', { name: 'Open src/app.ts' }))
+    await user.click(screen.getByRole('button', { name: 'More actions for src/app.ts' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
     const fileScroller = () => document.querySelector('[data-select-container]') as HTMLElement | null
     await waitFor(() => expect(fileScroller()).toBeTruthy())
     await scrollTo(fileScroller()!, 120)

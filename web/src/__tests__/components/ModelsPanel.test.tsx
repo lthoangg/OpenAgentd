@@ -214,6 +214,33 @@ describe('ModelsPanel — picker mode', () => {
   })
 })
 
+describe('ModelsPanel — row controls', () => {
+  afterEach(cleanup)
+  const onlySelected = () => fireEvent.click(screen.getByRole('radio', { name: 'Only selected' }))
+
+  it('sizes Shown / Hidden at 24px, 36px on touch, with no border', () => {
+    renderPanel({ visibleModels: ['gpt-5'] })
+    for (const name of ['Hide openai:gpt-5 from model pickers', 'Show openai:gpt-4o in model pickers']) {
+      const toggle = screen.getByRole('button', { name })
+      expect(toggle.className).toMatch(/(^|\s)h-6(\s|$)/)
+      expect(toggle.className).toContain('pointer-coarse:h-9')
+      expect(toggle.className).not.toMatch(/(^|\s)border(-\w+)?(\s|$)/)
+      expect(toggle.className).not.toMatch(/(^|\s)h-8(\s|$)/)
+    }
+  })
+
+  it('shows Copy on every row at rest: 24px, 36px on touch, never revealed by hover', () => {
+    renderPanel()
+    onlySelected()
+    for (const id of ['openai:gpt-5', 'openai:gpt-4o']) {
+      const copy = screen.getByRole('button', { name: `Copy ${id}` })
+      expect(copy.className).toMatch(/(^|\s)size-6(\s|$)/)
+      expect(copy.className).toContain('pointer-coarse:size-9')
+      expect(copy.className).not.toMatch(/opacity-0|hidden|group-hover/)
+    }
+  })
+})
+
 describe('ModelsPanel — long model lists', () => {
   afterEach(cleanup)
   // Per-model toggles only render in "Only selected" mode

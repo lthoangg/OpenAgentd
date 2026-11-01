@@ -73,7 +73,7 @@ describe('TaskListItem', () => {
 
     // The row has no Delete icon button: delete is in its context menu
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
-    fireEvent.contextMenu(screen.getByRole('button', { name: /Daily standup/ }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Daily standup/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete task…' }))
 
     expect(screen.getByRole('dialog', { name: 'Delete scheduled task' })).toBeInTheDocument()
@@ -90,7 +90,7 @@ describe('TaskListItem', () => {
 
   it('offers Run now, Pause and Delete task… in its context menu', () => {
     renderItem()
-    fireEvent.contextMenu(screen.getByRole('button', { name: /Daily standup/ }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Daily standup/ }))
     const menu = screen.getByRole('menu', { name: 'Actions for Daily standup' })
     expect(Array.from(menu.querySelectorAll('[role="menuitem"]')).map((item) => item.textContent)).toEqual([
       'Run now',
@@ -99,14 +99,19 @@ describe('TaskListItem', () => {
     ])
   })
 
-  it('has Run now and Pause buttons (not Trigger now) that act without opening the task', async () => {
+  it('holds Run now and Pause in a ⋯ menu (not Trigger now) that acts without opening the task', async () => {
     const requests = recordRequests()
     const onSelect = mock(() => {})
     renderItem(scheduledTask, { onSelect })
 
     expect(screen.queryByRole('button', { name: 'Trigger now' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Run now' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    // No icon-only Run now / Pause on the row: they are words in the menu.
+    expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Daily standup' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Run now' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Daily standup' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }))
     await waitFor(() => expect(requests).toHaveLength(2))
     expect(requests.map((r) => r.method)).toEqual(['POST', 'POST'])
     expect(requests[0].url).toBe('/api/scheduler/tasks/daily-standup/trigger')
@@ -114,16 +119,34 @@ describe('TaskListItem', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('offers Resume for a paused task', () => {
+  it('offers Resume for a paused task, in the same menu', () => {
     renderItem({ ...scheduledTask, status: 'paused' })
-    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Daily standup' }))
+    expect(screen.getByRole('menuitem', { name: 'Resume' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Pause' })).toBeNull()
+  })
+
+  it('keeps the ⋯ on touch (24px, 36px coarse) instead of hiding the actions there', () => {
+    renderItem()
+    const more = screen.getByRole('button', { name: 'More actions for Daily standup' })
+    expect(more.getAttribute('aria-haspopup')).toBe('menu')
+    expect(more.className).toContain('size-6')
+    expect(more.className).toContain('pointer-coarse:size-9')
+    expect(more.closest('[class*="pointer-coarse:hidden"]')).toBeNull()
+  })
+
+  it('opens the menu from the keyboard without also opening the task', () => {
+    const onSelect = mock(() => {})
+    renderItem(scheduledTask, { onSelect })
+    const more = screen.getByRole('button', { name: 'More actions for Daily standup' })
+    fireEvent.keyDown(more, { key: 'Enter' })
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('selects the task from a click and from Enter', () => {
     const onSelect = mock(() => {})
     renderItem(scheduledTask, { onSelect })
-    const row = screen.getByRole('button', { name: /Daily standup/ })
+    const row = screen.getByRole('button', { name: /^Daily standup/ })
     fireEvent.click(row)
     fireEvent.keyDown(row, { key: 'Enter' })
     expect(onSelect).toHaveBeenCalledTimes(2)

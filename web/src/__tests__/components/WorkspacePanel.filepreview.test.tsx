@@ -224,16 +224,18 @@ describe('Coding workspace two-layer file preview', () => {
 
     const user = userEvent.setup()
     await renderWorkspacePanel()
-    await waitFor(() => expect(screen.getByRole('button', { name: /diff for README.md/i })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Expand diff for README.md' })).toBeTruthy())
 
-    const changedRow = screen.getByRole('button', { name: /diff for README.md/i })
-    expect(changedRow.textContent).toContain('M')
-    await user.click(changedRow)
+    // The row names the file and its status; its chevron is the peek.
+    expect(screen.getByRole('button', { name: 'Open diff tab for README.md' }).textContent).toContain('M')
+    await user.click(screen.getByRole('button', { name: 'Expand diff for README.md' }))
 
     expect(screen.getByText('old')).toBeTruthy()
     expect(screen.getByText('new')).toBeTruthy()
     expect(screen.getAllByRole('button', { name: /diff for README.md/i })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: /^diff$/i })).toBeNull()
+    // The peek is in place: no file tab, and no diff tab either.
+    expect(screen.queryByRole('button', { name: 'README.md diff' })).toBeNull()
   })
 
   it('marks git-deleted files and opens a deleted-file placeholder instead of loading 404 content', async () => {
@@ -246,11 +248,13 @@ describe('Coding workspace two-layer file preview', () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
     await renderWorkspacePanel(onFileSelect)
-    await waitFor(() => expect(screen.getByRole('button', { name: /diff for deleted.txt/i })).toBeTruthy())
-    const deletedRow = screen.getByRole('button', { name: /diff for deleted.txt/i })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open diff tab for deleted.txt' })).toBeTruthy())
+    const deletedRow = screen.getByRole('button', { name: 'Open diff tab for deleted.txt' })
+    expect(deletedRow.textContent).toContain('D')
     await user.click(deletedRow)
 
-    expect(deletedRow.textContent).toContain('D')
+    // A deleted file opens its diff (the removed lines), never the file itself.
+    expect(await screen.findByRole('button', { name: 'deleted.txt diff' })).toBeTruthy()
     expect(onFileSelect).not.toHaveBeenCalled()
 
     await renderViewer({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })

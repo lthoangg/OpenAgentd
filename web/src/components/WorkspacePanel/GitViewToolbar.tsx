@@ -2,20 +2,21 @@
  * GitViewToolbar — the single 32px toolbar under the Git review tab.
  *
  * One segmented control on every platform — Changes and History — plus the
- * view's options on the right (expand-all for Changes; Graph, and with it
- * All branches, for History). History covers two stored sub-tabs: the
- * commit list (``commits``) and the graph (``tree``). The segments are real
- * ARIA tabs; the caller renders the matching ``tabpanel`` using
- * ``gitViewPanelId`` / ``gitViewTabId`` so the ids line up.
+ * view's options on the right: expand-all for Changes, and for History one
+ * "View" menu (Graph view, and with it All branches) that is the same on
+ * every platform. History covers two stored sub-tabs: the commit list
+ * (``commits``) and the graph (``tree``). The segments are real ARIA tabs;
+ * the caller renders the matching ``tabpanel`` using ``gitViewPanelId`` /
+ * ``gitViewTabId`` so the ids line up.
  */
-import { ChevronsDownUp, ChevronsUpDown, SlidersHorizontal } from 'lucide-react'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { useState } from 'react'
+import { Check, ChevronDown, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { CommitSyncBadge } from './CommitDetail'
-import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
+import { DOCK_ACTION_BUTTON_CLASS, DOCK_TEXT_ACTION_CLASS } from './dock-tab-styles'
 
 export type GitSubTab = 'changes' | 'commits' | 'tree'
 type GitViewSegment = 'changes' | 'history'
@@ -23,6 +24,9 @@ type GitViewSegment = 'changes' | 'history'
 const segmentOf = (tab: GitSubTab): GitViewSegment => (tab === 'changes' ? 'changes' : 'history')
 export const gitViewTabId = (idBase: string, tab: GitSubTab) => `${idBase}-${segmentOf(tab)}-tab`
 export const gitViewPanelId = (idBase: string) => `${idBase}-panel`
+
+/** Width the View menu is laid out for, so it opens right-aligned under its button. */
+const VIEW_MENU_WIDTH = 176
 
 export interface GitViewToolbarProps {
   idBase: string
@@ -40,7 +44,17 @@ export interface GitViewToolbarProps {
   onAllBranchesChange: (value: boolean) => void
 }
 
-const CHECKBOX_CLASS = 'border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)'
+/** One checkable row of the View menu; the tick sits in a fixed slot so labels line up. */
+function ViewMenuCheckbox({ checked, onToggle, children }: { checked: boolean; onToggle: () => void; children: string }) {
+  return (
+    <button type="button" role="menuitemcheckbox" aria-checked={checked} className={CONTEXT_MENU_ITEM_CLASS} onClick={onToggle}>
+      <span className="flex w-3 shrink-0 justify-center" aria-hidden="true">
+        {checked && <Check size={12} />}
+      </span>
+      {children}
+    </button>
+  )
+}
 
 export function GitViewToolbar({
   idBase,
@@ -56,6 +70,7 @@ export function GitViewToolbar({
   allBranches,
   onAllBranchesChange,
 }: GitViewToolbarProps) {
+  const [viewMenuAt, setViewMenuAt] = useState<{ x: number; y: number } | null>(null)
   const trigger = (segment: GitViewSegment) => ({
     value: segment,
     id: `${idBase}-${segment}-tab`,
@@ -108,50 +123,48 @@ export function GitViewToolbar({
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
         )}
-        {mobile && subTab !== 'changes' && (
-          // Phones: the two options share a menu, so the tabs keep the width.
-          <Dropdown
-            aria-label="History options"
-            align="end"
-            trigger={<SlidersHorizontal size={14} aria-hidden="true" />}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center border-0 bg-transparent p-0 [&>svg]:hidden')}
-            panelClassName="w-44"
+        {subTab !== 'changes' && (
+          // One menu on every platform, so the tabs keep their width on a phone
+          // and a desktop has no 11px checkboxes to hit.
+          <button
+            type="button"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setViewMenuAt({ x: rect.right - VIEW_MENU_WIDTH, y: rect.bottom + 2 })
+            }}
+            className={DOCK_TEXT_ACTION_CLASS}
+            aria-haspopup="menu"
+            aria-expanded={viewMenuAt !== null}
           >
-            {[
-              <DropdownItem key="graph" active={subTab === 'tree'} onSelect={() => onSubTabChange(subTab === 'tree' ? 'commits' : 'tree')}>
-                Graph view
-              </DropdownItem>,
-              subTab === 'tree' && (
-                <DropdownItem key="branches" active={allBranches} onSelect={() => onAllBranchesChange(!allBranches)}>
-                  All branches
-                </DropdownItem>
-              ),
-            ].filter(Boolean)}
-          </Dropdown>
-        )}
-        {!mobile && subTab !== 'changes' && (
-          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-meta text-(--color-text-muted)">
-            <Checkbox
-              checked={subTab === 'tree'}
-              onChange={(event) => onSubTabChange(event.currentTarget.checked ? 'tree' : 'commits')}
-              className={CHECKBOX_CLASS}
-              checkClassName="peer-checked:text-(--color-text)"
-            />
-            <span className="whitespace-nowrap">Graph view</span>
-          </label>
-        )}
-        {!mobile && subTab === 'tree' && (
-          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-meta text-(--color-text-muted)">
-            <Checkbox
-              checked={allBranches}
-              onChange={(event) => onAllBranchesChange(event.currentTarget.checked)}
-              className={CHECKBOX_CLASS}
-              checkClassName="peer-checked:text-(--color-text)"
-            />
-            <span className="whitespace-nowrap">All branches</span>
-          </label>
+            View
+            <ChevronDown size={11} aria-hidden="true" />
+          </button>
         )}
       </div>
+      {viewMenuAt && (
+        <ContextMenu at={viewMenuAt} label="View options" onDismiss={() => setViewMenuAt(null)} className="w-44">
+          <ViewMenuCheckbox
+            checked={subTab === 'tree'}
+            onToggle={() => {
+              setViewMenuAt(null)
+              onSubTabChange(subTab === 'tree' ? 'commits' : 'tree')
+            }}
+          >
+            Graph view
+          </ViewMenuCheckbox>
+          {subTab === 'tree' && (
+            <ViewMenuCheckbox
+              checked={allBranches}
+              onToggle={() => {
+                setViewMenuAt(null)
+                onAllBranchesChange(!allBranches)
+              }}
+            >
+              All branches
+            </ViewMenuCheckbox>
+          )}
+        </ContextMenu>
+      )}
     </div>
   )
 }

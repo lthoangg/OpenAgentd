@@ -170,6 +170,7 @@ export function WorkspacePanel({
   onClearPlan,
   onFileSelect,
   onAddComment,
+  onInsertPrompt,
   onSendPreviewComments,
   chatWorkspace = false,
   onRequestClose,
@@ -215,6 +216,11 @@ export function WorkspacePanel({
   onClearPlan?: () => void
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
+  /**
+   * Puts text in the composer without sending it ("Ask agent to commit" in
+   * the Changes list). Pass a stable callback; without it that footer is hidden.
+   */
+  onInsertPrompt?: (text: string) => void
   /** Adds a preview's design comments to the composer as a chip. */
   onSendPreviewComments?: (feedback: DesignFeedback) => void
   /**
@@ -462,15 +468,19 @@ export function WorkspacePanel({
 
   // React Query hands back a new result object every render; the list views
   // get memoized slices of the fields they read so ``memo`` can skip them.
+  // ``isFetching`` matters only to a failed list's Retry; reading it always
+  // would re-render the rows on every background refetch.
+  const changesRetrying = changes.isError && changes.isFetching
   const changesView = useMemo(
-    () => ({ isLoading: changes.isLoading, isError: changes.isError, data: changes.data }),
-    [changes.isLoading, changes.isError, changes.data],
+    () => ({ isLoading: changes.isLoading, isError: changes.isError, isFetching: changesRetrying, refetch: changes.refetch, data: changes.data }),
+    [changes.isLoading, changes.isError, changesRetrying, changes.refetch, changes.data],
   )
   const filesView = useMemo(() => ({ isLoading: files.isLoading, data: files.data }), [files.isLoading, files.data])
   const { isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData } = gitHistory
+  const historyFetching = historyError && gitHistory.isFetching
   const historyView = useMemo(
-    () => ({ isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData }),
-    [historyLoading, historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetchHistory, historyData],
+    () => ({ isLoading: historyLoading, isError: historyError, isFetching: historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData }),
+    [historyLoading, historyError, historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetchHistory, historyData],
   )
   const commitDiffView = useMemo(
     () => ({ isLoading: commitDiff.isLoading, isError: commitDiff.isError }),
@@ -619,6 +629,15 @@ export function WorkspacePanel({
     },
   })
 
+  // "Ask agent to commit": fills the composer. On a phone the dock covers the
+  // composer, so it closes and the filled prompt is what shows.
+  const onRequestCloseRef = useRef(onRequestClose)
+  onRequestCloseRef.current = onRequestClose
+  const insertPrompt = useCallback((text: string) => {
+    onInsertPrompt?.(text)
+    if (mobile) onRequestCloseRef.current?.()
+  }, [mobile, onInsertPrompt])
+
   const reviewView = (
     <div className="flex h-full min-h-0 flex-col">
       {changes.data?.is_git_repo && (
@@ -656,8 +675,8 @@ export function WorkspacePanel({
             selectedFilePath={selectedFilePath}
             expandedDiffs={expandedDiffs}
             toggleDiffExpanded={toggleDiffExpanded}
-            openChangedFile={openChangedFile}
             openDiffTab={openDiffPreview}
+            onInsertPrompt={onInsertPrompt ? insertPrompt : undefined}
             mobile={mobile}
             setMobileFileActions={setMobileFileActions}
             setDesktopFileActions={setDesktopFileActions}

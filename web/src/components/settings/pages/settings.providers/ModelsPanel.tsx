@@ -326,12 +326,13 @@ function ModelRow({
           disabled={savingVisibleModels}
           aria-pressed={selected}
           aria-label={`${selected ? 'Hide' : 'Show'} ${qualifiedId} ${selected ? 'from' : 'in'} model pickers`}
+          // 24px, 36px on touch. Borderless: the word (Shown / Hidden) and the fill carry the state.
           className={cn(
-            'flex h-8 min-w-16 shrink-0 items-center justify-center gap-1 rounded-xs px-1.5 md:h-6',
-            'text-xs md:text-meta font-medium transition-colors',
+            'flex h-6 min-w-16 shrink-0 items-center justify-center gap-1 rounded-xs px-1.5 pointer-coarse:h-9',
+            'text-xs font-medium transition-colors',
             selected
               ? 'bg-(--color-success-subtle) text-(--accent-green-text)'
-              : 'border border-(--color-border) text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-border-subtle) hover:text-(--color-text)',
             savingVisibleModels && 'opacity-50 cursor-not-allowed',
           )}
         >
@@ -340,22 +341,23 @@ function ModelRow({
         </button>
       )}
 
-      {/* Copy button — hidden on Tauri mobile (use long-press context menu instead) */}
-      {!isTauriMobile && (
-        <button
-          type="button"
-          onClick={() => void onCopy(qualifiedId)}
-          aria-label={`Copy ${qualifiedId}`}
-          className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs md:h-6 md:w-6',
-            'text-(--color-text-muted)',
-            'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
-            'opacity-100',
-          )}
-        >
-          <Copy size={11} aria-hidden="true" />
-        </button>
-      )}
+      {/* Copy: shown at rest on every platform (24px, 36px on touch); the
+          right-click / long-press menu has it too, but is not the only way. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={() => void onCopy(qualifiedId)}
+              aria-label={`Copy ${qualifiedId}`}
+              className="flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9"
+            >
+              <Copy size={11} aria-hidden="true" />
+            </button>
+          }
+        />
+        <TooltipContent>Copy model ID</TooltipContent>
+      </Tooltip>
 
       {/* Context menu */}
       {actionsPoint && (

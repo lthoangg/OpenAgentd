@@ -1083,6 +1083,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               onClearPlan={handleClearPlan}
               onFileSelect={handleFileSelect}
               onAddComment={handleAddFileComment}
+              onInsertPrompt={(text) => {
+                inputRef.current?.appendValue(text, { paragraph: true })
+                inputRef.current?.focus()
+              }}
               onRequestClose={() => setWorkspacePanel(null)}
             />
           )}

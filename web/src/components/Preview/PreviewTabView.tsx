@@ -4,7 +4,7 @@
  * Frames a preview listener (`/api/preview`): a local dev server or a
  * workspace HTML file on its own loopback origin (or, when the backend is on
  * another device, the native relay's loopback origin). The toolbar drives the
- * page through the inspector script (`preview-protocol.ts`); **Design**
+ * page through the inspector script (`preview-protocol.ts`); **Comment**
  * turns on the element picker, and picked elements collect numbered
  * comments that **Send to agent** puts into the composer.
  *
@@ -99,6 +99,7 @@ function ToolbarButton({
   label,
   onClick,
   disabled,
+  disabledReason,
   pressed,
   children,
   className,
@@ -106,12 +107,16 @@ function ToolbarButton({
   label: string
   onClick?: () => void
   disabled?: boolean
+  /** Why it is disabled; the tooltip says this instead of the label while it is. */
+  disabledReason?: string
   pressed?: boolean
   children: React.ReactNode
   className?: string
 }) {
+  const reason = disabled ? disabledReason : undefined
   return (
     <Tooltip>
+      {/* The trigger wraps the button in a span, so a disabled one still gets the hover. */}
       <TooltipTrigger
         render={
           <button
@@ -119,6 +124,7 @@ function ToolbarButton({
             onClick={onClick}
             disabled={disabled}
             aria-label={label}
+            aria-description={reason}
             aria-pressed={pressed}
             className={cn(DOCK_ACTION_BUTTON_CLASS, pressed && 'bg-(--bg-key) text-(--color-text)', className)}
           >
@@ -126,7 +132,7 @@ function ToolbarButton({
           </button>
         }
       />
-      <TooltipContent side="bottom">{label}</TooltipContent>
+      <TooltipContent side="bottom">{reason ?? label}</TooltipContent>
     </Tooltip>
   )
 }
@@ -150,7 +156,7 @@ function siblingsSignature(files: { path: string; mtime: number }[] | undefined,
   return latest
 }
 
-/** Alt+C / ⌥C: toggle Design picking, whether focus is in the dock or the page. */
+/** Alt+C / ⌥C: toggle Comment picking, whether focus is in the dock or the page. */
 const DESIGN_CHORD = { key: 'C', code: 'KeyC', alt: true } as const
 
 export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, onSendComments, onOpenTarget, active = true, onRequestClose }: PreviewTabViewProps) {
@@ -177,7 +183,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // The agent's latest command in this page, shown briefly in the toolbar.
   const [agentAction, setAgentAction] = useState<string | null>(null)
   const agentTimerRef = useRef<number | null>(null)
-  // Latest Design toggle, for the shortcut listeners below.
+  // Latest Comment toggle, for the shortcut listeners below.
   const toggleDesignRef = useRef<() => void>(() => {})
   const activeRef = useRef(active)
   activeRef.current = active
@@ -496,9 +502,13 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const errorCount = consoleEntries.filter((e) => e.level === 'error').length
   const designDisabled = !ready || inspectorMissing
   const consoleLabel = errorCount ? `Console (${errorCount} errors)` : 'Console'
-  const designLabel = designDisabled ? 'Design (unavailable on this page)' : mode === 'inspect' ? `Stop picking elements (Esc or ${designShortcut})` : `Design: pick an element to comment on (${designShortcut})`
+  const designLabel = designDisabled ? 'Comment (unavailable on this page)' : mode === 'inspect' ? `Stop commenting (Esc or ${designShortcut})` : `Comment on an element (${designShortcut})`
   const openLabel = reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'
   const openDisabled = !pageUrl || reach === 'relay'
+  // Back and Forward need the page's own script; say which thing is missing.
+  const navReason = (dir: 'back' | 'forward') => inspectorMissing
+    ? `Can't go ${dir} on this page: it did not load the preview script`
+    : `Can't go ${dir} yet: the page is still loading`
   toggleDesignRef.current = () => {
     if (designDisabled) return
     setMode((m) => (m === 'inspect' ? 'browse' : 'inspect'))
@@ -516,11 +526,12 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) bg-(--bg-page) px-1">
-        <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready}>
+      {/* 40px (44px on touch): the address field is 32px (36px on touch), taller than the 28px tool buttons. */}
+      <div className="flex min-h-10 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) bg-(--bg-page) px-1 py-1">
+        <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready} disabledReason={navReason('back')}>
           <ArrowLeft size={13} aria-hidden="true" />
         </ToolbarButton>
-        <ToolbarButton label="Forward" onClick={() => post({ type: 'history', dir: 1 })} disabled={!ready}>
+        <ToolbarButton label="Forward" onClick={() => post({ type: 'history', dir: 1 })} disabled={!ready} disabledReason={navReason('forward')}>
           <ArrowRight size={13} aria-hidden="true" />
         </ToolbarButton>
         <ToolbarButton label="Reload" onClick={() => void reload()}>
@@ -546,7 +557,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               }
             }}
             spellCheck={false}
-            className="h-6 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-meta text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-7 pointer-coarse:text-xs"
+            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-9"
           />
         </form>
         {agentAction && (
@@ -601,7 +612,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               size && <DropdownItem key="rotate" onSelect={() => setRotated((r) => !r)}>{rotated ? 'Rotate back' : 'Rotate'}</DropdownItem>,
               <DropdownItem key="console" onSelect={() => setConsoleOpen((o) => !o)}>{consoleLabel}</DropdownItem>,
               <DropdownItem key="design" disabled={designDisabled} onSelect={() => toggleDesignRef.current()}>
-                {mode === 'inspect' ? 'Stop picking elements' : designDisabled ? 'Design (unavailable on this page)' : 'Design: pick an element'}
+                {mode === 'inspect' ? 'Stop commenting' : designDisabled ? 'Comment (unavailable on this page)' : 'Comment on an element'}
               </DropdownItem>,
               <DropdownItem key="open" disabled={openDisabled} onSelect={() => pageUrl && void openExternalUrl(pageUrl)}>{openLabel}</DropdownItem>,
             ].filter(Boolean)}
@@ -640,6 +651,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           label={openLabel}
           onClick={() => pageUrl && void openExternalUrl(pageUrl)}
           disabled={openDisabled}
+          disabledReason={reach === 'relay' ? undefined : 'No page loaded yet'}
         >
           <ExternalLink size={13} aria-hidden="true" />
         </ToolbarButton>
@@ -648,7 +660,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       {(error || inspectorMissing) && (
         <div role={error ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-meta', error ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
           <p className="min-w-0 flex-1 break-words">
-            {error ?? 'Design tools and the console are unavailable on this page: it did not load the preview script (a strict Content-Security-Policy can block it).'}
+            {error ?? 'Comment tools and the console are unavailable on this page: it did not load the preview script (a strict Content-Security-Policy can block it).'}
           </p>
           {error && (
             <Button type="button" size="xs" variant="subtle" onClick={() => void reload()}>

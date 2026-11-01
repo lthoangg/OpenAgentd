@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { lazySurface } from '@/lib/lazy-surface'
 import { TodosPopover } from '../TodosPopover'
+import { PaletteHost } from './PaletteHost'
 import type { SessionGoal, SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
@@ -38,13 +38,19 @@ interface AgentChatPanelsProps {
   /** Remounts the palette when it is sent to another page while open. */
   paletteKey: number
   paletteCommands: Command[]
+  /** The open session; the palette's Sessions group leaves it out. */
+  sessionId?: string | null
+  /** The palette scoped to files (⌘P, "Find file"). */
   quickOpenOpen: boolean
-  /** Query Quick Open opens with; empty from its shortcut. */
+  /** Query the file scope opens with; empty from its shortcut. */
   quickOpenQuery: string
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
-  /** Backend hit its file cap — Quick Open says so instead of silently hiding. */
+  /** Backend hit its file cap — the palette says so instead of silently hiding. */
   quickOpenFilesTruncated?: boolean
-  onQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
+  /** The file listing has not arrived yet. */
+  quickOpenFilesLoading?: boolean
+  /** Unset without a workspace: the palette then has no files to offer. */
+  onQuickOpenFileOpen?: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   onClosePalette: () => void
   onCloseQuickOpen: () => void
 }
@@ -65,15 +71,24 @@ export function AgentChatPanels({
   palettePage,
   paletteKey,
   paletteCommands,
+  sessionId = null,
   quickOpenOpen,
   quickOpenQuery,
   quickOpenWorkspaceFiles,
   quickOpenFilesTruncated,
+  quickOpenFilesLoading,
   onQuickOpenFileOpen,
   onClosePalette,
   onCloseQuickOpen,
 }: AgentChatPanelsProps) {
   const schedulerOpened = useOpenedOnce(schedulerOpen)
+  // ⌘K and ⌘P open the same overlay; only its scope differs.
+  const files = {
+    workspaceFiles: quickOpenWorkspaceFiles,
+    filesTruncated: quickOpenFilesTruncated,
+    filesLoading: quickOpenFilesLoading,
+    onFileOpen: onQuickOpenFileOpen,
+  }
   return (
     <>
       <TodosPopover
@@ -94,10 +109,10 @@ export function AgentChatPanels({
         />
       )}
       {showPalette && (
-        <CommandPalette key={paletteKey} commands={paletteCommands} onClose={onClosePalette} initialPagePath={palettePage} />
+        <PaletteHost key={paletteKey} sessionId={sessionId} commands={paletteCommands} onClose={onClosePalette} initialPagePath={palettePage} {...files} />
       )}
       {quickOpenOpen && (
-        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} />
+        <PaletteHost scope="files" sessionId={sessionId} commands={paletteCommands} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} {...files} />
       )}
     </>
   )

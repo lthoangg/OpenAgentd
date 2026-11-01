@@ -385,11 +385,20 @@ run from the terminal (the native Rust binary since v3.0.0).
   and `openagentd://scheduler?task=<id>` links they use work from anywhere,
   and links into the Android app now also work on older Android System
   WebView versions.
-- **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
-  opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
-  Both use the compact warm-paper search surface, keyboard navigation, and a
-  visible warning when a capped workspace listing omits files.
-  A Quick Open query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
+- **Command palette and Find file** `[v2.3.0, updated v3.40.0]` — `⌘K`/`Ctrl+K`
+  opens one search over app actions, sessions and workspace files; `⌘P`/`Ctrl+P`
+  (Find file) opens the same palette scoped to files. It uses the compact
+  warm-paper search surface, keyboard navigation, and a visible warning when a
+  capped workspace listing omits files. With an empty query `⌘K` lists the
+  commands; typing shows up to eight **Commands**, eight **Sessions** (titles
+  from every workspace, best match then newest, labelled with workspace and
+  age; choosing one opens it) and twenty **Files** under their headings, and
+  the arrow keys run across them as one list. Find file shows a Files label
+  before the field; Backspace on an empty query (or a click on the label)
+  widens it to all three, and a leading `>` searches commands only. A list
+  that is still loading shows Loading… instead of "Nothing here yet", and the
+  field is 16px on touch phones so iOS does not zoom `[v3.40.0]`.
+  A file query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
   opens the pick with those lines selected `[v3.0.0]`.
   `⌘F`/`Ctrl+F` transcript find *(deprecated; removed in v3.14.0, along with
   every `⌘F` binding)*;

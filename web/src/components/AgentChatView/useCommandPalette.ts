@@ -1,5 +1,5 @@
 /**
- * useCommandPalette — Command Palette assembly, workspace file search,
+ * useCommandPalette — Command palette assembly, workspace file search,
  * view-mode cycling, and the window-level keyboard shortcut map.
  *
  * These are grouped together because most of the shortcut handlers (view
@@ -30,6 +30,9 @@ import { switchPagePath } from './paletteSwitchCommands'
 
 export interface UseCommandPaletteArgs {
   workspace: string | null
+  /** ⌘K palette open: its Files group needs the workspace listing. */
+  paletteOpen: boolean
+  /** ⌘P (Find file) open. */
   quickOpenOpen: boolean
   sessionIdState: string | null
   /** True while the review dock is mounted (``workspacePanel !== null``). */
@@ -74,14 +77,17 @@ export interface UseCommandPaletteArgs {
 export interface UseCommandPaletteResult {
   paletteCommands: Command[]
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
-  /** The backend listing hit its file cap — surfaced in the Quick Open footer. */
+  /** The backend listing hit its file cap — surfaced in the palette footer. */
   quickOpenFilesTruncated: boolean
+  /** The listing is being fetched for the first time: the palette shows "Loading…". */
+  quickOpenFilesLoading: boolean
   /** Opens the pick in the dock, at the lines the query named. */
   handleQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
 }
 
 export function useCommandPalette({
   workspace,
+  paletteOpen,
   quickOpenOpen,
   sessionIdState,
   workspacePanelOpen,
@@ -157,14 +163,15 @@ export function useCommandPalette({
     [agentCommands, switchCommands, serverCommands],
   )
 
-  // ── Quick Open workspace file search ───────────────────────────────────────
+  // ── Workspace file search (the palette's Files group, ⌘P's Find file) ──────
   //
-  // Fetch the active workspace file listing when Quick Open is open. We reuse
-  // the same query key as the @-mention picker so the two
-  // share a cache entry — no extra network request when both are warm.
+  // Fetch the active workspace file listing while either palette is open. We
+  // reuse the same query key as the @-mention picker so the two share a cache
+  // entry — no extra network request when both are warm.
   const hasQuickOpenWorkspace = Boolean(workspace)
+  const filesWanted = (paletteOpen || quickOpenOpen) && hasQuickOpenWorkspace
   const quickOpenQueryOptions = workspaceFileListQueryOptions(workspace ?? '')
-  const { data: paletteFilesData } = useQuery<
+  const { data: paletteFilesData, isLoading: paletteFilesLoading } = useQuery<
     { files: WorkspaceFileInfo[]; truncated?: boolean },
     Error,
     { files: WorkspaceFileInfo[]; truncated?: boolean },
@@ -173,12 +180,13 @@ export function useCommandPalette({
     // Must cache the *full* response, not a narrowed { files } object — the
     // workspace file tree reads the same entry. See ``workspace-files.ts``.
     ...quickOpenQueryOptions,
-    enabled: quickOpenOpen && hasQuickOpenWorkspace,
+    enabled: filesWanted,
     staleTime: WORKSPACE_FILES_STALE_MS,
   })
 
-  const quickOpenWorkspaceFiles = quickOpenOpen ? (paletteFilesData?.files ?? []) : []
-  const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
+  const quickOpenWorkspaceFiles = filesWanted ? (paletteFilesData?.files ?? []) : []
+  const quickOpenFilesTruncated = filesWanted && Boolean(paletteFilesData?.truncated)
+  const quickOpenFilesLoading = filesWanted && paletteFilesLoading
 
   const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo, line?: number, endLine?: number) => {
     setFileViewer(file)
@@ -222,6 +230,7 @@ export function useCommandPalette({
     paletteCommands,
     quickOpenWorkspaceFiles,
     quickOpenFilesTruncated,
+    quickOpenFilesLoading,
     handleQuickOpenFileOpen,
   }
 }

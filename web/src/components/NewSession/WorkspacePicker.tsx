@@ -140,7 +140,8 @@ export function WorkspacePicker({
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}
-            className="h-7 min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-subtle)"
+            // 16px on touch phones, or iOS zooms the page when the field takes focus.
+            className="h-7 min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-subtle) max-md:pointer-coarse:text-base"
           />
         </div>
         <div id={listId} role="listbox" aria-label="Folders" className="max-h-72 overflow-y-auto pt-1">

@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from "bun:test"
-import { render, screen, cleanup, fireEvent } from "@testing-library/react"
+import { describe, it, expect, afterEach, mock } from "bun:test"
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CommandPalette, QuickOpen } from "@/components/CommandPalette"
-import type { Command } from "@/components/CommandPalette"
+import type { Command, PaletteSession, PaletteSessions } from "@/components/CommandPalette"
 import type { WorkspaceFileInfo } from "@/api/types"
 import { resetHoverIntent } from "@/hooks/use-hover-intent"
 
@@ -303,7 +303,7 @@ describe("CommandPalette", () => {
     }))
   }
 
-  it("renders Quick Open as a file-only search", () => {
+  it("renders the Find file scope as a file-only search", () => {
     render(
       <QuickOpen
         workspaceFiles={makeFiles(['App.tsx'])}
@@ -312,19 +312,19 @@ describe("CommandPalette", () => {
       />,
     )
 
-    expect(screen.getByPlaceholderText("Find a file…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Find file…")).toBeTruthy()
     expect(screen.getByText("App.tsx")).toBeTruthy()
     expect(screen.queryByText("New Chat")).toBeNull()
   })
 
-  it("keeps the Quick Open file-search affordance when the workspace is empty", () => {
+  it("keeps the Find file affordance when the workspace is empty", () => {
     render(<QuickOpen workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} />)
 
-    expect(screen.getByPlaceholderText("Find a file…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Find file…")).toBeTruthy()
     expect(screen.getByText(/No files match/)).toBeTruthy()
   })
 
-  it("uses the Quick Open placeholder", () => {
+  it("uses the Find file placeholder", () => {
     render(
       <QuickOpen
         workspaceFiles={makeFiles(['App.tsx'])}
@@ -332,13 +332,13 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    const input = screen.getByPlaceholderText("Find a file…")
+    const input = screen.getByPlaceholderText("Find file…")
     expect(input).toBeTruthy()
     expect(input.className).toContain("focus:outline-none")
     expect(input.className).toContain("focus-visible:outline-none")
   })
 
-  it("renders workspace files under a Files group header", () => {
+  it("labels the Files scope beside the field instead of heading a lone group", () => {
     render(
       <QuickOpen
         workspaceFiles={makeFiles(['App.tsx', 'main.tsx'])}
@@ -346,7 +346,9 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    expect(screen.getByText("Files")).toBeTruthy()
+    // One "Files": the scope label. A heading over the only group would repeat it.
+    expect(screen.getAllByText("Files")).toHaveLength(1)
+    expect(screen.getByRole("button", { name: /^Files only/ })).toBeTruthy()
     expect(screen.getByText("App.tsx")).toBeTruthy()
     expect(screen.getByText("main.tsx")).toBeTruthy()
   })
@@ -381,7 +383,7 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    await user.type(screen.getByPlaceholderText("Find a file…"), "App")
+    await user.type(screen.getByPlaceholderText("Find file…"), "App")
     expect(screen.getByText("App.tsx")).toBeTruthy()
     expect(screen.queryByText("config.ts")).toBeNull()
   })
@@ -393,9 +395,9 @@ describe("CommandPalette", () => {
       { path: 'src/lib/utils.ts',       name: 'utils.ts', size: 0, mtime: 0, mime: 'text/plain' },
     ]
     render(
-      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+      <CommandPalette scope="files" commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Find a file…"), "lib")
+    await user.type(screen.getByPlaceholderText("Find file…"), "lib")
     expect(screen.getByText("utils.ts")).toBeTruthy()
     expect(screen.queryByText("App.tsx")).toBeNull()
   })
@@ -410,10 +412,10 @@ describe("CommandPalette", () => {
       { path: 'docs/README.md', name: 'README.md', size: 0, mtime: 0, mime: 'text/plain' },
     ]
     render(
-      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+      <CommandPalette scope="files" commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
     // "dockcom" is not a substring of the path, only an ordered subsequence.
-    await user.type(screen.getByPlaceholderText("Find a file…"), "dockcom")
+    await user.type(screen.getByPlaceholderText("Find file…"), "dockcom")
     expect(screen.getByText("docker-compose.yml")).toBeTruthy()
     expect(screen.queryByText("README.md")).toBeNull()
   })
@@ -425,9 +427,9 @@ describe("CommandPalette", () => {
       { path: 'index.ts', name: 'index.ts', size: 0, mtime: 0, mime: 'text/plain' },
     ]
     render(
-      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+      <CommandPalette scope="files" commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Find a file…"), "index.ts")
+    await user.type(screen.getByPlaceholderText("Find file…"), "index.ts")
     // Both contain the subsequence; the exact match must rank first.
     const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('.ts'))
     expect(rows[0].textContent).toContain('index.ts')
@@ -440,9 +442,9 @@ describe("CommandPalette", () => {
       { path: 'assets/media/clip.mp4', name: 'clip.mp4', size: 0, mtime: 0, mime: 'video/mp4' },
     ]
     render(
-      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+      <CommandPalette scope="files" commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Find a file…"), "clip")
+    await user.type(screen.getByPlaceholderText("Find file…"), "clip")
     const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('clip.mp4'))
     expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('assets/media/'), expect.stringContaining('dist/')])
   })
@@ -454,6 +456,7 @@ describe("CommandPalette", () => {
     const files = makeFiles(['App.tsx'])
     render(
       <CommandPalette
+        scope="files"
         commands={[]}
         workspaceFiles={files}
         onFileOpen={(f) => { opened = f }}
@@ -465,17 +468,18 @@ describe("CommandPalette", () => {
     expect(closed).toBe(true)
   })
 
-  it("shows unified no-match message when workspaceFiles are provided", async () => {
+  it("says no files match in the Files scope", async () => {
     const user = userEvent.setup()
     render(
       <CommandPalette
+        scope="files"
         commands={makeCommands()}
         workspaceFiles={makeFiles(['App.tsx'])}
         onFileOpen={() => {}}
         onClose={() => {}}
       />,
     )
-    await user.type(screen.getByPlaceholderText("Find a file…"), "xyznotfound")
+    await user.type(screen.getByPlaceholderText("Find file…"), "xyznotfound")
     expect(screen.getByText(/No files match/)).toBeTruthy()
   })
 
@@ -908,7 +912,7 @@ describe("QuickOpen — > command mode", () => {
     render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
 
     expect(screen.queryByText("New Chat")).toBeNull()
-    await user.type(screen.getByPlaceholderText("Find a file…"), ">side")
+    await user.type(screen.getByPlaceholderText("Find file…"), ">side")
 
     expect(screen.getByText("Toggle Sidebar")).toBeTruthy()
     expect(screen.queryByText("New Chat")).toBeNull()
@@ -922,7 +926,7 @@ describe("QuickOpen — > command mode", () => {
     const commands: Command[] = [{ id: "c1", label: "Run Me", action: () => { ran = true } }]
     render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => { opened = true }} onClose={() => {}} />)
 
-    await user.type(screen.getByPlaceholderText("Find a file…"), ">")
+    await user.type(screen.getByPlaceholderText("Find file…"), ">")
     await user.keyboard("{Enter}")
 
     expect(ran).toBe(true)
@@ -946,7 +950,7 @@ describe("QuickOpen — > command mode", () => {
     ]
     render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => {}} onClose={() => {}} />)
 
-    await user.type(screen.getByPlaceholderText("Find a file…"), ">switch")
+    await user.type(screen.getByPlaceholderText("Find file…"), ">switch")
     await user.keyboard("{ArrowRight}")
 
     expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
@@ -963,7 +967,7 @@ describe("QuickOpen — a query with a line", () => {
   it("opens already searching for its initial query, the query selected", () => {
     render(<QuickOpen workspaceFiles={files} initialQuery="Button.tsx" onFileOpen={() => {}} onClose={() => {}} />)
 
-    const input = screen.getByPlaceholderText("Find a file…") as HTMLInputElement
+    const input = screen.getByPlaceholderText("Find file…") as HTMLInputElement
     expect(input.value).toBe("Button.tsx")
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Button.tsx".length])
     expect(screen.getAllByText("Button.tsx")).toHaveLength(2)
@@ -1009,9 +1013,494 @@ describe("QuickOpen — a query with a line", () => {
     let opened: { path: string; line?: number } | null = null
     render(<QuickOpen workspaceFiles={files} onFileOpen={(file, line) => { opened = { path: file.path, line } }} onClose={() => {}} />)
 
-    await user.type(screen.getByPlaceholderText("Find a file…"), "App.tsx")
+    await user.type(screen.getByPlaceholderText("Find file…"), "App.tsx")
     await user.keyboard("{Enter}")
 
     expect(opened as { path: string; line?: number } | null).toEqual({ path: 'web/src/App.tsx', line: undefined })
+  })
+})
+
+// ── One palette: commands, sessions and files ─────────────────────────────────
+
+const file = (path: string): WorkspaceFileInfo => ({ path, name: path.split("/").pop()!, size: 0, mtime: 0, mime: "text/plain" })
+const sessionRow = (id: string, title: string, over: Partial<PaletteSession> = {}): PaletteSession =>
+  ({ id, title, description: "app · 3h", activityAt: null, open: () => {}, ...over })
+const sessionsOf = (items: PaletteSession[], over: Partial<PaletteSessions> = {}): PaletteSessions =>
+  ({ items, loading: false, onSearch: () => {}, ...over })
+const rowTexts = () => Array.from(document.querySelectorAll("[data-idx]")).map((row) => row.textContent ?? "")
+const groupRows = (name: string) => within(screen.getByRole("group", { name })).getAllByRole("button")
+const isActiveRow = (idx: number) => document.querySelector(`[data-idx='${idx}']`)?.className.includes("border-(--color-border-strong)")
+
+describe("CommandPalette — names and placeholders", () => {
+  it("is the Command palette whichever way it opens", () => {
+    const { unmount } = render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy()
+    unmount()
+    render(<QuickOpen workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy()
+    expect(document.body.textContent).not.toContain("Quick Open")
+  })
+
+  it("asks for what the palette can search", () => {
+    const both = render(
+      <CommandPalette commands={makeCommands()} sessions={sessionsOf([])} workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    expect(screen.getByPlaceholderText("Search commands, sessions and files…")).toBeTruthy()
+    expect(screen.getByLabelText("Search commands, sessions and files")).toBeTruthy()
+    both.unmount()
+
+    const sessionsOnly = render(<CommandPalette commands={makeCommands()} sessions={sessionsOf([])} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search commands and sessions…")).toBeTruthy()
+    sessionsOnly.unmount()
+
+    const filesOnly = render(<CommandPalette commands={makeCommands()} workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search commands and files…")).toBeTruthy()
+    filesOnly.unmount()
+
+    render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+  })
+
+  it("scopes ⌘P to Find file", () => {
+    render(<QuickOpen workspaceFiles={[]} sessions={sessionsOf([])} onFileOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Find file…")).toBeTruthy()
+    expect(screen.getByLabelText("Find file")).toBeTruthy()
+  })
+
+  it("keeps the search field at 16px on touch phones so iOS does not zoom", () => {
+    render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
+    expect(screen.getByPlaceholderText("Search commands…").className).toContain("max-md:pointer-coarse:text-base")
+  })
+})
+
+describe("CommandPalette — grouped results", () => {
+  const commands: Command[] = [
+    { id: "terminal", label: "Open Terminal", action: () => {} },
+    { id: "chat", label: "New Chat", action: () => {} },
+  ]
+  const sessions = () => sessionsOf([sessionRow("s1", "Terminal output parsing"), sessionRow("s2", "Plan the release")])
+  const files = [file("src/terminal.ts"), file("src/app.ts")]
+  const palette = (over: Partial<React.ComponentProps<typeof CommandPalette>> = {}) => (
+    <CommandPalette
+      commands={commands}
+      sessions={sessions()}
+      workspaceFiles={files}
+      onFileOpen={() => {}}
+      onClose={() => {}}
+      initialQuery="term"
+      {...over}
+    />
+  )
+
+  it("lists commands, sessions and files under their headings, in that order", () => {
+    render(palette())
+
+    expect(screen.getAllByRole("group").map((group) => group.querySelector("p")?.textContent)).toEqual(["Commands", "Sessions", "Files"])
+    expect(rowTexts()[0]).toContain("Open Terminal")
+    expect(rowTexts()[1]).toContain("Terminal output parsing")
+    expect(rowTexts()[2]).toContain("terminal.ts")
+  })
+
+  it("shows a session's workspace and age under its title", () => {
+    render(palette())
+    expect(within(screen.getByRole("group", { name: "Sessions" })).getByText("app · 3h")).toBeTruthy()
+  })
+
+  it("styles the headings as muted medium meta text and keeps them out of the rows", () => {
+    const { container } = render(palette())
+    const heading = screen.getByText("Sessions")
+    expect(heading.className).toContain("text-meta font-medium text-(--color-text-muted)")
+    expect(heading.hasAttribute("data-idx")).toBe(false)
+    expect(screen.queryByRole("button", { name: "Sessions" })).toBeNull()
+    expect(container.querySelectorAll("[data-idx]")).toHaveLength(3)
+  })
+
+  it("leaves out a group with no match", () => {
+    render(palette({ initialQuery: "plan" }))
+    expect(screen.getAllByRole("group").map((group) => group.querySelector("p")?.textContent)).toEqual(["Sessions"])
+    expect(screen.queryByText("Files")).toBeNull()
+  })
+
+  it("browses commands alone while the query is empty", () => {
+    render(palette({ initialQuery: "" }))
+    expect(rowTexts().map((text) => text.split(" ")[0])).toEqual(["Open", "New"])
+    expect(screen.queryByText("Sessions")).toBeNull()
+    expect(screen.queryByText("Files")).toBeNull()
+    expect(screen.queryByText("Terminal output parsing")).toBeNull()
+  })
+
+  it("runs the arrow keys straight across the groups", async () => {
+    const user = userEvent.setup()
+    const opened: string[] = []
+    render(
+      palette({
+        sessions: sessionsOf([sessionRow("s1", "Terminal output parsing", { open: () => opened.push("session") })]),
+        onFileOpen: (f) => opened.push(f.path),
+      }),
+    )
+    expect(isActiveRow(0)).toBe(true)
+
+    await user.keyboard("{ArrowDown}")
+    expect(isActiveRow(1)).toBe(true)
+    expect(rowTexts()[1]).toContain("Terminal output parsing")
+    await user.keyboard("{ArrowDown}")
+    expect(isActiveRow(2)).toBe(true)
+    expect(rowTexts()[2]).toContain("terminal.ts")
+    // The last row is the end of the list, not a heading or a wrap.
+    await user.keyboard("{ArrowDown}{ArrowDown}")
+    expect(isActiveRow(2)).toBe(true)
+
+    await user.keyboard("{Enter}")
+    expect(opened).toEqual(["src/terminal.ts"])
+    await user.keyboard("{ArrowUp}")
+    expect(isActiveRow(1)).toBe(true)
+  })
+
+  it("caps the groups at 8 commands, 8 sessions and 20 files", () => {
+    const many = <T,>(n: number, make: (i: number) => T) => Array.from({ length: n }, (_, i) => make(i))
+    render(
+      <CommandPalette
+        commands={many(12, (i): Command => ({ id: `c${i}`, label: `Alpha command ${i}`, action: () => {} }))}
+        sessions={sessionsOf(many(12, (i) => sessionRow(`s${i}`, `Alpha session ${i}`)))}
+        workspaceFiles={many(30, (i) => file(`src/alpha${i}.ts`))}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+        initialQuery="alpha"
+      />,
+    )
+    expect(groupRows("Commands")).toHaveLength(8)
+    expect(groupRows("Sessions")).toHaveLength(8)
+    expect(groupRows("Files")).toHaveLength(20)
+  })
+
+  it("ranks sessions by how well the title matches, then newest first", () => {
+    render(
+      <CommandPalette
+        commands={[]}
+        sessions={sessionsOf([
+          sessionRow("a", "Fix login bug", { activityAt: "2026-01-01T00:00:00Z" }),
+          sessionRow("b", "Login page redesign", { activityAt: "2025-01-01T00:00:00Z" }),
+          sessionRow("c", "Debug the login flow", { activityAt: "2026-03-01T00:00:00Z" }),
+          sessionRow("d", "Refactor authentication", { activityAt: "2026-06-01T00:00:00Z" }),
+        ])}
+        onClose={() => {}}
+        initialQuery="login"
+      />,
+    )
+    // The title starting with the word beats the two with it later; those
+    // tie, so the newer one is first. The non-match is not listed.
+    expect(groupRows("Sessions").map((row) => row.textContent?.replace(/app · 3h$/, ""))).toEqual([
+      "Login page redesign",
+      "Debug the login flow",
+      "Fix login bug",
+    ])
+  })
+
+  it("matches sessions by their title only, not their workspace", () => {
+    render(
+      <CommandPalette
+        commands={[]}
+        sessions={sessionsOf([sessionRow("a", "Fix login bug", { description: "billing · 3h" })])}
+        onClose={() => {}}
+        initialQuery="billing"
+      />,
+    )
+    expect(screen.queryByText("Fix login bug")).toBeNull()
+    expect(screen.getByText(/No results match/)).toBeTruthy()
+  })
+
+  it("opens a session and closes when it is chosen with Enter or a click", async () => {
+    const user = userEvent.setup()
+    const open = mock(() => {})
+    const onClose = mock(() => {})
+    const { unmount } = render(
+      palette({ commands: [], workspaceFiles: [], sessions: sessionsOf([sessionRow("s1", "Terminal output parsing", { open })]), onClose }),
+    )
+
+    await user.keyboard("{Enter}")
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    unmount()
+
+    render(palette({ commands: [], workspaceFiles: [], sessions: sessionsOf([sessionRow("s1", "Terminal output parsing", { open })]), onClose }))
+    await user.click(screen.getByText("Terminal output parsing"))
+    expect(open).toHaveBeenCalledTimes(2)
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it("opens a file at the :line of the query", async () => {
+    const user = userEvent.setup()
+    let opened: unknown[] = []
+    render(palette({ initialQuery: "terminal.ts:42", onFileOpen: (f, line) => { opened = [f.path, line] } }))
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}")
+    expect(opened).toEqual(["src/terminal.ts", 42])
+  })
+
+  it("tells the owner what the Sessions group is searching, and nothing outside it", async () => {
+    const user = userEvent.setup()
+    const onSearch = mock((_query: unknown) => {})
+    render(palette({ initialQuery: "", sessions: sessionsOf([], { onSearch }) }))
+    expect(onSearch).toHaveBeenLastCalledWith("")
+
+    await user.type(screen.getByPlaceholderText("Search commands, sessions and files…"), " plan ")
+    expect(onSearch).toHaveBeenLastCalledWith("plan")
+
+    // Commands scope: Sessions is not showing.
+    await user.clear(screen.getByPlaceholderText("Search commands, sessions and files…"))
+    await user.type(screen.getByPlaceholderText("Search commands, sessions and files…"), ">plan")
+    expect(onSearch).toHaveBeenLastCalledWith("")
+  })
+
+  it("asks for no session search in the Files scope", () => {
+    const onSearch = mock((_query: unknown) => {})
+    render(<QuickOpen workspaceFiles={files} sessions={sessionsOf([], { onSearch })} initialQuery="term" onFileOpen={() => {}} onClose={() => {}} />)
+    expect(onSearch).toHaveBeenLastCalledWith("")
+  })
+})
+
+describe("CommandPalette — Find file scope (⌘P)", () => {
+  const files = [file("src/App.tsx"), file("src/main.tsx")]
+  const commands = makeCommands()
+  const scoped = (over: Partial<React.ComponentProps<typeof QuickOpen>> = {}) => (
+    <QuickOpen workspaceFiles={files} commands={commands} sessions={sessionsOf([sessionRow("s1", "Fix the App")])} onFileOpen={() => {}} onClose={() => {}} {...over} />
+  )
+  const scopeLabel = () => screen.queryByRole("button", { name: /^Files only/ })
+
+  it("opens on the files, with a Files label before the field", () => {
+    render(scoped())
+    expect(scopeLabel()?.textContent).toBe("Files")
+    expect(screen.getByPlaceholderText("Find file…")).toBeTruthy()
+    expect(rowTexts().map((text) => text.split("src/")[0])).toEqual(["App.tsx", "main.tsx"])
+    expect(screen.queryByText("New Chat")).toBeNull()
+    expect(screen.queryByText("Fix the App")).toBeNull()
+  })
+
+  it("widens to every group on Backspace in an empty query", async () => {
+    const user = userEvent.setup()
+    render(scoped())
+
+    await user.keyboard("{Backspace}")
+
+    expect(scopeLabel()).toBeNull()
+    const input = screen.getByPlaceholderText("Search commands, sessions and files…")
+    expect(document.activeElement).toBe(input)
+    // Browsing again: the commands.
+    expect(screen.getByText("New Chat")).toBeTruthy()
+    expect(screen.queryByText("App.tsx")).toBeNull()
+
+    await user.type(input, "app")
+    expect(screen.getAllByRole("group").map((group) => group.querySelector("p")?.textContent)).toEqual(["Sessions", "Files"])
+  })
+
+  it("deletes text first and widens only once the query is empty", async () => {
+    const user = userEvent.setup()
+    render(scoped())
+    const input = screen.getByPlaceholderText("Find file…") as HTMLInputElement
+    await user.type(input, "ap")
+
+    await user.keyboard("{Backspace}")
+    expect(input.value).toBe("a")
+    await user.keyboard("{Backspace}")
+    expect(input.value).toBe("")
+    expect(scopeLabel()).not.toBeNull()
+
+    await user.keyboard("{Backspace}")
+    expect(scopeLabel()).toBeNull()
+  })
+
+  it("widens on a click of the label too, for a keyboard without Backspace", async () => {
+    const user = userEvent.setup()
+    render(scoped({ initialQuery: "App" }))
+
+    await user.click(scopeLabel()!)
+
+    expect(scopeLabel()).toBeNull()
+    expect((screen.getByPlaceholderText("Search commands, sessions and files…") as HTMLInputElement).value).toBe("App")
+    expect(screen.getAllByRole("group").map((group) => group.querySelector("p")?.textContent)).toEqual(["Sessions", "Files"])
+  })
+
+  it("hints Backspace in the footer only while the query is empty", async () => {
+    const user = userEvent.setup()
+    render(scoped())
+    expect(screen.getByText("⌫")).toBeTruthy()
+    await user.type(screen.getByPlaceholderText("Find file…"), "a")
+    expect(screen.queryByText("⌫")).toBeNull()
+  })
+
+  it("does not widen a Backspace that steps back out of a page", async () => {
+    const user = userEvent.setup()
+    const withPage: Command[] = [{ id: "sw", label: "Switch Session…", action: () => {}, page: { placeholder: "Search sessions…", commands: [] } }]
+    render(scoped({ commands: withPage }))
+    await user.type(screen.getByPlaceholderText("Find file…"), ">switch")
+    await user.keyboard("{ArrowRight}")
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+
+    await user.keyboard("{Backspace}")
+
+    // Back to the list the page was opened from, still scoped to files.
+    expect(screen.getByPlaceholderText("Find file…")).toBeTruthy()
+    expect(scopeLabel()).not.toBeNull()
+  })
+
+  it("keeps Escape closing the palette rather than widening", async () => {
+    const user = userEvent.setup()
+    const onClose = mock(() => {})
+    render(scoped({ onClose }))
+    await user.keyboard("{Escape}")
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens as the full palette when there are no files to scope to", () => {
+    render(<CommandPalette scope="files" commands={commands} onClose={() => {}} />)
+    expect(scopeLabel()).toBeNull()
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+  })
+})
+
+describe("CommandPalette — > scopes to commands", () => {
+  const files = [file("src/sidebar.ts")]
+  const sessions = () => sessionsOf([sessionRow("s1", "Sidebar polish")])
+
+  it("searches commands alone, in the Files scope", async () => {
+    const user = userEvent.setup()
+    render(<QuickOpen workspaceFiles={files} commands={makeCommands()} sessions={sessions()} onFileOpen={() => {}} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Find file…"), ">side")
+
+    expect(rowTexts()).toHaveLength(1)
+    expect(screen.getByText("Toggle Sidebar")).toBeTruthy()
+    expect(screen.queryByText("sidebar.ts")).toBeNull()
+    expect(screen.queryByText("Sidebar polish")).toBeNull()
+    // Ranked commands are one list: no group headings.
+    expect(screen.queryAllByRole("group")).toHaveLength(0)
+    // The ">" is the scope now; the Files label steps aside until it is deleted.
+    expect(screen.queryByRole("button", { name: /^Files only/ })).toBeNull()
+
+    await user.clear(screen.getByPlaceholderText("Find file…"))
+    expect(screen.getByRole("button", { name: /^Files only/ })).toBeTruthy()
+  })
+
+  it("searches commands alone, in the full palette too", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={makeCommands()} sessions={sessions()} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Search commands, sessions and files…"), ">side")
+
+    expect(rowTexts()).toHaveLength(1)
+    expect(screen.getByText("Toggle Sidebar")).toBeTruthy()
+    expect(screen.queryByText("sidebar.ts")).toBeNull()
+    expect(screen.queryByText("Sidebar polish")).toBeNull()
+  })
+
+  it("runs the command on Enter and leaves files and sessions alone", async () => {
+    const user = userEvent.setup()
+    const ran = mock(() => {})
+    const opened = mock(() => {})
+    render(
+      <QuickOpen
+        workspaceFiles={files}
+        commands={[{ id: "c1", label: "Run Me", action: ran }]}
+        sessions={sessionsOf([sessionRow("s1", "Run notes", { open: opened })])}
+        onFileOpen={opened}
+        onClose={() => {}}
+      />,
+    )
+    await user.type(screen.getByPlaceholderText("Find file…"), ">run")
+    await user.keyboard("{Enter}")
+    expect(ran).toHaveBeenCalledTimes(1)
+    expect(opened).not.toHaveBeenCalled()
+  })
+})
+
+describe("CommandPalette — loading rows", () => {
+  const loadingPage = (over: Partial<NonNullable<Command["page"]>> = {}): Command[] => [
+    { id: "switch", label: "Switch Session…", action: () => {}, page: { placeholder: "Search sessions…", commands: [], loading: true, ...over } },
+  ]
+  const loading = () => screen.queryByText("Loading…")
+
+  it("shows a polite Loading… row, not 'Nothing here yet', on a page still loading", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<CommandPalette commands={loadingPage()} onClose={() => {}} />)
+    await user.click(screen.getByText("Switch Session…"))
+
+    const row = loading()!.closest("[role='status']")!
+    expect(row.getAttribute("aria-live")).toBe("polite")
+    expect(row.querySelector("svg.animate-spin")).toBeTruthy()
+    expect(screen.queryByText("Nothing here yet")).toBeNull()
+
+    // Once loaded and still empty, it says so.
+    rerender(<CommandPalette commands={loadingPage({ loading: false })} onClose={() => {}} />)
+    expect(loading()).toBeNull()
+    expect(screen.getByText("Nothing here yet")).toBeTruthy()
+  })
+
+  it("ends a page that already has rows with Loading…", async () => {
+    const user = userEvent.setup()
+    const commands = loadingPage({ commands: [{ id: "s1", label: "Fix login bug", action: () => {} }] })
+    render(<CommandPalette commands={commands} onClose={() => {}} />)
+    await user.click(screen.getByText("Switch Session…"))
+
+    const list = screen.getByText("Fix login bug").closest("button")!.parentElement!
+    expect(list.lastElementChild?.textContent).toBe("Loading…")
+    expect(screen.queryByText("Nothing here yet")).toBeNull()
+  })
+
+  it("shows Loading… instead of 'no results' while a loading page is searched", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={loadingPage()} onClose={() => {}} />)
+    await user.click(screen.getByText("Switch Session…"))
+    await user.type(screen.getByPlaceholderText("Search sessions…"), "zzz")
+    expect(loading()).toBeTruthy()
+    expect(screen.queryByText(/No results match/)).toBeNull()
+  })
+
+  it("is not a row: the arrows and Enter pass over it", async () => {
+    const user = userEvent.setup()
+    const onClose = mock(() => {})
+    const { container } = render(<CommandPalette commands={loadingPage()} onClose={onClose} />)
+    await user.click(screen.getByText("Switch Session…"))
+
+    await user.keyboard("{ArrowDown}{Enter}")
+
+    expect(container.querySelectorAll("[data-idx]")).toHaveLength(0)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("shows Loading… in the Files scope until the listing arrives", () => {
+    const { rerender } = render(<QuickOpen workspaceFiles={[]} filesLoading onFileOpen={() => {}} onClose={() => {}} />)
+    expect(loading()).toBeTruthy()
+    expect(screen.queryByText(/No files match/)).toBeNull()
+
+    rerender(<QuickOpen workspaceFiles={[file("src/App.tsx")]} onFileOpen={() => {}} onClose={() => {}} />)
+    expect(loading()).toBeNull()
+    expect(screen.getByText("App.tsx")).toBeTruthy()
+  })
+
+  it("shows Loading… under the Files and Sessions headings of a search", () => {
+    render(
+      <CommandPalette
+        commands={[]}
+        sessions={sessionsOf([], { loading: true })}
+        workspaceFiles={[]}
+        filesLoading
+        onFileOpen={() => {}}
+        onClose={() => {}}
+        initialQuery="app"
+      />,
+    )
+    for (const name of ["Sessions", "Files"]) expect(within(screen.getByRole("group", { name })).getByText("Loading…")).toBeTruthy()
+    expect(screen.queryByRole("group", { name: "Commands" })).toBeNull()
+    expect(screen.queryByText(/No results match/)).toBeNull()
+  })
+
+  it("keeps a session group's rows without a Loading… row while more are looked up", () => {
+    render(<CommandPalette commands={[]} sessions={sessionsOf([sessionRow("s1", "App polish")], { loading: true })} onClose={() => {}} initialQuery="app" />)
+    expect(screen.getByText("App polish")).toBeTruthy()
+    expect(loading()).toBeNull()
+  })
+
+  it("says 'no results' once nothing is loading and nothing matches", () => {
+    render(<CommandPalette commands={[]} sessions={sessionsOf([])} workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} initialQuery="zzz" />)
+    expect(screen.getByText(/No results match "zzz"/)).toBeTruthy()
   })
 })

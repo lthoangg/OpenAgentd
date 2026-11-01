@@ -14,6 +14,12 @@ describe('phone layout contracts', () => {
     expect(src('CommandPalette.tsx')).toMatch(/data-palette-hints="" className="hidden [^"]*md:flex"/)
   })
 
+  it('sets the palette and folder filter fields to 16px on touch phones so iOS does not zoom', () => {
+    for (const file of ['CommandPalette.tsx', 'NewSession/WorkspacePicker.tsx']) {
+      expect(src(file)).toContain('max-md:pointer-coarse:text-base')
+    }
+  })
+
   it('puts first-run provider picks in one column under 360px', () => {
     expect(src('NewSession/ModelSetupCard.tsx')).toContain('grid grid-cols-1 gap-1.5 min-[360px]:grid-cols-2')
   })

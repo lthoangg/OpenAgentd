@@ -604,9 +604,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     paletteCommands,
     quickOpenWorkspaceFiles,
     quickOpenFilesTruncated,
+    quickOpenFilesLoading,
     handleQuickOpenFileOpen,
   } = useCommandPalette({
     workspace,
+    paletteOpen,
     quickOpenOpen,
     sessionIdState,
     workspacePanelOpen: workspacePanel !== null,
@@ -1110,11 +1112,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         palettePage={palettePage}
         paletteKey={paletteKey}
         paletteCommands={paletteCommands}
+        sessionId={sessionIdState}
         quickOpenOpen={quickOpenOpen}
         quickOpenQuery={quickOpenQuery}
         quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}
         quickOpenFilesTruncated={quickOpenFilesTruncated}
-        onQuickOpenFileOpen={handleQuickOpenFileOpen}
+        quickOpenFilesLoading={quickOpenFilesLoading}
+        onQuickOpenFileOpen={workspace ? handleQuickOpenFileOpen : undefined}
         onClosePalette={closePalette}
         onCloseQuickOpen={closeQuickOpen}
       />

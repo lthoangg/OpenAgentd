@@ -167,7 +167,10 @@ describe('PaletteHost — Sessions group', () => {
     })
     const { user, input } = open()
 
-    await user.type(input, 'fix login')
+    // Pasted, so the query arrives whole: typed key by key under a loaded
+    // run, the debounce could fire on "fix" before "login" arrives.
+    await user.click(input)
+    await user.paste('fix login')
     await screen.findByText('Fix login bug')
 
     expect(searched(fetchMock)).toEqual(['login'])

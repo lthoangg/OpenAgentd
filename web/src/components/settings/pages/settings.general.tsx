@@ -1,6 +1,7 @@
 /**
  * Settings → Appearance — how OpenAgentd looks on this device: color theme,
- * text size and transcript style. Each pick applies at once. The desktop
+ * text size, transcript style and where the agent's previews open. Each
+ * pick applies at once. The desktop
  * app's notch status and pet live on Settings → Desktop.
  *
  * In the phone apps each choice opens the system's own picker (an iOS action
@@ -16,7 +17,7 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { TEXT_SIZES, TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { PREVIEW_OPENS, TEXT_SIZES, TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 function SegmentedChoice<T extends string>({ label, options, value, onChange }: {
   label: string
@@ -53,6 +54,8 @@ export function GeneralSettingsPage() {
   const setTranscriptStyle = useDisplayPrefsStore((s) => s.setTranscriptStyle)
   const textSize = useDisplayPrefsStore((s) => s.textSize)
   const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
+  const previewOpen = useDisplayPrefsStore((s) => s.previewOpen)
+  const setPreviewOpen = useDisplayPrefsStore((s) => s.setPreviewOpen)
 
   return (
     <SettingsPage
@@ -74,6 +77,12 @@ export function GeneralSettingsPage() {
           description="Reader groups each reply's thinking and tool calls into one summary row."
         >
           <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
+        </PanelRow>
+        <PanelRow
+          label="Previews"
+          description="Where a page the agent opens with its preview tool goes: straight into the Review panel, or only when you click Open on its row."
+        >
+          <SegmentedChoice label="Previews" options={PREVIEW_OPENS} value={previewOpen} onChange={setPreviewOpen} />
         </PanelRow>
       </PanelSection>
     </SettingsPage>

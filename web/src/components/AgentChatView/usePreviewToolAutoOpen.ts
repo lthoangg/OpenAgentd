@@ -1,7 +1,8 @@
 /**
  * Open the Preview tab when the agent's `preview` tool opens a page.
  *
- * Only calls that finish while this view is live count: calls already done
+ * Settings → Appearance can leave pages to the tool row's Open button
+ * (``previewOpen: 'click'``). Only calls that finish while this view is live count: calls already done
  * when the hook starts or is enabled (history, a session switch) are
  * skipped, and so are blocks without a recent client ``startedAt``. Each
  * call opens once.
@@ -11,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { PreviewTarget } from '@/api/preview'
 import type { ContentBlock } from '@/api/types'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs } from '../Preview/preview-events'
 
 /** A call older than this (client clock) is history, not a live open. */
@@ -36,6 +38,7 @@ export function selectFinishedPreviewCalls(state: StreamsState): ContentBlock[] 
 
 export function usePreviewToolAutoOpen({ enabled, onOpen }: { enabled: boolean; onOpen: (target: PreviewTarget) => void }) {
   const calls = useAgentStore(useShallow(selectFinishedPreviewCalls))
+  const opensItself = useDisplayPrefsStore((s) => s.previewOpen) === 'panel'
   const handledRef = useRef<Set<string> | null>(null)
   const onOpenRef = useRef(onOpen)
   useEffect(() => {
@@ -50,11 +53,11 @@ export function usePreviewToolAutoOpen({ enabled, onOpen }: { enabled: boolean; 
       const id = block.toolCallId as string
       if (handled.has(id)) continue
       handled.add(id)
-      if (first || !enabled) continue
+      if (first || !enabled || !opensItself) continue
       if (block.startedAt === undefined || Date.now() - block.startedAt > LIVE_WINDOW_MS) continue
       if (!isPreviewOpenSuccess(block.toolResult)) continue
       const target = previewTargetFromArgs(block.toolArgs)
       if (target) onOpenRef.current(target)
     }
-  }, [calls, enabled])
+  }, [calls, enabled, opensItself])
 }

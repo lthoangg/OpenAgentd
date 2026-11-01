@@ -7,6 +7,7 @@ import { ToolCall } from '@/components/ToolCall'
 import { OPEN_PREVIEW_EVENT, isPreviewTarget, previewTargetFromArgs } from '@/components/Preview/preview-events'
 import { selectFinishedPreviewCalls, usePreviewToolAutoOpen } from '@/components/AgentChatView/usePreviewToolAutoOpen'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import type { ContentBlock } from '@/api/types'
 
 afterEach(cleanup)
@@ -123,6 +124,19 @@ describe('usePreviewToolAutoOpen', () => {
     renderHook(() => usePreviewToolAutoOpen({ enabled: false, onOpen }))
     act(() => setBlocks([previewBlock('live')]))
     expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('leaves a page to its Open button when previews open on click (Settings → Appearance)', () => {
+    useDisplayPrefsStore.setState({ previewOpen: 'click' })
+    try {
+      setBlocks([])
+      const onOpen = mock(() => {})
+      renderHook(() => usePreviewToolAutoOpen({ enabled: true, onOpen }))
+      act(() => setBlocks([previewBlock('live')]))
+      expect(onOpen).not.toHaveBeenCalled()
+    } finally {
+      useDisplayPrefsStore.setState({ previewOpen: 'panel' })
+    }
   })
 
   it('selects finished preview calls only', () => {

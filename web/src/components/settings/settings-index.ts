@@ -29,6 +29,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'general', label: 'Theme', keywords: ['dark', 'light', 'system', 'color', 'colour', 'mode', 'appearance'] },
   { section: 'general', label: 'Text size', keywords: ['font', 'compact', 'default', 'large', 'bigger', 'smaller', 'zoom', 'type'] },
   { section: 'general', label: 'Transcript', keywords: ['reader', 'detailed', 'style', 'thinking', 'tool calls', 'chat layout'] },
+  { section: 'general', label: 'Previews', keywords: ['preview', 'open', 'review panel', 'web page', 'browser', 'auto open', 'on click'] },
   // Desktop
   { section: 'desktop', label: 'Agent status in the notch', keywords: ['notch', 'island', 'menu bar', 'macos', 'status'] },
   { section: 'desktop', label: 'Show while OpenAgentd is in front', keywords: ['notch', 'frontmost', 'island'] },

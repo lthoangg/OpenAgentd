@@ -1,5 +1,6 @@
 /**
- * Settings → Appearance: theme, text size and transcript style.
+ * Settings → Appearance: theme, text size, transcript style and where the
+ * agent's previews open.
  */
 import '@testing-library/jest-dom'
 
@@ -15,6 +16,7 @@ afterEach(() => {
   cleanup()
   localStorage.removeItem(THEME_STORAGE_KEY)
   useDisplayPrefsStore.setState({ transcriptStyle: 'detailed', textSize: 'default' })
+  useDisplayPrefsStore.setState({ previewOpen: 'panel' })
   delete document.documentElement.dataset.textSize
 })
 
@@ -73,5 +75,18 @@ describe('GeneralSettingsPage — appearance', () => {
     render(<GeneralSettingsPage />)
     expect(screen.getByRole('radiogroup', { name: 'Transcript' })).toBeTruthy()
     expect(screen.queryByRole('radiogroup', { name: 'New session composer' })).toBeNull()
+  })
+
+  it('lets the agent’s previews wait for a click instead of opening the Review panel', async () => {
+    const user = userEvent.setup()
+    render(<GeneralSettingsPage />)
+
+    const previews = screen.getByRole('radiogroup', { name: 'Previews' })
+    expect(screen.getByRole('radio', { name: 'Review panel' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(screen.getByRole('radio', { name: 'On click' }))
+
+    expect(previews.contains(screen.getByRole('radio', { name: 'On click' }))).toBe(true)
+    expect(useDisplayPrefsStore.getState().previewOpen).toBe('click')
   })
 })

@@ -10,6 +10,10 @@
  * every rem type step multiplies (13px UI text at Default, 12px at Compact).
  * ``public/theme-init.js`` applies the saved size before paint. On iOS the
  * system text size (Dynamic Type) scales the root on top of it.
+ *
+ * ``previewOpen``: where a page the agent opens with its ``preview`` tool
+ * goes. ``panel`` opens it in the Review panel as the call finishes;
+ * ``click`` leaves it to the tool row's Open button.
  */
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
@@ -18,9 +22,11 @@ export const DISPLAY_PREFS_STORAGE_KEY = 'oa.display.v1'
 
 export type TranscriptStyle = 'detailed' | 'reader'
 export type TextSize = 'compact' | 'default' | 'large'
+export type PreviewOpen = 'panel' | 'click'
 
 const DEFAULT_TRANSCRIPT_STYLE: TranscriptStyle = 'detailed'
 const DEFAULT_TEXT_SIZE: TextSize = 'default'
+const DEFAULT_PREVIEW_OPEN: PreviewOpen = 'panel'
 
 export const TRANSCRIPT_STYLES: readonly { value: TranscriptStyle; label: string }[] = [
   { value: 'detailed', label: 'Detailed' },
@@ -31,6 +37,11 @@ export const TEXT_SIZES: readonly { value: TextSize; label: string }[] = [
   { value: 'compact', label: 'Compact' },
   { value: 'default', label: 'Default' },
   { value: 'large', label: 'Large' },
+]
+
+export const PREVIEW_OPENS: readonly { value: PreviewOpen; label: string }[] = [
+  { value: 'panel', label: 'Review panel' },
+  { value: 'click', label: 'On click' },
 ]
 
 /** UI text px at each size over the 12px design size (mirrors index.css). */
@@ -53,6 +64,8 @@ interface DisplayPrefsState {
   /** Detailed ⇄ reader; reads the current style at call time. */
   toggleTranscriptStyle: () => void
   setTextSize: (size: TextSize) => void
+  previewOpen: PreviewOpen
+  setPreviewOpen: (where: PreviewOpen) => void
 }
 
 function isTranscriptStyle(value: unknown): value is TranscriptStyle {
@@ -61,6 +74,10 @@ function isTranscriptStyle(value: unknown): value is TranscriptStyle {
 
 function isTextSize(value: unknown): value is TextSize {
   return TEXT_SIZES.some((size) => size.value === value)
+}
+
+function isPreviewOpen(value: unknown): value is PreviewOpen {
+  return PREVIEW_OPENS.some((where) => where.value === value)
 }
 
 export const useDisplayPrefsStore = create<DisplayPrefsState>()(
@@ -74,22 +91,25 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
         applyTextSize(size)
         set({ textSize: size })
       },
+      previewOpen: DEFAULT_PREVIEW_OPEN,
+      setPreviewOpen: (where) => set({ previewOpen: where }),
     }),
     {
       name: DISPLAY_PREFS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ transcriptStyle, textSize }) => ({ transcriptStyle, textSize }),
+      partialize: ({ transcriptStyle, textSize, previewOpen }) => ({ transcriptStyle, textSize, previewOpen }),
       // Stored without a schema: an unknown value from another build reads
       // as the default rather than as a transcript that renders nothing.
       // Only known keys are kept, which drops v3.18.0's `newSessionComposer`.
       merge: (persisted, current) => {
-        const stored = persisted as { transcriptStyle?: unknown; textSize?: unknown } | undefined
+        const stored = persisted as { transcriptStyle?: unknown; textSize?: unknown; previewOpen?: unknown } | undefined
         const style = stored?.transcriptStyle
         const size = stored?.textSize
         return {
           ...current,
           transcriptStyle: isTranscriptStyle(style) ? style : DEFAULT_TRANSCRIPT_STYLE,
           textSize: isTextSize(size) ? size : DEFAULT_TEXT_SIZE,
+          previewOpen: isPreviewOpen(stored?.previewOpen) ? stored.previewOpen : DEFAULT_PREVIEW_OPEN,
         }
       },
     },

@@ -137,7 +137,7 @@ describe('AgentChatHeader', () => {
       const classes = field.className.split(/\s+/)
       expect(classes).toContain('bg-(--bg-input)')
       expect(classes).toContain('border')
-      expect(classes).toContain('border-(--color-border)')
+      expect(classes).toContain('border-(--color-border-subtle)')
       // Size and weight come from the header's title, not a field-specific class.
       expect(classes.some((c) => /^text-(xs|sm|base|\[)/.test(c))).toBe(false)
       expect(screen.queryByRole('button', { name: TITLE_BUTTON })).not.toBeInTheDocument()

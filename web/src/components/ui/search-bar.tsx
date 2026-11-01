@@ -91,7 +91,7 @@ function SearchBar({
           // Shape
           'flex min-h-10 items-center gap-1.5 rounded-sm border md:min-h-8',
           // Surface
-          'border-(--color-border) bg-(--bg-input)',
+          'border-(--color-border-subtle) bg-(--bg-input)',
           // Focus-within ring — matches Input primitive behaviour
           'transition-colors',
           'focus-within:border-(--focus-ring) focus-within:ring-2 focus-within:ring-(--focus-ring)/30',

@@ -831,7 +831,9 @@ hovered; `danger` is the soft error fill.
 - Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers and in the 32px view toolbar (`.touch-hit` on a positioned element, 36×36 around it; `DOCK_ACTION_BUTTON_CLASS` is 28px on touch, 36px in the tab bar). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
-**Inputs** use `bg-input` (matching the page, not the card) with a 1px border.
+**Inputs** use `bg-input` (matching the page, not the card) with a 1px
+`border-subtle` hairline, the same weight as a container's (Increase contrast
+darkens it with every other border).
 Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
 width on hover — that causes a 1px layout jump.
 

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react'
  */
 const VARIANT_CLASS = {
   row: 'rounded-xs border border-(--focus-ring) bg-(--bg-page) px-1 text-(--color-text) outline-none ring-2 ring-(--focus-ring)/25',
-  field: 'rounded-xs border border-(--color-border) bg-(--bg-input) px-1.5 text-(--color-text) outline-none focus:ring-2 focus:ring-(--focus-ring)',
+  field: 'rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-1.5 text-(--color-text) outline-none focus:ring-2 focus:ring-(--focus-ring)',
 } as const
 
 /**

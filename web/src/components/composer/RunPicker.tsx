@@ -194,7 +194,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           autoComplete="off"
           spellCheck={false}
           className={cn(
-            'w-full rounded-sm border border-(--color-border) bg-(--bg-page) px-2 text-(--color-text) placeholder-(--color-text-muted) outline-none focus-visible:border-(--focus-ring)',
+            'w-full rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2 text-(--color-text) placeholder-(--color-text-muted) outline-none focus-visible:border-(--focus-ring)',
             // 16px on touch so iOS does not zoom the page.
             touch ? 'h-11 text-base' : 'h-8 text-sm',
           )}

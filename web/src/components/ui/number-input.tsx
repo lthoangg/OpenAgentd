@@ -76,7 +76,7 @@ function NumberInputGroup({ className, ...props }: ComponentPropsWithRef<'div'>)
     <div
       data-slot="number-input-group"
       className={cn(
-        'flex h-9 w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input) text-sm text-(--color-text) transition-colors focus-within:ring-2 focus-within:ring-(--focus-ring)/30',
+        'flex h-9 w-full overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-input) text-sm text-(--color-text) transition-colors focus-within:ring-2 focus-within:ring-(--focus-ring)/30',
         className,
       )}
       {...props}
@@ -122,11 +122,11 @@ function NumberInputStepper({ className }: { className?: string }) {
   const { value, setValue, min, max, step, disabled } = useNumberInputContext()
   const base = value ?? min ?? 0
   return (
-    <div data-slot="number-input-stepper" className={cn('flex w-8 shrink-0 flex-col border-l border-(--color-border)', className)}>
+    <div data-slot="number-input-stepper" className={cn('flex w-8 shrink-0 flex-col border-l border-(--color-border-subtle)', className)}>
       <button type="button" disabled={disabled} className="flex flex-1 items-center justify-center text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-40" onClick={() => setValue(clamp(base + step, min, max))}>
         <ChevronUpIcon className="size-3" aria-hidden="true" />
       </button>
-      <div className="h-px bg-(--color-border)" />
+      <div className="h-px bg-(--color-border-subtle)" />
       <button type="button" disabled={disabled} className="flex flex-1 items-center justify-center text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-40" onClick={() => setValue(clamp(base - step, min, max))}>
         <ChevronDownIcon className="size-3" aria-hidden="true" />
       </button>

@@ -2,7 +2,7 @@
  * Input — OpenAgentd's own primitive.
  *
  * Design language lifted from the inputs in AppBackendDialog:
- *   --bg-input surface · crisp 1px border · text-xs · natural height ·
+ *   --bg-input surface · 1px border-subtle hairline · text-xs · natural height ·
  *   focus shifts border to --focus-ring with a soft /30 ring · no hover border jump
  *
  * No base-ui. Plain <input> only.
@@ -25,7 +25,7 @@ function Input({ className, ref, ...props }: InputProps) {
         // Layout
         'w-full min-w-0 rounded-sm border',
         // Surface
-        'border-(--color-border) bg-(--bg-input)',
+        'border-(--color-border-subtle) bg-(--bg-input)',
         // Typography
         'px-2.5 py-1.5 text-xs text-(--color-text)',
         // Placeholder

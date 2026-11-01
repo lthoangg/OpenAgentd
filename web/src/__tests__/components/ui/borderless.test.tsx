@@ -16,6 +16,8 @@ import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
 import { tabsListVariants } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 
 const css = readFileSync(fileURLToPath(new URL('../../../index.css', import.meta.url)), 'utf8')
 
@@ -78,5 +80,21 @@ describe('borderless controls', () => {
     expect(css).toMatch(/\.oa-menu-item:is\(\[data-highlighted\], :focus-visible, :active\):not\([^)]*\)\s*\{\s*background-color:\s*var\(--color-accent\);\s*color:\s*var\(--color-text-on-accent\);/)
     // A pointer hover lights a row only where hover exists (not after a tap).
     expect(css).toMatch(/@media \(hover: hover\)\s*\{\s*\.oa-menu-item:hover/)
+  })
+
+  it('keeps one subtle hairline on text fields', () => {
+    const { getByRole } = render(
+      <>
+        <Input aria-label="Name" />
+        <Textarea aria-label="Notes" />
+      </>,
+    )
+    for (const name of ['Name', 'Notes']) {
+      const classes = getByRole('textbox', { name }).className
+      // ``file:border-0`` clears the file-picker button's border; it draws none.
+      const drawn = borderWidths(classes).filter((c) => !c.endsWith('border-0'))
+      expect({ name, borders: drawn }).toEqual({ name, borders: ['border'] })
+      expect(classes).toContain('border-(--color-border-subtle)')
+    }
   })
 })

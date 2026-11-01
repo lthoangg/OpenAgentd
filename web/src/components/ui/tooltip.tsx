@@ -130,11 +130,15 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLSpanElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Removes the press and key listeners a pending hover armed. */
+  const disarmRef = useRef<(() => void) | null>(null)
   const openRef = useRef(false)
 
   const clearTimer = () => {
     if (timerRef.current !== null) clearTimeout(timerRef.current)
     timerRef.current = null
+    disarmRef.current?.()
+    disarmRef.current = null
   }
   const show = () => {
     clearTimer()
@@ -153,8 +157,19 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
   }
   const hover = () => {
     if (openRef.current || timerRef.current !== null) return
-    if (isWarm()) show()
-    else timerRef.current = setTimeout(show, OPEN_DELAY_MS)
+    if (isWarm()) {
+      show()
+      return
+    }
+    timerRef.current = setTimeout(show, OPEN_DELAY_MS)
+    // A press or a key during the delay cancels the hint, as native ones do:
+    // a right-click's menu is already up when the delay runs out.
+    window.addEventListener('pointerdown', clearTimer, true)
+    window.addEventListener('keydown', clearTimer, true)
+    disarmRef.current = () => {
+      window.removeEventListener('pointerdown', clearTimer, true)
+      window.removeEventListener('keydown', clearTimer, true)
+    }
   }
   const hideRef = useRef(hide)
   hideRef.current = hide
@@ -174,6 +189,7 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
   }, [open])
   useEffect(() => () => {
     clearTimeout(timerRef.current ?? undefined)
+    disarmRef.current?.()
     if (openRef.current) {
       openRef.current = false
       openCount -= 1

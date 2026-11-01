@@ -90,6 +90,25 @@ describe('tooltip timing', () => {
     expect(screen.queryByText('First hint')).toBeNull()
   })
 
+  it('does not open after a press made during the delay', async () => {
+    // A right-click's native menu is up by the time the delay runs out.
+    const { one } = renderPair()
+    fireEvent.mouseEnter(one.parentElement!)
+    await wait(100)
+    fireEvent.pointerDown(one, { button: 2 })
+    await wait(OPEN_DELAY_MS)
+    expect(screen.queryByText('First hint')).toBeNull()
+  })
+
+  it('does not open after a key pressed during the delay', async () => {
+    const { one } = renderPair()
+    fireEvent.mouseEnter(one.parentElement!)
+    await wait(100)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    await wait(OPEN_DELAY_MS)
+    expect(screen.queryByText('First hint')).toBeNull()
+  })
+
   it('opens on keyboard focus but not on the focus a click gives', async () => {
     const { one, two } = renderPair()
     fireEvent.focus(one)

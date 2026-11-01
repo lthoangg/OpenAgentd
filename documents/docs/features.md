@@ -620,7 +620,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     commit row's Pin and **⋯** appear in place of its time on hover or
     keyboard focus; the same items are always on right-click and long-press.
   - Native tooltips (`title`) render as the app's own tooltip, with the same
-    delay and look everywhere.
+    delay and look everywhere. A click, right-click or key press while one
+    is still waiting to appear cancels it, so none opens over a menu.
   - The status bar is 28px with 24px items, and header controls are 36px on
     touch screens. On a phone every primary button is 44px tall.
   - Text fields' placeholders use the muted tone, which reads at AA on every

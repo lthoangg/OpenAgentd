@@ -757,8 +757,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     (`3 new`).
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running
-    clock. A subagent's question lists its options, says the main agent
-    answers it, and offers **Open subagent session**.
+    clock. It sits under the team call that started or messaged the
+    subagent, so following it is one click. A subagent's question lists its
+    options, says the main agent answers it, and offers **Open subagent
+    session**.
   - Copy buttons on code blocks, tool arguments, commands and output are
     always visible and say "Copied"; a bare code fence gets the same header.
     Tool section headers are real buttons.
@@ -771,7 +773,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A question card always ends in **Send**, dimmed with its reason until
     something is answered; **Skip this question** is its own button. Keys
     1–9 pick an option (the next number is "Type your own answer"), Enter
-    sends, and Back / Next page through several questions.
+    sends, and Back / Next page through several questions. Double-clicking
+    an answer picks it and sends (or goes to the next question).
+  - An open tool row's arguments and output show in full, widened past the
+    text column, no longer cut at its edges.
   - A plan review is decided on its card: **Approve** (or **Approve and keep
     going (N turns)** when a goal would start, with the real count),
     **Request changes**, which opens a comment box straight away, and **Open

@@ -22,6 +22,8 @@
  * "Type your own answer"), Enter sends, and Cmd/Ctrl+Enter sends from the
  * free-text box. They apply while focus is inside the card and not in a text
  * field. Each option carries its digit as a keycap (hidden on touch).
+ * Double-clicking a single-answer option chooses it and goes on, as a list
+ * dialog does: to the next question, or Send from the last.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { flushSync } from 'react-dom'
@@ -192,6 +194,23 @@ export function QuestionCard({
     onSubmit(toAnswers(questions, draft))
   }
 
+  // A double-click on a single-answer option is that choice plus the default
+  // action, as in a list dialog: the next question, or Send from the last.
+  const chooseAndContinue = (label: string) => {
+    if (submitting) return
+    const next: QuestionDraft = {
+      ...draft,
+      selected: { ...draft.selected, [step]: [label] },
+      customActive: { ...draft.customActive, [step]: false },
+    }
+    if (!isLastStep) {
+      setDraft({ ...next, step: step + 1 })
+      return
+    }
+    setDraft(next)
+    onSubmit(toAnswers(questions, next))
+  }
+
   const caption =
     answeredCount === 0
       ? questions.length > 1
@@ -277,6 +296,7 @@ export function QuestionCard({
                   multiple={current.multiple}
                   checked={selected}
                   onToggle={() => choose(step, option.label, current)}
+                  onChooseAndContinue={current.multiple ? undefined : () => chooseAndContinue(option.label)}
                   label={option.label}
                   description={option.description}
                   recommended={option.recommended}
@@ -376,6 +396,7 @@ function OptionRow({
   multiple,
   checked,
   onToggle,
+  onChooseAndContinue,
   label,
   description,
   recommended,
@@ -385,6 +406,8 @@ function OptionRow({
   multiple: boolean
   checked: boolean
   onToggle: () => void
+  /** Double-click: choose and go on (next question, or Send). */
+  onChooseAndContinue?: () => void
   label: string
   description?: string | null
   recommended: boolean
@@ -394,6 +417,7 @@ function OptionRow({
 }) {
   return (
     <label
+      onDoubleClick={onChooseAndContinue}
       className={cn(
         'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9',
         checked

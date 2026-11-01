@@ -161,6 +161,36 @@ describe('QuestionCard', () => {
     expect(screen.queryByRole('button', { name: /^back$/i })).toBeNull()
   })
 
+  it('picks and sends in one double-click, as a list dialog takes its default button', () => {
+    const { onSubmit } = renderCard()
+
+    const bun = screen.getByRole('radio', { name: /bun/ }).closest('label')!
+    fireEvent.click(bun)
+    fireEvent.click(bun)
+    fireEvent.doubleClick(bun)
+
+    expect(onSubmit.mock.calls).toEqual([[[['bun']]]])
+  })
+
+  it('moves to the next question on a double-click before the last one, and sends from the last', () => {
+    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+
+    fireEvent.doubleClick(screen.getByRole('radio', { name: /bun/ }).closest('label')!)
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
+
+    // Several answers are allowed here: a double-click only ticks, as a click does.
+    const lint = screen.getByRole('checkbox', { name: /lint/ }).closest('label')!
+    fireEvent.doubleClick(lint)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('does not send twice from a double-click while the answer is in flight', () => {
+    const { onSubmit } = renderCard({ submitting: true })
+    fireEvent.doubleClick(screen.getByRole('radio', { name: /bun/ }).closest('label')!)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('keeps the primary action "Send" on every question, from the first to the last', () => {
     // The label never changes with the step: Send sends the answers given so
     // far, and Next is plain navigation beside it.

@@ -103,6 +103,10 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
     private fun paper(dark: Boolean): Int =
         if (dark) 0xFF15110D.toInt() else 0xFFFAF6EC.toInt()
 
+    /** The web UI's accent (Bark) for an appearance, as `--color-accent`. */
+    private fun accent(dark: Boolean): Int =
+        if (dark) 0xFFF5EBD8.toInt() else 0xFF3F3429.toInt()
+
     private fun systemIsDark(): Boolean =
         (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
@@ -270,12 +274,8 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
                 // Follow the app's own light/dark pick, as the status bar and
                 // webview do, not only the system's.
                 val dark = isDark(themePrefs.getString("preference", null))
-                val theme = if (dark) {
-                    android.R.style.Theme_DeviceDefault_Dialog_Alert
-                } else {
-                    android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
-                }
-                AlertDialog.Builder(activity, theme)
+                val theme = if (dark) R.style.OpenAgentdDialog_Dark else R.style.OpenAgentdDialog
+                val dialog = AlertDialog.Builder(activity, theme)
                     .setTitle(args.title)
                     .setSingleChoiceItems(
                         args.options.map { it.label }.toTypedArray(),
@@ -293,6 +293,9 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
                         invoke.resolve(answer)
                     }
                     .show()
+                // The button takes its colour from the theme's text colours,
+                // not only the accent, on some system versions: set it too.
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent(dark))
             } catch (ex: Exception) {
                 invoke.reject(ex.message ?: "Could not show the picker")
             }

@@ -7,7 +7,7 @@
  * opened while others are open too: on a phone it is the only way to reach
  * Git once the Plan is showing.
  */
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, type KeyboardEvent, type ReactNode } from 'react'
 import { CalendarClock, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, Target, TerminalSquare } from 'lucide-react'
 
 import type { OS } from '@/hooks/use-platform'
@@ -60,14 +60,31 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   return rows
 }
 
+/** Up/Down (wrapping), Home and End move between the launcher's rows, as in a menu. */
+function moveBetweenRows(event: KeyboardEvent<HTMLDivElement>) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'))
+  const at = rows.indexOf(document.activeElement as HTMLButtonElement)
+  if (at < 0 || rows.length === 0) return
+  const next = event.key === 'ArrowDown' ? (at + 1) % rows.length
+    : event.key === 'ArrowUp' ? (at - 1 + rows.length) % rows.length
+      : event.key === 'Home' ? 0
+        : event.key === 'End' ? rows.length - 1
+          : -1
+  if (next < 0) return
+  event.preventDefault()
+  rows[next].focus()
+}
+
 /**
  * The empty dock: every row of the "+" menu (``dockOpenItems``), views then a
  * hairline then tools, so nothing needs the menu while there is room to list it.
+ * Opened empty, the panel puts focus on its first row (see ``WorkspacePanel``).
  */
 export function DockLauncher({ items }: { items: DockOpenItem[] }) {
   return (
     <div data-dock-launcher className="flex h-full flex-col overflow-y-auto px-4 pt-[12vh] pb-4 md:items-center">
-      <div role="group" aria-labelledby="dock-launcher-title" className="flex w-full max-w-64 flex-col gap-0.5">
+      <div role="group" aria-labelledby="dock-launcher-title" onKeyDown={moveBetweenRows} className="flex w-full max-w-64 flex-col gap-0.5">
         <h2 id="dock-launcher-title" className="mb-2 px-2 text-xs font-medium text-(--color-text-2)">
           Open in Review panel
         </h2>

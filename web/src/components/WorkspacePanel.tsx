@@ -433,6 +433,26 @@ export function WorkspacePanel({
   // take it on the active tab, or the launcher's first row when empty.
   useClaimStrandedFocus(open && overlay, activeTabId, () =>
     tabButtonRefs.current.get(activeTabId) ?? document.querySelector<HTMLElement>('[data-dock-launcher] button'))
+  // Opened with nothing in it, the launcher is the choice to make: its first
+  // row takes focus, so ↓ and Return pick. Not when the panel comes back
+  // open with the window, nor when it opens on a tab (a request adds one).
+  const wasOpenRef = useRef(open)
+  const tabCountRef = useRef(visibleTabs.length)
+  tabCountRef.current = visibleTabs.length
+  useEffect(() => {
+    const opened = open && !wasOpenRef.current
+    wasOpenRef.current = open
+    if (!opened) return
+    let frame = requestAnimationFrame(() => {
+      // A second frame: a view request's tab lands in the render after this one.
+      frame = requestAnimationFrame(() => {
+        if (tabCountRef.current > 0) return
+        const row = document.querySelector<HTMLElement>('[data-dock-launcher] button')
+        if (row && !row.closest('[inert]')) row.focus()
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [open])
 
   // ── Server state ──────────────────────────────────────────────────────────
   const files = useQuery({

@@ -2163,6 +2163,10 @@ agent against it.
       the status-bar branch, `⌘⇧G` / `Ctrl+Shift+G`, **Open Git** in the
       palette, or the launcher. `⌘D` is **Toggle Review Dock**, and `⌘W` on
       the empty launcher closes the dock.
+      Since `[v3.40.0]` opening the panel with nothing in it puts focus on
+      the launcher's first row, so ↓/↑ (Home, End) and Return pick what to
+      open; a panel that comes back with its tabs, or opens on a tab, keeps
+      focus where it was.
     - New tabs open right after the active one. Drag a tab to move it, or
       use `⌥⇧←/→` (`Alt+Shift+←/→`) or **Move Left / Move Right** in its menu.
       A dragged tab lifts and follows the pointer while the others slide

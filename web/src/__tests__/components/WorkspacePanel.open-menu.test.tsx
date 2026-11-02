@@ -201,4 +201,39 @@ describe('Review dock "+" menu', () => {
     await userEvent.setup().click(within(launcher).getByRole('button', { name: 'Tasks (Ctrl+T)' }))
     expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-current')).toBe('true')
   })
+
+  it('opened with nothing in it, puts focus on the launcher, and the arrows move down its rows', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const panel = (open: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <WorkspacePanel workspace={WORKSPACE} open={open} sessionId="session-1" plan={null} />
+      </QueryClientProvider>
+    )
+    const view = render(panel(false))
+    await act(async () => { view.rerender(panel(true)) })
+    const launcher = await screen.findByRole('group', { name: 'Open in Review panel' })
+    const rows = within(launcher).getAllByRole('button')
+    // Two animation frames after opening; give a loaded machine time for them.
+    await waitFor(() => expect(document.activeElement).toBe(rows[0]), { timeout: 3000 })
+
+    const user = userEvent.setup()
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(rows[1])
+    await user.keyboard('{End}')
+    expect(document.activeElement).toBe(rows.at(-1))
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(rows[0])
+    await user.keyboard('{ArrowUp}')
+    expect(document.activeElement).toBe(rows.at(-1))
+    await user.keyboard('{Home}')
+    expect(document.activeElement).toBe(rows[0])
+  })
+
+  it('leaves focus alone when it opens on remembered tabs, or already open at start', async () => {
+    await renderPanel({ plan: null })
+    // Open from the start (restored with the window): nothing is taken.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(document.activeElement).toBe(document.body)
+  })
 })

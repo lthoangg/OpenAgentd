@@ -129,7 +129,9 @@ describe('TerminalTabButton', () => {
     const { id } = await setup(true)
     const button = screen.getByRole('button', { name: 'Terminal 1' })
     fireEvent.pointerDown(button, { pointerType: 'touch', clientX: 10, clientY: 10 })
-    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
+    // The sheet opens after the long-press delay: wait as the test above does,
+    // or a loaded full-suite run times out while the tab is still pressing.
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }, { timeout: 1500 }))
 
     const input = await screen.findByLabelText('Terminal name')
     fireEvent.change(input, { target: { value: 'Logs' } })

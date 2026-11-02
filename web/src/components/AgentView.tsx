@@ -9,9 +9,9 @@
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
- * single `AssistantTurnFooter` (Copy, Regenerate, Edit prompt, files changed,
- * Undo, and the turn's details); only the trailing turn hides its footer while
- * the turn is open. Regenerate and Undo belong to the last finished turn.
+ * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, Undo, and
+ * the turn's details); only the trailing turn hides its footer while the turn
+ * is open. Undo belongs to the last finished turn.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
@@ -697,11 +697,10 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
-  // Regenerate and Undo sit under the last finished answer and act on its
-  // prompt, as Retry does for a failure. A turn that ended on a failure keeps
-  // its way forward on the error card, so the footer does not offer it twice.
+  // Undo sits under the last finished answer and acts on its prompt, as Retry
+  // does for a failure. A turn that ended on a failure keeps its way forward
+  // on the error card, so the footer does not offer it twice.
   const turnActionsApply = canRetry && !showsLastError && endingProviderError(trailingBlocks) === undefined
-  const regenerate = turnActionsApply ? onRetry : undefined
   const undoTurn = turnActionsApply ? undoLatestTurn : undefined
   // The newest prompt keeps its Edit and Copy at rest; older ones show them on hover or focus.
   const latestTypedPromptId = useMemo(() => {
@@ -1255,8 +1254,7 @@ export function AgentView({
                      promptId={promptId}
                      onEditPrompt={handleEdit}
                      editLocked={editLocked}
-                     // Only the last finished turn can be regenerated or undone.
-                     onRegenerate={isTrailingTurn ? regenerate : undefined}
+                     // Only the last finished turn can be undone.
                      onUndo={isTrailingTurn ? undoTurn : undefined}
                    />
                  )

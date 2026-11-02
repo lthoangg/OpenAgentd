@@ -8,7 +8,7 @@
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
 import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, FileDiff, Pencil, RotateCw, Undo2, type LucideIcon } from 'lucide-react'
+import { Check, Copy, FileDiff, Pencil, Undo2, type LucideIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -36,8 +36,6 @@ export interface AssistantTurnFooterProps {
   size?: 'compact' | 'roomy'
   /** Files the turn edited; listed behind "N files changed". */
   changedFiles?: readonly ChangedFileInfo[]
-  /** Resend this turn's prompt for a new answer; offered under the last finished turn only. */
-  onRegenerate?: () => void
   /** Edit the prompt this turn answers. */
   onEditPrompt?: () => void
   /** A turn is running, so the prompt cannot be edited yet: the action shows disabled, with the reason. */
@@ -96,7 +94,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   turnBlocks,
   size = 'compact',
   changedFiles = NO_FILES,
-  onRegenerate,
   onEditPrompt,
   editLocked = false,
   onUndo,
@@ -157,7 +154,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     openTelemetry(session ? { session } : {})
   }, [])
 
-  const hasActions = Boolean(textContent || onRegenerate || onEditPrompt || onUndo || changedFiles.length > 0)
+  const hasActions = Boolean(textContent || onEditPrompt || onUndo || changedFiles.length > 0)
   if (!hasActions && !timestamp && responseDurationMs === undefined && !model) return null
 
   const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 flex-wrap items-center gap-1.5' : 'mt-0.5 flex min-w-0 flex-wrap items-center gap-1'
@@ -208,9 +205,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
               hint={copied ? 'Copied' : 'Copy response'}
               onClick={handleCopy}
             />
-          )}
-          {onRegenerate && (
-            <FooterAction icon={RotateCw} label="Regenerate" hint="Regenerate: send the prompt again and replace this answer" onClick={onRegenerate} />
           )}
           {onEditPrompt && (editLocked ? (
             <Tooltip>
@@ -354,8 +348,6 @@ export interface AssistantTurnProps {
   onEditPrompt?: (promptId: string) => void
   /** A turn is running, so a prompt cannot be edited yet. */
   editLocked?: boolean
-  /** Resend this turn's prompt; passed to the last finished turn only. */
-  onRegenerate?: () => void
   /** Undo this turn; passed to the last finished turn only. */
   onUndo?: () => void
 }
@@ -375,7 +367,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   promptId,
   onEditPrompt,
   editLocked = false,
-  onRegenerate,
   onUndo,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
@@ -449,7 +440,6 @@ export const AssistantTurn = memo(function AssistantTurn({
           turnBlocks={blocks}
           size={size}
           changedFiles={changedFiles}
-          onRegenerate={onRegenerate}
           onEditPrompt={promptId !== undefined && onEditPrompt ? editPrompt : undefined}
           editLocked={editLocked}
           onUndo={onUndo}

@@ -1,7 +1,7 @@
 /**
  * The footer of a finished turn (T2, T4, T6): its actions show at rest in
- * both transcript styles: Copy, Regenerate and Undo on the last finished
- * turn, Edit prompt on the turn's prompt, and "N files changed".
+ * both transcript styles: Copy, Undo on the last finished turn, Edit prompt
+ * on the turn's prompt, and "N files changed". There is no Regenerate.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
@@ -57,23 +57,15 @@ describe("AgentView — the footer's actions", () => {
     }
   })
 
-  it("offers Regenerate and Undo on the last finished turn only", () => {
+  it("offers Undo on the last finished turn only, and no Regenerate", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
     const [first, last] = actionGroups()
     expect(names(first)).toEqual(["Copy response", "Edit prompt"])
-    expect(names(last)).toEqual(["Copy response", "Regenerate", "Edit prompt", "Undo"])
+    expect(names(last)).toEqual(["Copy response", "Edit prompt", "Undo"])
+    expect(screen.queryByRole("button", { name: /Regenerate/ })).toBeNull()
     // Icons only: the words live in the names and the tooltips.
     for (const button of within(last).getAllByRole("button")) expect(button.textContent).toBe("")
-  })
-
-  it("regenerates through the host's Retry, which rewinds the prompt and sends it again", () => {
-    const onRetry = mock(() => {})
-    render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={onRetry} />)
-
-    fireEvent.click(screen.getByRole("button", { name: "Regenerate" }))
-
-    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
   it("undoes the last turn with the store's Undo, which puts the prompt back in the composer", () => {
@@ -84,14 +76,12 @@ describe("AgentView — the footer's actions", () => {
     expect(undoAgent).toHaveBeenCalledTimes(1)
   })
 
-  it("offers neither without a host Retry, or while a turn is open", () => {
+  it("offers no Undo without a host Retry, or while a turn is open", () => {
     const { unmount } = render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} />)
-    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
     unmount()
 
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} isTurnOpen onRetry={() => {}} />)
-    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
   })
 
@@ -104,12 +94,11 @@ describe("AgentView — the footer's actions", () => {
     }
     render(<AgentView blocks={[...TWO_TURNS, error]} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
-    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
   })
 
-  it("offers no Regenerate on a turn a subagent's report followed", () => {
+  it("offers no Undo on a turn a subagent's report followed", () => {
     const blocks: ContentBlock[] = [
       ...TWO_TURNS,
       { id: "r1", type: "user", content: "report", extra: { from_agent: "explorer#1" } },
@@ -117,7 +106,7 @@ describe("AgentView — the footer's actions", () => {
     useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
-    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
   })
 
   it("has nothing that shows only on hover", () => {

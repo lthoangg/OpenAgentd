@@ -761,8 +761,10 @@ dim the page. The media lightbox is the one darker stage.
 
 **Stacking** uses a short layer scale: 10 in-block controls, 30 drawer scrims,
 40 drawers and overlay scrims, 50 overlays and dialogs, 60 toasts and floating
-notices (and dialogs opened from them), 70 a menu inside a nested dialog, 9999
-tooltips. Write numeric layers as `z-60`, not `z-[60]`.
+notices (and dialogs opened from them), 70 menus, dropdowns and popovers, 9999
+tooltips. Menus render into `document.body` (`ContextMenu`, `Dropdown`,
+`Popover`), never inside the panel that opened them, whose own layer would cap
+theirs. Write numeric layers as `z-60`, not `z-[60]`.
 
 Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain

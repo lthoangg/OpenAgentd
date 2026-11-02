@@ -2,11 +2,12 @@
  * RunPicker — how the next message runs: model, thinking level, account.
  *
  * One surface for all three, opened from the run chip under the composer
- * (⇧⌘A, ``/model``, ``/think``, or the palette). Every pick is saved on the
+ * (⌘., ``/model``, ``/think``, or the palette). Every pick is saved on the
  * session at once; a refused save puts the previous choice back and says so.
  *
  * Keyboard: type to search models, ↑/↓ to move, Enter to pick and close;
- * with the search empty, ←/→ step the thinking level.
+ * with the search empty, ←/→ step the thinking level. Focus stays in the
+ * search while rows are clicked, so the keys keep working after a mouse pick.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Check, RotateCcw } from 'lucide-react'
@@ -76,14 +77,19 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const setRun = useAgentStore((s) => s.setSessionRunSettings)
   const pushToast = useToastStore((s) => s.push)
   const [query, setQuery] = useState('')
-  const [recent, setRecent] = useState(loadRecentModels)
+  // Read once per opening: a pick is remembered for next time, but the list
+  // does not reorder under the pointer while it is open.
+  const [recent] = useState(loadRecentModels)
   const rows = useMemo(() => rowsFor(settings, query, recent), [settings, query, recent])
   // The list opens on the model that runs, as a native pop-up menu opens on
-  // its checked item; a search, or the user moving, takes over from there.
+  // its checked item; a search, or the user moving, takes over from there. The
+  // highlight follows a model, not a position, so a list that changes (the
+  // registry arriving) keeps it on the same row.
   const runningRow = query === '' ? Math.max(0, rows.findIndex((row) => row.id === settings.model)) : 0
-  const [moved, setMoved] = useState<number | null>(null)
-  const active = moved ?? runningRow
-  const setActive = setMoved
+  const [movedTo, setMovedTo] = useState<string | null>(null)
+  const movedRow = movedTo === null ? -1 : rows.findIndex((row) => row.id === movedTo)
+  const active = movedRow >= 0 ? movedRow : runningRow
+  const setActive = (index: number | null) => setMovedTo(index === null ? null : rows[index]?.id ?? null)
   const searchRef = useRef<HTMLInputElement>(null)
   const thinkingRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -109,13 +115,20 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
 
   const pickModel = (id: string, close: boolean) => {
     selectionHapticFeedback()
-    setRecent(rememberRecentModel(id))
+    rememberRecentModel(id)
     const next = settings.models.find((m) => m.id === id)
     const levels = next?.thinking_levels.filter((l) => l !== '__none__') ?? []
-    const keepLevel = settings.thinkingLevel && levels.includes(settings.thinkingLevel) ? settings.thinkingLevel : null
+    // While the list is the placeholder its rows carry no levels, so the
+    // level stays as it is rather than being dropped.
+    const supported = settings.modelsLoading || levels.includes(settings.thinkingLevel ?? '')
+    let keepLevel = settings.thinkingLevel && supported ? settings.thinkingLevel : null
+    const toAgentModel = id === settings.agentModel
+    // Back on the agent's model its own level applies again: pinning the same
+    // value would only mark the session as changed.
+    if (toAgentModel && keepLevel === settings.agentThinkingLevel) keepLevel = null
     const sameProvider = splitModelId(id).provider === settings.provider
     void save({
-      model: id === settings.agentModel ? null : id,
+      model: toAgentModel ? null : id,
       thinkingLevel: keepLevel,
       // An account belongs to one provider; another provider starts on Auto.
       ...(sameProvider ? {} : { credentialId: null }),
@@ -235,6 +248,8 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 aria-selected={selected}
                 data-highlighted={index === active ? '' : undefined}
                 onMouseMove={() => { if (active !== index) setActive(index) }}
+                // Keep focus in the search: WebKit would drop it on the body.
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => pickModel(row.id, false)}
                 tabIndex={-1}
                 className={rowClass}

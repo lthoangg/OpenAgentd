@@ -12,7 +12,7 @@ import { useProvidersQuery } from '@/queries'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { accountChoices, effectiveRun, splitModelId } from '@/lib/run-settings'
-import { supportedThinkingLevels } from '@/lib/thinking-levels'
+import { pickableThinkingLevels } from '@/lib/thinking-levels'
 import { useAgentStore } from '@/stores/useAgentStore'
 
 export interface RunSettings {
@@ -26,10 +26,11 @@ export interface RunSettings {
   thinkingLevel: string | null
   /** The session overrides any of model, level or account. */
   customized: boolean
-  /** Levels the model supports, lowest first. */
+  /** Levels to pick from, lowest first; empty while they are not known or there is no choice. */
   thinkingLevels: string[]
   /** Chat models the picker lists (no image or video generators). */
   models: ModelCatalogEntry[]
+  /** The list is still the placeholder built from the providers list: its rows carry no levels. */
   modelsLoading: boolean
   providerInfo: ProviderInfo | undefined
   /** The accounts to choose from, or `null` when the provider has one. */
@@ -49,6 +50,7 @@ export function useRunSettings(workspace: string | null): RunSettings {
   const agent = agents.data?.agents?.[0]
   const registry = useRegistryQuery()
   const providers = useProvidersQuery()
+  const modelsLoading = registry.isLoading || registry.isPlaceholderData
 
   return useMemo(() => {
     const agentModel = agent?.model ?? null
@@ -70,13 +72,13 @@ export function useRunSettings(workspace: string | null): RunSettings {
       provider,
       thinkingLevel: run.thinkingLevel,
       customized: run.overridden || Boolean(session.thinkingLevel) || Boolean(session.credentialId),
-      thinkingLevels: supportedThinkingLevels(entry),
+      thinkingLevels: pickableThinkingLevels(entry, !modelsLoading),
       models,
-      modelsLoading: registry.isLoading,
+      modelsLoading,
       providerInfo,
       accounts,
       credentialId: session.credentialId,
       pinnedAccount,
     }
-  }, [agent, session, registry.data, registry.isLoading, providers.data])
+  }, [agent, session, registry.data, modelsLoading, providers.data])
 }

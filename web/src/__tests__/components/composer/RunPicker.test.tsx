@@ -196,4 +196,62 @@ describe('RunPicker', () => {
     expect(screen.getAllByRole('option')[0].textContent).toContain('openai:gpt-5')
     expect(screen.getByText('Recent')).toBeTruthy()
   })
+
+  it('keeps the list in place when a model is clicked: the row under the pointer stays the one picked', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    const before = screen.getAllByRole('option').map((o) => o.textContent)
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(before)
+    expect(screen.queryByText('Recent')).toBeNull()
+    // Remembered for the next time the picker opens.
+    expect(JSON.parse(window.localStorage.getItem('oa.recentModels.v1') ?? '[]')).toEqual(['anthropic:opus'])
+  })
+
+  it('keeps the keyboard in the search after a mouse pick, so Enter and the arrows still work', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    // A row takes no focus on press (WebKit would drop it on the body).
+    expect(fireEvent.mouseDown(screen.getByRole('option', { name: /opus/ }))).toBe(false)
+  })
+
+  it('picks the highlighted row with Enter after a mouse pick, not whatever moved into its place', () => {
+    const onDone = mock(() => {})
+    wrap(<RunPicker settings={settings()} focus="model" onDone={onDone} />)
+    const gpt = screen.getByRole('option', { name: /gpt-5/ })
+    fireEvent.mouseMove(gpt)
+    fireEvent.click(gpt)
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search models' }), { key: 'Enter' })
+    expect(lastPatch(1).model).toBe('openai:gpt-5')
+  })
+
+  it('keeps the highlight on the same model when the list changes under it', () => {
+    const { rerender } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    fireEvent.mouseMove(screen.getByRole('option', { name: /opus/ }))
+    const client = new QueryClient()
+    rerender(
+      <QueryClientProvider client={client}>
+        <RunPicker settings={settings({ models: [model('openai:gpt-5'), model('anthropic:sonnet'), model('anthropic:opus')] })} focus="model" onDone={() => {}} />
+      </QueryClientProvider>,
+    )
+    const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
+    expect(highlighted.map((o) => o.textContent)).toEqual(['anthropic:opus'])
+  })
+
+  it('keeps the level while the model list is still loading and the new model\'s levels are unknown', () => {
+    const loading = settings({ modelsLoading: true, thinkingLevels: [], models: [model('anthropic:sonnet', []), model('anthropic:opus', [])] })
+    wrap(<RunPicker settings={loading} focus="model" onDone={() => {}} />)
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    expect(setRun).toHaveBeenCalledWith({ model: 'anthropic:opus', thinkingLevel: 'medium' })
+  })
+
+  it('does not pin the agent\'s own level when going back to the agent\'s model', () => {
+    wrap(<RunPicker settings={settings({ model: 'anthropic:opus', customized: true })} focus="model" onDone={() => {}} />)
+    fireEvent.click(screen.getByRole('option', { name: /sonnet/ }))
+    expect(setRun).toHaveBeenCalledWith({ model: null, thinkingLevel: null })
+  })
+
+  it('shows no thinking control when the model has no levels to pick', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevels: [] })} focus="model" onDone={() => {}} />)
+    expect(screen.queryByRole('radiogroup', { name: 'Thinking level' })).toBeNull()
+    expect(screen.queryByText(/model's own default/)).toBeNull()
+  })
 })

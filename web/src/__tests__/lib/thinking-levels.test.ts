@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { ModelCatalogEntry } from '@/api/types'
-import { supportedThinkingLevels } from '@/lib/thinking-levels'
+import { pickableThinkingLevels } from '@/lib/thinking-levels'
 
 function model(id: string, thinking_levels: string[]): ModelCatalogEntry {
   const [provider, name] = id.split(':')
@@ -9,13 +9,23 @@ function model(id: string, thinking_levels: string[]): ModelCatalogEntry {
 
 const models = [model('openai:gpt-5', ['low', 'high']), model('zai:glm-4.6', [])]
 
-describe('supportedThinkingLevels', () => {
-  it('lists declared levels without the internal __none__ marker', () => {
-    expect(supportedThinkingLevels(model('a:b', ['__none__', 'low']))).toEqual(['low'])
+describe('pickableThinkingLevels', () => {
+  it('offers the levels a known model declares', () => {
+    expect(pickableThinkingLevels(models[0], true)).toEqual(['low', 'high'])
+    expect(pickableThinkingLevels(model('a:b', ['__none__', 'low']), true)).toEqual(['low'])
   })
 
-  it('falls back to none when a model declares nothing', () => {
-    expect(supportedThinkingLevels(models[1])).toEqual(['none'])
-    expect(supportedThinkingLevels(undefined)).toEqual(['none'])
+  it('offers nothing while the model list is a placeholder: its levels are not known yet', () => {
+    // Placeholder rows (built from the providers list) carry no levels; a lone
+    // "Off" would save `none` over the level the session has.
+    expect(pickableThinkingLevels(model('openai:gpt-5', []), false)).toEqual([])
+    expect(pickableThinkingLevels(models[0], false)).toEqual([])
+  })
+
+  it('offers nothing for a model with no levels, or one the registry does not list', () => {
+    expect(pickableThinkingLevels(models[1], true)).toEqual([])
+    expect(pickableThinkingLevels(undefined, true)).toEqual([])
+    expect(pickableThinkingLevels(model('a:b', ['__none__']), true)).toEqual([])
+    expect(pickableThinkingLevels(model('a:b', ['none']), true)).toEqual([])
   })
 })

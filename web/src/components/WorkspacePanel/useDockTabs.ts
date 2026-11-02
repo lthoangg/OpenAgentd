@@ -65,6 +65,7 @@ import {
   paneOf,
   paneOrder,
   paneTabs,
+  planTabToward,
   resizeSplit as resizeSplitState,
   showTerminals,
   splitPane as splitPaneState,
@@ -439,6 +440,21 @@ export function useDockTabs({
   }, {
     enabled: open && (activeTab !== undefined || shownPanes.length > 1 || onCloseDock !== undefined),
   })
+  // ⌃⌥+arrow (Ctrl+Alt elsewhere): the focused tab goes to that
+  // side, into a new pane or, as its pane's only tab, into the pane there.
+  // From the composer and a terminal too, like ⌃`.
+  const sendTabToward = (side: SplitSide) => {
+    const plan = planTabToward(state, focused, activeTab?.id, side)
+    if (plan.kind === 'move') setState((current) => moveTab(current, plan.tabId, plan.target))
+    else splitPane(plan.pane, side, plan.tabId)
+  }
+  const towardOptions = { enabled: open && !mobile, allowInEditable: true }
+  useShortcuts([
+    appShortcut('splitTabLeft', () => { sendTabToward('left') }, towardOptions),
+    appShortcut('splitTabRight', () => { sendTabToward('right') }, towardOptions),
+    appShortcut('splitTabUp', () => { sendTabToward('up') }, towardOptions),
+    appShortcut('splitTabDown', () => { sendTabToward('down') }, towardOptions),
+  ])
   const confirmCloseTab = () => {
     if (confirmCloseIds) closeTabs(confirmCloseIds)
     setConfirmCloseIds(null)

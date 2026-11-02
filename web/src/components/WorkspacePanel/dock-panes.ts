@@ -126,6 +126,50 @@ export function canSplitOff(state: DockPanes, tabId: string, target: PaneId | nu
   return from !== target || state.panes[from].tabs.length > 1
 }
 
+/** The pane on screen beside ``from`` on ``side``: the one sharing most of that edge. */
+export function paneBeside(state: DockPanes, from: PaneId, side: SplitSide): PaneId | null {
+  const { panes } = layoutBoxes(state.layout, new Set(visiblePanes(state)))
+  const box = panes.get(from)
+  if (!box) return null
+  const EPS = 1e-6
+  let best: PaneId | null = null
+  let bestOverlap = EPS
+  for (const [id, other] of panes) {
+    if (id === from) continue
+    const touches = side === 'right' ? Math.abs(other.left - (box.left + box.width)) < EPS
+      : side === 'left' ? Math.abs(other.left + other.width - box.left) < EPS
+        : side === 'down' ? Math.abs(other.top - (box.top + box.height)) < EPS
+          : Math.abs(other.top + other.height - box.top) < EPS
+    if (!touches) continue
+    const overlap = side === 'left' || side === 'right'
+      ? Math.min(box.top + box.height, other.top + other.height) - Math.max(box.top, other.top)
+      : Math.min(box.left + box.width, other.left + other.width) - Math.max(box.left, other.left)
+    if (overlap > bestOverlap) {
+      best = id
+      bestOverlap = overlap
+    }
+  }
+  return best
+}
+
+/** What ⌃⌥+arrow does with ``pane``'s active tab ``tabId``. */
+export type TabTowardPlan =
+  | { kind: 'split'; pane: PaneId; tabId?: string }
+  | { kind: 'move'; tabId: string; target: PaneId }
+
+/**
+ * ⌃⌥+arrow: the tab goes to ``side``. With other tabs beside it
+ * the pane splits there with the tab moved in; a pane's only tab joins the
+ * pane on that side instead (nothing is cloned, so it cannot split off);
+ * with neither, or no tab, an empty pane opens on that side, as ⌘\ does.
+ */
+export function planTabToward(state: DockPanes, pane: PaneId, tabId: string | undefined, side: SplitSide): TabTowardPlan {
+  if (tabId && canSplitOff(state, tabId, pane)) return { kind: 'split', pane, tabId }
+  const beside = tabId ? paneBeside(state, pane, side) : null
+  if (tabId && beside) return { kind: 'move', tabId, target: beside }
+  return { kind: 'split', pane }
+}
+
 // ── Layout tree ─────────────────────────────────────────────────────────────
 
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)

@@ -64,6 +64,14 @@ describe('APP_SHORTCUTS', () => {
     expect(backquote).toEqual([APP_SHORTCUTS.toggleTerminal])
   })
 
+  it('sends the focused tab to a side with Control+Option/Alt and an arrow', () => {
+    expect(chordOf(APP_SHORTCUTS.splitTabRight)).toEqual({ key: 'ArrowRight', ctrl: true, shift: false, alt: true })
+    expect(shortcutLabel(APP_SHORTCUTS.splitTabLeft, 'macos')).toBe('⌃⌥←')
+    expect(shortcutLabel(APP_SHORTCUTS.splitTabDown, 'macos')).toBe('⌃⌥↓')
+    expect(shortcutLabel(APP_SHORTCUTS.splitTabUp, 'windows')).toBe('Ctrl+Alt+↑')
+    expect(shortcutLabel(APP_SHORTCUTS.splitTabRight, 'linux')).toBe('Ctrl+Alt+→')
+  })
+
   it('has the layout shortcuts of the View menu', () => {
     expect(shortcutLabel(APP_SHORTCUTS.splitDock, 'macos')).toBe('⌘\\')
     expect(shortcutLabel(APP_SHORTCUTS.splitDockDown, 'macos')).toBe('⌘⇧\\')

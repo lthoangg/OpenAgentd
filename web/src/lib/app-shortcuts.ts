@@ -35,6 +35,13 @@ export const APP_SHORTCUTS = {
   // room; closing a pane's last tab joins it back.
   splitDock: { key: '\\', code: 'Backslash' },
   splitDockDown: { key: '\\', code: 'Backslash', shift: true },
+  // Send the focused tab left, right, up or down (⌃⌥+arrow, Ctrl+Alt
+  // elsewhere): a new pane on that side with the tab in it, or
+  // the pane there when it is its pane's only tab.
+  splitTabLeft: { key: 'ArrowLeft', ctrl: true, alt: true },
+  splitTabRight: { key: 'ArrowRight', ctrl: true, alt: true },
+  splitTabUp: { key: 'ArrowUp', ctrl: true, alt: true },
+  splitTabDown: { key: 'ArrowDown', ctrl: true, alt: true },
   // Hide everything but the chat; again to put the layout back.
   focusMode: { key: 'F', shift: true },
   // Find in this session's transcript (only while focus is in the chat).

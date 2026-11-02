@@ -191,6 +191,31 @@ describe('splitting the Review panel', () => {
     expect(panes()).toHaveLength(0)
     expect(screen.getByRole('button', { name: main.name })).toBeTruthy()
   })
+
+  it('sends the focused tab to a side with Ctrl+Alt+arrow, and back into the pane there', async () => {
+    await renderPanel({ viewRequest: GIT, selectedFilePath: main.path, selectedFileOpenKey: 1 })
+    await waitFor(() => expect(screen.getByRole('button', { name: main.name })).toBeTruthy())
+    const press = (key: string) => act(async () => {
+      fireEvent.keyDown(window, { key, ctrlKey: true, altKey: true })
+    })
+
+    // The file is the active tab, beside Git: it splits off to the right.
+    await press('ArrowRight')
+    expect(panes()).toHaveLength(2)
+    expect(paneOf(main.name)).toBe(pane(2))
+    expect(paneOf('Git')).toBe(pane(1))
+
+    // Alone in its pane now, it goes back into the pane on its left.
+    await press('ArrowLeft')
+    expect(panes()).toHaveLength(0)
+    expect(screen.getByRole('button', { name: main.name }).getAttribute('aria-current')).toBe('true')
+
+    // Down splits it off under Git.
+    await press('ArrowDown')
+    expect(panes()).toHaveLength(2)
+    expect(screen.getByRole('separator', { name: 'Resize panes' }).getAttribute('aria-orientation')).toBe('horizontal')
+    expect(paneOf(main.name)).toBe(pane(2))
+  })
 })
 
 describe('terminal panes', () => {

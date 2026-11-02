@@ -160,7 +160,7 @@ function tabPath(tab: DockTab, workspace: string): string | null {
  * The tab-strip items every tab's menu shares (terminal tabs add theirs
  * first). ``dismiss`` closes the menu before the action runs.
  */
-export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit }: {
+export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit, os }: {
   tab: DockTab
   tabs: DockTab[]
   workspace: string
@@ -176,13 +176,15 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   onMoveToNextPane?: (id: string) => void
   canMoveToNextPane?: (id: string) => boolean
   onRevealInGit?: (path: string) => void
+  /** Spells the keys beside Split Right and Split Down (⌃⌥→, ⌃⌥↓). */
+  os?: OS
 }): ReactNode {
   const index = tabs.findIndex((item) => item.id === tab.id)
   const hasOthers = tabs.length > 1
   const hasRight = index >= 0 && index < tabs.length - 1
   const path = tabPath(tab, workspace)
   const changedPath = tab.type === 'diff' ? tab.path : tab.type === 'file' ? tab.file.path : null
-  const item = (label: string, run: () => void, icon?: ReactNode, disabled = false) => (
+  const item = (label: string, run: () => void, icon?: ReactNode, disabled = false, shortcut?: string) => (
     <button
       type="button"
       role="menuitem"
@@ -191,17 +193,21 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
       onClick={() => { dismiss(); run() }}
     >
       {icon ?? <span className="w-3" aria-hidden="true" />}
-      {label}
+      <span className="flex-1">{label}</span>
+      {shortcut && (
+        <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{shortcut}</kbd>
+      )}
     </button>
   )
+  const splitKey = (name: 'splitTabRight' | 'splitTabDown') => (os ? shortcutLabel(APP_SHORTCUTS[name], os) : undefined)
   return (
     <>
       {onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />)}
       {onCloseOthers && item('Close Others', () => onCloseOthers(tab.id), undefined, !hasOthers)}
       {onCloseToRight && item('Close to the Right', () => onCloseToRight(tab.id), undefined, !hasRight)}
       {preview && onKeep && item('Keep Open', () => onKeep(tab.id))}
-      {onSplit && item('Split Right', () => onSplit(tab.id, 'right'), undefined, !(canSplit?.(tab.id) ?? true))}
-      {onSplit && item('Split Down', () => onSplit(tab.id, 'down'), undefined, !(canSplit?.(tab.id) ?? true))}
+      {onSplit && item('Split Right', () => onSplit(tab.id, 'right'), undefined, !(canSplit?.(tab.id) ?? true), splitKey('splitTabRight'))}
+      {onSplit && item('Split Down', () => onSplit(tab.id, 'down'), undefined, !(canSplit?.(tab.id) ?? true), splitKey('splitTabDown'))}
       {onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to Next Pane', () => onMoveToNextPane(tab.id))}
       {onMove && item('Move Left', () => onMove(tab.id, index - 1), undefined, index <= 0)}
       {onMove && item('Move Right', () => onMove(tab.id, index + 1), undefined, !hasRight)}
@@ -265,6 +271,7 @@ export function DockTabBar({
     onMoveToNextPane,
     canMoveToNextPane,
     onRevealInGit,
+    os,
   }
   const sharedMenu = (tab: DockTab, dismiss: () => void) => (
     <DockTabMenuItems

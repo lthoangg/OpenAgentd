@@ -42,7 +42,9 @@ export function formatShortcut(key: string, os: OS, opts: { shift?: boolean; alt
   const alt = opts.alt ?? false
   const glyph = KEY_GLYPHS[key] ?? key
   if (isPrimaryModifierOS(os)) {
-    return `${alt ? '⌥' : ''}${opts.ctrl ? '⌃' : '⌘'}${shift ? '⇧' : ''}${glyph}`
+    // Control leads, as in macOS menus (⌃⌥→); Option leads ⌘ (⌥⌘↑).
+    if (opts.ctrl) return `⌃${alt ? '⌥' : ''}${shift ? '⇧' : ''}${glyph}`
+    return `${alt ? '⌥' : ''}⌘${shift ? '⇧' : ''}${glyph}`
   }
   return `Ctrl+${alt ? 'Alt+' : ''}${shift ? 'Shift+' : ''}${glyph}`
 }

@@ -24,8 +24,10 @@ import {
   normalizeLayout,
   openTab,
   paneOf,
+  paneBeside,
   paneOrder,
   paneTabs,
+  planTabToward,
   resizeSplit,
   restoreDockPanes,
   serializeDockPanes,
@@ -170,6 +172,41 @@ describe('moving tabs between panes', () => {
     expect(nextPaneFor(state, 'diff:a.ts')).toBe('p1')
     state = closeTabs(state, ['diff:a.ts'])
     expect(nextPaneFor(state, 'review')).toBeNull()
+  })
+})
+
+describe('⌃⌥+arrow: the focused tab goes left, right, up or down', () => {
+  it('names the pane on screen beside another, on each side', () => {
+    // p1 | p2 over p3
+    let state = splitPane(withTabs(REVIEW_TAB), 'p1', 'right')
+    state = splitPane(state, 'p2', 'down')
+    expect(paneBeside(state, 'p1', 'right')).toBe('p2')
+    expect(paneBeside(state, 'p2', 'left')).toBe('p1')
+    expect(paneBeside(state, 'p3', 'left')).toBe('p1')
+    expect(paneBeside(state, 'p2', 'down')).toBe('p3')
+    expect(paneBeside(state, 'p3', 'up')).toBe('p2')
+    expect(paneBeside(state, 'p1', 'left')).toBeNull()
+    expect(paneBeside(state, 'p1', 'up')).toBeNull()
+  })
+
+  it('splits the pane with the tab moved in when it has other tabs', () => {
+    const state = withTabs(REVIEW_TAB, diff('a.ts'))
+    expect(state.panes.p1.active).toBe('diff:a.ts')
+    expect(planTabToward(state, 'p1', 'diff:a.ts', 'right')).toEqual({ kind: 'split', pane: 'p1', tabId: 'diff:a.ts' })
+    expect(planTabToward(state, 'p1', 'diff:a.ts', 'up')).toEqual({ kind: 'split', pane: 'p1', tabId: 'diff:a.ts' })
+  })
+
+  it('moves a pane\'s only tab into the pane on that side', () => {
+    const state = splitPane(withTabs(REVIEW_TAB, diff('a.ts')), 'p1', 'right', 'diff:a.ts')
+    expect(planTabToward(state, 'p2', 'diff:a.ts', 'left')).toEqual({ kind: 'move', tabId: 'diff:a.ts', target: 'p1' })
+  })
+
+  it('opens an empty pane on that side when there is no tab to split off and no pane there', () => {
+    const state = splitPane(withTabs(REVIEW_TAB, diff('a.ts')), 'p1', 'right', 'diff:a.ts')
+    expect(planTabToward(state, 'p2', 'diff:a.ts', 'right')).toEqual({ kind: 'split', pane: 'p2' })
+    // An empty pane (its launcher) splits too.
+    const empty = splitPane(withTabs(REVIEW_TAB), 'p1', 'down')
+    expect(planTabToward(empty, 'p2', undefined, 'down')).toEqual({ kind: 'split', pane: 'p2' })
   })
 })
 

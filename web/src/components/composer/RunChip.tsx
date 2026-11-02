@@ -15,11 +15,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { lazySurface } from '@/lib/lazy-surface'
 import { splitModelId, thinkingLevelLabel } from '@/lib/run-settings'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
-import { RunPicker } from './RunPicker'
 import type { RunSettings } from './useRunSettings'
+
+// The picker (search, model lists, accounts) is not on the first screen: it
+// loads while the app is idle after it starts, or on first open.
+const RunPicker = lazySurface(() => import('./RunPicker'), 'RunPicker')
 
 export function RunChip({ settings, disabled = false }: { settings: RunSettings; disabled?: boolean }) {
   const isMobile = useIsMobile()

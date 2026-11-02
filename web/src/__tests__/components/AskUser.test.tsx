@@ -281,12 +281,25 @@ describe('AskUser — resolved state', () => {
     expect(container.textContent).not.toContain('Continue with')
   })
 
-  it('says it is waiting when a cold load lands mid-question', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  it('says it is waiting while the turn runs and the question has not opened here yet', () => {
+    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, isAgentWorking: true })
 
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/waiting for an answer/i)).toBeInTheDocument()
+    expect(screen.getByText('Needs your input')).toBeInTheDocument()
+    useAgentStore.setState({ isAgentWorking: false })
+  })
+
+  it('does not wait forever: with the turn over and no question open, it says no answer was recorded', () => {
+    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, isAgentWorking: false })
+
+    render(<AskUser toolCallId="call-1" args={JSON.stringify({ questions: QUESTION.questions })} result={PLACEHOLDER} />)
+
+    expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
+    expect(screen.getByText('No answer recorded')).toBeInTheDocument()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.getByText('Your input')).toBeInTheDocument()
   })
 
   it('shows a dismissal recorded on the server', () => {
@@ -610,12 +623,13 @@ describe('AskUser — card label', () => {
     expect(screen.queryByText(/needs your input/i)).toBeNull()
   })
 
-  it('still asks for input when a cold load lands mid-question', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  it('still asks for input while the turn runs and the question has not opened here yet', () => {
+    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, isAgentWorking: true })
 
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/needs your input/i)).toBeInTheDocument()
+    useAgentStore.setState({ isAgentWorking: false })
   })
 })
 

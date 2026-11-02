@@ -117,6 +117,22 @@ describe('loadSession — pending question hydration', () => {
     expect(useAgentStore.getState().agentStreams.lead.status).toBe('idle')
   })
 
+  it('records a card the server already closed as resolved elsewhere, so it does not go back to waiting', async () => {
+    await useAgentStore.getState().loadSession('lead-sess')
+    expect(useAgentStore.getState().pendingQuestion?.id).toBe('q-1')
+    // Closed from another window, or by a stop this client never heard about.
+    mockSessionHistory.mockImplementation(() =>
+      Promise.resolve(historyWithQuestion({ pending_question: null })),
+    )
+
+    await useAgentStore.getState().loadSession('lead-sess')
+
+    const state = useAgentStore.getState()
+    expect(state.pendingQuestion).toBeNull()
+    expect(state.resolvedQuestions['call-1']).toMatchObject({ answers: null, reason: 'resolved_elsewhere' })
+    expect(state.resolvedQuestions['call-1'].questions[0].question).toBe('Which package manager?')
+  })
+
   /**
    * Reproduces the reported sequence: ask -> daemon restart -> answer. The
    * restart kills the SSE connection, so the reconnecting client misses the

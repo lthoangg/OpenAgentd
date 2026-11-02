@@ -8,7 +8,7 @@ import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
 import { sentFrom } from '@/utils/workspace-messages'
 import { createDefaultAgentStream } from './defaults'
-import { adoptLiveBlockIds, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
+import { adoptLiveBlockIds, applyQuestionResolution, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
@@ -638,7 +638,15 @@ async function loadSessionImpl(
       const liveQuestionChanged = (draft.pendingQuestion?.id ?? null) !== questionIdAtFetch
       const restoredQuestion = liveQuestionChanged ? draft.pendingQuestion : historyQuestion
       const awaitingAnswer = restoredQuestion !== null
-      if (!liveQuestionChanged) draft.pendingQuestion = historyQuestion
+      if (!liveQuestionChanged) {
+        // The server closed the card this client showed (another window, a
+        // stop or dismissal whose event it missed): record that, or the card
+        // would fall back to its persisted placeholder and "wait" for good.
+        if (draft.pendingQuestion && draft.pendingQuestion.id !== historyQuestion?.id) {
+          applyQuestionResolution(draft, draft.pendingQuestion.id, null, 'resolved_elsewhere')
+        }
+        draft.pendingQuestion = historyQuestion
+      }
       // A review restored here may be for a plan revision this client never
       // saw written.
       if (restoredQuestion?.kind === 'plan_review') {

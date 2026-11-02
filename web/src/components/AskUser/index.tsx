@@ -69,13 +69,14 @@ export function useShowsConfirmationCard(enabled: boolean, toolCallId: string | 
 export function useQuestionAwaitsUser(): (block: ContentBlock) => boolean {
   const openCallId = useAgentStore(selectOpenQuestionCallId)
   const resolvedQuestions = useAgentStore((state) => state.resolvedQuestions)
+  const turnLive = useAgentStore((state) => state.isAgentWorking)
   return useCallback(
     (block: ContentBlock) => {
       const id = block.toolCallId
       if (openCallId !== null && id === openCallId) return true
-      return !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
+      return turnLive && !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
     },
-    [openCallId, resolvedQuestions],
+    [openCallId, resolvedQuestions, turnLive],
   )
 }
 
@@ -112,6 +113,7 @@ const REASON_LABEL: Record<string, string> = {
   merged: 'Merged into the other question card',
   failed: 'Not asked — the question failed to send, so the agent continued without it',
   interrupted: 'Not asked — interrupted before the question went out',
+  unrecorded: 'No answer recorded',
 }
 
 export function AskUser({
@@ -130,12 +132,13 @@ export function AskUser({
   const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
+  const turnLive = useAgentStore((state) => state.isAgentWorking)
 
   const isOpen = pendingQuestion !== null && openCallId === toolCallId
   const { submitting, error, answer, dismiss } = useQuestionResolver(isOpen ? pendingQuestion : null)
 
   if (!isOpen) {
-    const { waiting, body } = describeResolution(resolved, result, args)
+    const { waiting, body } = describeResolution(resolved, result, args, turnLive)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
 
@@ -184,6 +187,8 @@ function describeResolution(
   resolved: ResolvedQuestion | undefined,
   result: string | undefined,
   args: string | undefined,
+  /** The session's turn is still running, so the question may yet open here. */
+  turnLive: boolean,
 ): { waiting: boolean; body: ReactNode } {
   if (resolved) {
     if (resolved.answers === null) {
@@ -205,11 +210,14 @@ function describeResolution(
     }
   }
 
-  // A cold load mid-wait: the row still holds the placeholder, and the store had
-  // no open question for this call (another device answered, or this client
-  // reconnected after the fact). Still unanswered, so the label stays "waiting".
+  // The row still holds the placeholder (or nothing) and no question is open
+  // here. While the turn runs the question may still open (its event follows
+  // the call), so it waits. Once the turn is over, an open question would be
+  // in the store (a load restores it from the server), so this one closed in
+  // a way that left no outcome here: say so instead of waiting for good.
   if (isUnsettledResult(result)) {
-    return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
+    if (turnLive) return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
+    return { waiting: false, body: <ClosedQuestions reason="unrecorded" questions={parseAskedQuestions(args)} /> }
   }
 
   const text = (result ?? '').trim()

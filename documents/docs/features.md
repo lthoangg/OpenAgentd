@@ -997,6 +997,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     answering, a **Can't reach** row offers Retry.
   - The pet keeps a question until it is answered: × folds it behind the
     badge, and its menu lists questions first.
+  - A question card in the transcript no longer sticks on "Waiting for an
+    answer…": once the turn is over and no question is open, it says **No
+    answer recorded** with what was asked, and a card closed from another
+    window (or by a stop this window missed) reads "Already resolved from
+    another window or device" after the next load.
   - The tray popup lists the sessions that need you and the running ones,
     says **No server connected** when there is none, and its usage section
     is **Provider limits**. On Windows and Linux the tray menu starts with

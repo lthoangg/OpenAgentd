@@ -750,15 +750,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     of a pane to add it to that pane, or onto a pane's edge to split that pane
     with the tab in the new half; the place it will land lights up as you
     drag. Escape puts it back. The tab menu does the same with Split Right,
-    Split Down and Move to Next Pane, and a web preview keeps its page and
-    comments when its tab moves.
+    Split Left, Split Up, Split Down and Move to Next Pane, and a web preview
+    keeps its page and comments when its tab moves.
   - **⌃⌥ + arrow** (`Ctrl+Alt` + arrow on Windows and Linux)
     sends the focused tab left, right, up or down: the pane splits on that
     side with the tab in the new half, or, when it is its pane's only tab,
     the tab joins the pane on that side (with no pane there, an empty one
     opens, as with `⌘\`). The keys work from the composer and from a
-    terminal too, and the tab menu shows them beside Split Right and Split
-    Down. A focused terminal now also hands Control and the backquote key
+    terminal too, and the tab menu shows them beside its four splits. A focused terminal now also hands Control and the backquote key
     back to the app, so the terminal key hides the terminals from inside one.
   - Terminals open in a pane of their own under the others, so a diff and a
     shell show at once; files never open there. **Terminal** (Control and the

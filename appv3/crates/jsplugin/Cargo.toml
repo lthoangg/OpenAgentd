@@ -23,7 +23,7 @@ rquickjs = { version = "0.14", features = ["futures", "loader"] }
 oxc_allocator = "0.154"
 oxc_codegen = "0.154"
 oxc_diagnostics = "0.154"
-oxc_parser = "0.154"
+oxc_parser = "0.156"
 oxc_semantic = "0.154"
 oxc_span = "0.154"
 oxc_transformer = "0.154"

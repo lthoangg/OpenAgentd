@@ -41,4 +41,16 @@
   } catch (_e) {
     // Unreadable prefs: Default text size.
   }
+  // Linux desktop app: the desktop's interface font, which window.rs reads
+  // from GTK because WebKitGTK does not give it to system-ui. It goes first
+  // in --font-ui (styles/tokens.css). A name that could leave the CSS string
+  // is ignored; the stack's named desktop fonts take over.
+  try {
+    var desktopFont = window.__OAD_DESKTOP_FONT__;
+    if (typeof desktopFont === 'string' && /^[\p{L}\p{N} .+&()'_-]{1,100}$/u.test(desktopFont)) {
+      document.documentElement.style.setProperty('--font-desktop', '"' + desktopFont + '"');
+    }
+  } catch (_e) {
+    // No desktop font: the stack's own order.
+  }
 })();

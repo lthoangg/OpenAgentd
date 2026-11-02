@@ -41,6 +41,8 @@ declare global {
   interface Window {
     /** The opener window's explicit pick, injected into a new desktop window (window.rs). */
     __OAD_OPENER_THEME__?: string
+    /** The Linux desktop's interface font family (window.rs), applied by public/theme-init.js. */
+    __OAD_DESKTOP_FONT__?: string
   }
 }
 

@@ -708,6 +708,8 @@ fn main() {
         ])
         .setup(|app| {
             log::info!("startup: setup at_ms={}", launch_ms());
+            #[cfg(target_os = "linux")]
+            crate::window::remember_desktop_font();
             log::info!(
                 "desktop app starting version={} pid={} target_os={}",
                 env!("CARGO_PKG_VERSION"),

@@ -25,6 +25,13 @@ describe('system UI font', () => {
     expect(stack).not.toContain('Inter')
   })
 
+  // The Linux app's desktop font (public/theme-init.js) goes first; without
+  // it the stack starts with -apple-system as before.
+  it("starts with the Linux desktop's font when the app hands one over", () => {
+    const stack = /--font-ui:\s*([^;]+);/.exec(tokens)?.[1] ?? ''
+    expect(stack.startsWith('var(--font-desktop, -apple-system),')).toBe(true)
+  })
+
   it('uses that stack for the app and every desktop companion', () => {
     expect(read('../../index.css')).toMatch(/--font-sans:\s*var\(--font-ui\);/)
     for (const file of ['../../island/island.css', '../../pet/pet.css', '../../tray/tray.css']) {

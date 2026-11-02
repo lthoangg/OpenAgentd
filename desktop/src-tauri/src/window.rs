@@ -59,6 +59,37 @@ pub fn opener_theme_init_script(theme: Option<tauri::Theme>) -> String {
     format!("Object.defineProperty(window, '__OAD_OPENER_THEME__', {{ value: '{name}', writable: true, configurable: true }});")
 }
 
+/// The desktop's interface font family, read on the main thread at launch
+/// ([`remember_desktop_font`]; Linux only, unset elsewhere).
+static DESKTOP_FONT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Linux: remember GTK's interface font ("Cantarell 11" → "Cantarell").
+/// WebKitGTK does not resolve `system-ui` to it, so every window's page is
+/// handed the family ([`desktop_font_init_script`]). GTK is read on the
+/// main thread only, so `setup` calls this.
+#[cfg(target_os = "linux")]
+pub fn remember_desktop_font() {
+    use gtk::prelude::*;
+    let family = gtk::Settings::default()
+        .and_then(|settings| settings.gtk_font_name())
+        .and_then(|name| gtk::pango::FontDescription::from_string(&name).family())
+        .map(|family| family.to_string());
+    let _ = DESKTOP_FONT.set(family);
+}
+
+/// Hands the desktop's font family to the page (`__OAD_DESKTOP_FONT__`),
+/// which puts it first in its interface font stack
+/// (`web/public/theme-init.js`).
+pub fn desktop_font_init_script(family: Option<&str>) -> String {
+    let Some(family) = family.filter(|family| !family.trim().is_empty()) else {
+        return String::new();
+    };
+    format!(
+        "Object.defineProperty(window, '__OAD_DESKTOP_FONT__', {{ value: {}, writable: true, configurable: true }});",
+        serde_json::to_string(family).unwrap_or_else(|_| "\"\"".into()),
+    )
+}
+
 pub const THROTTLE_RESUME_SCRIPT: &str = r#"
 try {
     document.documentElement.removeAttribute('data-app-hidden');
@@ -412,7 +443,8 @@ async fn build_app_window_sized(
     // carries the `oa-app-id` / `oa-window-id` query params.
     let identity_script = window_identity_init_script(&app.config().identifier, &label);
     let theme_script = opener_theme_init_script(opener_theme);
-    let init_script = format!("{identity_script}{theme_script}{init_script}");
+    let font_script = desktop_font_init_script(DESKTOP_FONT.get().and_then(|family| family.as_deref()));
+    let init_script = format!("{identity_script}{theme_script}{font_script}{init_script}");
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
         height: 820,
@@ -853,6 +885,17 @@ mod tests {
         assert!(opener_theme_init_script(Some(tauri::Theme::Light)).contains("value: 'light'"));
         // An opener that follows the system hands nothing: the new one follows it too.
         assert_eq!(opener_theme_init_script(None), "");
+    }
+
+    // Linux: WebKitGTK does not give system-ui the desktop's font, so the
+    // page gets GTK's (web/public/theme-init.js puts it first).
+    #[test]
+    fn the_desktop_font_reaches_the_page_as_a_js_string() {
+        assert!(desktop_font_init_script(Some("Adwaita Sans"))
+            .contains("'__OAD_DESKTOP_FONT__', { value: \"Adwaita Sans\","));
+        assert!(desktop_font_init_script(Some("Odd\"; alert(1); //")).contains(r#""Odd\"; alert(1); //""#));
+        assert_eq!(desktop_font_init_script(None), "");
+        assert_eq!(desktop_font_init_script(Some("  ")), "");
     }
 
     #[test]

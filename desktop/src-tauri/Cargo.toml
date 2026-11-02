@@ -54,8 +54,9 @@ tempfile = "3"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal"] }
 
-# Linux: keeps the hidden GTK menu bar hidden (src/window.rs). Tauri already
-# builds this crate; the version matches Cargo.lock.
+# Linux: keeps the hidden GTK menu bar hidden and reads the desktop's font
+# (src/window.rs). Tauri already builds this crate; the version matches
+# Cargo.lock.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 

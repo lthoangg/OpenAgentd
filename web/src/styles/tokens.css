@@ -31,11 +31,13 @@
     /* Interface type (DESIGN.md → Typography): the host OS's own UI font,
      * like every native app beside it — SF Pro on Apple platforms, Segoe UI
      * Variable on Windows, Roboto on Android, the desktop's font on Linux.
-     * system-ui sits before Roboto: on Linux it is the desktop's own face,
-     * which an installed Roboto would otherwise take over; on Android it is
-     * Roboto or the maker's font. Code stays in JetBrains Mono (index.css
-     * --font-mono). */
-    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+     * WebKitGTK does not resolve system-ui to the desktop's font, so the
+     * Linux app hands GTK's over as --font-desktop (public/theme-init.js),
+     * first in the stack. system-ui sits before Roboto: in Linux browsers it
+     * is the desktop's own face, which an installed Roboto would otherwise
+     * take over; on Android it is Roboto or the maker's font. Code stays in
+     * JetBrains Mono (index.css --font-mono). */
+    --font-ui: var(--font-desktop, -apple-system), BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
 }
 
 /* ─────────────────────────────────────────────────────────────

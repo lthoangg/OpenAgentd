@@ -497,8 +497,10 @@ Two faces, each with a non-overlapping job:
 
 - **The system UI font** — all interface text and prose: SF Pro on macOS and
   iOS, Segoe UI Variable on Windows, Roboto on Android, the desktop's own face
-  on Linux (`--font-ui` in `styles/tokens.css`). The app reads like the other
-  apps on the same machine; nothing is bundled.
+  on Linux (`--font-ui` in `styles/tokens.css`). WebKitGTK does not give
+  `system-ui` the desktop's face, so the Linux app reads GTK's and puts it
+  first (`--font-desktop`, `public/theme-init.js`). The app reads like the
+  other apps on the same machine; nothing is bundled.
 - **JetBrains Mono Variable** — code, diffs, terminal output, file paths, token
   counts, IDs and `provider:model` names. Anything a user might copy, compare
   character-by-character, or scan as a column.

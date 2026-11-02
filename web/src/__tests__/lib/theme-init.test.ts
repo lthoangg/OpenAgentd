@@ -35,6 +35,8 @@ afterEach(() => {
   delete window.__OAD_APP_ID__
   delete window.__OAD_WINDOW_ID__
   delete window.__OAD_OPENER_THEME__
+  delete window.__OAD_DESKTOP_FONT__
+  document.documentElement.style.removeProperty('--font-desktop')
 })
 
 describe('theme-init pre-paint script', () => {
@@ -97,5 +99,37 @@ describe('theme-init pre-paint script', () => {
     runThemeInit()
 
     expect(document.documentElement.dataset.textSize).toBeUndefined()
+  })
+
+  // WebKitGTK does not give system-ui the desktop's font, so the Linux app
+  // hands it over (window.rs) and the stack puts it first.
+  it("puts the Linux desktop's font first in the interface stack", () => {
+    window.__OAD_DESKTOP_FONT__ = 'Adwaita Sans'
+
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('"Adwaita Sans"')
+  })
+
+  it('keeps a desktop font named in another script', () => {
+    window.__OAD_DESKTOP_FONT__ = 'Noto Sans CJK 日本語'
+
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('"Noto Sans CJK 日本語"')
+  })
+
+  it('ignores a desktop font name that could break out of the CSS string', () => {
+    window.__OAD_DESKTOP_FONT__ = 'Odd"; } body { color: red'
+
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('')
+  })
+
+  it('sets no desktop font outside the Linux app', () => {
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('')
   })
 })

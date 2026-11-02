@@ -42,6 +42,7 @@ import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from 
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
+import { NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { type PreviewComment, buildDesignFeedback, commentsFromFeedback, feedbackMatchesTarget, resolveSourceFile } from './preview-comments'
 import {
@@ -58,6 +59,8 @@ const MAX_CONSOLE_ENTRIES = 300
 const READY_GRACE_MS = 800
 /** How long the toolbar shows the agent's activity after its last command. */
 const AGENT_ACTIVITY_MS = 4000
+/** The loading bar gives up after this: a link that turned into a download never loads. */
+const LOADING_CAP_MS = 20_000
 
 export interface PreviewTabViewProps {
   workspace: string
@@ -158,6 +161,8 @@ function siblingsSignature(files: { path: string; mtime: number }[] | undefined,
 
 /** Alt+C / ⌥C: toggle Comment picking, whether focus is in the dock or the page. */
 const DESIGN_CHORD = { key: 'C', code: 'KeyC', alt: true } as const
+/** Chords the page forwards besides the app's own: Comment and ⌃Tab between tabs. */
+const PAGE_EXTRA_CHORDS = [DESIGN_CHORD, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD]
 
 export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, onSendComments, onOpenTarget, active = true, onRequestClose }: PreviewTabViewProps) {
   const reach = previewMode()
@@ -167,12 +172,18 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const designShortcut = os === 'macos' || os === 'ios' ? '⌥C' : 'Alt+C'
   const [info, setInfo] = useState<PreviewInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // What was typed in the address bar cannot be shown: nothing to retry, editing clears it.
+  const [addressError, setAddressError] = useState<string | null>(null)
   const [src, setSrc] = useState<string | null>(null)
   const [frameKey, setFrameKey] = useState(0)
   const [path, setPath] = useState('/')
   const [urlDraft, setUrlDraft] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const [inspectorMissing, setInspectorMissing] = useState(false)
+  // The page is the proxy's "Nothing is running" page: the dev server is not up.
+  const [pageDown, setPageDown] = useState(false)
+  // A page is on its way: the frame was (re)loaded or the page started to leave.
+  const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<InspectMode>('browse')
   const [deviceId, setDeviceId] = useState<DevicePreset['id']>('responsive')
   const [rotated, setRotated] = useState(false)
@@ -190,6 +201,9 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // Workspace-relative file paths, to place React 19 sources (``/src/…``).
   const filePathsRef = useRef<string[]>([])
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // The document that last reported ``ready``; a new one starts the console afresh.
+  const docRef = useRef<string | null>(null)
   const osRef = useRef(os)
   osRef.current = os
   const stageRef = useRef<HTMLDivElement>(null)
@@ -270,15 +284,24 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           lastReadyAtRef.current = performance.now()
           setReady(true)
           setInspectorMissing(false)
+          setPageDown(message.status === 'down')
           setPath(message.path)
+          if (message.doc && message.doc !== docRef.current) {
+            // A new page, as in a browser's console without "Preserve log".
+            if (docRef.current !== null) setConsoleEntries([])
+            docRef.current = message.doc
+          }
           const win = frameRef.current?.contentWindow
           win?.postMessage(commandMessage({ type: 'set-mode', mode: modeRef.current }), origin)
           win?.postMessage(commandMessage({ type: 'pins', pins: commentsRef.current.map((c) => ({ n: c.n, selector: c.element.selector })) }), origin)
-          win?.postMessage(commandMessage({ type: 'keymap', keymap: frameKeymap(osRef.current, [DESIGN_CHORD]) }), origin)
+          win?.postMessage(commandMessage({ type: 'keymap', keymap: frameKeymap(osRef.current, PAGE_EXTRA_CHORDS) }), origin)
           break
         }
         case 'location':
           setPath(message.path)
+          break
+        case 'leaving':
+          setLoading(true)
           break
         case 'select': {
           if (modeRef.current !== 'inspect') break
@@ -325,6 +348,16 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     if (loadTimerRef.current !== null) window.clearTimeout(loadTimerRef.current)
   }, [])
 
+  // A fresh frame is loading until its ``load``.
+  useEffect(() => {
+    if (frameKey > 0) setLoading(true)
+  }, [frameKey])
+  useEffect(() => {
+    if (!loading) return
+    const timer = window.setTimeout(() => setLoading(false), LOADING_CAP_MS)
+    return () => window.clearTimeout(timer)
+  }, [loading])
+
   // Feedback taken back out of the composer returns to this tab's list.
   const returned = useReturnedFeedbackStore((s) => s.items)
   useEffect(() => {
@@ -341,6 +374,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // Alt+C toggles picking while this tab shows (not while typing in a field);
   // the page forwards it when focused.
   useShortcut(DESIGN_CHORD, () => { toggleDesignRef.current() }, { enabled: active && available })
+  // Esc stops picking from anywhere in this tab (the page handles its own Esc).
+  useShortcut({ key: 'Escape' }, () => { setMode('browse') }, { enabled: active && mode === 'inspect' && !draft, within: () => rootRef.current })
   // Keys the page forwards (per the keymap sent on `ready`) replay here.
   useFrameKeys(frameRef, { origin: info?.origin ?? null, enabled: Boolean(info) })
 
@@ -354,6 +389,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   const onFrameLoad = () => {
     const loadedAt = performance.now()
+    setLoading(false)
     // A page with the inspector answers ``hello`` with ``ready`` (its first
     // ``ready`` came before ``load``). Only the newest load is judged: an
     // earlier timer must not decide for a page that reloaded meanwhile.
@@ -365,6 +401,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         readyRef.current = false
         setReady(false)
         setInspectorMissing(true)
+        // Not the proxy's page (it always has the script): the server is up.
+        setPageDown(false)
       }
     }, READY_GRACE_MS)
   }
@@ -423,15 +461,16 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       }
       const message = err instanceof Error ? err.message : String(err)
       const host = targetOrigin ? targetOrigin.replace(/^[a-z]+:\/\//i, '') : null
-      setError(host ? `${message} Start with / for a page on ${host}.` : message)
+      setAddressError(host ? `${message} Start with / for a page on ${host}.` : message)
       return
     }
-    setError(null)
+    setAddressError(null)
     onOpenTarget?.(next)
   }
 
   const submitUrl = (raw: string) => {
     setUrlDraft(null)
+    setAddressError(null)
     void import('./preview-address').then(({ parseAddress }) => {
       const input = parseAddress(raw, workspace)
       if (!input) return
@@ -440,7 +479,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         navigateTo(input.path)
         return
       case 'invalid':
-        setError(input.message)
+        setAddressError(input.message)
         return
       case 'file':
         // A file tab's server is the workspace: its other files open in place.
@@ -453,7 +492,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           if (target.kind === 'url' && u.origin === targetOrigin) navigateTo(`${u.pathname}${u.search}${u.hash}`)
           else onOpenTarget?.({ kind: 'url', url: input.url })
         } catch {
-          setError(`Invalid URL: ${input.url}`)
+          setAddressError(`Invalid URL: ${input.url}`)
         }
       }
     })
@@ -500,15 +539,19 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   }
 
   const errorCount = consoleEntries.filter((e) => e.level === 'error').length
-  const designDisabled = !ready || inspectorMissing
+  const designDisabled = !ready || inspectorMissing || pageDown
+  const targetHost = targetOrigin ? targetOrigin.replace(/^[a-z]+:\/\//i, '') : null
+  const downTitle = `Nothing is running on ${targetHost ?? 'this address'} yet`
   const consoleLabel = errorCount ? `Console (${errorCount} errors)` : 'Console'
   const designLabel = designDisabled ? 'Comment (unavailable on this page)' : mode === 'inspect' ? `Stop commenting (Esc or ${designShortcut})` : `Comment on an element (${designShortcut})`
   const openLabel = reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'
   const openDisabled = !pageUrl || reach === 'relay'
   // Back and Forward need the page's own script; say which thing is missing.
-  const navReason = (dir: 'back' | 'forward') => inspectorMissing
-    ? `Can't go ${dir} on this page: it did not load the preview script`
-    : `Can't go ${dir} yet: the page is still loading`
+  const navReason = (dir: 'back' | 'forward') => pageDown
+    ? `Can't go ${dir}: ${downTitle.charAt(0).toLowerCase()}${downTitle.slice(1)}`
+    : inspectorMissing
+      ? `Can't go ${dir} on this page: it did not load the preview script`
+      : `Can't go ${dir} yet: the page is still loading`
   toggleDesignRef.current = () => {
     if (designDisabled) return
     setMode((m) => (m === 'inspect' ? 'browse' : 'inspect'))
@@ -525,20 +568,20 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col">
       {/* 40px (44px on touch): the address field is 32px (36px on touch), taller than the 28px tool buttons. */}
       <div className="flex min-h-10 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) bg-(--bg-page) px-1 py-1">
-        <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready} disabledReason={navReason('back')}>
+        <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready || pageDown} disabledReason={navReason('back')}>
           <ArrowLeft size={13} aria-hidden="true" />
         </ToolbarButton>
-        <ToolbarButton label="Forward" onClick={() => post({ type: 'history', dir: 1 })} disabled={!ready} disabledReason={navReason('forward')}>
+        <ToolbarButton label="Forward" onClick={() => post({ type: 'history', dir: 1 })} disabled={!ready || pageDown} disabledReason={navReason('forward')}>
           <ArrowRight size={13} aria-hidden="true" />
         </ToolbarButton>
         <ToolbarButton label="Reload" onClick={() => void reload()}>
           <RefreshCw size={13} aria-hidden="true" />
         </ToolbarButton>
         <form
-          className="mx-1 min-w-0 flex-1"
+          className="relative mx-1 min-w-0 flex-1"
           onSubmit={(event) => {
             event.preventDefault()
             submitUrl(urlDraft ?? displayUrl)
@@ -547,7 +590,10 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           <input
             aria-label="Preview address"
             value={urlDraft ?? displayUrl}
-            onChange={(event) => setUrlDraft(event.target.value)}
+            onChange={(event) => {
+              setUrlDraft(event.target.value)
+              setAddressError(null)
+            }}
             onFocus={(event) => event.target.select()}
             onBlur={() => setUrlDraft(null)}
             onKeyDown={(event) => {
@@ -557,8 +603,18 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               }
             }}
             spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            inputMode="url"
+            enterKeyHint="go"
             className="h-8 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) pointer-coarse:h-9"
           />
+          {loading && !pageDown && (
+            // Safari's way: a thin sweep along the field's bottom edge.
+            <div role="progressbar" aria-label="Loading page" className="pointer-events-none absolute inset-x-px bottom-px h-0.5 overflow-hidden rounded-full">
+              <div className="oa-loading-bar h-full w-2/5 rounded-full bg-(--color-text-2)/60" />
+            </div>
+          )}
         </form>
         {agentAction && (
           <span
@@ -657,12 +713,12 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         </ToolbarButton>
         )}
       </div>
-      {(error || inspectorMissing) && (
-        <div role={error ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-meta', error ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
+      {(error || addressError || inspectorMissing) && (
+        <div role={error || addressError ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-meta', error || addressError ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
           <p className="min-w-0 flex-1 break-words">
-            {error ?? 'Comment tools and the console are unavailable on this page: it did not load the preview script (a strict Content-Security-Policy can block it).'}
+            {addressError ?? error ?? 'Comment tools and the console are unavailable on this page: it did not load the preview script (a strict Content-Security-Policy can block it).'}
           </p>
-          {error && (
+          {error && !addressError && (
             <Button type="button" size="xs" variant="subtle" onClick={() => void reload()}>
               Retry
             </Button>
@@ -673,6 +729,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         <div className={cn('flex h-full w-full justify-center overflow-hidden', size && 'items-start p-2')}>
           <div
             ref={frameBoxRef}
+            // White, a browser's default page, behind pages that set no background.
             className={cn('relative shrink-0 overflow-hidden bg-white', size ? 'rounded-sm border border-(--color-border) shadow-sm' : 'h-full w-full')}
             style={size ? { width: size.width * scale, height: size.height * scale } : undefined}
           >
@@ -692,6 +749,16 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             )}
           </div>
         </div>
+        {pageDown && (
+          // The proxy's own page keeps retrying underneath; this says the same in the app's colours.
+          <div className="absolute inset-0 bg-(--bg-sidebar)">
+            <EmptyState
+              icon={Globe}
+              title={downTitle}
+              body="Start the dev server; this tab retries every 2 seconds. Or type a workspace file path, like docs/index.html, in the address bar."
+            />
+          </div>
+        )}
         {draft && (
           <PreviewCommentComposer
             key={`${draft.element.selector}-${draft.anchor.top}-${draft.anchor.left}`}

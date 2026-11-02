@@ -319,6 +319,57 @@ describe('PreviewTabView', () => {
     expect(screen.getByText('2 entries')).toBeTruthy()
   })
 
+  it('starts the console afresh on each new page, as a browser does', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok', doc: 'a' })
+    fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }] })
+    // The same page answering hello keeps its output.
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok', doc: 'a' })
+    expect(await screen.findByRole('button', { name: 'Console (1 errors)' })).toBeTruthy()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok', doc: 'b' })
+    expect(await screen.findByRole('button', { name: 'Console' })).toBeTruthy()
+  })
+
+  it('shows its own "Nothing is running" state for a server that is down, with Back, Forward and Comment off', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Waiting for localhost:5173', status: 'down' })
+    expect(await screen.findByText('Nothing is running on localhost:5173 yet')).toBeTruthy()
+    const back = screen.getByRole('button', { name: 'Back' }) as HTMLButtonElement
+    expect(back.disabled).toBe(true)
+    expect(back.getAttribute('aria-description')).toBe("Can't go back: nothing is running on localhost:5173 yet")
+    expect((screen.getByRole('button', { name: 'Forward' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Comment (unavailable on this page)' }) as HTMLButtonElement).disabled).toBe(true)
+
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    await waitFor(() => expect(screen.queryByText('Nothing is running on localhost:5173 yet')).toBeNull())
+    expect((screen.getByRole('button', { name: /^Comment on an element/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('shows a loading bar from the moment the page starts to leave until the next one loads', async () => {
+    const { iframe, frameWindow } = await renderView()
+    expect(screen.queryByRole('progressbar', { name: 'Loading page' })).toBeNull()
+    fromPage(frameWindow, { type: 'leaving' })
+    expect(screen.getByRole('progressbar', { name: 'Loading page' })).toBeTruthy()
+    fireEvent.load(iframe)
+    expect(screen.queryByRole('progressbar', { name: 'Loading page' })).toBeNull()
+  })
+
+  it('stops commenting on Esc pressed in the dock, not only in the page', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    const design = await waitFor(() => {
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    })
+    fireEvent.click(design)
+    const stop = screen.getByRole('button', { name: /^Stop commenting/ })
+    expect(stop.getAttribute('aria-pressed')).toBe('true')
+    stop.focus()
+    fireEvent.keyDown(stop, { key: 'Escape' })
+    expect(screen.getByRole('button', { name: /^Comment on an element/ }).getAttribute('aria-pressed')).toBe('false')
+  })
+
   it('on a phone, folds Console, Comment and Open in browser into a More menu so the address keeps its width', async () => {
     isMobile = true
     const { frameWindow } = await renderView()
@@ -360,6 +411,16 @@ describe('PreviewTabView', () => {
     expect(address.className).toMatch(/(^|\s)h-8(\s|$)/)
     expect(address.className).toMatch(/(^|\s)text-xs(\s|$)/)
     expect(address.className).not.toMatch(/text-meta|(^|\s)h-6(\s|$)/)
+  })
+
+  it('types the address like a browser bar: no capitals, corrections or spell check, a URL keyboard with Go', async () => {
+    await renderView()
+    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    expect(address.getAttribute('autocapitalize')).toBe('off')
+    expect(address.getAttribute('autocorrect')).toBe('off')
+    expect(address.getAttribute('spellcheck')).toBe('false')
+    expect(address.getAttribute('inputmode')).toBe('url')
+    expect(address.getAttribute('enterkeyhint')).toBe('go')
   })
 
   it('says why Back and Forward are disabled, and enables them once the page is ready', async () => {
@@ -490,6 +551,19 @@ describe('PreviewTabView', () => {
       const alert = await screen.findByRole('alert')
       expect(alert.textContent).toContain("'nope.html' is not a file in the workspace. Start with / for a page on localhost:5173.")
       expect(onOpenTarget).not.toHaveBeenCalled()
+    })
+
+    it('says in place that another site cannot be previewed, without opening a tab for it', async () => {
+      const { onOpenTarget } = await renderView()
+      enterAddress('https://example.com/docs')
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toContain('Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files, not example.com.')
+      expect(onOpenTarget).not.toHaveBeenCalled()
+      expect(previewBodies).toHaveLength(1)
+      // Nothing to retry: the address was wrong. Editing it clears the message.
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+      fireEvent.change(screen.getByRole('textbox', { name: 'Preview address' }), { target: { value: 'localhost:3000' } })
+      expect(screen.queryByRole('alert')).toBeNull()
     })
 
     it('falls back to the dev server for a full path that is not a workspace file', async () => {

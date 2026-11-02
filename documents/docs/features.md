@@ -903,6 +903,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     says why. Annotating a page is called commenting everywhere: **Comment
     on an element**, **Stop commenting**, and the composer chip reads
     "Preview comments · 2 comments".
+    While a page loads, a thin bar runs along the address field. A dev
+    server that is not up yet shows "Nothing is running on localhost:5173
+    yet" in the app's own colours (dark mode too), with Back, Forward and
+    Comment off until it starts. The console starts afresh on each new page,
+    so a stale error count does not outlive a reload. Esc anywhere in the
+    tab stops commenting. The address bar turns away other sites
+    (`example.com`, `https://…`) in place instead of opening a broken tab,
+    takes `0.0.0.0:8000` as this computer, and types like a browser's (no
+    capitals or corrections, a URL keyboard with Go); an address error has
+    no pointless Retry and clears as you edit. `⌃` + backtick (the
+    terminal), `⌃⌥` + arrow and `⌃Tab` work from inside the page too.
   - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
 - **Settings: one way to save, every setting findable** `[v3.40.0]`:

@@ -868,6 +868,16 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   .oa-seal-pulse { animation: none; }
 }
 
+/* Page loading (Preview): a short bar sweeps along the address field's
+   bottom edge until the page loads. Transform only. */
+@keyframes oa-loading-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
+}
+.oa-loading-bar {
+  animation: oa-loading-sweep 1.2s var(--ease-in-out) infinite;
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Font-weight on hover/press — signature interaction.
  * Apply to buttons, nav items, tabs, menu items. Not prose.
@@ -900,6 +910,10 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   }
   .animate-spin {
     animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .oa-loading-bar {
+    animation-duration: 2.4s !important;
     animation-iteration-count: infinite !important;
   }
 }

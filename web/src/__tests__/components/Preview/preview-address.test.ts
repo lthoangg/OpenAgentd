@@ -14,9 +14,31 @@ describe('parseAddress', () => {
   })
 
   it('reads addresses with a scheme, a port or a loopback host as URLs', () => {
-    for (const url of ['http://localhost:5173/a', 'https://127.0.0.1:8443', 'localhost:3000', 'localhost', '127.0.0.1:8080/x', '[::1]:3000']) {
+    for (const url of ['http://localhost:5173/a', 'https://127.0.0.1:8443', 'localhost:3000', 'localhost', '127.0.0.1:8080/x', '[::1]:3000', 'http://0.0.0.0:8000/']) {
       expect(parseAddress(url, WS)).toEqual({ kind: 'url', url })
     }
+  })
+
+  it('turns away sites that are not on this computer, with or without a scheme', () => {
+    for (const [value, host] of [
+      ['https://example.com', 'example.com'],
+      ['http://192.168.1.4:3000/x', '192.168.1.4'],
+      ['example.com:8080', 'example.com'],
+      ['example.com', 'example.com'],
+      ['www.google.com/search?q=x', 'www.google.com'],
+      ['docs.github.io', 'docs.github.io'],
+    ]) {
+      expect(parseAddress(value, WS)).toEqual({
+        kind: 'invalid',
+        message: `Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files, not ${host}.`,
+      })
+    }
+  })
+
+  it('still reads web file names and ./ paths that look like hosts as workspace files', () => {
+    expect(parseAddress('README.md', WS)).toEqual({ kind: 'file', path: 'README.md' })
+    expect(parseAddress('logo.svg', WS)).toEqual({ kind: 'file', path: 'logo.svg' })
+    expect(parseAddress('./notes.com', WS)).toEqual({ kind: 'file', path: 'notes.com' })
   })
 
   it('reads anything else as a workspace-relative file', () => {

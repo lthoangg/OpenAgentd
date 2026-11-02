@@ -84,6 +84,18 @@ describe('preview inspector', () => {
     expect(received.some((m) => m.type === 'ready' && m.status === 'ok')).toBe(true)
   })
 
+  it('names its document on every ready, and says when the page starts to leave', async () => {
+    sendFromParent({ type: 'hello' })
+    await settle()
+    const docs = received.filter((m) => m.type === 'ready').map((m) => m.doc)
+    expect(docs.length).toBe(2)
+    expect(typeof docs[0]).toBe('string')
+    expect(docs[1]).toBe(docs[0])
+    frame.dispatchEvent(new frame.Event('beforeunload'))
+    await settle()
+    expect(received.some((m) => m.type === 'leaving')).toBe(true)
+  })
+
   it('builds short, stable selectors', () => {
     const doc = frame.document
     const buttons = doc.querySelectorAll('button')
@@ -212,6 +224,30 @@ describe('preview inspector', () => {
       await settle()
       expect(keys.map((m) => m.key)).toEqual(['Escape'])
       expect(internals().getMode()).toBe('browse')
+    })
+
+    it('forwards Control chords on macOS (⌃`, ⌃⌥←), from fields too, but not with ⌘', async () => {
+      sendFromParent({
+        type: 'keymap',
+        keymap: {
+          mac: true,
+          escape: false,
+          chords: [
+            { key: 'w', mod: true, shift: false, alt: false },
+            { key: '`', code: 'Backquote', mod: false, ctrl: true, shift: false, alt: false },
+            { key: 'ArrowLeft', mod: false, ctrl: true, shift: false, alt: true },
+          ],
+        },
+      })
+      frame.document.body.insertAdjacentHTML('beforeend', '<input id="field">')
+      const field = frame.document.getElementById('field') as HTMLElement
+      expect(press(frame.document.body, { key: '`', code: 'Backquote', ctrlKey: true }).defaultPrevented).toBe(true)
+      expect(press(field, { key: 'ArrowLeft', ctrlKey: true, altKey: true }).defaultPrevented).toBe(true)
+      expect(press(frame.document.body, { key: '`', code: 'Backquote', ctrlKey: true, metaKey: true }).defaultPrevented).toBe(false)
+      expect(press(frame.document.body, { key: 'w', code: 'KeyW', ctrlKey: true }).defaultPrevented).toBe(false)
+      expect(press(frame.document.body, { key: 'w', code: 'KeyW', metaKey: true }).defaultPrevented).toBe(true)
+      await settle()
+      expect(keys.map((m) => m.key)).toEqual(['`', 'ArrowLeft', 'w'])
     })
   })
 

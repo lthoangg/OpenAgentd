@@ -773,6 +773,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Each answer's footer names the account it ran on.
   - A long thinking trace scrolls inside a capped box; **Show full
     reasoning** lifts the cap.
+    Runs of blank lines in a trace (Gemini sends three between paragraphs)
+    show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older
     turns load, and one **Jump to latest** chip counts what arrived since
     (`3 new`).

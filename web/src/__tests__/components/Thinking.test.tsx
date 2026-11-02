@@ -65,6 +65,15 @@ describe('splitSections', () => {
   it('handles empty input', () => {
     expect(splitSections('')).toEqual([])
   })
+
+  it('keeps one blank line between paragraphs, however many the provider sent', () => {
+    // Gemini joins its chunks with "\n\n\n\n"; kept as-is, pre-wrap drew
+    // three empty lines between every paragraph.
+    expect(splitSections('First thought.\n\n\n\nSecond thought.\n\n\n\n\nThird.')).toEqual([
+      { header: null, body: 'First thought.\n\nSecond thought.\n\nThird.' },
+    ])
+    expect(splitSections('**Plan**\n\nA line.\n \n\t\nNext.')[0].body).toBe('A line.\n\nNext.')
+  })
 })
 
 describe('Thinking', () => {
@@ -82,11 +91,11 @@ describe('Thinking', () => {
     expect(container.textContent).not.toContain('**')
   })
 
-  it('preserves double newlines in thinking content as-is', () => {
+  it('keeps paragraph breaks, with longer runs of blank lines cut to one', () => {
     const text = 'Line one.\n\nLine two.\n\n\nLine three.'
     const { container } = render(<Thinking content={text} isStreaming />)
 
-    expect(container.textContent).toContain('Line one.\n\nLine two.\n\n\nLine three.')
+    expect(container.textContent).toContain('Line one.\n\nLine two.\n\nLine three.')
   })
 
   it('shows a finished trace in full, with no "Thought for" row or toggle', () => {

@@ -586,7 +586,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                         className="flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9"
                         aria-label="Edit message, available when this turn ends"
                       >
-                        <Pencil size={11} />
+                        <Pencil size={13} aria-hidden="true" />
                       </button>
                     }
                   />
@@ -602,7 +602,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                         className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9"
                         aria-label="Edit message"
                       >
-                        <Pencil size={11} />
+                        <Pencil size={13} aria-hidden="true" />
                       </button>
                     }
                   />
@@ -619,9 +619,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                       aria-label="Copy message"
                     >
                       {copied ? (
-                        <Check size={11} className="text-(--accent-green-text)" />
+                        <Check size={13} aria-hidden="true" className="text-(--accent-green-text)" />
                       ) : (
-                        <Copy size={11} />
+                        <Copy size={13} aria-hidden="true" />
                       )}
                     </button>
                   }

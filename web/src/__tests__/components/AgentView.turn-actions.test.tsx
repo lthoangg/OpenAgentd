@@ -43,22 +43,37 @@ const TWO_TURNS: ContentBlock[] = [
 
 /** The footer's action group under each finished turn, in order. */
 const actionGroups = () => screen.getAllByRole("group", { name: "Turn actions" })
-const names = (group: HTMLElement) => within(group).getAllByRole("button").map((b) => b.textContent)
+const names = (group: HTMLElement) => within(group).getAllByRole("button").map((b) => b.getAttribute("aria-label"))
 
 describe("AgentView — the footer's actions", () => {
-  it("shows Copy at rest, as a word, under every finished turn", () => {
+  it("shows Copy at rest, as an icon named in words, under every finished turn", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} />)
 
     expect(actionGroups()).toHaveLength(2)
-    for (const group of actionGroups()) expect(within(group).getByRole("button", { name: "Copy response" }).textContent).toBe("Copy")
+    for (const group of actionGroups()) {
+      const copy = within(group).getByRole("button", { name: "Copy response" })
+      expect(copy.textContent).toBe("")
+      expect(copy.className).toContain("size-6")
+    }
   })
 
   it("offers Regenerate and Undo on the last finished turn only", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
     const [first, last] = actionGroups()
-    expect(names(first)).toEqual(["Copy", "Edit prompt"])
-    expect(names(last)).toEqual(["Copy", "Regenerate", "Edit prompt", "Undo"])
+    expect(names(first)).toEqual(["Copy response", "Edit prompt"])
+    expect(names(last)).toEqual(["Copy response", "Regenerate", "Edit prompt", "Undo"])
+    // Icons only: the words live in the names and the tooltips.
+    for (const button of within(last).getAllByRole("button")) expect(button.textContent).toBe("")
+  })
+
+  it("says Copied after a copy, in its name", async () => {
+    render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} />)
+    const copy = within(actionGroups()[0]).getByRole("button", { name: "Copy response" })
+
+    await act(async () => { fireEvent.click(copy) })
+
+    expect(copy.getAttribute("aria-label")).toBe("Copied")
   })
 
   it("regenerates through the host's Retry, which rewinds the prompt and sends it again", () => {
@@ -118,7 +133,8 @@ describe("AgentView — the footer's actions", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
     for (const group of actionGroups()) {
-      expect(group.outerHTML).not.toMatch(/opacity-0|group-hover|hidden/)
+      // ``aria-hidden`` icons are fine; a ``hidden`` class is not.
+      expect(group.outerHTML).not.toMatch(/opacity-0|group-hover|(?<![\w-])hidden(?![\w-])/)
     }
   })
 })

@@ -770,10 +770,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     session title's length (it used to slide from session to session), and a
     hidden sidebar leaves no hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
-  - Under the last finished answer, **Copy · Regenerate · Edit prompt · N
-    files changed · Undo** show at rest. While a turn runs, Edit prompt shows
-    dimmed and says it is available when the turn ends.
-  - **N files changed** lists the files the turn edited, with their line
+  - Under the last finished answer, **Copy · Regenerate · Edit prompt ·
+    Undo** show at rest as icons, each named in its tooltip, then the files
+    changed (a file icon, the count and `+added -removed`). While a turn
+    runs, Edit prompt shows dimmed and says it is available when the turn
+    ends. A prompt's own Edit and Copy icons are the same size.
+  - The files changed toggle lists the files the turn edited, with their line
     counts, in both transcript styles (Reader and Detailed); a file opens its
     diff.
   - A turn that waits (a pinned account cooling down, a reconnect) or stops

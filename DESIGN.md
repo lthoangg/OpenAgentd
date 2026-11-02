@@ -918,11 +918,13 @@ header (arguments, command, output) is a `button` with `aria-expanded`; its
 Copy is a sibling, always visible, and says "Copied" for a moment.
 
 **Turn footer** (`AssistantTurnFooter.tsx`): under the last finished answer
-the actions show at rest as muted text: Copy · Regenerate · Edit prompt ·
-N files changed · Undo. Older answers keep Copy and the meta line. An
+the actions show at rest as muted 24px icon buttons (13px lucide icons, the
+same size as the prompt's Edit and Copy): Copy · Regenerate · Edit prompt ·
+Undo, then the files pill (`FileDiff`, count, `+a -d`). Their words are the
+names and tooltips. Older answers keep Copy and the meta line. An
 action that cannot run now stays visible, dimmed (`aria-disabled`, so it
 keeps focus), and its tooltip says when it can. The meta line names the
-model and the account the turn ran on. **N files changed** opens the
+model and the account the turn ran on. The files pill opens the
 files the turn edited (both transcript styles), each opening its diff.
 
 **Cards in the transcript** (a question, a plan review, a goal claim, a

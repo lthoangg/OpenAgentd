@@ -8,6 +8,7 @@
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
 import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
+import { Check, Copy, FileDiff, Pencil, RotateCw, Undo2, type LucideIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -48,17 +49,25 @@ export interface AssistantTurnFooterProps {
 const NO_FILES: readonly ChangedFileInfo[] = []
 
 /**
- * A text action on the footer (DESIGN.md → Transcript rows): muted, shown at
- * rest, a keycap wash on hover. 24px tall, 36px on touch.
+ * An icon action on the footer (DESIGN.md → Transcript rows): muted, shown
+ * at rest, a keycap wash on hover, its words in the name and the tooltip.
+ * 24px square, 36px on touch, like the prompt's own Edit and Copy.
  */
-const ACTION_CLASS = 'inline-flex h-6 shrink-0 items-center gap-1 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5'
+const ACTION_CLASS = 'inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9'
 
-/** A footer action with a hint on hover and keyboard focus. */
-function FooterAction({ label, hint, onClick, ariaLabel }: { label: ReactNode; hint: string; onClick: () => void; ariaLabel?: string }) {
+/** The files toggle carries numbers, so it is a short pill, not a square. */
+const FILES_CLASS = 'inline-flex h-6 shrink-0 items-center gap-1.5 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5'
+
+/** A footer icon action with its hint on hover and keyboard focus. */
+function FooterAction({ icon: Icon, label, hint, onClick, iconClassName }: { icon: LucideIcon; label: string; hint: string; onClick: () => void; iconClassName?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<button type="button" onClick={onClick} aria-label={ariaLabel} className={ACTION_CLASS}>{label}</button>}
+        render={(
+          <button type="button" onClick={onClick} aria-label={label} className={ACTION_CLASS}>
+            <Icon size={13} aria-hidden="true" className={iconClassName} />
+          </button>
+        )}
       />
       <TooltipContent>{hint}</TooltipContent>
     </Tooltip>
@@ -155,6 +164,11 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   const hasUsage = outputTokens > 0 || costUsd > 0
   const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0)
   const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0)
+  const filesLabel = [
+    `${changedFiles.length} ${changedFiles.length === 1 ? 'file' : 'files'} changed`,
+    additions > 0 && `${additions} ${additions === 1 ? 'line' : 'lines'} added`,
+    deletions > 0 && `${deletions} removed`,
+  ].filter(Boolean).join(', ')
 
   const parts: ReactNode[] = []
   // One line: the model ID truncates first (its provider part before its
@@ -187,14 +201,15 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         <div role="group" aria-label="Turn actions" className="flex min-w-0 flex-wrap items-center gap-x-0.5">
           {textContent && (
             <FooterAction
-              label={copied ? 'Copied' : 'Copy'}
-              ariaLabel="Copy response"
-              hint="Copy response"
+              icon={copied ? Check : Copy}
+              iconClassName={copied ? 'text-(--accent-green-text)' : undefined}
+              label={copied ? 'Copied' : 'Copy response'}
+              hint={copied ? 'Copied' : 'Copy response'}
               onClick={handleCopy}
             />
           )}
           {onRegenerate && (
-            <FooterAction label="Regenerate" hint="Send the prompt again and replace this answer" onClick={onRegenerate} />
+            <FooterAction icon={RotateCw} label="Regenerate" hint="Regenerate: send the prompt again and replace this answer" onClick={onRegenerate} />
           )}
           {onEditPrompt && (editLocked ? (
             <Tooltip>
@@ -208,25 +223,30 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
                     onClick={(event) => event.preventDefault()}
                     className={cn(ACTION_CLASS, 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-(--color-text-muted)')}
                   >
-                    Edit prompt
+                    <Pencil size={13} aria-hidden="true" />
                   </button>
                 }
               />
               <TooltipContent>Available when this turn ends</TooltipContent>
             </Tooltip>
           ) : (
-            <FooterAction label="Edit prompt" hint="Undo this turn and put the prompt back in the composer" onClick={onEditPrompt} />
+            <FooterAction icon={Pencil} label="Edit prompt" hint="Edit prompt: undo this turn and put the prompt back in the composer" onClick={onEditPrompt} />
           ))}
+          {onUndo && (
+            <FooterAction icon={Undo2} label="Undo" hint="Undo this turn. The prompt returns to the composer" onClick={onUndo} />
+          )}
           {changedFiles.length > 0 && (
             <button
               ref={filesFold.anchorRef}
               type="button"
               aria-expanded={filesFold.open}
               aria-controls={filesId}
+              aria-label={filesLabel}
               onClick={(event) => (filesFold.open ? filesFold.close(event.currentTarget) : filesFold.setOpen(true))}
-              className={ACTION_CLASS}
+              className={FILES_CLASS}
             >
-              {`${changedFiles.length} ${changedFiles.length === 1 ? 'file' : 'files'} changed`}
+              <FileDiff size={13} aria-hidden="true" />
+              <span className="font-mono tabular-nums">{changedFiles.length}</span>
               {(additions > 0 || deletions > 0) && (
                 <span className="flex items-center gap-1 font-mono tabular-nums">
                   {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
@@ -234,9 +254,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
                 </span>
               )}
             </button>
-          )}
-          {onUndo && (
-            <FooterAction label="Undo" hint="Undo this turn. The prompt returns to the composer" onClick={onUndo} />
           )}
         </div>
       )}

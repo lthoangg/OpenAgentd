@@ -1985,6 +1985,11 @@ describe('Sidebar workspace trust flow', () => {
     const repoRow = await waitFor(() => screen.getByLabelText('Open workspace project'))
     // Desktop says "folder not found"; phones show the shorter "missing".
     expect(repoRow.querySelector('[data-sidebar-missing]')?.textContent).toBe('folder not foundmissing')
+    // So do touch tablets, whose row actions always show: the long label
+    // left one letter of the name in a 264px drawer.
+    const [long, short] = Array.from(repoRow.querySelectorAll('[data-sidebar-missing] [class*="md:"]'))
+    expect(long.className).toContain('pointer-coarse:hidden')
+    expect(short.className).toContain('pointer-coarse:inline')
     // Neither the subfolder nor the outside worktree is a repository row.
     expect(screen.queryByLabelText(/(Expand|Collapse) repository (web|project-fix)/)).toBeNull()
     await user.click(screen.getByLabelText(/^Worktrees for project/))
@@ -2038,6 +2043,9 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
     // The filter chip grows on touch like the row actions (DESIGN.md touch parity).
     expect(chip.className).toContain('pointer-coarse:h-9')
+    // ...and, like a phone's, holds only the count (and the branch mark), so
+    // the always-shown touch actions leave the name its room.
+    expect(within(chip).getByText(/worktree/).className).toContain('pointer-coarse:hidden')
 
     await user.click(chip)
     const menu = screen.getByRole('menu', { name: 'Worktrees for project' })

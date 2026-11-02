@@ -312,6 +312,14 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   }
 }
 
+/* Touch tablets: 44px, so the 36px touch buttons sit inside the header
+   rather than filling it edge to edge as they did at the desktop 36px. */
+@media (pointer: coarse) and (min-width: 768px) {
+  :root {
+    --spacing-app-header: 2.75rem;
+  }
+}
+
 html[data-mobile-shell] .mobile-safe-header {
   min-height: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
   padding-top: env(safe-area-inset-top, 0px);

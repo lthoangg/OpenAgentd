@@ -237,9 +237,10 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
 function MissingBadge({ path }: { path?: string }) {
   return (
     <Chip tone="warning" data-sidebar-missing="" title={path ? `Folder not found at ${path}` : 'Folder not found on disk'}>
-      {/* Phones keep the workspace name readable; the title says the rest. */}
-      <span className="max-md:hidden">folder not found</span>
-      <span className="md:hidden">missing</span>
+      {/* Phones and touch tablets (whose row actions always show) keep the
+          workspace name readable; the title says the rest. */}
+      <span className="max-md:hidden pointer-coarse:hidden">folder not found</span>
+      <span className="hidden max-md:inline pointer-coarse:inline">missing</span>
     </Chip>
   )
 }
@@ -1395,10 +1396,10 @@ export function Sidebar({
                           {worktreeIsRemoving && <Loader2 size={11} className="shrink-0 animate-spin" aria-hidden="true" />}
                           <span className="whitespace-nowrap">
                             <span className="tabular-nums">{worktrees.length}</span>
-                            {/* Phones: the count and the branch mark the session rows use for worktrees. */}
-                            <span className="max-md:hidden">{worktrees.length === 1 ? ' worktree' : ' worktrees'}</span>
+                            {/* Phones and touch tablets: the count and the branch mark the session rows use for worktrees. */}
+                            <span className="max-md:hidden pointer-coarse:hidden">{worktrees.length === 1 ? ' worktree' : ' worktrees'}</span>
                           </span>
-                          <GitBranch size={11} className="shrink-0 md:hidden" aria-hidden="true" />
+                          <GitBranch size={11} className="hidden shrink-0 max-md:block pointer-coarse:block" aria-hidden="true" />
                         </button>
                       }
                     />

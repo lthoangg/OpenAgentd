@@ -63,3 +63,13 @@ describe('settings card on a desktop window', () => {
     expect(wide?.body).toContain('max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh)')
   })
 })
+
+describe('app header on a touch tablet', () => {
+  it('is taller than its 36px touch buttons, so they do not fill it edge to edge', () => {
+    // At the desktop 36px the command palette and the toggles touched both
+    // the window top and the header's bottom rule.
+    const rem = (body: string) => Number(/--spacing-app-header:\s*([\d.]+)rem/.exec(body)?.[1])
+    const tablet = rulesFor(':root').find((r) => r.within.includes('@media (pointer: coarse) and (min-width: 768px)'))
+    expect(rem(tablet?.body ?? '') * 16).toBeGreaterThanOrEqual(36 + 8)
+  })
+})

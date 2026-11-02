@@ -673,7 +673,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     the side question and the **Jump to latest** chip.
   - On a touch tablet, in the app or a browser, the composer rides up on the
     soft keyboard as it does on phones, and Settings ends above the keyboard
-    so its Save bar stays reachable.
+    so its Save bar stays reachable. The header is 44px there, so its touch
+    buttons sit inside it, and workspace rows use the phone's short marks
+    (**missing**, the worktree count) so the always-shown row actions leave
+    the name room.
 - **Pin a session to one account** `[v3.40.0]` — when a provider has several
   keys or OAuth profiles, the run picker can pin the session to one of them;
   **Auto** keeps today's rotation. A pinned session only ever uses that

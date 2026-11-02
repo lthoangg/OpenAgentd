@@ -170,6 +170,21 @@ describe('the terminal group', () => {
     expect(onRequestClose).toHaveBeenCalledTimes(1)
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
+
+  // An empty lower group (⌘\ with nothing moved down yet) has no terminal to
+  // hide: ⌃` starts one there instead of closing the panel.
+  it('starts a terminal in an empty lower group instead of hiding it', async () => {
+    const onRequestClose = mock(() => {})
+    const { update } = await renderPanel({ onRequestClose })
+    await update({ layoutRequest: { action: 'split', key: 1 } })
+    expect(lowerGroup()).toBeTruthy()
+
+    await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
+
+    await waitFor(() => expect(within(lowerGroup()!).getByRole('button', { name: 'Terminal 1' })).toBeTruthy())
+    expect(onRequestClose).not.toHaveBeenCalled()
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
+  })
 })
 
 describe('preview tabs', () => {

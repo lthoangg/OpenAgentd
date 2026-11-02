@@ -282,13 +282,15 @@ export function useDockTabs({
       setState(toggleSplit)
       return
     }
-    if (request.action === 'terminal-toggle' && lowerVisible(state)) {
+    const lowerHasTerminal = groupTabs(state, 1).some((tab) => tab.type === 'terminal')
+    // An empty lower group (or one with only files) has no terminal to hide:
+    // ⌃` starts one there instead.
+    if (request.action === 'terminal-toggle' && lowerVisible(state) && lowerHasTerminal) {
       // Hiding the terminal group with nothing else open closes the panel.
       if (strips[0].length === 0) onCloseDock?.()
       setState(toggleLowerGroup)
       return
     }
-    const lowerHasTerminal = groupTabs(state, 1).some((tab) => tab.type === 'terminal')
     if (lowerHasTerminal) setState((current) => (lowerVisible(current) ? current : toggleLowerGroup(current)))
     else openTerminal(1)
   })

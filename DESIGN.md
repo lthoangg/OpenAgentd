@@ -625,11 +625,19 @@ drawer and full-screen sheet.
   can be written beside the diff; maximized (`Mod+Shift+D`) it covers both.
   What it covers stays mounted, `inert`. Maximize lasts until toggled or Escape;
   with two groups it shows the focused one.
-- **Toggles are cuts, not tweens.** Showing or hiding the sidebar or the
-  Review panel sets the width as a style at once (`ResizableAside`
-  `instantWidth`): no width animation, so the transcript keeps the passage
-  being read and the composer keeps focus and draft. Only the phone drawer and
-  sheet slide.
+- **Toggles slide, resizes do not.** Showing or hiding the sidebar or the
+  Review panel slides its width (`base`, `ease-sheet`) with a CSS transition
+  set only while the toggle runs (`useToggleTween`, `ResizableAside`
+  `tweenWidth`); a drag or a window resize still moves the edge at once. The
+  panel's body keeps its open width and rides the moving edge (clipped, not
+  reflowed), so only the chat column relayouts, and the composer keeps focus
+  and draft. CSS rather than a frame loop, so a hidden window still ends at
+  the right width. The phone drawer and sheet slide as before.
+- **Folds fold.** Workspace session lists, a session's subagents, the reader
+  fold and the turn's file list open and close through `ui/collapsible`
+  (height and opacity, `base`); rows leaving stay on screen until the fold
+  has closed over them. A segmented control's fill slides to the new choice
+  (`useSegmentIndicator`), and a switch's thumb ends on `ease-spring-soft`.
 - **Focus mode** (`Mod+Shift+F`) hides the sidebar and the Review panel and
   puts both back on the second press; showing either one ends it as is.
 - **Find in session** (`Mod+F`, while focus is in the chat) searches the loaded

@@ -1,5 +1,5 @@
 import type { SessionInteractionMode } from '@/api/types'
-import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
+import { segmentedItemClass, segmentedTrackClass, useSegmentIndicator } from '@/components/ui/segmented-control'
 import { cn } from '@/lib/utils'
 
 const MODES: Array<{ value: SessionInteractionMode; label: string }> = [
@@ -28,12 +28,16 @@ export function SessionModeToggle({
   onChange: (mode: SessionInteractionMode) => void
   disabled?: boolean
 }) {
+  // The chosen mode's fill slides across when the mode changes.
+  const { trackRef, indicator, slideItemClass } = useSegmentIndicator(mode, '[aria-pressed="true"]')
   return (
     <div
+      ref={trackRef}
       aria-label="Interaction mode"
       className={segmentedTrackClass({ size: 'composer' })}
       role="group"
     >
+      {indicator}
       {MODES.map((item) => {
         const active = mode === item.value
         const queued = active && pending
@@ -54,6 +58,7 @@ export function SessionModeToggle({
             }}
             className={cn(
               segmentedItemClass({ active, size: 'composer', dimDisabled: !active }),
+              slideItemClass,
               inert && 'cursor-default',
               inert && !active && 'cursor-not-allowed opacity-50',
               queued && 'italic opacity-70',

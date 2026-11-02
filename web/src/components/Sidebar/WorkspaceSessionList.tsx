@@ -5,6 +5,9 @@ import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { getSession } from '@/api/client/agent'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { DURATIONS_S } from '@/lib/motion'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import type { SessionResponse } from '@/api/types'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
 
@@ -19,7 +22,7 @@ export function WorkspaceSessionList({
   currentSessionId,
   runningSessions,
   editingSessionId = null,
-  collapsed = false,
+  collapsed: collapsedProp = false,
   showDetails = true,
   draftActive = false,
   mobileLongPressActions = false,
@@ -61,6 +64,12 @@ export function WorkspaceSessionList({
   onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const multiCheckout = paths !== undefined && paths.length > 1
+  // Collapsing folds the list away (the Collapsible around it): keep the
+  // expanded rows on screen until that motion ends, or the fold would close
+  // over an already emptied list.
+  const reduced = useReducedMotion() ?? false
+  const { mounted: holdExpanded } = useDeferredUnmount(!collapsedProp, reduced ? 0 : DURATIONS_S.base * 1000)
+  const collapsed = collapsedProp && !holdExpanded
   const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   // An older server ignores the multi-checkout filter and sends every

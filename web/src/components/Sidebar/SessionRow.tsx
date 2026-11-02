@@ -11,6 +11,7 @@ import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
@@ -329,8 +330,9 @@ function SessionRowView({
         </div>
       </div>
 
-      {hasSubagents && isExpanded && (
-        // Flat, no guide: subagent marks line up under the lead's title.
+      {/* Flat, no guide: subagent marks line up under the lead's title. The
+          rows fold open and shut (height motion). */}
+      <Collapsible open={hasSubagents && isExpanded}>
         <div className="space-y-px py-0.5 pl-[18px]">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
@@ -418,7 +420,7 @@ function SessionRowView({
             )
           })}
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

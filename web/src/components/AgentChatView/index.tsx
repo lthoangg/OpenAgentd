@@ -658,6 +658,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const dockOpen = workspacePanel !== null
   const [dockKept, setDockKept] = useState(dockOpen)
   if (dockOpen && !dockKept) setDockKept(true)
+  // Closed when this view mounted: the dock's first mount is the show
+  // toggle (or the agent opening a view), so it slides in like a later open.
+  const [dockSlidesIn] = useState(!dockOpen)
   // Over a narrow chat the dock covers the transcript but stops above the
   // composer, so a message can be written beside the diff; maximized, it
   // covers both. Whatever it covers stays mounted, inert.
@@ -1066,6 +1069,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               key="review-dock"
               workspace={workspace}
               open={dockOpen}
+              slideIn={dockSlidesIn}
               chatWorkspace={isChatWorkspace}
               mobile={isMobile}
               mobileDragOffset={workspacePanelDragOffset}

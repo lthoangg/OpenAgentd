@@ -24,6 +24,7 @@ import { ChevronRight, ChevronUp } from 'lucide-react'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { Collapsible } from '@/components/ui/collapsible'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { subscribeLiveClock } from '../ToolCall'
 import { getToolDisplay } from '../ToolCall/display'
@@ -118,7 +119,8 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
           />
         </button>
       </div>
-      {open && (
+      {/* Opening and closing fold the steps (height motion), not a cut. */}
+      <Collapsible open={open}>
         <div id={bodyId} className={cn('ml-1 min-w-0 border-l border-(--color-border) pl-3', BELOW_ROW)}>
           {children}
           <button
@@ -135,7 +137,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
             <span>Collapse</span>
           </button>
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

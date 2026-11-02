@@ -114,6 +114,42 @@ describe('Review dock layout', () => {
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 
+  it('slides in the first time it opens too (mounted by the toggle), from 0 to its width', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspacePanel workspace={WORKSPACE} open slideIn centerWidth={1000} />
+        </QueryClientProvider>,
+      )
+    })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.style.width).toBe('450px')
+    expect(dock.style.transition).toContain('width')
+  })
+
+  it('slides shut on desktop: the width tweens for the toggle only, the body held at its open width', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const panel = (open: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <WorkspacePanel workspace={WORKSPACE} open={open} centerWidth={1000} />
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(panel(true)) })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.style.transition).toBe('')
+
+    await act(async () => { view!.rerender(panel(false)) })
+
+    expect(dock.style.width).toBe('0px')
+    expect(dock.style.transition).toContain('width')
+    // Clipped, not reflowed: the body rides the moving edge at 450px.
+    expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).toBe('450px')
+  })
+
   it('falls back to an overlay without a maximize toggle when the center is too narrow', async () => {
     const { dock } = await renderPanel({ centerWidth: 600 })
 

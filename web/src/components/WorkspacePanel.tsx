@@ -19,7 +19,7 @@
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
@@ -38,7 +38,8 @@ import {
   workspaceChangesQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { PanelResizeHandle, ResizableAside, settledWidthBesidePanels, type LiveWidth } from '@/components/ResizableAside'
+import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, settledWidthBesidePanels, type LiveWidth } from '@/components/ResizableAside'
+import { useToggleTween } from '@/hooks/useToggleTween'
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { useElementWidth } from '@/hooks/use-element-width'
@@ -175,9 +176,15 @@ export function WorkspacePanel({
   onSendPreviewComments,
   chatWorkspace = false,
   onRequestClose,
+  slideIn = false,
 }: {
   workspace: string
   open: boolean
+  /**
+   * Mounted by the show toggle (not open from the start): slide in from 0
+   * like a later open, instead of appearing at full width.
+   */
+  slideIn?: boolean
   mobile?: boolean
   mobileDragOffset?: number | null
   /**
@@ -327,13 +334,24 @@ export function WorkspacePanel({
     const timer = window.setTimeout(() => setParked(true), PARK_AFTER_MS)
     return () => window.clearTimeout(timer)
   }, [open])
-  // Whether the open or close tween (mounting counts as opening) is still
-  // running. Only then, and while closed, is the body pinned to the open
-  // width; any other width change moves the body with the dock's edge.
-  // Desktop shows and hides as a straight cut: nothing to wait for.
+  // Whether the open or close tween (mounting counts as opening on a phone)
+  // is still running. Only then, and while closed, is the body pinned to the
+  // open width; any other width change moves the body with the dock's edge.
+  // The phone sheet settles on its animation's end; desktop slides its width
+  // with a CSS transition for a fixed time (``useToggleTween``).
   const [toggle, setToggle] = useState({ open, running: mobile })
   if (toggle.open !== open) setToggle({ open, running: mobile })
   const settleToggle = () => setToggle((current) => (current.running ? { ...current, running: false } : current))
+  // Mounted by the toggle: lay out one frame at 0 wide, so the width has a
+  // start to slide from (layout is flushed before the second render).
+  const [entering, setEntering] = useState(slideIn && open && !mobile)
+  useLayoutEffect(() => {
+    if (!entering) return
+    void document.body.getBoundingClientRect()
+    setEntering(false)
+  }, [entering])
+  const shownOpen = open && !entering
+  const sliding = useToggleTween(shownOpen, PANEL_SLIDE_MS) && !mobile
 
   // ── Geometry ───────────────────────────────────────────────────────────────
   const dockRatio = useLayoutStore((s) => s.dockRatio)
@@ -353,12 +371,12 @@ export function WorkspacePanel({
     disabled: mobile || overlay || !open,
     label: 'Resize Review panel',
   }
-  // Desktop sets the width through the same motion value, but never tweens
-  // it: showing or hiding the panel is a straight cut, so the chat beside it
-  // does not reflow frame by frame. Closed, the body keeps its open width
-  // (clipped, not reflowed). Only the phone sheet fades and follows a swipe.
+  // Desktop sets the width as a style and slides it only while showing or
+  // hiding (never for a drag or a window resize). Closed or sliding, the
+  // body keeps its open width, clipped rather than reflowed, so it rides
+  // the moving edge. The phone sheet fades and follows a swipe.
   const dockMotion = ({ width, isResizing }: LiveWidth) => ({
-    animate: !open
+    animate: !shownOpen
       ? (mobile ? { opacity: 0 } : { width: 0 })
       : !mobile
         ? { width: overlay ? layout.width : width }
@@ -368,8 +386,9 @@ export function WorkspacePanel({
     transition: mobile && mobileDragOffset !== null
       ? { duration: 0 }
       : { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
-    pinWidth: !mobile && (!open || toggle.running) ? (overlay ? layout.width : width) : undefined,
+    pinWidth: !mobile && (!open || toggle.running || sliding) ? (overlay ? layout.width : width) : undefined,
     instantWidth: !mobile,
+    tweenWidth: sliding,
   })
   // The toggle is meaningless while a narrow window already forces overlay.
   const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized

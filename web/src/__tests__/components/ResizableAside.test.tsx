@@ -102,6 +102,32 @@ describe('ResizableAside', () => {
     expect(aside.style.width).toBe('0px')
   })
 
+  // Opening and closing slide: a CSS width transition, set only for the
+  // toggle, so a window resize or a drag still moves the edge at once. CSS,
+  // not a frame loop, so a hidden window still ends at the right width.
+  it('tweens the width with a CSS transition only while tweenWidth is set', () => {
+    const panel = (tweenWidth: boolean, width: number) => (
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={() => ({ animate: { width }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
+      >
+        <p>content</p>
+      </ResizableAside>
+    )
+    const { rerender } = render(panel(false, 300))
+    const aside = screen.getByRole('complementary', { name: 'Panel' })
+    expect(aside.style.transition).toBe('')
+
+    rerender(panel(true, 0))
+    expect(aside.style.width).toBe('0px')
+    expect(aside.style.transition).toBe('width var(--motion-base) var(--ease-sheet)')
+
+    rerender(panel(false, 0))
+    expect(aside.style.transition).toBe('')
+    expect(frames).toHaveLength(0)
+  })
+
   // Closing tweens the aside's width to 0. Content that tracked that width
   // reflowed every frame (a long plan: ~10 ms a frame); pinned to the target
   // width it is only clipped by the shrinking aside.

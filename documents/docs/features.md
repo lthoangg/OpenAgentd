@@ -730,9 +730,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     maximized
     (`⌘⇧D`/`Ctrl+Shift+D`) it covers both until you restore it or press
     Escape.
-  - Showing or hiding the sidebar or the Review panel is instant: the
-    transcript stays on the passage you were reading and the composer keeps
-    its focus and draft.
+  - Showing or hiding the sidebar or the Review panel slides it in or out
+    (a quarter second); its rows ride the moving edge instead of rewrapping,
+    and the composer keeps its focus and draft. Dragging an edge or resizing
+    the window still moves it at once. Workspace session lists, a session's
+    subagents and the Reader view's folded steps open and close with the same
+    smooth fold; the chosen segment of a segmented control (Code / Plan,
+    Changes / History…) slides to the new choice, and switches ease their
+    thumb to a soft stop.
   - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
     panel; press it again to bring both back.
   - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the

@@ -39,8 +39,8 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
         // Off: the strong hairline tone as a fill (it steps up under the OS
         // "Increase contrast"); on: Signal Blue.
         checked ? 'bg-(--accent-blue)' : 'bg-(--color-border-strong)',
-        // Transitions
-        'transition-colors duration-(--motion-base)',
+        // Transitions: the track's colour crossfades while the thumb slides
+        'transition-colors duration-(--motion-base) ease-(--ease-in-out)',
         // Touch: a 44px hit area around the 40×22 track, without moving the layout.
         "pointer-coarse:before:absolute pointer-coarse:before:-inset-x-0.5 pointer-coarse:before:-inset-y-[11px] pointer-coarse:before:content-['']",
         // Focus ring
@@ -56,7 +56,8 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
         aria-hidden="true"
         className={cn(
           'block size-4 rounded-full bg-(--color-surface) shadow-(--shadow-depth) dark:bg-(--color-text)',
-          'transition-transform duration-(--motion-base)',
+          // A slight spring at the end of its travel, like an OS switch.
+          'transition-transform duration-(--motion-base) ease-(--ease-spring-soft)',
           checked ? 'translate-x-[18px]' : 'translate-x-0',
         )}
       />

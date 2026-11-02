@@ -29,7 +29,8 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
-import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
+import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
+import { useToggleTween } from '@/hooks/useToggleTween'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useTouchFirst } from '@/hooks/use-touch-first'
@@ -85,6 +86,7 @@ import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { Chip } from '@/components/ui/chip'
+import { Collapsible } from '@/components/ui/collapsible'
 import {
   CONTEXT_MENU_ITEM_CLASS,
   CONTEXT_MENU_ITEM_DANGER_CLASS,
@@ -778,16 +780,22 @@ export function Sidebar({
     disabled: isMobile || desktopCollapsed,
     label: 'Resize sidebar',
   }
+  // Desktop: showing or hiding slides the width (a CSS transition, only for
+  // the toggle); the rows keep the open width and ride the moving edge, so
+  // they slide rather than rewrap every frame.
+  const sliding = useToggleTween(desktopCollapsed, PANEL_SLIDE_MS) && !isMobile
+  const pinRows = !isMobile && (desktopCollapsed || sliding)
   const sidebarMotion = ({ width, isResizing }: LiveWidth) => ({
     animate: isMobile
       ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
       : { width: desktopCollapsed ? 0 : width },
-    // Desktop: showing or hiding is a straight cut (the chat beside it never
-    // animates its width); only the phone drawer slides.
+    // Desktop sets the width as a style (no frame loop), sliding it only
+    // while a toggle runs; the phone drawer moves with framer-motion.
     transition: mobileDragOffset !== null
       ? { duration: 0 }
       : { duration: !isMobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
     instantWidth: !isMobile,
+    tweenWidth: sliding,
   })
 
   const collapseAllWorkspaces = () => {
@@ -1107,10 +1115,10 @@ export function Sidebar({
           ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
           : drawer
             // Closed, the drawer is 0 wide: hide it so its edge and shadow do not show.
-            ? cn('absolute inset-y-0 left-0 z-30 flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)', desktopCollapsed && 'invisible')
+            ? cn('absolute inset-y-0 left-0 z-30 flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)', desktopCollapsed && !sliding && 'invisible')
             // Collapsed to 0 wide, the border alone would still draw a 1px
-            // edge down the window side.
-            : cn('relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)', desktopCollapsed && 'border-r-0')
+            // edge down the window side (once the slide is over).
+            : cn('relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)', desktopCollapsed && !sliding && 'border-r-0')
       }
       data-sidebar-drawer={drawer && !isMobile ? '' : undefined}
     >
@@ -1118,7 +1126,8 @@ export function Sidebar({
 
       <div
         data-focus-region="sidebar"
-        className="flex min-h-0 flex-1 flex-col"
+        className={cn('flex min-h-0 flex-1 flex-col', pinRows && 'shrink-0 self-end')}
+        style={pinRows ? { width: sidebarResize.width } : undefined}
         onKeyDown={(event) => {
           if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
           const target = event.target as HTMLElement
@@ -1458,9 +1467,10 @@ export function Sidebar({
                 )}
               </div>
 
-              {(sourceIsExpanded || sourceHasRunningSession) && (
-                // One level: every checkout's sessions hang off a single
-                // guide under the chevron, status marks under the folder.
+              <Collapsible open={sourceIsExpanded || sourceHasRunningSession}>
+                {/* One level: every checkout's sessions hang off a single
+                    guide under the chevron, status marks under the folder.
+                    Expanding and collapsing fold the rows (height motion). */}
                 <div className="ml-[17px] mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1">
                   {checkouts.selected && sourceIsExpanded && (
                     // The active filter, named where its sessions are, with
@@ -1507,7 +1517,7 @@ export function Sidebar({
                     }}
                   />
                 </div>
-              )}
+              </Collapsible>
             </div>
           )
         })}

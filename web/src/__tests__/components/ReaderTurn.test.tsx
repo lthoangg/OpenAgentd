@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -305,12 +306,20 @@ describe('AssistantTurn — reader mode, closing a long fold', () => {
     expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
     fireEvent.click(workRow())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+    const timers = useFakeTimers()
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
 
-    expect(workRow().getAttribute('aria-expanded')).toBe('false')
-    for (const id of ['think', 'read', 'narrate', 'edit']) expect(rendered(id)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
-    expect(document.activeElement).toBe(workRow())
+      expect(workRow().getAttribute('aria-expanded')).toBe('false')
+      expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
+      expect(document.activeElement).toBe(workRow())
+      // The steps fold away: out of reach at once, gone once the fold ends.
+      expect(rendered('read')?.closest('[inert]')).toBeTruthy()
+      act(() => timers.tick(300))
+      for (const id of ['think', 'read', 'narrate', 'edit']) expect(rendered(id)).toBeNull()
+    } finally {
+      timers.restore()
+    }
   })
 
   it('puts the row where the reader clicked when the fold closes from its end', () => {

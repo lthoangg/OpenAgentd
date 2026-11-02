@@ -24,12 +24,20 @@ import { createContext, useContext, type ComponentProps, type ReactNode } from '
 import { motion, type TargetAndTransition, type Transition } from 'framer-motion'
 
 import { panelResizeHandleClass, usePanelResize, type PanelResizeOptions } from '@/hooks/use-panel-resize'
+import { DURATIONS_S } from '@/lib/motion'
 
 type ResizeState = ReturnType<typeof usePanelResize>
 
 const ResizeContext = createContext<ResizeState | null>(null)
 
 const PANEL_TARGET_ATTR = 'data-panel-target-width'
+
+/** A side panel showing or hiding: the sheet curve, at the ``base`` duration
+ *  (DESIGN.md → Motion). Reduced motion zeroes it (index.css). */
+const PANEL_SLIDE = 'width var(--motion-base) var(--ease-sheet)'
+
+/** ``PANEL_SLIDE``'s length, for owners timing ``useToggleTween``. */
+export const PANEL_SLIDE_MS = DURATIONS_S.base * 1000
 
 /**
  * ``center``'s width once the panels beside it (its siblings) finish their
@@ -67,8 +75,12 @@ interface ResizableAsideProps
    * style instead: a straight cut that needs no animation frame (desktop
    * panels never tween their width; a throttled frame loop, as in a hidden
    * window, must not leave them stuck at 0).
+   * ``tweenWidth`` (with ``instantWidth``) slides that style change with a
+   * CSS transition: only while a show/hide toggle runs (``useToggleTween``),
+   * never for a drag or a window resize. CSS, not a frame loop, so a hidden
+   * window still ends at the right width.
    */
-  getMotion: (live: LiveWidth) => { animate: TargetAndTransition; transition: Transition; pinWidth?: number; instantWidth?: boolean }
+  getMotion: (live: LiveWidth) => { animate: TargetAndTransition; transition: Transition; pinWidth?: number; instantWidth?: boolean; tweenWidth?: boolean }
   /** Lay the children out at ``pinWidth`` rather than the tweening width. */
   pinContentWidth?: boolean
   children: ReactNode
@@ -76,9 +88,10 @@ interface ResizableAsideProps
 
 export function ResizableAside({ resize, getMotion, pinContentWidth = false, children, style, ...asideProps }: ResizableAsideProps) {
   const state = usePanelResize(resize)
-  const { animate, transition, pinWidth, instantWidth = false } = getMotion({ width: state.width, isResizing: state.isResizing })
+  const { animate, transition, pinWidth, instantWidth = false, tweenWidth = false } = getMotion({ width: state.width, isResizing: state.isResizing })
   const { width: targetWidth, ...animateRest } = animate
   const cut = instantWidth && targetWidth !== undefined
+  const slide = cut && tweenWidth && !state.isResizing
   // Always the same wrapper, so a change of target (mobile has none) never
   // remounts the panel body.
   const pinnedWidth = pinWidth ?? '100%'
@@ -87,7 +100,7 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, chi
       <motion.aside
         {...asideProps}
         data-panel-target-width={typeof targetWidth === 'number' ? targetWidth : undefined}
-        style={cut ? { ...style, width: targetWidth as number | string } : style}
+        style={cut ? { ...style, width: targetWidth as number | string, transition: slide ? PANEL_SLIDE : undefined } : style}
         animate={cut ? animateRest : animate}
         transition={transition}
       >

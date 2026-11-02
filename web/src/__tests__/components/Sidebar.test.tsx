@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
@@ -996,11 +997,32 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByText('/repo/project')).toBeTruthy()
   })
 
-  it('shows and hides on desktop as a straight cut, never a width tween', async () => {
-    const view = await renderSidebarWithProps({ desktopCollapsed: true })
-    const sidebar = view.container.querySelector('aside')
+  it('slides shut on desktop: a short width tween, its rows held at their width and riding the edge', async () => {
+    const { Sidebar } = await import('@/components/Sidebar')
+    const queryClient = new QueryClient()
+    const tree = (collapsed: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <Sidebar desktopCollapsed={collapsed} />
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(tree(false)) })
+    const sidebar = view!.container.querySelector('aside') as HTMLElement
+    const region = sidebar.querySelector('[data-focus-region="sidebar"]') as HTMLElement
+    // At rest nothing tweens, so a window resize moves the edge at once.
+    expect(sidebar.style.transition).toBe('')
+    expect(region.style.width).toBe('')
+    const open = sidebar.style.width
 
-    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.01 })
+    await act(async () => { view!.rerender(tree(true)) })
+    expect(sidebar.style.width).toBe('0px')
+    expect(sidebar.style.transition).toContain('width')
+    // The rows keep the open width and sit at the moving edge, so they
+    // slide out with it instead of rewrapping every frame.
+    expect(region.style.width).toBe(open)
+    expect(region.className).toContain('self-end')
+    // The hairline and the drawer stay until the slide is over.
+    expect(sidebar.className.split(' ')).not.toContain('border-r-0')
   })
 
   it('covers the content as a drawer in a narrow window, closing on a click outside', async () => {
@@ -1267,6 +1289,38 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Expand workspace project')).toBeTruthy()
     expect(screen.getByText('Background running session')).toBeTruthy()
     expect(screen.getByLabelText('Session running')).toBeTruthy()
+  })
+
+  it('folds a workspace shut with the height motion, its rows staying until the fold ends', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderSidebarForSessions(undefined)
+    const timers = useFakeTimers()
+    try {
+      act(() => { fireEvent.click(screen.getByLabelText('Collapse workspace project')) })
+
+      // Folding, not cut: the rows ride the closing fold out of sight.
+      const row = screen.getByText('Idle session')
+      expect(row.closest('[data-slot="collapsible"]')?.getAttribute('data-state')).toBe('closed')
+      act(() => timers.tick(300))
+      expect(screen.queryByText('Idle session')).toBeNull()
+    } finally {
+      timers.restore()
+    }
+
+    act(() => { fireEvent.click(screen.getByLabelText('Expand workspace project')) })
+    expect(screen.getByText('Idle session').closest('[data-slot="collapsible"]')?.getAttribute('data-state')).toBe('open')
   })
 
   it('hides a main repository from the sidebar without deleting it', async () => {

@@ -1,9 +1,10 @@
 import { describe, it, expect, mock, afterEach } from 'bun:test'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { act, render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WorkspaceSessionList } from '@/components/Sidebar/WorkspaceSessionList'
 import type { SessionResponse } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
+import { useFakeTimers } from '../fake-timers'
 
 const originalFetch = globalThis.fetch
 afterEach(() => {
@@ -179,10 +180,17 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     fireEvent.click(toggleBtn)
     expect(screen.getByText('Trace AST nodes')).toBeTruthy()
 
-    // Collapse again
-    fireEvent.click(screen.getByLabelText('Collapse 1 subagents'))
-    expect(screen.queryByText('Trace AST nodes')).toBeNull()
-    expect(screen.getByLabelText('Expand 1 subagents')).toBeTruthy()
+    // Collapse again: the rows fold away (out of reach at once), then go.
+    const timers = useFakeTimers()
+    try {
+      fireEvent.click(screen.getByLabelText('Collapse 1 subagents'))
+      expect(screen.getByLabelText('Expand 1 subagents')).toBeTruthy()
+      expect(screen.getByText('Trace AST nodes').closest('[inert]')).toBeTruthy()
+      act(() => timers.tick(300))
+      expect(screen.queryByText('Trace AST nodes')).toBeNull()
+    } finally {
+      timers.restore()
+    }
   })
 
   it('expands the lead when one of its subagents is the open session', async () => {

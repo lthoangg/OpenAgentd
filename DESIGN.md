@@ -20,14 +20,15 @@ colors:
   bg-input: "#FAF6EC"
   bg-key: "#F0E9D4"           # "Keycap" — hover/press wash, header strips
   bg-send: "#2D241B"          # Inverted ink pill (composer send)
-  bg-tooltip: "#2D241B"       # Tooltip chip (a raised warm tone in dark)
+  bg-tooltip: "#FFFDF7"       # Tooltip chip: a light card on paper, a raised warm tone in dark
   surface: "#FFFDF7"
   surface-2: "#F5EBD8"
 
   # ── Selection fills ────────────────────────────────────────────────────────
-  fill-selected: "#3F3429"    # Chosen segment, tab or option; highlighted menu row
-  on-selected: "#FFFDF7"
-  fill-danger: "#B91C1C"      # Highlighted destructive menu row
+  fill-selected: "#E3D6BA"    # Chosen segment, tab or option; highlighted menu row (a quiet sand)
+  on-selected: "#1A1714"
+  fill-danger: "#F7DCD6"      # Highlighted destructive menu row
+  on-danger: "#991B1B"
   switch-on: "#5AA8E2"        # A switch that is on
 
   # ── Borders ────────────────────────────────────────────────────────────────
@@ -41,8 +42,8 @@ colors:
   on-surface-muted: "#6E604F"
   on-surface-subtle: "#7A6A54" # AA floor against bg-page
   on-accent: "#FFFDF7"
-  tooltip-text: "#FFFDF7"
-  tooltip-border: "#2D241B"   # Matches the fill in light; a visible edge in dark
+  tooltip-text: "#1A1714"
+  tooltip-border: "#D9CFA9"   # A hairline edge in both themes
 
   # ── Agent identity chips ───────────────────────────────────────────────────
   accent-blue: "#5AA8E2"
@@ -273,7 +274,7 @@ components:
     rounded: "{rounded.xs}"
     height: 28px
     padding: 8px
-  menu-item-highlighted:      # Pointer or keyboard: filled edge to edge, text inverts
+  menu-item-highlighted:      # Pointer or keyboard: filled edge to edge with the quiet selection tone
     backgroundColor: "{colors.fill-selected}"
     textColor: "{colors.on-selected}"
   segmented-control:          # No border, no inset: the track is the segments
@@ -284,8 +285,8 @@ components:
     backgroundColor: "{colors.fill-selected}"
     textColor: "{colors.on-selected}"
     rounded: "{rounded.none}"
-  switch-off:
-    backgroundColor: "{colors.border-strong}"
+  switch-off:                 # border on paper, border-strong on dark
+    backgroundColor: "{colors.border}"
     rounded: "{rounded.full}"
   switch-on:
     backgroundColor: "{colors.switch-on}"
@@ -436,14 +437,16 @@ inverted surface, reserved for the composer's send action.
 
 A chosen segment, tab or question option and the highlighted menu row fill
 with `fill-selected` and set their text in `on-selected`; a tooltip is a
-`bg-tooltip` chip. In light mode these are Bark and ink with inverted text.
-In dark mode they are **not** the near-white accent: a cream block on a dark
-window glows brighter than the words around it, so the fill is a raised warm
-tone (`#5A4836`) with the normal text colour on it, as a native dark
-segmented control or menu does. The tooltip is a raised chip with a hairline
-edge. Increase contrast lifts the dark fill to 3:1 against the track.
-`token-pairs.test.ts` keeps every dark fill well below the text tone, and the
-lint (`accent-selection-fill`) stops a selection reaching for the accent.
+`bg-tooltip` chip. The fills are **quiet**: a tone a step off the track and the
+menu (1.15–1.8:1), with the normal text colour on it, as a native segmented
+control or menu marks its choice. Paper stays light: a sand fill (`#E3D6BA`)
+with ink, a pale rose for a destructive row, and a light tooltip card with a
+hairline edge; no Bark blocks. Dark is **not** the near-white accent (a cream
+block on a dark window glows brighter than the words around it) but a raised
+warm tone (`#4A3B2D`). Increase contrast lifts both fills to 3:1 against the
+track (Bark in light). `token-pairs.test.ts` holds the range and keeps light
+fills light and dark fills well below the text tone, and the lint
+(`accent-selection-fill`) stops a selection reaching for the accent.
 
 ### Agent identity chips
 
@@ -475,9 +478,9 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-card` | `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
-| `fill-selected` / `on-selected` | `#3F3429` / `#FFFDF7` | `#5A4836` / `#F5EBD8` |
-| `fill-danger` (highlighted destructive row) | `#B91C1C` | `#8E2F2B` |
-| `bg-tooltip` / `tooltip-text` / `tooltip-border` | `#2D241B` / `#FFFDF7` / `#2D241B` | `#2E251C` / `#F5EBD8` / `#4D3E2D` |
+| `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#4A3B2D` / `#F5EBD8` |
+| `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |
+| `bg-tooltip` / `tooltip-text` / `tooltip-border` | `#FFFDF7` / `#1A1714` / `#D9CFA9` | `#2E251C` / `#F5EBD8` / `#4D3E2D` |
 | `switch-on` | `#5AA8E2` | `#3F86C2` (deeper, so the cream thumb stands off it) |
 | `surface` / `surface-2` | `#FFFDF7` / `#F5EBD8` | `#221C16` / `#2A2219` |
 | `color-bg-elevated` | `#FFFDF7` | `#221C16` |
@@ -851,8 +854,8 @@ them is: **warm paper surface · fills, not borders · muted text · keycap hove
 a primary action is filled with Bark (`--color-accent`), a secondary one with
 the keycap wash (`bg-key`), a ghost one is text only. In a small group (Code /
 Plan, a question's options, the highlighted menu item) the chosen item is
-filled edge to edge with `fill-selected` (Bark in light, a raised warm tone in
-dark; see Colors → Selection fills) and its text turns `on-selected`; the track
+filled edge to edge with `fill-selected` (a quiet sand in light, a raised warm
+tone in dark; see Colors → Selection fills) and its text turns `on-selected`; the track
 has no border and no inset. In a long list (sidebar rows, the dock's tab strip)
 the open row keeps a wash and gains medium weight and the main text colour,
 never a coloured bar. Borders are left for three jobs only: the boundary
@@ -934,7 +937,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Segmented Controls & Connected Tabs**:
 - **Track**: `rounded-sm`, `bg-(--bg-key)`, no border and no padding, `overflow-hidden`: the segments are the track.
-- **Active Segment**: filled with Bark edge to edge, `text-(--color-text-on-accent)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
+- **Active Segment**: filled with `fill-selected` edge to edge (a quiet sand in light, a raised warm tone in dark), `text-(--color-text-on-selected)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
 - **Inactive Segment**: square inside the track, `text-(--color-text-muted)`, hover `text-(--color-text-2)` and a keycap step. Keyboard focus is an inset ring so it never spills past the track.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
 - **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
@@ -1109,7 +1112,7 @@ the text sits the run deck, which says how the next message runs:
   button: while a server needs the user, "+" carries a 6px dot in the
   orange text tone (its description names the server) and opens at that
   section.
-- **Code/Plan** is the segmented control (Bark fill, no border). Plan mode
+- **Code/Plan** is the segmented control (selection fill, no border). Plan mode
   changes the placeholder to say the agent reads and proposes without editing.
 - **The run chip** reads `provider:model` in mono, then the thinking level and
   a pinned account in words. The `provider:` part gives way first; under 520px

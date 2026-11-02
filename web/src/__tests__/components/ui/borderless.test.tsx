@@ -70,7 +70,10 @@ describe('borderless controls', () => {
     const { getByRole, rerender } = render(<Switch checked={false} aria-label="Off switch" />)
     const off = getByRole('switch').className
     expect(borderWidths(off)).toEqual([])
-    expect(off).toContain('bg-(--color-border-strong)')
+    // Paper keeps it light, as a native light switch; dark (and Increase
+    // contrast, which raises the border tones) keep the stronger tone.
+    expect(off).toContain('bg-(--color-border)')
+    expect(off).toContain('dark:bg-(--color-border-strong)')
     rerender(<Switch checked aria-label="On switch" />)
     expect(getByRole('switch').className).toContain('bg-(--switch-on)')
   })

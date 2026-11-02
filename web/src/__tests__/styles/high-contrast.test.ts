@@ -78,13 +78,18 @@ describe('prefers-contrast: more', () => {
     expect(props(baseTokens, /:root\.dark\s*\{/)['--color-border']).toBe('#3A2F23')
   })
 
-  it('lifts the dark selection fill to 3:1 on the track, its label still AA', () => {
-    const base = props(baseTokens, /:root\.dark\s*\{/)
-    const high = props(contrastBlock, /:root\.dark\s*\{/)
-    expect(contrast(high['--color-fill-selected'], base['--bg-key'])).toBeGreaterThanOrEqual(3)
-    expect(contrast(high['--color-text-on-selected'], high['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(high['--color-text-on-selected'], high['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
-  })
+  for (const theme of [
+    { name: 'light', selector: /:root,\s*:root\.light\s*\{/ },
+    { name: 'dark', selector: /:root\.dark\s*\{/ },
+  ]) {
+    it(`lifts the ${theme.name} selection fill to 3:1 on the track, its label still AA`, () => {
+      const base = props(baseTokens, theme.selector)
+      const high = props(contrastBlock, theme.selector)
+      expect(contrast(high['--color-fill-selected'], base['--bg-key'])).toBeGreaterThanOrEqual(3)
+      expect(contrast(high['--color-text-on-selected'], high['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(high['--color-text-on-danger'], high['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
+    })
+  }
 })
 
 describe('forced-colors: active', () => {

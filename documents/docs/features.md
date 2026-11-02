@@ -595,16 +595,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   - With a keyboard on an iPad or iPhone, shortcuts use ⌘ as on a Mac
     (⌘N, ⌘K, ⇧⌘A) and their hints say so.
   - Buttons, chips, tabs and segmented controls have no borders. The primary
-    button and the chosen segment (Code / Plan, for example) are filled with
-    the theme's Bark colour edge to edge, with inverted text; the highlighted
-    menu item and the command palette's active row are filled the same way
-    (in the palette only the row the keys or a real mouse move chose, never a
-    second one under a resting pointer). Menus, cards and dialogs keep one
-    thin frame, and nothing inside them adds another.
-  - In dark mode a chosen segment, tab or question option, the highlighted
-    menu item and tooltips are a raised warm tone with light text, no longer a
-    near-white block that glowed brighter than the words around it. A switch
-    that is on is a deeper blue there, so its knob stands out.
+    button is filled with the theme's Bark colour. The chosen segment (Code /
+    Plan, for example), a chosen tab or question option, the highlighted menu
+    item and the command palette's active row are filled edge to edge with a
+    quiet tone a step off their track, with the normal text colour: a light
+    sand in light mode (no dark brown blocks), a raised warm tone in dark mode
+    (no near-white block that glows brighter than the words around it). In the
+    palette only the row the keys or a real mouse move chose lights, never a
+    second one under a resting pointer. Tooltips are light cards in light
+    mode; a switch that is off is a light track there. With the system's
+    Increase contrast on, the fills step back up. Menus, cards and dialogs
+    keep one thin frame, and nothing inside them adds another.
+  - A switch that is on is a deeper blue in dark mode, so its knob stands out.
   - Review panel tabs are borderless pills; the open tab is filled with the
     page colour and set in medium weight, with no coloured edge.
   - Dialog buttons follow the operating system: Cancel then the action on

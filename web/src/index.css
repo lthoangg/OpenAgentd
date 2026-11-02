@@ -257,8 +257,8 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
 }
 
 /* Menus and listboxes (ui/menu-styles.ts): the row under the pointer or the
- * keyboard fills with the selection fill (Bark on paper, a raised warm tone on
- * dark) and every word in it takes the fill's text tone, the way an OS menu
+ * keyboard fills with the selection fill (a sand tone on paper, a raised warm
+ * tone on dark) and every word in it takes the fill's text tone, the way an OS menu
  * highlights. Unlayered, so it wins over a row's own hover wash and
  * muted text. A pointer hover counts only where hover exists, so a tap on a
  * phone does not leave a row lit. A keyed list (``oa-menu-item-keyed``, the
@@ -275,6 +275,7 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   }
   .oa-menu-item.oa-menu-item-danger:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
     background-color: var(--color-fill-danger);
+    color: var(--color-text-on-danger);
   }
   .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) * {
     color: inherit;
@@ -286,6 +287,7 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
 }
 .oa-menu-item.oa-menu-item-danger:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
   background-color: var(--color-fill-danger);
+  color: var(--color-text-on-danger);
 }
 .oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) * {
   color: inherit;

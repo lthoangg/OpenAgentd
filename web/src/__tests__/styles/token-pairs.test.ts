@@ -53,14 +53,24 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
     }
   })
 
-  it('fills a chosen segment or a highlighted row so its label reads at AA and the fill shows on the track', () => {
+  it('fills a chosen segment or a highlighted row softly: its label reads at AA, the fill just shows', () => {
     expect(contrast(t['--color-text-on-selected'], t['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
-    // Light: the Bark fill. Dark: a raised warm tone, like a native dark
-    // segmented control (Increase contrast takes it to 3:1).
-    expect(contrast(t['--color-fill-selected'], t['--bg-key'])).toBeGreaterThanOrEqual(name === 'light' ? 3 : 1.5)
-    expect(contrast(t['--color-fill-selected'], t['--color-surface'])).toBeGreaterThanOrEqual(name === 'light' ? 3 : 1.5)
+    // A quiet tone a step off the track and the menu, as a native control
+    // marks its choice; never a dark block on paper or a glowing one on
+    // dark (Increase contrast takes it to 3:1).
+    for (const surface of ['--bg-key', '--bg-card', '--color-surface']) {
+      const ratio = contrast(t['--color-fill-selected'], t[surface])
+      expect({ surface, shows: ratio >= 1.15, quiet: ratio <= 1.8 }).toEqual({ surface, shows: true, quiet: true })
+    }
     expect(contrast(t['--color-text-muted'], t['--bg-key'])).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(t['--color-text-on-selected'], t['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(t['--color-text-on-danger'], t['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('keeps light fills light: the label is dark on them, as on paper', () => {
+    if (name !== 'light') return
+    for (const fill of ['--color-fill-selected', '--color-fill-danger', '--bg-tooltip']) {
+      expect({ fill, light: luminance(t[fill]) > 0.5 }).toEqual({ fill, light: true })
+    }
   })
 
   it('never lets a chrome fill outshine the content: dark fills stay far below the text tone', () => {
@@ -73,7 +83,9 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
 
   it('reads a tooltip at AA, its edge visible on the page', () => {
     expect(contrast(t['--color-tooltip-text'], t['--bg-tooltip'])).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(t['--color-tooltip-border'], t['--bg-page'])).toBeGreaterThanOrEqual(name === 'light' ? 3 : 1.5)
+    // A light card on paper (light), a raised tone on dark: the edge and the
+    // shadow set it off, as a native tooltip.
+    expect(contrast(t['--color-tooltip-border'], t['--bg-page'])).toBeGreaterThanOrEqual(1.4)
   })
 
   it('sets a switch thumb apart from its on track at 2.5:1, and the track from the page at 2:1', () => {

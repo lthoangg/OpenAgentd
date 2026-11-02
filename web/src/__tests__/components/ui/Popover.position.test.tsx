@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
+import { act, cleanup, render } from '@testing-library/react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
@@ -53,5 +54,64 @@ describe('PopoverContent placement', () => {
     const search = document.querySelector<HTMLInputElement>('input[aria-label="Search"]')
     search?.focus()
     expect(document.activeElement).toBe(search)
+  })
+})
+
+describe('PopoverContent above its trigger', () => {
+  const realRect = Element.prototype.getBoundingClientRect
+  const realObserver = globalThis.ResizeObserver
+  let contentHeight = 300
+  const resized: Array<() => void> = []
+
+  afterEach(() => {
+    cleanup()
+    Element.prototype.getBoundingClientRect = realRect
+    globalThis.ResizeObserver = realObserver
+    resized.length = 0
+    contentHeight = 300
+  })
+
+  // A trigger near the bottom of a 768px window (a composer's run chip).
+  function renderAbove() {
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const slot = this.getAttribute('data-slot')
+      if (slot === 'popover-trigger') return { top: 700, bottom: 728, left: 100, right: 180, width: 80, height: 28 } as DOMRect
+      if (slot === 'popover-content') return { top: 0, bottom: contentHeight, left: 0, right: 300, width: 300, height: contentHeight } as DOMRect
+      return realRect.call(this)
+    }
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) { resized.push(callback) }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+    render(
+      <Popover open>
+        <PopoverTrigger>Open</PopoverTrigger>
+        <PopoverContent side="top" align="start" sideOffset={8} aria-label="Picker">
+          <p>rows</p>
+        </PopoverContent>
+      </Popover>,
+    )
+    return document.querySelector<HTMLElement>('[data-slot="popover-content"]')!
+  }
+
+  // Placed by its top edge, a picker whose list a search shortened was
+  // left hanging above the chip, the gap growing with every key.
+  it('keeps its bottom edge on the trigger whatever its height', () => {
+    const content = renderAbove()
+
+    expect(content.style.top).toBe('692px')
+    expect(content.style.translate).toBe('0 -100%')
+  })
+
+  it('places itself again when its content resizes, below once it no longer fits above', () => {
+    const content = renderAbove()
+    contentHeight = 720
+
+    act(() => resized.forEach((callback) => callback()))
+
+    expect(content.style.top).toBe('736px')
+    expect(content.style.translate).toBe('')
   })
 })

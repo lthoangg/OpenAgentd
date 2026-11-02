@@ -686,6 +686,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     As in the palette, a pointer resting on the list does not take the
     highlight from the keyboard when the list opens, filters or scrolls under
     it; only moving the mouse does.
+  - The model search matches loosely, as the palette and Settings do
+    (`sonnet46` finds `claude-sonnet-4-6`), and ranks the closest model
+    first in one list, so Enter picks it. While a search narrows the list,
+    the picker keeps its size and stays on the chip: the search field no
+    longer moves under the typing, and a short result no longer leaves the
+    picker hanging above the composer. Any popover opening upward now stays
+    on its button when its content changes size.
   - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
     servers (state in words, Sign in, on/off); `/mcp` opens it there.
   - A model reads `provider:model` in mono wherever it appears: the run

@@ -8,9 +8,12 @@
  * Keyboard: type to search models, ↑/↓ to move, Enter to pick and close;
  * with the search empty, ←/→ step the thinking level. Focus stays in the
  * search while rows are clicked, so the keys keep working after a mouse pick.
+ * A search matches loosely and ranks the closest model first (fuzzysort, as
+ * the palette and Settings' model field do), in one list.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, RotateCcw } from 'lucide-react'
+import fuzzysort from 'fuzzysort'
+import { Check, RotateCcw, Search } from 'lucide-react'
 
 import type { StoredCredential } from '@/api/client'
 import { getAgent, getCodeAgent } from '@/api/client'
@@ -43,7 +46,8 @@ const MAX_LISTED = 60
 
 interface ModelRow {
   id: string
-  group: 'Recent' | string
+  /** The heading the row sits under; ``null`` in ranked search results. */
+  group: 'Recent' | string | null
 }
 
 function rowsFor(settings: RunSettings, query: string, recent: string[]): ModelRow[] {
@@ -51,12 +55,12 @@ function rowsFor(settings: RunSettings, query: string, recent: string[]): ModelR
   // A saved model the registry no longer lists still shows, so the list
   // never misreports what is running.
   if (settings.model && !ids.includes(settings.model)) ids.unshift(settings.model)
-  const q = query.trim().toLowerCase()
+  const q = query.trim()
   if (q) {
-    return ids
-      .filter((id) => id.toLowerCase().includes(q))
-      .slice(0, MAX_LISTED)
-      .map((id) => ({ id, group: splitModelId(id).provider || 'Models' }))
+    // Ranked, so headings would repeat; each row names its provider anyway.
+    return fuzzysort
+      .go(q, ids, { threshold: 0.2, limit: MAX_LISTED })
+      .map((result) => ({ id: result.target, group: null }))
   }
   const recentRows = recent.filter((id) => ids.includes(id)).map((id) => ({ id, group: 'Recent' }))
   const rest = ids
@@ -94,6 +98,18 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const searchRef = useRef<HTMLInputElement>(null)
   const thinkingRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  // The picker opens upward from the chip: while a search narrows the list
+  // it keeps the height it had, so the search field stays where the typing is.
+  const [searchHeight, setSearchHeight] = useState<number | null>(null)
+  const changeQuery = (value: string) => {
+    if (value === '') setSearchHeight(null)
+    else if (query === '') setSearchHeight(listRef.current?.getBoundingClientRect().height ?? null)
+    setQuery(value)
+    // A new search starts on its best match (an empty one on the running
+    // model). Not ``setActive(0)``: that names the first row of the list
+    // before this key, and would hold the highlight on it.
+    setActive(null)
+  }
 
   // Where focus starts: the search, or the chosen thinking level. The
   // running model scrolls into view either way.
@@ -202,12 +218,14 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
 
   return (
     <div className="flex min-h-0 flex-col" data-run-picker="">
-      <div className="px-1 pb-1">
+      {/* Borderless, over a hairline, like the palette and the other pickers. */}
+      <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 pb-1.5">
+        <Search size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
         <input
           ref={searchRef}
           type="search"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setActive(e.target.value === '' ? null : 0) }}
+          onChange={(e) => changeQuery(e.target.value)}
           onKeyDown={onSearchKeyDown}
           placeholder="Search models…"
           aria-label="Search models"
@@ -216,9 +234,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           autoComplete="off"
           spellCheck={false}
           className={cn(
-            'w-full rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2 text-(--color-text) placeholder-(--color-text-muted) outline-none transition-colors focus:border-(--color-border-strong)',
+            'min-w-0 flex-1 bg-transparent text-(--color-text) placeholder-(--color-text-muted) outline-none',
             // 16px on touch so iOS does not zoom the page.
-            touch ? 'h-11 text-base' : 'h-8 text-sm',
+            touch ? 'h-11 text-base' : 'h-7 text-sm',
           )}
         />
       </div>
@@ -228,14 +246,15 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
         id="run-picker-models"
         role="listbox"
         aria-label="Models"
-        className={cn('overflow-y-auto overscroll-contain px-1', touch ? 'max-h-[40dvh]' : 'max-h-60')}
+        className={cn('overflow-y-auto overscroll-contain px-1 pt-1', touch ? 'max-h-[40dvh]' : 'max-h-60')}
+        style={searchHeight ? { minHeight: searchHeight } : undefined}
       >
         {settings.modelsLoading && rows.length === 0 ? (
           <p className="px-2 py-3 text-xs text-(--color-text-muted)" role="status">Loading models…</p>
         ) : rows.length === 0 ? (
           <p className="px-2 py-3 text-xs text-(--color-text-muted)">No model matches “{query}”.</p>
         ) : rows.map((row, index) => {
-          const header = index === 0 || rows[index - 1].group !== row.group
+          const header = row.group !== null && (index === 0 || rows[index - 1].group !== row.group)
           const { provider, model } = splitModelId(row.id)
           const selected = row.id === settings.model
           return (

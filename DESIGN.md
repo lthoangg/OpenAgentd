@@ -1176,13 +1176,17 @@ the text sits the run deck, which says how the next message runs:
   of composer width (container query) the chip stacks into two lines and the
   context ring drops its percentage. The chip has no tooltip: its accessible
   name carries the shortcut.
-- **The run picker** (⇧⌘A, `/model`, `/think`, the palette's "Model and
+- **The run picker** (⌘., `/model`, `/think`, the palette's "Model and
   Thinking…") is one surface for all three: a model search with Recent first,
   thinking as a segmented control (←/→ step it from the empty search), the
   provider's accounts with state and quota left ("Auto" first), then Reset to
   default and Make default. A popover on desktop and tablet, a bottom sheet
   on phones. Every pick saves on the session at once; a refused save puts the
-  previous choice back and says so.
+  previous choice back and says so. The search is borderless over a hairline
+  like the other pickers, matches with fuzzysort and ranks in one list; the
+  list keeps its height while a search narrows it, so the field never moves
+  under the typing. A popover placed above its trigger is held by its bottom
+  edge (`ui/popover`), so a change of height never leaves it hanging.
 - **The context ring** opens the numbers and "Summarize now".
 - **Send** is a keycap fill until there is something to send, then Bark. It is
   the phone's one 44px target.

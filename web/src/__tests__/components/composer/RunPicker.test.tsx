@@ -129,6 +129,46 @@ describe('RunPicker', () => {
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
+  // The palette, Settings' model field and the @ picker all match loosely.
+  it('finds a model by a loose query, as the other pickers do', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), { target: { value: 'gpt5' } })
+
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['openai:gpt-5'])
+  })
+
+  it('ranks the closest match first, in one list without provider headings, so Enter picks it', () => {
+    const onDone = mock(() => {})
+    const models = [model('agy:antigravity-claude-opus-4-6-thinking'), model('anthropic:sonnet'), model('anthropic:opus')]
+    wrap(<RunPicker settings={settings({ models })} focus="model" onDone={onDone} />)
+    const search = screen.getByRole('searchbox', { name: 'Search models' })
+
+    fireEvent.change(search, { target: { value: 'opus' } })
+
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['anthropic:opus', 'agy:antigravity-claude-opus-4-6-thinking'])
+    expect(screen.queryByText('anthropic')).toBeNull()
+    expect(screen.queryByText('agy')).toBeNull()
+    fireEvent.keyDown(search, { key: 'Enter' })
+    expect(lastPatch().model).toBe('anthropic:opus')
+  })
+
+  // The picker opens upward from the chip: a list that shrank as a search
+  // narrowed it moved the search field down under the typing.
+  it('keeps the list as tall as it was while a search narrows it', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    const list = screen.getByRole('listbox', { name: 'Models' })
+    list.getBoundingClientRect = () => ({ height: 240 }) as DOMRect
+    const search = screen.getByRole('searchbox', { name: 'Search models' })
+
+    fireEvent.change(search, { target: { value: 'g' } })
+    fireEvent.change(search, { target: { value: 'gpt' } })
+    expect(list.style.minHeight).toBe('240px')
+
+    fireEvent.change(search, { target: { value: '' } })
+    expect(list.style.minHeight).toBe('')
+  })
+
   it('steps the thinking level with ←/→ while the search is empty', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const search = screen.getByRole('searchbox', { name: 'Search models' })

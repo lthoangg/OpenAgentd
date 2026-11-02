@@ -2,7 +2,10 @@
  * Popover — zero external primitives.
  *
  * Anchors content below (or above if no space) the trigger via a portal.
- * Positioning uses getBoundingClientRect on open; recalculates on scroll/resize.
+ * Positioning uses getBoundingClientRect on open; recalculates on scroll,
+ * resize, and when the content itself changes size. Above its trigger it
+ * is held by its bottom edge, so content that shrinks or grows (a search
+ * narrowing a list) stays on the trigger instead of hanging off it.
  *
  * API (drop-in for the previous base-ui version):
  *   <Popover open? onOpenChange? defaultOpen?>
@@ -135,12 +138,15 @@ interface PopoverContentProps extends ComponentPropsWithRef<'div'> {
   alignOffset?: number
 }
 
-interface Pos { top: number; left: number; anchorWidth: number }
+/** ``above``: ``top`` is where the bottom edge goes (the content is lifted
+ *  by its own height), so a change of height keeps it on the trigger. */
+interface Pos { top: number; left: number; anchorWidth: number; above: boolean }
 
 function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: Align, sideOffset: number): Pos {
   const gap = sideOffset
   let top: number
   let left: number
+  let above = false
 
   if (side === 'left') {
     left = trigger.left - content.width - gap
@@ -156,9 +162,8 @@ function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: 
     const visible = getVisibleViewport()
     const fromBottom = trigger.bottom + gap
     const fromTop = trigger.top - content.height - gap
-    top = side === 'top'
-      ? (fromTop < visible.top ? fromBottom : fromTop)
-      : (fromBottom + content.height > visible.bottom ? fromTop : fromBottom)
+    above = side === 'top' ? fromTop >= visible.top : fromBottom + content.height > visible.bottom
+    top = above ? trigger.top - gap : fromBottom
 
     if (align === 'start') left = trigger.left
     else if (align === 'end') left = trigger.right - content.width
@@ -167,8 +172,11 @@ function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: 
     left = Math.max(8, Math.min(left, window.innerWidth - content.width - 8))
   }
 
-  return { top: top + window.scrollY, left: left + window.scrollX, anchorWidth: trigger.width }
+  return { top: top + window.scrollY, left: left + window.scrollX, anchorWidth: trigger.width, above }
 }
+
+const samePos = (a: Pos | null, b: Pos) =>
+  a !== null && a.top === b.top && a.left === b.left && a.anchorWidth === b.anchorWidth && a.above === b.above
 
 function PopoverContent({
   className,
@@ -190,7 +198,8 @@ function PopoverContent({
     const trigger = triggerRef.current
     const content = contentRef.current
     if (!trigger || !content) return
-    setPos(computePosition(trigger.getBoundingClientRect(), content.getBoundingClientRect(), side, align, sideOffset))
+    const next = computePosition(trigger.getBoundingClientRect(), content.getBoundingClientRect(), side, align, sideOffset)
+    setPos((current) => (samePos(current, next) ? current : next))
   }, [triggerRef, side, align, sideOffset])
 
   // Placed before the frame that shows it (a layout effect, so the update is
@@ -201,10 +210,16 @@ function PopoverContent({
     reposition()
     window.addEventListener('scroll', reposition, { passive: true, capture: true })
     const stopViewport = onVisibleViewportChange(reposition)
+    // Content that changes size may no longer fit on its side, or (aligned
+    // to the end or centre) may need to move sideways.
+    const content = contentRef.current
+    const observer = content && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(reposition) : null
+    if (content) observer?.observe(content)
     return () => {
       setPos(null)
       window.removeEventListener('scroll', reposition, { capture: true })
       stopViewport()
+      observer?.disconnect()
     }
   }, [mounted, reposition])
 
@@ -268,6 +283,9 @@ function PopoverContent({
       style={{
         top: pos?.top ?? 0,
         left: pos?.left ?? 0,
+        // ``translate``, not ``transform``: the open/close animation sets
+        // ``transform`` and would undo the lift while it ran.
+        translate: pos?.above ? '0 -100%' : undefined,
         visibility: pos ? 'visible' : 'hidden',
         '--anchor-width': `${pos?.anchorWidth ?? 0}px`,
       } as React.CSSProperties}

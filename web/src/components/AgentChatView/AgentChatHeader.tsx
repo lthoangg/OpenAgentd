@@ -179,13 +179,17 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       {...dragHandlers}
       // Desktop zoning (dark only): the header joins the sidebar and status
       // bar on the recessed rail tone; light mode keeps one page tone.
+      // Three columns with equal sides, so the command palette stays centred
+      // whatever the title's length (a flex row slid it from session to
+      // session); phones give the middle to the title.
       className={cn(
-        'mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+        'mobile-safe-header grid h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+        isMobile ? 'grid-cols-[auto_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',
         isMacOverlay && 'select-none pl-[70px]',
         captionInset && 'select-none pr-[138px]',
       )}
     >
-        <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+        <div className={`mr-1 flex h-full min-w-0 items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
           {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}
           {/* Toggles the desktop sidebar, or the drawer on mobile. */}
           <Tooltip>
@@ -235,7 +239,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         </div>
 
         {/* Center: mobile title, or the desktop command-center search. */}
-        <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1 md:justify-center">
+        <div className="flex min-w-0 justify-start overflow-hidden px-1 md:justify-center">
           {isMobile ? (
             // Phones: the session first, its workspace under it.
             <div className="flex min-w-0 flex-col justify-center leading-tight">
@@ -257,7 +261,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 
         {/* Right cluster — desktop gets the full action row. Mobile keeps
             frequent actions visible and leaves secondary panels in More. */}
-        <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
+        <div className="flex min-w-0 items-center justify-self-end gap-0.5 md:pr-1">
         {isMobile ? (
           <>
             <MobileHeaderAction

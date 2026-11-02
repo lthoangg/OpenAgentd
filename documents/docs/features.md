@@ -757,6 +757,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     questions**, **Open workspace…**, **Workspace** and **Worktree** (never
     folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
     server**. The header's search pill reads **Command palette**.
+  - The **Command palette** pill stays centred in the header whatever the
+    session title's length (it used to slide from session to session), and a
+    hidden sidebar leaves no hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
   - Under the last finished answer, **Copy · Regenerate · Edit prompt · N
     files changed · Undo** show at rest. While a turn runs, Edit prompt shows

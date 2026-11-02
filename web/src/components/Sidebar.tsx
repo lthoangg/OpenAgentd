@@ -1107,7 +1107,9 @@ export function Sidebar({
           : drawer
             // Closed, the drawer is 0 wide: hide it so its edge and shadow do not show.
             ? cn('absolute inset-y-0 left-0 z-30 flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)', desktopCollapsed && 'invisible')
-            : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
+            // Collapsed to 0 wide, the border alone would still draw a 1px
+            // edge down the window side.
+            : cn('relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)', desktopCollapsed && 'border-r-0')
       }
       data-sidebar-drawer={drawer && !isMobile ? '' : undefined}
     >

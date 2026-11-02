@@ -68,6 +68,21 @@ describe('AgentChatHeader', () => {
     expect(header).not.toHaveTextContent('50K')
   })
 
+  it('keeps the command palette centred on desktop, however long the title is', () => {
+    // In a flex row it sat in whatever room the title left, so it slid
+    // sideways from one session to the next.
+    const { container } = renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    const header = container.querySelector('header') as HTMLElement
+    expect(header).toHaveClass('grid', 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]')
+    const palette = screen.getByRole('button', { name: /^Command palette/ })
+    expect(Array.from(header.children).indexOf(palette.closest('header > *') as Element)).toBe(1)
+  })
+
+  it('lets the title take the middle on phones', () => {
+    const { container } = renderHeader({ isMobile: true })
+    expect(container.querySelector('header')).toHaveClass('grid-cols-[auto_minmax(0,1fr)_auto]')
+  })
+
   it('opens the run picker from the mobile More sheet, then closes the sheet', async () => {
     const user = userEvent.setup()
     const onToggleRunPicker = mock(() => undefined)

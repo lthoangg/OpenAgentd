@@ -1021,6 +1021,15 @@ describe('Sidebar workspace trust flow', () => {
     expect(open.container.querySelector('aside')?.hasAttribute('inert')).toBe(false)
   })
 
+  it('leaves no 1px edge down the window side once collapsed', async () => {
+    // Collapsed to 0 wide, its right border still drew a hairline at x=0.
+    const collapsed = await renderSidebarWithProps({ desktopCollapsed: true })
+    expect(collapsed.container.querySelector('aside')?.className.split(' ')).toContain('border-r-0')
+    collapsed.unmount()
+    const open = await renderSidebarWithProps({ desktopCollapsed: false })
+    expect(open.container.querySelector('aside')?.className.split(' ')).not.toContain('border-r-0')
+  })
+
   it('re-clamps the resize bounds when the window shrinks, not only on the next unrelated render', async () => {
     const originalWidth = window.innerWidth
     try {

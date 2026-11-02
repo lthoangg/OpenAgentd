@@ -683,6 +683,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     the model's own default applies. The cursor is in its search as it
     opens, from a click or the shortcut, so typing filters at once (with
     Reduce Motion on, it was left nowhere).
+    As in the palette, a pointer resting on the list does not take the
+    highlight from the keyboard when the list opens, filters or scrolls under
+    it; only moving the mouse does.
   - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
     servers (state in words, Sign in, on/off); `/mcp` opens it there.
   - A model reads `provider:model` in mono wherever it appears: the run

@@ -19,6 +19,7 @@ import { Chip } from '@/components/ui/chip'
 import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
 import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useProviderUsageQuery } from '@/queries/useProvidersQuery'
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
@@ -247,7 +248,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 data-row={index}
                 aria-selected={selected}
                 data-highlighted={index === active ? '' : undefined}
-                onMouseMove={() => { if (active !== index) setActive(index) }}
+                // Only a real move highlights, as in the palette: a list that
+                // opens, filters or scrolls under a parked pointer does not.
+                {...hoverIntent(() => { if (active !== index) setActive(index) })}
                 // Keep focus in the search: WebKit would drop it on the body.
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => pickModel(row.id, false)}

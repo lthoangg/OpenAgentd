@@ -11,11 +11,15 @@ import type { ProviderInfo, StoredCredential } from '@/api/client'
 import type { ModelCatalogEntry } from '@/api/types'
 import { RunPicker } from '@/components/composer/RunPicker'
 import type { RunSettings } from '@/components/composer/useRunSettings'
+import { resetHoverIntent } from '@/hooks/use-hover-intent'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { RunSettingsPatch } from '@/stores/useAgentStore/types'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  resetHoverIntent()
+})
 
 const setRun = mock(async (_patch: unknown) => true)
 const lastPatch = (i = 0) => setRun.mock.calls[i][0] as RunSettingsPatch
@@ -217,15 +221,30 @@ describe('RunPicker', () => {
     const onDone = mock(() => {})
     wrap(<RunPicker settings={settings()} focus="model" onDone={onDone} />)
     const gpt = screen.getByRole('option', { name: /gpt-5/ })
-    fireEvent.mouseMove(gpt)
+    fireEvent.mouseMove(gpt, { clientX: 20, clientY: 40 })
     fireEvent.click(gpt)
     fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search models' }), { key: 'Enter' })
     expect(lastPatch(1).model).toBe('openai:gpt-5')
   })
 
+  // As in the palette: a list that opens, filters or scrolls under a parked
+  // pointer sends a mouse move without the mouse moving.
+  it('leaves the highlight to the keyboard while the pointer rests on a row', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    const highlighted = () => screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted')).map((o) => o.textContent)
+    fireEvent.mouseMove(document.body, { clientX: 30, clientY: 30 })
+
+    fireEvent.mouseMove(screen.getByRole('option', { name: /gpt-5/ }), { clientX: 30, clientY: 30 })
+    // Still the running model (its row also says "default").
+    expect(highlighted()).toEqual(['anthropic:sonnetdefault'])
+
+    fireEvent.mouseMove(screen.getByRole('option', { name: /gpt-5/ }), { clientX: 32, clientY: 34 })
+    expect(highlighted()).toEqual(['openai:gpt-5'])
+  })
+
   it('keeps the highlight on the same model when the list changes under it', () => {
     const { rerender } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    fireEvent.mouseMove(screen.getByRole('option', { name: /opus/ }))
+    fireEvent.mouseMove(screen.getByRole('option', { name: /opus/ }), { clientX: 20, clientY: 60 })
     const client = new QueryClient()
     rerender(
       <QueryClientProvider client={client}>

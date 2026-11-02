@@ -203,7 +203,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
             <FooterAction
               icon={copied ? Check : Copy}
               iconClassName={copied ? 'text-(--accent-green-text)' : undefined}
-              label={copied ? 'Copied' : 'Copy response'}
+              // The name stays put while the tick shows; the tooltip says it.
+              label="Copy response"
               hint={copied ? 'Copied' : 'Copy response'}
               onClick={handleCopy}
             />

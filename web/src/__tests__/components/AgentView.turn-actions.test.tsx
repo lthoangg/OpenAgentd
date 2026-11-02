@@ -67,15 +67,6 @@ describe("AgentView — the footer's actions", () => {
     for (const button of within(last).getAllByRole("button")) expect(button.textContent).toBe("")
   })
 
-  it("says Copied after a copy, in its name", async () => {
-    render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} />)
-    const copy = within(actionGroups()[0]).getByRole("button", { name: "Copy response" })
-
-    await act(async () => { fireEvent.click(copy) })
-
-    expect(copy.getAttribute("aria-label")).toBe("Copied")
-  })
-
   it("regenerates through the host's Retry, which rewinds the prompt and sends it again", () => {
     const onRetry = mock(() => {})
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={onRetry} />)

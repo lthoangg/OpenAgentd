@@ -675,6 +675,16 @@ describe("InputComposer — run deck", () => {
     const pill = document.querySelector("[data-composer-pill]") as HTMLElement
     expect(pill.className.split(" ")).toContain("border")
   })
+
+  it("marks focus with a neutral border step, not a Signal Blue glow", () => {
+    // The composer keeps focus nearly all the time, so a blue ring was a
+    // standing halo that muddied the warm border in dark mode.
+    render(<InputComposer onSubmit={() => {}} />)
+    const classes = (document.querySelector("[data-composer-pill]") as HTMLElement).className.split(" ")
+    expect(classes).toContain("border-(--color-border)")
+    expect(classes).toContain("focus-within:border-(--color-border-strong)")
+    expect(classes.some((c) => c.startsWith("focus-within:ring"))).toBe(false)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

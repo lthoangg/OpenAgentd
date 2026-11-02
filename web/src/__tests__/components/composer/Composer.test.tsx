@@ -152,10 +152,12 @@ describe('McpAttentionChip', () => {
     expect(useUIStore.getState().plusMenuSection).toBe('mcp')
   })
 
-  it('is the plug alone on a narrow deck, still named in full', () => {
+  it('is the plug alone on a deck under 640px (a chat beside the panel), still named in full', () => {
     wrap(<McpAttentionChip workspace="/repo" />)
     const chip = screen.getByRole('button', { name: /github: Sign in/ })
-    expect(chip.querySelector('span')?.className).toContain('@max-[400px]:hidden')
-    expect(chip.className).toContain('pointer-coarse:@max-[400px]:w-9')
+    // A truncated "sla…" said nothing and starved the run chip of room.
+    expect(chip.querySelector('span')?.className).toContain('@max-[640px]:hidden')
+    expect(chip.className).toContain('@max-[640px]:w-6')
+    expect(chip.className).toContain('pointer-coarse:@max-[640px]:w-9')
   })
 })

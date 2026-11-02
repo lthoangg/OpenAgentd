@@ -965,7 +965,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // The composer is an input field, so it keeps its one hairline (DESIGN.md
   // → Borders); everything inside it is borderless. ``@container`` lets the
   // run deck respond to the composer's own width (stacked chip under 520px).
-  const pillClassName = 'oa-composer-pill @container relative block w-full rounded-lg border border-(--color-border-strong) bg-(--color-surface) p-2 transition-[border-color,box-shadow] duration-(--motion-base) focus-within:ring-2 focus-within:ring-(--focus-ring)/30'
+  // Focus is a step along the border ramp rather than the blue input ring:
+  // the composer holds focus nearly all the time, and a standing blue halo
+  // on its warm border read as a stray colour. Its controls keep their own
+  // focus rings.
+  const pillClassName = 'oa-composer-pill @container relative block w-full rounded-lg border border-(--color-border) bg-(--color-surface) p-2 transition-[border-color] duration-(--motion-base) focus-within:border-(--color-border-strong)'
 
   const pill = (
     <div

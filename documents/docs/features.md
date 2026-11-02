@@ -649,6 +649,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     save fails, a toast says so and offers **Retry**. Open it
     with `⌘⇧A`/`Ctrl+Shift+A`, `/model`, `/think`, or **Model and Thinking…**
     in the palette. On phones it is a bottom sheet.
+  - The picker opens on the model that runs (highlighted and scrolled into
+    view, so Enter keeps it), lists each model whole as `provider:model`,
+    and when neither the session nor the agent sets a thinking level it says
+    the model's own default applies.
   - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
     servers (state in words, Sign in, on/off); `/mcp` opens it there.
   - A model reads `provider:model` in mono wherever it appears: the run
@@ -657,6 +661,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     `provider:` part gives way first; the full ID is in the tooltip.
   - The context ring opens the token numbers and **Summarize now**. The
     header and status bar no longer show the context meter or the model.
+    Its full track is drawn, so a part-filled ring reads as a gauge, not a
+    spinner.
+  - The composer marks focus with a darker border rather than a blue glow,
+    and in a composer under 640px (a phone, or a chat beside the Review
+    panel) the MCP chip is the plug alone, its name in the tooltip.
   - On phones the header keeps four controls (sidebar, title, Review panel,
     More), and Send is a 44px target.
   - Messages queued while a turn runs sit in the tray above the text, with

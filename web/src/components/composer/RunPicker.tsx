@@ -16,6 +16,7 @@ import { getAgent, getCodeAgent } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
+import { MODEL_LINE_CLASS, MODEL_PART_CLASS, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useProviderUsageQuery } from '@/queries/useProvidersQuery'
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
@@ -77,14 +78,21 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const [query, setQuery] = useState('')
   const [recent, setRecent] = useState(loadRecentModels)
   const rows = useMemo(() => rowsFor(settings, query, recent), [settings, query, recent])
-  const [active, setActive] = useState(0)
+  // The list opens on the model that runs, as a native pop-up menu opens on
+  // its checked item; a search, or the user moving, takes over from there.
+  const runningRow = query === '' ? Math.max(0, rows.findIndex((row) => row.id === settings.model)) : 0
+  const [moved, setMoved] = useState<number | null>(null)
+  const active = moved ?? runningRow
+  const setActive = setMoved
   const searchRef = useRef<HTMLInputElement>(null)
   const thinkingRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Where focus starts: the search, or the chosen thinking level.
+  // Where focus starts: the search, or the chosen thinking level. The
+  // running model scrolls into view either way.
   useEffect(() => {
     const id = requestAnimationFrame(() => {
+      listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
       if (focus === 'thinking') {
         thinkingRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"], [role="radio"]')?.focus()
       } else if (!touch) {
@@ -185,7 +193,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           ref={searchRef}
           type="search"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setActive(0) }}
+          onChange={(e) => { setQuery(e.target.value); setActive(e.target.value === '' ? null : 0) }}
           onKeyDown={onSearchKeyDown}
           placeholder="Search models…"
           aria-label="Search models"
@@ -231,9 +239,11 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 tabIndex={-1}
                 className={rowClass}
               >
-                <span className="flex min-w-0 flex-1 font-mono">
-                  {provider && <span className="min-w-0 shrink truncate text-(--color-text-muted)">{provider}:</span>}
-                  <span className="min-w-0 truncate text-(--color-text)">{model}</span>
+                {/* provider:model as everywhere (ui/model-name): the provider
+                    part shows whole or drops, never as a stub like "ag…". */}
+                <span className={cn('flex flex-1', MODEL_LINE_CLASS)}>
+                  {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
+                  <span className={cn(MODEL_PART_CLASS, 'text-(--color-text)')}>{model}</span>
                 </span>
                 {row.id === settings.agentModel && <span className="text-meta text-(--color-text-muted)">default</span>}
                 <Check size={13} aria-hidden="true" className={selected ? 'opacity-100' : 'opacity-0'} />
@@ -244,17 +254,24 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       </div>
 
       {settings.thinkingLevels.length > 0 && (
-        <div ref={thinkingRef} className="mt-1 flex items-center gap-3 border-t border-(--color-border-subtle) px-2 pt-2.5">
-          <span className="shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
-          <SegmentedControl
-            label="Thinking level"
-            value={settings.thinkingLevel ?? ''}
-            onChange={pickLevel}
-            options={settings.thinkingLevels.map((level) => ({ value: level, label: thinkingLevelLabel(level) }))}
-            size={touch ? 'default' : 'sm'}
-            fill
-            className="min-w-0 flex-1"
-          />
+        <div ref={thinkingRef} className="mt-1 border-t border-(--color-border-subtle) px-2 pt-2.5">
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
+            <SegmentedControl
+              label="Thinking level"
+              value={settings.thinkingLevel ?? ''}
+              onChange={pickLevel}
+              options={settings.thinkingLevels.map((level) => ({ value: level, label: thinkingLevelLabel(level) }))}
+              size={touch ? 'default' : 'sm'}
+              fill
+              className="min-w-0 flex-1"
+            />
+          </div>
+          {/* Neither the session nor the agent sets a level: no segment is
+              lit, so say what happens instead of leaving it a puzzle. */}
+          {!settings.thinkingLevel && (
+            <p className="mt-1.5 text-meta text-(--color-text-muted)">Not set: the model's own default applies.</p>
+          )}
         </div>
       )}
 

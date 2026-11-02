@@ -72,6 +72,29 @@ describe('RunPicker', () => {
     expect(options[0].getAttribute('aria-selected')).toBe('true')
   })
 
+  it('opens on the model that runs, not the first row', () => {
+    wrap(<RunPicker settings={settings({ model: 'openai:gpt-5', provider: 'openai', customized: true })} focus="model" onDone={() => {}} />)
+    const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
+    expect(highlighted.map((o) => o.textContent)).toEqual(['openai:gpt-5'])
+    const search = screen.getByRole('searchbox', { name: 'Search models' })
+    expect(document.getElementById(search.getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('openai:gpt-5')
+  })
+
+  it('picks the highlighted running model with Enter and closes', () => {
+    const onDone = mock(() => {})
+    wrap(<RunPicker settings={settings({ model: 'anthropic:opus', customized: true })} focus="model" onDone={onDone} />)
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search models' }), { key: 'Enter' })
+    expect(lastPatch().model).toBe('anthropic:opus')
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the provider part whole: it never truncates to a stub like "ag…"', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    const provider = screen.getAllByText('anthropic:')[0]
+    expect(provider.className).not.toContain('truncate')
+    expect(provider.className).toContain('whitespace-nowrap')
+  })
+
   it('saves another model on the session and keeps a level it supports', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     fireEvent.click(screen.getByRole('option', { name: /opus/ }))
@@ -115,6 +138,14 @@ describe('RunPicker', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const group = screen.getByRole('radiogroup', { name: 'Thinking level' })
     expect(Array.from(group.querySelectorAll('[role="radio"]')).map((r) => r.textContent)).toEqual(['Low', 'Medium', 'High'])
+  })
+
+  it('says the model decides when no thinking level is set, so an empty control is not a mystery', () => {
+    const { unmount } = wrap(<RunPicker settings={settings({ thinkingLevel: null, agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
+    expect(screen.getByText(/model's own default/)).toBeTruthy()
+    unmount()
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    expect(screen.queryByText(/model's own default/)).toBeNull()
   })
 
   it('pins an account, says when one is cooling down, and goes back to Auto', () => {

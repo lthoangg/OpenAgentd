@@ -102,7 +102,8 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
         sideOffset={8}
         role="dialog"
         aria-label="Model and thinking"
-        className="w-[min(24rem,calc(100vw-1rem))] gap-0 p-1.5"
+        // Wide enough for a long `provider:model` beside "default" and its check.
+        className="w-[min(28rem,calc(100vw-1rem))] gap-0 p-1.5"
       >
         <RunPicker settings={settings} focus={focus} onDone={() => setOpen(false)} />
       </PopoverContent>

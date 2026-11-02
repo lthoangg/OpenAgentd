@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import { listRowSurface } from '@/components/ui/list-row'
-import { DOCK_TAB_STRIP_CLASS, dockTabClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DOCK_STRIP_PART_CLASS, DOCK_TAB_STRIP_CLASS, dockTabClass } from '@/components/WorkspacePanel/dock-tab-styles'
 
 describe('Review panel tab strip', () => {
   it('sits on the chrome tone: the page in light, the recessed rail in dark', () => {
@@ -36,5 +36,15 @@ describe('Review panel tab strip', () => {
     expect(active).toContain('[[data-pane-unfocused]_&]:bg-(--bg-key)/35')
     // A closed tab looks the same in either pane.
     expect(dockTabClass(false)).not.toContain('data-pane-unfocused')
+  })
+
+  // As an inactive window's title bar on macOS: the strips of the panes that
+  // do not have focus fade, so the one ⌘W and ⌘1–9 act on reads at a glance.
+  it('fades the tabs and buttons of a pane without focus', () => {
+    const part = DOCK_STRIP_PART_CLASS.split(' ')
+    expect(part).toContain('[[data-pane-unfocused]_&]:opacity-50')
+    expect(part).toContain('transition-opacity')
+    // The strip's own tone stays: only what sits on it fades.
+    expect(DOCK_TAB_STRIP_CLASS).not.toContain('opacity')
   })
 })

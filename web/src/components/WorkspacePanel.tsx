@@ -996,6 +996,28 @@ export function WorkspacePanel({
       .map((tab) => ({ tab, pane })))
     .sort((a, b) => (a.tab.id < b.tab.id ? -1 : a.tab.id > b.tab.id ? 1 : 0))
 
+  // A click in a page goes to its frame, so no pointer event reaches the
+  // pane: the window's blur, with the frame focused, says where focus went.
+  useEffect(() => {
+    if (mobile) return
+    let timer = 0
+    const onBlur = () => {
+      window.clearTimeout(timer)
+      // After the blur: the frame is the active element by then everywhere.
+      timer = window.setTimeout(() => {
+        const frame = document.activeElement
+        if (!(frame instanceof HTMLIFrameElement)) return
+        const pane = frame.closest('[data-dock-preview-pane]')?.getAttribute('data-dock-preview-pane')
+        if (pane) focusPane(pane)
+      }, 0)
+    }
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      window.clearTimeout(timer)
+    }
+  }, [mobile, focusPane])
+
   // Overlaying a narrow chat, the panel stops above the composer so the
   // message can be written beside the diff; maximized, it covers both.
   const leavesComposer = overlay && !dockMaximized
@@ -1061,6 +1083,7 @@ export function WorkspacePanel({
               <div
                 key={tab.id}
                 data-dock-preview={tab.id}
+                data-dock-preview-pane={pane}
                 className={cn('absolute', !showing && 'hidden')}
                 style={box ? paneStyle(box, 'var(--spacing-tab-bar)') : undefined}
                 onFocusCapture={() => focusPane(pane)}

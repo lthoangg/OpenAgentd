@@ -745,7 +745,11 @@ drawer and full-screen sheet.
   button too), and show them again; hiding them with nothing else on screen
   closes the panel. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
-  (a lighter wash, `text-2`). Phones have one strip: panes join there.
+  (a lighter wash, `text-2`) and everything on that pane's strip fades to
+  50%, as an inactive window's title bar does, so the focused pane reads at
+  a glance. A click into a preview page focuses its pane too (the window's
+  blur says so; the page's events stay in its frame). Phones have one strip:
+  panes join there.
 
 ## Elevation & Depth
 
@@ -980,7 +984,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Drag**: a tab slides along its strip; carried out, a floating copy follows the pointer and a `focus-ring` caret or tint shows where it lands (another strip, a pane's middle, or the half an edge split takes). See Layout → Tabs drag between panes.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
 - **Menu** (right-click, Shift+F10): Close, Close Others, Close to the Right, Keep Open, Split Right, Split Down, Move to Next Pane, Move Left, Move Right, Copy Path, Reveal in Git. Close Others and Close to the Right act on the tab's own pane.
-- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`.
+- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`, and that strip's tabs and buttons fade to 50% (`DOCK_STRIP_PART_CLASS`); the strip's tone stays.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
 - **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.
 - **Semantics**: tabs are buttons with `aria-current`, not an ARIA `tablist` — terminal tabs carry their own context menu and sheet.

@@ -742,6 +742,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     what it can open. A pane too small for two says so instead of splitting.
     Drag the line between two panes to resize them, or double-click it to
     share the room evenly; closing a pane's last tab closes the pane.
+  - With several panes, the one you are in is plain to see: the tabs and
+    buttons of every other pane fade to half, as an inactive window's title
+    bar does, so it is clear where `⌘W`, `⌘1`–`⌘9` and a newly opened file
+    go. A click into a web preview page focuses its pane too.
   - Drag a tab to another pane's tab strip to move it there, onto the middle
     of a pane to add it to that pane, or onto a pane's edge to split that pane
     with the tab in the new half; the place it will land lights up as you

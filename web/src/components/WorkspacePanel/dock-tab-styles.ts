@@ -8,13 +8,22 @@
  * the main text colour, no coloured edge. The strip draws the one hairline
  * between it and the content. With several panes, the open tab of a pane
  * that does not have focus steps back (a lighter wash, the secondary text
- * colour), so the focused pane reads at a glance, as in an editor.
+ * colour) and everything on that pane's strip fades to half, as an inactive
+ * window's title bar does on macOS, so the focused pane (the one ⌘W, ⌘1–9
+ * and new files act on) reads at a glance.
  */
 import { listRowSurface } from '@/components/ui/list-row'
 
 /** The strip: one tab-bar row on the chrome tone. */
 export const DOCK_TAB_STRIP_CLASS =
   'flex h-(--spacing-tab-bar) min-w-0 shrink-0 border-b border-(--color-border-subtle) bg-(--bg-page) dark:bg-(--bg-sidebar)'
+
+/**
+ * The strip's two parts (tabs, buttons): faded in a pane without focus. The
+ * strip's tone stays, so the faded parts sit on the same chrome.
+ */
+export const DOCK_STRIP_PART_CLASS =
+  'transition-opacity duration-(--motion-fast) [[data-pane-unfocused]_&]:opacity-50'
 
 /** Tab wrapper. Holds the activate button and, when closable, a close button. */
 export function dockTabClass(active: boolean): string {

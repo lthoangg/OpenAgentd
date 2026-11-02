@@ -98,7 +98,8 @@ declare module "bun:test" {
   }
 
   interface ItFunction {
-    (label: string, fn: () => void | Promise<void>): void
+    /** ``timeout`` (ms) replaces Bun's 5 s default for one slow test. */
+    (label: string, fn: () => void | Promise<void>, timeout?: number): void
     // Tuple spread overload: each([[a, b], [c, d]]) → fn(a, b)
     each<T extends unknown[]>(cases: T[]): (label: string, fn: (...args: T) => void | Promise<void>) => void
     // Single-value overload: each([a, b, c]) → fn(a)

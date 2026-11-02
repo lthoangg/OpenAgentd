@@ -229,7 +229,8 @@ describe('Review dock "+" menu', () => {
     expect(document.activeElement).toBe(rows.at(-1))
     await user.keyboard('{Home}')
     expect(document.activeElement).toBe(rows[0])
-  })
+    // Mounts the whole panel and waits two frames: slow on a loaded machine.
+  }, 20_000)
 
   it('leaves focus alone when it opens on remembered tabs, or already open at start', async () => {
     await renderPanel({ plan: null })

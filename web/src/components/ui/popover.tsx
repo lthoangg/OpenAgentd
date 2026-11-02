@@ -27,7 +27,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
-import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { getVisibleViewport, onVisibleViewportChange } from '@/lib/visible-viewport'
@@ -223,7 +223,9 @@ function PopoverContent({
   }, [open, setOpen, triggerRef])
 
   // Escape closes it while it is the top layer (not the dialog around it).
-  useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
+  // Opening it closes the other menus and popovers; what opens inside it
+  // (a dropdown, a dialog) keeps it open (``KeyLayerScope`` below).
+  const layer = useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
   // Closing hands focus back to the trigger when it was inside the popover
   // (or dropped on <body> as the content unmounted), like a native menu.
@@ -272,7 +274,7 @@ function PopoverContent({
       onClick={(e) => e.stopPropagation()}
       {...props}
     >
-      {children}
+      <KeyLayerScope layer={layer}>{children}</KeyLayerScope>
     </div>,
     document.body,
   )

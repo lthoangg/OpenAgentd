@@ -25,12 +25,17 @@
  * where it was opened, a menu was caught by that component's stacking
  * context (the dock's z-index, a transform, container queries) and could
  * open under its neighbours. React events still bubble to the opener.
+ *
+ * It is a transient layer (``lib/keyboard/layers``): opening it closes the
+ * other menus and popovers, and Settings, a dialog or an app shortcut
+ * opening over it closes it, so two menus are never open at once.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 
@@ -140,6 +145,10 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', chil
     }, EXIT_MS)
   }, [reduced])
 
+  // One menu at a time: something else opening over the app closes it, at
+  // once (the key or click that did it belongs to that, not to this menu).
+  const layer = useKeyLayer(true, { kind: 'transient', onClose: () => dismiss(false) })
+
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const items = enabledItems(menuRef.current)
     const index = items.indexOf(document.activeElement as HTMLElement)
@@ -199,7 +208,7 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', chil
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        {children}
+        <KeyLayerScope layer={layer}>{children}</KeyLayerScope>
       </div>
     </div>,
     document.body,

@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useToggleTween } from '@/hooks/useToggleTween'
-import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -285,7 +285,9 @@ export function Sidebar({
   // The header's sidebar button and ⌘B open and close the column; a drawer
   // also closes on a click outside it or Escape.
   const drawerOpen = drawer && !isMobile && !desktopCollapsed
-  useKeyLayer(drawerOpen, { kind: 'transient', onClose: () => onCollapse?.() })
+  // A layer like a menu: opening a dialog over it closes it, unless the
+  // dialog (or a row's menu) opened from inside it (``KeyLayerScope``).
+  const drawerLayer = useKeyLayer(drawerOpen, { kind: 'transient', onClose: () => onCollapse?.() })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
@@ -1060,7 +1062,7 @@ export function Sidebar({
       : 'Workspace actions'
 
   return (
-    <>
+    <KeyLayerScope layer={drawerLayer}>
       {/* Mobile backdrop — closes the drawer on tap. Fades with the drag. */}
       <AnimatePresence>
         {isMobile && (mobileOpen || mobileDragOffset !== null) && (
@@ -2157,6 +2159,6 @@ export function Sidebar({
         onConfirmRemoveWorktree={confirmRemoveWorktree}
       />
     </ResizableAside>
-    </>
+    </KeyLayerScope>
   )
 }

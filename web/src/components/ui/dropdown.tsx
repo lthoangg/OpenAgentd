@@ -54,7 +54,7 @@ import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
-import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -223,7 +223,8 @@ function Dropdown({
   }, [open])
 
   // Escape closes it while it is the top layer (the trigger handles its own).
-  useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
+  // Opening it closes the other menus and popovers, not the one it sits in.
+  const layer = useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
   // Drop the active option when the menu closes so a stale
   // aria-activedescendant never points at a hidden node.
@@ -409,7 +410,7 @@ function Dropdown({
           )}
           style={{ top: pos.top, left: pos.left, '--dropdown-anchor-width': `${pos.width}px` } as React.CSSProperties}
         >
-          {items}
+          <KeyLayerScope layer={layer}>{items}</KeyLayerScope>
         </div>,
         document.body,
       )}

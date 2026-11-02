@@ -132,7 +132,9 @@ describe('modal layers', () => {
     expect(closeDialog).not.toHaveBeenCalled()
   })
 
-  it('closes an overlay opened over the Todos popover first', () => {
+  // One menu at a time: the palette opening closes the popover under it,
+  // so Escape then closes the palette and nothing is left behind.
+  it('closes the Todos popover when an overlay opens over it', () => {
     const closeTodos = mock((_open: unknown) => {})
     const closeOverlay = mock(() => {})
     const { rerender } = render(
@@ -147,8 +149,9 @@ describe('modal layers', () => {
         <Overlay open onClose={closeOverlay} label="Palette" />
       </>,
     )
+    expect(closeTodos).toHaveBeenCalledWith(false)
     press({ key: 'Escape' }, document.body)
     expect(closeOverlay).toHaveBeenCalledTimes(1)
-    expect(closeTodos).not.toHaveBeenCalled()
+    expect(closeTodos).toHaveBeenCalledTimes(1)
   })
 })

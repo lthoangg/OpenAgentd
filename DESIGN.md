@@ -781,6 +781,15 @@ tooltips. Menus render into `document.body` (`ContextMenu`, `Dropdown`,
 `Popover`), never inside the panel that opened them, whose own layer would cap
 theirs. Write numeric layers as `z-60`, not `z-[60]`.
 
+**One menu at a time**, as in a native app. Menus, dropdowns, popovers, the
+Tasks popover and the desktop sidebar drawer are transient layers
+(`lib/keyboard/layers.ts`): anything that opens over the app (another menu,
+a dialog, Settings, the palette) closes them, unless it opened from inside one
+(`KeyLayerScope` marks a layer's content, through portals); an app shortcut
+closes them as a key equivalent closes a native menu; and so does a click
+into a preview page or an MCP app's frame. Dialogs and overlays are never
+closed this way.
+
 Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain
 decorative supplements, not the only focus indicator. In the desktop app the

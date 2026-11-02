@@ -12,9 +12,16 @@
  *   shortcuts except switchers (⌘K, ⌘P, ⌘,), unless ``allowSwitch`` says no.
  * - ``transient``: popovers, menus, pinned tooltips. Only takes Escape.
  *
+ * One menu at a time, as in a native app: a layer that opens closes the
+ * transient layers already open (model picker, a context menu, a popover),
+ * except the ones it opened from (``within``) or that opened from it.
+ * Dialogs and overlays are never closed this way. ``scope`` is the layer's
+ * stable identity (``useKeyLayer`` passes its ref) and ``within`` the scopes
+ * of the layers it renders inside, from React context, which crosses portals.
+ *
  * Limit: surfaces that open in the same render are ordered child first
- * (React runs child effects before parent ones). Nested surfaces here open
- * on a later click, so this does not come up.
+ * (React runs child effects before parent ones); ``within`` keeps such a
+ * child open when its parent pushes after it.
  */
 export type LayerKind = 'dialog' | 'overlay' | 'transient'
 
@@ -32,6 +39,10 @@ export interface LayerInit {
   closeOnSwitch?: boolean
   /** The layer's root, so keys for regions inside it keep working. */
   element?: () => Element | null
+  /** This layer's identity, for the layers opened inside it. */
+  scope?: object
+  /** The scopes of the layers this one opened inside, outermost first. */
+  within?: readonly object[]
 }
 
 export interface KeyLayer extends LayerInit {
@@ -41,9 +52,17 @@ export interface KeyLayer extends LayerInit {
 let stack: KeyLayer[] = []
 let nextId = 1
 
+/** Whether one layer opened inside the other. */
+function nested(a: LayerInit, b: LayerInit): boolean {
+  return (a.scope !== undefined && (b.within?.includes(a.scope) ?? false))
+    || (b.scope !== undefined && (a.within?.includes(b.scope) ?? false))
+}
+
 export function pushLayer(init: LayerInit): number {
   const id = nextId++
+  const displaced = stack.filter((layer) => layer.kind === 'transient' && !nested(layer, init))
   stack = [...stack, { ...init, id }]
+  for (const layer of displaced) layer.close()
   return id
 }
 
@@ -65,6 +84,11 @@ export function topBlockingLayer(): KeyLayer | null {
     if (stack[i].kind !== 'transient') return stack[i]
   }
   return null
+}
+
+/** Close every menu and popover open (an app shortcut ran, a frame took focus). */
+export function closeTransientLayers(): void {
+  for (const layer of stack.filter((item) => item.kind === 'transient')) layer.close()
 }
 
 export function isTopLayer(id: number | null): boolean {

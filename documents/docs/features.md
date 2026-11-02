@@ -963,6 +963,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     desktop and phone apps included. A right-click menu opens at the
     pointer with the same items as ⋯, and the arrow keys and Escape work
     in it.
+  - One menu at a time, as in a native app: opening a menu, a dialog,
+    Settings or the palette closes any menu or popover already open (the
+    model and thinking picker, a right-click menu, **+**, the Tasks
+    popover, the sidebar drawer of a narrow window), unless it was opened
+    from inside it. A keyboard shortcut closes open menus too, and so does
+    a click into a web preview page. Before, a picker could stay open over
+    Settings.
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
     Sidebar, Review Panel, Split Review Panel Right and Down, Terminal,

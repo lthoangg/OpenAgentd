@@ -7,7 +7,7 @@
  */
 import { ListTodo } from 'lucide-react'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
-import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
@@ -38,10 +38,11 @@ export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = nu
   const summary = summarizeTodos(todos)
   const doneWhen = readDoneWhen(plan, { todos, goal })
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.instant * 1000)
-  useKeyLayer(open, { kind: 'transient', onClose: () => onOpenChange(false) })
+  const layer = useKeyLayer(open, { kind: 'transient', onClose: () => onOpenChange(false) })
   if (!mounted) return null
 
   return (
+    <KeyLayerScope layer={layer}>
     <div
       className="fixed inset-0 z-70 pointer-events-none"
       role="presentation"
@@ -111,5 +112,6 @@ export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = nu
         )}
       </section>
     </div>
+    </KeyLayerScope>
   )
 }

@@ -5,7 +5,7 @@
  * can pass fresh closures every render without re-registering (which would
  * also change their order).
  */
-import { useEffect, useRef } from 'react'
+import { createContext, createElement, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 
 import { APP_SHORTCUTS, chordOf, type AppShortcut, type AppShortcutName } from '@/lib/app-shortcuts'
 
@@ -68,14 +68,33 @@ export interface KeyLayerOptions {
   element?: () => Element | null
 }
 
+/** The layers a component renders inside (their ``useKeyLayer`` refs), outermost first. */
+const LayerScopeContext = createContext<readonly object[]>([])
+
+/**
+ * Marks what renders inside a layer (a popover's content, a menu, a
+ * drawer), so a layer opened from there keeps it open (see ``layers.ts``).
+ * ``layer`` is the ref ``useKeyLayer`` returned.
+ */
+export function KeyLayerScope({ layer, children }: { layer: object; children?: ReactNode }) {
+  const outer = useContext(LayerScopeContext)
+  const value = useMemo(() => [...outer, layer], [outer, layer])
+  return createElement(LayerScopeContext.Provider, { value }, children)
+}
+
 /**
  * Push a layer while ``open``. Returns a ref holding its id, for shortcuts
- * the layer owns (``useShortcut(chord, fn, { layer: ref })``).
+ * the layer owns (``useShortcut(chord, fn, { layer: ref })``), and for
+ * ``KeyLayerScope``. Opening it closes the other menus and popovers open,
+ * except the ones it renders inside.
  */
 export function useKeyLayer(open: boolean, options: KeyLayerOptions): { readonly current: number | null } {
   const idRef = useRef<number | null>(null)
   const latest = useRef(options)
   latest.current = options
+  const within = useContext(LayerScopeContext)
+  const withinRef = useRef(within)
+  withinRef.current = within
   useEffect(() => {
     if (!open) return undefined
     installKeyboard()
@@ -86,6 +105,8 @@ export function useKeyLayer(open: boolean, options: KeyLayerOptions): { readonly
       close: () => latest.current.onClose?.(),
       allowSwitch: () => latest.current.allowSwitch?.() ?? true,
       element: () => latest.current.element?.() ?? null,
+      scope: idRef,
+      within: withinRef.current,
     })
     idRef.current = id
     return () => {

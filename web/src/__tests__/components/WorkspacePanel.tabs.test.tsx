@@ -173,7 +173,7 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'app.ts' }).getAttribute('aria-current')).toBe('true')
   })
 
-  it('opens a tab after the active one, and closing it focuses its right neighbour', async () => {
+  it('opens a tab after the active one, and closing it goes back to the tab used before', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
@@ -188,7 +188,8 @@ describe('Review dock diff tabs', () => {
     await user.click(screen.getByRole('button', { name: 'Close app.ts diff' }))
 
     expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'app.ts' }).getAttribute('aria-current')).toBe('true')
+    // Git was on show before the diff, not its neighbour app.ts.
+    expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
   })
 
   it('middle-click closes a closable tab', async () => {

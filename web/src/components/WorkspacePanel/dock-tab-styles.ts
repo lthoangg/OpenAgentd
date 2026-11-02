@@ -2,18 +2,26 @@
  * Shared class strings for the review dock's editor-tab strip.
  *
  * Fewer borders (DESIGN.md → Editor tabs): tabs are borderless pills on the
- * recessed ``bg-sidebar`` rail. The open tab is filled with the page colour
- * and set in medium weight with the main text colour, with no coloured edge;
- * the strip draws the one hairline between it and the content.
+ * chrome tone the sidebar, header and status bar share (the page in light,
+ * the recessed rail in dark). The open tab is marked the way the sidebar
+ * marks the open session (``listRowSurface``): a keycap wash, medium weight,
+ * the main text colour, no coloured edge. The strip draws the one hairline
+ * between it and the content.
  */
+import { listRowSurface } from '@/components/ui/list-row'
+
+/** The strip: one tab-bar row on the chrome tone. */
+export const DOCK_TAB_STRIP_CLASS =
+  'flex h-(--spacing-tab-bar) min-w-0 shrink-0 border-b border-(--color-border-subtle) bg-(--bg-page) dark:bg-(--bg-sidebar)'
 
 /** Tab wrapper. Holds the activate button and, when closable, a close button. */
 export function dockTabClass(active: boolean): string {
   return [
     'group/tab relative flex h-full max-w-48 shrink-0 items-center rounded-sm text-xs transition-colors duration-(--motion-instant)',
+    listRowSurface(active),
     active
-      ? 'bg-(--bg-page) font-medium text-(--color-text)'
-      : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)',
+      ? 'font-medium text-(--color-text)'
+      : 'text-(--color-text-muted) hover:text-(--color-text-2)',
   ].join(' ')
 }
 

@@ -705,6 +705,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
     one button for each.
+  - On desktop the sidebar and the Review panel run up to the top of the
+    window, as in a native app: the header splits where they do, with the
+    sidebar toggle (and, on macOS, the window buttons) over the sidebar, the
+    title and command palette over the chat, and the Task list and Review
+    panel buttons over the panel. The split follows a drag or a slide. The
+    Review panel's tab strip shares the sidebar's tone, and its open tab is
+    marked the way the sidebar marks the open session.
   - **Split Review Panel** (`⌘\`/`Ctrl+\`) stacks a second tab group under
     the first, or joins them. Drag the line between them to resize it, or
     double-click it to reset; closing a group's last tab joins the groups.

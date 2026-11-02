@@ -165,6 +165,68 @@ describe('ResizableAside', () => {
     moveTo(150)
     expect(content.style.width).toBe('100%')
   })
+
+  // The header's caps line up with the sidebar and the Review panel by
+  // reading their widths from CSS properties, so they follow a drag and a
+  // show/hide slide frame by frame.
+  describe('publishWidthAs', () => {
+    const realObserver = globalThis.ResizeObserver
+    const observers: Array<{ callback: ResizeObserverCallback; options?: ResizeObserverOptions; disconnected: boolean }> = []
+    beforeEach(() => {
+      observers.length = 0
+      globalThis.ResizeObserver = class {
+        private entry: { callback: ResizeObserverCallback; options?: ResizeObserverOptions; disconnected: boolean }
+        constructor(callback: ResizeObserverCallback) {
+          this.entry = { callback, disconnected: false }
+          observers.push(this.entry)
+        }
+        observe(_target: Element, options?: ResizeObserverOptions) { this.entry.options = options }
+        unobserve() {}
+        disconnect() { this.entry.disconnected = true }
+      } as unknown as typeof ResizeObserver
+    })
+    afterEach(() => {
+      globalThis.ResizeObserver = realObserver
+      document.documentElement.style.removeProperty('--oa-test-w')
+    })
+
+    const panel = (publish: boolean) => (
+      <ResizableAside
+        aria-label="Panel"
+        publishWidthAs={publish ? '--oa-test-w' : undefined}
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0 }, instantWidth: true })}
+      >
+        <p>content</p>
+      </ResizableAside>
+    )
+    const published = () => document.documentElement.style.getPropertyValue('--oa-test-w')
+
+    it('writes its border-box width to the root as it changes', () => {
+      render(panel(true))
+      const aside = screen.getByRole('complementary', { name: 'Panel' })
+      aside.getBoundingClientRect = () => ({ width: 264.5 }) as DOMRect
+      act(() => observers[0]?.callback([], {} as ResizeObserver))
+
+      expect(published()).toBe('264.5px')
+      // The border box: a panel closed to 0 still draws its 1px edge until
+      // the edge is dropped, and that change must be seen too.
+      expect(observers[0]?.options).toEqual({ box: 'border-box' })
+    })
+
+    it('clears the property when it stops publishing or unmounts', () => {
+      const { rerender, unmount } = render(panel(true))
+      expect(published()).toBe('0px')
+      rerender(panel(false))
+      expect(published()).toBe('')
+      expect(observers[0]?.disconnected).toBe(true)
+
+      rerender(panel(true))
+      expect(published()).toBe('0px')
+      unmount()
+      expect(published()).toBe('')
+    })
+  })
 })
 
 describe('settledWidthBesidePanels', () => {

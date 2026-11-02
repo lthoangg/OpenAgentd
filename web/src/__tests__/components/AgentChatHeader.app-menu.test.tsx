@@ -167,9 +167,12 @@ describe('AgentChatHeader application menu', () => {
 })
 
 describe('AgentChatHeader as the Windows title bar', () => {
+  // The room sits inside the Review panel's cap, so the cap's left edge
+  // still lines up with the panel's.
   it('leaves the three caption buttons room at its right end in the Windows app', () => {
     const { container } = renderHeader()
-    expect(container.querySelector('header')).toHaveClass('pr-[138px]')
+    expect(container.querySelector('[data-header-cap="dock"]')).toHaveClass('pr-[138px]')
+    expect(container.querySelector('header')).not.toHaveClass('pr-[138px]')
   })
 
   const framed: [string, { isTauri: boolean; os: string; isFullscreen?: boolean }][] = [
@@ -181,5 +184,6 @@ describe('AgentChatHeader as the Windows title bar', () => {
     platform = value
     const { container } = renderHeader()
     expect(container.querySelector('header')).not.toHaveClass('pr-[138px]')
+    expect(container.querySelector('[data-header-cap="dock"]')).not.toHaveClass('pr-[138px]')
   })
 })

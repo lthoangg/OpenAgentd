@@ -32,6 +32,7 @@ import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
 import {
   DOCK_ACTION_BUTTON_CLASS,
   DOCK_TAB_LIFTED_CLASS,
+  DOCK_TAB_STRIP_CLASS,
   dockTabButtonClass,
   dockTabClass,
   dockTabCloseClass,
@@ -292,7 +293,7 @@ export function DockTabBar({
     moveAndFocus(id, to)
   }
   return (
-    <div ref={stripRef} className="flex h-(--spacing-tab-bar) min-w-0 shrink-0 border-b border-(--color-border-subtle) bg-(--bg-sidebar)">
+    <div ref={stripRef} className={DOCK_TAB_STRIP_CLASS}>
       <div
         ref={scrollerRef}
         className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1"

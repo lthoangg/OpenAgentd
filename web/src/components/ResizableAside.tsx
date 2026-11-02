@@ -19,8 +19,11 @@
  *
  * The aside publishes its target width in ``data-panel-target-width`` so a
  * neighbour can size itself for where the tween ends (``settledWidthBesidePanels``).
+ * With ``publishWidthAs`` it also writes its live border-box width to that CSS
+ * property on the root, so the header's caps line up with it through a drag
+ * and a show/hide slide (``AgentChatHeader``).
  */
-import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef, type ComponentProps, type ReactNode, type RefObject } from 'react'
 import { motion, type TargetAndTransition, type Transition } from 'framer-motion'
 
 import { panelResizeHandleClass, usePanelResize, type PanelResizeOptions } from '@/hooks/use-panel-resize'
@@ -83,11 +86,37 @@ interface ResizableAsideProps
   getMotion: (live: LiveWidth) => { animate: TargetAndTransition; transition: Transition; pinWidth?: number; instantWidth?: boolean; tweenWidth?: boolean }
   /** Lay the children out at ``pinWidth`` rather than the tweening width. */
   pinContentWidth?: boolean
+  /**
+   * A CSS custom property (``--oa-sidebar-w``) to publish the live
+   * border-box width to, on ``<html>``; cleared when unset or unmounted.
+   * Owners pass it only while the panel is in flow beside the chat.
+   */
+  publishWidthAs?: string
   children: ReactNode
 }
 
-export function ResizableAside({ resize, getMotion, pinContentWidth = false, children, style, ...asideProps }: ResizableAsideProps) {
+/** Keeps ``name`` on the root equal to ``ref``'s border-box width while set. */
+function usePublishedWidth(ref: RefObject<HTMLElement | null>, name: string | undefined) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!name || !el) return
+    const root = document.documentElement
+    const write = () => root.style.setProperty(name, `${el.getBoundingClientRect().width}px`)
+    write()
+    // Border box: closing to 0 then dropping the 1px edge changes only it.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(write)
+    observer?.observe(el, { box: 'border-box' })
+    return () => {
+      observer?.disconnect()
+      root.style.removeProperty(name)
+    }
+  }, [ref, name])
+}
+
+export function ResizableAside({ resize, getMotion, pinContentWidth = false, publishWidthAs, children, style, ...asideProps }: ResizableAsideProps) {
   const state = usePanelResize(resize)
+  const asideRef = useRef<HTMLElement>(null)
+  usePublishedWidth(asideRef, publishWidthAs)
   const { animate, transition, pinWidth, instantWidth = false, tweenWidth = false } = getMotion({ width: state.width, isResizing: state.isResizing })
   const { width: targetWidth, ...animateRest } = animate
   const cut = instantWidth && targetWidth !== undefined
@@ -99,6 +128,7 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, chi
     <ResizeContext.Provider value={state}>
       <motion.aside
         {...asideProps}
+        ref={asideRef}
         data-panel-target-width={typeof targetWidth === 'number' ? targetWidth : undefined}
         style={cut ? { ...style, width: targetWidth as number | string, transition: slide ? PANEL_SLIDE : undefined } : style}
         animate={cut ? animateRest : animate}

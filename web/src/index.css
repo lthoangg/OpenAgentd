@@ -389,6 +389,27 @@ html[data-window-caption] .below-window-caption {
    every platform gets the same safe-area contract. */
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Header caps (AgentChatHeader, desktop): the header splits where the columns
+ * below it do, so the sidebar and the Review panel read as columns from the
+ * top of the window. Their widths arrive as --oa-sidebar-w / --oa-dock-w
+ * (ResizableAside publishWidthAs; unset while a panel is hidden, a drawer or
+ * an overlay), so a cap follows a drag and a slide. min(1px, w) is 1px for
+ * any open column and 0 for none: the cap draws its column's edge up to the
+ * top only while there is a column. The sidebar cap draws no bottom line
+ * (the sidebar runs on up), except with no sidebar, where it carries the
+ * header's line on to the window edge.
+ * ───────────────────────────────────────────────────────────────────────────── */
+.oa-header-cap-sidebar {
+  min-width: var(--oa-sidebar-w, 0px);
+  border-right-width: min(1px, var(--oa-sidebar-w, 0px));
+  border-bottom-width: calc(1px - min(1px, var(--oa-sidebar-w, 0px)));
+}
+.oa-header-cap-dock {
+  min-width: var(--oa-dock-w, 0px);
+  border-left-width: min(1px, var(--oa-dock-w, 0px));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * AppOverlay — shared geometry for ALL app overlays except the full-width
  * Settings sheet (which uses .settings-modal-shell below).
  *

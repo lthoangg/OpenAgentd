@@ -916,6 +916,9 @@ export function WorkspacePanel({
       getMotion={dockMotion}
       onAnimationComplete={settleToggle}
       pinContentWidth
+      // The header's Review panel cap matches this column while it sits
+      // beside the chat (open, or sliding); an overlay or the phone sheet floats.
+      publishWidthAs={!mobile && !overlay && (shownOpen || sliding) ? '--oa-dock-w' : undefined}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
         // Overlay covers the chat column (kept mounted underneath); side mode

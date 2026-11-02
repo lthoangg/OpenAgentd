@@ -1,4 +1,6 @@
 import type { ComponentProps } from 'react'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
@@ -68,14 +70,68 @@ describe('AgentChatHeader', () => {
     expect(header).not.toHaveTextContent('50K')
   })
 
-  it('keeps the command palette centred on desktop, however long the title is', () => {
+  it('keeps the command palette centred over the chat, however long the title is', () => {
     // In a flex row it sat in whatever room the title left, so it slid
     // sideways from one session to the next.
-    const { container } = renderHeader({ isMobile: false, onOpenPalette: () => undefined })
-    const header = container.querySelector('header') as HTMLElement
-    expect(header).toHaveClass('grid', 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]')
+    renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    const main = document.querySelector('[data-header-main]') as HTMLElement
+    expect(main).toHaveClass('grid', 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]')
     const palette = screen.getByRole('button', { name: /^Command palette/ })
-    expect(Array.from(header.children).indexOf(palette.closest('header > *') as Element)).toBe(1)
+    expect(Array.from(main.children).indexOf(palette.closest('[data-header-main] > *') as Element)).toBe(1)
+    // The title sits over the chat, left of the palette.
+    expect(main.children[0]).toHaveTextContent('Fix updater restart')
+  })
+
+  describe('full-height columns on desktop', () => {
+    // The header splits where the columns below it do, so the sidebar and
+    // the Review panel read as columns from the top of the window down, as
+    // in a native app, instead of starting under a full-width bar.
+    const cap = (name: 'sidebar' | 'dock') => document.querySelector(`[data-header-cap="${name}"]`) as HTMLElement
+    const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
+    const rule = (selector: string) => css.match(new RegExp(`\\${selector} \\{([^}]*)\\}`))?.[1] ?? ''
+
+    it('puts the sidebar toggle in a cap as wide as the sidebar, its edge continuing the sidebar edge', () => {
+      renderHeader({ isMobile: false })
+      const lead = cap('sidebar')
+      expect(lead.contains(screen.getByRole('button', { name: 'Toggle sidebar' }))).toBe(true)
+      expect(lead).toHaveClass('oa-header-cap-sidebar')
+      const geometry = rule('.oa-header-cap-sidebar')
+      expect(geometry).toContain('min-width: var(--oa-sidebar-w, 0px);')
+      expect(geometry).toContain('border-right-width: min(1px, var(--oa-sidebar-w, 0px));')
+      // No line across the top of the sidebar; with it hidden, the cap
+      // carries the header's bottom line on to the window edge.
+      expect(geometry).toContain('border-bottom-width: calc(1px - min(1px, var(--oa-sidebar-w, 0px)));')
+    })
+
+    it('puts the Task list and Review panel buttons in a cap as wide as the Review panel', () => {
+      renderHeader({ isMobile: false })
+      const trail = cap('dock')
+      expect(trail.contains(screen.getByRole('button', { name: 'Task list' }))).toBe(true)
+      expect(trail.contains(screen.getByRole('button', { name: 'Review panel' }))).toBe(true)
+      expect(trail).toHaveClass('oa-header-cap-dock')
+      const geometry = rule('.oa-header-cap-dock')
+      expect(geometry).toContain('min-width: var(--oa-dock-w, 0px);')
+      expect(geometry).toContain('border-left-width: min(1px, var(--oa-dock-w, 0px));')
+    })
+
+    it('draws the bottom line under the chat and Review panel, not across the header', () => {
+      const { container } = renderHeader({ isMobile: false })
+      const header = container.querySelector('header') as HTMLElement
+      expect(header.className.split(' ')).not.toContain('border-b')
+      expect((document.querySelector('[data-header-main]') as HTMLElement).className.split(' ')).toContain('border-b')
+    })
+
+    it('keeps the traffic lights in the sidebar cap', () => {
+      const { container } = renderHeader({ isMobile: false, isMacOverlay: true })
+      expect(cap('sidebar')).toHaveClass('pl-[70px]')
+      expect(container.querySelector('header')).not.toHaveClass('pl-[70px]')
+    })
+
+    it('keeps one bar on phones', () => {
+      const { container } = renderHeader({ isMobile: true })
+      expect(document.querySelector('[data-header-cap]')).toBeNull()
+      expect(container.querySelector('header')?.className.split(' ')).toContain('border-b')
+    })
   })
 
   it('lets the title take the middle on phones', () => {

@@ -174,22 +174,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.sidebar, os)
   const dockShortcut = shortcutLabel(APP_SHORTCUTS.workspaceFiles, os)
 
-  return (
-    <header
-      {...dragHandlers}
-      // Desktop zoning (dark only): the header joins the sidebar and status
-      // bar on the recessed rail tone; light mode keeps one page tone.
-      // Three columns with equal sides, so the command palette stays centred
-      // whatever the title's length (a flex row slid it from session to
-      // session); phones give the middle to the title.
-      className={cn(
-        'mobile-safe-header grid h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
-        isMobile ? 'grid-cols-[auto_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',
-        isMacOverlay && 'select-none pl-[70px]',
-        captionInset && 'select-none pr-[138px]',
-      )}
-    >
-        <div className={`mr-1 flex h-full min-w-0 items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+  const leadButtons = (
+    <>
           {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}
           {/* Toggles the desktop sidebar, or the drawer on mobile. */}
           <Tooltip>
@@ -214,34 +200,116 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             />
             <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
           </Tooltip>
+    </>
+  )
+
+  if (!isMobile) {
+    return (
+      // Desktop: the header splits where the columns below it do (caps as
+      // wide as the sidebar and the Review panel; geometry in index.css →
+      // Header caps), so both read as columns from the top of the window.
+      <header
+        {...dragHandlers}
+        // Zoning (dark only): the header joins the sidebar and status bar on
+        // the recessed rail tone; light mode keeps one page tone.
+        className={cn(
+          'mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-stretch overflow-hidden bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+          (isMacOverlay || captionInset) && 'select-none',
+        )}
+      >
+        <div
+          data-header-cap="sidebar"
+          // The traffic lights sit over the sidebar, as in a native app.
+          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 border-(--color-border) pr-1', isMacOverlay ? 'pl-[70px]' : 'pl-3')}
+        >
+          {leadButtons}
+        </div>
+        {/* Title, palette, a matching spacer and the Review panel's cap: the
+            equal sides keep the palette centred over the chat whatever the
+            title's length (a flex row slid it from session to session). */}
+        <div data-header-main="" className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-stretch border-b border-(--color-border)">
           {/* Workspace · session. Double-click the session (or F2 on it) to
               rename it here too; phones rename from the drawer. */}
-          {workspace && !isMobile ? (
-            <div className="ml-1 flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
-              <Tooltip className="shrink-0">
-                <TooltipTrigger render={<span className="font-semibold text-(--color-text)">{workspaceName}</span>} />
-                <TooltipContent>{workspaceTooltip}</TooltipContent>
-              </Tooltip>
-              {sessionTitle && (
-                <>
-                  <TitleSeparator sessionId={sessionId} title={sessionTitle} />
-                  <HeaderSessionTitle
-                    // A new session starts closed: no field carries over.
-                    key={sessionId ?? 'new'}
-                    sessionId={sessionId}
-                    title={sessionTitle}
-                    onRename={canRenameSession && sessionId ? (title) => renameSession(sessionId, title) : undefined}
-                  />
-                </>
-              )}
-            </div>
-          ) : null}
+          <div className="flex min-w-0 items-center pr-2 pl-3">
+            {workspace ? (
+              <div className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
+                <Tooltip className="shrink-0">
+                  <TooltipTrigger render={<span className="font-semibold text-(--color-text)">{workspaceName}</span>} />
+                  <TooltipContent>{workspaceTooltip}</TooltipContent>
+                </Tooltip>
+                {sessionTitle && (
+                  <>
+                    <TitleSeparator sessionId={sessionId} title={sessionTitle} />
+                    <HeaderSessionTitle
+                      // A new session starts closed: no field carries over.
+                      key={sessionId ?? 'new'}
+                      sessionId={sessionId}
+                      title={sessionTitle}
+                      onRename={canRenameSession && sessionId ? (title) => renameSession(sessionId, title) : undefined}
+                    />
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 items-center justify-center overflow-hidden px-1">
+            {onOpenPalette ? <CommandCenterButton onClick={onOpenPalette} /> : null}
+          </div>
+          <div />
+          <div
+            data-header-cap="dock"
+            // Windows: this header is the title bar, and the page's caption
+            // buttons (fixed at the top right) take its last 3 × 46px.
+            className={cn('oa-header-cap-dock flex items-center justify-end gap-0.5 border-(--color-border) pl-1', captionInset ? 'pr-[138px]' : 'pr-1')}
+          >
+            <AgentTopbar
+              isMobile={false}
+              todosAction={{
+                Icon: ListTodo,
+                onClick: onToggleTasks,
+                disabled: !sessionId,
+                title: sessionId
+                  ? `${goalState ? `${goalState.text} · ` : ''}Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
+                  : 'No active session',
+                ariaLabel: 'Task list',
+                badge: todoSummary.progressLabel,
+                indicator: todoSummary.hasInProgress,
+                goalTone: goalState?.tone,
+                indicatorClassName: 'bg-(--accent-blue-text)',
+                pressed: tasksViewActive,
+                className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
+              }}
+              filesAction={workspace ? {
+                    Icon: PanelRight,
+                    onClick: onWorkspaceFiles,
+                    title: `${dockOpen ? 'Hide' : 'Show'} Review panel (${dockShortcut})`,
+                    ariaLabel: 'Review panel',
+                    pressed: dockOpen,
+                    className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
+                  } : undefined}
+            />
+          </div>
+        </div>
+      </header>
+    )
+  }
+
+  return (
+    <header
+      {...dragHandlers}
+      // Phones: one bar, the middle given to the title.
+      className={cn(
+        'mobile-safe-header grid h-(--spacing-app-header) shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+        isMacOverlay && 'select-none pl-[70px]',
+        captionInset && 'select-none pr-[138px]',
+      )}
+    >
+        <div className={`mr-1 flex h-full min-w-0 items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+          {leadButtons}
         </div>
 
-        {/* Center: mobile title, or the desktop command-center search. */}
-        <div className="flex min-w-0 justify-start overflow-hidden px-1 md:justify-center">
-          {isMobile ? (
-            // Phones: the session first, its workspace under it.
+        {/* Center: the session first, its workspace under it. */}
+        <div className="flex min-w-0 justify-start overflow-hidden px-1">
             <div className="flex min-w-0 flex-col justify-center leading-tight">
               {!workspace ? (
                 <span className="truncate text-sm font-semibold text-(--color-text)">Choose a workspace</span>
@@ -254,16 +322,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 </>
               )}
             </div>
-          ) : onOpenPalette ? (
-            <CommandCenterButton onClick={onOpenPalette} />
-          ) : null}
         </div>
 
-        {/* Right cluster — desktop gets the full action row. Mobile keeps
-            frequent actions visible and leaves secondary panels in More. */}
+        {/* Right cluster: frequent actions stay visible, secondary panels
+            live in More. */}
         <div className="flex min-w-0 items-center justify-self-end gap-0.5 md:pr-1">
-        {isMobile ? (
-          <>
             <MobileHeaderAction
               Icon={PanelRight}
               label="Review panel"
@@ -290,35 +353,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               onQuickOpen={onQuickOpen ? () => { onQuickOpen(); onCloseMobileActionsMenu() } : undefined}
               onCommandPalette={onOpenPalette ? () => { onOpenPalette(); onCloseMobileActionsMenu() } : undefined}
             />
-          </>
-        ) : (
-          <AgentTopbar
-            isMobile={false}
-            todosAction={{
-              Icon: ListTodo,
-              onClick: onToggleTasks,
-              disabled: !sessionId,
-              title: sessionId
-                ? `${goalState ? `${goalState.text} · ` : ''}Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
-                : 'No active session',
-              ariaLabel: 'Task list',
-              badge: todoSummary.progressLabel,
-              indicator: todoSummary.hasInProgress,
-              goalTone: goalState?.tone,
-              indicatorClassName: 'bg-(--accent-blue-text)',
-              pressed: tasksViewActive,
-              className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
-            }}
-            filesAction={workspace ? {
-                  Icon: PanelRight,
-                  onClick: onWorkspaceFiles,
-                  title: `${dockOpen ? 'Hide' : 'Show'} Review panel (${dockShortcut})`,
-                  ariaLabel: 'Review panel',
-                  pressed: dockOpen,
-                  className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
-                } : undefined}
-          />
-        )}
         </div>
     </header>
   )

@@ -618,7 +618,9 @@ Review panel on the right (`Mod+D`), full window height. Mobile keeps its
 drawer and full-screen sheet.
 
 ```
-┌────────────── app-header 36 · bg-page (light) / bg-sidebar (dark) ─────────┐
+┌─────────────┬── app-header 36 ────────────────┬──────────────────────────────┐
+│ sidebar cap │ title · palette (centred)      │ Review panel cap:  Tasks ▣   │
+│ lights ⌘B   ├────────────────────────────────┼──────────────────────────────┤
 │ sidebar 264 │ chat · bg-page (≥ 400)         │ Review panel (≥ 340)         │
 │ page / rail │ transcript (prose ≤ 768,       │ upper group: tab-bar 36      │
 │ 28px rows   │   code/tables/tools ≤ 960)     │   toolbar 32 · one scroller  │
@@ -627,11 +629,26 @@ drawer and full-screen sheet.
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
+- **Columns run to the top.** The desktop header splits where the columns
+  below it do: a sidebar cap as wide as the sidebar (the traffic lights, ☰
+  and the sidebar toggle), the title and the palette over the chat (the
+  palette centred between the caps), and a Review panel cap as wide as the
+  panel (Task list, the panel toggle; on Windows the caption buttons). Each
+  cap continues its column's edge up through the header, and the header's
+  bottom line runs under the chat and the panel but not across the top of
+  the sidebar, so both side columns read as full-height, as in a native app.
+  The widths come from the panels themselves (`ResizableAside`
+  `publishWidthAs` → `--oa-sidebar-w`, `--oa-dock-w`), so a cap follows a
+  drag and a slide; a hidden panel, a drawer or an overlay publishes none,
+  and the header's line then runs on to the window edge. Phones keep one bar.
 - **Zoning is tonal in dark mode.** There the header, sidebar and status bar
   sit on the recessed `bg-sidebar`; in light mode they share the chat's
-  `bg-page`, so the app reads as one sheet of paper. The dock tab bar is
-  `bg-sidebar` in both. Working surfaces (chat, dock content) sit on
+  `bg-page`, so the app reads as one sheet of paper. The dock tab bar
+  follows the same rule. Working surfaces (chat, dock content) sit on
   `bg-page`. The zones meet at hairline borders, never shadows.
+- **One selection language.** The open dock tab is marked exactly like the
+  sidebar's open session (`listRowSurface`: a keycap wash, medium weight,
+  ink text), so the two side columns read as one design.
 - **Geometry lives in one place.** `lib/workbench-layout.ts` owns the math and
   `useLayoutStore` (`oa.layout.v1`) persists the choices. The sidebar defaults
   to 264px (220–440px) and opens expanded on first run at ≥1280px. The dock is
@@ -917,13 +934,13 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
-- **Strip**: `tab-bar` height (37px, 45px on touch) on `bg-sidebar` with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
+- **Strip**: `tab-bar` height (37px, 45px on touch) on the chrome tone (`bg-page` in light, `bg-sidebar` in dark; `DOCK_TAB_STRIP_CLASS`) with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
 - **Order**: views (Git, Plan, Tasks…) first, a hairline, then documents (files, diffs, commits, terminals, previews). A tab moves only among its own kind.
 - **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the group's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
 - **Menu** (right-click, Shift+F10): Close, Close Others, Close to the Right, Keep Open, Move to Other Group / Split Down, Move Left, Move Right, Copy Path, Reveal in Git. Close Others and Close to the Right act on the tab's own group.
-- **Active Tab**: filled with `bg-page`, `font-medium`, `text-(--color-text)`. No coloured edge, no border.
-- **Inactive Tab**: no fill, `text-(--color-text-muted)`, hover `bg-key` wash.
+- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border.
+- **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
 - **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.
 - **Semantics**: tabs are buttons with `aria-current`, not an ARIA `tablist` — terminal tabs carry their own context menu and sheet.
 
@@ -1304,6 +1321,7 @@ flash is fully exposed there.
 
 The macOS window uses `titleBarStyle: "Overlay"` with `hiddenTitle: true`, so the
 app's own 36px `app-header` *is* the title bar. The traffic lights are placed
+in the header's sidebar cap, over the sidebar column as in Finder or Mail; they are placed
 from Rust (`desktop/src-tauri/src/window.rs`, `{x: 12, y: 20}`; the JSON config
 value is ignored for builder-created windows), which centres them against the
 36px header and is why `mac-traffic-inset` is 70px (12px origin + ~58px button

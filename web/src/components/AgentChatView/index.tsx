@@ -300,6 +300,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handledDockAttachmentRequestKeyRef,
     dockLayoutRequest,
     handledDockLayoutKeyRef,
+    dockLauncherFocusKey,
+    handledDockLauncherFocusKeyRef,
     handleOpenAttachment,
     handleOpenPreview,
     dockActiveView,
@@ -1090,6 +1092,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               handledAttachmentRequestKeyRef={handledDockAttachmentRequestKeyRef}
               layoutRequest={dockLayoutRequest}
               handledLayoutRequestKeyRef={handledDockLayoutKeyRef}
+              launcherFocusKey={dockLauncherFocusKey}
+              handledLauncherFocusKeyRef={handledDockLauncherFocusKeyRef}
               onSendPreviewComments={handleSendPreviewComments}
               onActiveViewChange={setDockActiveView}
               todos={todos}

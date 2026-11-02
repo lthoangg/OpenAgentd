@@ -128,6 +128,9 @@ export interface UseOverlayStateResult {
   /** Split / terminal-group requests for the dock (⌘\, ⌃`). */
   dockLayoutRequest: DockLayoutRequest | null
   handledDockLayoutKeyRef: React.RefObject<number>
+  /** Grows when the user opens the Review panel; an empty one focuses its launcher. */
+  dockLauncherFocusKey: number
+  handledDockLauncherFocusKeyRef: React.RefObject<number>
   /** Dock view tab currently focused in the mounted dock, else ``null``. */
   dockActiveView: DockView | null
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
@@ -235,6 +238,8 @@ export function useOverlayState({
   const handledDockAttachmentRequestKeyRef = useRef(0)
   const [dockLayoutRequest, setDockLayoutRequest] = useState<DockLayoutRequest | null>(null)
   const handledDockLayoutKeyRef = useRef(0)
+  const [dockLauncherFocusKey, setDockLauncherFocusKey] = useState(0)
+  const handledDockLauncherFocusKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
   const schedulerInDock = Boolean(workspace)
@@ -338,12 +343,13 @@ export function useOverlayState({
   const handleWorkspaceFiles = useCallback(() => {
     if (workspace) {
         if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('workspace-panel') }
+        if (workspacePanel === null) setDockLauncherFocusKey((key) => key + 1)
         setWorkspacePanel((value) => (value === null ? 'changed' : null))
       } else {
         revealSidebar()
         setOpenWorkspaceDialogKey((value) => value + 1)
       }
-  }, [closeOtherMobileOverlays, isMobile, revealSidebar, workspace])
+  }, [closeOtherMobileOverlays, isMobile, revealSidebar, workspace, workspacePanel])
 
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
@@ -764,6 +770,8 @@ export function useOverlayState({
     handledDockAttachmentRequestKeyRef,
     dockLayoutRequest,
     handledDockLayoutKeyRef,
+    dockLauncherFocusKey,
+    handledDockLauncherFocusKeyRef,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,

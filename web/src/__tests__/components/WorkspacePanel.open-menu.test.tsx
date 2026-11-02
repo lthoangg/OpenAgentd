@@ -202,20 +202,21 @@ describe('Review dock "+" menu', () => {
     expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-current')).toBe('true')
   })
 
-  it('opened with nothing in it, puts focus on the launcher, and the arrows move down its rows', async () => {
+  it('opened by the user with nothing in it, puts focus on the launcher, and the arrows move down its rows', async () => {
     const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const panel = (open: boolean) => (
+    // The shell mounts the panel as it opens, with the request that opened it.
+    const handled = { current: 0 }
+    render(
       <QueryClientProvider client={queryClient}>
-        <WorkspacePanel workspace={WORKSPACE} open={open} sessionId="session-1" plan={null} />
-      </QueryClientProvider>
+        <WorkspacePanel workspace={WORKSPACE} open sessionId="session-1" plan={null} launcherFocusKey={1} handledLauncherFocusKeyRef={handled} />
+      </QueryClientProvider>,
     )
-    const view = render(panel(false))
-    await act(async () => { view.rerender(panel(true)) })
     const launcher = await screen.findByRole('group', { name: 'Open in Review panel' })
     const rows = within(launcher).getAllByRole('button')
     // Two animation frames after opening; give a loaded machine time for them.
     await waitFor(() => expect(document.activeElement).toBe(rows[0]), { timeout: 3000 })
+    expect(handled.current).toBe(1)
 
     const user = userEvent.setup()
     await user.keyboard('{ArrowDown}')

@@ -662,7 +662,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The context ring opens the token numbers and **Summarize now**. The
     header and status bar no longer show the context meter or the model.
     Its full track is drawn, so a part-filled ring reads as a gauge, not a
-    spinner.
+    spinner. Its labels are in the UI font and only the numbers in mono, as
+    in an answer's details.
   - The composer marks focus with a darker border rather than a blue glow,
     and in a composer under 640px (a phone, or a chat beside the Review
     panel) the MCP chip is the plug alone, its name in the tooltip.

@@ -53,21 +53,22 @@ export function ContextMeter({ input, output, cachedPercent, sessionCostUsd, tri
         <span className="@max-[520px]:hidden">{percent}%</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-60 gap-2 p-3">
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 font-mono text-meta tabular-nums">
+        {/* Labels in the UI font, numbers in mono, as in the turn details. */}
+        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-meta">
           <dt className="text-(--color-text-muted)">Context</dt>
-          <dd className="text-right">{formatCompact(input)} / {formatCompact(limit)} · {percent}%</dd>
+          <dd className="text-right font-mono tabular-nums">{formatCompact(input)} / {formatCompact(limit)} · {percent}%</dd>
           <dt className="text-(--color-text-muted)">Output</dt>
-          <dd className="text-right">{formatCompact(output)}</dd>
+          <dd className="text-right font-mono tabular-nums">{formatCompact(output)}</dd>
           {cachedPercent !== undefined && cachedPercent > 0 && (
             <>
               <dt className="text-(--color-text-muted)">Cached</dt>
-              <dd className="text-right">{cachedPercent.toFixed(0)}%</dd>
+              <dd className="text-right font-mono tabular-nums">{cachedPercent.toFixed(0)}%</dd>
             </>
           )}
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
             <>
               <dt className="text-(--color-text-muted)">Spend (est.)</dt>
-              <dd className="text-right">{formatSpend(sessionCostUsd)}</dd>
+              <dd className="text-right font-mono tabular-nums">{formatSpend(sessionCostUsd)}</dd>
             </>
           )}
         </dl>

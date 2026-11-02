@@ -66,9 +66,22 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
     expect(contrast(t['--color-text-on-danger'], t['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('lights the menu row under the pointer or keyboard with a wash, quieter than a chosen segment', () => {
+    const fill = t['--color-fill-highlight']
+    expect(contrast(t['--color-text-on-highlight'], fill)).toBeGreaterThanOrEqual(4.5)
+    // A row that only follows the pointer is a wash, as a native list's
+    // hover: never a block that darkens the row on paper.
+    for (const surface of ['--bg-card', '--color-surface']) {
+      const ratio = contrast(fill, t[surface])
+      const chosen = contrast(t['--color-fill-selected'], t[surface])
+      expect({ surface, shows: ratio >= 1.12, wash: ratio <= 1.35, quieter: ratio < chosen })
+        .toEqual({ surface, shows: true, wash: true, quieter: true })
+    }
+  })
+
   it('keeps light fills light: the label is dark on them, as on paper', () => {
     if (name !== 'light') return
-    for (const fill of ['--color-fill-selected', '--color-fill-danger', '--bg-tooltip']) {
+    for (const fill of ['--color-fill-selected', '--color-fill-highlight', '--color-fill-danger', '--bg-tooltip']) {
       expect({ fill, light: luminance(t[fill]) > 0.5 }).toEqual({ fill, light: true })
     }
   })
@@ -76,7 +89,7 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
   it('never lets a chrome fill outshine the content: dark fills stay far below the text tone', () => {
     if (name !== 'dark') return
     // A near-white block on a dark window glows brighter than the words.
-    for (const fill of ['--color-fill-selected', '--color-fill-danger', '--bg-tooltip']) {
+    for (const fill of ['--color-fill-selected', '--color-fill-highlight', '--color-fill-danger', '--bg-tooltip']) {
       expect({ fill, dim: luminance(t[fill]) < luminance(t['--color-text']) / 4 }).toEqual({ fill, dim: true })
     }
   })

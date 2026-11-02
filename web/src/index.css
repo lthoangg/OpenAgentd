@@ -269,21 +269,21 @@ input:-webkit-autofill:focus {
 }
 
 /* Menus and listboxes (ui/menu-styles.ts): the row under the pointer or the
- * keyboard fills with the selection fill (a sand tone on paper, a raised warm
- * tone on dark) and every word in it takes the fill's text tone, the way an OS menu
+ * keyboard takes the highlight wash (a step softer than a chosen segment's
+ * fill) and every word in it takes the wash's text tone, the way an OS menu
  * highlights. Unlayered, so it wins over a row's own hover wash and
  * muted text. A pointer hover counts only where hover exists, so a tap on a
  * phone does not leave a row lit. A keyed list (``oa-menu-item-keyed``, the
  * command palette) lights only the row it marks active, so a parked pointer
  * never lights a second one. */
 .oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
-  background-color: var(--color-fill-selected);
-  color: var(--color-text-on-selected);
+  background-color: var(--color-fill-highlight);
+  color: var(--color-text-on-highlight);
 }
 @media (hover: hover) {
   .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
-    background-color: var(--color-fill-selected);
-    color: var(--color-text-on-selected);
+    background-color: var(--color-fill-highlight);
+    color: var(--color-text-on-highlight);
   }
   .oa-menu-item.oa-menu-item-danger:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
     background-color: var(--color-fill-danger);

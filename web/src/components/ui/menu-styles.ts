@@ -5,8 +5,8 @@
  * suggestions) all read from here so their panels and rows line up: a
  * ``rounded-md`` card panel with one subtle hairline, ``p-1`` and the depth
  * shadow, and 28px ``rounded-xs`` rows in ``text-xs``. A row under the
- * pointer or the keyboard fills with the theme accent and inverts every word
- * in it, like an OS menu (``.oa-menu-item`` in index.css).
+ * pointer or the keyboard takes the highlight wash and every word in it takes
+ * the wash's text tone, like an OS menu (``.oa-menu-item`` in index.css).
  */
 
 /** Floating panel surface. Callers add position, z-index and width. */

@@ -87,6 +87,10 @@
      * it), and not a bright brown either. */
     --color-fill-selected:   #4A3B2D;
     --color-text-on-selected: #F5EBD8;
+    /* The menu row under the pointer or keyboard: a wash a step softer than
+     * a chosen segment, since it only follows the pointer. */
+    --color-fill-highlight:   #372D22;
+    --color-text-on-highlight: #F5EBD8;
     --color-fill-danger:     #6B2724;
     --color-text-on-danger:  #F5EBD8;
     --bg-tooltip:            #2E251C;
@@ -206,6 +210,10 @@
      * blocks behind a chosen segment, a menu row or a tooltip. */
     --color-fill-selected:   #E3D6BA;
     --color-text-on-selected: #1A1714;
+    /* The menu row under the pointer or keyboard: a light wash, as a native
+     * list's hover, so a moving pointer does not darken every row it crosses. */
+    --color-fill-highlight:   #EFE7D3;
+    --color-text-on-highlight: #1A1714;
     --color-fill-danger:     #F7DCD6;
     --color-text-on-danger:  #991B1B;
     --bg-tooltip:            #FFFDF7;
@@ -297,6 +305,8 @@
         /* The chosen segment and highlighted row at 3:1 on the track: Bark. */
         --color-fill-selected:    #3F3429;
         --color-text-on-selected: #FFFDF7;
+        --color-fill-highlight:   #3F3429;
+        --color-text-on-highlight: #FFFDF7;
         --color-fill-danger:      #B91C1C;
         --color-text-on-danger:   #FFFDF7;
     }
@@ -310,6 +320,8 @@
         /* The chosen segment and highlighted row at 3:1 on the track. */
         --color-fill-selected:    #C5B59A;
         --color-text-on-selected: #15110D;
+        --color-fill-highlight:   #C5B59A;
+        --color-text-on-highlight: #15110D;
         --color-fill-danger:      #F87171;
         --color-text-on-danger:   #15110D;
     }

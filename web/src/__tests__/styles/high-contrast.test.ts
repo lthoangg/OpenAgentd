@@ -89,6 +89,13 @@ describe('prefers-contrast: more', () => {
       expect(contrast(high['--color-text-on-selected'], high['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
       expect(contrast(high['--color-text-on-danger'], high['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
     })
+
+    it(`lifts the ${theme.name} menu highlight to 3:1 on the menu, its label still AA`, () => {
+      const base = props(baseTokens, theme.selector)
+      const high = props(contrastBlock, theme.selector)
+      expect(contrast(high['--color-fill-highlight'], base['--bg-card'])).toBeGreaterThanOrEqual(3)
+      expect(contrast(high['--color-text-on-highlight'], high['--color-fill-highlight'])).toBeGreaterThanOrEqual(4.5)
+    })
   }
 })
 

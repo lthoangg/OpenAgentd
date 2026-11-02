@@ -596,11 +596,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     (⌘N, ⌘K, ⌘.) and their hints say so.
   - Buttons, chips, tabs and segmented controls have no borders. The primary
     button is filled with the theme's Bark colour. The chosen segment (Code /
-    Plan, for example), a chosen tab or question option, the highlighted menu
-    item and the command palette's active row are filled edge to edge with a
+    Plan, for example), a chosen tab or question option are filled edge to edge with a
     quiet tone a step off their track, with the normal text colour: a light
     sand in light mode (no dark brown blocks), a raised warm tone in dark mode
-    (no near-white block that glows brighter than the words around it). In the
+    (no near-white block that glows brighter than the words around it). The
+    menu row under the pointer or the keyboard, the model picker's included,
+    and the command palette's active row take a lighter wash than that, as a
+    native list's hover, so moving the pointer down a menu does not darken
+    each row it crosses. In the
     palette only the row the keys or a real mouse move chose lights, never a
     second one under a resting pointer. Tooltips are light cards in light
     mode; a switch that is off is a light track there. With the system's

@@ -25,8 +25,10 @@ colors:
   surface-2: "#F5EBD8"
 
   # ── Selection fills ────────────────────────────────────────────────────────
-  fill-selected: "#E3D6BA"    # Chosen segment, tab or option; highlighted menu row (a quiet sand)
+  fill-selected: "#E3D6BA"    # Chosen segment, tab or option (a quiet sand)
   on-selected: "#1A1714"
+  fill-highlight: "#EFE7D3"   # Menu row under the pointer or keyboard (a lighter wash)
+  on-highlight: "#1A1714"
   fill-danger: "#F7DCD6"      # Highlighted destructive menu row
   on-danger: "#991B1B"
   switch-on: "#3F3429"        # A switch that is on: the accent, as a checked box
@@ -274,9 +276,9 @@ components:
     rounded: "{rounded.xs}"
     height: 28px
     padding: 8px
-  menu-item-highlighted:      # Pointer or keyboard: filled edge to edge with the quiet selection tone
-    backgroundColor: "{colors.fill-selected}"
-    textColor: "{colors.on-selected}"
+  menu-item-highlighted:      # Pointer or keyboard: filled edge to edge with the highlight wash
+    backgroundColor: "{colors.fill-highlight}"
+    textColor: "{colors.on-highlight}"
   segmented-control:          # No border, no inset: the track is the segments
     backgroundColor: "{colors.bg-key}"
     rounded: "{rounded.sm}"
@@ -440,8 +442,8 @@ inverted surface, reserved for the composer's send action.
 
 ### Selection fills
 
-A chosen segment, tab or question option and the highlighted menu row fill
-with `fill-selected` and set their text in `on-selected`; a tooltip is a
+A chosen segment, tab or question option fills with `fill-selected` and sets
+its text in `on-selected`; a tooltip is a
 `bg-tooltip` chip. The fills are **quiet**: a tone a step off the track and the
 menu (1.15–1.8:1), with the normal text colour on it, as a native segmented
 control or menu marks its choice. Paper stays light: a sand fill (`#E3D6BA`)
@@ -452,6 +454,13 @@ warm tone (`#4A3B2D`). Increase contrast lifts both fills to 3:1 against the
 track (Bark in light). `token-pairs.test.ts` holds the range and keeps light
 fills light and dark fills well below the text tone, and the lint
 (`accent-selection-fill`) stops a selection reaching for the accent.
+
+The menu row under the pointer or the keyboard takes `fill-highlight` with
+`on-highlight`: a wash softer than a chosen segment (1.12–1.35:1 on the menu;
+`#EFE7D3` on paper, `#372D22` on dark), as a native list's hover, because it
+follows every pointer move and a sand block would darken each row it crosses.
+The ✓ marks the chosen row, not the fill. Increase contrast lifts it to 3:1
+like the other fills.
 
 ### Agent identity chips
 
@@ -486,6 +495,7 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
 | `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#4A3B2D` / `#F5EBD8` |
+| `fill-highlight` / `on-highlight` (menu row under pointer or keyboard) | `#EFE7D3` / `#1A1714` | `#372D22` / `#F5EBD8` |
 | `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |
 | `bg-tooltip` / `tooltip-text` / `tooltip-border` | `#FFFDF7` / `#1A1714` / `#D9CFA9` | `#2E251C` / `#F5EBD8` / `#4D3E2D` |
 | `switch-on` | `#3F3429` (accent; white thumb) | `#F5EBD8` (accent; near-black thumb) |
@@ -906,9 +916,10 @@ them is: **warm paper surface · fills, not borders · muted text · keycap hove
 **Fewer borders, one frame at most.** Controls carry no border of their own:
 a primary action is filled with Bark (`--color-accent`), a secondary one with
 the keycap wash (`bg-key`), a ghost one is text only. In a small group (Code /
-Plan, a question's options, the highlighted menu item) the chosen item is
+Plan, a question's options) the chosen item is
 filled edge to edge with `fill-selected` (a quiet sand in light, a raised warm
-tone in dark; see Colors → Selection fills) and its text turns `on-selected`; the track
+tone in dark; see Colors → Selection fills) and its text turns `on-selected`; the
+highlighted menu item takes the softer `fill-highlight`; the track
 has no border and no inset. In a long list (sidebar rows, the dock's tab strip)
 the open row keeps a wash and gains medium weight and the main text colour,
 never a coloured bar. Borders are left for three jobs only: the boundary
@@ -981,9 +992,9 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
 - **Panel**: `rounded-md`, one 1px `border-(--color-border-subtle)` hairline, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
-- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with `fill-selected` and its text and icons turn `on-selected` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
+- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with the `fill-highlight` wash and its text and icons turn `on-highlight` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
 - **Keyed lists** (`oa-menu-item-keyed`, the command palette): only the row the list marks active (`data-highlighted`) fills; a real mouse move makes a row active (`hoverIntent`), a pointer resting over the list lights nothing, so ↑/↓ never leave two rows lit. Palette rows have no border.
-- **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns `fill-danger` and the text turns `on-selected`.
+- **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns `fill-danger` and the text turns `on-danger`.
 - **Ours in every shell**: context menus, dropdowns and pickers are drawn by the page in the desktop and phone apps too, never handed to the OS menu, an iOS action sheet or an Android dialog. Native is the feel (a menu opens at the pointer, arrow keys move, Escape returns focus to the opener), not the OS widget, so every menu in the app looks alike. Only the window's menu bar (the macOS menu bar; ☰ on Windows and Linux) belongs to the shell.
 - **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
 

@@ -55,7 +55,7 @@
  * the Review panel is open is remembered per window. Focus mode hides the
  * sidebar and the Review panel and puts both back on its second press;
  * opening either in the meantime simply ends it. Splitting the Review panel
- * and opening a terminal (⌃`) reach the dock as keyed requests, like views.
+ * and opening a terminal reach the dock as keyed requests, like views.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -623,8 +623,8 @@ export function useOverlayState({
 
   const handleToggleFilesPanel = handleWorkspaceFiles
 
-  // ⌃` and Open Terminal: show the last terminal, or start one — needs an
-  // attached workspace. Ensures the Review panel is visible, then bumps the
+  // Open Terminal: show the last terminal, or start one — needs an attached
+  // workspace. Ensures the Review panel is visible, then bumps the
   // key so WorkspacePanel shows or opens its terminal tab (cwd = project).
   const handleOpenTerminal = useCallback(() => {
     if (!workspace) return

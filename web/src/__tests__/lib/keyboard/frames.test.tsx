@@ -50,10 +50,11 @@ describe('frameKeymap', () => {
     expect(frameKeymap('windows').mac).toBe(false)
   })
 
-  it('keeps the Control chords (⌃`, ⌃⌥ arrows) as Control on every OS', () => {
+  it('keeps the Control chords (⌃⌥ arrows) as Control on every OS', () => {
     const map = frameKeymap('macos')
-    expect(map.chords).toContainEqual({ key: '`', code: 'Backquote', mod: false, ctrl: true, shift: false, alt: false })
     expect(map.chords).toContainEqual({ key: 'ArrowLeft', mod: false, ctrl: true, shift: false, alt: true })
+    // The app has no terminal key: ⌃` stays with the page.
+    expect(map.chords.some((chord) => chord.code === 'Backquote')).toBe(false)
   })
 })
 
@@ -68,16 +69,15 @@ describe('frame key forwarder', () => {
     dispose()
   })
 
-  it('forwards Control chords on macOS (⌃`, ⌃⌥←, ⌃Tab), but not with ⌘ held too', async () => {
+  it('forwards Control chords on macOS (⌃⌥←, ⌃Tab), but not with ⌘ held too', async () => {
     const { press, received, settle, dispose } = loadForwarder(false, frameKeymap('macos', [{ key: 'Tab', ctrl: true }]))
-    expect(press({ key: '`', code: 'Backquote', ctrlKey: true }).defaultPrevented).toBe(true)
     expect(press({ key: 'ArrowLeft', ctrlKey: true, altKey: true }).defaultPrevented).toBe(true)
     expect(press({ key: 'Tab', ctrlKey: true }).defaultPrevented).toBe(true)
-    expect(press({ key: '`', code: 'Backquote', ctrlKey: true, metaKey: true }).defaultPrevented).toBe(false)
+    expect(press({ key: 'ArrowLeft', ctrlKey: true, altKey: true, metaKey: true }).defaultPrevented).toBe(false)
     // ⌘W is still ⌘W, and Ctrl+W is not it on macOS.
     expect(press({ key: 'w', code: 'KeyW', ctrlKey: true }).defaultPrevented).toBe(false)
     await settle()
-    expect(received.map((m) => m.key)).toEqual(['`', 'ArrowLeft', 'Tab'])
+    expect(received.map((m) => m.key)).toEqual(['ArrowLeft', 'Tab'])
     dispose()
   })
 

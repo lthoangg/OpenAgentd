@@ -45,7 +45,7 @@ interface UseAgentCommandsArgs {
   // Session
   handleNewSession: () => void
 
-  /** Attached workspace only — shows the last terminal tab, or starts a shell (⌃`). */
+  /** Attached workspace only — shows the last terminal tab, or starts a shell. */
   handleOpenTerminal: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
   handleToggleDockMaximized?: () => void
@@ -166,7 +166,7 @@ export function useAgentCommands({
           action: handleOpenPreview,
         }]
       : []),
-    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', shortcut: shortcutLabel(KEYS.openTerminal, os), action: handleOpenTerminal },
+    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },

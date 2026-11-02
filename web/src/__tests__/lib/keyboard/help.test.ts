@@ -57,8 +57,8 @@ describe('shortcutHelp', () => {
     expect(find('macos', 'Split the focused pane right')?.keys).toEqual(['⌘\\'])
     expect(find('macos', 'Split the focused pane down')?.keys).toEqual(['⌘⇧\\'])
     expect(find('windows', 'Split the focused pane down')?.keys).toEqual(['Ctrl+Shift+\\'])
-    expect(find('macos', 'Show the terminal, or start one')?.keys).toEqual(['⌃`'])
-    expect(find('windows', 'Show the terminal, or start one')?.keys).toEqual(['Ctrl+`'])
+    // No terminal key: the palette and the panel's "+" menu open terminals.
+    expect(find('macos', 'Show the terminal, or start one')).toBeUndefined()
     expect(find('macos', 'Focus mode')?.keys).toEqual(['⌘⇧F'])
     expect(find('macos', 'Find in this session')?.keys).toEqual(['⌘F'])
     expect(find('macos', 'Next and previous area')?.keys).toEqual(['F6', '⇧F6'])

@@ -206,13 +206,13 @@ describe("useAgentCommands — reload-window", () => {
 //  Open Terminal command
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — open-terminal", () => {
-  it("shows the terminal with Ctrl+`, the one terminal entry", () => {
+  it("is the one terminal entry, with no key of its own", () => {
     const handleOpenTerminal = mock(() => {})
     const { result } = renderHook(() =>
       useAgentCommands(makeArgs({ handleOpenTerminal })),
     )
     const cmd = byId(result.current, "open-terminal")
-    expect(cmd.shortcut).toBe("Ctrl+`")
+    expect(cmd.shortcut).toBeUndefined()
     expect(result.current.filter((c) => /terminal/i.test(c.label))).toEqual([cmd])
     cmd.action()
     expect(handleOpenTerminal).toHaveBeenCalledTimes(1)

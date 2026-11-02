@@ -27,7 +27,7 @@ export interface ForwardedChord {
   key: string
   code?: string
   mod: boolean
-  /** The Control key itself on every OS (⌃`, ⌃⌥←); never with ``mod``. */
+  /** The Control key itself on every OS (⌃⌥←, ⌃Tab); never with ``mod``. */
   ctrl?: boolean
   shift: boolean
   alt: boolean

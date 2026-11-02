@@ -6,7 +6,7 @@
  * dialogs, and synthetic dispatch from native menu commands all read from
  * here, so a key changes in one place. Every shortcut uses the platform's
  * primary modifier (⌘ on macOS, Ctrl elsewhere; see ``keyboard-shortcut.ts``),
- * except the few marked ``ctrl``, which are the Control key on every OS (⌃`).
+ * except the few marked ``ctrl``, which are the Control key on every OS (⌃⌥←).
  */
 import type { OS } from '@/hooks/use-platform'
 import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
@@ -66,11 +66,8 @@ export const APP_SHORTCUTS = {
   // Alt keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean.
   previousPrompt: { key: 'ArrowUp', alt: true },
   nextPrompt: { key: 'ArrowDown', alt: true },
-  // Show the last terminal, or start a shell, as in editors: ⌃` on macOS (⌘`
-  // switches windows there), Ctrl+` elsewhere. The one terminal key; matched
-  // on the physical Backquote key, which layouts report as `` ` ``, `~` or
-  // `Dead`.
-  openTerminal: { key: '`', code: 'Backquote', ctrl: true },
+  // No terminal key: Open Terminal in the palette and the Review panel's "+"
+  // menu start one, and a focused terminal keeps Control+` for its shell.
   openGit: { key: 'G', shift: true },
   shortcutsHelp: { key: '/', switcher: true },
   // Dock tabs by position; matched on the digit key so layouts that print

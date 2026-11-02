@@ -49,7 +49,7 @@ export interface UseCommandPaletteArgs {
   handleTogglePalette: () => void
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
-  /** ⌃` — the last terminal, or a new shell, in the Review panel. */
+  /** Open Terminal — the last terminal, or a new shell, in the Review panel. */
   handleOpenTerminal: () => void
   /** ⌘\ / ⌘⇧\ — split the Review panel's focused pane right / down (desktop + workspace). */
   handleSplitDock: () => void
@@ -213,7 +213,6 @@ export function useCommandPalette({
       useLayoutStore.getState().setDockMaximized(false)
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     }),
-    appShortcut('openTerminal', () => { handleOpenTerminal() }, { enabled: Boolean(workspace), allowInEditable: true }),
     appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('splitDockDown', () => { handleSplitDockDown() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('focusMode', () => { handleToggleFocusMode() }, { enabled: !isMobile }),

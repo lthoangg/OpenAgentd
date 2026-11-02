@@ -271,7 +271,7 @@ export function useDockTabs({
     openTab(tab, pane ? { pane } : undefined)
   }, [workspace, openTab])
 
-  /** ⌃`: show the last shell (where it is), or start one. */
+  /** Open Terminal: show the last shell (where it is), or start one. */
   const focusOrOpenTerminal = useCallback(() => {
     const metas = useTerminalStore.getState().sessionsForContext(workspace)
     const last = metas[metas.length - 1]
@@ -426,7 +426,7 @@ export function useDockTabs({
   })
   // ⌃⌥+arrow (Ctrl+Alt elsewhere): the focused tab goes to that
   // side, into a new pane or, as its pane's only tab, into the pane there.
-  // From the composer and a terminal too, like ⌃`.
+  // From the composer and a terminal too.
   const sendTabToward = (side: SplitSide) => {
     const plan = planTabToward(state, focused, activeTab?.id, side)
     if (plan.kind === 'move') setState((current) => moveTab(current, plan.tabId, plan.target))

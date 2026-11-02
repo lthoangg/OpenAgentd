@@ -744,8 +744,9 @@ drawer and full-screen sheet.
 - **Terminals are tabs like any other.** A shell opens in the focused pane,
   right after its open tab, and documents open beside it there; a split puts
   a diff and a shell side by side. There is no terminal pane and nothing
-  hides one: Control and the backquote key (`openTerminal`) show the last
-  terminal or start one. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
+  hides one. Terminals have no key: Open Terminal (the palette, the View
+  menu) and the strip's "+" menu or launcher start one, and a focused
+  terminal keeps Control+backquote for its shell. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
   (a lighter wash, `text-2`) and everything on that pane's strip fades to
   50%, as an inactive window's title bar does, so the focused pane reads at

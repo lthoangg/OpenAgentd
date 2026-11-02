@@ -757,18 +757,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     side with the tab in the new half, or, when it is its pane's only tab,
     the tab joins the pane on that side (with no pane there, an empty one
     opens, as with `⌘\`). The keys work from the composer and from a
-    terminal too, and the tab menu shows them beside its four splits. A
-    focused terminal now also hands Control and the backquote key back to
-    the app.
+    terminal too, and the tab menu shows them beside its four splits.
   - A terminal is a tab like any other: it opens in the pane you are in,
     beside its files, and a split puts a diff and a shell side by side.
     There is no terminal pane under the others any more, and nothing hides
-    one. **Open Terminal** (Control and the backquote key, on every system)
-    shows the last terminal, or starts a shell when there is none; shells
-    keep running with the panel closed, and the status bar says **N
-    terminals running** (a click shows them). It is the only terminal key:
-    `⌘⇧` (`Ctrl+Shift`) with the backquote key no longer opens one; a new
-    shell is in the panel's **+** menu.
+    one. Terminals have no key: **Open Terminal** in the command palette
+    (and the View menu) shows the last terminal, or starts a shell when
+    there is none, and the panel's **+** menu and launcher start a new one.
+    `⌘⇧` (`Ctrl+Shift`) with the backquote key no longer opens one, and a
+    focused terminal keeps Control and the backquote key for its shell.
+    Shells keep running with the panel closed, and the status bar says
+    **N terminals running** (a click shows them).
   - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
     files. A file or diff opened from a list or a link opens as an *italic*
     preview tab that the next one replaces; double-click it or choose **Keep
@@ -933,8 +932,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     (`example.com`, `https://…`) in place instead of opening a broken tab,
     takes `0.0.0.0:8000` as this computer, and types like a browser's (no
     capitals or corrections, a URL keyboard with Go); an address error has
-    no pointless Retry and clears as you edit. `⌃` + backtick (the
-    terminal), `⌃⌥` + arrow and `⌃Tab` work from inside the page too.
+    no pointless Retry and clears as you edit. `⌃⌥` + arrow and `⌃Tab`
+    work from inside the page too.
   - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
 - **Settings: one way to save, every setting findable** `[v3.40.0]`:

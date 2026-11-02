@@ -10,7 +10,7 @@ export const APP_EVENTS = {
   // Opens without toggling, e.g. on the task ``useUIStore.focusScheduledTask`` named.
   openScheduler: 'oa:open-scheduler',
   openWorkspace: 'oa:open-workspace',
-  // Open Terminal (⌃`): the last terminal, or a new shell.
+  // Open Terminal (no key): the last terminal, or a new shell.
   openTerminal: 'oa:open-terminal',
   // A transcript plan-review card or ``plan`` row asks for the session plan.
   openPlan: 'oa:open-plan',

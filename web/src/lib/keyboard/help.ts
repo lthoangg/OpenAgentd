@@ -86,7 +86,6 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('splitDock', 'Split the focused pane right'),
         app('splitDockDown', 'Split the focused pane down'),
         keys('Send the focused tab left, right, up or down', chordOf(APP_SHORTCUTS.splitTabLeft), chordOf(APP_SHORTCUTS.splitTabRight), chordOf(APP_SHORTCUTS.splitTabUp), chordOf(APP_SHORTCUTS.splitTabDown)),
-        app('openTerminal', 'Show the terminal, or start one'),
         app('openGit', 'Open Git'),
         app('maximizeDock', 'Maximize the Review panel'),
         app('closeTab', 'Close tab'),

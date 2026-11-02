@@ -581,7 +581,7 @@ export interface SavedDockPanes {
  * What a session remembers. Uploads are not saved (their panes close with
  * them). Terminals are, by id: still running, they come back where they were;
  * ended, the sync drops them. (Older saves also carry ``terminalsHidden``,
- * from when ⌃` hid a pane of terminals; it is ignored, so those panes show.)
+ * from when a key hid a pane of terminals; it is ignored, so those panes show.)
  */
 export function serializeDockPanes(state: DockPanes): SavedDockPanes {
   const kept = closeTabs(state, state.tabs.filter((tab) => tab.type === 'attachment').map((tab) => tab.id))

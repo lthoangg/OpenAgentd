@@ -226,10 +226,9 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+\\"),
     )?;
-    // The Control key on every OS, as in editors: ⌘` already switches windows on macOS.
-    // The one terminal key: it shows the last terminal, or starts a shell.
-    let view_terminal =
-        MenuItem::with_id(app, MENU_TERMINAL, "Open Terminal", true, Some("Ctrl+`"))?;
+    // The last terminal, or a new shell. No key: the palette and the Review
+    // panel's "+" menu open one too, and a terminal keeps Ctrl+` for its shell.
+    let view_terminal = MenuItem::with_id(app, MENU_TERMINAL, "Open Terminal", true, None::<&str>)?;
     let view_maximize_review_panel = MenuItem::with_id(
         app,
         MENU_MAXIMIZE_REVIEW_PANEL,

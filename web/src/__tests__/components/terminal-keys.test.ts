@@ -59,10 +59,8 @@ it('ignores keyup and keypress', () => {
 
 describe('routeTerminalKey — layout keys on every OS', () => {
   for (const os of ['macos', 'linux', 'windows'] as const) {
-    it(`gives Control+backquote (the terminal toggle) to the app on ${os}`, () => {
-      expect(routeTerminalKey(keydown('`', { ctrlKey: true, code: 'Backquote' }), os)).toBe(false)
-      // Layouts that print another character there: the physical key decides.
-      expect(routeTerminalKey(keydown('Dead', { ctrlKey: true, code: 'Backquote' }), os)).toBe(false)
+    it(`keeps Control+backquote in the shell on ${os}: the app has no terminal key`, () => {
+      expect(routeTerminalKey(keydown('`', { ctrlKey: true, code: 'Backquote' }), os)).toBe(true)
     })
 
     it(`gives Control+Alt+arrows (send the tab to a side) to the app on ${os}`, () => {

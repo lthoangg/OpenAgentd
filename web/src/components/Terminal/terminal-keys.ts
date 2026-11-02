@@ -14,9 +14,9 @@
  * a dock tab (shells give digits no Ctrl meaning).
  *
  * On every OS, Ctrl+Tab and Ctrl+Shift+Tab step through the dock tabs, as
- * in editors: a shell has no use for them. So do the layout keys: Control
- * with the backquote key shows or hides the terminals (from inside one
- * too), and Control+Alt with an arrow sends the tab to a side.
+ * in editors: a shell has no use for them. So does Control+Alt with an
+ * arrow, which sends the tab to a side. Control with the backquote key
+ * stays with the shell: the app has no terminal key.
  */
 import type { OS } from '@/hooks/use-platform'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
@@ -33,7 +33,6 @@ const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 export function routeTerminalKey(event: KeyboardEvent, os: OS): boolean {
   if (event.type !== 'keydown') return true
   if (event.key === 'Tab' && event.ctrlKey && !event.metaKey && !event.altKey) return false
-  if (event.code === 'Backquote' && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) return false
   if (ARROWS.has(event.key) && event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) return false
   if (isPrimaryModifierOS(os)) return true
   if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return true

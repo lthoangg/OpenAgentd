@@ -81,15 +81,28 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
 
   it('keeps light fills light: the label is dark on them, as on paper', () => {
     if (name !== 'light') return
-    for (const fill of ['--color-fill-selected', '--color-fill-highlight', '--color-fill-danger', '--bg-tooltip']) {
+    for (const fill of ['--color-fill-selected', '--color-fill-highlight', '--color-fill-key-hover', '--color-fill-danger', '--bg-tooltip']) {
       expect({ fill, light: luminance(t[fill]) > 0.5 }).toEqual({ fill, light: true })
     }
+  })
+
+  it('hovers a control on the keycap wash half way to a chosen one, never as dark as it', () => {
+    const hover = t['--color-fill-key-hover']
+    const rest = t['--bg-key']
+    const chosen = t['--color-fill-selected']
+    // The step shows, the hovered control is still told apart from the chosen
+    // one, and its labels stay AA (a hovered muted label takes --color-text-2).
+    expect(contrast(hover, rest)).toBeGreaterThanOrEqual(1.05)
+    expect(contrast(hover, rest)).toBeLessThan(contrast(chosen, rest))
+    expect(contrast(chosen, hover)).toBeGreaterThanOrEqual(1.05)
+    expect(contrast(t['--color-text'], hover)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(t['--color-text-2'], hover)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('never lets a chrome fill outshine the content: dark fills stay far below the text tone', () => {
     if (name !== 'dark') return
     // A near-white block on a dark window glows brighter than the words.
-    for (const fill of ['--color-fill-selected', '--color-fill-highlight', '--color-fill-danger', '--bg-tooltip']) {
+    for (const fill of ['--color-fill-selected', '--color-fill-highlight', '--color-fill-key-hover', '--color-fill-danger', '--bg-tooltip']) {
       expect({ fill, dim: luminance(t[fill]) < luminance(t['--color-text']) / 4 }).toEqual({ fill, dim: true })
     }
   })

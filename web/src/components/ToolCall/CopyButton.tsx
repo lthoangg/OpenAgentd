@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
  * sits in are already keycap-coloured.
  */
 export const COPY_BUTTON_CLASS =
-  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--color-border-subtle) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-9 dark:hover:bg-(--color-border)'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--color-fill-key-hover) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-9'
 
 interface CopyButtonProps {
   /** What it copies, as an action and a noun: "Copy code", "Copy output". */

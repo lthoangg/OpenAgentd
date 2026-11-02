@@ -422,7 +422,7 @@ function OptionRow({
         'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9',
         checked
           ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
-          : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border)',
+          : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)',
       )}
     >
       <input

@@ -122,7 +122,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
             t.action?.onAction()
             dismiss(t.id)
           }}
-          className="-my-1 inline-flex h-7 shrink-0 items-center rounded-xs bg-(--bg-key) px-2.5 text-sm font-medium text-(--color-text) transition-colors hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border) pointer-coarse:h-9"
+          className="-my-1 inline-flex h-7 shrink-0 items-center rounded-xs bg-(--bg-key) px-2.5 text-sm font-medium text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) pointer-coarse:h-9"
         >
           {t.action.label}
         </button>

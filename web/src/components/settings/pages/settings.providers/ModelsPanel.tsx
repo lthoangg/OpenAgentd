@@ -332,7 +332,7 @@ function ModelRow({
             'text-xs font-medium transition-colors',
             selected
               ? 'bg-(--color-success-subtle) text-(--accent-green-text)'
-              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-border-subtle) hover:text-(--color-text)',
+              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-fill-key-hover) hover:text-(--color-text)',
             savingVisibleModels && 'opacity-50 cursor-not-allowed',
           )}
         >

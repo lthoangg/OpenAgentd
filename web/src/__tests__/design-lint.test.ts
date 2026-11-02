@@ -104,6 +104,12 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'border-tone-hover',
+    why: 'a control on the keycap wash hovers to --color-fill-key-hover, half way to a chosen fill; a border tone is as dark as the chosen sand on paper, so a hovered option looked picked',
+    pattern: /(?<![\w-])(?:[\w-]+:)*hover:bg-\(--color-border(?:-subtle|-strong)?\)/g,
+    allow: {},
+  },
+  {
     name: 'faint-focus-ring',
     why: 'keyboard focus is a solid 2px ring or outline in --focus-ring; a 40% one is hard to see',
     pattern: /focus-visible:(?:ring|outline)-\(--focus-ring\)\/\d+/g,

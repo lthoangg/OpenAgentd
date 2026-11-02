@@ -22,8 +22,9 @@ const BASE = [
   "[&_svg:not([class*='size-'])]:size-3.5",
 ].join(' ')
 
-// Hover steps one tone along the ramp: darker on paper, lighter on dark paper.
-const KEY_HOVER = 'hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border) active:bg-(--color-border-subtle) dark:active:bg-(--color-border)'
+// Hover steps half way to a chosen fill (--color-fill-key-hover), so a hovered
+// button never looks picked; a press steps on to the border tone.
+const KEY_HOVER = 'hover:bg-(--color-fill-key-hover) active:bg-(--color-border-subtle) dark:active:bg-(--color-border)'
 
 const VARIANT = {
   default: [

@@ -91,6 +91,9 @@
      * a chosen segment, since it only follows the pointer. */
     --color-fill-highlight:   #372D22;
     --color-text-on-highlight: #F5EBD8;
+    /* A control resting on the keycap wash, hovered: half way to a chosen
+     * fill, so a hovered option never reads as the picked one. */
+    --color-fill-key-hover:   #332A20;
     --color-fill-danger:     #6B2724;
     --color-text-on-danger:  #F5EBD8;
     --bg-tooltip:            #2E251C;
@@ -214,6 +217,9 @@
      * list's hover, so a moving pointer does not darken every row it crosses. */
     --color-fill-highlight:   #EFE7D3;
     --color-text-on-highlight: #1A1714;
+    /* A control resting on the keycap wash, hovered: half way to the chosen
+     * sand, not the border sand, which is as dark as a picked option. */
+    --color-fill-key-hover:   #E9E0C8;
     --color-fill-danger:     #F7DCD6;
     --color-text-on-danger:  #991B1B;
     --bg-tooltip:            #FFFDF7;
@@ -307,6 +313,7 @@
         --color-text-on-selected: #FFFDF7;
         --color-fill-highlight:   #3F3429;
         --color-text-on-highlight: #FFFDF7;
+        --color-fill-key-hover:   #E3D6BA;
         --color-fill-danger:      #B91C1C;
         --color-text-on-danger:   #FFFDF7;
     }
@@ -322,6 +329,7 @@
         --color-text-on-selected: #15110D;
         --color-fill-highlight:   #C5B59A;
         --color-text-on-highlight: #15110D;
+        --color-fill-key-hover:   #4A3B2D;
         --color-fill-danger:      #F87171;
         --color-text-on-danger:   #15110D;
     }

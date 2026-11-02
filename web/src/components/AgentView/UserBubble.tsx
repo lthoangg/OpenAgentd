@@ -293,7 +293,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
           <button
             type="button"
             onClick={onOpen}
-            className="flex items-center gap-2 rounded-sm bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+            className="flex items-center gap-2 rounded-sm bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           >
             <span className="shrink-0 text-(--color-text-muted)">
               <FileTypeIcon name={item.name} size={14} />

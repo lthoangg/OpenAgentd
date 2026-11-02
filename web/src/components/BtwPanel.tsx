@@ -81,7 +81,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
                 aria-label={`Show side questions (${btw.total})`}
                 // Floats over the transcript like the jump-to-latest chip, so the
                 // composer never moves for it.
-                className="flex h-7 min-w-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--color-border-subtle) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 dark:hover:bg-(--color-border) pointer-coarse:h-9 pointer-coarse:px-3"
+                className="flex h-7 min-w-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--color-fill-key-hover) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 pointer-coarse:h-9 pointer-coarse:px-3"
               >
                 <MessageCircleQuestion size={13} aria-hidden="true" className="shrink-0" />
                 <span className="min-w-0 truncate font-medium">Side questions</span>

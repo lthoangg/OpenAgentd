@@ -197,7 +197,7 @@ export function ModelSetupCard({
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
                   active
                     ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
-                    : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-border-subtle)',
+                    : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)',
                 )}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(provider)}</span>

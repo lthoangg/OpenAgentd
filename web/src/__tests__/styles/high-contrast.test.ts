@@ -96,6 +96,15 @@ describe('prefers-contrast: more', () => {
       expect(contrast(high['--color-fill-highlight'], base['--bg-card'])).toBeGreaterThanOrEqual(3)
       expect(contrast(high['--color-text-on-highlight'], high['--color-fill-highlight'])).toBeGreaterThanOrEqual(4.5)
     })
+
+    it(`steps the ${theme.name} key hover further off the keycap wash, still short of the chosen fill`, () => {
+      const base = props(baseTokens, theme.selector)
+      const high = props(contrastBlock, theme.selector)
+      const step = (fill: string) => contrast(fill, base['--bg-key'])
+      expect(step(high['--color-fill-key-hover'])).toBeGreaterThan(step(base['--color-fill-key-hover']))
+      expect(step(high['--color-fill-key-hover'])).toBeLessThan(step(high['--color-fill-selected']))
+      expect(contrast(base['--color-text'], high['--color-fill-key-hover'])).toBeGreaterThanOrEqual(4.5)
+    })
   }
 })
 

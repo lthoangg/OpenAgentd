@@ -200,7 +200,7 @@ describe('borderless controls', () => {
   })
 
   it('ignores borderless controls, colour-only tokens, one-sided borders and plain containers', () => {
-    expect(scanSource('<button className="rounded-sm bg-(--bg-key) px-2 hover:bg-(--color-border-subtle)">x</button>')).toEqual([])
+    expect(scanSource('<button className="rounded-sm bg-(--bg-key) px-2 hover:bg-(--color-fill-key-hover)">x</button>')).toEqual([])
     expect(scanSource('<button className="rounded-sm border-(--color-border) px-2 hover:border-transparent">x</button>')).toEqual([])
     expect(scanSource('<button className="border-t px-2">x</button>')).toEqual([])
     expect(scanSource('<Button variant="ghost" className="border-0 px-2">x</Button>')).toEqual([])

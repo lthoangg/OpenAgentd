@@ -603,7 +603,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     menu row under the pointer or the keyboard, the model picker's included,
     and the command palette's active row take a lighter wash than that, as a
     native list's hover, so moving the pointer down a menu does not darken
-    each row it crosses. In the
+    each row it crosses. Buttons, chips and a question's options that rest on
+    the light keycap fill hover half way to the chosen tone, so a hovered
+    option no longer looks picked. In the
     palette only the row the keys or a real mouse move chose lights, never a
     second one under a resting pointer. Tooltips are light cards in light
     mode; a switch that is off is a light track there. With the system's

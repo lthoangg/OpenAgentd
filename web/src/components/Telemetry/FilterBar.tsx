@@ -145,7 +145,7 @@ export function FilterBar({
             type="button"
             onClick={() => onSessionChange(null)}
             aria-label="Remove session filter"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--color-border-subtle) hover:text-(--color-text) dark:hover:bg-(--color-border) pointer-coarse:size-9"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--color-fill-key-hover) hover:text-(--color-text) pointer-coarse:size-9"
           >
             <X size={12} aria-hidden="true" />
           </button>
@@ -162,7 +162,7 @@ export function FilterBar({
             'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--focus-ring)',
             errorsOnly
               ? 'bg-(--color-error-subtle) text-(--color-error)'
-              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-border-subtle) hover:text-(--color-text) dark:hover:bg-(--color-border)',
+              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-fill-key-hover) hover:text-(--color-text)',
           )}
         >
           Failed only

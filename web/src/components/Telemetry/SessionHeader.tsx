@@ -51,7 +51,7 @@ export function SessionHeader({
         <button
           type="button"
           onClick={() => onOpenSession(sessionId)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm bg-(--bg-key) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--color-border-subtle) hover:text-(--color-text) dark:hover:bg-(--color-border) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm bg-(--bg-key) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--color-fill-key-hover) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9"
         >
           <MessageSquare size={13} aria-hidden="true" />
           Open session

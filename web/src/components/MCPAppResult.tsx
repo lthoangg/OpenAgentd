@@ -413,7 +413,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         <button
           type="button"
           onClick={() => setDisplayMode(FULLSCREEN_DISPLAY_MODE)}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-meta uppercase tracking-wide transition-colors hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-meta uppercase tracking-wide transition-colors hover:bg-(--color-fill-key-hover) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           aria-label={`Open ${title} fullscreen`}
         >
           <Maximize2 size={11} aria-hidden /> MCP App

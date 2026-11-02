@@ -29,6 +29,7 @@ colors:
   on-selected: "#1A1714"
   fill-highlight: "#EFE7D3"   # Menu row under the pointer or keyboard (a lighter wash)
   on-highlight: "#1A1714"
+  fill-key-hover: "#E9E0C8"   # A control on the keycap wash, hovered: half way to fill-selected
   fill-danger: "#F7DCD6"      # Highlighted destructive menu row
   on-danger: "#991B1B"
   switch-on: "#3F3429"        # A switch that is on: the accent, as a checked box
@@ -205,8 +206,8 @@ components:
     rounded: "{rounded.md}"
     height: 36px
     padding: 12px
-  button-default-hover:
-    backgroundColor: "{colors.border-subtle}"
+  button-default-hover:       # Half way to a chosen fill; a press steps on to border-subtle
+    backgroundColor: "{colors.fill-key-hover}"
   button-subtle:
     backgroundColor: "{colors.bg-key}"
     textColor: "{colors.on-surface-muted}"
@@ -462,6 +463,13 @@ follows every pointer move and a sand block would darken each row it crosses.
 The ✓ marks the chosen row, not the fill. Increase contrast lifts it to 3:1
 like the other fills.
 
+A control resting on the keycap wash (a default or subtle button, a chip, a
+question's unchosen option, a copy button on a code block) hovers to
+`fill-key-hover`, half way between `bg-key` and `fill-selected` (`#E9E0C8` on
+paper, `#332A20` on dark), never to a border tone: the border sand is as dark
+as the chosen fill, so a hovered option looked picked. A press steps on to the
+border tone. Lint: `border-tone-hover`.
+
 ### Agent identity chips
 
 Each concurrent agent gets a stable identity color from a six-hue set (blue,
@@ -496,6 +504,7 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-send` | `#2D241B` | `#F5EBD8` |
 | `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#4A3B2D` / `#F5EBD8` |
 | `fill-highlight` / `on-highlight` (menu row under pointer or keyboard) | `#EFE7D3` / `#1A1714` | `#372D22` / `#F5EBD8` |
+| `fill-key-hover` (keycap control, hovered) | `#E9E0C8` | `#332A20` |
 | `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |
 | `bg-tooltip` / `tooltip-text` / `tooltip-border` | `#FFFDF7` / `#1A1714` / `#D9CFA9` | `#2E251C` / `#F5EBD8` / `#4D3E2D` |
 | `switch-on` | `#3F3429` (accent; white thumb) | `#F5EBD8` (accent; near-black thumb) |

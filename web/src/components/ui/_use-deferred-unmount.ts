@@ -49,5 +49,9 @@ export function useDeferredUnmount(open: boolean, durationMs = DURATIONS_S.fast 
     }
   }, [open, durationMs])
 
-  return { mounted, closing }
+  // Opening shows at once, in the render that opens it: mounting from the
+  // effect put a scheduler task between the click and the content (a
+  // popover's placement and its content's focus then raced). An exit that is
+  // still playing ends the moment it opens again.
+  return { mounted: mounted || open, closing: closing && !open }
 }

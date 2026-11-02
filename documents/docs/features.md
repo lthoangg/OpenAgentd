@@ -663,7 +663,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The picker opens on the model that runs (highlighted and scrolled into
     view, so Enter keeps it), lists each model whole as `provider:model`,
     and when neither the session nor the agent sets a thinking level it says
-    the model's own default applies.
+    the model's own default applies. The cursor is in its search as it
+    opens, from a click or the shortcut, so typing filters at once (with
+    Reduce Motion on, it was left nowhere).
   - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
     servers (state in words, Sign in, on/off); `/mcp` opens it there.
   - A model reads `provider:model` in mono wherever it appears: the run

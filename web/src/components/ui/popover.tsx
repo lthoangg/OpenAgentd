@@ -18,6 +18,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentPropsWithRef,
@@ -192,7 +193,10 @@ function PopoverContent({
     setPos(computePosition(trigger.getBoundingClientRect(), content.getBoundingClientRect(), side, align, sideOffset))
   }, [triggerRef, side, align, sideOffset])
 
-  useEffect(() => {
+  // Placed before the frame that shows it (a layout effect, so the update is
+  // synchronous): content that focuses a field on the next frame must find
+  // it visible, or WebKit drops the focus.
+  useLayoutEffect(() => {
     if (!mounted) return
     reposition()
     window.addEventListener('scroll', reposition, { passive: true, capture: true })

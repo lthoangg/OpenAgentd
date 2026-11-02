@@ -875,6 +875,10 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * prefers-reduced-motion — honor system-wide.
  * Progress bars keep animating (time is literal); spinners keep turning,
  * slowly, since a frozen one reads as a hang; everything else snaps.
+ * Transitions are off (0s), not shortened: an element that declares none has
+ * `transition-property: all`, so any duration made every change a
+ * transition, inherited visibility included, and a popover shown and then
+ * focused still read as hidden (WebKit dropped the focus).
  * ───────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -882,7 +886,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
     scroll-behavior: auto !important;
   }
   .animate-spin {

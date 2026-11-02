@@ -810,7 +810,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   `glacial` (`steps(1)`, on or off, never a fade). Code blocks and tables get
   none, and it goes the moment the answer ends. Under reduced motion it stands
   still.
-- **Reduced motion snaps.** Every animation and transition drops to ~0ms.
+- **Reduced motion snaps.** Every animation drops to ~0ms and transitions are
+  off (`0s`, not a tiny duration: an element that declares no transition has
+  `transition-property: all`, so any duration turned every change, inherited
+  visibility included, into a transition, and a popover's field could not
+  take focus as it appeared).
   Progress bars keep moving because time is literal, and spinners keep turning,
   slowly, because a frozen spinner reads as a hang.
 

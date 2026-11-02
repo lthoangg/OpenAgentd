@@ -771,9 +771,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     files. A file or diff opened from a list or a link opens as an *italic*
     preview tab that the next one replaces; double-click it or choose **Keep
     Open** to keep it. When the strip is full, a tab count lists every tab.
-    The tab menu has Close, Close Others, Close to the Right, Keep Open,
-    Split Right, Split Down, Move to Next Pane, Move Left, Move Right, Copy
-    Path and Reveal in Git.
+    The tab menu has, in groups, Close, Close Others, Close to the
+    Left, Close to the Right, Close All (the pane goes with its tabs); Keep
+    Open, Split Right, Split Left, Split Up, Split Down, Move to Next Pane,
+    Move Left, Move Right; Copy Path and Reveal in Git.
+  - Closing the open tab goes back to the tab you used before it
+    in that pane (it used to show its right neighbour); a double-click or
+    right-click on the free end of a tab strip opens its **+** menu where the
+    pointer is; and besides `⌃Tab`/`⌃⇧Tab`, `⌘⇧]`/`⌘⇧[` on macOS and
+    `Ctrl+PageDown`/`Ctrl+PageUp` on Windows and Linux step through the
+    focused pane's tabs (in the desktop app; browsers keep these keys).
   - Each session remembers its own panes and tabs, so switching back shows
     the same diff and plan; terminals belong to the workspace; whether the
     panel is open, and its sizes, belong to the window. **Reset Layout** in

@@ -16,7 +16,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
 import type { PreviewTarget } from '@/api/preview'
 import { appShortcut, useAppShortcut, useShortcuts } from '@/lib/keyboard/hooks'
-import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
+import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, NEXT_DOCK_TAB_KEYS, PREV_DOCK_TAB_CHORD, PREV_DOCK_TAB_KEYS } from '@/lib/app-shortcuts'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
@@ -372,15 +372,19 @@ export function useDockTabs({
   }, [strips, terminalMetas, hidden])
 
   // ── Closing ───────────────────────────────────────────────────────────────
-  /** Close several tabs at once (no confirmation; see ``requestCloseTabs``). */
-  const closeTabs = (ids: readonly string[]) => {
+  /**
+   * Close several tabs at once (no confirmation; see ``requestCloseTabs``).
+   * ``show`` is the tab left on show in their pane (the one a tab menu was
+   * opened on), instead of the one used before.
+   */
+  const closeTabs = (ids: readonly string[], show?: string) => {
     const closing = new Set(ids)
     if (closing.size === 0) return
     const targets = state.tabs.filter((item) => closing.has(item.id))
     for (const target of targets) {
       if (target.type === 'terminal') useTerminalStore.getState().close(target.termId)
     }
-    const next = closePaneTabs(state, ids)
+    const next = closePaneTabs(show && !closing.has(show) ? activateTab(state, show) : state, ids)
     setState(next)
     for (const target of targets) onTabClosed?.(target)
     if (closing.has(activeTabId)) {
@@ -395,14 +399,17 @@ export function useDockTabs({
   // button is a deliberate click and closes right away, unless a command is
   // running in that terminal: closing would kill it.
   const [confirmCloseIds, setConfirmCloseIds] = useState<string[] | null>(null)
+  const confirmShowRef = useRef<string | undefined>(undefined)
   const findTab = (id: string) => visibleTabs.find((tab) => tab.id === id)
   /** Close tabs, asking first when that would stop a running shell. */
-  const requestCloseTabs = (ids: readonly string[]) => {
+  const requestCloseTabs = (ids: readonly string[], show?: string) => {
+    confirmShowRef.current = show
     if (ids.some((id) => isRunningTerminal(findTab(id)))) setConfirmCloseIds([...ids])
-    else closeTabs(ids)
+    else closeTabs(ids, show)
   }
   /** The tab's × and middle-click: asks only while a command is running. */
   const requestCloseTab = (id: string) => {
+    confirmShowRef.current = undefined
     if (isBusyTerminal(findTab(id))) setConfirmCloseIds([id])
     else closeTab(id)
   }
@@ -410,17 +417,23 @@ export function useDockTabs({
   /** Tab menu: every other tab of its pane. The kept tab becomes active. */
   const closeOtherTabs = (id: string) => {
     setState((current) => activateTab(current, id))
-    requestCloseTabs(stripOf(id).filter((tab) => tab.id !== id).map((tab) => tab.id))
+    requestCloseTabs(stripOf(id).filter((tab) => tab.id !== id).map((tab) => tab.id), id)
   }
-  /** Tab menu: the tabs after this one in its pane. */
-  const closeTabsToRight = (id: string) => {
+  /** Tab menu: the tabs after (or before) this one in its pane; it shows if the open one goes. */
+  const closeTabsBeside = (id: string, side: 'left' | 'right') => {
     const strip = stripOf(id)
     const index = strip.findIndex((tab) => tab.id === id)
     if (index < 0) return
-    const right = strip.slice(index + 1)
-    if (right.some((tab) => tab.id === state.panes[paneOf(state, id) ?? '']?.active)) setState((current) => activateTab(current, id))
-    requestCloseTabs(right.map((tab) => tab.id))
+    const beside = side === 'right' ? strip.slice(index + 1) : strip.slice(0, index)
+    if (beside.length === 0) return
+    const takesActive = beside.some((tab) => tab.id === state.panes[paneOf(state, id) ?? '']?.active)
+    if (takesActive) setState((current) => activateTab(current, id))
+    requestCloseTabs(beside.map((tab) => tab.id), takesActive ? id : undefined)
   }
+  const closeTabsToRight = (id: string) => closeTabsBeside(id, 'right')
+  const closeTabsToLeft = (id: string) => closeTabsBeside(id, 'left')
+  /** Tab menu: every tab of its pane, and so the pane. */
+  const closeAllTabs = (id: string) => requestCloseTabs(stripOf(id).map((tab) => tab.id))
   /** Close an empty pane (its strip's ×, ⌘W on its launcher). */
   const closePane = useCallback((pane: PaneId) => setState((current) => closePaneState(current, pane)), [])
   // On an empty launcher the key closes its pane, or with one pane the dock;
@@ -433,6 +446,7 @@ export function useDockTabs({
       return
     }
     if (isRunningTerminal(activeTab)) {
+      confirmShowRef.current = undefined
       setConfirmCloseIds([activeTab.id])
       return
     }
@@ -456,7 +470,7 @@ export function useDockTabs({
     appShortcut('splitTabDown', () => { sendTabToward('down') }, towardOptions),
   ])
   const confirmCloseTab = () => {
-    if (confirmCloseIds) closeTabs(confirmCloseIds)
+    if (confirmCloseIds) closeTabs(confirmCloseIds, confirmShowRef.current)
     setConfirmCloseIds(null)
   }
   const cancelCloseTab = () => setConfirmCloseIds(null)
@@ -493,8 +507,9 @@ export function useDockTabs({
   }, [])
 
   // ⌘1–⌘8 pick a tab of the focused pane by position, ⌘9 the last one
-  // (browsers, editors); ⌃Tab / ⌃⇧Tab step through them. Only while the dock
-  // is open. Focus follows only when it was already in the dock, so
+  // (browsers, editors); ⌃Tab / ⌃⇧Tab step through them, and so do ⌘⇧] /
+  // ⌘⇧[ and Ctrl+PageDown / PageUp. Only while the dock is open. Focus
+  // follows only when it was already in the dock, so
   // switching the file beside the composer does not pull the caret out of it.
   const focusedStrip = strips[focused] ?? []
   const activateByKey = (id: string | undefined) => {
@@ -514,6 +529,8 @@ export function useDockTabs({
     })),
     { chord: NEXT_DOCK_TAB_CHORD, handler: () => stepTab(1), options: { allowInEditable: true } },
     { chord: PREV_DOCK_TAB_CHORD, handler: () => stepTab(-1), options: { allowInEditable: true } },
+    ...Object.values(NEXT_DOCK_TAB_KEYS).map((chord) => ({ chord, handler: () => stepTab(1), options: { allowInEditable: true } })),
+    ...Object.values(PREV_DOCK_TAB_KEYS).map((chord) => ({ chord, handler: () => stepTab(-1), options: { allowInEditable: true } })),
   ], { enabled: open && focusedStrip.length > 0 })
 
   return {
@@ -549,6 +566,8 @@ export function useDockTabs({
     closeTab: requestCloseTab,
     closeOtherTabs,
     closeTabsToRight,
+    closeTabsToLeft,
+    closeAllTabs,
     confirmCloseOpen: confirmCloseIds !== null,
     confirmCloseTitles,
     confirmCloseTab,

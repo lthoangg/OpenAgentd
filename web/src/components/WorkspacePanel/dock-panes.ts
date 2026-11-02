@@ -7,6 +7,8 @@
  * pane's edge splits that pane, on its strip or its middle moves there.
  * Closing a pane's last tab closes the pane, and its room goes to the
  * neighbour before it (else the one after).
+ * Closing the open tab shows the tab used before it in that pane, else
+ * its right neighbour; that history (``recent``) lasts for the session only.
  *
  * Terminals open in a pane of their own (below the others on desktop), so a
  * diff and a shell show at once; ⌃` hides every pane that holds only
@@ -50,11 +52,15 @@ export interface DockPanes {
   focused: PaneId
   /** ⌃`: the panes holding only terminals are hidden; their shells keep running. */
   terminalsHidden: boolean
+  /** Tab ids, the latest shown first: which tab a close goes back to. Not saved. */
+  recent?: string[]
 }
 
 const FIRST_PANE: PaneId = 'p1'
 /** A pane added above or below everything: the share of the upper one. */
 export const UPPER_SHARE = 0.55
+/** Enough history for any strip; older entries drop off. */
+const RECENT_LIMIT = 50
 
 function emptyPane(): Pane {
   return { tabs: [], active: '', preview: null }
@@ -267,7 +273,8 @@ function addPaneAround(state: DockPanes, side: 'up' | 'down', share: number): [D
 
 /** Show ``id`` in ``pane`` and focus it; a hidden terminal pane comes back. */
 function reveal(state: DockPanes, pane: PaneId, id: string): DockPanes {
-  const next = { ...withPane(state, pane, { ...state.panes[pane], active: id }), focused: pane }
+  const recent = state.recent?.[0] === id ? state.recent : [id, ...(state.recent ?? []).filter((item) => item !== id)].slice(0, RECENT_LIMIT)
+  const next = { ...withPane(state, pane, { ...state.panes[pane], active: id }), focused: pane, recent }
   return hiddenPanes(next).has(pane) ? { ...next, terminalsHidden: false } : next
 }
 
@@ -355,8 +362,13 @@ export function focusPane(state: DockPanes, pane: PaneId): DockPanes {
   return state.focused === pane || !state.panes[pane] ? state : { ...state, focused: pane }
 }
 
-/** The tab shown when ``id`` closes: its right neighbour, else its left. */
-function neighbour(strip: readonly string[], id: string, closing: ReadonlySet<string>): string {
+/**
+ * The tab shown when ``id`` closes: the latest used of the strip's other
+ * tabs, else its right neighbour, else its left.
+ */
+function heirTab(state: DockPanes, strip: readonly string[], id: string, closing: ReadonlySet<string>): string {
+  const used = state.recent?.find((item) => item !== id && !closing.has(item) && strip.includes(item))
+  if (used) return used
   const index = strip.indexOf(id)
   const right = strip.slice(index + 1).find((item) => !closing.has(item))
   const left = strip.slice(0, Math.max(0, index)).reverse().find((item) => !closing.has(item))
@@ -390,7 +402,11 @@ export function closePane(state: DockPanes, pane: PaneId): DockPanes {
 export function closeTabs(state: DockPanes, ids: readonly string[]): DockPanes {
   const closing = new Set(ids)
   if (closing.size === 0) return state
-  let next: DockPanes = { ...state, tabs: state.tabs.filter((tab) => !closing.has(tab.id)) }
+  let next: DockPanes = {
+    ...state,
+    tabs: state.tabs.filter((tab) => !closing.has(tab.id)),
+    ...(state.recent ? { recent: state.recent.filter((item) => !closing.has(item)) } : {}),
+  }
   const emptied: PaneId[] = []
   for (const [id, pane] of Object.entries(state.panes)) {
     if (!pane.tabs.some((tab) => closing.has(tab))) continue
@@ -398,7 +414,7 @@ export function closeTabs(state: DockPanes, ids: readonly string[]): DockPanes {
     const tabs = pane.tabs.filter((tab) => !closing.has(tab))
     next = withPane(next, id, {
       tabs,
-      active: closing.has(pane.active) ? neighbour(strip, pane.active, closing) : pane.active,
+      active: closing.has(pane.active) ? heirTab(state, strip, pane.active, closing) : pane.active,
       preview: pane.preview && closing.has(pane.preview) ? null : pane.preview,
     })
     if (tabs.length === 0) emptied.push(id)
@@ -441,7 +457,7 @@ export function moveTab(state: DockPanes, id: string, target: PaneId, index?: nu
   const strip = paneTabs(state, from).map((item) => item.id)
   let next = withPane(state, from, {
     tabs: source.tabs.filter((item) => item !== id),
-    active: source.active === id ? neighbour(strip, id, new Set([id])) : source.active,
+    active: source.active === id ? heirTab(state, strip, id, new Set([id])) : source.active,
     preview: source.preview === id ? null : source.preview,
   })
   const there = paneTabs(next, target)

@@ -722,8 +722,12 @@ drawer and full-screen sheet.
   and a split that would break that says so in a toast. A new pane is empty
   and shows its launcher (tabs are not cloned: each tab lives in one pane).
   Closing a pane's last tab closes the pane; its room goes to the pane before
-  it (else after). A pane's strip and its tab menu offer Split Right and Split
-  Down; the tab menu adds Move to Next Pane.
+  it (else after). Closing the open tab shows the tab used before it in that
+  pane, else its right neighbour. A
+  pane's strip offers Split Right and Split Down, and so does a double-click
+  or right-click on the strip's free end (the "+" menu at the pointer); the tab menu
+  splits to all
+  four sides and adds Move to Next Pane.
 - **Tabs drag between panes** (mouse and pen; touch scrolls the strip). Along
   its strip a tab slides and its neighbours make room. Carried out, it becomes
   a floating copy and the target lights up in `focus-ring`: a caret between
@@ -743,7 +747,7 @@ drawer and full-screen sheet.
   Control and the backquote key (`toggleTerminal`) hide every pane holding
   only terminals without stopping their shells (their strips have a Hide
   button too), and show them again; hiding them with nothing else on screen
-  closes the panel. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`) act on the focused
+  closes the panel. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
   (a lighter wash, `text-2`) and everything on that pane's strip fades to
   50%, as an inactive window's title bar does, so the focused pane reads at
@@ -983,7 +987,8 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the focused pane's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
 - **Drag**: a tab slides along its strip; carried out, a floating copy follows the pointer and a `focus-ring` caret or tint shows where it lands (another strip, a pane's middle, or the half an edge split takes). See Layout → Tabs drag between panes.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
-- **Menu** (right-click, Shift+F10): Close, Close Others, Close to the Right, Keep Open, Split Right, Split Down, Move to Next Pane, Move Left, Move Right, Copy Path, Reveal in Git. Close Others and Close to the Right act on the tab's own pane.
+- **Menu** (right-click, Shift+F10), in groups: Close, Close Others, Close to the Left, Close to the Right, Close All | Keep Open, Split Right, Split Left, Split Up, Split Down, Move to Next Pane, Move Left, Move Right | Copy Path, Reveal in Git. The close items act on the tab's own pane; Close All closes the pane with them.
+- **Stepping**: `Ctrl+Tab` / `Ctrl+Shift+Tab` everywhere, plus the platform's pair: `⌘⇧]` / `⌘⇧[` on macOS, `Ctrl+PageDown` / `Ctrl+PageUp` elsewhere.
 - **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`, and that strip's tabs and buttons fade to 50% (`DOCK_STRIP_PART_CLASS`); the strip's tone stays.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
 - **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.

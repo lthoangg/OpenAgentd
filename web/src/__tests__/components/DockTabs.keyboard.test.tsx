@@ -149,6 +149,24 @@ describe('dock tab keys', () => {
     expect(isActive('Terminal 2')).toBe(true)
   })
 
+  // ⌘⇧[ / ⌘⇧] on macOS; Ctrl+PageUp/PageDown
+  // as in browsers on Windows and Linux. Linux here: Ctrl is ⌘.
+  it('Mod+Shift+[ / ] and Ctrl+PageUp / PageDown step through the tabs too', async () => {
+    await renderDock()
+    await pick('Terminal 1')
+    const key = (init: KeyboardEventInit) => act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, bubbles: true, cancelable: true, ...init }))
+    })
+    await key({ key: '}', code: 'BracketRight', shiftKey: true })
+    expect(isActive('Terminal 2')).toBe(true)
+    await key({ key: '{', code: 'BracketLeft', shiftKey: true })
+    expect(isActive('Terminal 1')).toBe(true)
+    await key({ key: 'PageUp', code: 'PageUp' })
+    expect(isActive('Terminal 3')).toBe(true)
+    await key({ key: 'PageDown', code: 'PageDown' })
+    expect(isActive('Terminal 1')).toBe(true)
+  })
+
   it('moves focus to the new tab only when focus was in the dock', async () => {
     await renderDock()
     await pick('Terminal 1')
@@ -216,23 +234,60 @@ describe('dock tab menu', () => {
     // The active Terminal 3 was among them: the kept tab takes over.
     expect(isActive('Terminal 1')).toBe(true)
   })
+
+  it('Close to the Left and Close All act on the tab\'s own pane', async () => {
+    await renderDock({ exited: true })
+    await pick('Terminal 3')
+    fireEvent.contextMenu(tab('Terminal 1'))
+    expect((screen.getByRole('menuitem', { name: 'Close to the Left' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close' }).click() })
+
+    fireEvent.contextMenu(tab('Terminal 3'))
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close to the Left' }).click() })
+    expect(screen.queryByRole('button', { name: 'Terminal 2' })).toBeNull()
+    expect(isActive('Terminal 3')).toBe(true)
+
+    fireEvent.contextMenu(tab('Terminal 3'))
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close All' }).click() })
+    // The pane goes with its tabs; Git, in another pane, stays.
+    expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
+    expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
+    expect(isActive('Git')).toBe(true)
+  })
+
+  // A tab splits off to any side, not only right and down.
+  it('splits a tab off to the left, right, top or bottom from its menu', async () => {
+    await renderDock({ exited: true })
+    fireEvent.contextMenu(tab('Terminal 2'))
+    const names = screen.getAllByRole('menuitem').map((item) => item.textContent ?? '').filter((name) => name.startsWith('Split'))
+    expect(names.map((name) => name.replace(/Ctrl.*$/, ''))).toEqual(['Split Right', 'Split Left', 'Split Up', 'Split Down'])
+
+    await act(async () => { screen.getByRole('menuitem', { name: /^Split Left/ }).click() })
+    expect(screen.getAllByRole('group', { name: /^Pane \d/ })).toHaveLength(3)
+    // Panes are named in layout order: the new one sits left of the
+    // terminals', under Git.
+    expect(tab('Terminal 2').closest('[data-dock-pane]')).toBe(screen.getByRole('group', { name: 'Pane 2' }))
+    expect(tab('Terminal 1').closest('[data-dock-pane]')).toBe(screen.getByRole('group', { name: 'Pane 3' }))
+  })
 })
 
 describe('closing tabs', () => {
-  it('activates the right neighbour, or the left one for the last tab, and closes an emptied pane', async () => {
+  it('goes back to the tab used before, else the right neighbour, and closes an emptied pane', async () => {
     await renderDock({ exited: true })
     await pick('Terminal 1')
     await press('2')
     await press('w')
     expect(screen.queryByRole('button', { name: 'Terminal 2' })).toBeNull()
-    expect(isActive('Terminal 3')).toBe(true)
+    // Back to the tab used before (Terminal 1), not on to Terminal 3.
+    expect(isActive('Terminal 1')).toBe(true)
 
     // The × button goes through the dock too, not straight to the store.
-    await act(async () => { tab('Close Terminal 3').click() })
-    expect(isActive('Terminal 1')).toBe(true)
+    // Terminal 3 was never shown: its right neighbour takes over.
+    await act(async () => { tab('Close Terminal 1').click() })
+    expect(isActive('Terminal 3')).toBe(true)
     // The terminal pane's last tab: the pane closes, Git's takes its room.
     expect(screen.getAllByRole('group', { name: /^Pane \d/ })).toHaveLength(2)
-    await act(async () => { tab('Close Terminal 1').click() })
+    await act(async () => { tab('Close Terminal 3').click() })
     expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
     expect(isActive('Git')).toBe(true)
   })

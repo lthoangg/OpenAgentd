@@ -329,6 +329,8 @@ export function WorkspacePanel({
     closeTab,
     closeOtherTabs,
     closeTabsToRight,
+    closeTabsToLeft,
+    closeAllTabs,
     confirmCloseOpen,
     confirmCloseTitles,
     confirmCloseTab,
@@ -964,6 +966,8 @@ export function WorkspacePanel({
           onClose={closeTab}
           onCloseOthers={closeOtherTabs}
           onCloseToRight={closeTabsToRight}
+          onCloseToLeft={closeTabsToLeft}
+          onCloseAll={closeAllTabs}
           onMove={moveWithin}
           onKeep={keep}
           onSplit={mobile ? undefined : (id, side) => splitPane(pane, side, id)}

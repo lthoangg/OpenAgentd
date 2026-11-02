@@ -4,7 +4,7 @@
  * Labels come from the same chords the handlers match, per platform.
  */
 import type { OS } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, NEXT_DOCK_TAB_KEYS, PREV_DOCK_TAB_CHORD, PREV_DOCK_TAB_KEYS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
 import { NEXT_REGION_CHORD, PREV_REGION_CHORD } from '@/lib/focus-regions'
 
 import { formatChord, type KeyChord } from './chord'
@@ -91,7 +91,13 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('maximizeDock', 'Maximize the Review panel'),
         app('closeTab', 'Close tab'),
         keys(appOnly('Dock tab 1 to 8, and the last'), chordOf(APP_SHORTCUTS.dockTab1), chordOf(APP_SHORTCUTS.dockTab9)),
-        keys(appOnly('Next and previous dock tab'), NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD),
+        keys(
+          appOnly('Next and previous dock tab'),
+          NEXT_DOCK_TAB_CHORD,
+          PREV_DOCK_TAB_CHORD,
+          mac ? NEXT_DOCK_TAB_KEYS.mac : NEXT_DOCK_TAB_KEYS.other,
+          mac ? PREV_DOCK_TAB_KEYS.mac : PREV_DOCK_TAB_KEYS.other,
+        ),
         keys('Move the focused dock tab', { key: 'ArrowLeft', alt: true, shift: true }, { key: 'ArrowRight', alt: true, shift: true }),
       ],
     },

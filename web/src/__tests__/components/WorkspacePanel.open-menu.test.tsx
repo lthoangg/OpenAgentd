@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -102,6 +102,24 @@ describe('Review dock "+" menu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
     expect(screen.getByRole('button', { name: 'Session plan' })).toBeTruthy()
+  })
+
+  // A double-click on a tab bar's free space opens the same menu as "+",
+  // where the pointer is.
+  it('opens the same menu from a double-click or right-click on the free end of the strip', async () => {
+    await renderPanel()
+    await screen.findByRole('button', { name: 'Session plan' })
+    const gap = document.querySelector<HTMLElement>('[data-dock-strip-gap]')!
+
+    fireEvent.doubleClick(gap, { clientX: 120, clientY: 18 })
+    const menu = screen.getByRole('menu', { name: 'Open in Review panel' })
+    expect(rowNames(menu)).toContain('Split Right')
+    expect(menu.style.left).toBe('120px')
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    fireEvent.contextMenu(gap, { clientX: 140, clientY: 18 })
+    expect(screen.getByRole('menu', { name: 'Open in Review panel' })).toBeTruthy()
   })
 
   it('shows an open tab instead of adding another', async () => {

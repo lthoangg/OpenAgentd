@@ -78,11 +78,33 @@ describe('tabs in a pane', () => {
     expect(state.panes.p1.preview).toBeNull()
   })
 
-  it('activates the right neighbour on close, else the left one', () => {
+  // Closing the open tab
+  // goes back to the one used before it, not to whatever sits beside it.
+  it('shows the tab used before the one that closes', () => {
+    let state = withTabs(file('a'), file('b'), file('c'))
+    state = activateTab(activateTab(state, 'file:a'), 'file:c')
+    expect(closeTabs(state, ['file:c']).panes.p1.active).toBe('file:a')
+    // Closing several, the latest used of what stays.
+    expect(closeTabs(state, ['file:c', 'file:a']).panes.p1.active).toBe('file:b')
+  })
+
+  it('keeps to the closing tab\'s pane when going back', () => {
+    let state = withTabs(file('a'), file('b'))
+    state = splitPane(state, 'p1', 'right', 'file:b')
+    state = openTab(state, file('c'))
+    // Used last before c: b, in p2 itself; a, in p1, is not a candidate.
+    state = activateTab(state, 'file:a')
+    state = activateTab(state, 'file:c')
+    expect(closeTabs(state, ['file:c']).panes.p2.active).toBe('file:b')
+  })
+
+  it('falls back to the right neighbour, else the left one, with no history', () => {
     let state = activateTab(withTabs(file('a'), file('b'), file('c')), 'file:b')
     expect(closeTabs(state, ['file:b']).panes.p1.active).toBe('file:c')
     state = activateTab(state, 'file:c')
     expect(closeTabs(state, ['file:c']).panes.p1.active).toBe('file:b')
+    const restored = restoreDockPanes(JSON.parse(JSON.stringify(serializeDockPanes(activateTab(state, 'file:a')))))!
+    expect(closeTabs(restored, ['file:a']).panes.p1.active).toBe('file:b')
   })
 
   it('reorders within a pane, keeping views before documents', () => {

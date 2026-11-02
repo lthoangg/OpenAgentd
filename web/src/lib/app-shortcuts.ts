@@ -96,6 +96,20 @@ export const DOCK_TAB_SHORTCUTS = [
 /** Next / previous dock tab: Control+Tab on every OS (not ⌘Tab, the app switcher). */
 export const NEXT_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true }
 export const PREV_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true, shift: true }
+/**
+ * The same steps the platform's way: ⌘⇧] / ⌘⇧[
+ * on macOS, Ctrl+PageDown / PageUp elsewhere. Both
+ * pairs work on every OS; the brackets match the physical key, which prints
+ * "{" and "}" with Shift.
+ */
+export const NEXT_DOCK_TAB_KEYS = {
+  mac: { key: ']', code: 'BracketRight', mod: true, shift: true },
+  other: { key: 'PageDown', ctrl: true, shift: false },
+} as const satisfies Record<string, KeyChord>
+export const PREV_DOCK_TAB_KEYS = {
+  mac: { key: '[', code: 'BracketLeft', mod: true, shift: true },
+  other: { key: 'PageUp', ctrl: true, shift: false },
+} as const satisfies Record<string, KeyChord>
 
 /** The chord the keyboard dispatcher matches for a shortcut. */
 export function chordOf(shortcut: AppShortcut): KeyChord {

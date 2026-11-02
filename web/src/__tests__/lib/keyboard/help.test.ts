@@ -41,9 +41,11 @@ describe('shortcutHelp', () => {
     expect(find('macos', 'Menu for the focused item')?.keys).toEqual(['⇧F10'])
     expect(find('macos', 'Open Git')?.keys).toEqual(['⌘⇧G'])
     expect(find('macos', 'Move the focused dock tab')?.keys).toEqual(['⌥⇧←', '⌥⇧→'])
-    expect(find('macos', 'Next and previous dock tab (desktop app)')?.keys).toEqual(['⌃Tab', '⌃⇧Tab'])
+    expect(find('macos', 'Next and previous dock tab (desktop app)')?.keys).toEqual(['⌃Tab', '⌃⇧Tab', '⌘⇧]', '⌘⇧['])
     expect(find('windows', 'Dock tab 1 to 8, and the last (desktop app)')?.keys).toEqual(['Ctrl+1', 'Ctrl+9'])
-    expect(find('macos', 'Next and previous dock tab', true)?.keys).toEqual(['⌃Tab', '⌃⇧Tab'])
+    expect(find('macos', 'Next and previous dock tab', true)?.keys).toEqual(['⌃Tab', '⌃⇧Tab', '⌘⇧]', '⌘⇧['])
+    // Elsewhere the platform's own pair.
+    expect(find('windows', 'Next and previous dock tab', true)?.keys).toEqual(['Ctrl+Tab', 'Ctrl+Shift+Tab', 'Ctrl+PageDown', 'Ctrl+PageUp'])
   })
 
   it('lists every app shortcut once', () => {

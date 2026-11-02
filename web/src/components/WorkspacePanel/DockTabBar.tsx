@@ -19,7 +19,8 @@
  * Tabs move by drag (fine pointers, see ``useTabDrag``): along the strip,
  * onto another pane's strip or middle, or onto a pane's edge to split it.
  * From the keyboard and the tab menu: ⌥⇧←/→, Move Left / Move Right, Split
- * Right / Split Down, Move to Next Pane.
+ * Right / Left / Up / Down, Move to Next Pane. A double-click or
+ * right-click on the strip's free end opens the "+" menu there.
  */
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CalendarClock, Check, ChevronDown, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, Target, X } from 'lucide-react'
@@ -42,6 +43,7 @@ import {
   dockTabCloseClass,
 } from './dock-tab-styles'
 import { type DockTab, dockTabLabel, dockTabTooltip, isViewTab } from './dock-tabs'
+import type { SplitSide } from './dock-panes'
 import type { DockOpenItem } from './DockLauncher'
 import { DOCK_TAB_ATTR, useTabDrag } from './useTabDrag'
 import type { TabDropTarget } from './useDockTabs'
@@ -61,15 +63,17 @@ export interface DockTabBarProps {
   registerTabRef: (id: string, node: HTMLButtonElement | null) => void
   onActivate: (id: string) => void
   onClose: (id: string) => void
-  /** Tab menu: close every other tab / the tabs after this one. */
+  /** Tab menu: close every other tab / the tabs after or before this one / every tab of the pane. */
   onCloseOthers?: (id: string) => void
   onCloseToRight?: (id: string) => void
+  onCloseToLeft?: (id: string) => void
+  onCloseAll?: (id: string) => void
   /** Moves a tab to an index of ``tabs``; omitted, tabs stay put. */
   onMove?: (id: string, toIndex: number) => void
   /** Keep a preview tab (double-click, Keep Open). */
   onKeep?: (id: string) => void
-  /** Tab menu: Split Right / Split Down, the tab moving into the new pane. Omitted on phones. */
-  onSplit?: (id: string, side: 'right' | 'down') => void
+  /** Tab menu: Split Right / Left / Up / Down, the tab moving into the new pane. Omitted on phones. */
+  onSplit?: (id: string, side: SplitSide) => void
   /** False for a pane's only tab (nothing would be left to split). */
   canSplit?: (id: string) => boolean
   /** Tab menu: Move to Next Pane (shown while another pane is on screen). */
@@ -150,6 +154,14 @@ function ActionButton({ label, onClick, children, expanded }: {
   )
 }
 
+/** The tab menu's splits, in order, with the ⌃⌥+arrow key for each. */
+const SPLITS = [
+  { side: 'right', label: 'Split Right', key: 'splitTabRight' },
+  { side: 'left', label: 'Split Left', key: 'splitTabLeft' },
+  { side: 'up', label: 'Split Up', key: 'splitTabUp' },
+  { side: 'down', label: 'Split Down', key: 'splitTabDown' },
+] as const satisfies readonly { side: SplitSide; label: string; key: keyof typeof APP_SHORTCUTS }[]
+
 /** The path a file or diff tab shows, absolute, for "Copy Path". */
 function tabPath(tab: DockTab, workspace: string): string | null {
   const path = tab.type === 'file' ? tab.file.path : tab.type === 'diff' ? tab.path : null
@@ -159,9 +171,10 @@ function tabPath(tab: DockTab, workspace: string): string | null {
 
 /**
  * The tab-strip items every tab's menu shares (terminal tabs add theirs
- * first). ``dismiss`` closes the menu before the action runs.
+ * first), in order and groups: closing, then keeping, splitting and
+ * moving, then the path. ``dismiss`` closes the menu before the action runs.
  */
-export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit, os }: {
+export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onCloseToLeft, onCloseAll, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit, os }: {
   tab: DockTab
   tabs: DockTab[]
   workspace: string
@@ -169,24 +182,28 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   onClose?: (id: string) => void
   onCloseOthers?: (id: string) => void
   onCloseToRight?: (id: string) => void
+  onCloseToLeft?: (id: string) => void
+  onCloseAll?: (id: string) => void
   onMove?: (id: string, toIndex: number) => void
   preview?: boolean
   onKeep?: (id: string) => void
-  onSplit?: (id: string, side: 'right' | 'down') => void
+  onSplit?: (id: string, side: SplitSide) => void
   canSplit?: (id: string) => boolean
   onMoveToNextPane?: (id: string) => void
   canMoveToNextPane?: (id: string) => boolean
   onRevealInGit?: (path: string) => void
-  /** Spells the keys beside Split Right and Split Down (⌃⌥→, ⌃⌥↓). */
+  /** Spells the keys beside the splits (⌃⌥→, ⌃⌥←, ⌃⌥↑, ⌃⌥↓). */
   os?: OS
 }): ReactNode {
   const index = tabs.findIndex((item) => item.id === tab.id)
   const hasOthers = tabs.length > 1
   const hasRight = index >= 0 && index < tabs.length - 1
+  const hasLeft = index > 0
   const path = tabPath(tab, workspace)
   const changedPath = tab.type === 'diff' ? tab.path : tab.type === 'file' ? tab.file.path : null
   const item = (label: string, run: () => void, icon?: ReactNode, disabled = false, shortcut?: string) => (
     <button
+      key={label}
       type="button"
       role="menuitem"
       disabled={disabled}
@@ -200,20 +217,38 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
       )}
     </button>
   )
-  const splitKey = (name: 'splitTabRight' | 'splitTabDown') => (os ? shortcutLabel(APP_SHORTCUTS[name], os) : undefined)
+  const splitDisabled = !(canSplit?.(tab.id) ?? true)
+  const groups: ReactNode[][] = [
+    [
+      onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />),
+      onCloseOthers && item('Close Others', () => onCloseOthers(tab.id), undefined, !hasOthers),
+      onCloseToLeft && item('Close to the Left', () => onCloseToLeft(tab.id), undefined, !hasLeft),
+      onCloseToRight && item('Close to the Right', () => onCloseToRight(tab.id), undefined, !hasRight),
+      onCloseAll && item('Close All', () => onCloseAll(tab.id)),
+    ],
+    [
+      preview && onKeep && item('Keep Open', () => onKeep(tab.id)),
+      ...(onSplit
+        ? SPLITS.map(({ side, label, key }) =>
+            item(label, () => onSplit(tab.id, side), undefined, splitDisabled, os ? shortcutLabel(APP_SHORTCUTS[key], os) : undefined))
+        : []),
+      onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to Next Pane', () => onMoveToNextPane(tab.id)),
+      onMove && item('Move Left', () => onMove(tab.id, index - 1), undefined, index <= 0),
+      onMove && item('Move Right', () => onMove(tab.id, index + 1), undefined, !hasRight),
+    ],
+    [
+      path && item('Copy Path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
+      changedPath && onRevealInGit && item('Reveal in Git', () => onRevealInGit(changedPath)),
+    ],
+  ].map((group) => group.filter(Boolean)).filter((group) => group.length > 0)
   return (
     <>
-      {onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />)}
-      {onCloseOthers && item('Close Others', () => onCloseOthers(tab.id), undefined, !hasOthers)}
-      {onCloseToRight && item('Close to the Right', () => onCloseToRight(tab.id), undefined, !hasRight)}
-      {preview && onKeep && item('Keep Open', () => onKeep(tab.id))}
-      {onSplit && item('Split Right', () => onSplit(tab.id, 'right'), undefined, !(canSplit?.(tab.id) ?? true), splitKey('splitTabRight'))}
-      {onSplit && item('Split Down', () => onSplit(tab.id, 'down'), undefined, !(canSplit?.(tab.id) ?? true), splitKey('splitTabDown'))}
-      {onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to Next Pane', () => onMoveToNextPane(tab.id))}
-      {onMove && item('Move Left', () => onMove(tab.id, index - 1), undefined, index <= 0)}
-      {onMove && item('Move Right', () => onMove(tab.id, index + 1), undefined, !hasRight)}
-      {path && item('Copy Path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />)}
-      {changedPath && onRevealInGit && item('Reveal in Git', () => onRevealInGit(changedPath))}
+      {groups.map((group, at) => (
+        <Fragment key={at}>
+          {at > 0 && <ContextMenuSeparator />}
+          {group}
+        </Fragment>
+      ))}
     </>
   )
 }
@@ -237,6 +272,8 @@ export function DockTabBar({
   onClose,
   onCloseOthers,
   onCloseToRight,
+  onCloseToLeft,
+  onCloseAll,
   onMove,
   onKeep,
   onSplit,
@@ -282,6 +319,8 @@ export function DockTabBar({
       dismiss={dismiss}
       onCloseOthers={onCloseOthers}
       onCloseToRight={onCloseToRight}
+      onCloseToLeft={onCloseToLeft}
+      onCloseAll={onCloseAll}
       onMove={moveAndFocus}
       preview={tab.id === previewTabId}
       {...paneMenuProps}
@@ -405,7 +444,18 @@ export function DockTabBar({
             </div>
           )]
         })}
-        <div aria-hidden="true" className="min-w-2 flex-1" />
+        {/* The strip's free end: a double-click or right-click opens the
+            "+" menu where the pointer is. */}
+        <div
+          aria-hidden="true"
+          data-dock-strip-gap=""
+          className="min-w-2 flex-1"
+          onDoubleClick={mobile || openItems.length === 0 ? undefined : (event) => setOpenMenuAt({ x: event.clientX, y: event.clientY })}
+          onContextMenu={mobile || openItems.length === 0 ? undefined : (event) => {
+            event.preventDefault()
+            setOpenMenuAt({ x: event.clientX, y: event.clientY })
+          }}
+        />
       </div>
       <div className={cn('flex shrink-0 items-center gap-0.5 px-1', DOCK_STRIP_PART_CLASS)}>
         {overflowing && tabs.length > 1 && (
@@ -537,6 +587,8 @@ export function DockTabBar({
             onClose={onClose}
             onCloseOthers={onCloseOthers}
             onCloseToRight={onCloseToRight}
+            onCloseToLeft={onCloseToLeft}
+            onCloseAll={onCloseAll}
             onMove={moveAndFocus}
             preview={menuTab.id === previewTabId}
             {...paneMenuProps}

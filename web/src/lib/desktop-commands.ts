@@ -69,6 +69,9 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
     case 'split_review_panel':
       dispatchAppEvent(APP_EVENTS.splitReviewPanel)
       break
+    case 'split_review_panel_down':
+      dispatchAppEvent(APP_EVENTS.splitReviewPanelDown)
+      break
     case 'toggle_terminal':
       dispatchAppEvent(APP_EVENTS.toggleTerminalGroup)
       break

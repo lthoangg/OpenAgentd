@@ -60,6 +60,8 @@ describe('APP_SHORTCUTS', () => {
 
   it('has the layout shortcuts of the View menu', () => {
     expect(shortcutLabel(APP_SHORTCUTS.splitDock, 'macos')).toBe('⌘\\')
+    expect(shortcutLabel(APP_SHORTCUTS.splitDockDown, 'macos')).toBe('⌘⇧\\')
+    expect(chordOf(APP_SHORTCUTS.splitDockDown)).toEqual({ key: '\\', code: 'Backslash', mod: true, shift: true, alt: false })
     expect(shortcutLabel(APP_SHORTCUTS.focusMode, 'macos')).toBe('⌘⇧F')
     expect(shortcutLabel(APP_SHORTCUTS.findInSession, 'windows')).toBe('Ctrl+F')
   })

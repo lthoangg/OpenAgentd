@@ -706,7 +706,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   tray names the account a pinned session runs on (**Pinned to Work**), and
   its Provider limits name the account in use when a provider has several
   (**OpenAI Codex · Work**).
-- **Review panel splits in two; terminals below** `[v3.40.0]`:
+- **Review panel panes, as in an editor; terminals below** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
     one button for each.
@@ -718,22 +718,32 @@ run from the terminal (the native Rust binary since v3.0.0).
     one bar: no lines between those parts. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
-  - **Split Review Panel** (`⌘\`/`Ctrl+\`) stacks a second tab group under
-    the first, or joins them. Drag the line between them to resize it, or
-    double-click it to reset; closing a group's last tab joins the groups.
-  - Terminals open in the lower group, so a diff and a shell show at once.
-    **Terminal** (Control and the backquote key, on every system) shows or
-    hides that group; hidden shells keep running, and the status bar says
-    **N terminals running** (a click shows them). `⌘⇧` (`Ctrl+Shift`) with the
-    backquote key still opens a new terminal.
+  - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel
+    Down** (`⌘⇧\`/`Ctrl+Shift+\`) split the pane you are in, as often as
+    there is room; each pane has its own tabs. The new pane is empty and lists
+    what it can open. A pane too small for two says so instead of splitting.
+    Drag the line between two panes to resize them, or double-click it to
+    share the room evenly; closing a pane's last tab closes the pane.
+  - Drag a tab to another pane's tab strip to move it there, onto the middle
+    of a pane to add it to that pane, or onto a pane's edge to split that pane
+    with the tab in the new half; the place it will land lights up as you
+    drag. Escape puts it back. The tab menu does the same with Split Right,
+    Split Down and Move to Next Pane, and a web preview keeps its page and
+    comments when its tab moves.
+  - Terminals open in a pane of their own under the others, so a diff and a
+    shell show at once; files never open there. **Terminal** (Control and the
+    backquote key, on every system) shows or hides the terminal panes; hidden
+    shells keep running, and the status bar says **N terminals running** (a
+    click shows them). `⌘⇧` (`Ctrl+Shift`) with the backquote key still opens
+    a new terminal.
   - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
     files. A file or diff opened from a list or a link opens as an *italic*
     preview tab that the next one replaces; double-click it or choose **Keep
     Open** to keep it. When the strip is full, a tab count lists every tab.
-    The tab menu has Close, Close Others, Close to the Right, Keep Open, Move
-    to Other Group (or Split Down), Move Left, Move Right, Copy Path and
-    Reveal in Git.
-  - Each session remembers its own tabs and groups, so switching back shows
+    The tab menu has Close, Close Others, Close to the Right, Keep Open,
+    Split Right, Split Down, Move to Next Pane, Move Left, Move Right, Copy
+    Path and Reveal in Git.
+  - Each session remembers its own panes and tabs, so switching back shows
     the same diff and plan; terminals belong to the workspace; whether the
     panel is open, and its sizes, belong to the window. **Reset Layout** in
     the palette puts the sizes back.
@@ -904,8 +914,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     items as ⋯.
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
-    Sidebar, Review Panel, Split Review Panel, Terminal, Maximize Review
-    Panel, Focus Mode, Model and Thinking…, Text Size and Reset Layout
+    Sidebar, Review Panel, Split Review Panel Right and Down, Terminal,
+    Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size and
+    Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
     Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
     window, and on Linux the bar no longer comes back when the window is

@@ -144,9 +144,11 @@ export interface UseOverlayStateResult {
   /** Focus mode: sidebar and Review panel hidden until it ends. */
   focusMode: boolean
   handleToggleFocusMode: () => void
-  /** ⌘\: split the Review panel into two groups, or join them. */
+  /** ⌘\: split the Review panel's focused pane right. */
   handleSplitDock: () => void
-  /** ⌃`: show or hide the Review panel's terminal group. */
+  /** ⌘⇧\: split it down. */
+  handleSplitDockDown: () => void
+  /** ⌃`: show or hide the Review panel's terminal panes. */
   handleToggleTerminalGroup: () => void
   openWorkspaceDialogKey: number
   showTodos: boolean
@@ -631,12 +633,15 @@ export function useOverlayState({
     setDockLayoutRequest((prev) => ({ action, key: (prev?.key ?? 0) + 1 }))
   }, [])
 
-  // ⌘\ — two groups (top/bottom) or one. Desktop only: phones have one sheet.
-  const handleSplitDock = useCallback(() => {
+  // ⌘\ / ⌘⇧\ — split the focused pane right or down, as often as there is
+  // room. Desktop only: phones have one sheet.
+  const splitDock = useCallback((action: 'split-right' | 'split-down') => {
     if (!workspace || isMobile) return
     setWorkspacePanel((value) => value ?? 'changed')
-    requestDockLayout('split')
+    requestDockLayout(action)
   }, [isMobile, requestDockLayout, workspace])
+  const handleSplitDock = useCallback(() => splitDock('split-right'), [splitDock])
+  const handleSplitDockDown = useCallback(() => splitDock('split-down'), [splitDock])
 
   // ⌃` — the terminal group under the open tabs. With the panel closed it
   // opens on it; phones have no groups, so it is the Terminal tab there.
@@ -659,6 +664,7 @@ export function useOverlayState({
       [APP_EVENTS.openTerminal, handleOpenTerminal],
       [APP_EVENTS.openPlan, handleOpenPlan],
       [APP_EVENTS.splitReviewPanel, handleSplitDock],
+      [APP_EVENTS.splitReviewPanelDown, handleSplitDockDown],
       [APP_EVENTS.toggleTerminalGroup, handleToggleTerminalGroup],
       [APP_EVENTS.toggleFocusMode, handleToggleFocusMode],
       [APP_EVENTS.resetLayout, () => useLayoutStore.getState().resetLayout()],
@@ -667,7 +673,7 @@ export function useOverlayState({
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleToggleFocusMode, handleToggleScheduler, handleToggleTerminalGroup])
+  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleSplitDockDown, handleToggleFocusMode, handleToggleScheduler, handleToggleTerminalGroup])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -770,6 +776,7 @@ export function useOverlayState({
     focusMode: focusRestore !== null,
     handleToggleFocusMode,
     handleSplitDock,
+    handleSplitDockDown,
     handleToggleTerminalGroup,
     openWorkspaceDialogKey,
     showTodos,

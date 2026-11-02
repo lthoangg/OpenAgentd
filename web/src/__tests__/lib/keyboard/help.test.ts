@@ -51,8 +51,10 @@ describe('shortcutHelp', () => {
     expect(new Set(labels).size).toBe(labels.length)
   })
 
-  it('lists the layout keys: split, terminal group, focus mode, find, areas', () => {
-    expect(find('macos', 'Split or join the Review panel')?.keys).toEqual(['⌘\\'])
+  it('lists the layout keys: splits, terminals, focus mode, find, areas', () => {
+    expect(find('macos', 'Split the focused pane right')?.keys).toEqual(['⌘\\'])
+    expect(find('macos', 'Split the focused pane down')?.keys).toEqual(['⌘⇧\\'])
+    expect(find('windows', 'Split the focused pane down')?.keys).toEqual(['Ctrl+Shift+\\'])
     expect(find('macos', 'Show or hide the terminal')?.keys).toEqual(['⌃`'])
     expect(find('windows', 'Show or hide the terminal')?.keys).toEqual(['Ctrl+`'])
     expect(find('macos', 'Focus mode')?.keys).toEqual(['⌘⇧F'])

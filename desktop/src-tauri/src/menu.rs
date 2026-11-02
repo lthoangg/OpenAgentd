@@ -39,6 +39,7 @@ pub const MENU_SCHEDULER: &str = "scheduler";
 pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
 pub const MENU_REVIEW_PANEL: &str = "review_panel";
 pub const MENU_SPLIT_REVIEW_PANEL: &str = "split_review_panel";
+pub const MENU_SPLIT_REVIEW_PANEL_DOWN: &str = "split_review_panel_down";
 pub const MENU_TOGGLE_TERMINAL: &str = "toggle_terminal";
 pub const MENU_MAXIMIZE_REVIEW_PANEL: &str = "maximize_review_panel";
 pub const MENU_FOCUS_MODE: &str = "focus_mode";
@@ -211,12 +212,20 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+D"),
     )?;
+    // Split the focused pane right or down, as often as there is room.
     let view_split_review_panel = MenuItem::with_id(
         app,
         MENU_SPLIT_REVIEW_PANEL,
-        "Split Review Panel",
+        "Split Review Panel Right",
         true,
         Some("CmdOrCtrl+\\"),
+    )?;
+    let view_split_review_panel_down = MenuItem::with_id(
+        app,
+        MENU_SPLIT_REVIEW_PANEL_DOWN,
+        "Split Review Panel Down",
+        true,
+        Some("CmdOrCtrl+Shift+\\"),
     )?;
     // The Control key on every OS, as in editors: ⌘` already switches windows on macOS.
     let view_toggle_terminal = MenuItem::with_id(
@@ -378,6 +387,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&view_toggle_sidebar)
         .item(&view_review_panel)
         .item(&view_split_review_panel)
+        .item(&view_split_review_panel_down)
         .item(&view_toggle_terminal)
         .item(&view_terminal)
         .item(&view_maximize_review_panel)
@@ -692,6 +702,7 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_TERMINAL => emit_frontend_command(app, "terminal"),
         MENU_REVIEW_PANEL => emit_frontend_command(app, "review_panel"),
         MENU_SPLIT_REVIEW_PANEL => emit_frontend_command(app, "split_review_panel"),
+        MENU_SPLIT_REVIEW_PANEL_DOWN => emit_frontend_command(app, "split_review_panel_down"),
         MENU_TOGGLE_TERMINAL => emit_frontend_command(app, "toggle_terminal"),
         MENU_MAXIMIZE_REVIEW_PANEL => emit_frontend_command(app, "maximize_review_panel"),
         MENU_FOCUS_MODE => emit_frontend_command(app, "focus_mode"),
@@ -1202,8 +1213,8 @@ mod tests {
     use super::{
         external_usage_access_key, macos_tray_icon, MENU_FOCUS_MODE, MENU_MAXIMIZE_REVIEW_PANEL,
         MENU_NEW_SESSION, MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_RESET_LAYOUT,
-        MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_TERMINAL, MENU_TOGGLE_SIDEBAR,
-        MENU_TOGGLE_TERMINAL,
+        MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL_DOWN, MENU_TERMINAL,
+        MENU_TOGGLE_SIDEBAR, MENU_TOGGLE_TERMINAL,
     };
 
     #[test]
@@ -1217,6 +1228,7 @@ mod tests {
         assert_eq!(MENU_TERMINAL, "terminal");
         assert_eq!(MENU_REVIEW_PANEL, "review_panel");
         assert_eq!(MENU_SPLIT_REVIEW_PANEL, "split_review_panel");
+        assert_eq!(MENU_SPLIT_REVIEW_PANEL_DOWN, "split_review_panel_down");
         assert_eq!(MENU_TOGGLE_TERMINAL, "toggle_terminal");
         assert_eq!(MENU_MAXIMIZE_REVIEW_PANEL, "maximize_review_panel");
         assert_eq!(MENU_FOCUS_MODE, "focus_mode");

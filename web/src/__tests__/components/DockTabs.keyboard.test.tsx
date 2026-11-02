@@ -1,9 +1,9 @@
 /**
  * Dock tab keys and the tab menu: ⌘1–⌘9 (Ctrl on Linux) pick a tab of the
- * focused group by position with 9 as the last, ⌃Tab / ⌃⇧Tab step with
+ * focused pane by position with 9 as the last, ⌃Tab / ⌃⇧Tab step with
  * wrap-around, both only while the dock is open; focus follows only when it
  * was already in the dock. The tab menu's Close Others / Close to the Right
- * act on the tab's own group and confirm before stopping a running shell.
+ * act on the tab's own pane and confirm before stopping a running shell.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
@@ -30,7 +30,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -64,9 +64,9 @@ beforeEach(() => {
 afterEach(cleanup)
 
 /**
- * By default three terminals, then Git. Terminals live in the lower group
+ * By default three terminals, then Git. Terminals live in a pane of their own
  * ([Terminal 1, Terminal 2, Terminal 3], Terminal 1 active); Git is alone in
- * the upper group, which has focus.
+ * a pane above it, which has focus.
  */
 async function renderDock({ open = true, exited = false, terminals = 3, git = true, onRequestClose = undefined as (() => void) | undefined } = {}) {
   for (let i = 0; i < terminals; i++) useTerminalStore.getState().open({ workspace: WORKSPACE }, WORKSPACE)
@@ -96,7 +96,7 @@ async function renderDock({ open = true, exited = false, terminals = 3, git = tr
 const tab = (name: string) => screen.getByRole('button', { name })
 const isActive = (name: string) => tab(name).getAttribute('aria-current') === 'true'
 const frame = () => act(async () => { await new Promise((resolve) => requestAnimationFrame(() => resolve(null))) })
-/** Click a tab: it becomes active and its group takes the keys. */
+/** Click a tab: it becomes active and its pane takes the keys. */
 const pick = (name: string) => act(async () => { tab(name).click() })
 
 function press(key: string, mods: { shiftKey?: boolean } = {}, target: EventTarget = document.activeElement ?? document.body) {
@@ -107,10 +107,10 @@ function press(key: string, mods: { shiftKey?: boolean } = {}, target: EventTarg
 }
 
 describe('dock tab keys', () => {
-  it('Ctrl+N picks the tab at that position of the focused group and Ctrl+9 the last', async () => {
+  it('Ctrl+N picks the tab at that position of the focused pane and Ctrl+9 the last', async () => {
     await renderDock()
     expect(isActive('Git')).toBe(true)
-    // The upper group has only Git: nothing at position 2.
+    // Git's pane has only Git: nothing at position 2.
     await press('2')
     expect(isActive('Terminal 1')).toBe(true)
     expect(isActive('Terminal 2')).toBe(false)
@@ -125,7 +125,7 @@ describe('dock tab keys', () => {
     // Past the last tab: nothing to pick.
     await press('6')
     expect(isActive('Terminal 1')).toBe(true)
-    // The other group keeps its own active tab.
+    // The other pane keeps its own active tab.
     expect(isActive('Git')).toBe(true)
   })
 
@@ -172,13 +172,13 @@ describe('dock tab keys', () => {
 })
 
 describe('dock tab menu', () => {
-  it('Close Others keeps only the chosen tab of its group, and makes it active', async () => {
+  it('Close Others keeps only the chosen tab of its pane, and makes it active', async () => {
     await renderDock({ exited: true })
     fireEvent.contextMenu(tab('Terminal 2'))
     await act(async () => { screen.getByRole('menuitem', { name: 'Close Others' }).click() })
     expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
-    // Git is in the other group: it stays.
+    // Git is in another pane: it stays.
     expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
     expect(isActive('Terminal 2')).toBe(true)
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
@@ -192,11 +192,13 @@ describe('dock tab menu', () => {
     })
     expect(screen.getByRole('menu', { name: 'Actions for Terminal 3' })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Close' })).toBeTruthy()
-    // Terminal 3 is the last tab of its group: nothing to its right.
+    // Terminal 3 is the last tab of its pane: nothing to its right.
     expect((screen.getByRole('menuitem', { name: 'Close to the Right' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('menuitem', { name: 'Move Right' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('menuitem', { name: 'Move Left' }) as HTMLButtonElement).disabled).toBe(false)
-    expect(screen.getByRole('menuitem', { name: 'Move to Other Group' })).toBeTruthy()
+    // Git is in another pane on screen.
+    expect(screen.getByRole('menuitem', { name: 'Move to Next Pane' })).toBeTruthy()
+    expect((screen.getByRole('menuitem', { name: 'Split Right' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('Close to the Right asks before stopping running shells', async () => {
@@ -217,7 +219,7 @@ describe('dock tab menu', () => {
 })
 
 describe('closing tabs', () => {
-  it('activates the right neighbour, or the left one for the last tab, and joins an emptied group', async () => {
+  it('activates the right neighbour, or the left one for the last tab, and closes an emptied pane', async () => {
     await renderDock({ exited: true })
     await pick('Terminal 1')
     await press('2')
@@ -228,9 +230,10 @@ describe('closing tabs', () => {
     // The × button goes through the dock too, not straight to the store.
     await act(async () => { tab('Close Terminal 3').click() })
     expect(isActive('Terminal 1')).toBe(true)
-    // The lower group's last tab: the groups join, Git stays.
+    // The terminal pane's last tab: the pane closes, Git's takes its room.
+    expect(screen.getAllByRole('group', { name: /^Pane \d/ })).toHaveLength(2)
     await act(async () => { tab('Close Terminal 1').click() })
-    expect(screen.queryByRole('group', { name: 'Lower group' })).toBeNull()
+    expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
     expect(isActive('Git')).toBe(true)
   })
 

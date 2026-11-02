@@ -50,9 +50,10 @@ export interface UseCommandPaletteArgs {
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
   handleOpenTerminal: () => void
-  /** ⌘\ — split / join the Review panel's groups (desktop + workspace). */
+  /** ⌘\ / ⌘⇧\ — split the Review panel's focused pane right / down (desktop + workspace). */
   handleSplitDock: () => void
-  /** ⌃` — the Review panel's terminal group. */
+  handleSplitDockDown: () => void
+  /** ⌃` — the Review panel's terminal panes. */
   handleToggleTerminalGroup: () => void
   /** ⇧⌘F — focus mode (desktop). */
   handleToggleFocusMode: () => void
@@ -102,6 +103,7 @@ export function useCommandPalette({
   handleToggleScheduler,
   handleOpenTerminal,
   handleSplitDock,
+  handleSplitDockDown,
   handleToggleTerminalGroup,
   handleToggleFocusMode,
   focusMode,
@@ -146,6 +148,7 @@ export function useCommandPalette({
     handleOpenTerminal,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
     handleSplitDock: workspace && !isMobile ? handleSplitDock : undefined,
+    handleSplitDockDown: workspace && !isMobile ? handleSplitDockDown : undefined,
     handleToggleTerminalGroup: workspace ? handleToggleTerminalGroup : undefined,
     handleToggleFocusMode: isMobile ? undefined : handleToggleFocusMode,
     focusMode,
@@ -216,6 +219,7 @@ export function useCommandPalette({
     appShortcut('terminal', () => { handleOpenTerminal() }),
     appShortcut('toggleTerminal', () => { handleToggleTerminalGroup() }, { enabled: Boolean(workspace), allowInEditable: true }),
     appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
+    appShortcut('splitDockDown', () => { handleSplitDockDown() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('focusMode', () => { handleToggleFocusMode() }, { enabled: !isMobile }),
     // Only from the chat: in a file or a terminal ⌘F stays theirs (and the
     // browser's own Find elsewhere).

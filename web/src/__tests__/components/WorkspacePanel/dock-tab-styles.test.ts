@@ -29,4 +29,12 @@ describe('Review panel tab strip', () => {
   it('washes a closed tab on hover the way a sidebar row does', () => {
     expect(dockTabClass(false)).toContain(listRowSurface(false))
   })
+
+  it('steps the open tab back in a pane without focus, so the focused pane stands out', () => {
+    const active = dockTabClass(true).split(' ')
+    expect(active).toContain('[[data-pane-unfocused]_&]:text-(--color-text-2)')
+    expect(active).toContain('[[data-pane-unfocused]_&]:bg-(--bg-key)/35')
+    // A closed tab looks the same in either pane.
+    expect(dockTabClass(false)).not.toContain('data-pane-unfocused')
+  })
 })

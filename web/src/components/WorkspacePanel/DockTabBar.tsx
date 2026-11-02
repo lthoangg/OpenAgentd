@@ -1,12 +1,13 @@
 /**
- * DockTabBar — one Review panel group's editor-tab strip.
+ * DockTabBar — one Review panel pane's editor-tab strip.
  *
  * One row: scrolling tabs on the left, a fixed action cluster on the right:
  * the tab list (when the strip overflows), "Open…" (every view and tool,
- * including Terminal and Preview), refresh while a Git or file tab shows,
- * maximize on desktop, and on the lower group a Hide button (⌃`). Views
+ * including Terminal and Preview, and Split Right / Split Down), refresh
+ * while a Git or file tab shows, maximize on desktop, Hide on a pane of
+ * terminals (⌃`), and Close on an empty pane beside others. Views
  * (Git, Plan, Tasks…) come before a hairline and documents after it, as in
- * an editor; the group's preview tab is set in italics until it is kept.
+ * an editor; the pane's preview tab is set in italics until it is kept.
  * Hiding the dock lives on the header's review-dock toggle (and ⌘D), which
  * is always visible because the dock never covers the header.
  *
@@ -15,8 +16,10 @@
  * tab semantics do not model). ⌘W, middle-click and the tab menu
  * (right-click or Shift+F10) also close tabs; double-click keeps a preview.
  *
- * Tabs move by drag (fine pointers, see ``useTabDrag``), ⌥⇧←/→ on a
- * focused tab, or Move Left / Move Right in the tab menu.
+ * Tabs move by drag (fine pointers, see ``useTabDrag``): along the strip,
+ * onto another pane's strip or middle, or onto a pane's edge to split it.
+ * From the keyboard and the tab menu: ⌥⇧←/→, Move Left / Move Right, Split
+ * Right / Split Down, Move to Next Pane.
  */
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CalendarClock, Check, ChevronDown, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, Target, X } from 'lucide-react'
@@ -40,6 +43,7 @@ import {
 import { type DockTab, dockTabLabel, dockTabTooltip, isViewTab } from './dock-tabs'
 import type { DockOpenItem } from './DockLauncher'
 import { DOCK_TAB_ATTR, useTabDrag } from './useTabDrag'
+import type { TabDropTarget } from './useDockTabs'
 
 /** Width the "+" menu is laid out for, so it opens right-aligned under the button. */
 const OPEN_MENU_WIDTH = 192
@@ -47,7 +51,7 @@ const OPEN_MENU_WIDTH = 192
 export interface DockTabBarProps {
   tabs: DockTab[]
   activeTabId: string
-  /** This group's preview tab (italic, replaced by the next preview). */
+  /** This pane's preview tab (italic, replaced by the next preview). */
   previewTabId?: string | null
   workspace: string
   terminalMetas: TerminalSessionMeta[]
@@ -63,15 +67,21 @@ export interface DockTabBarProps {
   onMove?: (id: string, toIndex: number) => void
   /** Keep a preview tab (double-click, Keep Open). */
   onKeep?: (id: string) => void
-  /** Tab menu: Move to Other Group / Split Down. Omitted on phones. */
-  onMoveToOtherGroup?: (id: string) => void
-  canMoveToOtherGroup?: (id: string) => boolean
-  /** Two groups on screen: the menu says Move to Other Group, else Split Down. */
-  split?: boolean
+  /** Tab menu: Split Right / Split Down, the tab moving into the new pane. Omitted on phones. */
+  onSplit?: (id: string, side: 'right' | 'down') => void
+  /** False for a pane's only tab (nothing would be left to split). */
+  canSplit?: (id: string) => boolean
+  /** Tab menu: Move to Next Pane (shown while another pane is on screen). */
+  onMoveToNextPane?: (id: string) => void
+  canMoveToNextPane?: (id: string) => boolean
   /** Tab menu on files and diffs: the Changes list with the file's diff open. */
   onRevealInGit?: (path: string) => void
-  /** The lower group's Hide button (⌃`). */
-  onHideGroup?: () => void
+  /** A pane of terminals: its Hide button (⌃`). */
+  onHideTerminals?: () => void
+  /** An empty pane beside others: its Close button. */
+  onClosePane?: () => void
+  /** A tab dragged out of the strip and let go over a pane (see ``useTabDrag``). */
+  onDropTab?: (id: string, target: TabDropTarget) => void
   onRefresh: () => void
   /** What refresh reloads for the active tab ("Refresh Git status"); null hides it. */
   refreshLabel?: string | null
@@ -150,7 +160,7 @@ function tabPath(tab: DockTab, workspace: string): string | null {
  * The tab-strip items every tab's menu shares (terminal tabs add theirs
  * first). ``dismiss`` closes the menu before the action runs.
  */
-export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onMove, preview = false, onKeep, onMoveToOtherGroup, canMoveToOtherGroup, split = false, onRevealInGit }: {
+export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit }: {
   tab: DockTab
   tabs: DockTab[]
   workspace: string
@@ -161,9 +171,10 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   onMove?: (id: string, toIndex: number) => void
   preview?: boolean
   onKeep?: (id: string) => void
-  onMoveToOtherGroup?: (id: string) => void
-  canMoveToOtherGroup?: (id: string) => boolean
-  split?: boolean
+  onSplit?: (id: string, side: 'right' | 'down') => void
+  canSplit?: (id: string) => boolean
+  onMoveToNextPane?: (id: string) => void
+  canMoveToNextPane?: (id: string) => boolean
   onRevealInGit?: (path: string) => void
 }): ReactNode {
   const index = tabs.findIndex((item) => item.id === tab.id)
@@ -189,12 +200,9 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
       {onCloseOthers && item('Close Others', () => onCloseOthers(tab.id), undefined, !hasOthers)}
       {onCloseToRight && item('Close to the Right', () => onCloseToRight(tab.id), undefined, !hasRight)}
       {preview && onKeep && item('Keep Open', () => onKeep(tab.id))}
-      {onMoveToOtherGroup && item(
-        split ? 'Move to Other Group' : 'Split Down',
-        () => onMoveToOtherGroup(tab.id),
-        undefined,
-        !(canMoveToOtherGroup?.(tab.id) ?? true),
-      )}
+      {onSplit && item('Split Right', () => onSplit(tab.id, 'right'), undefined, !(canSplit?.(tab.id) ?? true))}
+      {onSplit && item('Split Down', () => onSplit(tab.id, 'down'), undefined, !(canSplit?.(tab.id) ?? true))}
+      {onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to Next Pane', () => onMoveToNextPane(tab.id))}
       {onMove && item('Move Left', () => onMove(tab.id, index - 1), undefined, index <= 0)}
       {onMove && item('Move Right', () => onMove(tab.id, index + 1), undefined, !hasRight)}
       {path && item('Copy Path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />)}
@@ -224,11 +232,14 @@ export function DockTabBar({
   onCloseToRight,
   onMove,
   onKeep,
-  onMoveToOtherGroup,
-  canMoveToOtherGroup,
-  split = false,
+  onSplit,
+  canSplit,
+  onMoveToNextPane,
+  canMoveToNextPane,
   onRevealInGit,
-  onHideGroup,
+  onHideTerminals,
+  onClosePane,
+  onDropTab,
   onRefresh,
   refreshLabel = null,
   openItems = [],
@@ -236,7 +247,7 @@ export function DockTabBar({
   onToggleMaximized,
 }: DockTabBarProps) {
   const stripRef = useRef<HTMLDivElement>(null)
-  const drag = useTabDrag({ enabled: !mobile && onMove !== undefined, onMove: onMove ?? (() => {}) })
+  const drag = useTabDrag({ enabled: !mobile && onMove !== undefined, onMove: onMove ?? (() => {}), onDrop: onDropTab })
   // A moved tab's node is re-inserted, which drops its focus: put it back
   // when the move came from the keyboard or the tab menu.
   const moveAndFocus = onMove && ((id: string, toIndex: number) => {
@@ -247,11 +258,12 @@ export function DockTabBar({
   const [openMenuAt, setOpenMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [listMenuAt, setListMenuAt] = useState<{ x: number; y: number } | null>(null)
   const menuTab = menu ? tabs.find((tab) => tab.id === menu.id) : undefined
-  const groupMenuProps = {
+  const paneMenuProps = {
     onKeep,
-    onMoveToOtherGroup,
-    canMoveToOtherGroup,
-    split,
+    onSplit,
+    canSplit,
+    onMoveToNextPane,
+    canMoveToNextPane,
     onRevealInGit,
   }
   const sharedMenu = (tab: DockTab, dismiss: () => void) => (
@@ -264,7 +276,7 @@ export function DockTabBar({
       onCloseToRight={onCloseToRight}
       onMove={moveAndFocus}
       preview={tab.id === previewTabId}
-      {...groupMenuProps}
+      {...paneMenuProps}
     />
   )
   // The tab list shows only when the strip cannot show every tab.
@@ -293,7 +305,7 @@ export function DockTabBar({
     moveAndFocus(id, to)
   }
   return (
-    <div ref={stripRef} className={DOCK_TAB_STRIP_CLASS}>
+    <div ref={stripRef} data-dock-strip="" className={DOCK_TAB_STRIP_CLASS}>
       <div
         ref={scrollerRef}
         className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1"
@@ -455,9 +467,14 @@ export function DockTabBar({
               : <Maximize2 size={13} aria-hidden="true" />}
           </ActionButton>
         )}
-        {onHideGroup && (
-          <ActionButton label={`Hide this group (${shortcutLabel(APP_SHORTCUTS.toggleTerminal, os)})`} onClick={onHideGroup}>
+        {onHideTerminals && (
+          <ActionButton label={`Hide terminals (${shortcutLabel(APP_SHORTCUTS.toggleTerminal, os)})`} onClick={onHideTerminals}>
             <ChevronDown size={14} aria-hidden="true" />
+          </ActionButton>
+        )}
+        {onClosePane && (
+          <ActionButton label={`Close pane (${shortcutLabel(APP_SHORTCUTS.closeTab, os)})`} onClick={onClosePane}>
+            <X size={14} aria-hidden="true" />
           </ActionButton>
         )}
       </div>
@@ -514,7 +531,7 @@ export function DockTabBar({
             onCloseToRight={onCloseToRight}
             onMove={moveAndFocus}
             preview={menuTab.id === previewTabId}
-            {...groupMenuProps}
+            {...paneMenuProps}
           />
         </ContextMenu>
       )}

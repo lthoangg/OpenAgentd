@@ -625,10 +625,10 @@ drawer and full-screen sheet.
 │ sidebar cap │ workspace · title              │ Review panel cap:  Tasks ▣   │
 │ lights ⌘B   ├────────────────────────────────┼──────────────────────────────┤
 │ sidebar 264 │ chat · bg-page (≥ 400)         │ Review panel (≥ 340)         │
-│ page / rail │ transcript (prose ≤ 768,       │ upper group: tab-bar 36      │
-│ 28px rows   │   code/tables/tools ≤ 960)     │   toolbar 32 · one scroller  │
-│             │                                ├─ split handle (⌘\) ──────────┤
-│             │ composer + run deck (≤ 768)    │ lower group: terminals (⌃`)  │
+│ page / rail │ transcript (prose ≤ 768,       │ pane: tab-bar 36 │ pane (⌘\) │
+│ 28px rows   │   code/tables/tools ≤ 960)     │ toolbar 32 · one │            │
+│             │                                ├─ split bar ──────┴───────────┤
+│             │ composer + run deck (≤ 768)    │ terminal pane (⌃`, ⌘⇧\)      │
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
@@ -660,8 +660,9 @@ drawer and full-screen sheet.
   stored as a ratio of the center (default 45%), clamped so the dock keeps
   340px and the chat keeps 400px in a desktop window (520px on a touch
   tablet, where the run deck would stack).
-  Open/closed, sizes and the split ratio are per window (`sessionStorage`);
-  tabs and groups per session (`oa.dockTabs.v1`); terminals per workspace.
+  Open/closed and sizes are per window (`sessionStorage`); panes, their
+  tabs and split sizes per session (`oa.dockTabs.v1`); terminals per
+  workspace.
   Reset Layout puts the sizes back.
 - **Narrow windows.** A desktop window behaves like a desktop app: the
   sidebar pushes the chat and the Review panel sits beside it while each keeps
@@ -674,7 +675,7 @@ drawer and full-screen sheet.
   Covering, the panel stops above the composer (`--composer-h`), so a message
   can be written beside the diff; maximized (`Mod+Shift+D`) it covers both.
   What it covers stays mounted, `inert`. Maximize lasts until toggled or Escape;
-  with two groups it shows the focused one.
+  with several panes it shows the focused one.
 - **Toggles slide, resizes do not.** Showing or hiding the sidebar or the
   Review panel slides its width (`base`, `ease-sheet`) with a CSS transition
   set only while the toggle runs (`useToggleTween`, `ResizableAside`
@@ -693,8 +694,9 @@ drawer and full-screen sheet.
 - **Find in session** (`Mod+F`, while focus is in the chat) searches the loaded
   turns and paints matches with the CSS Custom Highlight API.
 - **F6 areas.** F6 / Shift+F6 move focus sidebar → transcript → composer →
-  upper group → lower group → status bar (`lib/focus-regions.ts`,
-  `data-focus-region`), returning to where focus was in each.
+  each Review panel pane (left to right, top to bottom) → status bar
+  (`lib/focus-regions.ts`, `data-focus-region`, `data-focus-order`),
+  returning to where focus was in each.
 - **Separators are controls.** Resize handles are 6px, keyboard-focusable
   `role="separator"` elements (arrows ±16px, Shift ±64px, Home/End, Enter or
   double-click to reset) whose 1px line lights up in `focus-ring`.
@@ -707,15 +709,37 @@ drawer and full-screen sheet.
   Scheduled tasks open as closable tabs. The header's Review panel button
   (`Mod+D`) is the one show/hide control; the panel never covers the header.
   Inline diff peeks never scroll their ancestors.
-- **Two groups, top and bottom.** `Mod+\` splits into an empty lower group
-  (its launcher) or joins the two; at most two, never side by side (the panel
-  is rarely wide enough for two diffs). Terminals open in the lower group, so
-  a diff and a shell show at once; Control and the backquote key (`toggleTerminal`) show or hide that group without
-  stopping its shells (its strip has a Hide button too), and hiding it with
-  nothing above closes the panel. Closing a group's last tab joins the groups.
-  The handle between them drags, takes the arrow keys, and resets on
-  double-click; each group keeps 120px. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`)
-  act on the focused group. Phones have one strip.
+- **Panes, as in an editor.** The panel holds any number of panes, each
+  with its own tab strip, laid out as rows and columns
+  (`WorkspacePanel/dock-panes.ts`). `Mod+\` splits the focused pane right and
+  `Mod+Shift+\` down, as often as there is room: a pane keeps 160 × 120px,
+  and a split that would break that says so in a toast. A new pane is empty
+  and shows its launcher (tabs are not cloned: each tab lives in one pane).
+  Closing a pane's last tab closes the pane; its room goes to the pane before
+  it (else after). A pane's strip and its tab menu offer Split Right and Split
+  Down; the tab menu adds Move to Next Pane.
+- **Tabs drag between panes** (mouse and pen; touch scrolls the strip). Along
+  its strip a tab slides and its neighbours make room. Carried out, it becomes
+  a floating copy and the target lights up in `focus-ring`: a caret between
+  another strip's tabs, a whole pane's body (its middle: move there), or the
+  half a split would take (a band a fifth of the body's shorter side along an
+  edge: split that pane, the tab in the new half). Its own pane's middle is no
+  target, nor its own edges when it is that pane's only tab. Escape, a
+  cancelled pointer or a release over nothing puts it back.
+- **Panes never move in the DOM.** They render flat, absolutely placed from
+  the layout, in the order they were made, so a split never re-parents one (a
+  moved iframe reloads). Preview pages sit in one layer over the panes, so a
+  page and its unsent comments survive a move between panes. The bars between
+  panes drag, take the arrow keys, and even out on Enter or double-click.
+- **Terminals have a pane of their own.** The first shell opens in an empty
+  focused pane, else in a pane under everything, so a diff and a shell show at
+  once; documents never open in a terminal pane (a pane above takes them).
+  Control and the backquote key (`toggleTerminal`) hide every pane holding
+  only terminals without stopping their shells (their strips have a Hide
+  button too), and show them again; hiding them with nothing else on screen
+  closes the panel. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`) act on the focused
+  pane; with several panes, the open tab of a pane without focus steps back
+  (a lighter wash, `text-2`). Phones have one strip: panes join there.
 
 ## Elevation & Depth
 
@@ -945,10 +969,11 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height (37px, 45px on touch) on the chrome tone (`bg-page` in light, `bg-sidebar` in dark; `DOCK_TAB_STRIP_CLASS`) with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
 - **Order**: views (Git, Plan, Tasks…) first, a hairline, then documents (files, diffs, commits, terminals, previews). A tab moves only among its own kind.
-- **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the group's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
+- **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the focused pane's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
+- **Drag**: a tab slides along its strip; carried out, a floating copy follows the pointer and a `focus-ring` caret or tint shows where it lands (another strip, a pane's middle, or the half an edge split takes). See Layout → Tabs drag between panes.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
-- **Menu** (right-click, Shift+F10): Close, Close Others, Close to the Right, Keep Open, Move to Other Group / Split Down, Move Left, Move Right, Copy Path, Reveal in Git. Close Others and Close to the Right act on the tab's own group.
-- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border.
+- **Menu** (right-click, Shift+F10): Close, Close Others, Close to the Right, Keep Open, Split Right, Split Down, Move to Next Pane, Move Left, Move Right, Copy Path, Reveal in Git. Close Others and Close to the Right act on the tab's own pane.
+- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
 - **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.
 - **Semantics**: tabs are buttons with `aria-current`, not an ARIA `tablist` — terminal tabs carry their own context menu and sheet.
@@ -1367,9 +1392,9 @@ The desktop shell hands the OS what the OS already draws:
 - **App menu**: macOS keeps the menu bar. On Windows and Linux the menu bar
   is hidden and the header's ☰ (or a bare Alt tap outside a text field)
   pops the same menu up (`show_app_menu`). The View menu carries every
-  layout command (Sidebar, Review Panel, Split Review Panel, Terminal,
-  Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size, Reset
-  Layout). Its shortcuts work with the bar hidden; on Linux each item
+  layout command (Sidebar, Review Panel, Split Review Panel Right and Down,
+  Terminal, Maximize Review Panel, Focus Mode, Model and Thinking…, Text
+  Size, Reset Layout). Its shortcuts work with the bar hidden; on Linux each item
   answers GTK's `can-activate-accel` itself, since GTK only fires the
   shortcuts of a menu on screen.
 - **Dialogs**: button order follows the OS (`DialogFooter`): Cancel before

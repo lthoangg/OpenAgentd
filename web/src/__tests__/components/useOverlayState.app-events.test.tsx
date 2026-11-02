@@ -208,13 +208,15 @@ describe('useOverlayState app events', () => {
     expect(result.current.workspacePanel).toBeNull()
   })
 
-  it('opens the Review panel and asks it to split on splitReviewPanel', () => {
+  it('opens the Review panel and asks it to split right, then down', () => {
     const { result } = renderOverlay()
 
     act(() => dispatchAppEvent(APP_EVENTS.splitReviewPanel))
-
     expect(result.current.workspacePanel).toBe('changed')
-    expect(result.current.dockLayoutRequest).toEqual({ action: 'split', key: 1 })
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'split-right', key: 1 })
+
+    act(() => dispatchAppEvent(APP_EVENTS.splitReviewPanelDown))
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'split-down', key: 2 })
   })
 
   it('asks to show the terminal group with the panel closed, and to toggle it once open', () => {

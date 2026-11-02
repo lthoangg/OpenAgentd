@@ -96,7 +96,7 @@ describe('Review dock "+" menu', () => {
     await screen.findByRole('button', { name: 'Session plan' })
 
     const menu = await openMenu()
-    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…', 'Split Right', 'Split Down'])
 
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Git' }))
     expect(screen.queryByRole('menu')).toBeNull()

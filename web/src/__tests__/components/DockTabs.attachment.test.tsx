@@ -43,7 +43,8 @@ describe('dock attachment tabs', () => {
   it('opens as a preview tab that the next attachment replaces', () => {
     const { result, rerender } = renderTabs()
     rerender({ attachmentRequest: { item: pdf, key: 1 } })
-    expect(result.current.groups.preview[0]).toBe(attachmentTabId(pdf.src))
+    const { state } = result.current
+    expect(state.panes[state.focused].preview).toBe(attachmentTabId(pdf.src))
     rerender({ attachmentRequest: { item: png, key: 2 } })
 
     expect(result.current.visibleTabs.map((tab) => tab.id)).toEqual([attachmentTabId(png.src)])

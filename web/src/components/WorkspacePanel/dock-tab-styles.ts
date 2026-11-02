@@ -6,7 +6,9 @@
  * the recessed rail in dark). The open tab is marked the way the sidebar
  * marks the open session (``listRowSurface``): a keycap wash, medium weight,
  * the main text colour, no coloured edge. The strip draws the one hairline
- * between it and the content.
+ * between it and the content. With several panes, the open tab of a pane
+ * that does not have focus steps back (a lighter wash, the secondary text
+ * colour), so the focused pane reads at a glance, as in an editor.
  */
 import { listRowSurface } from '@/components/ui/list-row'
 
@@ -20,7 +22,7 @@ export function dockTabClass(active: boolean): string {
     'group/tab relative flex h-full max-w-48 shrink-0 items-center rounded-sm text-xs transition-colors duration-(--motion-instant)',
     listRowSurface(active),
     active
-      ? 'font-medium text-(--color-text)'
+      ? 'font-medium text-(--color-text) [[data-pane-unfocused]_&]:bg-(--bg-key)/35 [[data-pane-unfocused]_&]:text-(--color-text-2)'
       : 'text-(--color-text-muted) hover:text-(--color-text-2)',
   ].join(' ')
 }
@@ -38,6 +40,17 @@ export function dockTabButtonClass(closable: boolean): string {
  * passes (a true floating layer for the drag, so it may cast the shadow).
  */
 export const DOCK_TAB_LIFTED_CLASS = 'shadow-(--shadow-depth) bg-(--bg-card) text-(--color-text) cursor-grabbing'
+
+/** A tab carried out of its strip: a floating copy under the pointer (placed inline). */
+export const DOCK_TAB_GHOST_CLASS = 'rounded-sm opacity-95 shadow-(--shadow-depth) bg-(--bg-card) text-(--color-text)'
+
+/**
+ * Where a carried tab would land: a tint over the pane (its
+ * middle), over the half a split would take (an edge), or a caret between
+ * two tabs of a strip.
+ */
+export const DOCK_DROP_ZONE_CLASS = 'pointer-events-none fixed z-9998 rounded-sm border border-(--focus-ring)/60 bg-(--focus-ring)/20'
+export const DOCK_DROP_CARET_CLASS = 'pointer-events-none fixed z-9998 w-0.5 rounded-full bg-(--focus-ring)'
 
 /**
  * Inline close control, always shown: full strength on the open tab, 60% on

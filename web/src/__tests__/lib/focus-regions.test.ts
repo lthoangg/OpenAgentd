@@ -14,7 +14,7 @@ afterEach(() => {
 function layout() {
   document.body.innerHTML = `
     <footer data-focus-region="status"><button id="health">Connected</button></footer>
-    <div data-focus-region="dock-upper"><button id="tab-a">a.ts</button><button id="tab-git" aria-current="true">Git</button></div>
+    <div data-focus-region="dock"><button id="tab-a">a.ts</button><button id="tab-git" aria-current="true">Git</button></div>
     <nav data-focus-region="sidebar"><button id="row-1">One</button><button id="row-2" aria-current="page">Two</button></nav>
     <div data-focus-region="transcript" data-region-self id="transcript"><button id="copy">Copy</button></div>
     <div data-focus-region="composer"><button id="queued">Remove</button><textarea id="input" data-region-entry></textarea></div>
@@ -25,7 +25,7 @@ const id = () => (document.activeElement as HTMLElement | null)?.id
 describe('F6 areas', () => {
   it('orders the areas sidebar, transcript, composer, Review panel, status bar', () => {
     layout()
-    expect(visibleRegions().map((el) => el.getAttribute('data-focus-region'))).toEqual(['sidebar', 'transcript', 'composer', 'dock-upper', 'status'])
+    expect(visibleRegions().map((el) => el.getAttribute('data-focus-region'))).toEqual(['sidebar', 'transcript', 'composer', 'dock', 'status'])
   })
 
   it('enters each area at its current item, its marked entry, or itself', () => {
@@ -62,8 +62,20 @@ describe('F6 areas', () => {
   it('skips hidden and inert areas', () => {
     layout()
     document.querySelector<HTMLElement>('[data-focus-region="sidebar"]')!.setAttribute('inert', '')
-    document.querySelector<HTMLElement>('[data-focus-region="dock-upper"]')!.style.display = 'none'
+    document.querySelector<HTMLElement>('[data-focus-region="dock"]')!.style.display = 'none'
     expect(visibleRegions().map((el) => el.getAttribute('data-focus-region'))).toEqual(['transcript', 'composer', 'status'])
+  })
+
+  it('takes the Review panel\'s panes in layout order, whatever their DOM order', () => {
+    document.body.innerHTML = `
+      <div data-focus-region="dock" data-focus-order="1"><button id="right">b.ts</button></div>
+      <div data-focus-region="composer"><textarea id="input"></textarea></div>
+      <div data-focus-region="dock" data-focus-order="0"><button id="left">a.ts</button></div>
+    `
+    expect(visibleRegions().map((el) => el.querySelector('*')?.id)).toEqual(['input', 'left', 'right'])
+    expect(cycleRegion(1)?.id).toBe('input')
+    expect(cycleRegion(1)?.id).toBe('left')
+    expect(cycleRegion(1)?.id).toBe('right')
   })
 
   it('falls back to the first focusable control', () => {

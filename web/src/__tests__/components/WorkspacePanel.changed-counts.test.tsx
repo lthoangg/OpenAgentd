@@ -47,7 +47,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))

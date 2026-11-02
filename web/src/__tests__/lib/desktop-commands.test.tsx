@@ -154,6 +154,7 @@ describe('useDesktopCommands', () => {
 
   it.each([
     ['split_review_panel', APP_EVENTS.splitReviewPanel],
+    ['split_review_panel_down', APP_EVENTS.splitReviewPanelDown],
     ['toggle_terminal', APP_EVENTS.toggleTerminalGroup],
     ['focus_mode', APP_EVENTS.toggleFocusMode],
     ['reset_layout', APP_EVENTS.resetLayout],

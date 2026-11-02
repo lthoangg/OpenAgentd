@@ -1,20 +1,22 @@
 /**
  * F6 / ⇧F6: move focus between the window's areas, as in native apps and
- * editors: sidebar → transcript → composer → Review panel (upper group, then
- * lower) → status bar, and around.
+ * editors: sidebar → transcript → composer → Review panel (each pane, left
+ * to right and top to bottom) → status bar, and around.
  *
  * An area is an element marked ``data-focus-region="<name>"``. Hidden,
- * inert or absent areas are skipped. Entering an area focuses, in order:
+ * inert or absent areas are skipped. Areas of one name go by their
+ * ``data-focus-order`` (Review panel panes sit in the DOM in the order they
+ * were made, not where they are). Entering an area focuses, in order:
  * the element focused there last (still inside and focusable), the one
  * marked ``data-region-entry``, the current item (``aria-current``: the
- * open session, a group's active tab), its first focusable control, or the
+ * open session, a pane's active tab), its first focusable control, or the
  * area itself (made focusable with ``tabindex=-1``). An area marked
  * ``data-region-self`` (the transcript) takes focus itself unless focus was
  * in it before, so the arrow and page keys scroll it.
  */
 import type { KeyChord } from '@/lib/keyboard/chord'
 
-export const FOCUS_REGIONS = ['sidebar', 'transcript', 'composer', 'dock-upper', 'dock-lower', 'status'] as const
+export const FOCUS_REGIONS = ['sidebar', 'transcript', 'composer', 'dock', 'status'] as const
 export type FocusRegion = (typeof FOCUS_REGIONS)[number]
 
 export const REGION_ATTR = 'data-focus-region'
@@ -57,7 +59,8 @@ export function visibleRegions(root: ParentNode = document): HTMLElement[] {
     const index = FOCUS_REGIONS.indexOf(el.getAttribute(REGION_ATTR) as FocusRegion)
     return index < 0 ? FOCUS_REGIONS.length : index
   }
-  return found.sort((a, b) => rank(a) - rank(b))
+  const order = (el: HTMLElement) => Number(el.getAttribute('data-focus-order')) || 0
+  return found.sort((a, b) => rank(a) - rank(b) || order(a) - order(b))
 }
 
 /** Remember where focus is inside its area, to come back there. */

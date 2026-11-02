@@ -95,12 +95,12 @@ export interface AttachmentTabRequest {
 }
 
 /**
- * A layout request for the dock: ``split`` joins or splits its two groups
- * (⌘\); ``terminal-toggle`` shows or hides the terminal group (⌃`), and
- * ``terminal-show`` shows it (the dock was closed).
+ * A layout request for the dock: ``split-right`` / ``split-down`` split the
+ * focused pane (⌘\, ⌘⇧\); ``terminal-toggle`` shows or hides the terminal
+ * panes (⌃`), and ``terminal-show`` shows them (the dock was closed).
  */
 export interface DockLayoutRequest {
-  action: 'split' | 'terminal-toggle' | 'terminal-show'
+  action: 'split-right' | 'split-down' | 'terminal-toggle' | 'terminal-show'
   /** Monotonic; the dock handles each key once. */
   key: number
 }

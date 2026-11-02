@@ -48,7 +48,7 @@ mock.module('lucide-react', () => ({
   GitCommitHorizontal: Icon,
   GitCompare: Icon,
   Loader2: Icon,
-  Maximize2: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon,
   Minimize2: Icon,
   Plus: Icon,
   RefreshCw: Icon,

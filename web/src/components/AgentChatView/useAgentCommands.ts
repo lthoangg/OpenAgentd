@@ -49,8 +49,9 @@ interface UseAgentCommandsArgs {
   handleOpenTerminal: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
   handleToggleDockMaximized?: () => void
-  /** Desktop with a workspace: split the Review panel into two groups (⌘\). */
+  /** Desktop with a workspace: split the Review panel's focused pane right (⌘\) or down (⌘⇧\). */
   handleSplitDock?: () => void
+  handleSplitDockDown?: () => void
   /** With a workspace: show or hide the terminal group (⌃`). */
   handleToggleTerminalGroup?: () => void
   /** Desktop: hide the sidebar and the Review panel, or bring them back. */
@@ -94,6 +95,7 @@ export function useAgentCommands({
   handleOpenTerminal,
   handleToggleDockMaximized,
   handleSplitDock,
+  handleSplitDockDown,
   handleToggleTerminalGroup,
   handleToggleFocusMode,
   focusMode = false,
@@ -144,10 +146,13 @@ export function useAgentCommands({
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the Review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
       : []),
     ...(handleSplitDock
-      ? [{ id: 'split-dock', group: 'View' as const, label: 'Split Review Panel', description: 'Two tab groups, one above the other, or one again', keywords: 'dock split group top bottom', shortcut: shortcutLabel(KEYS.splitDock, os), action: handleSplitDock }]
+      ? [{ id: 'split-dock', group: 'View' as const, label: 'Split Review Panel Right', description: 'A new pane beside the focused one; closing its last tab joins it back', keywords: 'dock split pane group side by side right vertical', shortcut: shortcutLabel(KEYS.splitDock, os), action: handleSplitDock }]
+      : []),
+    ...(handleSplitDockDown
+      ? [{ id: 'split-dock-down', group: 'View' as const, label: 'Split Review Panel Down', description: 'A new pane under the focused one; closing its last tab joins it back', keywords: 'dock split pane group top bottom down horizontal', shortcut: shortcutLabel(KEYS.splitDockDown, os), action: handleSplitDockDown }]
       : []),
     ...(handleToggleTerminalGroup
-      ? [{ id: 'toggle-terminal', group: 'View' as const, label: 'Terminal', description: 'Show or hide the terminals under the Review panel tabs; they keep running', keywords: 'shell console panel', shortcut: shortcutLabel(KEYS.toggleTerminal, os), action: handleToggleTerminalGroup }]
+      ? [{ id: 'toggle-terminal', group: 'View' as const, label: 'Terminal', description: 'Show or hide the Review panel\'s terminal panes; they keep running', keywords: 'shell console panel', shortcut: shortcutLabel(KEYS.toggleTerminal, os), action: handleToggleTerminalGroup }]
       : []),
     ...(handleToggleFocusMode
       ? [{ id: 'focus-mode', group: 'View' as const, label: focusMode ? 'Leave Focus Mode' : 'Focus Mode', description: focusMode ? 'Bring the sidebar and Review panel back' : 'Hide the sidebar and Review panel; again to bring them back', keywords: 'zen distraction free hide panels', shortcut: shortcutLabel(KEYS.focusMode, os), action: handleToggleFocusMode }]
@@ -221,5 +226,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleToggleTerminalGroup, handleToggleFocusMode, focusMode, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
+  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleToggleTerminalGroup, handleToggleFocusMode, focusMode, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

@@ -55,10 +55,10 @@ export function chatMinWidth({ touch = false }: InputKind = {}): number {
 export const RESIZE_KEY_STEP = 16
 export const RESIZE_KEY_STEP_LARGE = 64
 
-/** The Review panel's two groups (top/bottom): default share of the upper one. */
-export const DOCK_SPLIT_DEFAULT_RATIO = 0.55
-/** Shortest a Review panel group gets: a tab strip and a few rows. */
-export const DOCK_GROUP_MIN_HEIGHT = 120
+/** Narrowest a Review panel pane gets: a tab and the strip's buttons. */
+export const DOCK_PANE_MIN_WIDTH = 160
+/** Shortest a Review panel pane gets: a tab strip and a few rows. */
+export const DOCK_PANE_MIN_HEIGHT = 120
 
 export type DockMode = 'side' | 'overlay'
 
@@ -100,18 +100,6 @@ function centerReserve({ dockOpen = false, touch = false }: SidebarContext): num
 export function sidebarIsDrawer(viewportWidth: number, context: SidebarContext = {}): boolean {
   if (context.touch) return viewportWidth < SIDEBAR_DRAWER_MAX_VIEWPORT
   return viewportWidth - SIDEBAR_MIN_WIDTH < centerReserve(context)
-}
-
-/**
- * The upper group's share of a split Review panel ``height`` px tall, kept
- * so neither group drops below ``DOCK_GROUP_MIN_HEIGHT``. A panel too short
- * for that splits evenly.
- */
-export function clampSplitRatio(ratio: number, height: number): number {
-  const safe = Number.isFinite(ratio) && ratio > 0 && ratio < 1 ? ratio : DOCK_SPLIT_DEFAULT_RATIO
-  if (!(height > DOCK_GROUP_MIN_HEIGHT * 2)) return 0.5
-  const min = DOCK_GROUP_MIN_HEIGHT / height
-  return clamp(safe, min, 1 - min)
 }
 
 /**

@@ -22,7 +22,7 @@ mock.module('lucide-react', () => ({
   File: Icon, FileHeadphone: Icon, FileText: Icon, FileType: Icon,
   Folder: Icon, FolderOpen: Icon,
   GitBranch: Icon, GitCommitHorizontal: Icon, GitCompare: Icon,
-  Loader2: Icon, Maximize2: Icon, Minimize2: Icon, Pencil: Icon, Plus: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
+  Loader2: Icon, Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Pencil: Icon, Plus: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))

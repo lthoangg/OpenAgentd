@@ -18,8 +18,8 @@ export interface DockOpenItem {
   label: string
   icon: ReactNode
   shortcut?: string
-  /** Views open as their own tabs; tools start something new. */
-  group: 'view' | 'tool'
+  /** Views open as their own tabs; tools start something new; pane rows split the pane. */
+  group: 'view' | 'tool' | 'pane'
   /** A singleton tab that is already in the strip (picking it shows it). */
   open?: boolean
   run: () => void

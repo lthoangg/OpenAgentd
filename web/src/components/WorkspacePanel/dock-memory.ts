@@ -1,12 +1,12 @@
 /**
- * Remembers the Review panel's tabs and groups per session, so switching
+ * Remembers the Review panel's panes and tabs per session, so switching
  * back to a session shows its diffs, plan and files where they were.
  *
  * One localStorage entry holds the most recent ``MAX_ENTRIES`` sessions; a
  * new-session draft's tabs live only in memory and carry over to the session
  * its first message starts.
  */
-import { type DockGroups, restoreDockGroups, serializeDockGroups } from './dock-groups'
+import { type DockPanes, restoreDockPanes, serializeDockPanes } from './dock-panes'
 
 export const DOCK_MEMORY_KEY = 'oa.dockTabs.v1'
 const MAX_ENTRIES = 40
@@ -31,18 +31,18 @@ function readAll(): Record<string, Entry> {
   }
 }
 
-export function loadDockGroups(key: string): DockGroups | null {
+export function loadDockPanes(key: string): DockPanes | null {
   if (!key.startsWith('session:')) return null
-  return restoreDockGroups(readAll()[key]?.state)
+  return restoreDockPanes(readAll()[key]?.state)
 }
 
-export function saveDockGroups(key: string, state: DockGroups): void {
+export function saveDockPanes(key: string, state: DockPanes): void {
   if (!key.startsWith('session:')) return
   try {
     const all = readAll()
     // Nothing open: forget the session rather than spend a slot on it.
     if (state.tabs.length === 0) delete all[key]
-    else all[key] = { at: Date.now(), state: serializeDockGroups(state) }
+    else all[key] = { at: Date.now(), state: serializeDockPanes(state) }
     const keys = Object.keys(all).sort((a, b) => (all[b]?.at ?? 0) - (all[a]?.at ?? 0))
     for (const stale of keys.slice(MAX_ENTRIES)) delete all[stale]
     localStorage.setItem(DOCK_MEMORY_KEY, JSON.stringify(all))

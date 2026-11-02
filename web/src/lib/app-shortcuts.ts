@@ -31,8 +31,10 @@ export const APP_SHORTCUTS = {
   sessionSettings: { key: '.', code: 'Period' },
   workspaceFiles: { key: 'D' },
   maximizeDock: { key: 'D', shift: true },
-  // Split the Review panel into two groups (top/bottom), or join them.
+  // Split the focused Review panel pane right or down, as often as there is
+  // room; closing a pane's last tab joins it back.
   splitDock: { key: '\\', code: 'Backslash' },
+  splitDockDown: { key: '\\', code: 'Backslash', shift: true },
   // Hide everything but the chat; again to put the layout back.
   focusMode: { key: 'F', shift: true },
   // Find in this session's transcript (only while focus is in the chat).

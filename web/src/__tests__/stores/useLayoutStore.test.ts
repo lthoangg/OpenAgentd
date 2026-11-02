@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 
 import { LAYOUT_STORAGE_KEY, useLayoutStore, windowLayoutStorage } from '@/stores/useLayoutStore'
-import { DOCK_DEFAULT_RATIO, DOCK_SPLIT_DEFAULT_RATIO } from '@/lib/workbench-layout'
+import { DOCK_DEFAULT_RATIO } from '@/lib/workbench-layout'
 
 beforeEach(() => {
-  useLayoutStore.setState({ sidebarCollapsed: null, sidebarWidth: 264, dockRatio: DOCK_DEFAULT_RATIO, dockSplitRatio: DOCK_SPLIT_DEFAULT_RATIO, dockOpen: false, dockMaximized: false })
+  useLayoutStore.setState({ sidebarCollapsed: null, sidebarWidth: 264, dockRatio: DOCK_DEFAULT_RATIO, dockOpen: false, dockMaximized: false })
   localStorage.clear()
   sessionStorage.clear()
 })
@@ -50,14 +50,10 @@ describe('useLayoutStore', () => {
     expect(useLayoutStore.getState().dockMaximized).toBe(false)
   })
 
-  it('remembers whether the Review panel is open and how it is split', () => {
-    const store = useLayoutStore.getState()
-    store.setDockOpen(true)
-    store.setDockSplitRatio(0.7)
+  it('remembers whether the Review panel is open (its panes belong to each session)', () => {
+    useLayoutStore.getState().setDockOpen(true)
     expect(persisted().dockOpen).toBe(true)
-    expect(persisted().dockSplitRatio).toBe(0.7)
-    store.setDockSplitRatio(1.2)
-    expect(useLayoutStore.getState().dockSplitRatio).toBe(0.7)
+    expect(persisted()).not.toHaveProperty('dockSplitRatio')
   })
 
   it('keeps each window to its own layout, and seeds a new window from the last one saved', () => {
@@ -75,14 +71,12 @@ describe('useLayoutStore', () => {
     const store = useLayoutStore.getState()
     store.setSidebarWidth(400)
     store.setDockRatio(0.7)
-    store.setDockSplitRatio(0.3)
     store.setDockMaximized(true)
     store.setSidebarCollapsed(true, false)
     store.resetLayout()
     const state = useLayoutStore.getState()
     expect(state.sidebarWidth).toBe(264)
     expect(state.dockRatio).toBe(DOCK_DEFAULT_RATIO)
-    expect(state.dockSplitRatio).toBe(DOCK_SPLIT_DEFAULT_RATIO)
     expect(state.dockMaximized).toBe(false)
     expect(state.sidebarCollapsed).toBeNull()
   })

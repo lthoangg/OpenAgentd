@@ -17,6 +17,7 @@ export const APP_EVENTS = {
   openPlan: 'oa:open-plan',
   // View menu: layout commands (their keys match physical codes or Control).
   splitReviewPanel: 'oa:split-review-panel',
+  splitReviewPanelDown: 'oa:split-review-panel-down',
   toggleTerminalGroup: 'oa:toggle-terminal-group',
   toggleFocusMode: 'oa:toggle-focus-mode',
   resetLayout: 'oa:reset-layout',

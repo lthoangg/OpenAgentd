@@ -297,7 +297,7 @@ describe("useAgentCommands — layout", () => {
       handleToggleFocusMode: focus,
       handleFindInSession: find,
     })))
-    expect(byId(result.current, "split-dock").label).toBe("Split Review Panel")
+    expect(byId(result.current, "split-dock").label).toBe("Split Review Panel Right")
     expect(byId(result.current, "split-dock").shortcut).toBe("Ctrl+\\")
     expect(byId(result.current, "toggle-terminal").label).toBe("Terminal")
     expect(byId(result.current, "toggle-terminal").shortcut).toBe("Ctrl+`")

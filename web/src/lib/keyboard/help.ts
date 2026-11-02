@@ -83,7 +83,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       title: 'Review panel',
       entries: [
         app('workspaceFiles', 'Show or hide the Review panel'),
-        app('splitDock', 'Split or join the Review panel'),
+        app('splitDock', 'Split the focused pane right'),
+        app('splitDockDown', 'Split the focused pane down'),
         app('toggleTerminal', 'Show or hide the terminal'),
         app('openGit', 'Open Git'),
         app('maximizeDock', 'Maximize the Review panel'),

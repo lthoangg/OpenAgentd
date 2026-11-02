@@ -1,9 +1,11 @@
 /**
- * The Review panel's two groups: ⌘\ splits into an empty lower group (its
- * launcher) and joins again; ⌃` shows the terminal group under the open
- * tabs and hides it without stopping the shell (closing the panel when
- * nothing else is open); a file opened from a list is an italic preview tab
- * until it is kept; a strip too narrow for its tabs lists them all.
+ * The Review panel's panes: ⌘\ and ⌘⇧\ split the focused pane right and down
+ * into an empty pane (its launcher) as often as there is room, a tab's menu
+ * splits it off, and a pane closes with its last tab; ⌃` shows the terminal
+ * pane under the open tabs and hides it without stopping the shell (closing
+ * the panel when nothing else is open); a file opened from a list is an
+ * italic preview tab until it is kept; a strip too narrow for its tabs lists
+ * them all. (Dragging tabs between panes: ``DockTabs.reorder.test.tsx``.)
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
@@ -12,6 +14,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockLayoutRequest, DockViewRequest } from '@/components/WorkspacePanel/dock-tabs'
@@ -34,7 +37,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -107,43 +110,107 @@ async function renderPanel(initial: PanelProps = {}) {
   }
 }
 
-const lowerGroup = () => screen.queryByRole('group', { name: 'Lower group' })
+/** The panes on screen, in layout order (one pane is not named a group). */
+const panes = () => screen.queryAllByRole('group', { name: /^Pane \d/ })
+const pane = (n: number) => screen.getByRole('group', { name: `Pane ${n}` })
+/** The pane a tab is in. */
+const paneOf = (name: string) => screen.getByRole('button', { name }).closest<HTMLElement>('[data-dock-pane]')!
 const GIT: DockViewRequest = { view: 'review', key: 1 }
 
 describe('splitting the Review panel', () => {
-  it('splits into an empty lower group that offers what to open, and joins again', async () => {
+  it('splits right and down as often as there is room, each new pane empty and focused', async () => {
     const { update } = await renderPanel({ viewRequest: GIT })
-    expect(lowerGroup()).toBeNull()
+    expect(panes()).toHaveLength(0)
 
-    await update({ layoutRequest: { action: 'split', key: 1 } })
-    const lower = lowerGroup()!
-    expect(lower).toBeTruthy()
-    expect(within(lower).getByRole('group', { name: 'Open in Review panel' })).toBeTruthy()
-    expect(within(screen.getByRole('group', { name: 'Upper group' })).getByRole('button', { name: 'Git' })).toBeTruthy()
-    expect(screen.getByRole('separator', { name: 'Resize Review panel groups' })).toBeTruthy()
+    await update({ layoutRequest: { action: 'split-right', key: 1 } })
+    expect(panes()).toHaveLength(2)
+    expect(within(pane(1)).getByRole('button', { name: 'Git' })).toBeTruthy()
+    // The new pane offers what to open.
+    expect(within(pane(2)).getByRole('group', { name: 'Open in Review panel' })).toBeTruthy()
+    expect(screen.getByRole('separator', { name: 'Resize panes' }).getAttribute('aria-orientation')).toBe('vertical')
 
-    await update({ layoutRequest: { action: 'split', key: 2 } })
-    expect(lowerGroup()).toBeNull()
+    // ⌘\ again splits the focused (new) pane, not the first one.
+    await update({ layoutRequest: { action: 'split-right', key: 2 } })
+    expect(panes()).toHaveLength(3)
+    await update({ layoutRequest: { action: 'split-down', key: 3 } })
+    expect(panes()).toHaveLength(4)
+    const bars = screen.getAllByRole('separator', { name: 'Resize panes' })
+    expect(bars.map((bar) => bar.getAttribute('aria-orientation'))).toEqual(['vertical', 'vertical', 'horizontal'])
+    expect(pane(4).hasAttribute('data-pane-unfocused')).toBe(false)
+    expect(pane(1).hasAttribute('data-pane-unfocused')).toBe(true)
+
+    // An empty pane beside others closes from its strip; Git is untouched.
+    await act(async () => { within(pane(4)).getByRole('button', { name: /^Close pane/ }).click() })
+    expect(panes()).toHaveLength(3)
+    expect(within(pane(1)).getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  it('says so instead of splitting a pane too small for two', async () => {
+    useToastStore.setState({ toasts: [] })
+    const rect = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      return this.hasAttribute('data-dock-pane')
+        ? ({ left: 0, top: 0, right: 300, bottom: 600, width: 300, height: 600, x: 0, y: 0 }) as DOMRect
+        : rect.call(this)
+    }
+    try {
+      const { update } = await renderPanel({ viewRequest: GIT })
+      await update({ layoutRequest: { action: 'split-right', key: 1 } })
+      expect(panes()).toHaveLength(0)
+      expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['No room to split this pane'])
+
+      // Down there is room.
+      await update({ layoutRequest: { action: 'split-down', key: 2 } })
+      expect(panes()).toHaveLength(2)
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect
+    }
+  })
+
+  it('a tab splits off into a new pane from its menu; closing its last tab closes the pane', async () => {
+    await renderPanel({ viewRequest: GIT, selectedFilePath: main.path, selectedFileOpenKey: 1 })
+    await waitFor(() => expect(screen.getByRole('button', { name: main.name })).toBeTruthy())
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: main.name }))
+    await act(async () => { screen.getByRole('menuitem', { name: 'Split Right' }).click() })
+    expect(panes()).toHaveLength(2)
+    expect(paneOf(main.name)).toBe(pane(2))
+    expect(paneOf('Git')).toBe(pane(1))
+
+    // Git is alone in its pane now: splitting it off would leave nothing.
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
+    expect((screen.getByRole('menuitem', { name: 'Split Down' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move to Next Pane' }).click() })
+    expect(panes()).toHaveLength(0)
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
+    await act(async () => { screen.getByRole('menuitem', { name: 'Split Down' }).click() })
+    expect(panes()).toHaveLength(2)
+    await act(async () => { screen.getByRole('button', { name: 'Close Git' }).click() })
+    expect(panes()).toHaveLength(0)
+    expect(screen.getByRole('button', { name: main.name })).toBeTruthy()
   })
 })
 
-describe('the terminal group', () => {
-  it('opens a terminal under the open tabs, hides it without stopping the shell, and shows it again', async () => {
+describe('terminal panes', () => {
+  const terminalPane = () => screen.queryByRole('button', { name: 'Terminal 1' })?.closest<HTMLElement>('[data-dock-pane]') ?? null
+
+  it('opens a terminal in a pane under the open tabs, hides it without stopping the shell, and shows it again', async () => {
     const { update } = await renderPanel({ viewRequest: GIT })
 
     await update({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(lowerGroup()).toBeTruthy())
-    expect(within(lowerGroup()!).getByRole('button', { name: 'Terminal 1' })).toBeTruthy()
+    await waitFor(() => expect(terminalPane()).toBeTruthy())
+    expect(terminalPane()).toBe(pane(2))
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
 
     await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
-    expect(lowerGroup()).toBeNull()
+    expect(panes()).toHaveLength(0)
     expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
 
     await update({ layoutRequest: { action: 'terminal-toggle', key: 3 } })
-    expect(within(lowerGroup()!).getByRole('button', { name: 'Terminal 1' })).toBeTruthy()
+    expect(terminalPane()).toBe(pane(2))
     // The same shell, not a new one.
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
@@ -151,19 +218,19 @@ describe('the terminal group', () => {
   it('hides from its own strip', async () => {
     const { update } = await renderPanel({ viewRequest: GIT })
     await update({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(lowerGroup()).toBeTruthy())
+    await waitFor(() => expect(terminalPane()).toBeTruthy())
 
-    await act(async () => { within(lowerGroup()!).getByRole('button', { name: /^Hide this group/ }).click() })
+    await act(async () => { within(terminalPane()!).getByRole('button', { name: /^Hide terminals/ }).click() })
 
-    expect(lowerGroup()).toBeNull()
+    expect(terminalPane()).toBeNull()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 
-  it('closes the panel when hiding it would leave nothing on screen', async () => {
+  it('closes the panel when hiding them would leave nothing on screen', async () => {
     const onRequestClose = mock(() => {})
     const { update } = await renderPanel({ onRequestClose })
     await update({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(lowerGroup()).toBeTruthy())
+    await waitFor(() => expect(terminalPane()).toBeTruthy())
 
     await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
 
@@ -171,19 +238,31 @@ describe('the terminal group', () => {
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 
-  // An empty lower group (⌘\ with nothing moved down yet) has no terminal to
-  // hide: ⌃` starts one there instead of closing the panel.
-  it('starts a terminal in an empty lower group instead of hiding it', async () => {
+  // An empty pane (⌘\ with nothing moved in yet) has no terminal to hide:
+  // ⌃` starts one there instead of closing the panel.
+  it('starts a terminal in an empty focused pane instead of hiding anything', async () => {
     const onRequestClose = mock(() => {})
-    const { update } = await renderPanel({ onRequestClose })
-    await update({ layoutRequest: { action: 'split', key: 1 } })
-    expect(lowerGroup()).toBeTruthy()
+    const { update } = await renderPanel({ viewRequest: GIT, onRequestClose })
+    await update({ layoutRequest: { action: 'split-down', key: 1 } })
+    expect(panes()).toHaveLength(2)
 
     await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
 
-    await waitFor(() => expect(within(lowerGroup()!).getByRole('button', { name: 'Terminal 1' })).toBeTruthy())
+    await waitFor(() => expect(terminalPane()).toBe(pane(2)))
     expect(onRequestClose).not.toHaveBeenCalled()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
+  })
+
+  it('never opens a document in a terminal pane', async () => {
+    const { update } = await renderPanel({ layoutRequest: { action: 'terminal-show', key: 1 } })
+    await waitFor(() => expect(terminalPane()).toBeTruthy())
+    expect(panes()).toHaveLength(0)
+
+    await update({ selectedFilePath: main.path, selectedFileOpenKey: 1 })
+    await waitFor(() => expect(screen.getByRole('button', { name: main.name })).toBeTruthy())
+    // A pane above the shells, for documents.
+    expect(paneOf(main.name)).toBe(pane(1))
+    expect(terminalPane()).toBe(pane(2))
   })
 })
 

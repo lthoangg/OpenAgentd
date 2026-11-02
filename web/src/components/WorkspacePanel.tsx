@@ -4,8 +4,9 @@
  * Editor-style tab strips (Git review, file previews, full-height diffs,
  * commits, web previews, terminals, the session's Plan and Goal, and on
  * desktop the agent Tasks, `/btw` side questions, and Schedule views)
- * over their content, in one group or two stacked top/bottom (⌘\; terminals
- * open in the lower one). Desktop geometry is a ratio of the shell's center
+ * over their content, in panes split right and down as often as there is
+ * room (⌘\, ⌘⇧\, or a tab dragged onto a pane's edge; terminals open in a
+ * pane of their own below). Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
  * side-by-side split; then it leaves the composer uncovered unless
@@ -19,13 +20,16 @@
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
   getCodingWorkspaceGitHistory,
 } from '@/api/client'
+import { Columns2, Rows2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { useToastStore } from '@/stores/useToastStore'
 import { queryKeys } from '@/queries'
 import {
   WORKSPACE_TREE_STALE_MS,
@@ -48,6 +52,8 @@ import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
   DOCK_MIN_WIDTH,
+  DOCK_PANE_MIN_HEIGHT,
+  DOCK_PANE_MIN_WIDTH,
   dockMaxWidth,
   ratioFromWidth,
   resolveDockLayout,
@@ -82,9 +88,9 @@ import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import { GoalTabView } from './WorkspacePanel/GoalTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
-import { GroupSplitHandle } from './WorkspacePanel/GroupSplitHandle'
+import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
-import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
+import { DockLauncher, dockOpenItems, type DockOpenItem } from './WorkspacePanel/DockLauncher'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
@@ -113,7 +119,18 @@ import {
   fileTabId,
   resolveFileTabInfo,
 } from './WorkspacePanel/dock-tabs'
-import type { GroupIndex } from './WorkspacePanel/dock-groups'
+import {
+  type Axis,
+  type PaneBox,
+  type PaneId,
+  type PaneLayout,
+  type SplitBar,
+  isPaneLeaf,
+  isTerminalPane,
+  layoutBoxes,
+  paneOrder,
+  sizesWithBarAt,
+} from './WorkspacePanel/dock-panes'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
@@ -129,6 +146,30 @@ const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
 /** A closed dock parks (hidden, inert) once its close tween (0.22 s) is done. */
 const PARK_AFTER_MS = 260
+
+/**
+ * A pane's place over the panes' area (``top``: an inset from its top, the
+ * tab strip for a preview page). The hairline before a pane belongs to the
+ * bar there, so the pane starts 1px in.
+ */
+function paneStyle(box: PaneBox, top = '0px'): React.CSSProperties {
+  const x = box.left > 0 ? 1 : 0
+  const y = box.top > 0 ? 1 : 0
+  return {
+    left: `calc(${box.left * 100}% + ${x}px)`,
+    top: `calc(${box.top * 100}% + ${y}px + ${top})`,
+    width: `calc(${box.width * 100}% - ${x}px)`,
+    height: `calc(${box.height * 100}% - ${y}px - ${top})`,
+  }
+}
+
+/** A bar's 7px hit area, centred on the line between two panes. */
+function barStyle(bar: SplitBar): React.CSSProperties {
+  const { box, at } = bar
+  return bar.axis === 'row'
+    ? { left: `calc(${(box.left + at * box.width) * 100}% - 3px)`, top: `${box.top * 100}%`, height: `${box.height * 100}%` }
+    : { top: `calc(${(box.top + at * box.height) * 100}% - 3px)`, left: `${box.left * 100}%`, width: `${box.width * 100}%` }
+}
 
 function parseGraph(graph: string): ParsedGraphLine[] {
   if (!graph) return []
@@ -211,7 +252,7 @@ export function WorkspacePanel({
   /** Shell request to open (or focus) a message attachment's tab. */
   attachmentRequest?: AttachmentTabRequest | null
   handledAttachmentRequestKeyRef?: React.RefObject<number>
-  /** Shell request to split the groups or show/hide the terminal group. */
+  /** Shell request to split the focused pane or show/hide the terminal panes. */
   layoutRequest?: DockLayoutRequest | null
   handledLayoutRequestKeyRef?: React.RefObject<number>
   /** Reports the focused view tab (``null`` for other tabs or on unmount). */
@@ -258,10 +299,22 @@ export function WorkspacePanel({
     if (previewId && ![...ids.values()].includes(previewId)) void closePreview(previewId).catch(() => {})
   }, [])
   // Tab state comes first: the Git queries below are gated on the active tab.
+  const panesRef = useRef<HTMLDivElement>(null)
+  const pushToast = useToastStore((s) => s.push)
+  // A split needs room for two panes of the least size.
+  const canSplitPane = useCallback((pane: PaneId, axis: Axis) => {
+    const rect = panesRef.current?.querySelector(`[data-dock-pane="${pane}"]`)?.getBoundingClientRect()
+    if (!rect || rect.width === 0) return true
+    return axis === 'row' ? rect.width >= DOCK_PANE_MIN_WIDTH * 2 : rect.height >= DOCK_PANE_MIN_HEIGHT * 2
+  }, [])
+  const noRoomToSplit = useCallback(() => {
+    pushToast({ tone: 'info', title: 'No room to split this pane', description: 'Widen or maximize the Review panel, or close a pane.' })
+  }, [pushToast])
   const {
+    state: panes,
+    shownPanes,
     strips,
     activeTabs,
-    lowerShown,
     focused,
     visibleTabs,
     activeTabId,
@@ -274,12 +327,17 @@ export function WorkspacePanel({
     openGitTab,
     openTerminal,
     activate,
-    focusGroup,
+    focusPane,
     keep,
-    moveTab,
-    moveToOther,
-    canMoveToOther,
-    toggleLower,
+    moveWithin,
+    moveToNextPane,
+    canMoveToNextPane,
+    canSplitTab,
+    splitPane,
+    dropTab,
+    closePane,
+    toggleTerminals,
+    resizeSplit,
     closeTab,
     closeOtherTabs,
     closeTabsToRight,
@@ -287,7 +345,6 @@ export function WorkspacePanel({
     confirmCloseTitles,
     confirmCloseTab,
     cancelCloseTab,
-    groups,
   } = useDockTabs({
     workspace,
     sessionId,
@@ -314,6 +371,8 @@ export function WorkspacePanel({
       if (button) focusQuietly(button)
     }),
     onCloseDock: onRequestClose,
+    canSplitPane,
+    onNoRoomToSplit: noRoomToSplit,
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
@@ -429,8 +488,8 @@ export function WorkspacePanel({
 
   const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
   const subTab = gitState.subTab
-  // Git's own queries run only while its tab shows in a group on screen.
-  const reviewShown = activeTabs[0]?.id === REVIEW_TAB_ID || (lowerShown && activeTabs[1]?.id === REVIEW_TAB_ID)
+  // Git's own queries run only while its tab shows in a pane on screen.
+  const reviewShown = shownPanes.some((pane) => activeTabs[pane]?.id === REVIEW_TAB_ID)
   // Each Git view (changes, commits, tree) keeps its place across tab switches.
   const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
   const allBranches = gitState.allBranches
@@ -534,14 +593,13 @@ export function WorkspacePanel({
   }
 
   const canPreview = previewsAvailable()
-  const openNewPreview = useCallback((group?: GroupIndex) => {
-    openPreviewTab({ kind: 'url', url: lastPreviewUrl(workspace) ?? DEFAULT_PREVIEW_URL }, { group })
+  const openNewPreview = useCallback((pane?: PaneId) => {
+    openPreviewTab({ kind: 'url', url: lastPreviewUrl(workspace) ?? DEFAULT_PREVIEW_URL }, { pane })
   }, [openPreviewTab, workspace])
   const openFilePreview = useCallback((path: string) => {
     openPreviewTab({ kind: 'file', path })
   }, [openPreviewTab])
   const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
-  const previewTabsOf = (group: GroupIndex) => strips[group].filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
   const openQuickOpen = () => useUIStore.getState().openQuickOpen('')
   // The Goal tab's title follows the goal ("Goal 7/50", "Goal paused").
   const { data: goalData } = useSessionGoalQuery(sessionId)
@@ -550,28 +608,34 @@ export function WorkspacePanel({
   const agentWorking = useAgentStore((s) => s.isAgentWorking)
   const goalTitle = goalTabTitle(goal, agentWorking)
   const stripTabs = useMemo(
-    () => strips.map((strip) => (strip.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
+    () => Object.fromEntries(Object.entries(strips).map(([pane, strip]) => [pane, strip.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
       ? strip.map((tab) => (tab.type === 'goal' ? { ...tab, title: goalTitle } : tab))
-      : strip)) as [DockTab[], DockTab[]],
+      : strip])) as Record<PaneId, DockTab[]>,
     [strips, goalTitle],
   )
-  const openGoal = sessionId ? (group?: GroupIndex) => openTab(GOAL_TAB, { group }) : undefined
+  const openGoal = sessionId ? (pane?: PaneId) => openTab(GOAL_TAB, { pane }) : undefined
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
   // above the chat on phones, so only desktop lists them here; the plan and
-  // the goal open here everywhere. Each group's menu opens in that group.
+  // the goal open here everywhere. Each pane's menu opens in that pane.
   const openIds = new Set(visibleTabs.map((tab) => tab.id))
-  const openItemsFor = (group: GroupIndex) => dockOpenItems(os, {
-    onOpenGit: chatWorkspace ? undefined : () => openGitTab(group),
-    onOpenGoal: openGoal ? () => openGoal(group) : undefined,
-    onOpenPlan: plan ? () => openTab(PLAN_TAB, { group }) : undefined,
-    onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB, { group }),
-    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB, { group }),
-    onOpenSchedule: () => openTab(SCHEDULE_TAB, { group }),
-    onOpenTerminal: () => openTerminal(group),
-    onOpenPreview: canPreview ? () => openNewPreview(group) : undefined,
+  const openItemsFor = (pane: PaneId) => dockOpenItems(os, {
+    onOpenGit: chatWorkspace ? undefined : () => openGitTab(pane),
+    onOpenGoal: openGoal ? () => openGoal(pane) : undefined,
+    onOpenPlan: plan ? () => openTab(PLAN_TAB, { pane }) : undefined,
+    onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB, { pane }),
+    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB, { pane }),
+    onOpenSchedule: () => openTab(SCHEDULE_TAB, { pane }),
+    onOpenTerminal: () => openTerminal(pane),
+    onOpenPreview: canPreview ? () => openNewPreview(pane) : undefined,
     onOpenFile: openQuickOpen,
   }, openIds)
+  // The "+" menu ends with the pane's splits (desktop): a new empty pane beside it.
+  const menuItemsFor = (pane: PaneId): DockOpenItem[] => mobile ? openItemsFor(pane) : [
+    ...openItemsFor(pane),
+    { id: 'split-right', label: 'Split Right', icon: <Columns2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDock, os), group: 'pane', run: () => splitPane(pane, 'right') },
+    { id: 'split-down', label: 'Split Down', icon: <Rows2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDockDown, os), group: 'pane', run: () => splitPane(pane, 'down') },
+  ]
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -614,7 +678,7 @@ export function WorkspacePanel({
   }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
   useEffect(() => {
-    for (const tab of activeTabs) tabButtonRefs.current.get(tab?.id ?? '')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    for (const tab of Object.values(activeTabs)) tabButtonRefs.current.get(tab?.id ?? '')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeTabs, visibleTabs.length])
 
   useEffect(() => {
@@ -731,14 +795,78 @@ export function WorkspacePanel({
     </div>
   )
 
-  // ── Groups ────────────────────────────────────────────────────────────────
-  // Maximized while split: the focused group takes the whole panel.
-  const maximizedGroup: GroupIndex | null = maximizeState === true && lowerShown ? focused : null
-  const groupsShown: GroupIndex[] = !lowerShown ? [0] : maximizedGroup !== null ? [maximizedGroup] : [0, 1]
-  const splitRatio = useLayoutStore((s) => s.dockSplitRatio)
-  const [liveSplit, setLiveSplit] = useState<number | null>(null)
-  const groupsRef = useRef<HTMLDivElement>(null)
-  const upperShare = liveSplit ?? splitRatio
+  // ── Panes ─────────────────────────────────────────────────────────────────
+  // Maximized with several panes: the focused one takes the whole panel.
+  const onScreen = useMemo(
+    () => new Set(maximizeState === true && shownPanes.length > 1 ? [focused] : shownPanes),
+    [maximizeState, shownPanes, focused],
+  )
+  const many = onScreen.size > 1
+  // A bar being dragged: its split's sizes until the drop.
+  const [liveSizes, setLiveSizes] = useState<{ key: string; sizes: number[] } | null>(null)
+  const { panes: boxes, bars } = useMemo(
+    () => layoutBoxes(panes.layout, onScreen, (key) => (liveSizes?.key === key ? liveSizes.sizes : undefined)),
+    [panes.layout, onScreen, liveSizes],
+  )
+  // Panes in the order they were made, so a split never moves one in the
+  // DOM (a moved iframe reloads); F6 follows the layout (``data-focus-order``).
+  const paneIds = useMemo(() => Object.keys(panes.panes).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))), [panes.panes])
+  const layoutIndex = useMemo(() => new Map(paneOrder(panes.layout).map((id, index) => [id, index])), [panes.layout])
+  // The panel-wide Maximize sits on the top-right pane, as in an editor.
+  const cornerPane = useMemo(() => {
+    let best: PaneId | null = null
+    let right = -1
+    for (const [pane, box] of boxes) {
+      if (box.top === 0 && box.left + box.width > right + 1e-9) {
+        best = pane
+        right = box.left + box.width
+      }
+    }
+    return best
+  }, [boxes])
+
+  const splitAt = (path: readonly number[]): Extract<PaneLayout, { axis: Axis }> | null => {
+    let node: PaneLayout = panes.layout
+    for (const index of path) {
+      if (isPaneLeaf(node)) return null
+      node = node.children[index]
+    }
+    return isPaneLeaf(node) ? null : node
+  }
+  /** A bar's split on screen, in px, and the least share a pane keeps there. */
+  const barExtent = (bar: SplitBar) => {
+    const rect = panesRef.current?.getBoundingClientRect()
+    if (!rect) return null
+    const row = bar.axis === 'row'
+    const start = row ? rect.left + bar.box.left * rect.width : rect.top + bar.box.top * rect.height
+    const size = row ? bar.box.width * rect.width : bar.box.height * rect.height
+    return size > 0 ? { start, size, min: (row ? DOCK_PANE_MIN_WIDTH : DOCK_PANE_MIN_HEIGHT) / size } : null
+  }
+  const dragBar = (bar: SplitBar, clientX: number, clientY: number, done: boolean) => {
+    const node = splitAt(bar.path)
+    const extent = barExtent(bar)
+    if (!node || !extent) return
+    const at = ((bar.axis === 'row' ? clientX : clientY) - extent.start) / extent.size
+    const sizes = sizesWithBarAt(node.sizes, bar, at, extent.min)
+    if (!done) {
+      setLiveSizes({ key: bar.path.join('.'), sizes })
+      return
+    }
+    setLiveSizes(null)
+    resizeSplit(bar.path, sizes)
+  }
+  const stepBar = (bar: SplitBar, px: number) => {
+    const node = splitAt(bar.path)
+    const extent = barExtent(bar)
+    if (node && extent) resizeSplit(bar.path, sizesWithBarAt(node.sizes, bar, bar.at + px / extent.size, extent.min))
+  }
+  /** Double-click or Enter: the panes of that split share its room evenly. */
+  const evenOut = (bar: SplitBar) => {
+    const node = splitAt(bar.path)
+    if (!node) return
+    const share = bar.shown.reduce((total, index) => total + node.sizes[index], 0) / bar.shown.length
+    resizeSplit(bar.path, node.sizes.map((size, index) => (bar.shown.includes(index) ? share : size)))
+  }
 
   /** Reveal in Git: the Changes list with this file's diff open. */
   const revealInGit = useCallback((path: string) => {
@@ -762,7 +890,7 @@ export function WorkspacePanel({
         ? 'Refresh files'
         : null
 
-  const renderContent = (tab: DockTab | undefined, group: GroupIndex) => {
+  const renderContent = (tab: DockTab | undefined, pane: PaneId, paneShown: boolean) => {
     if (!chatWorkspace && tab?.type === 'review') return reviewView
     switch (tab?.type) {
       case 'file':
@@ -784,9 +912,10 @@ export function WorkspacePanel({
       case 'attachment':
         return <AttachmentTabView key={tab.id} item={tab.item} />
       case 'terminal':
-        // Unmounted while closed: the session lives in the terminal store,
-        // and a hidden terminal detaches so the idle reaper can close it.
-        return open ? <TerminalSubPanel key={tab.termId} termId={tab.termId} workspace={workspace} /> : null
+        // Unmounted while closed or its pane is hidden: the session lives in
+        // the terminal store, and a hidden terminal detaches so the idle
+        // reaper can close it.
+        return open && paneShown ? <TerminalSubPanel key={tab.termId} termId={tab.termId} workspace={workspace} /> : null
       case 'tasks':
         return (
           <TasksTabView
@@ -821,29 +950,37 @@ export function WorkspacePanel({
       case 'preview':
         return null
       default:
-        return <DockLauncher items={openItemsFor(group)} />
+        return <DockLauncher items={openItemsFor(pane)} />
     }
   }
 
-  const renderGroup = (group: GroupIndex) => {
-    const shown = activeTabs[group]
-    const two = groupsShown.length === 2
+  const renderPane = (pane: PaneId) => {
+    const box = boxes.get(pane)
+    const shown = activeTabs[pane]
+    const order = layoutIndex.get(pane) ?? 0
+    const empty = (strips[pane]?.length ?? 0) === 0
     return (
       <div
-        key={group}
-        data-dock-group={group}
-        data-focus-region={group === 0 ? 'dock-upper' : 'dock-lower'}
-        aria-label={two ? (group === 0 ? 'Upper group' : 'Lower group') : undefined}
-        role={two ? 'group' : undefined}
-        className="flex min-h-0 min-w-0 flex-col"
-        style={{ flex: two ? `${group === 0 ? upperShare : 1 - upperShare} 1 0px` : '1 1 0px' }}
-        onFocusCapture={() => focusGroup(group)}
-        onPointerDownCapture={() => focusGroup(group)}
+        key={pane}
+        data-dock-pane={pane}
+        // With several panes on screen, the others' open tabs step back.
+        data-pane-unfocused={many && pane !== focused ? '' : undefined}
+        data-focus-region="dock"
+        data-focus-order={order}
+        aria-label={many ? `Pane ${order + 1}` : undefined}
+        role={many ? 'group' : undefined}
+        // Off screen (hidden terminals, or another pane maximized): kept
+        // mounted, out of the layout and of the accessibility tree.
+        hidden={!box}
+        className={cn('absolute flex min-h-0 min-w-0 flex-col', !box && 'hidden')}
+        style={box ? paneStyle(box) : undefined}
+        onFocusCapture={() => focusPane(pane)}
+        onPointerDownCapture={() => focusPane(pane)}
       >
         <DockTabBar
-          tabs={stripTabs[group]}
+          tabs={stripTabs[pane] ?? []}
           activeTabId={shown?.id ?? ''}
-          previewTabId={groups.preview[group]}
+          previewTabId={panes.panes[pane]?.preview ?? null}
           workspace={workspace}
           terminalMetas={terminalMetas}
           mobile={mobile}
@@ -856,41 +993,37 @@ export function WorkspacePanel({
           onClose={closeTab}
           onCloseOthers={closeOtherTabs}
           onCloseToRight={closeTabsToRight}
-          onMove={moveTab}
+          onMove={moveWithin}
           onKeep={keep}
-          onMoveToOtherGroup={mobile ? undefined : moveToOther}
-          canMoveToOtherGroup={canMoveToOther}
-          split={lowerShown}
+          onSplit={mobile ? undefined : (id, side) => splitPane(pane, side, id)}
+          canSplit={canSplitTab}
+          onMoveToNextPane={mobile || shownPanes.length < 2 ? undefined : moveToNextPane}
+          canMoveToNextPane={canMoveToNextPane}
           onRevealInGit={chatWorkspace ? undefined : revealInGit}
-          onHideGroup={group === 1 ? toggleLower : undefined}
+          onHideTerminals={!mobile && isTerminalPane(panes, pane) ? toggleTerminals : undefined}
+          onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
+          onDropTab={mobile ? undefined : dropTab}
           onRefresh={handleRefresh}
           refreshLabel={refreshLabelFor(shown)}
-          openItems={openItemsFor(group)}
-          maximized={group === groupsShown[0] ? maximizeState : null}
+          openItems={menuItemsFor(pane)}
+          maximized={pane === cornerPane ? maximizeState : null}
           onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
         />
-        <div className="relative min-h-0 flex-1 overflow-hidden">
-          {/* Preview tabs stay mounted so the page and its comments survive tab switches. */}
-          {previewTabsOf(group).map((tab) => (
-            <div key={tab.id} className={cn('absolute inset-0', shown?.id !== tab.id && 'hidden')}>
-              <PreviewTabView
-                workspace={workspace}
-                tabId={tab.id}
-                target={tab.target}
-                navKey={tab.navKey}
-                onPreviewId={handlePreviewId}
-                onSendComments={onSendPreviewComments}
-                onOpenTarget={openPreviewTarget}
-                active={open && shown?.id === tab.id && groupsShown.includes(group)}
-                onRequestClose={closeTab}
-              />
-            </div>
-          ))}
-          {renderContent(shown, group)}
+        <div data-dock-pane-body="" className="relative min-h-0 flex-1 overflow-hidden">
+          {renderContent(shown, pane, box !== undefined)}
         </div>
       </div>
     )
   }
+
+  // Preview tabs stay mounted so the page and its comments survive tab
+  // switches and moves between panes: one layer over the panes, each page
+  // placed over its pane's body, in a fixed order (a moved iframe reloads).
+  const previewTabs = paneIds
+    .flatMap((pane) => (strips[pane] ?? [])
+      .filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
+      .map((tab) => ({ tab, pane })))
+    .sort((a, b) => (a.tab.id < b.tab.id ? -1 : a.tab.id > b.tab.id ? 1 : 0))
 
   // Overlaying a narrow chat, the panel stops above the composer so the
   // message can be written beside the diff; maximized, it covers both.
@@ -933,7 +1066,7 @@ export function WorkspacePanel({
       <div
         data-review-dock
         data-dock-parked={parked || undefined}
-        data-dock-split={lowerShown || undefined}
+        data-dock-split={many || undefined}
         // Lets reading-column tabs (Plan, Side questions) drop their width cap.
         data-dock-maximized={maximizeState === true || undefined}
         inert={parked}
@@ -948,27 +1081,49 @@ export function WorkspacePanel({
         }}
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
-        <div ref={groupsRef} className="flex min-h-0 flex-1 flex-col">
-          {groupsShown.map((group, index) => (
-            <Fragment key={group}>
-              {index > 0 && (
-                <GroupSplitHandle
-                  ratio={upperShare}
-                  containerRef={groupsRef}
-                  onLive={setLiveSplit}
-                  onCommit={(ratio) => {
-                    setLiveSplit(null)
-                    useLayoutStore.getState().setDockSplitRatio(ratio)
-                  }}
-                  onReset={() => {
-                    setLiveSplit(null)
-                    useLayoutStore.getState().resetDockSplitRatio()
-                  }}
+        <div ref={panesRef} data-dock-panes="" className="relative min-h-0 flex-1">
+          {paneIds.map(renderPane)}
+          {previewTabs.map(({ tab, pane }) => {
+            const box = boxes.get(pane)
+            const showing = box !== undefined && activeTabs[pane]?.id === tab.id
+            return (
+              <div
+                key={tab.id}
+                data-dock-preview={tab.id}
+                className={cn('absolute', !showing && 'hidden')}
+                style={box ? paneStyle(box, 'var(--spacing-tab-bar)') : undefined}
+                onFocusCapture={() => focusPane(pane)}
+                onPointerDownCapture={() => focusPane(pane)}
+              >
+                <PreviewTabView
+                  workspace={workspace}
+                  tabId={tab.id}
+                  target={tab.target}
+                  navKey={tab.navKey}
+                  onPreviewId={handlePreviewId}
+                  onSendComments={onSendPreviewComments}
+                  onOpenTarget={openPreviewTarget}
+                  active={open && showing}
+                  onRequestClose={closeTab}
                 />
-              )}
-              {renderGroup(group)}
-            </Fragment>
-          ))}
+              </div>
+            )
+          })}
+          {bars.map((bar) => {
+            const sizes = (liveSizes?.key === bar.path.join('.') ? liveSizes.sizes : splitAt(bar.path)?.sizes) ?? []
+            const pair = (sizes[bar.before] ?? 0) + (sizes[bar.after] ?? 0)
+            return (
+              <PaneSplitHandle
+                key={`${bar.path.join('.')}:${bar.after}`}
+                axis={bar.axis}
+                style={barStyle(bar)}
+                valueNow={pair > 0 ? Math.round(((sizes[bar.before] ?? 0) / pair) * 100) : 50}
+                onDrag={(x, y, done) => dragBar(bar, x, y, done)}
+                onStep={(px) => stepBar(bar, px)}
+                onReset={() => evenOut(bar)}
+              />
+            )
+          })}
         </div>
         <CloseTerminalDialog
           open={confirmCloseOpen}

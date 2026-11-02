@@ -770,6 +770,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A turn that waits (a pinned account cooling down, a reconnect) or stops
     shows one card: what happened, since when, what you can do, and **Copy
     details**.
+  - When only the session model's provider is missing, the notice above the
+    chat names it ("Connect xAI Grok to keep chatting", with the model) and
+    offers **Choose model** beside **Open Providers**, instead of asking for
+    "a model provider" as if none were set up.
   - Each answer's footer names the account it ran on.
   - A long thinking trace scrolls inside a capped box; **Show full
     reasoning** lifts the cap.

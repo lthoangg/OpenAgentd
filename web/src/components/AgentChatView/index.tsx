@@ -908,7 +908,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <ProviderSetupNotice
             setupMessage={setupRequired?.message ?? null}
             hasConfiguredProvider={!needsModelSetup}
+            missingProvider={modelReady.status === 'needs-provider' ? { label: modelReady.provider.label, model: modelReady.model } : null}
             onOpenProviders={() => openSettings('providers')}
+            onChooseModel={() => { if (!useUIStore.getState().runPickerOpen) handleToggleRunPicker() }}
             onDismiss={dismissSetupRequired}
           />
         )}

@@ -361,7 +361,7 @@ function ModelRow({
 
       {/* Context menu */}
       {actionsPoint && (
-        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)} layerClassName="z-70">
+        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)}>
           <button
             type="button"
             role="menuitem"

@@ -248,7 +248,8 @@ function PopoverContent({
       id={contentId}
       data-slot="popover-content"
       className={cn(
-        'fixed z-50 overscroll-contain',
+        // The menu layer (ui/context-menu MENU_LAYER_CLASS): above notices.
+        'fixed z-70 overscroll-contain',
         'flex w-[min(18rem,calc(100vw-1rem))] flex-col gap-2.5',
         'rounded-md border border-(--color-border-subtle) bg-(--bg-card)',
         'p-3.5 text-xs text-(--color-text) shadow-(--shadow-depth) outline-none',

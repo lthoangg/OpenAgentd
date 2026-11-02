@@ -19,8 +19,15 @@
  * The app draws it in every shell, desktop and iOS included: native is the
  * feel (it opens at the pointer, keys move through it), not the operating
  * system's widget, so it looks like every other menu in the app.
+ *
+ * It renders into ``document.body`` on the menu layer (``z-70``: above the
+ * notices in the corner, below tooltips), as Dropdown and Popover do. Drawn
+ * where it was opened, a menu was caught by that component's stacking
+ * context (the dock's z-index, a transform, container queries) and could
+ * open under its neighbours. React events still bubble to the opener.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -31,7 +38,10 @@ import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLA
 const VIEWPORT_MARGIN = 8
 const EXIT_MS = DURATIONS_S.fast * 1000
 
-const MENU_CLASS = `fixed z-50 text-xs text-(--color-text) ease-(--ease-out) ${MENU_PANEL_CLASS}`
+/** Menus, dropdowns and popovers: above the notices (z-60), below tooltips. */
+export const MENU_LAYER_CLASS = 'z-70'
+
+const MENU_CLASS = `fixed text-xs text-(--color-text) ease-(--ease-out) ${MENU_PANEL_CLASS}`
 
 export const CONTEXT_MENU_ITEM_CLASS =
   `${MENU_ITEM_CLASS} text-(--color-text) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
@@ -60,12 +70,10 @@ interface ContextMenuProps {
   onDismiss: () => void
   /** Width and other overrides; defaults to ``min-w-40``. */
   className?: string
-  /** Stacking layer for the backdrop; raise it inside overlays above ``z-50``. */
-  layerClassName?: string
   children: ReactNode
 }
 
-export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', layerClassName = 'z-50', children }: ContextMenuProps) {
+export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', children }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const reduced = useReducedMotion() ?? false
@@ -163,10 +171,10 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
     }
   }
 
-  return (
+  return createPortal(
     <div
       role="presentation"
-      className={cn('fixed inset-0 bg-transparent', closing && 'pointer-events-none', layerClassName)}
+      className={cn('fixed inset-0 bg-transparent', MENU_LAYER_CLASS, closing && 'pointer-events-none')}
       onClick={() => dismiss(true)}
       onContextMenu={(event) => {
         event.preventDefault()
@@ -193,6 +201,7 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

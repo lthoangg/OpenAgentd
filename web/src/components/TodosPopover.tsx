@@ -43,7 +43,7 @@ export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = nu
 
   return (
     <div
-      className="fixed inset-0 z-50 pointer-events-none"
+      className="fixed inset-0 z-70 pointer-events-none"
       role="presentation"
       // Not tracked by useEdgeSwipe's drawer set — without this an
       // edge-zone touch on the backdrop/panel is read as a fresh "open"

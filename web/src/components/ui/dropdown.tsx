@@ -387,7 +387,8 @@ function Dropdown({
           role={value !== undefined ? 'listbox' : 'menu'}
           data-slot="dropdown-panel"
           className={cn(
-            'fixed z-50 flex flex-col gap-0.5',
+            // The menu layer (ui/context-menu MENU_LAYER_CLASS): above notices.
+            'fixed z-70 flex flex-col gap-0.5',
             'min-w-(--dropdown-anchor-width) overscroll-contain',
             MENU_PANEL_CLASS,
             'outline-none',

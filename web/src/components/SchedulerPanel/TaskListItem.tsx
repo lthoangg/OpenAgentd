@@ -180,7 +180,6 @@ export function TaskListItem({
         label={`Actions for ${task.name}`}
         onDismiss={() => setActionsPoint(null)}
         className="min-w-44"
-        layerClassName="z-70"
       >
           <button
             type="button"

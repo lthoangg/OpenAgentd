@@ -279,7 +279,7 @@ export function ModelCombobox({
               ...(placement && placement.maxHeight < LIST_MAX_HEIGHT ? { maxHeight: placement.maxHeight } : null),
             }}
             className={cn(
-              'z-50 max-h-64 overflow-y-auto overscroll-contain',
+              'z-70 max-h-64 overflow-y-auto overscroll-contain',
               MENU_PANEL_CLASS,
               // DESIGN.md → Motion: grows out of the field like Dropdown. It
               // closes at once: a pick or a blur should feel immediate.

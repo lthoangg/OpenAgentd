@@ -709,9 +709,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     one button for each.
   - On desktop the sidebar and the Review panel run up to the top of the
     window, as in a native app: the header splits where they do, with the
-    sidebar toggle (and, on macOS, the window buttons) over the sidebar, the
-    title and command palette over the chat, and the Task list and Review
-    panel buttons over the panel. The split follows a drag or a slide. The
+    sidebar toggle (and, on macOS, the window buttons, with a native gap
+    before the toggle) over the sidebar, the title over the chat, and the
+    Task list and Review panel buttons over the panel. The header reads as
+    one bar: no lines between those parts. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
   - **Split Review Panel** (`⌘\`/`Ctrl+\`) stacks a second tab group under
@@ -783,10 +784,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - One name for each thing: **Review panel**, **New session**, **Side
     questions**, **Open workspace…**, **Workspace** and **Worktree** (never
     folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
-    server**. The header's search pill reads **Command palette**.
-  - The **Command palette** pill stays centred in the header whatever the
-    session title's length (it used to slide from session to session), and a
-    hidden sidebar leaves no hairline at the window's edge.
+    server**.
+  - The header has no command palette button (`⌘K`/`Ctrl+K`, the View menu
+    and the phone's More sheet open it), and a hidden sidebar leaves no
+    hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
   - Under the last finished answer, **Copy · Regenerate · Edit prompt ·
     Undo** show at rest as icons, each named in its tooltip, then the files

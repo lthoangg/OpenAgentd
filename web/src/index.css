@@ -393,20 +393,18 @@ html[data-window-caption] .below-window-caption {
  * below it do, so the sidebar and the Review panel read as columns from the
  * top of the window. Their widths arrive as --oa-sidebar-w / --oa-dock-w
  * (ResizableAside publishWidthAs; unset while a panel is hidden, a drawer or
- * an overlay), so a cap follows a drag and a slide. min(1px, w) is 1px for
- * any open column and 0 for none: the cap draws its column's edge up to the
- * top only while there is a column. The sidebar cap draws no bottom line
- * (the sidebar runs on up), except with no sidebar, where it carries the
- * header's line on to the window edge.
+ * an overlay), so a cap follows a drag and a slide. The caps draw no edge of
+ * their own: the column lines start under the header, which reads as one bar.
+ * The sidebar cap draws no bottom line (the sidebar runs on up), except with
+ * no sidebar, where it carries the header's line on to the window edge
+ * (min(1px, w) is 1px for an open column and 0 for none).
  * ───────────────────────────────────────────────────────────────────────────── */
 .oa-header-cap-sidebar {
   min-width: var(--oa-sidebar-w, 0px);
-  border-right-width: min(1px, var(--oa-sidebar-w, 0px));
   border-bottom-width: calc(1px - min(1px, var(--oa-sidebar-w, 0px)));
 }
 .oa-header-cap-dock {
   min-width: var(--oa-dock-w, 0px);
-  border-left-width: min(1px, var(--oa-dock-w, 0px));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

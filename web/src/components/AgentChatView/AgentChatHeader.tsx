@@ -14,7 +14,6 @@ import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
-import { CommandCenterButton } from './CommandCenterButton'
 import { HeaderSessionTitle } from './HeaderSessionTitle'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import type { GoalHeaderState } from '@/lib/work'
@@ -57,7 +56,7 @@ interface AgentChatHeaderProps {
   onToggleScheduler: () => void
   onOpenTerminal?: () => void
   onCloseMobileActionsMenu: () => void
-  /** Desktop command center and the mobile drawer's palette row; hidden or disabled when omitted. */
+  /** The phone More sheet's palette row; hidden when omitted (desktop opens it from the keyboard and menus). */
   onOpenPalette?: () => void
   /** Mobile drawer's file search; disabled when omitted (no workspace). */
   onQuickOpen?: () => void
@@ -219,18 +218,18 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       >
         <div
           data-header-cap="sidebar"
-          // The traffic lights sit over the sidebar, as in a native app.
-          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 border-(--color-border) pr-1', isMacOverlay ? 'pl-[70px]' : 'pl-3')}
+          // The traffic lights sit over the sidebar, as in a native app; the
+          // toggle keeps a native gap from them (they end near 66px).
+          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 border-(--color-border) pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
         >
           {leadButtons}
         </div>
-        {/* Title, palette, a matching spacer and the Review panel's cap: the
-            equal sides keep the palette centred over the chat whatever the
-            title's length (a flex row slid it from session to session). */}
-        <div data-header-main="" className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-stretch border-b border-(--color-border)">
+        {/* The title over the chat, then the Review panel's cap. The command
+            palette has no button: ⌘K and the View menu open it. */}
+        <div data-header-main="" className="flex min-w-0 flex-1 items-stretch border-b border-(--color-border)">
           {/* Workspace · session. Double-click the session (or F2 on it) to
               rename it here too; phones rename from the drawer. */}
-          <div className="flex min-w-0 items-center pr-2 pl-3">
+          <div className="flex min-w-0 flex-1 items-center pr-2 pl-3">
             {workspace ? (
               <div className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
                 <Tooltip className="shrink-0">
@@ -252,15 +251,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               </div>
             ) : null}
           </div>
-          <div className="flex min-w-0 items-center justify-center overflow-hidden px-1">
-            {onOpenPalette ? <CommandCenterButton onClick={onOpenPalette} /> : null}
-          </div>
-          <div />
           <div
             data-header-cap="dock"
             // Windows: this header is the title bar, and the page's caption
             // buttons (fixed at the top right) take its last 3 × 46px.
-            className={cn('oa-header-cap-dock flex items-center justify-end gap-0.5 border-(--color-border) pl-1', captionInset ? 'pr-[138px]' : 'pr-1')}
+            className={cn('oa-header-cap-dock flex shrink-0 items-center justify-end gap-0.5 pl-1', captionInset ? 'pr-[138px]' : 'pr-1')}
           >
             <AgentTopbar
               isMobile={false}

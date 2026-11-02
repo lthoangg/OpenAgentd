@@ -70,15 +70,10 @@ describe('AgentChatHeader', () => {
     expect(header).not.toHaveTextContent('50K')
   })
 
-  it('keeps the command palette centred over the chat, however long the title is', () => {
-    // In a flex row it sat in whatever room the title left, so it slid
-    // sideways from one session to the next.
+  it('has no command palette button: the title sits over the chat, the palette is a key away', () => {
     renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    expect(screen.queryByRole('button', { name: /Command palette/ })).not.toBeInTheDocument()
     const main = document.querySelector('[data-header-main]') as HTMLElement
-    expect(main).toHaveClass('grid', 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]')
-    const palette = screen.getByRole('button', { name: /^Command palette/ })
-    expect(Array.from(main.children).indexOf(palette.closest('[data-header-main] > *') as Element)).toBe(1)
-    // The title sits over the chat, left of the palette.
     expect(main.children[0]).toHaveTextContent('Fix updater restart')
   })
 
@@ -90,14 +85,15 @@ describe('AgentChatHeader', () => {
     const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
     const rule = (selector: string) => css.match(new RegExp(`\\${selector} \\{([^}]*)\\}`))?.[1] ?? ''
 
-    it('puts the sidebar toggle in a cap as wide as the sidebar, its edge continuing the sidebar edge', () => {
+    it('puts the sidebar toggle in a cap as wide as the sidebar, with no line beside it', () => {
       renderHeader({ isMobile: false })
       const lead = cap('sidebar')
       expect(lead.contains(screen.getByRole('button', { name: 'Toggle sidebar' }))).toBe(true)
       expect(lead).toHaveClass('oa-header-cap-sidebar')
       const geometry = rule('.oa-header-cap-sidebar')
       expect(geometry).toContain('min-width: var(--oa-sidebar-w, 0px);')
-      expect(geometry).toContain('border-right-width: min(1px, var(--oa-sidebar-w, 0px));')
+      // The column edges start under the header: no "|" between the caps.
+      expect(geometry).not.toContain('border-right')
       // No line across the top of the sidebar; with it hidden, the cap
       // carries the header's bottom line on to the window edge.
       expect(geometry).toContain('border-bottom-width: calc(1px - min(1px, var(--oa-sidebar-w, 0px)));')
@@ -111,7 +107,7 @@ describe('AgentChatHeader', () => {
       expect(trail).toHaveClass('oa-header-cap-dock')
       const geometry = rule('.oa-header-cap-dock')
       expect(geometry).toContain('min-width: var(--oa-dock-w, 0px);')
-      expect(geometry).toContain('border-left-width: min(1px, var(--oa-dock-w, 0px));')
+      expect(geometry).not.toContain('border-left')
     })
 
     it('draws the bottom line under the chat and Review panel, not across the header', () => {
@@ -121,10 +117,12 @@ describe('AgentChatHeader', () => {
       expect((document.querySelector('[data-header-main]') as HTMLElement).className.split(' ')).toContain('border-b')
     })
 
-    it('keeps the traffic lights in the sidebar cap', () => {
+    it('keeps the traffic lights in the sidebar cap, with room before the sidebar toggle', () => {
       const { container } = renderHeader({ isMobile: false, isMacOverlay: true })
-      expect(cap('sidebar')).toHaveClass('pl-[70px]')
-      expect(container.querySelector('header')).not.toHaveClass('pl-[70px]')
+      // The buttons end near 66px; the toggle's glyph starts about 20px on,
+      // as in native Mac apps, not against the zoom button.
+      expect(cap('sidebar')).toHaveClass('pl-[80px]')
+      expect(container.querySelector('header')).not.toHaveClass('pl-[80px]')
     })
 
     it('keeps one bar on phones', () => {
@@ -347,7 +345,6 @@ describe('AgentChatHeader', () => {
     expect(buttons.map((el) => el.getAttribute('aria-label'))).toEqual([
       'Toggle sidebar',
       'Rename session: Fix updater restart',
-      expect.stringMatching(/^Command palette/),
       'Task list',
       'Review panel',
     ])
@@ -481,22 +478,6 @@ describe('AgentChatHeader', () => {
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Chat')
     expect(screen.queryByText('/Users/name')).not.toBeInTheDocument()
-  })
-
-  it('opens the command palette from the desktop command center', async () => {
-    const user = userEvent.setup()
-    const onOpenPalette = mock(() => {})
-    renderHeader({ isMobile: false, onOpenPalette })
-
-    await user.click(screen.getByRole('button', { name: /Command palette/ }))
-
-    expect(onOpenPalette).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps the command center off the mobile header', () => {
-    renderHeader({ isMobile: true, onOpenPalette: () => undefined })
-
-    expect(screen.queryByRole('button', { name: /Command palette/ })).not.toBeInTheDocument()
   })
 
   it('reflects the review dock state on its toggle', () => {

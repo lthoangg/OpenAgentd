@@ -619,7 +619,7 @@ drawer and full-screen sheet.
 
 ```
 ┌─────────────┬── app-header 36 ────────────────┬──────────────────────────────┐
-│ sidebar cap │ title · palette (centred)      │ Review panel cap:  Tasks ▣   │
+│ sidebar cap │ workspace · title              │ Review panel cap:  Tasks ▣   │
 │ lights ⌘B   ├────────────────────────────────┼──────────────────────────────┤
 │ sidebar 264 │ chat · bg-page (≥ 400)         │ Review panel (≥ 340)         │
 │ page / rail │ transcript (prose ≤ 768,       │ upper group: tab-bar 36      │
@@ -631,12 +631,14 @@ drawer and full-screen sheet.
 
 - **Columns run to the top.** The desktop header splits where the columns
   below it do: a sidebar cap as wide as the sidebar (the traffic lights, ☰
-  and the sidebar toggle), the title and the palette over the chat (the
-  palette centred between the caps), and a Review panel cap as wide as the
-  panel (Task list, the panel toggle; on Windows the caption buttons). Each
-  cap continues its column's edge up through the header, and the header's
-  bottom line runs under the chat and the panel but not across the top of
-  the sidebar, so both side columns read as full-height, as in a native app.
+  and the sidebar toggle, 80px in on macOS so it keeps a native gap from the
+  lights), the title over the chat, and a Review panel cap as wide as the
+  panel (Task list, the panel toggle; on Windows the caption buttons). The
+  command palette has no button there: `Mod+K`, the View menu and the phone's
+  More sheet open it. The caps draw no edge of their own (the column lines
+  start under the header, which reads as one bar), and the header's bottom
+  line runs under the chat and the panel but not across the top of the
+  sidebar, so both side columns read as full-height, as in a native app.
   The widths come from the panels themselves (`ResizableAside`
   `publishWidthAs` → `--oa-sidebar-w`, `--oa-dock-w`), so a cap follows a
   drag and a slide; a hidden panel, a drawer or an overlay publishes none,
@@ -1329,7 +1331,8 @@ in the header's sidebar cap, over the sidebar column as in Finder or Mail; they 
 from Rust (`desktop/src-tauri/src/window.rs`, `{x: 12, y: 20}`; the JSON config
 value is ignored for builder-created windows), which centres them against the
 36px header and is why `mac-traffic-inset` is 70px (12px origin + ~58px button
-group). Reference window is 1280×820, floor 820×640.
+group); the sidebar toggle after them starts at 80px, the gap native Mac apps
+leave. Reference window is 1280×820, floor 820×640.
 
 The Windows window has no system frame (`decorations: false`, shadow kept,
 `window.rs`): the header is the title bar there too. `WindowCaptionButtons`

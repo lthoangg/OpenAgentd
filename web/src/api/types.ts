@@ -175,7 +175,6 @@ export interface WorkspaceGitHistoryResponse {
   is_git_repo: boolean
   commits: GitCommit[]
   next_cursor?: string | null
-  graph: string
 }
 
 export interface WorkspaceCommitDiffResponse {

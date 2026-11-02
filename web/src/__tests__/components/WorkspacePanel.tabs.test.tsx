@@ -87,7 +87,7 @@ beforeEach(() => {
     if (url.includes('/workspace/files/read')) return new Response('const after = 3')
     if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, { workspace: WORKSPACE, is_git_repo: true, diff: DIFF, untracked: [] })
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE, name: 'project', is_git_repo: true }))
-    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [commit], graph: '', next_cursor: null }))
+    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [commit], next_cursor: null }))
     if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commit.sha, diff: COMMIT_DIFF }))
     return new Response(null, { status: 404 })
   }) as typeof fetch
@@ -297,7 +297,7 @@ describe('Git view toolbar', () => {
     expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0].id)
   })
 
-  it('shows commits under History and swaps in the graph with its toggle', async () => {
+  it('shows the commit list under History, with no View menu or graph', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
@@ -305,19 +305,9 @@ describe('Git view toolbar', () => {
     await waitFor(() => expect(screen.getByText('docs: refresh readme')).toBeTruthy())
     const history = screen.getByRole('tab', { name: 'History' })
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
-    // One View menu with checkable items, the same on every platform.
-    await user.click(screen.getByRole('button', { name: 'View' }))
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }).getAttribute('aria-checked')).toBe('false')
-    expect(screen.queryByRole('menuitemcheckbox', { name: 'All branches' })).toBeNull()
-
-    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }))
-
-    expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('tree')
-    await user.click(screen.getByRole('button', { name: 'View' }))
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('menuitemcheckbox', { name: 'All branches' })).toBeTruthy()
-    expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
+    expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('commits')
+    expect(screen.queryByRole('button', { name: 'View' })).toBeNull()
+    expect(screen.queryByText(/Graph view|All branches/)).toBeNull()
   })
 
   it('leaves file search to Quick Open and names what Refresh reloads on the Git tab', async () => {

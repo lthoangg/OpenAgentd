@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, DOCK_TEXT_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
 import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
 
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
@@ -37,12 +37,6 @@ describe('coarse-pointer touch targets', () => {
     expect(inactive).toContain('group-focus-within/tab:opacity-100')
     expect(inactive).toContain('focus-visible:opacity-100')
     expect(dockTabCloseClass(true)).toContain('opacity-100')
-  })
-
-  it('keeps the dock toolbar text action (View ▾) inside the 32px toolbar with a 36px hit area', () => {
-    expect(DOCK_TEXT_ACTION_CLASS).toContain('h-7')
-    expect(DOCK_TEXT_ACTION_CLASS).toContain('touch-hit')
-    expect(DOCK_TEXT_ACTION_CLASS).not.toMatch(/pointer-coarse:(min-)?h-9/)
   })
 
   it('sizes buttons 36px on touch, and 40px in the Android app', () => {

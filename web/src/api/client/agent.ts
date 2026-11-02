@@ -413,10 +413,9 @@ export async function getCodingWorkspaceGitHistory(
   workspace: string,
   limit = 50,
   cursor?: string | null,
-  all = false,
   signal?: AbortSignal,
 ): Promise<WorkspaceGitHistoryResponse> {
-  const params = new URLSearchParams({ workspace, limit: String(limit), all: String(all) })
+  const params = new URLSearchParams({ workspace, limit: String(limit) })
   if (cursor) {
     params.set('cursor', cursor)
   }

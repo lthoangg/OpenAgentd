@@ -8,7 +8,7 @@ afterEach(cleanup)
 function renderToolbar(overrides: Partial<GitViewToolbarProps> = {}) {
   const props: GitViewToolbarProps = {
     idBase: 'git',
-    subTab: 'tree',
+    subTab: 'commits',
     onSubTabChange: () => {},
     changedCount: 3,
     commitsAhead: 2,
@@ -17,55 +17,33 @@ function renderToolbar(overrides: Partial<GitViewToolbarProps> = {}) {
     mobile: true,
     allExpanded: null,
     onToggleExpandAll: () => {},
-    allBranches: false,
-    onAllBranchesChange: () => {},
     ...overrides,
   }
   return render(<GitViewToolbar {...props} />)
 }
 
-describe('GitViewToolbar View menu', () => {
-  it('holds Graph view and All branches as checkable items, leaving the tabs the width', () => {
-    const onSubTabChange = mock(() => {})
-    const onAllBranchesChange = mock(() => {})
-    renderToolbar({ onSubTabChange, onAllBranchesChange })
-
-    expect(screen.queryByRole('checkbox')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'View' }))
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('menuitemcheckbox', { name: 'All branches' }).getAttribute('aria-checked')).toBe('false')
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'All branches' }))
-    expect(onAllBranchesChange).toHaveBeenCalledWith(true)
-    expect(screen.queryByRole('menu')).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'View' }))
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }))
-    expect(onSubTabChange).toHaveBeenCalledWith('commits')
-  })
-
-  it('offers All branches only with the graph on, and Graph view back from the list', () => {
-    const onSubTabChange = mock(() => {})
-    renderToolbar({ subTab: 'commits', onSubTabChange })
-
-    fireEvent.click(screen.getByRole('button', { name: 'View' }))
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }).getAttribute('aria-checked')).toBe('false')
-    expect(screen.queryByRole('menuitemcheckbox', { name: 'All branches' })).toBeNull()
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Graph view' }))
-    expect(onSubTabChange).toHaveBeenCalledWith('tree')
-  })
-
-  it('is the same one button on desktop and phone, with no checkboxes', () => {
+describe('GitViewToolbar', () => {
+  it('has no View menu, graph or All branches on History, on desktop or phone', () => {
     for (const mobile of [true, false]) {
       renderToolbar({ mobile })
-      expect(screen.getByRole('button', { name: 'View' }).getAttribute('aria-haspopup')).toBe('menu')
-      expect(screen.queryByRole('checkbox')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'View' })).toBeNull()
+      expect(screen.queryByRole('menuitemcheckbox')).toBeNull()
+      expect(screen.queryByText(/Graph view|All branches/)).toBeNull()
       cleanup()
     }
   })
 
-  it('is not on the Changes view, which has nothing to set but expand-all', () => {
+  it('opens History as the commit list', () => {
+    const onSubTabChange = mock(() => {})
+    renderToolbar({ subTab: 'changes', onSubTabChange })
+
+    fireEvent.click(screen.getByRole('tab', { name: /^History/ }))
+
+    expect(onSubTabChange).toHaveBeenCalledWith('commits')
+  })
+
+  it('keeps expand-all on the Changes view', () => {
     renderToolbar({ subTab: 'changes', allExpanded: false })
-    expect(screen.queryByRole('button', { name: 'View' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Expand all diffs' })).toBeTruthy()
   })
 
@@ -74,13 +52,5 @@ describe('GitViewToolbar View menu', () => {
     const tablist = screen.getByRole('tablist', { name: 'Git view' })
     expect(tablist.className).toContain('pointer-coarse:data-[orientation=horizontal]:h-7')
     expect(tablist.className).not.toContain('h-10.5')
-  })
-
-  it('keeps the View button inside the 32px toolbar on touch, with a 36px hit area', () => {
-    renderToolbar()
-    const view = screen.getByRole('button', { name: 'View' })
-    expect(view.className).toContain('h-7')
-    expect(view.className).toContain('touch-hit')
-    expect(view.className).not.toMatch(/pointer-coarse:(min-)?h-9/)
   })
 })

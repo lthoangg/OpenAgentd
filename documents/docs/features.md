@@ -873,8 +873,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     green, **D** red, **M** orange (all three were orange).
   - A tab's close button is always visible, dimmed on tabs that are not
     open; terminal tabs show it on touch too.
-  - **Git**: one **View** menu holds Graph view and All branches. History
-    rows are 28px (36px on touch), and a failed load has **Retry**.
+  - **Git**: History is the current branch's commit list, with no graph
+    view or All branches toggle (a stored graph view opens as the list).
+    History rows are 28px (36px on touch), and a failed load has **Retry**.
   - **Scheduled**: **New task** is a regular button, and **Run now**,
     **Pause** and **Resume** sit in each task's ⋯ menu, in words, on every
     platform.
@@ -2216,7 +2217,7 @@ agent against it.
   area and always leaves the chat at least 400px; on narrower windows it opens
   over the chat instead. Both dividers resize by drag or keyboard (arrow keys,
   Home/End, Enter to reset), and the layout is remembered.
-  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
+  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle *(deprecated — the graph and All Branches are removed in v3.40.0; History lists the current branch's commits)*. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
     - **Git Commit Actions (Undo & Revert)** `[v1.88.0]` — right-clicking a commit/file on desktop opens a native-feeling context menu at the cursor, while long-pressing on mobile opens a touch-friendly action sheet. Allows you to **Undo commit** (soft-resets the last commit, keeping all changes staged in your working copy) or **Revert commit** (creates a new commit that reverts the changes of the selected commit, with auto-abort protection if conflicts occur), and confirmation dialogs use responsive side-by-side buttons on desktop.
     - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
       sub-tab shows a 24-hour `HH:MM` alongside the date so same-day commits

@@ -69,8 +69,8 @@ export const queryKeys = {
       ['coding-workspace-diff', workspace, path] as const,
     status: (workspace: string) =>
       ['coding-workspace-status', workspace] as const,
-    history: (workspace: string, limit: number, allBranches: boolean) =>
-      ['coding-workspace-history', workspace, limit, allBranches] as const,
+    history: (workspace: string, limit: number) =>
+      ['coding-workspace-history', workspace, limit] as const,
     commitDiff: (workspace: string, sha: string) =>
       ['coding-workspace-commit-diff', workspace, sha] as const,
   },

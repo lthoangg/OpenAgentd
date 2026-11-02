@@ -72,15 +72,6 @@ export function dockTabCloseClass(active: boolean): string {
 export const DOCK_ACTION_BUTTON_CLASS =
   'relative touch-hit flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7 pointer-coarse:size-7'
 
-/**
- * A text-and-chevron menu button in a view toolbar ("View ▾"): the height of
- * ``DOCK_ACTION_BUTTON_CLASS`` (28px, so it fits the 32px toolbar on touch
- * too) with the same 36px ``touch-hit`` area. Not ``Button``, whose 36px
- * touch minimum would overflow the toolbar.
- */
-export const DOCK_TEXT_ACTION_CLASS =
-  'relative touch-hit flex h-7 shrink-0 items-center gap-1 rounded-sm px-2 text-xs font-medium text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text)'
-
 /** Hover-revealed row action inside a list row (28px, 44px on touch). */
 export const DOCK_ROW_ACTION_CLASS =
   'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9'

@@ -28,7 +28,7 @@ describe('workspace API reads', () => {
       listCodingWorkspaceFiles('/workspace', signal),
       getCodingWorkspaceGitDiff('/workspace', undefined, signal),
       getCodingWorkspaceStatus('/workspace', signal),
-      getCodingWorkspaceGitHistory('/workspace', 50, null, false, signal),
+      getCodingWorkspaceGitHistory('/workspace', 50, null, signal),
       getCodingWorkspaceCommitDiff('/workspace', 'abc123', signal),
     ])
 

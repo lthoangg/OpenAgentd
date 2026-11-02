@@ -94,7 +94,7 @@ describe("scroll chaining — anchored popovers trap scroll (source)", () => {
 // ---------------------------------------------------------------------------
 
 describe("scroll chaining — embedded content chains (source)", () => {
-  it("WorkspacePanel inline diff/graph viewers do not use overscroll-contain", () => {
+  it("WorkspacePanel inline diff viewers do not use overscroll-contain", () => {
     const src = readFileSync(
       fileURLToPath(
         new URL("../../components/WorkspacePanel.tsx", import.meta.url)

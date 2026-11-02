@@ -75,7 +75,6 @@ import {
   collectChangedFiles,
   collectDiffSections,
 } from './WorkspacePanel/diff-helpers'
-import type { ParsedGraphLine } from './WorkspacePanel/CommitDetail'
 import { GitReviewSubPanel } from './WorkspacePanel/GitReviewSubPanel'
 import { CommitHistorySubPanel } from './WorkspacePanel/CommitHistorySubPanel'
 import { TerminalSubPanel } from './WorkspacePanel/TerminalSubPanel'
@@ -169,20 +168,6 @@ function barStyle(bar: SplitBar): React.CSSProperties {
   return bar.axis === 'row'
     ? { left: `calc(${(box.left + at * box.width) * 100}% - 3px)`, top: `${box.top * 100}%`, height: `${box.height * 100}%` }
     : { top: `calc(${(box.top + at * box.height) * 100}% - 3px)`, left: `${box.left * 100}%`, width: `${box.width * 100}%` }
-}
-
-function parseGraph(graph: string): ParsedGraphLine[] {
-  if (!graph) return []
-  return graph.split('\n').filter((line) => line.trim().length > 0).map((line, lineIndex) => {
-    const match = /^(.*?)\b([0-9a-fA-F]{7,10})\b(.*?)$/.exec(line)
-    if (!match) return { key: `line-${lineIndex}`, raw: line, graphPart: line }
-    const [, graphPart, sha, restRaw] = match
-    const rest = restRaw.trim()
-    const decoMatch = /^\((.*?)\)\s*(.*)$/.exec(rest)
-    return decoMatch
-      ? { key: `line-${lineIndex}-${sha}`, raw: line, graphPart, sha, decorations: decoMatch[1], message: decoMatch[2] }
-      : { key: `line-${lineIndex}-${sha}`, raw: line, graphPart, sha, message: rest }
-  })
 }
 
 export function WorkspacePanel({
@@ -374,7 +359,6 @@ export function WorkspacePanel({
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const commitsScrollRef = useRef<HTMLDivElement>(null)
-  const pendingScrollShaRef = useRef<string | null>(null)
   const handledFileOpenKeyRef = useRef(-1)
   // Closed and done animating: hidden and inert until it opens again. Not
   // inert at once, so the shell can still see focus inside it and return it.
@@ -484,9 +468,8 @@ export function WorkspacePanel({
   const subTab = gitState.subTab
   // Git's own queries run only while its tab shows in a pane on screen.
   const reviewShown = shownPanes.some((pane) => activeTabs[pane]?.id === REVIEW_TAB_ID)
-  // Each Git view (changes, commits, tree) keeps its place across tab switches.
+  // Each Git view (changes, commits) keeps its place across tab switches.
   const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
-  const allBranches = gitState.allBranches
   const expandedCommitSha = gitState.expandedCommitSha
   const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
   const expandedCommitFiles = useMemo(() => new Set(gitState.expandedCommitFiles), [gitState.expandedCommitFiles])
@@ -494,7 +477,6 @@ export function WorkspacePanel({
   // Stable setters (read the store at call time) so the memoized Git list
   // views below are not re-rendered by a fresh callback on every dock render.
   const setSubTab = useCallback((tab: GitSubTab) => useGitPanelStore.getState().setSubTab(workspace, tab), [workspace])
-  const setAllBranches = useCallback((val: boolean) => useGitPanelStore.getState().setAllBranches(workspace, val), [workspace])
   const setExpandedCommitSha = useCallback((updater: string | null | ((prev: string | null) => string | null)) => {
     const store = useGitPanelStore.getState()
     const current = (store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitSha
@@ -506,15 +488,12 @@ export function WorkspacePanel({
     store.setExpandedCommitFiles(workspace, Array.from(typeof updater === 'function' ? updater(current) : updater))
   }, [workspace])
   const historyLimit = 50
-  // "All branches" is a Tree-only toggle; the Commits list always follows HEAD.
-  const historyAllBranches = subTab === 'tree' && allBranches
-
   const gitHistory = useInfiniteQuery({
-    queryKey: queryKeys.coding.history(workspace, historyLimit, historyAllBranches),
-    queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, historyAllBranches, signal),
+    queryKey: queryKeys.coding.history(workspace, historyLimit),
+    queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
-    enabled: open && !chatWorkspace && reviewShown && (subTab === 'commits' || subTab === 'tree'),
+    enabled: open && !chatWorkspace && reviewShown && subTab === 'commits',
     staleTime: 10_000,
   })
 
@@ -525,9 +504,6 @@ export function WorkspacePanel({
     if (!activeSha || commits.length === 0) return false
     return activeSha === commits[0].sha
   }, [mobileCommitActions, desktopCommitActions, commits])
-
-  const graph = gitHistory.data?.pages[0]?.graph ?? ''
-  const parsedGraphLines = useMemo(() => parseGraph(graph), [graph])
 
   const commitsAhead = workspaceStatus.data?.commits_ahead ?? null
   const commitsBehind = workspaceStatus.data?.commits_behind ?? null
@@ -636,7 +612,7 @@ export function WorkspacePanel({
     if (chatWorkspace) return
     refreshChanges()
     void workspaceStatus.refetch()
-    if (subTab === 'commits' || subTab === 'tree') {
+    if (subTab === 'commits') {
       void gitHistory.refetch()
     }
   }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, chatWorkspace])
@@ -674,15 +650,6 @@ export function WorkspacePanel({
   useEffect(() => {
     for (const tab of Object.values(activeTabs)) tabButtonRefs.current.get(tab?.id ?? '')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeTabs, visibleTabs.length])
-
-  useEffect(() => {
-    const sha = pendingScrollShaRef.current
-    if (!sha || subTab !== 'commits' || !commitsScrollRef.current) return
-    const card = commitsScrollRef.current.querySelector(`[data-commit-sha="${sha}"]`)
-    if (!card) return
-    pendingScrollShaRef.current = null
-    card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [subTab, commits])
 
   // ── Git actions ───────────────────────────────────────────────────────────
   const {
@@ -722,8 +689,6 @@ export function WorkspacePanel({
           mobile={mobile}
           allExpanded={changedFiles.length > 0 ? allExpanded : null}
           onToggleExpandAll={toggleExpandAll}
-          allBranches={allBranches}
-          onAllBranchesChange={setAllBranches}
         />
       )}
       <div
@@ -732,9 +697,8 @@ export function WorkspacePanel({
         role={changes.data?.is_git_repo ? 'tabpanel' : undefined}
         aria-labelledby={changes.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
         // Vertical only: ``overflow: auto`` lets one over-wide row pan the
-        // whole list sideways. Tree is the exception: its ASCII rails cannot
-        // wrap, so a graph wider than the dock scrolls sideways.
-        className={cn('min-h-0 flex-1 touch-pan-y', subTab === 'tree' ? 'overflow-auto' : 'overflow-x-hidden overflow-y-auto')}
+        // whole list sideways.
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y"
       >
         {subTab === 'changes' ? (
           <GitReviewSubPanel
@@ -753,7 +717,6 @@ export function WorkspacePanel({
         ) : (
           <CommitHistorySubPanel
             workspace={workspace}
-            subTab={subTab}
             gitHistory={historyView}
             commits={commits}
             expandedCommitSha={expandedCommitSha}
@@ -763,10 +726,7 @@ export function WorkspacePanel({
             commitDiff={commitDiffView}
             commitChangedFiles={commitChangedFiles}
             commitDiffSections={commitDiffSections}
-            parsedGraphLines={parsedGraphLines}
             commitsScrollRef={commitsScrollRef}
-            pendingScrollShaRef={pendingScrollShaRef}
-            setSubTab={setSubTab}
             openCommitTab={openCommitPreview}
             mobile={mobile}
             setMobileCommitActions={setMobileCommitActions}

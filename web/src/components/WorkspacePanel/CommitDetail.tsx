@@ -136,39 +136,3 @@ export function CommitDetail({
     </ul>
   )
 }
-
-export interface ParsedGraphLine {
-  key: string
-  raw: string
-  graphPart: string
-  sha?: string
-  decorations?: string
-  message?: string
-}
-
-export function renderGraphPrefix(prefix: string) {
-  return prefix.split('').map((char, index) => {
-    if (char === '*') {
-      return (
-        <span key={index} className="text-(--color-accent) font-bold font-mono">
-          ●
-        </span>
-      )
-    }
-    if (char === '|') {
-      return (
-        <span key={index} className="text-(--color-text-subtle) opacity-60 font-mono">
-          |
-        </span>
-      )
-    }
-    if (char === '/' || char === '\\' || char === '_') {
-      return (
-        <span key={index} className="text-(--color-text-muted) opacity-85 font-mono">
-          {char}
-        </span>
-      )
-    }
-    return <span key={index} className="font-mono">{char}</span>
-  })
-}

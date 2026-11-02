@@ -65,7 +65,6 @@ const historyResponse = {
   is_git_repo: true,
   commits: [commitWithBody, commitNoBody],
   next_cursor: null,
-  graph: '',
 }
 
 const emptyDiff = { workspace: WORKSPACE, is_git_repo: true, diff: '', untracked: [] }
@@ -109,11 +108,7 @@ async function renderCommitsTab(mobile = false) {
 }
 
 describe('WorkspacePanel – commit body expand/collapse', () => {
-  it('keeps the Commits list on the current branch even when Tree has All branches enabled', async () => {
-    // Regression: the persisted "All branches" toggle lives only on the Tree
-    // sub-tab but used to leak into the Commits list, where it can't be seen
-    // or turned off.
-    useGitPanelStore.getState().setAllBranches(WORKSPACE, true)
+  it('asks for the current branch only, with no graph or all-branches option', async () => {
     await renderCommitsTab()
     await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
 
@@ -121,7 +116,7 @@ describe('WorkspacePanel – commit body expand/collapse', () => {
       .map((args) => String(args[0]))
       .filter((url) => url.includes('/workspace/git/history'))
     expect(historyUrls.length).toBeGreaterThan(0)
-    for (const url of historyUrls) expect(url).toContain('all=false')
+    for (const url of historyUrls) expect(new URL(url, 'http://x').searchParams.has('all')).toBe(false)
   })
 
   it('offers a manual load-more action after a cold history load', async () => {
@@ -386,7 +381,7 @@ describe('WorkspacePanel – commit actions (undo/revert)', () => {
 // ── commits_ahead badge ───────────────────────────────────────────────────────
 
 describe('WorkspacePanel – git view scroll axes', () => {
-  async function scrollerFor(subTab: 'changes' | 'commits' | 'tree') {
+  async function scrollerFor(subTab: 'changes' | 'commits') {
     const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     useGitPanelStore.getState().setSubTab(WORKSPACE, subTab)
@@ -407,12 +402,6 @@ describe('WorkspacePanel – git view scroll axes', () => {
       expect(panel.className).toContain('overflow-y-auto')
       cleanup()
     }
-  })
-
-  it('lets only the Tree graph scroll sideways', async () => {
-    const panel = await scrollerFor('tree')
-    expect(panel.className).toContain('overflow-auto')
-    expect(panel.className).not.toContain('overflow-x-hidden')
   })
 })
 

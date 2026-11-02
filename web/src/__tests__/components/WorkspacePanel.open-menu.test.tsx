@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -172,7 +172,8 @@ describe('Review dock "+" menu', () => {
 
       const tab = screen.getByRole('button', { name: 'Goal 7/50' })
       expect(tab.getAttribute('aria-current')).toBe('true')
-      expect(document.querySelector('[data-goal-now]')?.textContent).toBe('Working · turn 7/50')
+      // The tab's view loads on first use (``lazySurface``).
+      await waitFor(() => expect(document.querySelector('[data-goal-now]')?.textContent).toBe('Working · turn 7/50'))
 
       await act(async () => {
         client.setQueryData(queryKeys.goal('session-1'), { goal: { ...GOAL, status: 'paused', pause_reason: 'stopped' } })

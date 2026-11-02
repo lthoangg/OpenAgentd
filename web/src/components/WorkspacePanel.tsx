@@ -83,9 +83,7 @@ import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { DiffTabView } from './WorkspacePanel/DiffTabView'
 import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
-import { PlanTabView } from './WorkspacePanel/PlanTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
-import { GoalTabView } from './WorkspacePanel/GoalTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
@@ -136,6 +134,8 @@ import {
 const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
 const PreviewTabView = lazySurface(() => import('./Preview/PreviewTabView'), 'PreviewTabView')
 const AttachmentTabView = lazySurface(() => import('./WorkspacePanel/AttachmentTabView'), 'AttachmentTabView')
+const PlanTabView = lazySurface(() => import('./WorkspacePanel/PlanTabView'), 'PlanTabView')
+const GoalTabView = lazySurface(() => import('./WorkspacePanel/GoalTabView'), 'GoalTabView')
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 

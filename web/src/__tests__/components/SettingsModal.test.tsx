@@ -208,6 +208,8 @@ describe('SettingsModal — nav search and groups', () => {
 
   /** The sidebar's own search: the phone section list has one too, hidden by CSS from 768px up. */
   const sidebar = () => within(screen.getByRole('navigation', { name: 'Settings categories' }))
+  // The modal focuses its start field on the next animation frame.
+  const frame = () => act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
 
   it('filters sections by name or description, and Enter opens the first match', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
@@ -250,7 +252,8 @@ describe('SettingsModal — nav search and groups', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
-    await waitFor(() => expect(document.activeElement).toBe(sidebar().getByRole('searchbox', { name: 'Search settings' })))
+    await frame()
+    expect(document.activeElement).toBe(sidebar().getByRole('searchbox', { name: 'Search settings' }))
   })
 
   it('opens with focus in the page where the icon rail hides the search field', async () => {
@@ -260,7 +263,8 @@ describe('SettingsModal — nav search and groups', () => {
     try {
       useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
       renderModal()
-      await waitFor(() => expect(document.activeElement?.tagName).toBe('MAIN'))
+      await frame()
+      expect(document.activeElement?.tagName).toBe('MAIN')
     } finally {
       HTMLInputElement.prototype.getClientRects = original
     }

@@ -20,8 +20,15 @@ colors:
   bg-input: "#FAF6EC"
   bg-key: "#F0E9D4"           # "Keycap" — hover/press wash, header strips
   bg-send: "#2D241B"          # Inverted ink pill (composer send)
+  bg-tooltip: "#2D241B"       # Tooltip chip (a raised warm tone in dark)
   surface: "#FFFDF7"
   surface-2: "#F5EBD8"
+
+  # ── Selection fills ────────────────────────────────────────────────────────
+  fill-selected: "#3F3429"    # Chosen segment, tab or option; highlighted menu row
+  on-selected: "#FFFDF7"
+  fill-danger: "#B91C1C"      # Highlighted destructive menu row
+  switch-on: "#5AA8E2"        # A switch that is on
 
   # ── Borders ────────────────────────────────────────────────────────────────
   border-subtle: "#E7DCBF"
@@ -34,6 +41,8 @@ colors:
   on-surface-muted: "#6E604F"
   on-surface-subtle: "#7A6A54" # AA floor against bg-page
   on-accent: "#FFFDF7"
+  tooltip-text: "#FFFDF7"
+  tooltip-border: "#2D241B"   # Matches the fill in light; a visible edge in dark
 
   # ── Agent identity chips ───────────────────────────────────────────────────
   accent-blue: "#5AA8E2"
@@ -265,21 +274,21 @@ components:
     height: 28px
     padding: 8px
   menu-item-highlighted:      # Pointer or keyboard: filled edge to edge, text inverts
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-accent}"
+    backgroundColor: "{colors.fill-selected}"
+    textColor: "{colors.on-selected}"
   segmented-control:          # No border, no inset: the track is the segments
     backgroundColor: "{colors.bg-key}"
     rounded: "{rounded.sm}"
     padding: 0px
   segmented-item-active:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-accent}"
+    backgroundColor: "{colors.fill-selected}"
+    textColor: "{colors.on-selected}"
     rounded: "{rounded.none}"
   switch-off:
     backgroundColor: "{colors.border-strong}"
     rounded: "{rounded.full}"
   switch-on:
-    backgroundColor: "{colors.accent-blue}"
+    backgroundColor: "{colors.switch-on}"
     rounded: "{rounded.full}"
   input:
     backgroundColor: "{colors.bg-input}"
@@ -356,8 +365,9 @@ components:
     rounded: "{rounded.lg}"
     width: 860px
   tooltip:
-    backgroundColor: "{colors.bg-send}"
-    textColor: "{colors.on-accent}"
+    backgroundColor: "{colors.bg-tooltip}"
+    textColor: "{colors.tooltip-text}"
+    borderColor: "{colors.tooltip-border}"
     typography: "{typography.label-sm}"
     rounded: "{rounded.sm}"
     padding: 8px
@@ -422,6 +432,19 @@ Surfaces step tonally, not by elevation. Cards sit *lighter* than the page:
 strips of dense section cards, and keyboard-shortcut badges. `bg-send (#2D241B)` is the one
 inverted surface, reserved for the composer's send action.
 
+### Selection fills
+
+A chosen segment, tab or question option and the highlighted menu row fill
+with `fill-selected` and set their text in `on-selected`; a tooltip is a
+`bg-tooltip` chip. In light mode these are Bark and ink with inverted text.
+In dark mode they are **not** the near-white accent: a cream block on a dark
+window glows brighter than the words around it, so the fill is a raised warm
+tone (`#5A4836`) with the normal text colour on it, as a native dark
+segmented control or menu does. The tooltip is a raised chip with a hairline
+edge. Increase contrast lifts the dark fill to 3:1 against the track.
+`token-pairs.test.ts` keeps every dark fill well below the text tone, and the
+lint (`accent-selection-fill`) stops a selection reaching for the accent.
+
 ### Agent identity chips
 
 Each concurrent agent gets a stable identity color from a six-hue set (blue,
@@ -452,6 +475,10 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-card` | `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
+| `fill-selected` / `on-selected` | `#3F3429` / `#FFFDF7` | `#5A4836` / `#F5EBD8` |
+| `fill-danger` (highlighted destructive row) | `#B91C1C` | `#8E2F2B` |
+| `bg-tooltip` / `tooltip-text` / `tooltip-border` | `#2D241B` / `#FFFDF7` / `#2D241B` | `#2E251C` / `#F5EBD8` / `#4D3E2D` |
+| `switch-on` | `#5AA8E2` | `#3F86C2` (deeper, so the cream thumb stands off it) |
 | `surface` / `surface-2` | `#FFFDF7` / `#F5EBD8` | `#221C16` / `#2A2219` |
 | `color-bg-elevated` | `#FFFDF7` | `#221C16` |
 | `border-subtle` / `border` / `border-strong` | `#E7DCBF` / `#D9CFA9` / `#B8A47E` | `#2C231A` / `#3A2F23` / `#5C4B36` |
@@ -474,8 +501,9 @@ Agent and syntax hues brighten and desaturate in dark mode (e.g. `accent-blue`
 ### Contrast with the palette we have
 
 Every text-on-surface pair reaches WCAG AA with the existing tokens; no colour
-was added to get there (`styles/token-pairs.test.ts` measures each pair in
-both themes, and the lint enforces the rules below):
+was added to get there, apart from the dark selection tones above, which step
+the same warm ramp (`styles/token-pairs.test.ts` measures each pair in both
+themes, and the lint enforces the rules below):
 
 - **Subtle text sits on the page or the sidebar only.** On a wash (`bg-key`,
   soft chips, selected rows) or a card, use `on-surface-muted` (lint:
@@ -800,7 +828,8 @@ them is: **warm paper surface · fills, not borders · muted text · keycap hove
 a primary action is filled with Bark (`--color-accent`), a secondary one with
 the keycap wash (`bg-key`), a ghost one is text only. In a small group (Code /
 Plan, a question's options, the highlighted menu item) the chosen item is
-filled with Bark edge to edge and its text inverts to `on-accent`; the track
+filled edge to edge with `fill-selected` (Bark in light, a raised warm tone in
+dark; see Colors → Selection fills) and its text turns `on-selected`; the track
 has no border and no inset. In a long list (sidebar rows, the dock's tab strip)
 the open row keeps a wash and gains medium weight and the main text colour,
 never a coloured bar. Borders are left for three jobs only: the boundary
@@ -873,9 +902,9 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
 - **Panel**: `rounded-md`, one 1px `border-(--color-border-subtle)` hairline, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
-- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with Bark and its text and icons invert to `on-accent` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
+- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with `fill-selected` and its text and icons turn `on-selected` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
 - **Keyed lists** (`oa-menu-item-keyed`, the command palette): only the row the list marks active (`data-highlighted`) fills; a real mouse move makes a row active (`hoverIntent`), a pointer resting over the list lights nothing, so ↑/↓ never leave two rows lit. Palette rows have no border.
-- **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns error and the text inverts.
+- **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns `fill-danger` and the text turns `on-selected`.
 - **Native in the desktop app**: `ContextMenu` reads its items (label, disabled, checked, separators) from the hidden page menu and asks the shell to pop up the OS's own menu at the same point (`lib/native-menu.ts` → `show_context_menu`); the chosen item is clicked, so callers keep one menu definition. A menu whose items carry more than words (chips, badges) passes `native={false}`. In the iOS app the same items are an iOS action sheet (`pick_one`: rows that can run, the checked one marked, the menu's label as its title). Browsers, Android and a shell without the command show the page menu.
 - In the desktop app, command-only context menus (tabs, sessions, messages, files, Changes rows) are the OS's own menu; these styles are the browser fallback and the menus that hold chips or switches.
 - **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
@@ -1373,7 +1402,8 @@ widgets (tablists, menus, listboxes, comboboxes) keep their own arrow keys.
 
 Tooltips follow native timing: 500 ms on hover, then instant for 300 ms after
 one closes; a press, key or scroll closes them, and focus opens them only when
-it came from the keyboard.
+it came from the keyboard. A tooltip is a raised `bg-tooltip` chip with a
+`tooltip-border` hairline (its arrow carries the hairline on its outer sides).
 
 ### Mobile shell
 
@@ -1468,7 +1498,8 @@ this repository. Files and regeneration: `documents/assets/brand/README.md`.
 
 - Do let content carry the color; keep chrome in the neutral ramp.
 - Do use `tertiary` (Signal Blue) as the only interaction color, and `bg-send`
-  as the only inverted surface.
+  as the only inverted surface. Selections fill with `fill-selected`, never the
+  accent: in dark mode the accent is near-white.
 - Don't introduce a new hue for emphasis — step the surface ramp or the text
   ramp instead.
 - Don't reuse agent identity hues to mean semantic state, or vice versa.

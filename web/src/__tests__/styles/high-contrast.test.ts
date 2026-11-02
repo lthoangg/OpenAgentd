@@ -77,6 +77,14 @@ describe('prefers-contrast: more', () => {
     expect(props(baseTokens, /:root\.dark\s*\{/)['--color-text-muted']).toBe('#9C8A72')
     expect(props(baseTokens, /:root\.dark\s*\{/)['--color-border']).toBe('#3A2F23')
   })
+
+  it('lifts the dark selection fill to 3:1 on the track, its label still AA', () => {
+    const base = props(baseTokens, /:root\.dark\s*\{/)
+    const high = props(contrastBlock, /:root\.dark\s*\{/)
+    expect(contrast(high['--color-fill-selected'], base['--bg-key'])).toBeGreaterThanOrEqual(3)
+    expect(contrast(high['--color-text-on-selected'], high['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(high['--color-text-on-selected'], high['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
+  })
 })
 
 describe('forced-colors: active', () => {

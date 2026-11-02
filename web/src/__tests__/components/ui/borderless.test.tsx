@@ -1,9 +1,10 @@
 /**
  * Fewer borders (DESIGN.md → Components): controls carry no border of their
- * own. A chosen segment fills its track edge to edge with the theme accent,
- * buttons are fills, chips are soft, and menu rows highlight with a solid
- * accent fill like the OS menus. Borders stay on region separators, text
- * fields and the one hairline around a container.
+ * own. A chosen segment fills its track edge to edge with the selection fill
+ * (Bark in light, a raised warm tone in dark), buttons are fills, chips are
+ * soft, and menu rows highlight with the same solid fill like the OS menus.
+ * Borders stay on region separators, text fields and the one hairline around
+ * a container.
  */
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
@@ -46,10 +47,10 @@ describe('borderless controls', () => {
     expect(track).toContain('overflow-hidden')
   })
 
-  it('fills the chosen segment edge to edge with the accent', () => {
+  it('fills the chosen segment edge to edge with the selection fill', () => {
     const active = segmentedItemClass({ active: true })
-    expect(active).toContain('bg-(--color-accent)')
-    expect(active).toContain('text-(--color-text-on-accent)')
+    expect(active).toContain('bg-(--color-fill-selected)')
+    expect(active).toContain('text-(--color-text-on-selected)')
     expect(borderWidths(active)).toEqual([])
     expect(active).not.toMatch(/(?:^|\s)rounded-xs(?:\s|$)/)
   })
@@ -71,13 +72,13 @@ describe('borderless controls', () => {
     expect(borderWidths(off)).toEqual([])
     expect(off).toContain('bg-(--color-border-strong)')
     rerender(<Switch checked aria-label="On switch" />)
-    expect(getByRole('switch').className).toContain('bg-(--accent-blue)')
+    expect(getByRole('switch').className).toContain('bg-(--switch-on)')
   })
 
-  it('frames a menu with one subtle hairline and highlights rows with a solid accent fill', () => {
+  it('frames a menu with one subtle hairline and highlights rows with a solid selection fill', () => {
     expect(MENU_PANEL_CLASS).toContain('border-(--color-border-subtle)')
     expect(MENU_ITEM_CLASS).toContain('oa-menu-item')
-    expect(css).toMatch(/\.oa-menu-item:is\(\[data-highlighted\], :focus-visible, :active\):not\([^)]*\)\s*\{\s*background-color:\s*var\(--color-accent\);\s*color:\s*var\(--color-text-on-accent\);/)
+    expect(css).toMatch(/\.oa-menu-item:is\(\[data-highlighted\], :focus-visible, :active\):not\([^)]*\)\s*\{\s*background-color:\s*var\(--color-fill-selected\);\s*color:\s*var\(--color-text-on-selected\);/)
     // A pointer hover lights a row only where hover exists (not after a tap).
     expect(css).toMatch(/@media \(hover: hover\)\s*\{\s*\.oa-menu-item:hover/)
   })

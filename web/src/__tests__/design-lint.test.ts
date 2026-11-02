@@ -98,6 +98,12 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'accent-selection-fill',
+    why: 'a chosen segment, tab or option fills with --color-fill-selected (a raised tone on dark), not the near-white accent, which outshines the content in dark mode',
+    pattern: /(?:[\w-]+:)?bg-\(--color-accent\)\s+(?:[\w-]+:)?text-\(--color-text-on-accent\)/g,
+    allow: {},
+  },
+  {
     name: 'faint-focus-ring',
     why: 'keyboard focus is a solid 2px ring or outline in --focus-ring; a 40% one is hard to see',
     pattern: /focus-visible:(?:ring|outline)-\(--focus-ring\)\/\d+/g,
@@ -168,8 +174,8 @@ const RULES: Rule[] = [
     why: 'status dots, bars and marks use the -text tones, which reach 3:1 on paper; the solid hues stay for checked controls',
     pattern: /(?<![\w:-])bg-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)(?![\w/-])/g,
     allow: {
-      // Checked controls: the fill sits under a thumb or a tick.
-      'components/ui/switch.tsx': 1,
+      // Checked controls: the fill sits under a tick (the switch has its own
+      // --switch-on token).
       'components/ui/radio-group.tsx': 1,
     },
   },

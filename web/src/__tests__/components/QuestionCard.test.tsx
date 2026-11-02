@@ -615,14 +615,14 @@ describe('QuestionCard', () => {
   })
 
   describe('look', () => {
-    it('fills the chosen option with Bark and the rest with the keycap fill, with no borders', () => {
+    it('fills the chosen option with the selection fill and the rest with the keycap fill, with no borders', () => {
       renderCard()
       fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
 
       const chosen = screen.getByRole('radio', { name: /bun/ }).closest('label')!
       const other = screen.getByRole('radio', { name: /pnpm/ }).closest('label')!
-      expect(chosen.className).toContain('bg-(--color-accent)')
-      expect(chosen.className).toContain('text-(--color-text-on-accent)')
+      expect(chosen.className).toContain('bg-(--color-fill-selected)')
+      expect(chosen.className).toContain('text-(--color-text-on-selected)')
       expect(other.className).toContain('bg-(--bg-key)')
       for (const label of [chosen, other]) expect(label.className).not.toMatch(/(?<![\w-])border(?![\w-])/)
     })

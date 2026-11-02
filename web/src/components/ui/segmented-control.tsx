@@ -79,7 +79,7 @@ export function segmentedItemClass({
     iconOnly && 'aspect-square px-0',
     fill && 'flex-1',
     active
-      ? 'bg-(--color-accent) text-(--color-text-on-accent)'
+      ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
       : 'text-(--color-text-muted) hover:text-(--color-text-2)',
   )
 }
@@ -153,7 +153,7 @@ export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria
     <span
       aria-hidden="true"
       data-segment-indicator=""
-      className="pointer-events-none absolute inset-y-0 left-0 w-px origin-left bg-(--color-accent) transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
+      className="pointer-events-none absolute inset-y-0 left-0 w-px origin-left bg-(--color-fill-selected) transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
       style={{ translate: `${box.x}px 0px`, scale: `${box.w} 1` }}
     />
   ) : null

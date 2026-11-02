@@ -92,8 +92,9 @@ export function isKeyboardFocus(el: Element): boolean {
   }
 }
 
-/** The hint's look, shared with the ``title`` layer. */
-export const TOOLTIP_CONTENT_CLASS = 'pointer-events-none fixed z-9999 w-max max-w-xs rounded-sm px-2 py-1 text-meta bg-(--bg-send) text-(--color-text-on-accent) shadow-(--shadow-depth)'
+/** The hint's look, shared with the ``title`` layer. A raised dark chip in
+ * both themes (a cream block glowed brighter than the words in dark mode). */
+export const TOOLTIP_CONTENT_CLASS = 'pointer-events-none fixed z-9999 w-max max-w-xs rounded-sm border border-(--color-tooltip-border) px-2 py-1 text-meta bg-(--bg-tooltip) text-(--color-tooltip-text) shadow-(--shadow-depth)'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -352,11 +353,12 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
   }[placement]
 
   // Arrow: a 5×5 rotated square positioned at the edge facing the trigger
+  // (its two outward sides carry the box's hairline).
   const arrowClass = {
-    top: 'bottom-[-3px] left-1/2 -translate-x-1/2',
-    bottom: 'top-[-3px] left-1/2 -translate-x-1/2',
-    left: 'right-[-3px] top-1/2 -translate-y-1/2',
-    right: 'left-[-3px] top-1/2 -translate-y-1/2',
+    top: 'bottom-[-4px] left-1/2 -translate-x-1/2 border-r border-b',
+    bottom: 'top-[-4px] left-1/2 -translate-x-1/2 border-t border-l',
+    left: 'right-[-4px] top-1/2 -translate-y-1/2 border-t border-r',
+    right: 'left-[-4px] top-1/2 -translate-y-1/2 border-b border-l',
   }[placement]
 
   return createPortal(
@@ -368,7 +370,8 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       className={cn(
         'pointer-events-none fixed z-9999 w-max max-w-xs',
         'rounded-sm px-2 py-1 text-meta',
-        'bg-(--bg-send) text-(--color-text-on-accent)',
+        'border border-(--color-tooltip-border)',
+        'bg-(--bg-tooltip) text-(--color-tooltip-text)',
         'shadow-(--shadow-depth)',
         // Hide (not unmount) until the first measurement lands, so the box
         // never flashes at (0, 0) before `reposition()` places it.
@@ -386,7 +389,7 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       <span
         aria-hidden="true"
         className={cn(
-          'absolute size-[6px] rotate-45 bg-(--bg-send)',
+          'absolute size-[7px] rotate-45 border-(--color-tooltip-border) bg-(--bg-tooltip)',
           arrowClass,
         )}
       />

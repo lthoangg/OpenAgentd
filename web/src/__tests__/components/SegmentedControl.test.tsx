@@ -99,7 +99,7 @@ describe('SegmentedControl', () => {
 
   test('keeps the plain fill on the chosen segment until it can measure', () => {
     renderControl('a')
-    expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('bg-(--color-accent)')
+    expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('bg-(--color-fill-selected)')
     expect(screen.getByRole('radio', { name: 'Alpha' }).className).not.toContain('bg-transparent')
   })
 })

@@ -80,6 +80,17 @@
     --color-accent:  #F5EBD8;
     --color-overlay: #00000099;
 
+    /* Selection fills: a chosen segment or tab, the highlighted menu row, a
+     * tooltip. Not the near-white accent: on a dark window a cream block
+     * glows brighter than the words around it. A raised warm tone with the
+     * text colour on it, like a native dark segmented control or menu. */
+    --color-fill-selected:   #5A4836;
+    --color-text-on-selected: #F5EBD8;
+    --color-fill-danger:     #8E2F2B;
+    --bg-tooltip:            #2E251C;
+    --color-tooltip-text:    #F5EBD8;
+    --color-tooltip-border:  #4D3E2D;
+
     /* Agent chips */
     --accent-blue:        #7CC2F0;
     --accent-blue-soft:   #1E3A52;
@@ -100,6 +111,10 @@
     --accent-purple-soft: #2D2440;
 
     --accent-red:         #F87171;
+
+    /* A switch that is on: a deeper Signal Blue, so the cream thumb stands
+     * off it (the chip blue is as light as the thumb). */
+    --switch-on:          #3F86C2;
 
     /* Markers (charts) */
     --color-marker-blue:   #38BDF8;
@@ -182,6 +197,14 @@
     --color-accent:  #3F3429;
     --color-overlay: rgba(26, 23, 20, 0.40);
 
+    /* Selection fills (see the dark theme): Bark with inverted text here. */
+    --color-fill-selected:   #3F3429;
+    --color-text-on-selected: #FFFDF7;
+    --color-fill-danger:     #B91C1C;
+    --bg-tooltip:            #2D241B;
+    --color-tooltip-text:    #FFFDF7;
+    --color-tooltip-border:  #2D241B;
+
     /* Agent chips */
     --accent-blue:        #5AA8E2;
     --accent-blue-soft:   #DCEEFB;
@@ -202,6 +225,8 @@
     --accent-purple-soft: #E8DEF8;
 
     --accent-red:         #A71C24;
+
+    --switch-on:          var(--accent-blue);
 
     /* Markers (charts) */
     --color-marker-blue:   #0284C7;
@@ -268,5 +293,9 @@
         --color-border-subtle: #5C4B36;
         --color-border:        #7A6A54;
         --color-border-strong: #9C8A72;
+        /* The chosen segment and highlighted row at 3:1 on the track. */
+        --color-fill-selected:    #C5B59A;
+        --color-text-on-selected: #15110D;
+        --color-fill-danger:      #F87171;
     }
 }

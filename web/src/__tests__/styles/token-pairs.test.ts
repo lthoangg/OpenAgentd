@@ -43,7 +43,7 @@ const THEMES = [
   { name: 'dark', t: themeProps(/:root\.dark\s*\{/) },
 ]
 
-describe.each(THEMES)('token pairs ($name)', ({ t }) => {
+describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
   it('keeps secondary text AA on every surface it sits on', () => {
     for (const surface of ['--bg-page', '--bg-sidebar', '--bg-card', '--bg-key', '--color-surface']) {
       expect({ surface, ratio: contrast(t['--color-text-muted'], t[surface]) >= 4.5 }).toEqual({ surface, ratio: true })
@@ -53,10 +53,33 @@ describe.each(THEMES)('token pairs ($name)', ({ t }) => {
     }
   })
 
-  it('makes a chosen segment and its label stand out from the track', () => {
-    expect(contrast(t['--color-text-on-accent'], t['--color-accent'])).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(t['--color-accent'], t['--bg-key'])).toBeGreaterThanOrEqual(3)
+  it('fills a chosen segment or a highlighted row so its label reads at AA and the fill shows on the track', () => {
+    expect(contrast(t['--color-text-on-selected'], t['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
+    // Light: the Bark fill. Dark: a raised warm tone, like a native dark
+    // segmented control (Increase contrast takes it to 3:1).
+    expect(contrast(t['--color-fill-selected'], t['--bg-key'])).toBeGreaterThanOrEqual(name === 'light' ? 3 : 1.5)
+    expect(contrast(t['--color-fill-selected'], t['--color-surface'])).toBeGreaterThanOrEqual(name === 'light' ? 3 : 1.5)
     expect(contrast(t['--color-text-muted'], t['--bg-key'])).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(t['--color-text-on-selected'], t['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('never lets a chrome fill outshine the content: dark fills stay far below the text tone', () => {
+    if (name !== 'dark') return
+    // A near-white block on a dark window glows brighter than the words.
+    for (const fill of ['--color-fill-selected', '--color-fill-danger', '--bg-tooltip']) {
+      expect({ fill, dim: luminance(t[fill]) < luminance(t['--color-text']) / 4 }).toEqual({ fill, dim: true })
+    }
+  })
+
+  it('reads a tooltip at AA, its edge visible on the page', () => {
+    expect(contrast(t['--color-tooltip-text'], t['--bg-tooltip'])).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(t['--color-tooltip-border'], t['--bg-page'])).toBeGreaterThanOrEqual(name === 'light' ? 3 : 1.5)
+  })
+
+  it('sets a switch thumb apart from its on track at 2.5:1, and the track from the page at 2:1', () => {
+    const thumb = name === 'light' ? t['--color-surface'] : t['--color-text']
+    expect(contrast(thumb, t['--switch-on'])).toBeGreaterThanOrEqual(2.5)
+    expect(contrast(t['--switch-on'], t['--bg-page'])).toBeGreaterThanOrEqual(2)
   })
 
   it('draws status text and dots in the -text tones, readable on paper', () => {

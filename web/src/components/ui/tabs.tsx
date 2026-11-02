@@ -133,7 +133,7 @@ function TabsTrigger({ className, value, id, type = 'button', onClick, onKeyDown
         'relative inline-flex flex-1 items-center justify-center gap-1.5 font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
         TABS_TRIGGER_SIZE[size],
         'hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) disabled:pointer-events-none disabled:opacity-50',
-        'data-active:bg-(--color-accent) data-active:text-(--color-text-on-accent)',
+        'data-active:bg-(--color-fill-selected) data-active:text-(--color-text-on-selected)',
         '[&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,
       )}

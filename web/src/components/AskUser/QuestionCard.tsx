@@ -421,7 +421,7 @@ function OptionRow({
       className={cn(
         'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9',
         checked
-          ? 'bg-(--color-accent) text-(--color-text-on-accent)'
+          ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
           : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-border-subtle) dark:hover:bg-(--color-border)',
       )}
     >
@@ -437,7 +437,7 @@ function OptionRow({
           aria-hidden="true"
           className={cn(
             'mt-px inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-xs px-1 font-mono text-meta leading-none pointer-coarse:hidden',
-            checked ? 'bg-(--color-text-on-accent)/20 text-(--color-text-on-accent)' : 'bg-(--bg-card) text-(--color-text-muted)',
+            checked ? 'bg-(--color-text-on-selected)/20 text-(--color-text-on-selected)' : 'bg-(--bg-card) text-(--color-text-muted)',
           )}
         >
           {shortcut}
@@ -450,7 +450,7 @@ function OptionRow({
           aria-hidden="true"
           className={cn(
             'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-xs',
-            checked ? 'bg-(--color-text-on-accent)/20' : 'bg-(--bg-card)',
+            checked ? 'bg-(--color-text-on-selected)/20' : 'bg-(--bg-card)',
           )}
         >
           {checked && <Check size={11} />}
@@ -465,7 +465,7 @@ function OptionRow({
             <span
               className={cn(
                 'ml-1.5 inline-flex h-[18px] items-center rounded-xs px-1.5 align-middle text-meta leading-none font-medium whitespace-nowrap',
-                checked ? 'bg-(--color-text-on-accent)/20 text-(--color-text-on-accent)' : 'bg-(--bg-card) text-(--color-text-muted)',
+                checked ? 'bg-(--color-text-on-selected)/20 text-(--color-text-on-selected)' : 'bg-(--bg-card) text-(--color-text-muted)',
               )}
             >
               Recommended
@@ -476,7 +476,7 @@ function OptionRow({
           <span
             className={cn(
               'mt-0.5 block text-xs leading-relaxed [overflow-wrap:anywhere]',
-              checked ? 'text-(--color-text-on-accent)' : 'text-(--color-text-muted)',
+              checked ? 'text-(--color-text-on-selected)' : 'text-(--color-text-muted)',
             )}
           >
             <InlineMarkdown text={description} />

@@ -601,6 +601,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     (in the palette only the row the keys or a real mouse move chose, never a
     second one under a resting pointer). Menus, cards and dialogs keep one
     thin frame, and nothing inside them adds another.
+  - In dark mode a chosen segment, tab or question option, the highlighted
+    menu item and tooltips are a raised warm tone with light text, no longer a
+    near-white block that glowed brighter than the words around it. A switch
+    that is on is a deeper blue there, so its knob stands out.
   - Review panel tabs are borderless pills; the open tab is filled with the
     page colour and set in medium weight, with no coloured edge.
   - Dialog buttons follow the operating system: Cancel then the action on

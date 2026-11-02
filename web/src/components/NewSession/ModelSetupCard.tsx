@@ -196,12 +196,12 @@ export function ModelSetupCard({
                   'flex h-9 min-w-0 items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
                   active
-                    ? 'bg-(--color-accent) text-(--color-text-on-accent)'
+                    ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
                     : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-border-subtle)',
                 )}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(provider)}</span>
-                <span className={cn('shrink-0 text-meta', active ? 'text-(--color-text-on-accent)' : 'text-(--color-text-muted)')}>
+                <span className={cn('shrink-0 text-meta', active ? 'text-(--color-text-on-selected)' : 'text-(--color-text-muted)')}>
                   {provider.kind === 'oauth' ? 'Sign in' : 'API key'}
                 </span>
               </button>

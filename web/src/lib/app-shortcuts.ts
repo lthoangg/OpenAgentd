@@ -26,8 +26,9 @@ export interface AppShortcut {
 
 export const APP_SHORTCUTS = {
   newSession: { key: 'N' },
-  // The run picker (model, thinking, account). Shift dodges bare ⌘A (Select All).
-  sessionSettings: { key: 'A', shift: true },
+  // The run picker (model, thinking, account): one short chord, matched on
+  // the physical key for layouts that print another character there.
+  sessionSettings: { key: '.', code: 'Period' },
   workspaceFiles: { key: 'D' },
   maximizeDock: { key: 'D', shift: true },
   // Split the Review panel into two groups (top/bottom), or join them.

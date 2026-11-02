@@ -250,15 +250,14 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+`"),
     )?;
-    // Bare CmdOrCtrl+A is "Select All" on macOS, so the run picker (model,
-    // thinking, account) requires Shift to avoid clobbering it — matches the in-app
-    // ⌘⇧A / Ctrl+Shift+A binding (see web/src/lib/keyboard-shortcut.ts).
+    // The run picker (model, thinking, account): ⌘. / Ctrl+., the in-app
+    // binding (web/src/lib/app-shortcuts.ts).
     let view_agent_capabilities = MenuItem::with_id(
         app,
         MENU_AGENT_CAPABILITIES,
         "Model and Thinking…",
         true,
-        Some("CmdOrCtrl+Shift+A"),
+        Some("CmdOrCtrl+."),
     )?;
     // No accelerators: a stray ⌘R would drop the UI state of a live turn and
     // Force Reload restarts the app. Both stay reachable from here and the

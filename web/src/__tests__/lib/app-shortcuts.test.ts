@@ -46,6 +46,12 @@ describe('APP_SHORTCUTS', () => {
     expect(chordOf(APP_SHORTCUTS.terminal)).toEqual({ key: '`', code: 'Backquote', mod: true, shift: true, alt: false })
   })
 
+  it('opens the run picker on ⌘. (Ctrl+.), matched on the physical key', () => {
+    expect(chordOf(APP_SHORTCUTS.sessionSettings)).toEqual({ key: '.', code: 'Period', mod: true, shift: false, alt: false })
+    expect(shortcutLabel(APP_SHORTCUTS.sessionSettings, 'macos')).toBe('⌘.')
+    expect(shortcutLabel(APP_SHORTCUTS.sessionSettings, 'windows')).toBe('Ctrl+.')
+  })
+
   it('keeps the terminal toggle on the Control key itself, as in editors', () => {
     expect(chordOf(APP_SHORTCUTS.toggleTerminal)).toEqual({ key: '`', code: 'Backquote', ctrl: true, shift: false, alt: false })
     expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'macos')).toBe('⌃`')

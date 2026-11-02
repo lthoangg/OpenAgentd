@@ -10,8 +10,7 @@
  * stray ⌘+Ctrl combo (or the wrong OS's modifier) never double-fires.
  *
  * A handful of shortcuts also require Shift to dodge a real OS/webview
- * conflict (e.g. Session Settings uses ⌘⇧A on macOS because bare ⌘A is
- * "Select All").
+ * conflict (e.g. Maximize Review panel is ⌘⇧D beside the panel's ⌘D).
  */
 import type { OS } from '@/hooks/use-platform'
 

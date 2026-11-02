@@ -593,7 +593,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     Linux, the one set in the desktop's settings). Code, paths and model
     names stay in JetBrains Mono.
   - With a keyboard on an iPad or iPhone, shortcuts use ⌘ as on a Mac
-    (⌘N, ⌘K, ⇧⌘A) and their hints say so.
+    (⌘N, ⌘K, ⌘.) and their hints say so.
   - Buttons, chips, tabs and segmented controls have no borders. The primary
     button is filled with the theme's Bark colour. The chosen segment (Code /
     Plan, for example), a chosen tab or question option, the highlighted menu
@@ -660,8 +660,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     its state and quota left, or **Reset to default** / **Make default**.
     Every pick is saved on the session at once and survives a reload; if the
     save fails, a toast says so and offers **Retry**. Open it
-    with `⌘⇧A`/`Ctrl+Shift+A`, `/model`, `/think`, or **Model and Thinking…**
-    in the palette. On phones it is a bottom sheet.
+    with `⌘.`/`Ctrl+.` (it was `⌘⇧A`/`Ctrl+Shift+A`), `/model`, `/think`, or
+    **Model and Thinking…** in the palette or the View menu. On phones it is a
+    bottom sheet.
   - The picker opens on the model that runs (highlighted and scrolled into
     view, so Enter keeps it), lists each model whole as `provider:model`,
     and when neither the session nor the agent sets a thinking level it says

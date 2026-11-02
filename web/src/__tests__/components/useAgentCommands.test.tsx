@@ -59,7 +59,7 @@ describe("useAgentCommands — shortcut labels", () => {
   it("documented shortcuts are present with their platform-formatted labels", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(result.current, "new-chat").shortcut).toBe("Ctrl+N")
-    expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+Shift+A")
+    expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+.")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+D")
     expect(byId(result.current, "scheduled-tasks").shortcut).toBeUndefined()

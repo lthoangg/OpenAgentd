@@ -43,7 +43,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useReportShownSession } from '@/lib/island-setting'
 import { useElementWidthSelect } from '@/hooks/use-element-width'
-import { settledWidthBesidePanels } from '@/components/ResizableAside'
+import { onPanelSlideBeside, settledWidthBesidePanels } from '@/components/ResizableAside'
 import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
 import { useTouchFirst } from '@/hooks/use-touch-first'
@@ -653,6 +653,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     centerRef,
     touchFirst ? isCenterTooNarrowForTouch : isCenterTooNarrow,
     settledWidthBesidePanels,
+    // Decided in the commit a sidebar slide starts, as the dock's mode is.
+    onPanelSlideBeside,
   )
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
   // After its first open the dock stays mounted, closed or not, so its tabs

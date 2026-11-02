@@ -799,7 +799,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     with several panes only the focused one showed.
   - Showing or hiding the sidebar or the Review panel slides it in or out
     (a quarter second); its rows ride the moving edge instead of rewrapping,
-    and the composer keeps its focus and draft. Dragging an edge or resizing
+    and the composer keeps its focus and draft. With the Review panel open,
+    the panel slides to its new width alongside the sidebar, so the chat
+    between them moves in one motion. Dragging an edge or resizing
     the window still moves it at once. Workspace session lists, a session's
     subagents and the Reader view's folded steps open and close with the same
     smooth fold; the chosen segment of a segmented control (Code / Plan,

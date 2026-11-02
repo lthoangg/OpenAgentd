@@ -19,11 +19,14 @@
  *
  * The aside publishes its target width in ``data-panel-target-width`` so a
  * neighbour can size itself for where the tween ends (``settledWidthBesidePanels``).
+ * When a show/hide slide starts, it tells the elements beside it in that
+ * same commit (``onPanelSlideBeside``, ``usePanelSlideBeside``), so one sized
+ * by the room it leaves can re-measure and slide along from the first frame.
  * With ``publishWidthAs`` it also writes its live border-box width to that CSS
  * property on the root, so the header's caps line up with it through a drag
  * and a show/hide slide (``AgentChatHeader``).
  */
-import { createContext, useContext, useLayoutEffect, useRef, type ComponentProps, type ReactNode, type RefObject } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react'
 import { motion, type TargetAndTransition, type Transition } from 'framer-motion'
 
 import { panelResizeHandleClass, usePanelResize, type PanelResizeOptions } from '@/hooks/use-panel-resize'
@@ -34,6 +37,9 @@ type ResizeState = ReturnType<typeof usePanelResize>
 const ResizeContext = createContext<ResizeState | null>(null)
 
 const PANEL_TARGET_ATTR = 'data-panel-target-width'
+
+/** Dispatched on a panel's parent when its show/hide slide starts. */
+const PANEL_SLIDE_EVENT = 'oa-panel-slide'
 
 /** A side panel showing or hiding: the sheet curve, at the ``base`` duration
  *  (DESIGN.md → Motion). Reduced motion zeroes it (index.css). */
@@ -67,6 +73,41 @@ export function settledWidthBesidePanels(center: HTMLElement): number {
 export interface LiveWidth {
   width: number
   isResizing: boolean
+}
+
+/**
+ * Calls ``callback`` when a panel beside ``center`` (a sibling) starts a
+ * show/hide slide, from that panel's layout effect: the panel already has
+ * its new target, its width has not moved yet, and a state update made here
+ * lands before the slide's first paint. Returns the unsubscribe. A stable
+ * ``remeasureOn`` for ``useElementWidth``.
+ */
+export function onPanelSlideBeside(center: HTMLElement, callback: () => void): () => void {
+  const row = center.parentElement
+  if (!row) return () => {}
+  row.addEventListener(PANEL_SLIDE_EVENT, callback)
+  return () => row.removeEventListener(PANEL_SLIDE_EVENT, callback)
+}
+
+/**
+ * Whether a panel beside ``ref``'s element is sliding open or shut, from
+ * the commit the slide starts in until ``PANEL_SLIDE_MS`` later. A panel
+ * sized by the room that one leaves slides its own width meanwhile, on the
+ * same curve, so the chat between them grows or shrinks in one motion.
+ */
+export function usePanelSlideBeside(ref: RefObject<HTMLElement | null>): boolean {
+  const [slides, setSlides] = useState(0)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    return onPanelSlideBeside(node, () => setSlides((count) => count + 1))
+  }, [ref])
+  useEffect(() => {
+    if (slides === 0) return
+    const timer = setTimeout(() => setSlides(0), PANEL_SLIDE_MS)
+    return () => clearTimeout(timer)
+  }, [slides])
+  return slides > 0
 }
 
 interface ResizableAsideProps
@@ -121,6 +162,14 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, pub
   const { width: targetWidth, ...animateRest } = animate
   const cut = instantWidth && targetWidth !== undefined
   const slide = cut && tweenWidth && !state.isResizing
+  // Tell the panels beside this one that a slide to a new target has begun.
+  const numericTarget = typeof targetWidth === 'number' ? targetWidth : undefined
+  const announcedTarget = useRef(numericTarget)
+  useLayoutEffect(() => {
+    if (numericTarget === announcedTarget.current) return
+    announcedTarget.current = numericTarget
+    if (slide) asideRef.current?.parentElement?.dispatchEvent(new Event(PANEL_SLIDE_EVENT))
+  }, [numericTarget, slide])
   // Always the same wrapper, so a change of target (mobile has none) never
   // remounts the panel body.
   const pinnedWidth = pinWidth ?? '100%'
@@ -129,7 +178,7 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, pub
       <motion.aside
         {...asideProps}
         ref={asideRef}
-        data-panel-target-width={typeof targetWidth === 'number' ? targetWidth : undefined}
+        data-panel-target-width={numericTarget}
         style={cut ? { ...style, width: targetWidth as number | string, transition: slide ? PANEL_SLIDE : undefined } : style}
         animate={cut ? animateRest : animate}
         transition={transition}

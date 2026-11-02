@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useRef } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
-import { PanelResizeHandle, ResizableAside, settledWidthBesidePanels } from '@/components/ResizableAside'
+import {
+  PANEL_SLIDE_MS,
+  PanelResizeHandle,
+  ResizableAside,
+  onPanelSlideBeside,
+  settledWidthBesidePanels,
+  usePanelSlideBeside,
+} from '@/components/ResizableAside'
+import { useElementWidth } from '@/hooks/use-element-width'
+import { useFakeTimers } from '../fake-timers'
 
 // rAF is async in browsers: queue frames and flush them explicitly.
 const frames: FrameRequestCallback[] = []
@@ -264,5 +274,68 @@ describe('settledWidthBesidePanels', () => {
     expect(settledWidthBesidePanels(row(264, 264))).toBe(736)
     cleanup()
     expect(settledWidthBesidePanels(row(1, 0))).toBe(999)
+  })
+})
+
+describe('a panel beside a sliding one', () => {
+  let timers: ReturnType<typeof useFakeTimers> | null = null
+  afterEach(() => {
+    timers?.restore()
+    timers = null
+  })
+
+  // The Review panel beside the center: its width is a ratio of the center.
+  function Center() {
+    const ref = useRef<HTMLDivElement | null>(null)
+    const width = useElementWidth(ref, settledWidthBesidePanels, onPanelSlideBeside)
+    const sliding = usePanelSlideBeside(ref)
+    const attach = (node: HTMLDivElement | null) => {
+      if (node) node.getBoundingClientRect = () => ({ width: 736 }) as DOMRect
+      ref.current = node
+    }
+    return <div ref={attach}>{`${width} ${sliding ? 'sliding' : 'still'}`}</div>
+  }
+  // The sidebar is 264px on screen; ``target`` is where its width is headed.
+  const row = (target: number, tweenWidth: boolean) => (
+    <div ref={(node) => {
+      const sidebar = node?.querySelector('aside')
+      if (sidebar) sidebar.getBoundingClientRect = () => ({ width: 264 }) as DOMRect
+    }}>
+      <ResizableAside
+        aria-label="Sidebar"
+        resize={{ width: 264, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize sidebar' }}
+        getMotion={() => ({ animate: { width: target }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
+      >
+        <p>sidebar</p>
+      </ResizableAside>
+      <Center />
+    </div>
+  )
+
+  // Measured a ResizeObserver callback and a frame later, the Review panel
+  // jumped to its new width a few frames into the sidebar's slide: the chat
+  // between them overshot, then snapped back.
+  it('re-measures in the commit the panel beside it starts sliding, and slides along until it ends', () => {
+    const view = render(row(264, false))
+    expect(screen.getByText('736 still')).toBeTruthy()
+    timers = useFakeTimers()
+
+    view.rerender(row(0, true))
+
+    // No frame was run: the width is there for the slide's first paint.
+    expect(frames).toHaveLength(0)
+    expect(screen.getByText('1000 sliding')).toBeTruthy()
+    act(() => timers!.tick(PANEL_SLIDE_MS - 1))
+    expect(screen.getByText('1000 sliding')).toBeTruthy()
+    act(() => timers!.tick(1))
+    expect(screen.getByText('1000 still')).toBeTruthy()
+  })
+
+  it('does not slide along with a width change that is not a show or hide', () => {
+    const view = render(row(264, false))
+
+    view.rerender(row(300, false))
+
+    expect(screen.getByText('736 still')).toBeTruthy()
   })
 })

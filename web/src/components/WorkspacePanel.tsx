@@ -42,7 +42,15 @@ import {
   workspaceChangesQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, settledWidthBesidePanels, type LiveWidth } from '@/components/ResizableAside'
+import {
+  PANEL_SLIDE_MS,
+  PanelResizeHandle,
+  ResizableAside,
+  onPanelSlideBeside,
+  settledWidthBesidePanels,
+  usePanelSlideBeside,
+  type LiveWidth,
+} from '@/components/ResizableAside'
 import { useToggleTween } from '@/hooks/useToggleTween'
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
@@ -402,7 +410,11 @@ export function WorkspacePanel({
   // ── Geometry ───────────────────────────────────────────────────────────────
   const dockRatio = useLayoutStore((s) => s.dockRatio)
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  const measuredCenter = useElementWidth(centerRef, settledWidthBesidePanels)
+  // The sidebar showing or hiding changes the center: re-measured in the
+  // commit its slide starts, the dock slides to its new ratio alongside it,
+  // on the same curve, and the chat between them moves in one motion.
+  const measuredCenter = useElementWidth(centerRef, settledWidthBesidePanels, onPanelSlideBeside)
+  const besideSliding = usePanelSlideBeside(centerRef) && !mobile
   const center = centerWidth ?? measuredCenter
   const touch = useTouchFirst()
   const layout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized, touch })
@@ -434,7 +446,7 @@ export function WorkspacePanel({
       : { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
     pinWidth: !mobile && (!open || toggle.running || sliding) ? (overlay ? layout.width : width) : undefined,
     instantWidth: !mobile,
-    tweenWidth: sliding,
+    tweenWidth: sliding || besideSliding,
   })
   // The toggle is meaningless while a narrow window already forces overlay.
   const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized

@@ -689,7 +689,12 @@ drawer and full-screen sheet.
   panel's body keeps its open width and rides the moving edge (clipped, not
   reflowed), so only the chat column relayouts, and the composer keeps focus
   and draft. CSS rather than a frame loop, so a hidden window still ends at
-  the right width. The phone drawer and sheet slide as before.
+  the right width. The phone drawer and sheet slide as before. With the
+  Review panel open, the sidebar's slide changes the center it is a ratio
+  of: the sidebar announces the slide in the commit it starts
+  (`onPanelSlideBeside`), so the panel re-measures and slides to its new
+  width alongside, on the same curve, and the chat between them grows or
+  shrinks in one motion instead of overshooting and snapping back.
 - **Folds fold.** Workspace session lists, a session's subagents, the reader
   fold and the turn's file list open and close through `ui/collapsible`
   (height and opacity, `base`); rows leaving stay on screen until the fold

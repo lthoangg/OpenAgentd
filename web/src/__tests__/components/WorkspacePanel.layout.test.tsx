@@ -35,15 +35,18 @@ mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
 }))
 // The mocked aside does not animate; it keeps the inline style the panel
-// sets (desktop widths are a straight cut, not a tween).
+// sets (desktop widths are a straight cut, not a tween), its ref and the
+// width target a neighbour sizes itself by.
 mock.module('framer-motion', () => ({
   motion: {
-    aside: ({ children, className, 'aria-label': ariaLabel, style }: {
+    aside: ({ children, className, 'aria-label': ariaLabel, style, ref, 'data-panel-target-width': target }: {
       children: React.ReactNode
       className?: string
       'aria-label'?: string
       style?: React.CSSProperties
-    }) => <aside className={className} aria-label={ariaLabel} style={style}>{children}</aside>,
+      ref?: React.Ref<HTMLElement>
+      'data-panel-target-width'?: number
+    }) => <aside ref={ref} className={className} aria-label={ariaLabel} style={style} data-panel-target-width={target}>{children}</aside>,
   },
 }))
 
@@ -230,6 +233,53 @@ describe('Review dock layout', () => {
 
     // 45% of the 1100px center the sidebar leaves, not of the 1000px now.
     expect(screen.getByRole('separator', { name: 'Resize Review panel' }).getAttribute('aria-valuenow')).toBe('495')
+  })
+
+  // Re-sized only once the center had grown (a ResizeObserver callback and
+  // a frame later), the panel jumped a few frames into the sidebar's slide,
+  // and the chat between them overshot, then snapped back.
+  it('slides with a sidebar showing or hiding beside the center, from the same commit', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const { ResizableAside } = await import('@/components/ResizableAside')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const centerRef: { current: HTMLDivElement | null } = { current: null }
+    const attach = (node: HTMLDivElement | null) => {
+      if (node) node.getBoundingClientRect = () => ({ width: 1000 }) as DOMRect
+      centerRef.current = node
+    }
+    // The sidebar is 100px on screen; ``target`` is where its width is headed.
+    const row = (target: number, tweenWidth: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <div ref={(node) => {
+          const sidebar = node?.querySelector<HTMLElement>('aside[aria-label="Sidebar"]')
+          if (sidebar) sidebar.getBoundingClientRect = () => ({ width: 100 }) as DOMRect
+        }}>
+          <ResizableAside
+            aria-label="Sidebar"
+            resize={{ width: 100, min: 0, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize sidebar' }}
+            getMotion={() => ({ animate: { width: target }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
+          >
+            <p>sidebar</p>
+          </ResizableAside>
+          <div ref={attach}>
+            <WorkspacePanel workspace={WORKSPACE} open centerRef={centerRef} />
+          </div>
+        </div>
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(row(100, false)) })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.style.width).toBe('450px')
+    expect(dock.style.transition).toBe('')
+
+    act(() => view!.rerender(row(0, true)))
+
+    // 45% of the 1100px center the sidebar leaves, on the sidebar's curve.
+    expect(dock.style.width).toBe('495px')
+    expect(dock.style.transition).toContain('width')
+    // The body fills the panel, so it moves with the edge rather than clipping.
+    expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).toBe('100%')
   })
 
   it('takes focus stranded in the covered chat so keyboard users land on the active tab', async () => {

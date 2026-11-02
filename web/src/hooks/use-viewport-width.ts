@@ -28,3 +28,13 @@ export function useViewportAtLeast(min: number): boolean {
   const fallback = useCallback(() => FALLBACK_WIDTH >= min, [min])
   return useSyncExternalStore(subscribe, read, fallback)
 }
+
+/**
+ * A boolean derived from the window width. Like ``useViewportAtLeast``, the
+ * caller re-renders only when the answer changes, not on every resize.
+ */
+export function useViewportMatches(test: (width: number) => boolean): boolean {
+  const read = useCallback(() => test(window.innerWidth), [test])
+  const fallback = useCallback(() => test(FALLBACK_WIDTH), [test])
+  return useSyncExternalStore(subscribe, read, fallback)
+}

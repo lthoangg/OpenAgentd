@@ -43,6 +43,7 @@ import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
   DOCK_MIN_WIDTH,
@@ -339,12 +340,13 @@ export function WorkspacePanel({
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
   const measuredCenter = useElementWidth(centerRef, settledWidthBesidePanels)
   const center = centerWidth ?? measuredCenter
-  const layout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized })
+  const touch = useTouchFirst()
+  const layout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized, touch })
   const overlay = !mobile && layout.mode === 'overlay'
   const dockResize = {
     width: layout.width,
     min: DOCK_MIN_WIDTH,
-    max: dockMaxWidth(center),
+    max: dockMaxWidth(center, { touch }),
     edge: 'left' as const,
     onCommit: (width: number) => useLayoutStore.getState().setDockRatio(ratioFromWidth(width, center)),
     onReset: () => useLayoutStore.getState().resetDockRatio(),

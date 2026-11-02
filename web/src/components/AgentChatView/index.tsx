@@ -46,6 +46,7 @@ import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { settledWidthBesidePanels } from '@/components/ResizableAside'
 import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -107,6 +108,7 @@ const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
 /** Stable selector: the shell only needs to know when the split stops fitting. */
 const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
+const isCenterTooNarrowForTouch = (width: number) => dockOverlaysChat(width, false, { touch: true })
 
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
@@ -645,7 +647,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // center itself; the shell subscribes to one bit so a sidebar tween or a
   // window drag does not re-render this whole tree every frame.
   const centerRef = useRef<HTMLDivElement>(null)
-  const centerTooNarrow = useElementWidthSelect(centerRef, isCenterTooNarrow, settledWidthBesidePanels)
+  const touchFirst = useTouchFirst()
+  const centerTooNarrow = useElementWidthSelect(
+    centerRef,
+    touchFirst ? isCenterTooNarrowForTouch : isCenterTooNarrow,
+    settledWidthBesidePanels,
+  )
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
   // After its first open the dock stays mounted, closed or not, so its tabs
   // and their live content (preview pages, unsent comments) survive a close.
@@ -875,6 +882,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             openWorkspaceDialogKey={openWorkspaceDialogKey}
             desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
             drawer={sidebarDrawer}
+            dockOpen={Boolean(workspace) && workspacePanel !== null}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
             onMobileClose={() => {

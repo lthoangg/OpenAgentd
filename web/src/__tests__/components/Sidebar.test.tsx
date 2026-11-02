@@ -1025,17 +1025,25 @@ describe('Sidebar workspace trust flow', () => {
     const originalWidth = window.innerWidth
     try {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 })
-      await renderSidebarWithProps({ desktopCollapsed: false })
+      await renderSidebarWithProps({ desktopCollapsed: false, dockOpen: true })
       const separator = screen.getByRole('separator', { name: 'Resize sidebar' })
       expect(separator.getAttribute('aria-valuemax')).toBe('440')
 
-      // 1100 - 520 (chat) - 340 (dock) leaves 240px for the sidebar.
+      // 1100 - 400 (chat) - 340 (open Review panel) leaves 360px for the sidebar.
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 })
       act(() => {
         window.dispatchEvent(new Event('resize'))
       })
-      expect(separator.getAttribute('aria-valuemax')).toBe('240')
-      expect(separator.getAttribute('aria-valuenow')).toBe('240')
+      expect(separator.getAttribute('aria-valuemax')).toBe('360')
+      expect(separator.getAttribute('aria-valuenow')).toBe('264')
+
+      // 960 leaves the minimum for the chat and the panel: 220px.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 960 })
+      act(() => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      expect(separator.getAttribute('aria-valuemax')).toBe('220')
+      expect(separator.getAttribute('aria-valuenow')).toBe('220')
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
     }

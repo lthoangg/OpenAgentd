@@ -48,8 +48,10 @@
  *
  * ── Desktop layout ──────────────────────────────────────────────────────
  *
- * Below ``SIDEBAR_DRAWER_MAX_VIEWPORT`` the desktop sidebar is a drawer over
- * the content, open only until a click outside, Escape or a pick. Whether
+ * The sidebar pushes the chat while it fits beside the chat (and the open
+ * Review panel); otherwise, and below ``SIDEBAR_DRAWER_MAX_VIEWPORT`` on a
+ * touch tablet, it is a drawer over the content, open only until a click
+ * outside, Escape or a pick (``sidebarIsDrawer``). Whether
  * the Review panel is open is remembered per window. Focus mode hides the
  * sidebar and the Review panel and puts both back on its second press;
  * opening either in the meantime simply ends it. Splitting the Review panel
@@ -67,8 +69,9 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { parseMentionRef, resolveWorkspaceRef, workspaceRelativePath, type FileRef } from '@/utils/file-refs'
-import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT, SIDEBAR_DRAWER_MAX_VIEWPORT } from '@/lib/workbench-layout'
-import { useViewportAtLeast } from '@/hooks/use-viewport-width'
+import { resolveSidebarCollapsed, sidebarIsDrawer, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
+import { useViewportAtLeast, useViewportMatches } from '@/hooks/use-viewport-width'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import { useBackHandler } from '@/lib/back-button'
@@ -244,9 +247,16 @@ export function useOverlayState({
       resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, wideViewport),
     )
   }, [wideViewport])
-  // Narrow desktop windows: the sidebar covers the content as a drawer, open
-  // only until it is dismissed; the collapsed choice above is left alone.
-  const sidebarDrawer = !isMobile && !useViewportAtLeast(SIDEBAR_DRAWER_MAX_VIEWPORT)
+  // Too narrow to push (or a touch tablet in portrait): the sidebar covers
+  // the content as a drawer, open only until it is dismissed; the collapsed
+  // choice above is left alone and comes back once there is room again.
+  const touch = useTouchFirst()
+  const dockBesideChat = dockViewsEnabled && workspacePanel !== null
+  const isDrawerWidth = useCallback(
+    (width: number) => sidebarIsDrawer(width, { dockOpen: dockBesideChat, touch }),
+    [dockBesideChat, touch],
+  )
+  const sidebarDrawer = !isMobile && useViewportMatches(isDrawerWidth)
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false)
   useEffect(() => {
     if (!sidebarDrawer) setSidebarDrawerOpen(false)

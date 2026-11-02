@@ -79,9 +79,9 @@ describe('Review dock layout', () => {
 
     expect(dock.className).toContain('md:relative')
     const separator = screen.getByRole('separator', { name: 'Resize Review panel' })
-    // 45% of a 1000px center, capped so the chat keeps 520px.
+    // 45% of a 1000px center, capped so the chat keeps 400px.
     expect(separator.getAttribute('aria-valuenow')).toBe('450')
-    expect(separator.getAttribute('aria-valuemax')).toBe('480')
+    expect(separator.getAttribute('aria-valuemax')).toBe('600')
     // Showing it is a straight cut, not a tween: the aside takes its width
     // as a style at once (no animation frame needed), and the body fills it,
     // so a later resize moves it with the edge.
@@ -120,6 +120,28 @@ describe('Review dock layout', () => {
     expect(dock.className).toContain('md:absolute')
     expect(screen.queryByRole('button', { name: /^(Maximize|Restore) Review panel/ })).toBeNull()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
+  })
+
+  // A desktop window keeps the chat beside the panel down to 740px of center;
+  // a touch tablet covers the transcript below 860px (layout.html, 820px).
+  it('sits beside the chat in an 856px desktop window but covers it on an 820px touch tablet', async () => {
+    const realMatchMedia = window.matchMedia
+    try {
+      const { dock } = await renderPanel({ centerWidth: 856 })
+      expect(dock.className).toContain('md:relative')
+      cleanup()
+
+      window.matchMedia = ((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia
+      const tablet = await renderPanel({ centerWidth: 820 })
+      expect(tablet.dock.className).toContain('md:absolute')
+    } finally {
+      window.matchMedia = realMatchMedia
+    }
   })
 
   it('measures the center element it is given so the shell need not re-render on resize', async () => {

@@ -32,6 +32,7 @@ import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import {
@@ -206,11 +207,13 @@ interface SidebarProps {
   /** Desktop only: when true, the inline panel collapses to width=0. */
   desktopCollapsed?: boolean
   /**
-   * Desktop windows under 1180px: the sidebar is a drawer over the content
-   * (``desktopCollapsed`` false while open). A click outside it or Escape
-   * calls ``onCollapse``.
+   * A window too narrow to push the chat (``sidebarIsDrawer``): the sidebar
+   * is a drawer over the content (``desktopCollapsed`` false while open). A
+   * click outside it or Escape calls ``onCollapse``.
    */
   drawer?: boolean
+  /** Desktop: the Review panel is open, so the column leaves room for it too. */
+  dockOpen?: boolean
   /** Mobile only: whether the overlay drawer is open. */
   mobileOpen?: boolean
   /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
@@ -267,6 +270,7 @@ export function Sidebar({
   openWorkspaceDialogKey = 0,
   desktopCollapsed = false,
   drawer = false,
+  dockOpen = false,
   mobileOpen = false,
   mobileDragOffset = null,
   onMobileClose,
@@ -754,16 +758,19 @@ export function Sidebar({
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
   // Width is persisted in the layout store and clamped against the window so
-  // the chat and a side-by-side dock always keep their minimums.
+  // the chat and a side-by-side dock always keep their minimums. A drawer
+  // covers the chat, so it only has to leave the chat visible beside it.
   const viewportWidth = useViewportWidth()
+  const touch = useTouchFirst()
+  const widthContext = { dockOpen: dockOpen && !drawer, touch }
   const storedSidebarWidth = useLayoutStore((s) => s.sidebarWidth)
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth)
   const commitSidebarWidth = useCallback((width: number) => setSidebarWidth(width), [setSidebarWidth])
   const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), [setSidebarWidth])
   const sidebarResize = {
-    width: clampSidebarWidth(storedSidebarWidth, viewportWidth),
+    width: clampSidebarWidth(storedSidebarWidth, viewportWidth, widthContext),
     min: SIDEBAR_MIN_WIDTH,
-    max: sidebarMaxWidth(viewportWidth),
+    max: sidebarMaxWidth(viewportWidth, widthContext),
     edge: 'right' as const,
     onCommit: commitSidebarWidth,
     onReset: resetSidebarWidth,
@@ -1073,12 +1080,13 @@ export function Sidebar({
           />
         )}
       </AnimatePresence>
-      {/* A desktop drawer closes on a click anywhere outside it. */}
+      {/* A desktop drawer dims what it covers, as drawer scrims do (DESIGN.md),
+          and closes on a click anywhere outside it. */}
       {drawerOpen && (
         <div
           aria-hidden="true"
           data-sidebar-drawer-backdrop=""
-          className="absolute inset-0 z-20"
+          className="absolute inset-0 z-20 bg-(--color-overlay)"
           onPointerDown={() => onCollapse?.()}
         />
       )}

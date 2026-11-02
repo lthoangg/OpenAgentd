@@ -20,6 +20,21 @@ function setViewportWidth(width: number) {
   window.dispatchEvent(new Event('resize'))
 }
 
+const realMatchMedia = window.matchMedia
+/** A touch-first device: ``(pointer: coarse)`` matches. */
+function setTouchFirst(touch: boolean) {
+  window.matchMedia = ((query: string) => ({
+    matches: touch && query === '(pointer: coarse)',
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia
+}
+
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 }
@@ -50,6 +65,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   setViewportWidth(DEFAULT_WIDTH)
+  window.matchMedia = realMatchMedia
 })
 
 describe('useOverlayState app events', () => {
@@ -99,9 +115,41 @@ describe('useOverlayState app events', () => {
     expect(result.current.sidebarCollapsed).toBe(false)
   })
 
-  // Below 1180 px the sidebar is a drawer over the chat: it opens instead,
-  // and the remembered column state is left alone.
-  it('opens the sidebar drawer on openWorkspace in a narrow window', () => {
+  // A narrow desktop window still pushes the chat with the sidebar, as
+  // desktop apps do, while the chat keeps its width beside it.
+  it('pushes the chat with the sidebar in an 856px desktop window', () => {
+    setViewportWidth(856)
+    useLayoutStore.getState().setSidebarCollapsed(true, false)
+    const { result } = renderOverlay()
+    expect(result.current.sidebarDrawer).toBe(false)
+
+    act(() => result.current.handleSidebarToggle())
+
+    expect(result.current.sidebarCollapsed).toBe(false)
+    expect(result.current.sidebarDrawerOpen).toBe(false)
+  })
+
+  // With the Review panel open there is no room to push: the sidebar covers
+  // the chat as a drawer, and the remembered column state is left alone.
+  it('makes the sidebar a drawer in an 856px window while the Review panel is open', () => {
+    setViewportWidth(856)
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    const { result } = renderOverlay()
+    expect(result.current.sidebarDrawer).toBe(false)
+
+    act(() => result.current.handleOpenGit())
+
+    expect(result.current.sidebarDrawer).toBe(true)
+    expect(result.current.sidebarDrawerOpen).toBe(false)
+    act(() => result.current.handleSidebarToggle())
+    expect(result.current.sidebarDrawerOpen).toBe(true)
+    expect(useLayoutStore.getState().sidebarCollapsed).toBe(false)
+  })
+
+  // Below 1180 px a touch tablet's sidebar is a drawer over the chat: it
+  // opens instead, and the remembered column state is left alone.
+  it('opens the sidebar drawer on openWorkspace on a narrow touch tablet', () => {
+    setTouchFirst(true)
     setViewportWidth(1024)
     useLayoutStore.getState().setSidebarCollapsed(true, false)
     const { result } = renderOverlay()
@@ -115,6 +163,7 @@ describe('useOverlayState app events', () => {
   })
 
   it('closes the drawer once the window is wide enough for the sidebar column', () => {
+    setTouchFirst(true)
     setViewportWidth(1024)
     const { result } = renderOverlay()
     act(() => result.current.handleSidebarToggle())

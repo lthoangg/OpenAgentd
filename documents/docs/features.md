@@ -2112,7 +2112,10 @@ agent against it.
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.
     - A new dock opens empty, on a launcher with Git, Terminal, Preview and
-      Open File. Git is an ordinary tab you can close and move; it opens from
+      Open File; since `[v3.40.0]` it lists everything the tab strip's **+**
+      menu does (Git, Goal, Plan, Tasks, Side questions, Scheduled tasks, then
+      Terminal, Preview and Find file), so nothing needs the menu while the
+      panel is empty. Git is an ordinary tab you can close and move; it opens from
       the status-bar branch, `⌘⇧G` / `Ctrl+Shift+G`, **Open Git** in the
       palette, or the launcher. `⌘D` is **Toggle Review Dock**, and `⌘W` on
       the empty launcher closes the dock.

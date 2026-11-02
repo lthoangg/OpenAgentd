@@ -189,4 +189,15 @@ describe('Review dock "+" menu', () => {
     expect(launcher.textContent).toContain('Goal')
     expect(screen.getByRole('heading', { name: 'Open in Review panel' })).toBeTruthy()
   })
+
+  it('lists on the empty launcher what the "+" menu lists, views then tools', async () => {
+    await renderPanel({ plan: null })
+    const launcher = screen.getByRole('group', { name: 'Open in Review panel' })
+    const names = within(launcher).getAllByRole('button').map((row) => row.getAttribute('aria-label')?.replace(/ \(.*\)$/, ''))
+    expect(names).toEqual(['Git', 'Goal', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(launcher.querySelectorAll('[data-launcher-divider]')).toHaveLength(1)
+
+    await userEvent.setup().click(within(launcher).getByRole('button', { name: 'Tasks (Ctrl+T)' }))
+    expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-current')).toBe('true')
+  })
 })

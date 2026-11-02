@@ -57,7 +57,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
-import { goalTabTitle, isLiveGoal } from '@/lib/goal'
+import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -821,17 +821,7 @@ export function WorkspacePanel({
       case 'preview':
         return null
       default:
-        return (
-          <DockLauncher
-            os={os}
-            onOpenGit={chatWorkspace ? undefined : () => openGitTab(group)}
-            // A live goal is one tap away from the empty dock.
-            onOpenGoal={isLiveGoal(goal) && openGoal ? () => openGoal(group) : undefined}
-            onOpenTerminal={() => openTerminal(group)}
-            onOpenPreview={canPreview ? () => openNewPreview(group) : undefined}
-            onOpenFile={mobile ? undefined : openQuickOpen}
-          />
-        )
+        return <DockLauncher items={openItemsFor(group)} />
     }
   }
 

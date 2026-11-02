@@ -2,12 +2,12 @@
  * DockLauncher — what an empty review dock shows.
  *
  * The dock starts with no tabs (Git opens on demand, like any other tab),
- * so this lists what it can open, each with its shortcut, and the session's
- * goal while it has one. The tab strip's "+" menu lists the same rows
- * (``dockOpenItems``), so a tab can be opened while others are open too: on
- * a phone it is the only way to reach Git once the Plan is showing.
+ * so this lists everything it can open, each with its shortcut. The tab
+ * strip's "+" menu lists the same rows (``dockOpenItems``), so a tab can be
+ * opened while others are open too: on a phone it is the only way to reach
+ * Git once the Plan is showing.
  */
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { CalendarClock, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, Target, TerminalSquare } from 'lucide-react'
 
 import type { OS } from '@/hooks/use-platform'
@@ -60,29 +60,36 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   return rows
 }
 
-export function DockLauncher({ os, ...actions }: { os: OS } & Pick<DockOpenActions, 'onOpenGit' | 'onOpenGoal' | 'onOpenTerminal' | 'onOpenPreview' | 'onOpenFile'>) {
-  const rows = dockOpenItems(os, actions)
+/**
+ * The empty dock: every row of the "+" menu (``dockOpenItems``), views then a
+ * hairline then tools, so nothing needs the menu while there is room to list it.
+ */
+export function DockLauncher({ items }: { items: DockOpenItem[] }) {
   return (
-    <div data-dock-launcher className="flex h-full flex-col px-4 pt-[12vh] md:items-center">
+    <div data-dock-launcher className="flex h-full flex-col overflow-y-auto px-4 pt-[12vh] pb-4 md:items-center">
       <div role="group" aria-labelledby="dock-launcher-title" className="flex w-full max-w-64 flex-col gap-0.5">
         <h2 id="dock-launcher-title" className="mb-2 px-2 text-xs font-medium text-(--color-text-2)">
           Open in Review panel
         </h2>
-        {rows.map((row) => (
-          <button
-            key={row.label}
-            type="button"
-            aria-label={row.shortcut ? `${row.label} (${row.shortcut})` : row.label}
-            onClick={row.run}
-            className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-key:bg-(--bg-key) focus-visible:text-(--color-text) pointer-coarse:h-9"
-          >
-            {row.icon}
-            <span className="flex-1">{row.label}</span>
-            {row.shortcut && (
-              // Phones have no keyboard to press it with.
-              <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{row.shortcut}</kbd>
+        {items.map((row, index) => (
+          <Fragment key={row.id}>
+            {index > 0 && items[index - 1].group !== row.group && (
+              <div aria-hidden="true" data-launcher-divider="" className="mx-2 my-1 border-t border-(--color-border-subtle)" />
             )}
-          </button>
+            <button
+              type="button"
+              aria-label={row.shortcut ? `${row.label} (${row.shortcut})` : row.label}
+              onClick={row.run}
+              className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-key:bg-(--bg-key) focus-visible:text-(--color-text) pointer-coarse:h-9"
+            >
+              {row.icon}
+              <span className="flex-1">{row.label}</span>
+              {row.shortcut && (
+                // Phones have no keyboard to press it with.
+                <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{row.shortcut}</kbd>
+              )}
+            </button>
+          </Fragment>
         ))}
       </div>
     </div>

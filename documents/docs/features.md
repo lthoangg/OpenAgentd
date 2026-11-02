@@ -715,7 +715,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     sidebar toggle (and, on macOS, the window buttons, with a native gap
     before the toggle) over the sidebar, the title over the chat, and the
     Task list and Review panel buttons over the panel. The header reads as
-    one bar: no lines between those parts. The split follows a drag or a slide. The
+    one bar: no lines between those parts, and one line under all of it,
+    over the sidebar too. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
   - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel

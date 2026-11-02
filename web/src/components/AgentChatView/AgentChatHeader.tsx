@@ -210,9 +210,10 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       <header
         {...dragHandlers}
         // Zoning (dark only): the header joins the sidebar and status bar on
-        // the recessed rail tone; light mode keeps one page tone.
+        // the recessed rail tone; light mode keeps one page tone. Its bottom
+        // line runs the full width, over the sidebar too: one bar.
         className={cn(
-          'mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-stretch overflow-hidden bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+          'mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-stretch overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
           (isMacOverlay || captionInset) && 'select-none',
         )}
       >
@@ -220,13 +221,13 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           data-header-cap="sidebar"
           // The traffic lights sit over the sidebar, as in a native app; the
           // toggle keeps a native gap from them (they end near 66px).
-          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 border-(--color-border) pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
+          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
         >
           {leadButtons}
         </div>
         {/* The title over the chat, then the Review panel's cap. The command
             palette has no button: ⌘K and the View menu open it. */}
-        <div data-header-main="" className="flex min-w-0 flex-1 items-stretch border-b border-(--color-border)">
+        <div data-header-main="" className="flex min-w-0 flex-1 items-stretch">
           {/* Workspace · session. Double-click the session (or F2 on it) to
               rename it here too; phones rename from the drawer. */}
           <div className="flex min-w-0 flex-1 items-center pr-2 pl-3">

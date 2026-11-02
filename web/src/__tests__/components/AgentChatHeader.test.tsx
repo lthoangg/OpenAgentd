@@ -94,9 +94,8 @@ describe('AgentChatHeader', () => {
       expect(geometry).toContain('min-width: var(--oa-sidebar-w, 0px);')
       // The column edges start under the header: no "|" between the caps.
       expect(geometry).not.toContain('border-right')
-      // No line across the top of the sidebar; with it hidden, the cap
-      // carries the header's bottom line on to the window edge.
-      expect(geometry).toContain('border-bottom-width: calc(1px - min(1px, var(--oa-sidebar-w, 0px)));')
+      // The header's own bottom line runs over the sidebar; the cap adds none.
+      expect(geometry).not.toContain('border-bottom')
     })
 
     it('puts the Task list and Review panel buttons in a cap as wide as the Review panel', () => {
@@ -110,11 +109,14 @@ describe('AgentChatHeader', () => {
       expect(geometry).not.toContain('border-left')
     })
 
-    it('draws the bottom line under the chat and Review panel, not across the header', () => {
+    it("draws the header's bottom line across the whole window, over the sidebar too", () => {
+      // With no "|" between the caps, a line that stopped at the sidebar's
+      // edge left an open corner there; one full-width line makes one bar.
       const { container } = renderHeader({ isMobile: false })
       const header = container.querySelector('header') as HTMLElement
-      expect(header.className.split(' ')).not.toContain('border-b')
-      expect((document.querySelector('[data-header-main]') as HTMLElement).className.split(' ')).toContain('border-b')
+      expect(header.className.split(' ')).toContain('border-b')
+      expect((document.querySelector('[data-header-main]') as HTMLElement).className.split(' ')).not.toContain('border-b')
+      expect(cap('sidebar').className.split(' ').some((c) => c.startsWith('border'))).toBe(false)
     })
 
     it('keeps the traffic lights in the sidebar cap, with room before the sidebar toggle', () => {

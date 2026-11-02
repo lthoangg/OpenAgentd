@@ -639,13 +639,12 @@ drawer and full-screen sheet.
   panel (Task list, the panel toggle; on Windows the caption buttons). The
   command palette has no button there: `Mod+K`, the View menu and the phone's
   More sheet open it. The caps draw no edge of their own (the column lines
-  start under the header, which reads as one bar), and the header's bottom
-  line runs under the chat and the panel but not across the top of the
-  sidebar, so both side columns read as full-height, as in a native app.
+  start under the header), and the header's bottom line runs the full width
+  of the window, over the sidebar too, so the header reads as one bar.
   The widths come from the panels themselves (`ResizableAside`
   `publishWidthAs` → `--oa-sidebar-w`, `--oa-dock-w`), so a cap follows a
   drag and a slide; a hidden panel, a drawer or an overlay publishes none,
-  and the header's line then runs on to the window edge. Phones keep one bar.
+  and the cap shrinks to its buttons. Phones keep one bar.
 - **Zoning is tonal in dark mode.** There the header, sidebar and status bar
   sit on the recessed `bg-sidebar`; in light mode they share the chat's
   `bg-page`, so the app reads as one sheet of paper. The dock tab bar

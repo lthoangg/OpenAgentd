@@ -642,8 +642,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     the transcript, up to the reading width, and is always open. It can no
     longer be dragged or minimized.
   - Under the text a run deck says how the next message runs: **+**,
-    Code / Plan, the run chip (`provider:model · Thinking · Account`), an MCP
-    chip when a server needs you, the context ring and Send. On a narrow
+    Code / Plan, the run chip (`provider:model · Thinking · Account`), the
+    context ring and Send. There is no separate MCP button: while a server
+    needs you (sign in, or it failed) **+** carries a small dot, says which
+    server to screen readers, and opens at its MCP section. On a narrow
     composer the chip stacks into two lines and the provider part gives way
     first. In Plan mode the placeholder says the agent reads and proposes
     without editing files.
@@ -669,9 +671,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     Its full track is drawn, so a part-filled ring reads as a gauge, not a
     spinner. Its labels are in the UI font and only the numbers in mono, as
     in an answer's details.
-  - The composer marks focus with a darker border rather than a blue glow,
-    and in a composer under 640px (a phone, or a chat beside the Review
-    panel) the MCP chip is the plug alone, its name in the tooltip.
+  - The composer marks focus with a darker border rather than a blue glow.
   - On phones the header keeps four controls (sidebar, title, Review panel,
     More), and Send is a 44px target.
   - Messages queued while a turn runs sit in the tray above the text, with

@@ -71,7 +71,6 @@ import { Composer } from '../composer/Composer'
 import { RunChip } from '../composer/RunChip'
 import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
-import { McpAttentionChip } from '../composer/McpAttentionChip'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
 import { PendingMessageQueue } from '../PendingMessageQueue'
@@ -779,12 +778,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
       renderPlus={renderPlus}
-      deck={
-        <>
-          <RunChip settings={runSettings} disabled={isSessionLoading} />
-          <McpAttentionChip workspace={workspace} />
-        </>
-      }
+      deck={<RunChip settings={runSettings} disabled={isSessionLoading} />}
       deckEnd={sessionIdState ? (
         <ContextMeter
           input={headerTokens.input}

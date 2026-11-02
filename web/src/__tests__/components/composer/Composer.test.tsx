@@ -25,7 +25,6 @@ mock.module('@/queries/useMcpQuery', () => ({
 const { Composer } = await import('@/components/composer/Composer')
 const { RunChip } = await import('@/components/composer/RunChip')
 const { PlusMenu } = await import('@/components/composer/PlusMenu')
-const { McpAttentionChip } = await import('@/components/composer/McpAttentionChip')
 const { useUIStore } = await import('@/stores/useUIStore')
 type RunSettings = import('@/components/composer/useRunSettings').RunSettings
 
@@ -143,21 +142,21 @@ describe('PlusMenu', () => {
   })
 })
 
-describe('McpAttentionChip', () => {
-  it('shows only for a server that needs the user, and opens the + menu there', () => {
-    wrap(<McpAttentionChip workspace="/repo" />)
-    const chip = screen.getByRole('button', { name: /github: Sign in/ })
-    fireEvent.click(chip)
-    expect(useUIStore.getState().plusMenuOpen).toBe(true)
-    expect(useUIStore.getState().plusMenuSection).toBe('mcp')
+describe('PlusMenu — MCP attention', () => {
+  // MCP lives in "+", so the deck has no MCP button of its own: "+" carries
+  // a dot while a server needs the user, and opens at the MCP section.
+  it('marks + with a dot while a server needs the user, and says which', () => {
+    const actions = { attach: () => {}, startToken: () => {}, setDraft: () => {} }
+    wrap(<PlusMenu actions={actions} workspace="/repo" />)
+    const plus = screen.getByRole('button', { name: 'Add to message', description: 'github needs sign-in' })
+    expect(plus.querySelector('[data-mcp-attention]')).toBeTruthy()
   })
 
-  it('is the plug alone on a deck under 640px (a chat beside the panel), still named in full', () => {
-    wrap(<McpAttentionChip workspace="/repo" />)
-    const chip = screen.getByRole('button', { name: /github: Sign in/ })
-    // A truncated "sla…" said nothing and starved the run chip of room.
-    expect(chip.querySelector('span')?.className).toContain('@max-[640px]:hidden')
-    expect(chip.className).toContain('@max-[640px]:w-6')
-    expect(chip.className).toContain('pointer-coarse:@max-[640px]:w-9')
+  it('opens at the MCP section while a server needs the user', async () => {
+    const actions = { attach: () => {}, startToken: () => {}, setDraft: () => {} }
+    wrap(<PlusMenu actions={actions} workspace="/repo" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
+    expect(useUIStore.getState().plusMenuSection).toBe('mcp')
+    expect(await screen.findByRole('region', { name: 'MCP servers' })).toBeTruthy()
   })
 })

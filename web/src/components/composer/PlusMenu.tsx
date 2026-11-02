@@ -2,11 +2,11 @@
  * PlusMenu — the composer's "+": add things to the message (files, a file
  * mention, a snippet), ask a side question, and the session's MCP servers.
  *
- * MCP lives here rather than in a settings overlay: a server that works needs
- * no attention, and one that does gets the deck's MCP chip, which opens this
- * menu at that section (as does ``/mcp``).
+ * MCP lives here rather than on the deck or in a settings overlay: a server
+ * that works needs no attention, and one that does puts a dot on "+" and
+ * opens this menu at its MCP section (as does ``/mcp``).
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-react'
 
 import { SessionMcpServers } from '@/components/SessionMcpServers'
@@ -17,6 +17,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
+import { useMcpAttention } from './useMcpAttention'
 
 /** What the "+" menu can do to the draft; supplied by the composer. */
 export interface ComposerActions {
@@ -42,9 +43,12 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
   const isMobile = useIsMobile()
   const open = useUIStore((s) => s.plusMenuOpen)
   const section = useUIStore((s) => s.plusMenuSection)
+  const attention = useMcpAttention(workspace)
+  const attentionId = useId()
   const setOpen = (next: boolean) => {
     const ui = useUIStore.getState()
-    if (next) ui.openPlusMenu()
+    // A server waiting on the user is why the dot is there: open at it.
+    if (next) ui.openPlusMenu(attention.summary ? 'mcp' : null)
     else ui.closePlusMenu()
   }
   const run = (fn: () => void) => () => {
@@ -59,10 +63,21 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
       disabled={disabled}
       aria-label="Add to message"
       aria-haspopup="dialog"
+      aria-describedby={attention.summary ? attentionId : undefined}
       onClick={isMobile ? () => setOpen(!open) : undefined}
-      className="flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9"
+      className="relative flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9"
     >
       <Plus size={15} aria-hidden="true" />
+      {attention.summary && (
+        <>
+          <span
+            data-mcp-attention=""
+            aria-hidden="true"
+            className="absolute top-1 right-1 size-1.5 rounded-full bg-(--accent-orange-text) ring-2 ring-(--color-surface)"
+          />
+          <span id={attentionId} hidden>{attention.summary}</span>
+        </>
+      )}
     </button>
   )
 

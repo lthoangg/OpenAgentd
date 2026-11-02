@@ -1039,12 +1039,14 @@ no drag, no collapse, no saved position. It is one framed field (one
 the text sits the run deck, which says how the next message runs:
 
 ```
-[+] [Code|Plan] [provider:model · Level · Account ▾] [mcp: Sign in]   (ring 42%) [Send]
+[+•] [Code|Plan] [provider:model · Level · Account ▾]   (ring 42%) [Send]
 ```
 
 - **"+"** opens the add menu: Attach, Mention a file, Snippet, Side question
-  and MCP servers (state in words, Sign in, on/off). The MCP chip shows only
-  when a server needs the user, and opens that section.
+  and MCP servers (state in words, Sign in, on/off). The deck has no MCP
+  button: while a server needs the user, "+" carries a 6px dot in the
+  orange text tone (its description names the server) and opens at that
+  section.
 - **Code/Plan** is the segmented control (Bark fill, no border). Plan mode
   changes the placeholder to say the agent reads and proposes without editing.
 - **The run chip** reads `provider:model` in mono, then the thinking level and

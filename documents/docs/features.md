@@ -866,9 +866,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Review panel views** `[v3.40.0]`:
   - **Changes**: clicking a row opens its diff as a preview tab, and the
     chevron peeks at it in place. Every row has **⋯** with the same items as
-    right-click and the long-press sheet. A footer totals the changes
-    ("3 files · +69 · −9") and has **Ask agent to commit**, which writes the
-    request into the composer for you to send.
+    right-click and the long-press sheet.
     Each row leads with the file name, its folder after it in muted text,
     so files in one deep folder no longer look alike; an empty list says
     **No changes** once. The status letter takes its lines' color: **A**

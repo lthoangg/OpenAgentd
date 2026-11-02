@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { WorkspaceChangesResponse } from '@/api/types'
-import { COMMIT_PROMPT, GitReviewSubPanel } from '@/components/WorkspacePanel/GitReviewSubPanel'
+import { GitReviewSubPanel } from '@/components/WorkspacePanel/GitReviewSubPanel'
 import { changedFilesFromResponse } from '@/components/WorkspacePanel/diff-helpers'
 
 const WORKSPACE = '/repo/project'
@@ -207,62 +207,22 @@ describe('Changes list rows', () => {
   })
 })
 
-describe('Ask agent to commit', () => {
-  const footer = () => screen.queryByRole('button', { name: 'Ask agent to commit' }) as HTMLButtonElement | null
+describe('Changes list footer', () => {
+  it('has no commit button and no totals bar under the list', async () => {
+    await renderList(changesOf(['a.ts', 'b.ts']))
 
-  it('fills the composer with the prompt and sends nothing', async () => {
-    const user = userEvent.setup()
-    const onInsertPrompt = mock((_text: unknown) => {})
-    await renderList(changesOf(['a.ts', 'b.ts']), [], { onInsertPrompt })
-
-    expect(footer()?.disabled).toBe(false)
-    expect(screen.getByText('2 files · +2 · −2')).toBeTruthy()
-    await user.click(footer()!)
-
-    expect(onInsertPrompt).toHaveBeenCalledTimes(1)
-    expect(onInsertPrompt).toHaveBeenCalledWith(COMMIT_PROMPT)
-    expect(COMMIT_PROMPT).toBe('Commit the current changes with a clear message.')
-    // Prefill only: the panel never talks to the agent itself.
-    expect(requestedUrls.filter((url) => url.includes('/chat') || url.includes('/messages'))).toEqual([])
+    expect(screen.queryByRole('button', { name: /commit/i })).toBeNull()
+    expect(screen.queryByText('2 files · +2 · −2')).toBeNull()
+    // The list is the last thing in the view.
+    expect(screen.getByRole('list', { name: 'Changed files' }).nextElementSibling).toBeNull()
   })
 
-  it('is a secondary button, not the primary fill', async () => {
-    await renderList(changesOf(['a.ts']), [], { onInsertPrompt: () => {} })
-
-    expect(footer()?.getAttribute('data-slot')).toBe('button')
-    expect(footer()?.className).toContain('bg-(--bg-key)')
-    expect(footer()?.className).not.toContain('bg-(--color-accent)')
-  })
-
-  it('is absent without a way to reach the composer', async () => {
-    await renderList(changesOf(['a.ts']))
-
-    expect(footer()).toBeNull()
-  })
-
-  it('stays, disabled with its reason in view, when nothing is changed', async () => {
-    const onInsertPrompt = mock((_text: unknown) => {})
-    await renderList(changesOf([]), [], { onInsertPrompt })
-
-    expect(footer()?.disabled).toBe(true)
-    // The reason is words on screen, not only a tooltip (touch has none).
-    expect(screen.getByText('No changes')).toBeTruthy()
-    // Said once: no "No changed files" line above the footer as well.
-    expect(screen.queryByText('No changed files')).toBeNull()
-    footer()!.click()
-    expect(onInsertPrompt).not.toHaveBeenCalled()
-  })
-
-  it('says "No changed files" when there is no footer to say it', async () => {
+  it('says "No changes" once when nothing is changed', async () => {
     await renderList(changesOf([]))
 
-    expect(screen.getByText('No changed files')).toBeTruthy()
-  })
-
-  it('does not add up lines of a list that was cut short', async () => {
-    await renderList(changesOf(['a.ts', 'b.ts'], 12_345), [], { onInsertPrompt: () => {} })
-
-    expect(screen.getByText('12,345 files')).toBeTruthy()
+    expect(screen.getAllByText('No changes')).toHaveLength(1)
+    expect(screen.queryByText('No changed files')).toBeNull()
+    expect(screen.queryByRole('button', { name: /commit/i })).toBeNull()
   })
 })
 

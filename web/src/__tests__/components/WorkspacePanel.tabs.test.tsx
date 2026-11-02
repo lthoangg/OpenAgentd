@@ -248,48 +248,11 @@ describe('Review dock diff tabs', () => {
   })
 })
 
-describe('Review dock "Ask agent to commit"', () => {
-  async function renderWithPrompt(props: { mobile?: boolean; onRequestClose?: () => void }) {
-    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
-    const onInsertPrompt = mock((_text: unknown) => {})
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    await act(async () => {
-      render(
-        <QueryClientProvider client={queryClient}>
-          <WorkspacePanel workspace={WORKSPACE} open viewRequest={{ view: 'review', key: 1 }} onInsertPrompt={onInsertPrompt} {...props} />
-        </QueryClientProvider>,
-      )
-    })
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Ask agent to commit' })).toBeTruthy())
-    return onInsertPrompt
-  }
-
-  it('puts the commit request in the composer and leaves the panel open on desktop', async () => {
-    const user = userEvent.setup()
-    const onRequestClose = mock(() => {})
-    const onInsertPrompt = await renderWithPrompt({ onRequestClose })
-
-    await user.click(screen.getByRole('button', { name: 'Ask agent to commit' }))
-
-    expect(onInsertPrompt).toHaveBeenCalledWith('Commit the current changes with a clear message.')
-    expect(onRequestClose).not.toHaveBeenCalled()
-  })
-
-  it('closes the sheet on a phone, so the filled composer is what shows', async () => {
-    const user = userEvent.setup()
-    const onRequestClose = mock(() => {})
-    const onInsertPrompt = await renderWithPrompt({ mobile: true, onRequestClose })
-
-    await user.click(screen.getByRole('button', { name: 'Ask agent to commit' }))
-
-    expect(onInsertPrompt).toHaveBeenCalledTimes(1)
-    expect(onRequestClose).toHaveBeenCalledTimes(1)
-  })
-
-  it('is not offered when the shell passes no way to the composer', async () => {
+describe('Review dock Changes list', () => {
+  it('offers no commit button: committing is left to the agent and the terminal', async () => {
     await renderPanel()
 
-    expect(screen.queryByRole('button', { name: 'Ask agent to commit' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /commit/i })).toBeNull()
   })
 })
 

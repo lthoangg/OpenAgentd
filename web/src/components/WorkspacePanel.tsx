@@ -213,7 +213,6 @@ export function WorkspacePanel({
   onClearPlan,
   onFileSelect,
   onAddComment,
-  onInsertPrompt,
   onSendPreviewComments,
   chatWorkspace = false,
   onRequestClose,
@@ -265,11 +264,6 @@ export function WorkspacePanel({
   onClearPlan?: () => void
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
-  /**
-   * Puts text in the composer without sending it ("Ask agent to commit" in
-   * the Changes list). Pass a stable callback; without it that footer is hidden.
-   */
-  onInsertPrompt?: (text: string) => void
   /** Adds a preview's design comments to the composer as a chip. */
   onSendPreviewComments?: (feedback: DesignFeedback) => void
   /**
@@ -714,15 +708,6 @@ export function WorkspacePanel({
     },
   })
 
-  // "Ask agent to commit": fills the composer. On a phone the dock covers the
-  // composer, so it closes and the filled prompt is what shows.
-  const onRequestCloseRef = useRef(onRequestClose)
-  onRequestCloseRef.current = onRequestClose
-  const insertPrompt = useCallback((text: string) => {
-    onInsertPrompt?.(text)
-    if (mobile) onRequestCloseRef.current?.()
-  }, [mobile, onInsertPrompt])
-
   const reviewView = (
     <div className="flex h-full min-h-0 flex-col">
       {changes.data?.is_git_repo && (
@@ -761,7 +746,6 @@ export function WorkspacePanel({
             expandedDiffs={expandedDiffs}
             toggleDiffExpanded={toggleDiffExpanded}
             openDiffTab={openDiffPreview}
-            onInsertPrompt={onInsertPrompt ? insertPrompt : undefined}
             mobile={mobile}
             setMobileFileActions={setMobileFileActions}
             setDesktopFileActions={setDesktopFileActions}

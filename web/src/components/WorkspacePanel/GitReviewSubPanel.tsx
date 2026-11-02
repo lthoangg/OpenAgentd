@@ -1,7 +1,6 @@
 import { memo, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, MoreHorizontal } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Collapsible } from '@/components/ui/collapsible'
 import { ROW_ACTION } from '@/components/ui/list-row'
@@ -18,9 +17,6 @@ import { DockLoadError } from './DockLoadError'
 
 /** Rows rendered per step; thousands of untracked files must not stall a render. */
 export const CHANGED_ROWS_PAGE = 200
-
-/** What "Ask agent to commit" puts in the composer. It is never sent for the user. */
-export const COMMIT_PROMPT = 'Commit the current changes with a clear message.'
 
 /** Where a row's ⋯ menu opens, relative to the button: under it, right edge aligned. */
 const ROW_MENU_WIDTH = 176
@@ -40,11 +36,6 @@ export interface GitReviewSubPanelProps {
   expandedDiffs: Set<string>
   toggleDiffExpanded: (path: string) => void
   openDiffTab: (file: ChangedFileInfo) => void
-  /**
-   * Puts text in the composer without sending it. Without it the list has
-   * no "Ask agent to commit" footer.
-   */
-  onInsertPrompt?: (text: string) => void
   mobile?: boolean
   setMobileFileActions: React.Dispatch<React.SetStateAction<ChangedFileInfo | null>>
   setDesktopFileActions: React.Dispatch<React.SetStateAction<{ file: ChangedFileInfo; x: number; y: number } | null>>
@@ -81,52 +72,6 @@ function ChangedFileDiff({ workspace, path }: { workspace: string; path: string 
         <DiffPreview diff={body} autoScroll={false} />
       </div>
     </>
-  )
-}
-
-/**
- * The list's footer: what is changed, and the one way to commit it — asking
- * the agent, which writes the message. Stays at the bottom of the scroller.
- */
-function ChangesFooter({
-  changedFiles,
-  total,
-  truncated,
-  onInsertPrompt,
-}: {
-  changedFiles: ChangedFileInfo[]
-  total: number
-  truncated: boolean
-  onInsertPrompt: (text: string) => void
-}) {
-  const empty = changedFiles.length === 0
-  const summary = useMemo(() => {
-    if (empty) return 'No changes'
-    const files = `${total.toLocaleString()} ${total === 1 ? 'file' : 'files'}`
-    // A capped list cannot add up the lines it left out.
-    if (truncated) return files
-    const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0)
-    const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0)
-    return [files, additions > 0 && `+${additions.toLocaleString()}`, deletions > 0 && `−${deletions.toLocaleString()}`]
-      .filter(Boolean)
-      .join(' · ')
-  }, [changedFiles, empty, total, truncated])
-  return (
-    <div className="sticky bottom-0 flex min-h-(--spacing-toolbar) items-center gap-2 border-t border-(--color-border-subtle) bg-(--bg-page) px-3 py-1">
-      <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">{summary}</span>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button type="button" size="sm" variant="default" disabled={empty} onClick={() => onInsertPrompt(COMMIT_PROMPT)}>
-              Ask agent to commit
-            </Button>
-          }
-        />
-        <TooltipContent side="top">
-          {empty ? 'No changes' : 'Puts a commit request in the composer. Nothing is sent yet.'}
-        </TooltipContent>
-      </Tooltip>
-    </div>
   )
 }
 
@@ -260,7 +205,6 @@ function GitReviewSubPanelView({
   expandedDiffs,
   toggleDiffExpanded,
   openDiffTab,
-  onInsertPrompt,
   mobile = false,
   setMobileFileActions,
   setDesktopFileActions,
@@ -273,23 +217,7 @@ function GitReviewSubPanelView({
     return <DockLoadError message="Failed to load changed files." onRetry={() => void refetch()} retrying={changes.isFetching} />
   }
   if (!changes.data?.is_git_repo) return <DockListNotice>Not a git repository</DockListNotice>
-  const footer = onInsertPrompt && (
-    <ChangesFooter
-      changedFiles={changedFiles}
-      total={changes.data.total}
-      truncated={changes.data.truncated}
-      onInsertPrompt={onInsertPrompt}
-    />
-  )
-  if (changedFiles.length === 0) {
-    // With the footer, its "No changes" already says it.
-    return (
-      <div>
-        {!footer && <DockListNotice>No changed files</DockListNotice>}
-        {footer}
-      </div>
-    )
-  }
+  if (changedFiles.length === 0) return <DockListNotice>No changes</DockListNotice>
 
   const hiddenRows = changedFiles.length - shownRows
   return (
@@ -324,7 +252,6 @@ function GitReviewSubPanelView({
           Show {Math.min(hiddenRows, CHANGED_ROWS_PAGE).toLocaleString()} more ({hiddenRows.toLocaleString()} not shown)
         </button>
       )}
-      {footer}
     </div>
   )
 }

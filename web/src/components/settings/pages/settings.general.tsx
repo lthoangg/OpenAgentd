@@ -4,15 +4,13 @@
  * pick applies at once. The desktop
  * app's notch status and pet live on Settings → Desktop.
  *
- * In the phone apps each choice opens the system's own picker (an iOS action
- * sheet, an Android single-choice dialog); elsewhere it is a segmented
- * control.
+ * Each choice is the app's own segmented control on every platform, the
+ * phone apps included.
  */
 import { type ComponentType } from 'react'
 
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { NativeSelect } from '@/components/ui/native-select'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -25,7 +23,7 @@ function SegmentedChoice<T extends string>({ label, options, value, onChange }: 
   value: T
   onChange: (next: T) => void
 }) {
-  const segmented = (
+  return (
     <SegmentedControl
       label={label}
       value={value}
@@ -35,15 +33,6 @@ function SegmentedChoice<T extends string>({ label, options, value, onChange }: 
         label: optionLabel,
         icon: Icon ? <Icon size={13} aria-hidden="true" /> : undefined,
       }))}
-    />
-  )
-  return (
-    <NativeSelect
-      title={label}
-      value={value}
-      onValueChange={(next) => onChange(next as T)}
-      options={options.map(({ value: option, label: optionLabel }) => ({ value: option, label: optionLabel }))}
-      fallback={segmented}
     />
   )
 }

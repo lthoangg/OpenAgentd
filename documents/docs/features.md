@@ -836,7 +836,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     always visible and say "Copied"; a bare code fence gets the same header.
     Tool section headers are real buttons.
   - On touch, a long press on a message, a code block or a link opens its
-    menu as a bottom sheet (an action sheet in the iOS app). A tool row has
+    menu as the app's bottom sheet, the iOS app included. A tool row has
     a menu too (right-click or long-press): **Copy arguments** and **Copy
     result**.
   - The plan tool's chip reads **Open plan**, like every other way to the
@@ -909,9 +909,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     tooltip showing, and the card keeps the same gap above the status bar
     as below the header.
 - **Native on every platform** `[v3.40.0]`:
-  - In the desktop app, right-click menus (sessions, tabs, terminals, Git,
-    messages, files) are the operating system's own menus, with the same
-    items as ⋯.
+  - Native means the feel, not the operating system's widgets: right-click
+    and ⋯ menus, dropdowns and pickers are the app's own on every platform,
+    desktop and phone apps included. A right-click menu opens at the
+    pointer with the same items as ⋯, and the arrow keys and Escape work
+    in it.
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
     Sidebar, Review Panel, Split Review Panel Right and Down, Terminal,
@@ -943,13 +945,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Optional global shortcuts, off by default: **Global Shortcuts** in the
     OpenAgentd menu turns on `⌥⌘O`/`Ctrl+Alt+O` (Show OpenAgentd) and
     `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you).
-  - In the phone apps, Theme and Text size open the system's own picker (an
-    action sheet on iOS, a dialog on Android), and on Android the system
-    font size now enlarges text, up to 125%, as Dynamic Type does on iOS.
-  - In the iPhone and iPad app, right-click and long-press menus (sessions,
-    tabs, tool rows, messages) are iOS action sheets; Android keeps the
-    bottom sheet. Bottom sheets close with a downward drag, and a swipe from
-    the left edge brings back the session list.
+  - On Android the system font size now enlarges text, up to 125%, as
+    Dynamic Type does on iOS.
+  - In the phone apps, long-press menus (sessions, tabs, tool rows,
+    messages) open as the app's bottom sheet. Bottom sheets close with a
+    downward drag, and a swipe from the left edge brings back the session
+    list.
 - **Needs you everywhere, answered in place** `[v3.40.0]`:
   - The notch status, the pet, the tray and system notifications share one
     feed and one set of words: **Needs you**, **Running**, **Done**,

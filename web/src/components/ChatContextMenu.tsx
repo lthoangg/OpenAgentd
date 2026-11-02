@@ -11,7 +11,7 @@
  *   ``lib/desktop-shell.ts`` suppresses.
  * - A long press (touch) opens the items as a bottom sheet, with a light
  *   haptic; the press is the house hold (``lib/chat-long-press``). In the
- *   iPhone and iPad app it is an iOS action sheet instead (``pickNative``).
+ *   iPhone and iPad app too: the app's sheet, not the system's action sheet.
  * - Selected text always keeps the system menu, which has Copy: a right-click
  *   or a long press over a selection opens nothing of ours.
  *
@@ -26,8 +26,6 @@ import { hasTextSelection } from '@/lib/desktop-shell'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { registerLongPressSurface } from '@/lib/chat-long-press'
 import { softHapticFeedback } from '@/lib/haptics'
-import { isIosApp } from '@/lib/native-menu'
-import { pickNative } from '@/lib/native-picker'
 
 export interface ChatMenuItem {
   label: string
@@ -82,19 +80,7 @@ export function useChatMenu(label: string, items: () => ChatMenuItem[]) {
     if (list.length === 0) return
     sheetUp.current = true
     softHapticFeedback()
-    if (!isIosApp()) {
-      setSheet({ items: list, open: true })
-      return
-    }
-    // iOS: the system's action sheet; the app's sheet only if it cannot show.
-    void pickNative(label, list.map((item, index) => ({ id: String(index), label: item.label }))).then((chosen) => {
-      if (chosen === undefined) {
-        setSheet({ items: list, open: true })
-        return
-      }
-      sheetUp.current = false
-      if (chosen !== null) list[Number(chosen)]?.run()
-    })
+    setSheet({ items: list, open: true })
   }
   const closeSheet = () => {
     sheetUp.current = false

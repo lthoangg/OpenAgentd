@@ -670,7 +670,6 @@ fn main() {
             preview_relay::preview_relay_close,
             menu::set_tray_session,
             app_menu::set_menu_text_size,
-            context_menu::show_context_menu,
             context_menu::show_app_menu,
             caption::show_snap_layouts,
             badge::set_attention_badge,

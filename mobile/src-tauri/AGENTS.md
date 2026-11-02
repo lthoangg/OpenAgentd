@@ -15,9 +15,10 @@ integration for the mobile shell.
   `pick_one` (a native single-choice picker: iOS action sheet, Android
   dialog). Input is validated and bounded once, for both platforms; the iOS
   UIKit code runs on the main queue and answers over a channel, the Android
-  half is `ShellPlugin.kt`'s `shareText`/`pickOne`. The web side
-  (`web/src/lib/mobile-share.ts`, `native-picker.ts`) falls back to its own UI
-  when a command fails, so keep errors as `Err`, never a silent success.
+  half is `ShellPlugin.kt`'s `shareText`/`pickOne`. The web no longer calls
+  `pick_one`: menus and pickers are the app's own on every platform. The web
+  side of `share_text` (`web/src/lib/mobile-share.ts`) falls back to its own
+  UI when the command fails, so keep errors as `Err`, never a silent success.
 - `../../native/shell-core/`: server config persistence, URL normalization,
   keyring access, and download limits shared with the desktop shell. Change
   those behaviours there, with their tests, not in `lib.rs`.

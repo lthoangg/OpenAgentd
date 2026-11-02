@@ -16,11 +16,9 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   (`context_menu::show_app_menu`).
 - `src/shell_prefs.rs`: `desktop-shell.json`, the shell-level preferences that
   outlive a session: the last zoom and the global shortcuts switch.
-- `src/context_menu.rs`: native pop-up menus for the page
-  (`show_context_menu`: the page's items in, the chosen id out) and the app
-  menu on Windows/Linux (`show_app_menu`). Item ids are `ctx:<call>:<index>`
-  so they never meet the app menu's; the one app-level menu listener routes
-  them from `menu::handle_desktop_menu`.
+- `src/context_menu.rs`: the app menu as a pop-up on Windows/Linux
+  (`show_app_menu`). The page draws its own menus (right-click, ⋯) in every
+  shell; native means the feel, not the OS widget.
 - `src/app_menu.rs`: the View → Text Size check items. The page owns the
   setting and reports it with `set_menu_text_size`; a click only emits a
   command for the page.

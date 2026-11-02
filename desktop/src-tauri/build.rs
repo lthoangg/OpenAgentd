@@ -21,7 +21,6 @@ fn main() {
                 "app_stop_bundled_backend",
                 "set_tray_session",
                 "set_menu_text_size",
-                "show_context_menu",
                 "show_app_menu",
                 "show_snap_layouts",
                 "set_attention_badge",

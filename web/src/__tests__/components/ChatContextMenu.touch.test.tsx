@@ -14,13 +14,12 @@ mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => platform,
 }))
 
-// The iOS app's action sheet (``pick_one``); other platforms never call it.
-let pickAnswer: () => Promise<unknown> = async () => null
-const pickCalls: unknown[] = []
+// The shell's commands: a menu or sheet of ours never calls one.
+const shellCalls: unknown[] = []
 mock.module('@tauri-apps/api/core', () => ({
   invoke: (command: string, args: unknown) => {
-    pickCalls.push([command, args])
-    return pickAnswer()
+    shellCalls.push([command, args])
+    return Promise.resolve(null)
   },
 }))
 
@@ -58,8 +57,7 @@ let timers: ReturnType<typeof useFakeTimers>
 beforeEach(() => {
   platform.isTauri = false
   platform.os = 'macos'
-  pickCalls.length = 0
-  pickAnswer = async () => null
+  shellCalls.length = 0
   haptics.length = 0
   setCoarse(false)
   timers = useFakeTimers()
@@ -141,34 +139,22 @@ describe('right-click in a plain browser', () => {
 })
 
 describe('long press in the iOS app', () => {
-  it('opens an iOS action sheet and runs the chosen item', async () => {
+  it('opens the app’s own sheet, not the system action sheet, and runs the chosen item', async () => {
     setCoarse(true)
     platform.isTauri = true
     platform.os = 'ios'
     picked.length = 0
-    pickAnswer = async () => '1'
     render(<Message />)
     fireEvent.pointerDown(screen.getByText('Fix the build'), touch())
 
     await hold()
 
-    expect(pickCalls).toEqual([['pick_one', { title: 'Actions for message', options: [{ id: '0', label: 'Copy' }, { id: '1', label: 'Edit' }] }]])
-    expect(picked).toEqual(['Edit'])
-    expect(screen.queryByRole('dialog')).toBeNull()
+    const sheet = screen.getByRole('dialog', { name: 'Actions for message' })
+    expect(sheet.getAttribute('data-bottom-sheet')).toBe('')
+    expect(shellCalls).toEqual([])
     expect(haptics).toEqual(['soft'])
-  })
-
-  it('falls back to the app sheet when the action sheet cannot show', async () => {
-    setCoarse(true)
-    platform.isTauri = true
-    platform.os = 'ios'
-    pickAnswer = async () => { throw new Error('no picker') }
-    render(<Message />)
-    fireEvent.pointerDown(screen.getByText('Fix the build'), touch())
-
-    await hold()
-
-    expect(screen.getByRole('dialog', { name: 'Actions for message' }).getAttribute('data-bottom-sheet')).toBe('')
+    await act(async () => { screen.getByRole('button', { name: 'Edit' }).click() })
+    expect(picked).toEqual(['Edit'])
   })
 })
 

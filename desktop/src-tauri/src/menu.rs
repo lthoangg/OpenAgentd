@@ -681,9 +681,9 @@ pub fn set_tray_session(app: AppHandle, text: String) -> Result<(), String> {
 }
 
 pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
-    // The page's own pop-up menus and the Text Size items, which have ids of
-    // their own kind; everything else is a plain app menu item.
-    if crate::context_menu::handle_menu_event(id) || crate::app_menu::handle_menu_event(app, id) {
+    // The Text Size items have ids of their own kind; everything else is a
+    // plain app menu item.
+    if crate::app_menu::handle_menu_event(app, id) {
         return;
     }
     match id {

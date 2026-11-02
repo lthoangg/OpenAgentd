@@ -954,8 +954,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`. The highlighted item (pointer or keyboard) is filled with `fill-selected` and its text and icons turn `on-selected` (`.oa-menu-item` in `index.css`; hover only applies where a real pointer hovers).
 - **Keyed lists** (`oa-menu-item-keyed`, the command palette): only the row the list marks active (`data-highlighted`) fills; a real mouse move makes a row active (`hoverIntent`), a pointer resting over the list lights nothing, so ↑/↓ never leave two rows lit. Palette rows have no border.
 - **Destructive Items** (`MENU_ITEM_DANGER`): `text-(--color-error)`; highlighted, the fill turns `fill-danger` and the text turns `on-selected`.
-- **Native in the desktop app**: `ContextMenu` reads its items (label, disabled, checked, separators) from the hidden page menu and asks the shell to pop up the OS's own menu at the same point (`lib/native-menu.ts` → `show_context_menu`); the chosen item is clicked, so callers keep one menu definition. A menu whose items carry more than words (chips, badges) passes `native={false}`. In the iOS app the same items are an iOS action sheet (`pick_one`: rows that can run, the checked one marked, the menu's label as its title). Browsers, Android and a shell without the command show the page menu.
-- In the desktop app, command-only context menus (tabs, sessions, messages, files, Changes rows) are the OS's own menu; these styles are the browser fallback and the menus that hold chips or switches.
+- **Ours in every shell**: context menus, dropdowns and pickers are drawn by the page in the desktop and phone apps too, never handed to the OS menu, an iOS action sheet or an Android dialog. Native is the feel (a menu opens at the pointer, arrow keys move, Escape returns focus to the opener), not the OS widget, so every menu in the app looks alike. Only the window's menu bar (the macOS menu bar; ☰ on Windows and Linux) belongs to the shell.
 - **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
 
 **Segmented Controls & Connected Tabs**:
@@ -1384,10 +1383,10 @@ While another app has focus, `data-window-inactive` hides focus rings, turns
 text selection to `--bg-key` and mutes `aria-current` items, the way Finder
 greys its selection. The browser build keeps the browser's behaviour.
 
-The desktop shell hands the OS what the OS already draws:
+The desktop shell hands the OS what belongs to the window; menus, dropdowns
+and pickers inside the page stay the app's own (see Floating Menus & Context
+Menus):
 
-- **Context menus**: right-click menus are the OS's own (`ContextMenu` →
-  `show_context_menu`; see Floating Menus & Context Menus).
 - **App menu**: macOS keeps the menu bar. On Windows and Linux the menu bar
   is hidden and the header's ☰ (or a bare Alt tap outside a text field)
   pops the same menu up (`show_app_menu`). The View menu carries every
@@ -1485,11 +1484,11 @@ setting multiplies on top (type only).
 Android scales text in the shell instead: `ShellPlugin` sets the WebView's
 `textZoom` from the system font scale, between 100% and 125%.
 
-The phone apps use the system's own controls where a value is simple: a
-choice of a few values (theme, text size) opens an iOS action sheet or an
-Android single-choice dialog (`ui/native-select.tsx`, `pick_one`), and
-Share… opens the system share sheet (`share_text`). A long press opens the
-item's menu as an action sheet on iOS and a bottom sheet on Android. A swipe
+The phone apps keep the app's own controls: a choice of a few values (theme,
+text size) is the same segmented control as on desktop, and a long press
+opens the item's menu as the app's bottom sheet on iOS and Android alike.
+Share… opens the system share sheet (`share_text`), which is the window's
+business, not a menu. A swipe
 from the left edge brings back the session list (the app's one level up, as
 iOS's back swipe does), a sheet closes with a downward drag, and haptics
 mark a send, an arriving question, a mode change and a sheet dismissed by
@@ -1501,12 +1500,11 @@ drag.
 |---|---|---|---|---|---|
 | UI font | SF Pro | Segoe UI Variable | desktop font | SF Pro | Roboto |
 | Shortcut modifier | ⌘ | Ctrl | Ctrl | ⌘ (hardware keyboard) | Ctrl |
-| Context menu | OS menu | OS menu | OS menu | long-press action sheet | long-press sheet |
+| Context menu | app menu | app menu | app menu | long-press sheet | long-press sheet |
 | App menu | menu bar | ☰ / Alt | ☰ / Alt | — | — |
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | Cancel · Action | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
 | Share | share menu | Share window | copy link | share sheet | share sheet |
-| Simple picks | app control | app control | app control | action sheet | single-choice dialog |
 | System text size | — | — | — | Dynamic Type | font scale |
 | Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | edge swipe (session list) | Back gesture |
 

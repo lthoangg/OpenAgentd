@@ -165,8 +165,6 @@ import {
 } from './Sidebar.window'
 import { SessionSearch } from './Sidebar/SessionSearch'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
-import { isIosApp } from '@/lib/native-menu'
-import { pickNative } from '@/lib/native-picker'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
@@ -1009,18 +1007,9 @@ export function Sidebar({
     return actions
   }
 
-  // The titled sheet on a phone; in the iOS app, the system's action sheet
-  // (the app's sheet only if it cannot show).
+  // The titled sheet on a phone, the iOS app included.
   const openMobileSessionActions = (session: SessionResponse, workspacePath: string) => {
-    if (!isIosApp()) {
-      setMobileSessionActions({ session, workspacePath })
-      return
-    }
-    const actions = sessionMenuActions(session)
-    void pickNative(session.title || 'Untitled', actions.map(({ id, label }) => ({ id, label }))).then((chosen) => {
-      if (chosen === undefined) setMobileSessionActions({ session, workspacePath })
-      else actions.find((action) => action.id === chosen)?.run()
-    })
+    setMobileSessionActions({ session, workspacePath })
   }
 
   const confirmSessionDelete = () => {
@@ -1958,7 +1947,6 @@ export function Sidebar({
           label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}
           onDismiss={() => setCheckoutMenu(null)}
           className="min-w-48 max-w-64"
-          native={false}
         >
           <CheckoutMenuItem
             checked={checkoutMenuRepository.selected === null}

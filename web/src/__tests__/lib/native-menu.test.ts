@@ -7,72 +7,12 @@ let invokeResult: () => Promise<unknown> = async () => null
 const invoke = mock(async (..._args: unknown[]) => invokeResult())
 mock.module('@tauri-apps/api/core', () => ({ invoke }))
 
-const { createAltTapDetector, hasAppMenuButton, showAppMenu, showNativeMenu } = await import('@/lib/native-menu')
+const { createAltTapDetector, hasAppMenuButton, showAppMenu } = await import('@/lib/native-menu')
 
 beforeEach(() => {
   platform = { isTauri: true, os: 'macos' }
   invokeResult = async () => null
   invoke.mockClear()
-})
-
-const ITEMS = [
-  { id: 'rename', label: 'Rename' },
-  { separator: true as const },
-  { id: 'pin', label: 'Pinned', checked: true, enabled: false },
-]
-
-describe('showNativeMenu', () => {
-  it('hands the items and the point to the shell and resolves with the chosen id', async () => {
-    invokeResult = async () => 'rename'
-
-    expect(await showNativeMenu(ITEMS, { x: 120, y: 48 })).toBe('rename')
-
-    expect(invoke.mock.calls).toEqual([['show_context_menu', { items: ITEMS, x: 120, y: 48 }]])
-  })
-
-  it('resolves null when the menu was dismissed', async () => {
-    invokeResult = async () => null
-    expect(await showNativeMenu(ITEMS, { x: 0, y: 0 })).toBeNull()
-  })
-
-  it.each(['windows', 'linux'])('shows the menu in the %s desktop app too', async (os) => {
-    platform = { isTauri: true, os }
-    invokeResult = async () => 'pin'
-    expect(await showNativeMenu(ITEMS, { x: 1, y: 2 })).toBe('pin')
-  })
-
-  it('answers undefined in a browser, so the caller shows its own menu', async () => {
-    platform = { isTauri: false, os: 'macos' }
-    expect(await showNativeMenu(ITEMS, { x: 1, y: 2 })).toBeUndefined()
-    expect(invoke).not.toHaveBeenCalled()
-  })
-
-  it('shows an iOS action sheet in the iPhone and iPad app: rows that can run, the checked one marked', async () => {
-    platform = { isTauri: true, os: 'ios' }
-    invokeResult = async () => 'rename'
-    const items = [...ITEMS, { id: 'sort', label: 'Newest first', checked: true }]
-
-    expect(await showNativeMenu(items, { x: 1, y: 2 }, 'Session')).toBe('rename')
-
-    expect(invoke.mock.calls).toEqual([['pick_one', {
-      title: 'Session',
-      options: [{ id: 'rename', label: 'Rename' }, { id: 'sort', label: 'Newest first' }],
-      selected: 'sort',
-    }]])
-  })
-
-  it('answers undefined in the Android app, which keeps its bottom sheet', async () => {
-    platform = { isTauri: true, os: 'android' }
-    expect(await showNativeMenu(ITEMS, { x: 1, y: 2 })).toBeUndefined()
-    expect(invoke).not.toHaveBeenCalled()
-  })
-
-  it('answers undefined when the shell cannot show it, so the caller falls back', async () => {
-    invokeResult = async () => {
-      throw new Error('unknown command')
-    }
-    expect(await showNativeMenu(ITEMS, { x: 1, y: 2 })).toBeUndefined()
-  })
 })
 
 describe('the application menu button', () => {

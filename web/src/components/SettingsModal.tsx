@@ -19,7 +19,7 @@
  * on the sidebar, in a dialog from the rail, and on the phone section list.
  */
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Search } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -348,8 +348,19 @@ export function SettingsModal() {
     return () => window.clearTimeout(timer)
   }, [open, reveal])
 
+  // Focus starts where a Settings window's does: in the search field, or,
+  // where the icon rail hides the field behind an icon, in the page itself.
+  // On Close (or a rail icon) it drew a ring and opened a tooltip the moment
+  // ⌘, opened Settings.
+  const initialFocus = useMemo(() => ({
+    get current(): HTMLElement | null {
+      const modal = document.querySelector<HTMLElement>('[data-settings-modal]')
+      const shown = (el: HTMLElement | null | undefined) => (el && el.getClientRects().length > 0 ? el : null)
+      return shown(modal?.querySelector<HTMLElement>('nav[aria-label="Settings categories"] input[type="search"]')) ?? shown(modal?.querySelector<HTMLElement>('main'))
+    },
+  }), [])
   // Switching to the palette would raise the unsaved-changes prompt under it.
-  const layer = useModalFocus(open, closeSettings, undefined, {
+  const layer = useModalFocus(open, closeSettings, initialFocus, {
     kind: 'overlay',
     allowSwitch: () => Object.keys(useSettingsStore.getState().dirtyDrafts).length === 0,
   })
@@ -442,8 +453,10 @@ export function SettingsModal() {
 
               <main
                 ref={mainRef}
+                // Focusable, so Settings can open with focus in the page.
+                tabIndex={-1}
                 className={cn(
-                  'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)',
+                  'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page) outline-none',
                   atIndex && 'max-md:hidden',
                 )}
               >

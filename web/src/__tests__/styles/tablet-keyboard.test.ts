@@ -53,3 +53,13 @@ describe('settings card on a touch tablet', () => {
     expect(wide?.body).toContain('max-height: calc(var(--app-vh, 100svh)')
   })
 })
+
+describe('settings card on a desktop window', () => {
+  it('keeps the same gap above the status bar as below the header', () => {
+    // At 4vh from the bottom it sat flush on the 28px status bar.
+    const wide = rulesFor('.settings-modal-shell').find((r) => r.within.includes('@media (min-width: 768px)'))
+    expect(wide?.body).toContain('top: calc(var(--spacing-app-header) + 4vh)')
+    expect(wide?.body).toContain('bottom: calc(var(--spacing-status-bar) + 4vh)')
+    expect(wide?.body).toContain('max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh)')
+  })
+})

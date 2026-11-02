@@ -573,13 +573,14 @@ html[data-mobile-shell][data-keyboard-open] [data-dialog-content] {
 }
 
 @media (min-width: 768px) {
+  /* The same gap below the header and above the status bar. */
   .settings-modal-shell {
     top: calc(var(--spacing-app-header) + 4vh);
     right: max(2.5vw, calc((100vw - 76rem) / 2));
-    bottom: 4vh;
+    bottom: calc(var(--spacing-status-bar) + 4vh);
     left: max(2.5vw, calc((100vw - 76rem) / 2));
     height: auto;
-    max-height: calc(100vh - var(--spacing-app-header) - 8vh);
+    max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh);
     transform: none;
   }
 

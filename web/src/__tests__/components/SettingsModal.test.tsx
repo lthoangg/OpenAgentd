@@ -244,6 +244,28 @@ describe('SettingsModal — nav search and groups', () => {
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Compact'))
   })
 
+  it('opens with focus in its search field, as a Settings window does, not on Close', async () => {
+    // Focus on Close drew its ring and opened its tooltip the moment ⌘,
+    // opened Settings.
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    await waitFor(() => expect(document.activeElement).toBe(sidebar().getByRole('searchbox', { name: 'Search settings' })))
+  })
+
+  it('opens with focus in the page where the icon rail hides the search field', async () => {
+    const original = HTMLInputElement.prototype.getClientRects
+    // Hidden below 900px: no boxes.
+    HTMLInputElement.prototype.getClientRects = function () { return this.type === 'search' ? ([] as unknown as DOMRectList) : original.call(this) }
+    try {
+      useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+      renderModal()
+      await waitFor(() => expect(document.activeElement?.tagName).toBe('MAIN'))
+    } finally {
+      HTMLInputElement.prototype.getClientRects = original
+    }
+  })
+
   it('says when nothing matches', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()

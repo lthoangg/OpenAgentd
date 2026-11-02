@@ -854,6 +854,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The first-run card names the action ("Use Ollama"), and the section is
     called **Retention** (with "Local history" inside it).
   - Below 900px wide the Settings navigation shows icons only.
+  - Settings opens with the cursor in its search field (in the page when
+    the icons-only navigation hides the field), not on Close with its
+    tooltip showing, and the card keeps the same gap above the status bar
+    as below the header.
 - **Native on every platform** `[v3.40.0]`:
   - In the desktop app, right-click menus (sessions, tabs, terminals, Git,
     messages, files) are the operating system's own menus, with the same

@@ -819,6 +819,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     right-click and the long-press sheet. A footer totals the changes
     ("3 files · +69 · −9") and has **Ask agent to commit**, which writes the
     request into the composer for you to send.
+    Each row leads with the file name, its folder after it in muted text,
+    so files in one deep folder no longer look alike; an empty list says
+    **No changes** once.
   - A tab's close button is always visible, dimmed on tabs that are not
     open; terminal tabs show it on touch too.
   - **Git**: one **View** menu holds Graph view and All branches. History

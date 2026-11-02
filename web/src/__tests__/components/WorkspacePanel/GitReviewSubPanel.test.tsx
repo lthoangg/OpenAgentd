@@ -77,6 +77,19 @@ describe('Changes list', () => {
     expect(screen.queryByText(/incomplete|Showing/)).toBeNull()
   })
 
+  it('leads each row with the file name, its folder after it', async () => {
+    // A path cut at the end ("web/src/__tests__/components/In…") hid the
+    // one part that tells files apart.
+    await renderList(changesOf(['web/src/components/InputComposer.tsx', 'README.md']))
+
+    const row = screen.getByRole('button', { name: 'Open diff tab for web/src/components/InputComposer.tsx' })
+    const name = within(row).getByText('InputComposer.tsx')
+    const folder = within(row).getByText('web/src/components')
+    expect(name.compareDocumentPosition(folder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(folder.className).toContain('text-(--color-text-muted)')
+    expect(within(screen.getByRole('button', { name: 'Open diff tab for README.md' })).getByText('README.md')).toBeTruthy()
+  })
+
   it('says how many files a capped list leaves out', async () => {
     await renderList(changesOf(['a.ts', 'b.ts', 'c.ts'], 12_345))
 
@@ -234,8 +247,16 @@ describe('Ask agent to commit', () => {
     expect(footer()?.disabled).toBe(true)
     // The reason is words on screen, not only a tooltip (touch has none).
     expect(screen.getByText('No changes')).toBeTruthy()
+    // Said once: no "No changed files" line above the footer as well.
+    expect(screen.queryByText('No changed files')).toBeNull()
     footer()!.click()
     expect(onInsertPrompt).not.toHaveBeenCalled()
+  })
+
+  it('says "No changed files" when there is no footer to say it', async () => {
+    await renderList(changesOf([]))
+
+    expect(screen.getByText('No changed files')).toBeTruthy()
   })
 
   it('does not add up lines of a list that was cut short', async () => {

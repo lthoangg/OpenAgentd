@@ -158,6 +158,7 @@ const ChangedFileRow = memo(function ChangedFileRow({
   setDesktopFileActions,
 }: ChangedFileRowProps) {
   const openMenu = (x: number, y: number) => setDesktopFileActions({ file, x, y })
+  const { name, folder } = splitRepoPath(file.path)
   return (
     <li>
       {/* Row: chevron peeks at the diff in place, the name opens it in a tab,
@@ -203,7 +204,13 @@ const ChangedFileRow = memo(function ChangedFileRow({
                 aria-label={`Open diff tab for ${file.path}`}
               >
                 <FileTypeIcon name={file.path} size={13} />
-                <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+                {/* The name first, its folder after it in muted text (as
+                    source control lists do): a path cut at the end hid the
+                    one part that tells the files apart. */}
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5 font-mono">
+                  <span className="max-w-full shrink-0 truncate">{name}</span>
+                  {folder && <span className="min-w-0 truncate text-meta text-(--color-text-muted)">{folder}</span>}
+                </span>
                 <ChangeCounts file={file} />
               </LongPressButton>
             }
@@ -275,9 +282,10 @@ function GitReviewSubPanelView({
     />
   )
   if (changedFiles.length === 0) {
+    // With the footer, its "No changes" already says it.
     return (
       <div>
-        <DockListNotice>No changed files</DockListNotice>
+        {!footer && <DockListNotice>No changed files</DockListNotice>}
         {footer}
       </div>
     )
@@ -323,3 +331,11 @@ function GitReviewSubPanelView({
 
 /** Memoized: the dock re-renders on every width change; the rows need not. */
 export const GitReviewSubPanel = memo(GitReviewSubPanelView)
+
+/** `a/b/c.ts` → `c.ts` in `a/b`; an untracked folder (`a/new/`) keeps its slash. */
+function splitRepoPath(path: string): { name: string; folder: string } {
+  const slash = path.endsWith('/') ? '/' : ''
+  const trimmed = slash ? path.slice(0, -1) : path
+  const at = trimmed.lastIndexOf('/')
+  return at > 0 ? { name: trimmed.slice(at + 1) + slash, folder: trimmed.slice(0, at) } : { name: path, folder: '' }
+}

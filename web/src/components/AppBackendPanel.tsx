@@ -7,16 +7,16 @@
  * link). All connection logic lives here; the hosts only provide chrome.
  *
  * Top to bottom: the current server, the saved servers (the built-in server
- * first), the details of the selected one (or the add form, with its
- * test-then-save flow), and, in the desktop shell, network access for other
- * devices.
+ * first), and, in the desktop shell, network access for other devices.
  *
- * A row has three separate jobs: clicking it selects it and shows its
- * details, **Use** switches the app to it, and **In use** marks the one the
- * app talks to now.
+ * A row's **Use** switches the app to it and **In use** marks the one the
+ * app talks to now. **Edit** opens that server's form right under its row,
+ * saved in place without switching; **Add a server**, at the end of the
+ * list, opens the form for a new one (test, then save and use). No form
+ * opens by itself, except for a scanned connect link.
  */
-import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
@@ -50,6 +50,7 @@ import {
   getAppBackendStatus,
   getServerWatchStates,
   removeAppBackendServer,
+  saveAppBackendServer,
   setAppBackendServerEnabled,
   stopBundledAppBackend,
   type SavedAppServer,
@@ -68,7 +69,7 @@ function watchNote(state: ServerWatchState | undefined, enabled: boolean): { tex
     case 'connected': return { text: 'Watching', tone: 'ok' }
     case 'connecting': return { text: 'Connecting…', tone: 'muted' }
     case 'reconnecting': return { text: 'Reconnecting · server not reachable', tone: 'warn' }
-    case 'key_rejected': return { text: 'Access key rejected · update it in its details', tone: 'error' }
+    case 'key_rejected': return { text: 'Access key rejected · update it with Edit', tone: 'error' }
     default: return enabled ? null : { text: 'Disabled · not watched', tone: 'muted' }
   }
 }
@@ -93,23 +94,37 @@ interface AppBackendPanelProps {
   showNetworkAccess?: boolean
 }
 
+/**
+ * The open server form: adding one (at the end of the list, from "Add a
+ * server"), or editing a saved one (right under its row, from its Edit).
+ * One at a time; neither opens by itself, except for a scanned link.
+ */
+type ServerFormTarget =
+  | { kind: 'add' }
+  | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
+
 export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
-  const [baseUrl, setBaseUrl] = useState('')
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
+  const [form, setForm] = useState<ServerFormTarget | null>(null)
+  const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
+  /** What the edited server had, so a rename saves without a new test. */
+  const [original, setOriginal] = useState<{ baseUrl: string; accessKey: string } | null>(null)
   const [testedBaseUrl, setTestedBaseUrl] = useState<string | null>(null)
   const [serverHealth, setServerHealth] = useState<Record<string, Health>>({})
   const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  /** A list action that failed (Use, Start, Stop, Remove, Enabled). */
+  const [listError, setListError] = useState<string | null>(null)
+  /** Test or Save in the open form failed. */
+  const [formError, setFormError] = useState<string | null>(null)
   const [scanned, setScanned] = useState(false)
-  /** Label of the saved server loaded into the form, or null for a new one. */
-  const [editing, setEditing] = useState<string | null>(null)
-  /** The row whose details are open: the built-in server, a saved server's URL, or none. */
-  const [selected, setSelected] = useState<'builtin' | string | null>(null)
   const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
   const watchable = isDesktopShell() && status?.supports_bundled !== false
+  // Where focus goes back to when a form closes.
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const editButtonRefs = useRef(new Map<string, HTMLButtonElement>())
 
   // The desktop shell watches enabled servers in the background; show how that goes.
   useEffect(() => {
@@ -134,13 +149,11 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     void getAppBackendStatus().then((next) => {
       if (cancelled) return
       setStatus(next)
-      setBaseUrl(prefill?.baseUrl ?? '')
-      setServerName(prefill ? hostnameOf(prefill.baseUrl) : '')
-      setAccessKeyInput(prefill?.accessKey ?? '')
+      setListError(null)
       setScanned(Boolean(prefill))
-      setTestedBaseUrl(null)
-      setEditing(null)
-      setSelected(null)
+      // A scanned link opens the add form, filled in and tested; otherwise no form is open.
+      if (prefill) fillForm({ kind: 'add' }, prefill.baseUrl, hostnameOf(prefill.baseUrl), prefill.accessKey)
+      else setForm(null)
       const servers = next?.servers ?? DEFAULT_SERVERS
       setServerHealth(Object.fromEntries(servers.map((server) => [normalizeServerBaseUrl(server.base_url), 'checking'])))
       for (const server of servers) {
@@ -155,52 +168,93 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     return () => { cancelled = true }
   }, [active, prefill])
 
-  async function connectExternal(nextBaseUrl: string, nextName: string, persist: boolean) {
+  function fillForm(target: ServerFormTarget, nextBaseUrl: string, nextName: string, nextKey: string) {
+    setForm(target)
+    setBaseUrl(nextBaseUrl)
+    setServerName(nextName)
+    setAccessKeyInput(nextKey)
+    setTestedBaseUrl(null)
+    setFormError(null)
+  }
+
+  /** "Add a server": the empty form at the end of the list. */
+  function openAdd() {
+    setOriginal(null)
+    fillForm({ kind: 'add' }, '', '', '')
+  }
+
+  /** A row's Edit: the server's details in a form right under it. */
+  function openEdit(server: SavedAppServer, inUse: boolean) {
+    const normalized = normalizeServerBaseUrl(server.base_url)
+    const label = server.name || server.base_url
+    setOriginal({ baseUrl: normalized, accessKey: '' })
+    fillForm({ kind: 'edit', baseUrl: normalized, label, inUse }, normalized, server.name ?? '', '')
+    void getStoredAccessKey(normalized).then((storedKey) => {
+      setAccessKeyInput(storedKey ?? '')
+      setOriginal({ baseUrl: normalized, accessKey: storedKey ?? '' })
+    })
+  }
+
+  function closeForm() {
+    const target = form
+    setForm(null)
+    setFormError(null)
+    setScanned(false)
+    // After the render: the add form stands where its button goes back.
+    requestAnimationFrame(() => {
+      const opener = target?.kind === 'edit' ? editButtonRefs.current.get(target.baseUrl) : addButtonRef.current
+      opener?.focus()
+    })
+  }
+
+  async function connectExternal(nextBaseUrl: string, nextName: string, typedKey: string, onError: (error: string) => void) {
     setPending(true)
-    setError(null)
+    setListError(null)
+    setFormError(null)
     const result = await connectExternalBackend({
       baseUrl: nextBaseUrl,
       name: nextName,
-      persist,
-      accessKey,
+      persist: true,
+      accessKey: typedKey,
       currentBaseUrl: currentBackendOrigin(status),
       onHealth: (target, online) => setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' })),
     })
     setPending(false)
     if (!result.ok) {
-      setError(result.error)
-      return
+      onError(result.error)
+      return false
     }
     setStatus(result.status)
     if (result.reload) reloadForBackendSwitch()
+    return true
   }
 
   async function testConnection(rawBaseUrl: string = baseUrl, rawAccessKey: string = accessKey) {
     const target = normalizeServerBaseUrl(rawBaseUrl)
     const validationError = validateServerUrl(target)
     if (validationError) {
-      setError(validationError)
+      setFormError(validationError)
       return
     }
     setPending(true)
-    setError(null)
+    setFormError(null)
     try {
       const online = await pingServer(target)
       setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
       if (!online) {
-        setError(connectionFailureMessage(target))
+        setFormError(connectionFailureMessage(target))
         return
       }
       const keyForTest = rawAccessKey.trim() || await getStoredAccessKey(target) || ''
       const authorized = await checkServerAuth(target, keyForTest)
       if (!authorized) {
-        setError('Server is reachable, but the access key is invalid or missing.')
+        setFormError('Server is reachable, but the access key is invalid or missing.')
         return
       }
       if (rawAccessKey.trim()) await setStoredAccessKey(rawAccessKey, target)
       setTestedBaseUrl(target)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setFormError(err instanceof Error ? err.message : String(err))
     } finally {
       setPending(false)
     }
@@ -208,11 +262,11 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
 
   async function connectBundled() {
     setPending(true)
-    setError(null)
+    setListError(null)
     const result = await connectBundledBackend(currentBackendOrigin(status))
     setPending(false)
     if (!result.ok) {
-      setError(result.error)
+      setListError(result.error)
       return
     }
     setStatus(result.status)
@@ -223,49 +277,64 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     await runConnectionSwitch(() => stopBundledAppBackend())
   }
 
+  /** The add form's Save and use: a tested server is stored and the app switches to it. */
   async function saveAndConnect() {
     const target = normalizeServerBaseUrl(baseUrl)
     if (testedBaseUrl !== target) {
-      setError('Test the current server URL and access key before saving.')
+      setFormError('Test the current server URL and access key before saving.')
       return
     }
-    await connectExternal(target, serverName, true)
+    if (await connectExternal(target, serverName, accessKey, setFormError)) setForm(null)
   }
 
-  function editServer(nextBaseUrl: string, nextName: string) {
-    setBaseUrl(nextBaseUrl)
-    setServerName(nextName)
-    setTestedBaseUrl(null)
-    setError(null)
-    setEditing(nextBaseUrl ? (nextName || nextBaseUrl) : null)
-    setSelected(nextBaseUrl ? nextBaseUrl : null)
-    if (!nextBaseUrl) {
-      setAccessKeyInput('')
+  /**
+   * The edit form's Save: the server is updated where it is, without
+   * switching to it. A new address or key needs a passing Test first; a
+   * rename does not. The server in use follows its new address.
+   */
+  async function saveEdit() {
+    if (form?.kind !== 'edit') return
+    const target = normalizeServerBaseUrl(baseUrl)
+    const moved = target !== form.baseUrl
+    const keyChanged = accessKey.trim() !== (original?.accessKey ?? '').trim()
+    if ((moved || keyChanged) && testedBaseUrl !== target) {
+      setFormError('Test the new address or access key before saving.')
       return
     }
-    void getStoredAccessKey(nextBaseUrl).then((storedKey) => setAccessKeyInput(storedKey ?? ''))
-  }
-
-  /** Select the built-in server: its details replace the form. */
-  function selectBuiltin() {
-    setSelected('builtin')
-    setEditing(null)
-    setError(null)
+    if (moved && form.inUse) {
+      // The app talks to it: switch to the new address, then drop the old one.
+      if (!await connectExternal(target, serverName, accessKey, setFormError)) return
+      await removeAppBackendServer(form.baseUrl).catch(() => undefined)
+      setForm(null)
+      return
+    }
+    setPending(true)
+    setFormError(null)
+    try {
+      let next = await saveAppBackendServer(target, serverName)
+      if (moved) next = await removeAppBackendServer(form.baseUrl)
+      setStatus(next)
+      closeForm()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(false)
+    }
   }
 
   async function toggleEnabled(server: SavedAppServer, enabled: boolean) {
-    setError(null)
+    setListError(null)
     try {
       setStatus(await setAppBackendServerEnabled(normalizeServerBaseUrl(server.base_url), enabled))
       setWatchStates(await getServerWatchStates())
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setListError(err instanceof Error ? err.message : String(err))
     }
   }
 
   async function removeServer(baseUrl: string) {
     setPending(true)
-    setError(null)
+    setListError(null)
     try {
       const next = await removeAppBackendServer(baseUrl)
       if (next.base_url) setApiBaseUrl(next.base_url)
@@ -275,8 +344,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         const { [baseUrl]: _removed, ...rest } = prev
         return rest
       })
+      if (form?.kind === 'edit' && form.baseUrl === normalizeServerBaseUrl(baseUrl)) setForm(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setListError(err instanceof Error ? err.message : String(err))
     } finally {
       setPending(false)
     }
@@ -286,7 +356,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     action: () => Promise<void>,
   ): Promise<AppBackendStatus | null> {
     setPending(true)
-    setError(null)
+    setListError(null)
     try {
       await action()
       const next = await getAppBackendStatus()
@@ -295,7 +365,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       setStatus(next)
       return next
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setListError(err instanceof Error ? err.message : String(err))
       return null
     } finally {
       setPending(false)
@@ -315,6 +385,32 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       ? `Current: ${activeServer?.name || hostnameOf(currentUrl) || 'a saved server'}`
       : 'Current: Built-in server'
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
+  const editTarget = form?.kind === 'edit' ? form : null
+  // A rename saves at once; a new address or key waits for Test.
+  const editNeedsTest = editTarget !== null && (
+    normalizeServerBaseUrl(baseUrl) !== editTarget.baseUrl
+    || accessKey.trim() !== (original?.accessKey ?? '').trim()
+  )
+
+  const serverForm = (target: ServerFormTarget) => (
+    <ServerForm
+      mode={target.kind}
+      label={target.kind === 'edit' ? target.label : null}
+      baseUrl={baseUrl}
+      accessKey={accessKey}
+      serverName={serverName}
+      onBaseUrlChange={(value) => { setBaseUrl(value); setTestedBaseUrl(null) }}
+      onAccessKeyChange={(value) => { setAccessKeyInput(value); setTestedBaseUrl(null) }}
+      onServerNameChange={setServerName}
+      error={formError}
+      tested={tested}
+      needsTest={target.kind === 'add' || editNeedsTest}
+      pending={pending}
+      onTest={() => void testConnection()}
+      onSave={() => void (target.kind === 'add' ? saveAndConnect() : saveEdit())}
+      onCancel={closeForm}
+    />
+  )
 
   return (
     <div className="space-y-8">
@@ -336,21 +432,18 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         </Callout>
       ) : null}
 
-      {/* Saved servers */}
+      {/* Servers: each row's Edit opens its form under it; Add a server opens one at the end. */}
       <PanelSection
         title="Servers"
-        description="Select a server to see its details. Use switches the app to it."
+        description="Use switches the app to a server. Edit changes its address, key or name."
         flush
       >
         {status?.supports_bundled !== false ? (
           <ServerRow
             health={status?.sidecar_running ? 'online' : undefined}
             title="Built-in server"
-            subtitle="Runs inside this app"
+            subtitle={`Runs inside this app · ${status?.sidecar_running ? 'Running' : 'Stopped'}`}
             inUse={!status?.external}
-            selected={selected === 'builtin'}
-            onSelect={selectBuiltin}
-            disabled={pending}
           >
             {status?.sidecar_running ? (
               <>
@@ -377,166 +470,92 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
           const label = server.name || server.base_url
           const enabled = server.enabled === true
           const note = watchable ? watchNote(watchStates[normalizedServerUrl], enabled) : null
+          const editing = editTarget?.baseUrl === normalizedServerUrl
           return (
-            <ServerRow
-              key={server.base_url}
-              health={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]}
-              title={label}
-              subtitle={server.name ? server.base_url : undefined}
-              mono={!server.name}
-              note={note}
-              inUse={active}
-              selected={selected === normalizedServerUrl}
-              onSelect={() => editServer(normalizedServerUrl, server.name ?? '')}
-              disabled={pending}
-            >
-              {watchable ? (
-                <label className={cn('mr-1 flex items-center gap-2', TEXT.hint)}>
-                  Enabled
-                  <Switch
-                    checked={enabled}
-                    onCheckedChange={(next) => { void toggleEnabled(server, next) }}
+            <Fragment key={server.base_url}>
+              <ServerRow
+                health={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]}
+                title={label}
+                subtitle={server.name ? server.base_url : undefined}
+                mono={!server.name}
+                note={note}
+                inUse={active}
+              >
+                {watchable ? (
+                  <label className={cn('mr-1 flex items-center gap-2', TEXT.hint)}>
+                    Enabled
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={(next) => { void toggleEnabled(server, next) }}
+                      disabled={pending}
+                      aria-label={`Enable ${label}`}
+                    />
+                  </label>
+                ) : null}
+                {active ? null : (
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    size="sm"
+                    aria-label={`Use ${label}`}
+                    onClick={() => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) }}
                     disabled={pending}
-                    aria-label={`Enable ${label}`}
-                  />
-                </label>
-              ) : null}
-              {active ? null : (
+                  >
+                    Use
+                  </Button>
+                )}
                 <Button
+                  ref={(node) => {
+                    if (node) editButtonRefs.current.set(normalizedServerUrl, node)
+                    else editButtonRefs.current.delete(normalizedServerUrl)
+                  }}
                   type="button"
-                  variant="subtle"
+                  variant="ghost"
                   size="sm"
-                  aria-label={`Use ${label}`}
-                  onClick={() => { void connectExternal(normalizedServerUrl, server.name ?? '', true) }}
+                  aria-label={`Edit ${label}`}
+                  aria-expanded={editing}
+                  onClick={() => (editing ? closeForm() : openEdit(server, active))}
                   disabled={pending}
                 >
-                  Use
+                  <Pencil size={ICON_SIZE_INLINE} aria-hidden="true" />
+                  Edit
                 </Button>
-              )}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-(--color-text-muted) hover:text-(--color-error)"
-                      onClick={() => setConfirm({ kind: 'remove', baseUrl: server.base_url, label })}
-                      disabled={pending}
-                      aria-label={`Remove ${label}…`}
-                    >
-                      <Trash2 size={ICON_SIZE_INLINE} aria-hidden="true" />
-                    </Button>
-                  }
-                />
-                <TooltipContent>Remove server…</TooltipContent>
-              </Tooltip>
-            </ServerRow>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-(--color-text-muted) hover:text-(--color-error)"
+                        onClick={() => setConfirm({ kind: 'remove', baseUrl: server.base_url, label })}
+                        disabled={pending}
+                        aria-label={`Remove ${label}…`}
+                      >
+                        <Trash2 size={ICON_SIZE_INLINE} aria-hidden="true" />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>Remove server…</TooltipContent>
+                </Tooltip>
+              </ServerRow>
+              {editing && editTarget ? serverForm(editTarget) : null}
+            </Fragment>
           )
         })}
+        {form?.kind === 'add' ? serverForm(form) : (
+          <div className={ROW_PAD}>
+            <Button ref={addButtonRef} type="button" variant="ghost" size="sm" onClick={openAdd} disabled={pending}>
+              <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
+              Add a server
+            </Button>
+          </div>
+        )}
       </PanelSection>
 
-      {/* Details of the selected server, or the add form */}
-      {selected === 'builtin' ? (
-        <PanelSection
-          title="Built-in server"
-          description="Runs inside this app, so there is nothing to configure."
-          actions={
-            <Button type="button" size="sm" variant="ghost" onClick={() => editServer('', '')}>
-              <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
-              New server
-            </Button>
-          }
-          flush
-        >
-          <dl className="grid gap-y-2 px-4 py-4 text-xs sm:grid-cols-[8rem_minmax(0,1fr)]">
-            <dt className="text-(--color-text-muted)">State</dt>
-            <dd className="text-(--color-text)">{status?.sidecar_running ? 'Running' : 'Stopped'}{!status?.external ? ' · In use' : ''}</dd>
-            {!status?.external ? (
-              <>
-                <dt className="text-(--color-text-muted)">Address</dt>
-                <dd className="truncate font-mono text-(--color-text)">{currentUrl}</dd>
-              </>
-            ) : null}
-          </dl>
-        </PanelSection>
-      ) : (
-      <PanelSection
-        title={editing ? `Edit ${editing}` : 'Add a server'}
-        description="Test checks the server. Save and use stores it and switches the app to it."
-        actions={
-          editing ? (
-            <Button type="button" size="sm" variant="ghost" onClick={() => editServer('', '')} disabled={pending}>
-              <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
-              New server
-            </Button>
-          ) : null
-        }
-        flush
-      >
-        <div className="grid gap-y-5 px-4 py-4">
-          <Field label="Server URL" htmlFor="app-backend-url">
-            <Input
-              id="app-backend-url"
-              type="url"
-              inputMode="url"
-              value={baseUrl}
-              onChange={(event) => { setBaseUrl(event.target.value); setTestedBaseUrl(null) }}
-              placeholder="http://<server-host>:4082"
-              autoComplete="off"
-              spellCheck={false}
-              className="h-9 font-mono"
-            />
-          </Field>
-          <Field label="Access key" htmlFor="app-backend-key" hint="Needed if the server was started with an access key.">
-            <Input
-              id="app-backend-key"
-              value={accessKey}
-              onChange={(event) => { setAccessKeyInput(event.target.value); setTestedBaseUrl(null) }}
-              placeholder="Leave empty if the server has no key"
-              type="password"
-              autoComplete="off"
-              className="h-9"
-            />
-          </Field>
-          <Field label="Server name" htmlFor="app-backend-name" hint="Optional. Shown in the server list.">
-            <Input
-              id="app-backend-name"
-              value={serverName}
-              onChange={(event) => setServerName(event.target.value)}
-              placeholder="Work laptop, Home server"
-              autoComplete="off"
-              className="h-9"
-            />
-          </Field>
-        </div>
-        <div className="flex flex-col gap-3 bg-(--bg-key)/20 px-4 py-3 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1 text-xs leading-relaxed">
-            {error ? (
-              <p role="alert" className="text-(--color-error)">{error}</p>
-            ) : tested ? (
-              <p role="status" className="font-medium text-(--accent-green-text)">Connection successful.</p>
-            ) : (
-              <p className="text-(--color-text-muted)">Test the server to enable saving.</p>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button type="button" variant="default" size="sm" onClick={() => void testConnection()} disabled={pending}>
-              {pending ? 'Testing…' : 'Test'}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={() => void saveAndConnect()}
-              disabled={pending || !tested}
-            >
-              Save and use
-            </Button>
-          </div>
-        </div>
-      </PanelSection>
-      )}
+      {listError ? (
+        <Callout tone="error" role="alert">{listError}</Callout>
+      ) : null}
 
       <ConfirmDialog
         open={confirm !== null}
@@ -557,6 +576,129 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   )
 }
 
+/**
+ * The fields and actions of one server form, drawn where it was opened:
+ * under the row being edited, or at the end of the list for a new one.
+ * Escape cancels it (and only it, not the dialog around it).
+ */
+function ServerForm({
+  mode,
+  label,
+  baseUrl,
+  accessKey,
+  serverName,
+  onBaseUrlChange,
+  onAccessKeyChange,
+  onServerNameChange,
+  error,
+  tested,
+  needsTest,
+  pending,
+  onTest,
+  onSave,
+  onCancel,
+}: {
+  mode: 'add' | 'edit'
+  /** The edited server's name; `null` for a new one. */
+  label: string | null
+  baseUrl: string
+  accessKey: string
+  serverName: string
+  onBaseUrlChange: (value: string) => void
+  onAccessKeyChange: (value: string) => void
+  onServerNameChange: (value: string) => void
+  error: string | null
+  tested: boolean
+  /** Save waits for a passing Test (a new server, or a new address or key). */
+  needsTest: boolean
+  pending: boolean
+  onTest: () => void
+  onSave: () => void
+  onCancel: () => void
+}) {
+  const urlRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    urlRef.current?.focus({ preventScroll: true })
+    urlRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [])
+  const title = mode === 'edit' ? `Edit ${label}` : 'Add a server'
+  return (
+    <div
+      role="group"
+      aria-label={title}
+      data-server-form={mode}
+      className="bg-(--bg-key)/20"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        onCancel()
+      }}
+    >
+      <p className={cn('px-4 pt-4', TEXT.title)}>{title}</p>
+      <div className="grid gap-y-5 px-4 py-4">
+        <Field label="Server URL" htmlFor="app-backend-url">
+          <Input
+            ref={urlRef}
+            id="app-backend-url"
+            type="url"
+            inputMode="url"
+            value={baseUrl}
+            onChange={(event) => onBaseUrlChange(event.target.value)}
+            placeholder="http://<server-host>:4082"
+            autoComplete="off"
+            spellCheck={false}
+            className="h-9 font-mono"
+          />
+        </Field>
+        <Field label="Access key" htmlFor="app-backend-key" hint="Needed if the server was started with an access key.">
+          <Input
+            id="app-backend-key"
+            value={accessKey}
+            onChange={(event) => onAccessKeyChange(event.target.value)}
+            placeholder="Leave empty if the server has no key"
+            type="password"
+            autoComplete="off"
+            className="h-9"
+          />
+        </Field>
+        <Field label="Server name" htmlFor="app-backend-name" hint="Optional. Shown in the server list.">
+          <Input
+            id="app-backend-name"
+            value={serverName}
+            onChange={(event) => onServerNameChange(event.target.value)}
+            placeholder="Work laptop, Home server"
+            autoComplete="off"
+            className="h-9"
+          />
+        </Field>
+      </div>
+      <div className="flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1 text-xs leading-relaxed">
+          {error ? (
+            <p role="alert" className="text-(--color-error)">{error}</p>
+          ) : tested ? (
+            <p role="status" className="font-medium text-(--accent-green-text)">Connection successful.</p>
+          ) : needsTest ? (
+            <p className="text-(--color-text-muted)">Test the server to enable saving.</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" variant="default" size="sm" onClick={onTest} disabled={pending}>
+            {pending ? 'Testing…' : 'Test'}
+          </Button>
+          <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || (needsTest && !tested)}>
+            {mode === 'add' ? 'Save and use' : 'Save'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ServerRow({
   health,
   title,
@@ -564,9 +706,6 @@ function ServerRow({
   mono = false,
   note = null,
   inUse,
-  selected,
-  onSelect,
-  disabled,
   children,
 }: {
   health: Health | undefined
@@ -578,26 +717,16 @@ function ServerRow({
   note?: { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null
   /** The app talks to this server now. */
   inUse: boolean
-  /** Its details are open below. */
-  selected: boolean
-  onSelect: () => void
-  disabled: boolean
   children: React.ReactNode
 }) {
   return (
-    <div className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD, selected && 'bg-(--bg-key)/50')}>
-      <button
-        type="button"
-        onClick={onSelect}
-        disabled={disabled}
-        aria-pressed={selected}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-xs text-left pointer-coarse:min-h-9 focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-      >
+    <div data-server-row="" className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn('truncate', TEXT.label, mono && 'font-mono')}>{title}</span>
-            {inUse ? <Chip tone="info">In use</Chip> : null}
+            {inUse ? <Chip>In use</Chip> : null}
           </span>
           {subtitle ? (
             <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>
@@ -616,7 +745,7 @@ function ServerRow({
             </span>
           ) : null}
         </span>
-      </button>
+      </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-5 sm:pl-0">{children}</div>
     </div>
   )

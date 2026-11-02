@@ -955,7 +955,18 @@ html[data-app-hidden="true"] *::after {
 }
 .oa-prose h1 { font-size: 1.2em;  color: var(--color-text); }
 .oa-prose h2 { font-size: 1.08em; color: var(--color-text); }
-.oa-prose h3 { font-size: 1em;    color: var(--color-text-2); }
+.oa-prose h3 { font-size: 1em;    color: var(--color-text); }
+/* Preflight leaves h4–h6 as plain body text; models use them for small
+ * section labels, so they stay semibold at body size, the last two muted. */
+.oa-prose h4, .oa-prose h5, .oa-prose h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.25em;
+  color: var(--color-text);
+}
+.oa-prose h5, .oa-prose h6 { font-size: 0.875em; }
+.oa-prose h6 { color: var(--color-text-2); }
 .oa-prose ul, .oa-prose ol {
   padding-left: 1.5em;
   margin-bottom: 0.75em;
@@ -967,6 +978,17 @@ html[data-app-hidden="true"] *::after {
   list-style-type: disc;
 }
 .oa-prose li { margin-bottom: 0.25em; }
+/* GFM task lists: the checkbox is the marker, so the bullet goes and the box
+ * sits where it was (the text lines up with the other items'), in the
+ * theme's accent instead of the platform's blue. */
+.oa-prose li:has(> input[type="checkbox"]:first-child) {
+  list-style: none;
+}
+.oa-prose li > input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  margin: 0 0.4em 0 -1.35em;
+  vertical-align: -0.1em;
+}
 .oa-prose code {
   background: var(--bg-key);
   border: 1px solid var(--color-border);

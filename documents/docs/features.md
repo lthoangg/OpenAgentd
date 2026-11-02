@@ -807,6 +807,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     and **Show messages**.
   - Deleting all side questions asks first, in a dialog.
   - A subagent's session offers **Return to main agent**.
+  - Every heading level in an answer reads as a heading: `####` and below
+    were plain text, and `###` was fainter than the text under it. A task
+    list shows its checkboxes in place of bullets, in the theme's colour.
 - **Review panel views** `[v3.40.0]`:
   - **Changes**: clicking a row opens its diff as a preview tab, and the
     chevron peeks at it in place. Every row has **⋯** with the same items as

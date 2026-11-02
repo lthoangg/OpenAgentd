@@ -96,7 +96,7 @@ describe("AgentView — waiting_quota status rendering", () => {
 
     expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
     expect(screen.getByText("2h 00m")).toBeTruthy()
-    expect(screen.getByText("claude-sonnet-4")).toBeTruthy()
+    expect(document.querySelector("[data-model-name]")?.textContent).toContain("claude-sonnet-4")
     expect(screen.getByText(/used up its provider quota.*Resumes automatically\./)).toBeTruthy()
     // Nothing to copy without the provider's message; no pinned-account choices either.
     expect(screen.queryByRole("button", { name: "Copy details" })).toBeNull()

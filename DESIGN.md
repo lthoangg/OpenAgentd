@@ -1147,7 +1147,10 @@ the text sits the run deck, which says how the next message runs:
 - **Code/Plan** is the segmented control (selection fill, no border). Plan mode
   changes the placeholder to say the agent reads and proposes without editing.
 - **The run chip** reads `provider:model` in mono, then the thinking level and
-  a pinned account in words. The `provider:` part gives way first; under 520px
+  a pinned account in words. The `provider:` part gives way first; a long
+  model name then gives up its middle (`antigravit…sonnet-4-6`, then
+  `sonnet-4-6` alone), since models differ at the end, everywhere a model is
+  named. Under 520px
   of composer width (container query) the chip stacks into two lines and the
   context ring drops its percentage. The chip has no tooltip: its accessible
   name carries the shortcut.

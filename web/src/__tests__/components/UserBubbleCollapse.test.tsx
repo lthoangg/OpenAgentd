@@ -426,8 +426,8 @@ describe("AgentView — UserBubble collapse feature", () => {
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
-    const modelLabel = screen.getByText("anthropic/claude-sonnet-4.5")
-    expect(modelLabel.closest("[data-model-name]")?.textContent).toBe("openrouter:anthropic/claude-sonnet-4.5")
+    const modelLabel = container.querySelector("[data-model-name]") as HTMLElement
+    expect(modelLabel.textContent).toBe("openrouter:anthropic/claude-sonnet-4.5")
     expect(modelLabel.closest("div")?.className).toContain("opacity-0")
 
     await user.hover(container.querySelector("div[class*='group']")!)

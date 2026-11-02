@@ -30,6 +30,49 @@ export const PROVIDER_PART_CLASS = 'shrink-0 whitespace-nowrap'
  * truncates once the provider part is gone. */
 export const MODEL_PART_CLASS = 'order-first max-w-full shrink-0 truncate'
 
+const TAIL_MIN = 6
+const TAIL_MAX = 14
+/** Shorter names fit wherever a model is shown; they are left as one piece. */
+const SPLIT_FROM = 13
+
+/**
+ * Where a model ID splits so its end stays when it truncates: the shortest
+ * end of 6–14 characters that starts a name part (after `-`, `/` or `:`),
+ * e.g. `claude-` + `sonnet-4-6`. Families share the start; the variant and
+ * version that tell models apart are at the end. ``tail`` is empty for a
+ * name under 13 characters or with no such end (it truncates at its end).
+ */
+export function splitModelTail(model: string): { head: string; tail: string } {
+  if (model.length < SPLIT_FROM) return { head: model, tail: '' }
+  for (let i = model.length - 1; i > 0; i--) {
+    if (!'-/:'.includes(model[i])) continue
+    const tail = model.slice(i + 1)
+    if (tail.length < TAIL_MIN) continue
+    if (tail.length > TAIL_MAX) break
+    return { head: model.slice(0, i + 1), tail }
+  }
+  return { head: model, tail: '' }
+}
+
+/**
+ * The model part of a `provider:model` line (``MODEL_LINE_CLASS``). A long
+ * name gives up its middle: the start truncates, and the end stays whole.
+ * Below two characters (where WebKit would clip a letter rather than draw
+ * "…") the start drops whole onto the hidden second line, the provider
+ * part's trick: it is based at 2ch ("a…"), so it wraps only then, and grows back
+ * to its full width when there is room.
+ */
+export function ModelPart({ model, className }: { model: string; className?: string }) {
+  const { head, tail } = splitModelTail(model)
+  if (!tail) return <span className={cn(MODEL_PART_CLASS, className)}>{model}</span>
+  return (
+    <span className={cn('order-first flex h-[1lh] max-w-full shrink-0 flex-row-reverse flex-wrap justify-end overflow-y-clip', className)}>
+      <span className="min-w-[2ch] max-w-max grow basis-[2ch] truncate">{head}</span>
+      <span className="order-first shrink-0 whitespace-nowrap">{tail}</span>
+    </span>
+  )
+}
+
 export function ModelName({ id, className, providerClassName, ...rest }: {
   id: string
   className?: string
@@ -43,7 +86,7 @@ export function ModelName({ id, className, providerClassName, ...rest }: {
         render={
           <span {...rest} data-model-name className={cn('inline-flex', MODEL_LINE_CLASS, className)}>
             {provider && <span className={cn(PROVIDER_PART_CLASS, providerClassName)}>{provider}:</span>}
-            <span className={MODEL_PART_CLASS}>{model}</span>
+            <ModelPart model={model} />
           </span>
         }
       />

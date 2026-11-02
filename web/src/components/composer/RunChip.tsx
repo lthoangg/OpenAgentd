@@ -10,7 +10,7 @@
 import { ChevronDown } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
-import { MODEL_LINE_CLASS, MODEL_PART_CLASS, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
+import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -71,7 +71,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
           {/* The provider part gives way first, whole; the model part only
               truncates after that (see ui/model-name). */}
           {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
-          <span className={MODEL_PART_CLASS}>{model}</span>
+          <ModelPart model={model} />
         </span>
         {meta && (
           <span className="max-w-full shrink-0 truncate whitespace-nowrap text-(--color-text-muted) @max-[520px]:text-meta">

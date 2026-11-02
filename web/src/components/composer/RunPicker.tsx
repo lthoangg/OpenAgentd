@@ -17,7 +17,7 @@ import { getAgent, getCodeAgent } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
-import { MODEL_LINE_CLASS, MODEL_PART_CLASS, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
+import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useProviderUsageQuery } from '@/queries/useProvidersQuery'
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
@@ -258,7 +258,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                     part shows whole or drops, never as a stub like "ag…". */}
                 <span className={cn('flex flex-1', MODEL_LINE_CLASS)}>
                   {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
-                  <span className={cn(MODEL_PART_CLASS, 'text-(--color-text)')}>{model}</span>
+                  <ModelPart model={model} className="text-(--color-text)" />
                 </span>
                 {row.id === settings.agentModel && <span className="text-meta text-(--color-text-muted)">default</span>}
                 <Check size={13} aria-hidden="true" className={selected ? 'opacity-100' : 'opacity-0'} />

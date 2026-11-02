@@ -664,7 +664,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     needs you (sign in, or it failed) **+** carries a small dot, says which
     server to screen readers, and opens at its MCP section. On a narrow
     composer the chip stacks into two lines and the provider part gives way
-    first. In Plan mode the placeholder says the agent reads and proposes
+    first; then a long model name gives up its middle
+    (`antigravit…sonnet-4-6`, or `sonnet-4-6` alone on a phone), the same in
+    the picker and the turn footer, so the part that tells models apart
+    stays. In Plan mode the placeholder says the agent reads and proposes
     without editing files.
   - The run chip opens one picker for model, thinking and account: search
     models (recent ones first), step thinking with ←/→, pick an account with

@@ -39,7 +39,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
         key={`${keyPrefix}-${match.index}`}
         href={url}
         onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
-        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:text-(--accent-blue-text) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
+        className="text-(--color-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
         rel="noopener noreferrer"
       >
         {url}
@@ -144,7 +144,7 @@ function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSessi
  * Matches the InputComposer's overlay convention so a message looks the same
  * after send as it did while composing:
  *   - folders (token ends in ``/``)      → ``--accent-orange-text``
- *   - files (everything else, default)   → ``--accent-blue-text``
+ *   - files (everything else, default)   → ``--color-text`` (ink)
  *
  * The slash heuristic is what the picker inserts; using it (rather than
  * resolving against ``fileRefs``) keeps highlighting stable for old
@@ -168,7 +168,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
         type="button"
         data-mention-kind="file"
         onClick={() => onMentionFileOpen(path)}
-        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+        className="inline rounded-sm text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
       >
         {token}
       </button>
@@ -177,7 +177,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
         key={r.start}
         data-mention-kind={isFolder ? 'directory' : 'file'}
         className={
-          isFolder ? 'text-(--accent-orange-text)' : 'text-(--accent-blue-text)'
+          isFolder ? 'text-(--accent-orange-text)' : 'text-(--color-text)'
         }
       >
         {token}

@@ -43,8 +43,8 @@ import { planTitle } from '../ActivePlanSection'
 import { DockLoadError } from './DockLoadError'
 
 const NOW_CLASS: Record<GoalTone, string> = {
-  active: 'border-(--accent-blue)/35 bg-(--accent-blue-soft) text-(--accent-blue-text)',
-  achieved: 'border-(--accent-blue)/35 bg-(--accent-blue-soft) text-(--accent-blue-text)',
+  active: 'bg-(--bg-key) text-(--color-text)',
+  achieved: 'bg-(--color-success-subtle) text-(--accent-green-text)',
   wait: 'border-(--accent-orange)/40 bg-(--accent-orange-soft) text-(--accent-orange-text)',
   paused: 'border-(--color-border) bg-(--bg-card) text-(--color-text-2)',
   blocked: 'border-(--color-error)/30 bg-(--color-error-subtle) text-(--color-error)',
@@ -92,7 +92,7 @@ function StatRow({ label, value, fraction }: { label: string; value: string; fra
       <span className="text-(--color-text-muted)">{label}</span>
       {fraction === undefined ? <span /> : (
         <span className="h-1.5 overflow-hidden rounded-full bg-(--bg-key)" aria-hidden="true">
-          <span className="block h-full rounded-full bg-(--accent-blue-text)" style={{ width: `${Math.min(100, Math.max(2, fraction * 100))}%` }} />
+          <span className="block h-full rounded-full bg-(--color-text-2)" style={{ width: `${Math.min(100, Math.max(2, fraction * 100))}%` }} />
         </span>
       )}
       <span className="font-mono text-meta tabular-nums text-(--color-text-2)">{value}</span>

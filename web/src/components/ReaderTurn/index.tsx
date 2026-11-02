@@ -104,7 +104,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
         >
           {live ? (
             <>
-              <span className="size-1.5 shrink-0 rounded-full bg-(--accent-blue-text)" aria-hidden="true" />
+              <span className="size-1.5 shrink-0 rounded-full bg-(--color-text-2)" aria-hidden="true" />
               <span className="shrink-0 font-semibold text-(--color-text)">Working</span>
               {elapsed && <span className="shrink-0 text-(--color-text-muted)">{` · ${elapsed}`}</span>}
               {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}

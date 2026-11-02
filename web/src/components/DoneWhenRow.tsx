@@ -12,7 +12,7 @@ const FLAG_CLASS: Record<DoneWhenState, string> = {
   open: 'text-(--color-text-muted)',
   waiting: 'text-(--color-text-muted)',
   checking: 'text-(--accent-orange-text)',
-  met: 'text-(--accent-blue-text)',
+  met: 'text-(--accent-green-text)',
 }
 
 export function DoneWhenRow({ doneWhen, className }: { doneWhen: DoneWhen; className?: string }) {

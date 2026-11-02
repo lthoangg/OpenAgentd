@@ -296,7 +296,7 @@ function CredentialRow({
   return (
     <ProfileShell
       data-credential-id={c.id}
-      className={c.in_use && !ctx.envPinned && !c.disabled ? 'bg-(--accent-blue-soft)/30' : undefined}
+      className={undefined}
       identity={
         renamingThis ? (
           <RenameForm c={c} ctx={ctx} />
@@ -485,7 +485,7 @@ export function CredentialList({
       )}
       <div className={LIST_CLASS} role="list" aria-label={`${provider.label} ${noun}s`}>
         {envPinned && (
-          <div role="listitem" className={`${ROW_BORDER} bg-(--accent-blue-soft)/40 px-3 py-3`}>
+          <div role="listitem" className={`${ROW_BORDER} px-3 py-3`}>
             {isOauth && perAccountUsage ? (
               // The exported credential has its own usage, read without an account id.
               <UsageScope providerId={provider.id} providerLabel={provider.label} label="From environment" emptyText="No usage details reported.">

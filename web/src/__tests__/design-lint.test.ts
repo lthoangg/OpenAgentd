@@ -173,11 +173,19 @@ const RULES: Rule[] = [
     name: 'solid-hue-dot',
     why: 'status dots, bars and marks use the -text tones, which reach 3:1 on paper; the solid hues stay for checked controls',
     pattern: /(?<![\w:-])bg-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)(?![\w/-])/g,
-    allow: {
-      // Checked controls: the fill sits under a tick (the switch has its own
-      // --switch-on token).
-      'components/ui/radio-group.tsx': 1,
-    },
+    allow: {},
+  },
+  {
+    name: 'stray-blue',
+    why: 'Signal Blue is the logo and keyboard focus only (--logo-signal, --focus-ring); states, links, file names, washes and checked controls use ink, the warm accent or a state hue',
+    pattern: /--accent-blue(?:-soft|-text)?(?![\w-])|#(?:5865F2|1877F2)(?![\w])/gi,
+    allow: {},
+  },
+  {
+    name: 'focus-colour-off-focus',
+    why: 'the focus colour marks keyboard focus only: hover, drag, drop and open states use the warm ramp (border-strong, text-muted)',
+    pattern: /(?<![^\s'"`])(?![^\s'"`]*focus[^\s'"`]*:)[^\s'"`]*(?:bg|border|text)-\(--focus-ring\)/g,
+    allow: {},
   },
   // ── Motion (DESIGN.md → Motion) ──────────────────────────────────────────
   {

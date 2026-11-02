@@ -167,7 +167,7 @@ export function DateTimePicker({
                   aria-label="Time"
                   value={`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`}
                   onChange={handleNativeTime}
-                  className="h-7 rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-1.5 text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) focus:outline-none focus-visible:outline-none"
+                  className="h-7 rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-1.5 text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) focus:outline-none focus-visible:outline-none accent-(--color-accent)"
                 />
               ) : (
                 <>

@@ -537,7 +537,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     transcript marks each goal turn and each claim's verdict; each turn's
     divider says why the goal went on (no claim yet, the check said not yet,
     the check gave no verdict, or you resumed it), with the check's full reason
-    on hover or tap. An achieved goal shows in blue. The sidebar marks sessions
+    on hover or tap. An achieved goal shows in blue (green since v3.40.0). The sidebar marks sessions
     with a live goal, one notification ("Goal achieved", "Goal blocked", or
     "Goal paused") arrives when the goal ends, and on macOS the notch shows a
     running goal's progress ("Goal 7/50") and the same outcome. In the Reader
@@ -607,6 +607,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     Increase contrast on, the fills step back up. Menus, cards and dialogs
     keep one thin frame, and nothing inside them adds another.
   - A switch that is on is a deeper blue in dark mode, so its knob stands out.
+    *(Replaced in v3.40.0: switches are the warm accent, below.)*
+  - **Blue is the logo and keyboard focus only** `[v3.40.0]`. Everything else
+    that used Signal Blue takes the warm palette: switches, checkboxes and
+    radios fill with the accent (Bark in light mode, cream in dark); file names
+    in prompts and the composer, links and web results are ink with a quiet
+    underline; "running", "starting" and other info chips and notices are ink
+    on the keycap wash; selected text takes the sand selection fill; an open
+    dropdown, pane and panel resize handles, and tab drop zones use the warm
+    ramp; an achieved goal and a met Done when are green; a working goal, the
+    streaming caret and live dots are ink; groups that have not picked a
+    colour are never blue; autofilled fields keep the field colour.
   - Review panel tabs are borderless pills; the open tab is filled with the
     page colour and set in medium weight, with no coloured edge.
   - Dialog buttons follow the operating system: Cancel then the action on

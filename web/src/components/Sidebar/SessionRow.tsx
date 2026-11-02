@@ -284,7 +284,7 @@ function SessionRowView({
         {session.goal_status && !isEditing && (
           <span
             data-goal-status={session.goal_status}
-            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--accent-blue-text)' : 'text-(--color-text-subtle)'} ${metaVisibility}`}
+            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--color-text-2)' : 'text-(--color-text-subtle)'} ${metaVisibility}`}
             title={session.goal_status === 'active' ? 'Working toward a goal' : 'Goal paused'}
             aria-hidden="true"
           >

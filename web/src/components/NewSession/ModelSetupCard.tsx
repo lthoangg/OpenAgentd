@@ -242,7 +242,7 @@ export function ModelSetupCard({
                 <button
                   type="button"
                   onClick={() => { void openExternalUrl(selected.docs_url) }}
-                  className="inline-flex items-center gap-0.5 text-(--accent-blue-text) hover:underline"
+                  className="inline-flex items-center gap-0.5 text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current"
                 >
                   Get a key
                   <ExternalLink size={10} aria-hidden="true" />

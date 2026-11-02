@@ -114,9 +114,9 @@
 
     --accent-red:         #F87171;
 
-    /* A switch that is on: a deeper Signal Blue, so the cream thumb stands
-     * off it (the chip blue is as light as the thumb). */
-    --switch-on:          #3F86C2;
+    /* A switch that is on: the warm accent, like a checked box; its thumb
+     * takes the ink that sits on the accent (components/ui/switch.tsx). */
+    --switch-on:          var(--color-accent);
 
     /* Markers (charts) */
     --color-marker-blue:   #38BDF8;
@@ -136,8 +136,10 @@
     --color-warning-subtle: var(--accent-orange-soft);
     --color-error:          #F87171;
     --color-error-subtle:   rgba(248, 113, 113, 0.12);
-    --color-info:           var(--accent-blue);
-    --color-info-subtle:    var(--accent-blue-soft);
+    /* Info is quiet: ink on the keycap wash. Signal Blue is the logo and
+     * keyboard focus only. */
+    --color-info:           var(--color-text-2);
+    --color-info-subtle:    var(--bg-key);
     --color-diff-add-bg:    rgba(16, 185, 129, 0.10);
     --color-diff-add-text:  #86EFAC;
     --color-diff-del-bg:    rgba(239, 68, 68, 0.10);
@@ -231,7 +233,7 @@
 
     --accent-red:         #A71C24;
 
-    --switch-on:          var(--accent-blue);
+    --switch-on:          var(--color-accent);
 
     /* Markers (charts) */
     --color-marker-blue:   #0284C7;
@@ -251,8 +253,10 @@
     --color-warning-subtle: var(--accent-orange-soft);
     --color-error:          #B91C1C;
     --color-error-subtle:   rgba(185, 28, 28, 0.08);
-    --color-info:           var(--accent-blue);
-    --color-info-subtle:    var(--accent-blue-soft);
+    /* Info is quiet: ink on the keycap wash. Signal Blue is the logo and
+     * keyboard focus only. */
+    --color-info:           var(--color-text-2);
+    --color-info-subtle:    var(--bg-key);
     --color-diff-add-bg:    rgba(22, 163, 74, 0.16);
     --color-diff-add-text:  #166534;
     --color-diff-del-bg:    rgba(185, 28, 28, 0.14);

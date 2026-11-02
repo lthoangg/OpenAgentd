@@ -179,7 +179,7 @@ export function OAuthLoginDialog({
             </div>
           </div>
           {deviceEvent?.user_code && (
-            <div className="overflow-hidden rounded-md border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
+            <div className="overflow-hidden rounded-md bg-(--bg-key)">
               <div className="p-3 text-center sm:p-5">
                 <p className="label-caps text-(--color-text-muted)">Device code</p>
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -212,7 +212,7 @@ export function OAuthLoginDialog({
                 )}
               </div>
               {provider.id === 'codex' && authMode !== 'browser' && !isSuccess && (
-                <div className="border-t border-(--accent-blue)/20 bg-(--bg-page)/70 p-3 text-left sm:p-4">
+                <div className="border-t border-(--color-border-subtle) bg-(--bg-page)/70 p-3 text-left sm:p-4">
                   <p className="text-xs font-medium text-(--color-text)">Workspace account?</p>
                   <p className="mt-1 text-xs leading-relaxed text-(--color-text-muted)">
                     If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.

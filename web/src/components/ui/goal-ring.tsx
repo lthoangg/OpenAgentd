@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils'
 import type { GoalTone } from '@/lib/goal'
 
 const TONE_CLASS: Record<GoalTone, string> = {
-  active: 'text-(--accent-blue-text)',
-  achieved: 'text-(--accent-blue-text)',
+  active: 'text-(--color-text-2)',
+  achieved: 'text-(--accent-green-text)',
   wait: 'text-(--accent-orange-text)',
   paused: 'text-(--color-text-2)',
   blocked: 'text-(--color-error)',

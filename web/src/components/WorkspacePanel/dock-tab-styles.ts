@@ -49,8 +49,8 @@ export const DOCK_TAB_GHOST_CLASS = 'rounded-sm opacity-95 shadow-(--shadow-dept
  * middle), over the half a split would take (an edge), or a caret between
  * two tabs of a strip.
  */
-export const DOCK_DROP_ZONE_CLASS = 'pointer-events-none fixed z-9998 rounded-sm border border-(--focus-ring)/60 bg-(--focus-ring)/20'
-export const DOCK_DROP_CARET_CLASS = 'pointer-events-none fixed z-9998 w-0.5 rounded-full bg-(--focus-ring)'
+export const DOCK_DROP_ZONE_CLASS = 'pointer-events-none fixed z-9998 rounded-sm border border-(--color-border-strong) bg-(--color-text-muted)/15'
+export const DOCK_DROP_CARET_CLASS = 'pointer-events-none fixed z-9998 w-0.5 rounded-full bg-(--color-text-2)'
 
 /**
  * Inline close control, always shown: full strength on the open tab, 60% on

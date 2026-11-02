@@ -252,8 +252,20 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   color: var(--color-text-muted);
 }
 
+/* Selected text takes the warm selection fill, as chosen rows do: Signal
+ * Blue is the logo and keyboard focus only. */
 ::selection {
-  background-color: var(--accent-blue-soft);
+  background-color: var(--color-fill-selected);
+  color: var(--color-text-on-selected);
+}
+
+/* An autofilled field keeps the field's own fill and ink, not the engine's tint. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset;
+  -webkit-text-fill-color: var(--color-text);
+  caret-color: var(--color-text);
 }
 
 /* Menus and listboxes (ui/menu-styles.ts): the row under the pointer or the
@@ -930,7 +942,7 @@ html[data-app-hidden="true"] *::after {
   --pele-surface: var(--bg-key);
   --pele-surface-alt: var(--bg-page);
   --pele-border: var(--color-border-strong);
-  --pele-accent: var(--accent-blue);
+  --pele-accent: var(--color-accent);
   --pele-critical: var(--color-error);
   --pele-error: var(--color-error);
   --pele-font: var(--font-sans);
@@ -973,7 +985,7 @@ html[data-app-hidden="true"] *::after {
   margin-left: 1px;
   vertical-align: -0.15em;
   border-radius: 1px;
-  background: var(--accent-blue);
+  background: var(--color-text-2);
   animation: oa-caret-blink var(--motion-glacial) steps(1) infinite;
 }
 @keyframes oa-caret-blink {

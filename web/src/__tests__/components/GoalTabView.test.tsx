@@ -204,10 +204,10 @@ describe('GoalTabView', () => {
     expect(screen.getByRole('region', { name: 'Last check' }).textContent).toContain('Not yet: No bun test output is shown.')
   })
 
-  it('shows an achieved goal in blue with its check, and no actions', () => {
+  it('shows an achieved goal in green with its check, and no actions', () => {
     renderTab(makeGoal({ status: 'achieved', turns_used: 3, detail: 'Both commands pass.' }))
     expect(now()?.dataset.goalNow).toBe('achieved')
-    expect(now()?.className).toContain('accent-blue')
+    expect(now()?.className).toContain('accent-green-text')
     expect(now()?.textContent).toBe('Achieved in 3 turns')
     expect(screen.getByRole('region', { name: 'Check' }).textContent).toContain('Both commands pass.')
     expect(screen.queryByRole('button')).toBeNull()

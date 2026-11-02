@@ -564,7 +564,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           <span
             role="status"
             title={`The agent is using this page (${agentAction})`}
-            className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-(--accent-blue-soft) px-2 text-meta font-medium text-(--accent-blue-text)"
+            className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-meta font-medium text-(--color-text-2)"
           >
             <Bot size={11} aria-hidden="true" />
             <span className="hidden sm:inline">Agent</span>

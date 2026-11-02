@@ -100,12 +100,12 @@ export function DesignFeedbackCard({ feedback, onMentionFileOpen }: { feedback: 
                       type="button"
                       data-mention-kind="file"
                       onClick={() => onMentionFileOpen(fileRef)}
-                      className="rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+                      className="rounded-sm text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
                     >
                       {item.source}
                     </button>
                   ) : (
-                    item.source && <span className={fileRef ? 'text-(--accent-blue-text)' : undefined}>{item.source}</span>
+                    item.source && <span className={fileRef ? 'text-(--color-text)' : undefined}>{item.source}</span>
                   )}
                 </p>
                 <p className="mt-0.5 leading-relaxed break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{item.comment}</p>

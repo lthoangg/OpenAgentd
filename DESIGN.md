@@ -10,7 +10,7 @@ colors:
   # ── Semantic roles (spec convention) ───────────────────────────────────────
   primary: "#3F3429"          # Bark — UI accent / ink
   secondary: "#6E604F"        # Sepia — muted utility text
-  tertiary: "#5AA8E2"         # Signal Blue — focus + interaction
+  tertiary: "#5AA8E2"         # Signal Blue — the logo dot and keyboard focus only
   neutral: "#FAF6EC"          # Paper — page foundation
 
   # ── Surfaces ───────────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ colors:
   on-selected: "#1A1714"
   fill-danger: "#F7DCD6"      # Highlighted destructive menu row
   on-danger: "#991B1B"
-  switch-on: "#5AA8E2"        # A switch that is on
+  switch-on: "#3F3429"        # A switch that is on: the accent, as a checked box
 
   # ── Borders ────────────────────────────────────────────────────────────────
   border-subtle: "#E7DCBF"
@@ -69,8 +69,8 @@ colors:
   error: "#B91C1C"
   error-subtle: "rgba(185, 28, 28, 0.08)"
   error-container: "#F5E5DB"  # error-subtle flattened over bg-page
-  info: "#5AA8E2"
-  info-subtle: "#DCEEFB"
+  info: "#4B3E32"             # quiet: ink-2 on the keycap wash (not blue)
+  info-subtle: "#F0E9D4"
   diff-add-text: "#166534"
   diff-add-bg: "rgba(22, 163, 74, 0.16)"
   diff-del-text: "#991B1B"
@@ -237,7 +237,7 @@ components:
     rounded: "{rounded.md}"
   button-link:
     backgroundColor: "{colors.bg-card}"
-    textColor: "{colors.accent-blue-text}"
+    textColor: "{colors.on-surface}"   # ink, underlined in border-strong
     typography: "{typography.body-sm}"
   button-xs:
     typography: "{typography.label-sm}"
@@ -416,10 +416,15 @@ reserved almost entirely for *meaning*. Nothing is decorative.
   user's content, not the chrome.
 - **Secondary (#6E604F) — "Sepia."** Utility text: metadata, timestamps,
   placeholders, inactive labels. Passes AA on every paper surface.
-- **Tertiary (#5AA8E2) — "Signal Blue."** The sole interaction color. Focus
-  rings, links, and informational state. Blue is used for the focus ring instead
-  of Bark because a near-ink ring reads as a hard rectangle rather than an
-  affordance. The logo's dot (the agent) is Signal Blue too.
+- **Tertiary (#5AA8E2) — "Signal Blue."** The logo's dot (the agent) and
+  keyboard focus, nothing else. Blue is used for the focus ring instead of
+  Bark because a near-ink ring reads as a hard rectangle rather than an
+  affordance. Links and file names are ink with a `border-strong` underline;
+  info chips and callouts are ink on the keycap wash; checked boxes, radios
+  and switches fill with the accent (Bark on paper, cream on dark); text
+  selection takes `fill-selected`; hover, drag, drop and open states use the
+  warm ramp. Data keeps its own hues (syntax, charts, terminal colours).
+  Lint: `stray-blue`, `focus-colour-off-focus`.
 - **Neutral (#FAF6EC) — "Paper."** The page foundation. Warmer and softer than
   white, which keeps long agent transcripts comfortable.
 
@@ -458,8 +463,10 @@ that container. Identity hues carry no semantic weight — blue does not mean
 
 ### Semantic state
 
-`success` / `warning` / `error` / `info` intentionally reuse the chip palette so
-the total number of hues in the system stays small. Diff and syntax colors are
+`success` / `warning` / `error` intentionally reuse the chip palette so the
+total number of hues in the system stays small; `info` (running, starting,
+notices) is quiet, `on-surface-2` on the keycap wash, so only real states
+carry a hue. Diff and syntax colors are
 separate scales tuned for dense monospace reading.
 
 ### Dark mode
@@ -481,7 +488,7 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#4A3B2D` / `#F5EBD8` |
 | `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |
 | `bg-tooltip` / `tooltip-text` / `tooltip-border` | `#FFFDF7` / `#1A1714` / `#D9CFA9` | `#2E251C` / `#F5EBD8` / `#4D3E2D` |
-| `switch-on` | `#5AA8E2` | `#3F86C2` (deeper, so the cream thumb stands off it) |
+| `switch-on` | `#3F3429` (accent; white thumb) | `#F5EBD8` (accent; near-black thumb) |
 | `surface` / `surface-2` | `#FFFDF7` / `#F5EBD8` | `#221C16` / `#2A2219` |
 | `color-bg-elevated` | `#FFFDF7` | `#221C16` |
 | `border-subtle` / `border` / `border-strong` | `#E7DCBF` / `#D9CFA9` / `#B8A47E` | `#2C231A` / `#3A2F23` / `#5C4B36` |
@@ -833,9 +840,9 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
 - **Automated titles are revealed, manual ones are not.** A `title_update` from
   the agent lifts the old title out over `base` and wipes the new one in left
   to right over `glacial` (`ease-out`, after an `instant` beat). Its sidebar row
-  holds a Signal Blue wash for 40% of `linger`, then drains. Renames you make,
+  holds a `fill-selected` wash for 40% of `linger`, then drains. Renames you make,
   list loads and session switches swap the text with no motion.
-- **A live caret follows streaming text.** A 2px Signal Blue bar sits after the
+- **A live caret follows streaming text.** A 2px `on-surface-2` bar sits after the
   last paragraph, heading or list item an answer is writing, and blinks at
   `glacial` (`steps(1)`, on or off, never a fade). Code blocks and tables get
   none, and it goes the moment the answer ends. Under reduced motion it stands
@@ -997,7 +1004,7 @@ meta column of tabular mono numbers (`33 ms`, `2.4 s`, `exit 1`), so values
 line up down the transcript. 28px, 36px on touch. No icon gutter: the real
 tool name in mono leads (`shell`, `grep`, `team_spawn`), then the target in
 mono, then a short result summary in muted sans. A running row has a 6px
-blue dot before the name and a live timer in the meta column; text never
+dot before the name and a live timer in the meta column; text never
 blinks. A failed row shows its summary in error colour and an `exit 1` or
 `error` chip. Rows without details render as a `div`, not a button.
 A subagent row is a button to its session, with its state in words
@@ -1549,8 +1556,8 @@ this repository. Files and regeneration: `documents/assets/brand/README.md`.
 **Color**
 
 - Do let content carry the color; keep chrome in the neutral ramp.
-- Do use `tertiary` (Signal Blue) as the only interaction color, and `bg-send`
-  as the only inverted surface. Selections fill with `fill-selected`, never the
+- Do keep `tertiary` (Signal Blue) for the logo and keyboard focus only, and
+  `bg-send` as the only inverted surface. Selections fill with `fill-selected`, never the
   accent: in dark mode the accent is near-white.
 - Don't introduce a new hue for emphasis — step the surface ramp or the text
   ramp instead.

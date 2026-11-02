@@ -89,7 +89,8 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
   })
 
   it('sets a switch thumb apart from its on track at 2.5:1, and the track from the page at 2:1', () => {
-    const thumb = name === 'light' ? t['--color-surface'] : t['--color-text']
+    // On, the thumb takes the ink that sits on the accent.
+    const thumb = t['--color-text-on-accent']
     expect(contrast(thumb, t['--switch-on'])).toBeGreaterThanOrEqual(2.5)
     expect(contrast(t['--switch-on'], t['--bg-page'])).toBeGreaterThanOrEqual(2)
   })

@@ -63,7 +63,7 @@ function RadioGroupItem({ className, value, onChange, name, checked, ...props }:
         checked={isChecked}
         className={cn(
           'peer size-[18px] appearance-none rounded-full border-[1.5px] border-(--color-text-subtle) bg-(--bg-page) transition-colors outline-none',
-          'checked:border-(--accent-blue) focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
+          'checked:border-(--color-accent) focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
           'disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}
@@ -73,7 +73,7 @@ function RadioGroupItem({ className, value, onChange, name, checked, ...props }:
         }}
         {...props}
       />
-      <span className="pointer-events-none absolute inset-0 m-auto size-2 rounded-full bg-(--accent-blue) opacity-0 transition-opacity peer-checked:opacity-100" aria-hidden="true" />
+      <span className="pointer-events-none absolute inset-0 m-auto size-2 rounded-full bg-(--color-accent) opacity-0 transition-opacity peer-checked:opacity-100" aria-hidden="true" />
     </span>
   )
 }

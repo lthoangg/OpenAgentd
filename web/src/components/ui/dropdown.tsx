@@ -360,7 +360,7 @@ function Dropdown({
           buttonVariants({ variant: 'default', size: 'trigger' }),
           'justify-between',
           !dense && 'pointer-coarse:min-h-9',
-          open && 'border-(--focus-ring)',
+          open && 'border-(--color-border-strong)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}

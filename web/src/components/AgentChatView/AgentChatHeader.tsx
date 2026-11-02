@@ -271,7 +271,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 badge: todoSummary.progressLabel,
                 indicator: todoSummary.hasInProgress,
                 goalTone: goalState?.tone,
-                indicatorClassName: 'bg-(--accent-blue-text)',
+                indicatorClassName: 'bg-(--color-text-2)',
                 pressed: tasksViewActive,
                 className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
               }}

@@ -16,7 +16,7 @@ export type ChipTone = 'neutral' | 'info' | 'success' | 'warning' | 'error'
 
 const SOFT: Record<ChipTone, string> = {
   neutral: 'bg-(--bg-key) text-(--color-text-2)',
-  info: 'bg-(--color-info-subtle) text-(--accent-blue-text)',
+  info: 'bg-(--bg-key) text-(--color-text-2)',
   success: 'bg-(--color-success-subtle) text-(--accent-green-text)',
   warning: 'bg-(--color-warning-subtle) text-(--accent-orange-text)',
   error: 'bg-(--color-error-subtle) text-(--color-error)',

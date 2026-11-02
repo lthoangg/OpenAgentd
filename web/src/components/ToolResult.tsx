@@ -94,13 +94,13 @@ function WebSearchResult({ result }: { result: string }) {
           <li key={i} className="group flex flex-col gap-0.5">
             {/* Title + link */}
             <div className="flex items-start gap-1.5">
-              <Globe size={11} className="mt-0.5 shrink-0 text-(--accent-blue-text)" />
+              <Globe size={11} className="mt-0.5 shrink-0 text-(--color-text-muted)" />
               {link ? (
                 <a
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="touch-hit relative min-w-0 flex-1 text-xs font-medium leading-snug break-words text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                  className="touch-hit relative min-w-0 flex-1 text-xs font-medium leading-snug break-words text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
                 >
                   {title}
                 </a>
@@ -529,7 +529,7 @@ const TODO_STATUS_ICON: Record<string, LucideIcon> = {
 const TODO_STATUS_COLOR: Record<string, string> = {
   completed: 'text-(--accent-green-text)',
   cancelled: 'text-(--color-text-subtle)',
-  in_progress: 'text-(--accent-blue-text)',
+  in_progress: 'text-(--color-text)',
   pending: 'text-(--color-text-muted)',
 }
 

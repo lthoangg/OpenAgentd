@@ -3,9 +3,10 @@ import type { WorkspaceGroup } from '@/api/types'
 /**
  * Accent tokens for groups that have not picked a colour, chosen by a stable
  * hash of the id so a group keeps its colour across renames, windows and
- * devices. Red is left out: unpicked, it would read as an error.
+ * devices. Red is left out: unpicked, it would read as an error. So is
+ * Signal Blue, which is the logo and keyboard focus only.
  */
-const DERIVED_TOKENS = ['blue', 'green', 'orange', 'purple', 'pink'] as const
+const DERIVED_TOKENS = ['green', 'orange', 'purple', 'pink'] as const
 
 const HEX = /^#[0-9a-f]{6}$/i
 

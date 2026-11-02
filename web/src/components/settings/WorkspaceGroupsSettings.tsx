@@ -114,13 +114,13 @@ function ColorField({ value, onChange, onValidChange }: {
           aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined}
           maxLength={9}
-          placeholder="#3b82f6"
+          placeholder="#a78bfa"
           autoComplete="off"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)"
         />
       </div>
-      {invalid && <p id={errorId} className="text-meta text-(--color-error)">Use a hex colour such as #3b82f6.</p>}
+      {invalid && <p id={errorId} className="text-meta text-(--color-error)">Use a hex colour such as #a78bfa.</p>}
     </div>
   )
 }

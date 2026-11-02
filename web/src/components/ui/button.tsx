@@ -63,8 +63,8 @@ const VARIANT = {
   ].join(' '),
   link: [
     'bg-transparent',
-    'text-(--accent-blue-text) underline-offset-4',
-    'hover:underline hover:text-(--accent-blue-text)/80',
+    'text-(--color-text) underline decoration-(--color-border-strong) underline-offset-4',
+    'hover:decoration-current',
   ].join(' '),
 } as const
 

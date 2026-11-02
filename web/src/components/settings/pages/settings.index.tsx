@@ -228,14 +228,14 @@ export function AboutSettingsPage() {
           <CommunityLink
             href="https://discord.gg/cz6GQHQUMg"
             icon={MessageSquare}
-            tint="bg-[#5865F2]/10 text-[#5865F2]"
+            tint="bg-(--bg-key) text-(--color-text-2)"
             title="Discord server"
             body="Join the chat, ask questions, and get help from the community."
           />
           <CommunityLink
             href="https://www.facebook.com/groups/1256361676707935"
             icon={Users}
-            tint="bg-[#1877F2]/10 text-[#1877F2]"
+            tint="bg-(--bg-key) text-(--color-text-2)"
             title="Facebook group"
             body="Connect with other OpenAgentd users and maintainers on Facebook."
           />

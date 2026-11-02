@@ -62,7 +62,7 @@ describe('useTitleWash', () => {
   function Row({ text }: { text: string }) {
     const ref = useRef<HTMLDivElement>(null)
     useTitleWash(ref, 's1', text)
-    return <div ref={ref} data-testid="row" style={{ '--accent-blue-soft': '#DCEEFB' } as React.CSSProperties}>{text}</div>
+    return <div ref={ref} data-testid="row" style={{ '--color-fill-selected': '#E3D6BA' } as React.CSSProperties}>{text}</div>
   }
 
   it('washes the row once when its title lands from the server, not on a typed rename', () => {

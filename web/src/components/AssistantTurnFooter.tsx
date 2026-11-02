@@ -284,7 +284,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
             <button
               type="button"
               onClick={openInUsage}
-              className="self-start rounded-sm text-xs font-medium text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+              className="self-start rounded-sm text-xs font-medium text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
             >
               Open session in Usage
             </button>

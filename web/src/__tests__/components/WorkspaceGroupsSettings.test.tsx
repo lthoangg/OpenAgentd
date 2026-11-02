@@ -195,7 +195,7 @@ describe('WorkspaceGroupsSettings', () => {
     await user.clear(colorInput())
     await user.type(colorInput(), '#12')
     expect(colorInput().getAttribute('aria-invalid')).toBe('true')
-    expect(screen.getByText('Use a hex colour such as #3b82f6.')).toBeTruthy()
+    expect(screen.getByText('Use a hex colour such as #a78bfa.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Create group' }) as HTMLButtonElement).disabled).toBe(true)
     await user.type(colorInput(), '3')
     expect(colorInput().getAttribute('aria-invalid')).toBeNull()

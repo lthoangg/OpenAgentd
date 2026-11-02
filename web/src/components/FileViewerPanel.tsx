@@ -479,7 +479,7 @@ function TextPreview({
             88ch measure in a maximized dock, so prose never spans the dock. */}
         <div className="oa-reading mx-auto max-w-3xl">
           {markdown.raw !== null && <FrontmatterTable fields={markdown.fields} raw={markdown.raw} />}
-          <MarkdownBlock content={markdown.body} resolveMediaSrc={resolveMediaSrc} />
+          <MarkdownBlock content={markdown.body} resolveMediaSrc={resolveMediaSrc} allowHtml />
         </div>
       </div>
     )

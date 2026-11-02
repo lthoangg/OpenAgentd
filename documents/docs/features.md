@@ -2430,6 +2430,12 @@ agent against it.
   nested YAML as source, collapsed past 8 fields) `[v3.36.0]`. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
+  Since `[v3.40.0]` HTML in a rendered Markdown file shows as it does on
+  GitHub instead of as tags: a README's centred logo and badges,
+  `<picture>` (with relative images from the file's folder), `<kbd>`,
+  `<sub>` and collapsible `<details>` sections. It is rebuilt from an
+  allowlist, so scripts, styles, frames, forms and event handlers never run;
+  agent replies still show HTML as text.
   Links and file-named code spans in a rendered Markdown file open the
   workspace file in a new tab, at the line when one is given; paths read from
   the file's folder, then the workspace root. HTML files open in Preview, and

@@ -635,7 +635,7 @@ drawer and full-screen sheet.
 │ page / rail │ transcript (prose ≤ 768,       │ pane: tab-bar 36 │ pane (⌘\) │
 │ 28px rows   │   code/tables/tools ≤ 960)     │ toolbar 32 · one │            │
 │             │                                ├─ split bar ──────┴───────────┤
-│             │ composer + run deck (≤ 768)    │ terminal pane (⌃`, ⌘⇧\)      │
+│             │ composer + run deck (≤ 768)    │ pane (⌘⇧\)                   │
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
@@ -741,13 +741,11 @@ drawer and full-screen sheet.
   moved iframe reloads). Preview pages sit in one layer over the panes, so a
   page and its unsent comments survive a move between panes. The bars between
   panes drag, take the arrow keys, and even out on Enter or double-click.
-- **Terminals have a pane of their own.** The first shell opens in an empty
-  focused pane, else in a pane under everything, so a diff and a shell show at
-  once; documents never open in a terminal pane (a pane above takes them).
-  Control and the backquote key (`toggleTerminal`) hide every pane holding
-  only terminals without stopping their shells (their strips have a Hide
-  button too), and show them again; hiding them with nothing else on screen
-  closes the panel. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
+- **Terminals are tabs like any other.** A shell opens in the focused pane,
+  right after its open tab, and documents open beside it there; a split puts
+  a diff and a shell side by side. There is no terminal pane and nothing
+  hides one: Control and the backquote key (`openTerminal`) show the last
+  terminal or start one. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
   (a lighter wash, `text-2`) and everything on that pane's strip fades to
   50%, as an inactive window's title bar does, so the focused pane reads at
@@ -1421,7 +1419,7 @@ Menus):
   is hidden and the header's ☰ (or a bare Alt tap outside a text field)
   pops the same menu up (`show_app_menu`). The View menu carries every
   layout command (Sidebar, Review Panel, Split Review Panel Right and Down,
-  Terminal, Maximize Review Panel, Focus Mode, Model and Thinking…, Text
+  Open Terminal, Maximize Review Panel, Focus Mode, Model and Thinking…, Text
   Size, Reset Layout). Its shortcuts work with the bar hidden; on Linux each item
   answers GTK's `can-activate-accel` itself, since GTK only fires the
   shortcuts of a menu on screen.

@@ -1,8 +1,8 @@
 /**
  * The Review panel's panes: any number, split right or down as often as
  * there is room; tabs move between them; a pane closes with its last tab;
- * terminals keep a pane of their own that ⌃` hides; documents never land in
- * it; a reusable preview tab per pane; views before documents.
+ * terminals are tabs like any other, in the focused pane; a reusable preview
+ * tab per pane; views before documents.
  */
 import { describe, expect, it } from 'bun:test'
 
@@ -14,7 +14,6 @@ import {
   closePane,
   closeTabs,
   focusPane,
-  hideTerminals,
   joinPanes,
   keepTab,
   layoutBoxes,
@@ -31,11 +30,9 @@ import {
   resizeSplit,
   restoreDockPanes,
   serializeDockPanes,
-  showTerminals,
   sizesWithBarAt,
   splitPane,
   syncTerminalTabs,
-  visiblePanes,
   type DockPanes,
   type PaneLayout,
 } from '@/components/WorkspacePanel/dock-panes'
@@ -47,7 +44,7 @@ const term = (id: string): DockTab => ({ id: `terminal:${id}`, type: 'terminal',
 const attachment = (name: string): DockTab => ({ id: `attachment:${name}`, type: 'attachment', title: name, item: { type: 'image', src: `/u/${name}`, name } })
 const ids = (tabs: DockTab[]) => tabs.map((tab) => tab.id)
 /** Each pane's tab ids, in layout order. */
-const strips = (state: DockPanes) => visiblePanes(state).map((pane) => ids(paneTabs(state, pane)))
+const strips = (state: DockPanes) => paneOrder(state.layout).map((pane) => ids(paneTabs(state, pane)))
 const close = (a: number, b: number) => Math.abs(a - b) < 1e-9
 
 function withTabs(...tabs: DockTab[]): DockPanes {
@@ -253,75 +250,41 @@ describe('closing panes', () => {
 })
 
 describe('terminals', () => {
-  it('opens a terminal in a pane below the open tabs, and documents keep to theirs', () => {
-    let state = withTabs(REVIEW_TAB, diff('a.ts'))
-    state = openTab(state, term('1'), { pane: 'terminal' })
-    expect(state.layout).toEqual({ axis: 'column', children: [{ pane: 'p1' }, { pane: 'p2' }], sizes: [UPPER_SHARE, 1 - UPPER_SHARE] })
-    expect(strips(state)).toEqual([['review', 'diff:a.ts'], ['terminal:1']])
-    expect(state.focused).toBe('p2')
-
-    // Focus in the shell: a diff from the transcript still opens above.
-    state = openTab(state, diff('b.ts'), { preview: true })
-    expect(strips(state)).toEqual([['review', 'diff:a.ts', 'diff:b.ts'], ['terminal:1']])
-    state = openTab(state, term('2'), { pane: 'terminal' })
-    expect(strips(state)).toEqual([['review', 'diff:a.ts', 'diff:b.ts'], ['terminal:1', 'terminal:2']])
-  })
-
-  it('puts the first terminal in an empty panel, and the next document in a new pane above it', () => {
-    let state = openTab(EMPTY_DOCK_PANES, term('1'), { pane: 'terminal' })
+  it('opens a terminal in the focused pane, after its open tab, like any tab', () => {
+    let state = activateTab(withTabs(REVIEW_TAB, diff('a.ts'), diff('b.ts')), 'diff:a.ts')
+    state = openTab(state, term('1'))
     expect(state.layout).toEqual({ pane: 'p1' })
-    state = openTab(state, diff('a.ts'))
-    expect(strips(state)).toEqual([['diff:a.ts'], ['terminal:1']])
-    expect(state.layout).toEqual({ axis: 'column', children: [{ pane: 'p2' }, { pane: 'p1' }], sizes: [UPPER_SHARE, 1 - UPPER_SHARE] })
+    expect(strips(state)).toEqual([['review', 'diff:a.ts', 'terminal:1', 'diff:b.ts']])
+    expect(state.panes.p1.active).toBe('terminal:1')
   })
 
-  it('opens a terminal in an empty pane that has the focus', () => {
-    let state = splitPane(withTabs(REVIEW_TAB), 'p1', 'right')
-    state = openTab(state, term('1'), { pane: 'terminal' })
-    expect(strips(state)).toEqual([['review'], ['terminal:1']])
-    expect(state.layout).toMatchObject({ axis: 'row' })
-  })
-
-  it('hides and shows the terminal panes without closing their tabs, never hiding everything', () => {
-    let state = openTab(withTabs(REVIEW_TAB), term('1'), { pane: 'terminal' })
-    state = hideTerminals(state)
-    expect(visiblePanes(state)).toEqual(['p1'])
-    expect(state.focused).toBe('p1')
-    expect(paneTabs(state, 'p2').map((tab) => tab.id)).toEqual(['terminal:1'])
-    state = showTerminals(state)
-    expect(visiblePanes(state)).toEqual(['p1', 'p2'])
-    expect(state.focused).toBe('p2')
-
-    const only = hideTerminals(openTab(EMPTY_DOCK_PANES, term('1'), { pane: 'terminal' }))
-    expect(visiblePanes(only)).toEqual(['p1'])
-  })
-
-  it('shows a hidden terminal pane again when one of its tabs is opened', () => {
-    let state = hideTerminals(openTab(withTabs(REVIEW_TAB), term('1'), { pane: 'terminal' }))
-    state = activateTab(state, 'terminal:1')
-    expect(visiblePanes(state)).toEqual(['p1', 'p2'])
-  })
-
-  it('adopts terminals into the terminal pane and drops the ones that ended', () => {
-    let state = withTabs(REVIEW_TAB)
-    state = syncTerminalTabs(state, [{ id: '1', title: 'zsh' }, { id: '2', title: 'node' }], true)
-    expect(strips(state)).toEqual([['review'], ['terminal:1', 'terminal:2']])
-    expect(state.focused).toBe('p1')
-    state = syncTerminalTabs(state, [{ id: '2', title: 'node' }], true)
-    expect(strips(state)).toEqual([['review'], ['terminal:2']])
-    state = syncTerminalTabs(state, [], true)
+  it('opens documents beside a terminal, in its pane', () => {
+    let state = openTab(EMPTY_DOCK_PANES, term('1'))
+    state = openTab(state, diff('a.ts'), { preview: true })
     expect(state.layout).toEqual({ pane: 'p1' })
+    expect(strips(state)).toEqual([['terminal:1', 'diff:a.ts']])
   })
 
-  it('adopts terminals out of sight while the terminal panes are hidden', () => {
-    const state = syncTerminalTabs({ ...EMPTY_DOCK_PANES, terminalsHidden: true }, [{ id: '1', title: 'zsh' }], true)
-    expect(visiblePanes(state)).toEqual(['p1'])
-    expect(paneTabs(state, 'p1')).toEqual([])
+  it('opens a terminal in the pane it is asked for', () => {
+    let state = splitPane(withTabs(REVIEW_TAB, diff('a.ts')), 'p1', 'right', 'diff:a.ts')
+    state = openTab(state, term('1'), { pane: 'p1' })
+    expect(strips(state)).toEqual([['review', 'terminal:1'], ['diff:a.ts']])
+    expect(state.focused).toBe('p1')
   })
 
-  it('keeps terminals in the one pane on phones', () => {
-    const state = syncTerminalTabs(withTabs(REVIEW_TAB), [{ id: '1', title: 'zsh' }], false)
-    expect(strips(state)).toEqual([['review', 'terminal:1']])
+  it('adopts new shells into the focused pane without showing them, and drops the ones that ended', () => {
+    let state = splitPane(withTabs(REVIEW_TAB, diff('a.ts')), 'p1', 'right', 'diff:a.ts')
+    state = syncTerminalTabs(state, [{ id: '1', title: 'zsh' }, { id: '2', title: 'node' }])
+    expect(strips(state)).toEqual([['review'], ['diff:a.ts', 'terminal:1', 'terminal:2']])
+    expect(state.panes.p2.active).toBe('diff:a.ts')
+    state = syncTerminalTabs(state, [{ id: '2', title: 'node' }])
+    expect(strips(state)).toEqual([['review'], ['diff:a.ts', 'terminal:2']])
+  })
+
+  it('shows an adopted shell in an empty pane', () => {
+    const state = syncTerminalTabs(EMPTY_DOCK_PANES, [{ id: '1', title: 'zsh' }])
+    expect(strips(state)).toEqual([['terminal:1']])
+    expect(state.panes.p1.active).toBe('terminal:1')
   })
 })
 
@@ -358,7 +321,7 @@ describe('layout', () => {
 
   it('joins every pane into one on a phone', () => {
     let state = splitPane(withTabs(REVIEW_TAB, diff('a.ts')), 'p1', 'right', 'diff:a.ts')
-    state = openTab(state, term('1'), { pane: 'terminal' })
+    state = openTab(state, term('1'))
     state = focusPane(joinPanes(state), 'p1')
     expect(strips(state)).toEqual([['review', 'diff:a.ts', 'terminal:1']])
     expect(state.panes.p1.active).toBe('terminal:1')
@@ -368,7 +331,7 @@ describe('layout', () => {
 describe('memory', () => {
   it('saves panes and their tabs, terminals by id, and restores them', () => {
     let state = splitPane(withTabs(REVIEW_TAB, diff('a.ts')), 'p1', 'right', 'diff:a.ts')
-    state = openTab(state, term('1'), { pane: 'terminal' })
+    state = openTab(state, term('1'))
     state = resizeSplit(state, [], [0.6, 0.4])
     const restored = restoreDockPanes(JSON.parse(JSON.stringify(serializeDockPanes(state))))!
     expect(restored.layout).toEqual(state.layout)

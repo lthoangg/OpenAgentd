@@ -219,26 +219,6 @@ describe('useOverlayState app events', () => {
     expect(result.current.dockLayoutRequest).toEqual({ action: 'split-down', key: 2 })
   })
 
-  it('asks to show the terminal group with the panel closed, and to toggle it once open', () => {
-    const { result } = renderOverlay()
-
-    act(() => dispatchAppEvent(APP_EVENTS.toggleTerminalGroup))
-    expect(result.current.workspacePanel).toBe('changed')
-    expect(result.current.dockLayoutRequest).toEqual({ action: 'terminal-show', key: 1 })
-
-    act(() => dispatchAppEvent(APP_EVENTS.toggleTerminalGroup))
-    expect(result.current.dockLayoutRequest).toEqual({ action: 'terminal-toggle', key: 2 })
-  })
-
-  it('opens a terminal tab for the terminal key on phones (one strip, no groups)', () => {
-    const { result } = renderOverlay({ isMobile: true })
-
-    act(() => dispatchAppEvent(APP_EVENTS.toggleTerminalGroup))
-
-    expect(result.current.dockLayoutRequest).toBeNull()
-    expect(result.current.terminalOpenKey).toBe(1)
-  })
-
   it('opens a terminal tab on openTerminal', () => {
     const { result } = renderOverlay()
 

@@ -206,13 +206,14 @@ describe("useAgentCommands — reload-window", () => {
 //  Open Terminal command
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — open-terminal", () => {
-  it("starts a new shell and has no key of its own (Ctrl+` toggles the terminals)", () => {
+  it("shows the terminal with Ctrl+`, the one terminal entry", () => {
     const handleOpenTerminal = mock(() => {})
     const { result } = renderHook(() =>
       useAgentCommands(makeArgs({ handleOpenTerminal })),
     )
     const cmd = byId(result.current, "open-terminal")
-    expect(cmd.shortcut).toBeUndefined()
+    expect(cmd.shortcut).toBe("Ctrl+`")
+    expect(result.current.filter((c) => /terminal/i.test(c.label))).toEqual([cmd])
     cmd.action()
     expect(handleOpenTerminal).toHaveBeenCalledTimes(1)
   })
@@ -276,38 +277,33 @@ describe("useAgentCommands — navigation", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Layout — split, terminal group, focus mode, find, text size, reset
+//  Layout — split, focus mode, find, text size, reset
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — layout", () => {
   it("lists the layout commands only when the shell can run them", () => {
     const none = renderHook(() => useAgentCommands(makeArgs()))
-    for (const id of ["split-dock", "toggle-terminal", "focus-mode", "find-in-session"]) {
+    for (const id of ["split-dock", "focus-mode", "find-in-session"]) {
       expect(none.result.current.find((c) => c.id === id)).toBeUndefined()
     }
   })
 
   it("runs each layout handler, with its shortcut", () => {
     const split = mock(() => {})
-    const terminal = mock(() => {})
     const focus = mock(() => {})
     const find = mock(() => {})
     const { result } = renderHook(() => useAgentCommands(makeArgs({
       handleSplitDock: split,
-      handleToggleTerminalGroup: terminal,
       handleToggleFocusMode: focus,
       handleFindInSession: find,
     })))
     expect(byId(result.current, "split-dock").label).toBe("Split Review Panel Right")
     expect(byId(result.current, "split-dock").shortcut).toBe("Ctrl+\\")
-    expect(byId(result.current, "toggle-terminal").label).toBe("Terminal")
-    expect(byId(result.current, "toggle-terminal").shortcut).toBe("Ctrl+`")
     expect(byId(result.current, "focus-mode").shortcut).toBe("Ctrl+Shift+F")
     expect(byId(result.current, "find-in-session").shortcut).toBe("Ctrl+F")
     byId(result.current, "split-dock").action()
-    byId(result.current, "toggle-terminal").action()
     byId(result.current, "focus-mode").action()
     byId(result.current, "find-in-session").action()
-    expect([split, terminal, focus, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1, 1, 1])
+    expect([split, focus, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1, 1])
   })
 
   it("names Focus Mode by what it will do", () => {

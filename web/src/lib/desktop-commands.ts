@@ -72,9 +72,6 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
     case 'split_review_panel_down':
       dispatchAppEvent(APP_EVENTS.splitReviewPanelDown)
       break
-    case 'toggle_terminal':
-      dispatchAppEvent(APP_EVENTS.toggleTerminalGroup)
-      break
     case 'maximize_review_panel':
       dispatchAppShortcut(APP_SHORTCUTS.maximizeDock, getPlatform().os)
       break

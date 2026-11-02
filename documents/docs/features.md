@@ -723,7 +723,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   tray names the account a pinned session runs on (**Pinned to Work**), and
   its Provider limits name the account in use when a provider has several
   (**OpenAI Codex · Work**).
-- **Review panel panes, as in an editor; terminals below** `[v3.40.0]`:
+- **Review panel panes, as in an editor** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
     one button for each.
@@ -757,15 +757,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     side with the tab in the new half, or, when it is its pane's only tab,
     the tab joins the pane on that side (with no pane there, an empty one
     opens, as with `⌘\`). The keys work from the composer and from a
-    terminal too, and the tab menu shows them beside its four splits. A focused terminal now also hands Control and the backquote key
-    back to the app, so the terminal key hides the terminals from inside one.
-  - Terminals open in a pane of their own under the others, so a diff and a
-    shell show at once; files never open there. **Terminal** (Control and the
-    backquote key, on every system) shows or hides the terminal panes, or
-    starts a shell when there is none; hidden shells keep running, and the
-    status bar says **N terminals running** (a click shows them). It is the
-    only terminal key: `⌘⇧` (`Ctrl+Shift`) with the backquote key no longer
-    opens one; a new shell is in the panel's **+** menu and the palette.
+    terminal too, and the tab menu shows them beside its four splits. A
+    focused terminal now also hands Control and the backquote key back to
+    the app.
+  - A terminal is a tab like any other: it opens in the pane you are in,
+    beside its files, and a split puts a diff and a shell side by side.
+    There is no terminal pane under the others any more, and nothing hides
+    one. **Open Terminal** (Control and the backquote key, on every system)
+    shows the last terminal, or starts a shell when there is none; shells
+    keep running with the panel closed, and the status bar says **N
+    terminals running** (a click shows them). It is the only terminal key:
+    `⌘⇧` (`Ctrl+Shift`) with the backquote key no longer opens one; a new
+    shell is in the panel's **+** menu.
   - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
     files. A file or diff opened from a list or a link opens as an *italic*
     preview tab that the next one replaces; double-click it or choose **Keep
@@ -972,7 +975,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     Settings.
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
-    Sidebar, Review Panel, Split Review Panel Right and Down, Terminal,
+    Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
     Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size and
     Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.

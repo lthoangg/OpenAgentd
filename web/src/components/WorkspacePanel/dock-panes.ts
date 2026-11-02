@@ -10,14 +10,12 @@
  * Closing the open tab shows the tab used before it in that pane, else
  * its right neighbour; that history (``recent``) lasts for the session only.
  *
- * Terminals open in a pane of their own (below the others on desktop), so a
- * diff and a shell show at once; ⌃` hides every pane that holds only
- * terminals, without stopping them. Files, diffs and views opened from the
- * transcript or a list go to the focused pane, never into a terminal pane
- * while another pane is there. Each pane has at most one *preview* tab
- * (italic): opening another file or diff there replaces it, until it is kept
- * (double-click, Keep Open, an edit, a move). A strip lists its views (Git,
- * Plan, Tasks…) before its documents.
+ * Terminals are tabs like any other: they open in the focused pane, and a
+ * split puts a shell beside a diff. Files, diffs and views opened from the
+ * transcript or a list go to the focused pane too. Each pane has at most one
+ * *preview* tab (italic): opening another file or diff there replaces it,
+ * until it is kept (double-click, Keep Open, an edit, a move). A strip lists
+ * its views (Git, Plan, Tasks…) before its documents.
  *
  * ``useDockTabs`` holds this state; ``serializeDockPanes`` /
  * ``restoreDockPanes`` carry it across sessions (a save from the two-group
@@ -50,14 +48,12 @@ export interface DockPanes {
   layout: PaneLayout
   /** The pane keys act on and documents open in. */
   focused: PaneId
-  /** ⌃`: the panes holding only terminals are hidden; their shells keep running. */
-  terminalsHidden: boolean
   /** Tab ids, the latest shown first: which tab a close goes back to. Not saved. */
   recent?: string[]
 }
 
 const FIRST_PANE: PaneId = 'p1'
-/** A pane added above or below everything: the share of the upper one. */
+/** A save from the two-group panel: the upper pane's share of the height. */
 export const UPPER_SHARE = 0.55
 /** Enough history for any strip; older entries drop off. */
 const RECENT_LIMIT = 50
@@ -71,7 +67,6 @@ export const EMPTY_DOCK_PANES: DockPanes = {
   panes: { [FIRST_PANE]: emptyPane() },
   layout: { pane: FIRST_PANE },
   focused: FIRST_PANE,
-  terminalsHidden: false,
 }
 
 // ── Reading ─────────────────────────────────────────────────────────────────
@@ -97,30 +92,10 @@ export function paneTabs(state: DockPanes, pane: PaneId): DockTab[] {
   return [...tabs.filter(isViewTab), ...tabs.filter((tab) => !isViewTab(tab))]
 }
 
-/** A pane holding terminals and nothing else: ⌃` hides it. */
-export function isTerminalPane(state: DockPanes, pane: PaneId): boolean {
-  const tabs = paneTabs(state, pane)
-  return tabs.length > 0 && tabs.every((tab) => tab.type === 'terminal')
-}
-
-/** The panes ⌃` hides now. Never every pane: the last ones on screen stay. */
-export function hiddenPanes(state: DockPanes): ReadonlySet<PaneId> {
-  if (!state.terminalsHidden) return new Set()
-  const order = paneOrder(state.layout)
-  const terminal = order.filter((id) => isTerminalPane(state, id))
-  return new Set(terminal.length < order.length ? terminal : [])
-}
-
-/** The panes on screen, in layout order. */
-export function visiblePanes(state: DockPanes): PaneId[] {
-  const hidden = hiddenPanes(state)
-  return paneOrder(state.layout).filter((id) => !hidden.has(id))
-}
-
-/** The next pane on screen after ``tabId``'s, round the end: "Move to Next Pane". */
+/** The next pane after ``tabId``'s, round the end: "Move to Next Pane". */
 export function nextPaneFor(state: DockPanes, tabId: string): PaneId | null {
   const from = paneOf(state, tabId)
-  const shown = visiblePanes(state)
+  const shown = paneOrder(state.layout)
   if (!from || shown.length < 2) return null
   return shown[(shown.indexOf(from) + 1) % shown.length]
 }
@@ -132,9 +107,9 @@ export function canSplitOff(state: DockPanes, tabId: string, target: PaneId | nu
   return from !== target || state.panes[from].tabs.length > 1
 }
 
-/** The pane on screen beside ``from`` on ``side``: the one sharing most of that edge. */
+/** The pane beside ``from`` on ``side``: the one sharing most of that edge. */
 export function paneBeside(state: DockPanes, from: PaneId, side: SplitSide): PaneId | null {
-  const { panes } = layoutBoxes(state.layout, new Set(visiblePanes(state)))
+  const { panes } = layoutBoxes(state.layout, new Set(paneOrder(state.layout)))
   const box = panes.get(from)
   if (!box) return null
   const EPS = 1e-6
@@ -263,53 +238,20 @@ function newPaneId(state: DockPanes): PaneId {
   return `p${max + 1}`
 }
 
-/** A new pane above or below everything, taking ``share`` of the height. */
-function addPaneAround(state: DockPanes, side: 'up' | 'down', share: number): [DockPanes, PaneId] {
-  const fresh = newPaneId(state)
-  const children = side === 'up' ? [{ pane: fresh }, state.layout] : [state.layout, { pane: fresh }]
-  const sizes = side === 'up' ? [share, 1 - share] : [1 - share, share]
-  return [{ ...withPane(state, fresh, emptyPane()), layout: normalizeLayout({ axis: 'column', children, sizes }) }, fresh]
-}
-
-/** Show ``id`` in ``pane`` and focus it; a hidden terminal pane comes back. */
+/** Show ``id`` in ``pane`` and focus it. */
 function reveal(state: DockPanes, pane: PaneId, id: string): DockPanes {
   const recent = state.recent?.[0] === id ? state.recent : [id, ...(state.recent ?? []).filter((item) => item !== id)].slice(0, RECENT_LIMIT)
-  const next = { ...withPane(state, pane, { ...state.panes[pane], active: id }), focused: pane, recent }
-  return hiddenPanes(next).has(pane) ? { ...next, terminalsHidden: false } : next
+  return { ...withPane(state, pane, { ...state.panes[pane], active: id }), focused: pane, recent }
 }
 
-/**
- * Where documents open: the focused pane, else the first one on screen that
- * is not a terminal pane, else a new pane above everything.
- */
-function documentPane(state: DockPanes): [DockPanes, PaneId] {
-  const shown = visiblePanes(state)
-  if (shown.includes(state.focused) && !isTerminalPane(state, state.focused)) return [state, state.focused]
-  const other = shown.find((id) => !isTerminalPane(state, id))
-  return other ? [state, other] : addPaneAround(state, 'up', UPPER_SHARE)
-}
-
-/**
- * Where a new terminal opens. Asked for (``here``), the focused pane takes it
- * while it is empty or holds terminals; else the last terminal pane (one on
- * screen first); adopting one, an empty focused pane on screen comes after
- * that; else a new pane below everything.
- */
-function terminalPane(state: DockPanes, here: boolean): [DockPanes, PaneId] {
-  const shown = visiblePanes(state)
-  const focusedFits = shown.includes(state.focused)
-    && (state.panes[state.focused]?.tabs.length === 0 || isTerminalPane(state, state.focused))
-  if (here && focusedFits) return [state, state.focused]
-  const terminals = paneOrder(state.layout).filter((id) => isTerminalPane(state, id))
-  const existing = terminals.filter((id) => shown.includes(id)).at(-1) ?? terminals.at(-1)
-  if (existing) return [state, existing]
-  if (!here && focusedFits && !state.terminalsHidden) return [state, state.focused]
-  return addPaneAround(state, 'down', 1 - UPPER_SHARE)
+/** Where tabs open unless a pane is named: the focused pane. */
+function targetPane(state: DockPanes): PaneId {
+  return state.panes[state.focused] ? state.focused : paneOrder(state.layout)[0]
 }
 
 export interface OpenTabOptions {
-  /** A pane, ``'terminal'`` for the terminal pane, or by default the document pane. */
-  pane?: PaneId | 'terminal'
+  /** A pane, or by default the focused one. */
+  pane?: PaneId
   /** Open as the pane's preview tab, replacing the current one. */
   preview?: boolean
 }
@@ -317,7 +259,7 @@ export interface OpenTabOptions {
 /**
  * Open ``tab``: an open one is updated in place and shown; a new one replaces
  * its pane's preview tab (``preview``) or goes right after the pane's active
- * tab (terminals at the end).
+ * tab.
  */
 export function openTab(state: DockPanes, tab: DockTab, { pane, preview = false }: OpenTabOptions = {}): DockPanes {
   const at = paneOf(state, tab.id)
@@ -327,22 +269,20 @@ export function openTab(state: DockPanes, tab: DockTab, { pane, preview = false 
     const kept = !preview && current.preview === tab.id ? { ...current, preview: null } : current
     return reveal(withPane({ ...state, tabs }, at, kept), at, tab.id)
   }
-  const [base, target] = pane === 'terminal'
-    ? terminalPane(state, true)
-    : pane && state.panes[pane] ? [state, pane] as [DockPanes, PaneId] : documentPane(state)
-  const current = base.panes[target]
+  const target = pane && state.panes[pane] ? pane : targetPane(state)
+  const current = state.panes[target]
   const replacing = preview && current.preview && current.tabs.includes(current.preview) ? current.preview : null
   let ids: string[]
   let tabs: DockTab[]
   if (replacing) {
     ids = current.tabs.map((id) => (id === replacing ? tab.id : id))
-    tabs = [...base.tabs.filter((item) => item.id !== replacing), tab]
+    tabs = [...state.tabs.filter((item) => item.id !== replacing), tab]
   } else {
-    const after = tab.type === 'terminal' ? -1 : current.tabs.indexOf(current.active)
+    const after = current.tabs.indexOf(current.active)
     ids = after < 0 ? [...current.tabs, tab.id] : [...current.tabs.slice(0, after + 1), tab.id, ...current.tabs.slice(after + 1)]
-    tabs = [...base.tabs, tab]
+    tabs = [...state.tabs, tab]
   }
-  const next = withPane({ ...base, tabs }, target, { ...current, tabs: ids, preview: preview ? tab.id : current.preview })
+  const next = withPane({ ...state, tabs }, target, { ...current, tabs: ids, preview: preview ? tab.id : current.preview })
   return reveal(next, target, tab.id)
 }
 
@@ -384,18 +324,12 @@ export function closePane(state: DockPanes, pane: PaneId): DockPanes {
   if (!closing) return state
   const tabs = state.tabs.filter((tab) => !closing.tabs.includes(tab.id))
   const order = paneOrder(state.layout)
-  if (order.length <= 1) return { ...state, tabs, panes: { [pane]: emptyPane() }, focused: pane, terminalsHidden: false }
+  if (order.length <= 1) return { ...state, tabs, panes: { [pane]: emptyPane() }, focused: pane }
   const heir = heirOf(state.layout, pane)
   const panes = Object.fromEntries(Object.entries(state.panes).filter(([id]) => id !== pane))
   const layout = normalizeLayout(withoutPane(state.layout, pane) ?? { pane: order.find((id) => id !== pane)! })
-  let next: DockPanes = { ...state, tabs, panes, layout }
-  // Only terminal panes left: they are the panel now, so they show.
-  if (paneOrder(layout).every((id) => isTerminalPane(next, id))) next = { ...next, terminalsHidden: false }
-  if (state.focused === pane) {
-    const shown = visiblePanes(next)
-    next = { ...next, focused: heir && shown.includes(heir) ? heir : shown[0] ?? paneOrder(layout)[0] }
-  }
-  return next
+  const next: DockPanes = { ...state, tabs, panes, layout }
+  return state.focused === pane ? { ...next, focused: heir ?? paneOrder(layout)[0] } : next
 }
 
 /** Close tabs; a pane left without tabs closes too. */
@@ -485,19 +419,6 @@ export function splitPane(state: DockPanes, target: PaneId, side: SplitSide, tab
   return tabId === undefined ? next : moveTab(next, tabId, fresh)
 }
 
-/** ⌃`: hide the terminal panes; focus leaves them. */
-export function hideTerminals(state: DockPanes): DockPanes {
-  const next = { ...state, terminalsHidden: true }
-  const shown = visiblePanes(next)
-  return shown.includes(next.focused) ? next : { ...next, focused: shown[0] ?? next.focused }
-}
-
-/** ⌃`: show the terminal panes again, focusing the last. */
-export function showTerminals(state: DockPanes): DockPanes {
-  const terminals = paneOrder(state.layout).filter((id) => isTerminalPane(state, id))
-  return { ...state, terminalsHidden: false, focused: terminals.at(-1) ?? state.focused }
-}
-
 /** Phones have one strip: every pane's tabs, in layout order, in the first pane. */
 export function joinPanes(state: DockPanes): DockPanes {
   const order = paneOrder(state.layout)
@@ -510,7 +431,6 @@ export function joinPanes(state: DockPanes): DockPanes {
     panes: { [first]: { tabs: order.flatMap((id) => state.panes[id].tabs), active, preview: focused?.preview ?? null } },
     layout: { pane: first },
     focused: first,
-    terminalsHidden: false,
   }
 }
 
@@ -531,10 +451,10 @@ export interface TerminalInfo {
 
 /**
  * Keep terminal tabs in step with the workspace's shells without moving
- * them: ended ones drop out, renamed ones update, new ones join the terminal
- * pane (``ownPane``, desktop) or the focused pane (phones).
+ * them: ended ones drop out, renamed ones update, new ones join the focused
+ * pane (shown only if it was empty).
  */
-export function syncTerminalTabs(state: DockPanes, terminals: readonly TerminalInfo[], ownPane: boolean): DockPanes {
+export function syncTerminalTabs(state: DockPanes, terminals: readonly TerminalInfo[]): DockPanes {
   const live = new Map(terminals.map((meta) => [meta.id, meta]))
   let changed = false
   const gone: string[] = []
@@ -558,9 +478,9 @@ export function syncTerminalTabs(state: DockPanes, terminals: readonly TerminalI
   if (!changed && added.length === 0 && gone.length === 0) return state
   let next: DockPanes = { ...state, tabs: [...tabs, ...added] }
   if (added.length > 0) {
-    const [base, target] = ownPane ? terminalPane(next, false) : [next, next.focused] as [DockPanes, PaneId]
-    const pane = base.panes[target]
-    next = withPane(base, target, {
+    const target = targetPane(next)
+    const pane = next.panes[target]
+    next = withPane(next, target, {
       ...pane,
       tabs: [...pane.tabs, ...added.map((tab) => tab.id)],
       active: pane.active || added[0].id,
@@ -655,13 +575,13 @@ export interface SavedDockPanes {
   panes: Record<PaneId, Pane>
   layout: PaneLayout
   focused: PaneId
-  terminalsHidden: boolean
 }
 
 /**
  * What a session remembers. Uploads are not saved (their panes close with
  * them). Terminals are, by id: still running, they come back where they were;
- * ended, the sync drops them.
+ * ended, the sync drops them. (Older saves also carry ``terminalsHidden``,
+ * from when ⌃` hid a pane of terminals; it is ignored, so those panes show.)
  */
 export function serializeDockPanes(state: DockPanes): SavedDockPanes {
   const kept = closeTabs(state, state.tabs.filter((tab) => tab.type === 'attachment').map((tab) => tab.id))
@@ -671,7 +591,6 @@ export function serializeDockPanes(state: DockPanes): SavedDockPanes {
     panes: kept.panes,
     layout: kept.layout,
     focused: kept.focused,
-    terminalsHidden: kept.terminalsHidden,
   }
 }
 
@@ -738,7 +657,6 @@ function restoreTwoGroups(value: Record<string, unknown>, tabs: DockTab[]): Dock
     panes: { p1: pane(0), p2: pane(1) },
     layout: { axis: 'column', children: [{ pane: 'p1' }, { pane: 'p2' }], sizes: [UPPER_SHARE, 1 - UPPER_SHARE] },
     focused: value.focused === 1 ? 'p2' : 'p1',
-    terminalsHidden: value.lowerHidden === true,
   }
 }
 
@@ -762,6 +680,5 @@ export function restoreDockPanes(saved: unknown): DockPanes | null {
     panes,
     layout,
     focused: isId(value.focused) && order.includes(value.focused) ? value.focused : order[0],
-    terminalsHidden: value.terminalsHidden === true,
   }
 }

@@ -66,11 +66,11 @@ export const APP_SHORTCUTS = {
   // Alt keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean.
   previousPrompt: { key: 'ArrowUp', alt: true },
   nextPrompt: { key: 'ArrowDown', alt: true },
-  // Show or hide the Review panel's terminal group, or start a shell, as in
-  // editors: ⌃` on macOS (⌘` switches windows there), Ctrl+` elsewhere. The
-  // one terminal key; matched on the physical Backquote key, which layouts
-  // report as `` ` ``, `~` or `Dead`.
-  toggleTerminal: { key: '`', code: 'Backquote', ctrl: true },
+  // Show the last terminal, or start a shell, as in editors: ⌃` on macOS (⌘`
+  // switches windows there), Ctrl+` elsewhere. The one terminal key; matched
+  // on the physical Backquote key, which layouts report as `` ` ``, `~` or
+  // `Dead`.
+  openTerminal: { key: '`', code: 'Backquote', ctrl: true },
   openGit: { key: 'G', shift: true },
   shortcutsHelp: { key: '/', switcher: true },
   // Dock tabs by position; matched on the digit key so layouts that print

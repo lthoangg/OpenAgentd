@@ -3,10 +3,10 @@
  *
  * Owns which tabs are open, in which pane (``dock-panes.ts``), and which is
  * active in each; keeps terminal tabs in step with the workspace's shells
- * (into the terminal pane on desktop); remembers the panes per session
+ * (new ones join the focused pane); remembers the panes per session
  * (``dock-memory.ts``); handles the shell's requests (open a view, a diff, a
- * preview, an attachment, a terminal; split; ⌃`); and the keys that act on
- * the focused pane (⌘W, ⌘1–9, ⌃Tab). Opening tabs that need query data
+ * preview, an attachment, a terminal; split); and the keys that act on the
+ * focused pane (⌘W, ⌘1–9, ⌃Tab). Opening tabs that need query data
  * (changed files, commits by sha) stays with the dock, which owns those
  * queries.
  */
@@ -53,9 +53,6 @@ import {
   closePane as closePaneState,
   closeTabs as closePaneTabs,
   focusPane as focusPaneState,
-  hiddenPanes,
-  hideTerminals,
-  isTerminalPane,
   joinPanes,
   keepTab,
   moveTab,
@@ -67,10 +64,8 @@ import {
   paneTabs,
   planTabToward,
   resizeSplit as resizeSplitState,
-  showTerminals,
   splitPane as splitPaneState,
   syncTerminalTabs,
-  visiblePanes,
 } from './dock-panes'
 import { dockMemoryKey, loadDockPanes, saveDockPanes } from './dock-memory'
 
@@ -96,14 +91,14 @@ interface DockTabsOptions {
   /** Shell request to open (or focus) a message attachment's tab. */
   attachmentRequest?: AttachmentTabRequest | null
   handledAttachmentRequestKeyRef?: React.RefObject<number>
-  /** Split / terminal pane requests (⌘\, ⌘⇧\, ⌃`). */
+  /** Split requests (⌘\, ⌘⇧\). */
   layoutRequest?: DockLayoutRequest | null
   handledLayoutRequestKeyRef?: React.RefObject<number>
   /** Called after a tab leaves the strip (close button, middle-click, Mod+W). */
   onTabClosed?: (tab: DockTab) => void
   /** Move keyboard focus to a tab's button (after ⌘1–9 / ⌃Tab from the dock). */
   focusTab?: (id: string) => void
-  /** Mod+W with no tab open, or ⌃` hiding the only content: close the dock. */
+  /** Mod+W with no tab open: close the dock. */
   onCloseDock?: () => void
   /** Whether ``pane`` has room to split along ``axis`` (measured by the dock; omitted, it always has). */
   canSplitPane?: (pane: PaneId, axis: Axis) => boolean
@@ -188,7 +183,7 @@ export function useDockTabs({
     const loaded = loadDockPanes(memoryKey)
     const draftBecameSession = !loaded && stateKey === dockMemoryKey(null, workspace) && sessionId !== null
     setStateKey(memoryKey)
-    if (!draftBecameSession) setState(loaded ?? { ...EMPTY_DOCK_PANES, terminalsHidden: state.terminalsHidden })
+    if (!draftBecameSession) setState(loaded ?? EMPTY_DOCK_PANES)
   }
   useEffect(() => {
     saveDockPanes(stateKey, state)
@@ -208,12 +203,12 @@ export function useDockTabs({
   )
   // Shells belong to the workspace: adopt them into whatever tabs are shown.
   useEffect(() => {
-    setState((current) => syncTerminalTabs(current, terminalMetas, !mobile))
-  }, [terminalMetas, mobile, stateKey])
+    setState((current) => syncTerminalTabs(current, terminalMetas))
+  }, [terminalMetas, stateKey])
 
   // A chat workspace is not a repository: no Git tab in its strips.
   const hidden = useCallback((tab: DockTab) => chatWorkspace && tab.type === 'review', [chatWorkspace])
-  const shownPanes = useMemo(() => visiblePanes(state), [state])
+  const shownPanes = useMemo(() => paneOrder(state.layout), [state.layout])
   const strips = useMemo<Record<PaneId, DockTab[]>>(
     () => Object.fromEntries(Object.keys(state.panes).map((pane) => [pane, paneTabs(state, pane).filter((tab) => !hidden(tab))])),
     [state, hidden],
@@ -268,21 +263,21 @@ export function useDockTabs({
     if (!chatWorkspace) openTab(REVIEW_TAB, { pane })
   }, [chatWorkspace, openTab])
 
-  /** A new shell: in ``pane`` when opened from a strip, else the terminal pane. */
+  /** A new shell: in ``pane`` when opened from a strip, else the focused pane. */
   const openTerminal = useCallback((pane?: PaneId) => {
     const id = useTerminalStore.getState().open({ workspace }, workspace)
     const meta = useTerminalStore.getState().sessionsForContext(workspace).find((m) => m.id === id)
     const tab: DockTab = { id: terminalTabId(id), type: 'terminal', title: meta?.title ?? `Terminal ${id}`, termId: id }
-    openTab(tab, mobile ? undefined : pane ? { pane } : { pane: 'terminal' })
-  }, [workspace, openTab, mobile])
+    openTab(tab, pane ? { pane } : undefined)
+  }, [workspace, openTab])
 
-  /** Show the last shell (where it is), or start one. */
+  /** ⌃`: show the last shell (where it is), or start one. */
   const focusOrOpenTerminal = useCallback(() => {
     const metas = useTerminalStore.getState().sessionsForContext(workspace)
     const last = metas[metas.length - 1]
-    if (last) setState((current) => activateTab(syncTerminalTabs(current, metas, !mobile), terminalTabId(last.id)))
+    if (last) setState((current) => activateTab(syncTerminalTabs(current, metas), terminalTabId(last.id)))
     else openTerminal()
-  }, [workspace, openTerminal, mobile])
+  }, [workspace, openTerminal])
 
   // ── Splitting ─────────────────────────────────────────────────────────────
   /** Split ``pane`` on ``side`` (with ``tabId`` moved in), if there is room. */
@@ -311,34 +306,9 @@ export function useDockTabs({
   useKeyedRequest(attachmentRequest, handledAttachmentRequestKeyRef, (request) => {
     openTab(attachmentTab(request.item), { preview: true })
   })
-  /**
-   * ⌃`: hide the terminal panes on screen (closing the panel instead when
-   * nothing else would be left), or show them, or the last terminal, or start
-   * one. ``show`` only shows (the panel was closed).
-   */
-  const toggleTerminalPanes = (show: boolean) => {
-    const terminalPanes = shownPanes.filter((pane) => isTerminalPane(state, pane))
-    if (!show && terminalPanes.length > 0) {
-      const others = shownPanes.filter((pane) => !terminalPanes.includes(pane) && (strips[pane]?.length ?? 0) > 0)
-      if (others.length === 0) onCloseDock?.()
-      else setState(hideTerminals)
-      return
-    }
-    if (hiddenPanes(state).size > 0) {
-      setState(showTerminals)
-      return
-    }
-    const terminal = [...state.tabs].reverse().find((tab) => tab.type === 'terminal')
-    if (terminal) setState((current) => activateTab(current, terminal.id))
-    else openTerminal()
-  }
   useKeyedRequest(layoutRequest, handledLayoutRequestKeyRef, (request) => {
     if (mobile) return
-    if (request.action === 'split-right' || request.action === 'split-down') {
-      splitPane(focused, request.action === 'split-right' ? 'right' : 'down')
-      return
-    }
-    toggleTerminalPanes(request.action === 'terminal-show')
+    splitPane(focused, request.action === 'split-right' ? 'right' : 'down')
   })
 
   // ── Active view (for the shell's toggles) ─────────────────────────────────
@@ -500,8 +470,6 @@ export function useDockTabs({
     if (target.kind === 'split') splitPane(target.pane, target.side, id)
     else setState((current) => moveTab(current, id, target.pane, target.kind === 'strip' ? target.index : undefined))
   }, [splitPane])
-  /** A terminal pane's Hide button: ⌃`. */
-  const toggleTerminals = () => toggleTerminalPanes(false)
   const resizeSplit = useCallback((path: readonly number[], sizes: readonly number[]) => {
     setState((current) => resizeSplitState(current, path, sizes))
   }, [])
@@ -561,7 +529,6 @@ export function useDockTabs({
     splitPane,
     dropTab,
     closePane,
-    toggleTerminals,
     resizeSplit,
     closeTab: requestCloseTab,
     closeOtherTabs,

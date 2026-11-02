@@ -4,7 +4,7 @@
  * Left cluster is workspace-scoped, right cluster is session-scoped:
  *   • left:  connected backend and its health · git branch with ahead/behind
  *            + dirty count · "N terminals running" while the workspace has
- *            live shells (they keep running with the terminal group hidden)
+ *            live shells (they keep running with the Review panel closed)
  *   • right: fast mode · 24h spend · settings
  *
  * The model lives on the composer's run deck, the one place to read and
@@ -221,8 +221,7 @@ export const AppFooter = memo(function AppFooter({
                 render={
                   <button
                     type="button"
-                    // Opens (never toggles) the terminal group on the last
-                    // shell, so the item cannot hide what it points to.
+                    // Opens the Review panel on the last shell.
                     onClick={() => dispatchAppEvent(APP_EVENTS.openTerminal)}
                     className={cn(ITEM, 'shrink-0')}
                   >

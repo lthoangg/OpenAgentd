@@ -64,9 +64,9 @@ beforeEach(() => {
 afterEach(cleanup)
 
 /**
- * By default three terminals, then Git. Terminals live in a pane of their own
- * ([Terminal 1, Terminal 2, Terminal 3], Terminal 1 active); Git is alone in
- * a pane above it, which has focus.
+ * By default three terminals, then Git, all in one pane; with the dock open,
+ * Git is split up into a pane of its own, which has focus, over the
+ * terminals' ([Terminal 1, Terminal 2, Terminal 3], Terminal 1 active).
  */
 async function renderDock({ open = true, exited = false, terminals = 3, git = true, onRequestClose = undefined as (() => void) | undefined } = {}) {
   for (let i = 0; i < terminals; i++) useTerminalStore.getState().open({ workspace: WORKSPACE }, WORKSPACE)
@@ -91,6 +91,10 @@ async function renderDock({ open = true, exited = false, terminals = 3, git = tr
     )
   })
   if (terminals > 0) await waitFor(() => expect(screen.getByRole('button', { name: `Terminal ${terminals}` })).toBeTruthy())
+  if (git && terminals > 0 && open) {
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
+    await act(async () => { screen.getByRole('menuitem', { name: /^Split Up/ }).click() })
+  }
 }
 
 const tab = (name: string) => screen.getByRole('button', { name })

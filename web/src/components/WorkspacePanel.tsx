@@ -5,8 +5,8 @@
  * commits, web previews, terminals, the session's Plan and Goal, and on
  * desktop the agent Tasks, `/btw` side questions, and Schedule views)
  * over their content, in panes split right and down as often as there is
- * room (⌘\, ⌘⇧\, or a tab dragged onto a pane's edge; terminals open in a
- * pane of their own below). Desktop geometry is a ratio of the shell's center
+ * room (⌘\, ⌘⇧\, or a tab dragged onto a pane's edge; a terminal is a tab
+ * like any other). Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
  * side-by-side split; then it leaves the composer uncovered unless
@@ -123,7 +123,6 @@ import {
   type PaneLayout,
   type SplitBar,
   isPaneLeaf,
-  isTerminalPane,
   layoutBoxes,
   paneOrder,
   sizesWithBarAt,
@@ -324,7 +323,6 @@ export function WorkspacePanel({
     splitPane,
     dropTab,
     closePane,
-    toggleTerminals,
     resizeSplit,
     closeTab,
     closeOtherTabs,
@@ -885,9 +883,9 @@ export function WorkspacePanel({
       case 'attachment':
         return <AttachmentTabView key={tab.id} item={tab.item} />
       case 'terminal':
-        // Unmounted while closed or its pane is hidden: the session lives in
-        // the terminal store, and a hidden terminal detaches so the idle
-        // reaper can close it.
+        // Mounted only while on show in an open dock: the session lives in
+        // the terminal store, and a detached terminal can be closed by the
+        // idle reaper.
         return open && paneShown ? <TerminalSubPanel key={tab.termId} termId={tab.termId} workspace={workspace} /> : null
       case 'tasks':
         return (
@@ -942,7 +940,7 @@ export function WorkspacePanel({
         data-focus-order={order}
         aria-label={many ? `Pane ${order + 1}` : undefined}
         role={many ? 'group' : undefined}
-        // Off screen (hidden terminals): kept mounted, out of the layout and
+        // A pane with no place in the layout stays mounted, out of sight and
         // of the accessibility tree.
         hidden={!box}
         className={cn('absolute flex min-h-0 min-w-0 flex-col', !box && 'hidden')}
@@ -975,7 +973,6 @@ export function WorkspacePanel({
           onMoveToNextPane={mobile || shownPanes.length < 2 ? undefined : moveToNextPane}
           canMoveToNextPane={canMoveToNextPane}
           onRevealInGit={chatWorkspace ? undefined : revealInGit}
-          onHideTerminals={!mobile && isTerminalPane(panes, pane) ? toggleTerminals : undefined}
           onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
           onDropTab={mobile ? undefined : dropTab}
           onRefresh={handleRefresh}

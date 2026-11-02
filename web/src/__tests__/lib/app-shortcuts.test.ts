@@ -52,16 +52,16 @@ describe('APP_SHORTCUTS', () => {
   })
 
   it('keeps the terminal toggle on the Control key itself, as in editors', () => {
-    expect(chordOf(APP_SHORTCUTS.toggleTerminal)).toEqual({ key: '`', code: 'Backquote', ctrl: true, shift: false, alt: false })
-    expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'macos')).toBe('⌃`')
-    expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'linux')).toBe('Ctrl+`')
-    expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'windows')).toBe('Ctrl+`')
+    expect(chordOf(APP_SHORTCUTS.openTerminal)).toEqual({ key: '`', code: 'Backquote', ctrl: true, shift: false, alt: false })
+    expect(shortcutLabel(APP_SHORTCUTS.openTerminal, 'macos')).toBe('⌃`')
+    expect(shortcutLabel(APP_SHORTCUTS.openTerminal, 'linux')).toBe('Ctrl+`')
+    expect(shortcutLabel(APP_SHORTCUTS.openTerminal, 'windows')).toBe('Ctrl+`')
   })
 
   it('has one terminal key: no ⌘⇧` (Ctrl+Shift+`) for a new shell', () => {
     expect(Object.keys(APP_SHORTCUTS)).not.toContain('terminal')
     const backquote = Object.values(APP_SHORTCUTS).filter((s) => 'code' in s && s.code === 'Backquote')
-    expect(backquote).toEqual([APP_SHORTCUTS.toggleTerminal])
+    expect(backquote).toEqual([APP_SHORTCUTS.openTerminal])
   })
 
   it('sends the focused tab to a side with Control+Option/Alt and an arrow', () => {

@@ -4,8 +4,8 @@
  * One row: scrolling tabs on the left, a fixed action cluster on the right:
  * the tab list (when the strip overflows), "Open…" (every view and tool,
  * including Terminal and Preview, and Split Right / Split Down), refresh
- * while a Git or file tab shows, maximize on desktop, Hide on a pane of
- * terminals (⌃`), and Close on an empty pane beside others. Views
+ * while a Git or file tab shows, maximize on desktop, and Close on an empty
+ * pane beside others. Views
  * (Git, Plan, Tasks…) come before a hairline and documents after it, as in
  * an editor; the pane's preview tab is set in italics until it is kept.
  * Hiding the dock lives on the header's review-dock toggle (and ⌘D), which
@@ -81,8 +81,6 @@ export interface DockTabBarProps {
   canMoveToNextPane?: (id: string) => boolean
   /** Tab menu on files and diffs: the Changes list with the file's diff open. */
   onRevealInGit?: (path: string) => void
-  /** A pane of terminals: its Hide button (⌃`). */
-  onHideTerminals?: () => void
   /** An empty pane beside others: its Close button. */
   onClosePane?: () => void
   /** A tab dragged out of the strip and let go over a pane (see ``useTabDrag``). */
@@ -281,7 +279,6 @@ export function DockTabBar({
   onMoveToNextPane,
   canMoveToNextPane,
   onRevealInGit,
-  onHideTerminals,
   onClosePane,
   onDropTab,
   onRefresh,
@@ -523,11 +520,6 @@ export function DockTabBar({
             {maximized
               ? <Minimize2 size={13} aria-hidden="true" />
               : <Maximize2 size={13} aria-hidden="true" />}
-          </ActionButton>
-        )}
-        {onHideTerminals && (
-          <ActionButton label={`Hide terminals (${shortcutLabel(APP_SHORTCUTS.toggleTerminal, os)})`} onClick={onHideTerminals}>
-            <ChevronDown size={14} aria-hidden="true" />
           </ActionButton>
         )}
         {onClosePane && (

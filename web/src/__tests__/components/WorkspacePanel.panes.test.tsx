@@ -1,11 +1,10 @@
 /**
  * The Review panel's panes: ⌘\ and ⌘⇧\ split the focused pane right and down
  * into an empty pane (its launcher) as often as there is room, a tab's menu
- * splits it off, and a pane closes with its last tab; ⌃` shows the terminal
- * pane under the open tabs and hides it without stopping the shell (closing
- * the panel when nothing else is open); a file opened from a list is an
- * italic preview tab until it is kept; a strip too narrow for its tabs lists
- * them all. (Dragging tabs between panes: ``DockTabs.reorder.test.tsx``.)
+ * splits it off, and a pane closes with its last tab; a terminal is a tab of
+ * the focused pane like any other; a file opened from a list is an italic
+ * preview tab until it is kept; a strip too narrow for its tabs lists them
+ * all. (Dragging tabs between panes: ``DockTabs.reorder.test.tsx``.)
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
@@ -76,6 +75,7 @@ afterEach(cleanup)
 interface PanelProps {
   viewRequest?: DockViewRequest | null
   layoutRequest?: DockLayoutRequest | null
+  terminalOpenKey?: number
   selectedFilePath?: string
   selectedFileOpenKey?: number
   onRequestClose?: () => void
@@ -90,7 +90,7 @@ async function renderPanel(initial: PanelProps = {}) {
       <WorkspacePanel
         workspace={WORKSPACE}
         open
-        terminalOpenKey={0}
+        terminalOpenKey={props.terminalOpenKey ?? 0}
         viewRequest={props.viewRequest ?? null}
         layoutRequest={props.layoutRequest ?? null}
         selectedFilePath={props.selectedFilePath}
@@ -235,76 +235,42 @@ describe('splitting the Review panel', () => {
   })
 })
 
-describe('terminal panes', () => {
-  const terminalPane = () => screen.queryByRole('button', { name: 'Terminal 1' })?.closest<HTMLElement>('[data-dock-pane]') ?? null
+describe('terminals', () => {
+  const terminalTab = () => screen.queryByRole('button', { name: 'Terminal 1' })
 
-  it('opens a terminal in a pane under the open tabs, hides it without stopping the shell, and shows it again', async () => {
+  it('opens a terminal as a tab of the focused pane, with no pane of its own', async () => {
     const { update } = await renderPanel({ viewRequest: GIT })
 
-    await update({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(terminalPane()).toBeTruthy())
-    expect(terminalPane()).toBe(pane(2))
-    expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
+    await update({ terminalOpenKey: 1 })
 
-    await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
+    await waitFor(() => expect(terminalTab()).toBeTruthy())
     expect(panes()).toHaveLength(0)
-    expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
-    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
-
-    await update({ layoutRequest: { action: 'terminal-toggle', key: 3 } })
-    expect(terminalPane()).toBe(pane(2))
-    // The same shell, not a new one.
-    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
+    expect(terminalTab()!.getAttribute('aria-current')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Hide terminals/ })).toBeNull()
   })
 
-  it('hides from its own strip', async () => {
+  it('shows the same shell again instead of starting another', async () => {
     const { update } = await renderPanel({ viewRequest: GIT })
-    await update({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(terminalPane()).toBeTruthy())
+    await update({ terminalOpenKey: 1 })
+    await waitFor(() => expect(terminalTab()).toBeTruthy())
+    await act(async () => { screen.getByRole('button', { name: 'Git' }).click() })
 
-    await act(async () => { within(terminalPane()!).getByRole('button', { name: /^Hide terminals/ }).click() })
+    await update({ terminalOpenKey: 2 })
 
-    expect(terminalPane()).toBeNull()
+    expect(terminalTab()!.getAttribute('aria-current')).toBe('true')
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 
-  it('closes the panel when hiding them would leave nothing on screen', async () => {
-    const onRequestClose = mock(() => {})
-    const { update } = await renderPanel({ onRequestClose })
-    await update({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(terminalPane()).toBeTruthy())
-
-    await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
-
-    expect(onRequestClose).toHaveBeenCalledTimes(1)
-    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
-  })
-
-  // An empty pane (⌘\ with nothing moved in yet) has no terminal to hide:
-  // ⌃` starts one there instead of closing the panel.
-  it('starts a terminal in an empty focused pane instead of hiding anything', async () => {
-    const onRequestClose = mock(() => {})
-    const { update } = await renderPanel({ viewRequest: GIT, onRequestClose })
-    await update({ layoutRequest: { action: 'split-down', key: 1 } })
-    expect(panes()).toHaveLength(2)
-
-    await update({ layoutRequest: { action: 'terminal-toggle', key: 2 } })
-
-    await waitFor(() => expect(terminalPane()).toBe(pane(2)))
-    expect(onRequestClose).not.toHaveBeenCalled()
-    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
-  })
-
-  it('never opens a document in a terminal pane', async () => {
-    const { update } = await renderPanel({ layoutRequest: { action: 'terminal-show', key: 1 } })
-    await waitFor(() => expect(terminalPane()).toBeTruthy())
-    expect(panes()).toHaveLength(0)
+  it('opens a document beside a terminal, in the same pane', async () => {
+    const { update } = await renderPanel({ terminalOpenKey: 1 })
+    await waitFor(() => expect(terminalTab()).toBeTruthy())
 
     await update({ selectedFilePath: main.path, selectedFileOpenKey: 1 })
+
     await waitFor(() => expect(screen.getByRole('button', { name: main.name })).toBeTruthy())
-    // A pane above the shells, for documents.
-    expect(paneOf(main.name)).toBe(pane(1))
-    expect(terminalPane()).toBe(pane(2))
+    expect(panes()).toHaveLength(0)
+    expect(terminalTab()).toBeTruthy()
   })
 })
 

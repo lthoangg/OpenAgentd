@@ -314,20 +314,16 @@ describe('AppFooter terminals', () => {
     expect(button.className.split(' ')).toContain('h-6')
   })
 
-  it('shows the terminals on click, once, without toggling them away', () => {
+  it('shows the terminals on click, once', () => {
     seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
     const opened = mock(() => {})
-    const toggled = mock(() => {})
     window.addEventListener(APP_EVENTS.openTerminal, opened)
-    window.addEventListener(APP_EVENTS.toggleTerminalGroup, toggled)
     try {
       renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
       fireEvent.click(item()!)
       expect(opened).toHaveBeenCalledTimes(1)
-      expect(toggled).not.toHaveBeenCalled()
     } finally {
       window.removeEventListener(APP_EVENTS.openTerminal, opened)
-      window.removeEventListener(APP_EVENTS.toggleTerminalGroup, toggled)
     }
   })
 })

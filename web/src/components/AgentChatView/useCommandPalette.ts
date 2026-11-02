@@ -3,7 +3,7 @@
  * view-mode cycling, and the window-level keyboard shortcut map.
  *
  * These are grouped together because most of the shortcut handlers (view
- * cycling, palette toggle, workspace files, sidebar/terminal toggles) are
+ * cycling, palette toggle, workspace files, sidebar toggle, terminal) are
  * *also* the actions the palette lists as commands — keeping them in one
  * hook avoids threading the same dozen callbacks through two separate
  * places in the shell.
@@ -49,12 +49,11 @@ export interface UseCommandPaletteArgs {
   handleTogglePalette: () => void
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
+  /** ⌃` — the last terminal, or a new shell, in the Review panel. */
   handleOpenTerminal: () => void
   /** ⌘\ / ⌘⇧\ — split the Review panel's focused pane right / down (desktop + workspace). */
   handleSplitDock: () => void
   handleSplitDockDown: () => void
-  /** ⌃` — the Review panel's terminal panes. */
-  handleToggleTerminalGroup: () => void
   /** ⇧⌘F — focus mode (desktop). */
   handleToggleFocusMode: () => void
   focusMode: boolean
@@ -104,7 +103,6 @@ export function useCommandPalette({
   handleOpenTerminal,
   handleSplitDock,
   handleSplitDockDown,
-  handleToggleTerminalGroup,
   handleToggleFocusMode,
   focusMode,
   handleFindInSession,
@@ -149,7 +147,6 @@ export function useCommandPalette({
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
     handleSplitDock: workspace && !isMobile ? handleSplitDock : undefined,
     handleSplitDockDown: workspace && !isMobile ? handleSplitDockDown : undefined,
-    handleToggleTerminalGroup: workspace ? handleToggleTerminalGroup : undefined,
     handleToggleFocusMode: isMobile ? undefined : handleToggleFocusMode,
     focusMode,
     handleFindInSession: isMobile ? undefined : handleFindInSession,
@@ -216,7 +213,7 @@ export function useCommandPalette({
       useLayoutStore.getState().setDockMaximized(false)
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     }),
-    appShortcut('toggleTerminal', () => { handleToggleTerminalGroup() }, { enabled: Boolean(workspace), allowInEditable: true }),
+    appShortcut('openTerminal', () => { handleOpenTerminal() }, { enabled: Boolean(workspace), allowInEditable: true }),
     appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('splitDockDown', () => { handleSplitDockDown() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('focusMode', () => { handleToggleFocusMode() }, { enabled: !isMobile }),

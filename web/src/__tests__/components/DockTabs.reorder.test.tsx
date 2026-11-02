@@ -1,6 +1,7 @@
 /**
- * Dock tab order: views open in a pane above the terminals, terminals at the
- * end of theirs; terminal sync never re-sorts a strip. Tabs move by drag
+ * Dock tab order: views and terminals open in the focused pane, a view before
+ * the documents, a terminal right after the open tab; terminal sync never
+ * re-sorts a strip. Tabs move by drag
  * (along the strip, or carried onto another pane's strip, middle or edge),
  * ⌥⇧←/→ (Alt+Shift on Linux), or the tab menu (Move Left / Move Right,
  * Split Right / Split Down, Move to Next Pane). (Order within a strip,
@@ -91,7 +92,7 @@ const strips = () => Array.from(document.querySelectorAll<HTMLElement>('[data-do
   .map((node) => Array.from(node.querySelectorAll('[data-dock-tab]')).map((item) => item.textContent))
 /** Tab titles in strip order, every pane's in layout order. */
 const order = () => strips().flat()
-/** New terminals open from the terminal pane's "Open…" menu (the pane ``beside`` is in). */
+/** New terminals open from a pane's "Open…" menu (the pane ``beside`` is in). */
 const newTerminal = async (beside = 'Terminal 1') => {
   const terminals = tab(beside).closest<HTMLElement>('[data-dock-pane]')!
   await act(async () => { within(terminals).getByRole('button', { name: 'Open in Review panel' }).click() })
@@ -110,25 +111,26 @@ function altShift(target: Element, key: 'ArrowLeft' | 'ArrowRight') {
 }
 
 describe('dock tab order', () => {
-  it('opens a view in a pane above the terminals; reopening only activates it', async () => {
+  it('opens a view before the terminals of the focused pane; reopening only activates it', async () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
-    expect(strips()).toEqual([['Git'], ['Terminal 1', 'Terminal 2']])
+    expect(strips()).toEqual([['Git', 'Terminal 1', 'Terminal 2']])
     expect(tab('Git').getAttribute('aria-current')).toBe('true')
 
     act(() => tab('Terminal 2').click())
     await request({ view: 'review', key: 2 })
     expect(order()).toEqual(['Git', 'Terminal 1', 'Terminal 2'])
     expect(tab('Git').getAttribute('aria-current')).toBe('true')
-    expect(tab('Terminal 2').getAttribute('aria-current')).toBe('true')
+    expect(tab('Terminal 2').hasAttribute('aria-current')).toBe(false)
   })
 
-  it('puts new terminals at the end of the terminal pane', async () => {
+  it('opens a new terminal right after the open tab, like any tab', async () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
     act(() => tab('Terminal 1').click())
     await newTerminal()
-    await waitFor(() => expect(strips()).toEqual([['Git'], ['Terminal 1', 'Terminal 2', 'Terminal 3']]))
+    await waitFor(() => expect(strips()).toEqual([['Git', 'Terminal 1', 'Terminal 3', 'Terminal 2']]))
+    expect(tab('Terminal 3').getAttribute('aria-current')).toBe('true')
   })
 
   it('keeps a moved terminal where it is when the terminal store changes', async () => {

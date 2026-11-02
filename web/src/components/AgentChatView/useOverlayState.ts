@@ -55,7 +55,7 @@
  * the Review panel is open is remembered per window. Focus mode hides the
  * sidebar and the Review panel and puts both back on its second press;
  * opening either in the meantime simply ends it. Splitting the Review panel
- * and its terminal group (⌃`) reach the dock as keyed requests, like views.
+ * and opening a terminal (⌃`) reach the dock as keyed requests, like views.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -125,7 +125,7 @@ export interface UseOverlayStateResult {
   handledDockPreviewRequestKeyRef: React.RefObject<number>
   dockAttachmentRequest: AttachmentTabRequest | null
   handledDockAttachmentRequestKeyRef: React.RefObject<number>
-  /** Split / terminal-group requests for the dock (⌘\, ⌃`). */
+  /** Split requests for the dock (⌘\, ⌘⇧\). */
   dockLayoutRequest: DockLayoutRequest | null
   handledDockLayoutKeyRef: React.RefObject<number>
   /** Grows when the user opens the Review panel; an empty one focuses its launcher. */
@@ -151,8 +151,6 @@ export interface UseOverlayStateResult {
   handleSplitDock: () => void
   /** ⌘⇧\: split it down. */
   handleSplitDockDown: () => void
-  /** ⌃`: show or hide the Review panel's terminal panes. */
-  handleToggleTerminalGroup: () => void
   openWorkspaceDialogKey: number
   showTodos: boolean
   showMobileActions: boolean
@@ -625,10 +623,9 @@ export function useOverlayState({
 
   const handleToggleFilesPanel = handleWorkspaceFiles
 
-  // Open (or focus) a terminal — needs an attached workspace. Ensures the
-  // workspace panel is visible, then bumps the key so WorkspacePanel
-  // focuses/opens its terminal tab (cwd = project).
-  // terminal UI (kept simple; may return later behind its own entry point).
+  // ⌃` and Open Terminal: show the last terminal, or start one — needs an
+  // attached workspace. Ensures the Review panel is visible, then bumps the
+  // key so WorkspacePanel shows or opens its terminal tab (cwd = project).
   const handleOpenTerminal = useCallback(() => {
     if (!workspace) return
     setWorkspacePanel((prev) => prev ?? 'files')
@@ -649,18 +646,6 @@ export function useOverlayState({
   const handleSplitDock = useCallback(() => splitDock('split-right'), [splitDock])
   const handleSplitDockDown = useCallback(() => splitDock('split-down'), [splitDock])
 
-  // ⌃` — the terminal group under the open tabs. With the panel closed it
-  // opens on it; phones have no groups, so it is the Terminal tab there.
-  const handleToggleTerminalGroup = useCallback(() => {
-    if (!workspace) return
-    if (isMobile) {
-      handleOpenTerminal()
-      return
-    }
-    requestDockLayout(workspacePanel === null ? 'terminal-show' : 'terminal-toggle')
-    setWorkspacePanel((value) => value ?? 'changed')
-  }, [handleOpenTerminal, isMobile, requestDockLayout, workspace, workspacePanel])
-
   // Native menu items for actions without a keyboard shortcut.
   useEffect(() => {
     const routes: [string, () => void][] = [
@@ -671,7 +656,6 @@ export function useOverlayState({
       [APP_EVENTS.openPlan, handleOpenPlan],
       [APP_EVENTS.splitReviewPanel, handleSplitDock],
       [APP_EVENTS.splitReviewPanelDown, handleSplitDockDown],
-      [APP_EVENTS.toggleTerminalGroup, handleToggleTerminalGroup],
       [APP_EVENTS.toggleFocusMode, handleToggleFocusMode],
       [APP_EVENTS.resetLayout, () => useLayoutStore.getState().resetLayout()],
     ]
@@ -679,7 +663,7 @@ export function useOverlayState({
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleSplitDockDown, handleToggleFocusMode, handleToggleScheduler, handleToggleTerminalGroup])
+  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleSplitDockDown, handleToggleFocusMode, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -785,7 +769,6 @@ export function useOverlayState({
     handleToggleFocusMode,
     handleSplitDock,
     handleSplitDockDown,
-    handleToggleTerminalGroup,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,

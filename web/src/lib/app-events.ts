@@ -10,14 +10,13 @@ export const APP_EVENTS = {
   // Opens without toggling, e.g. on the task ``useUIStore.focusScheduledTask`` named.
   openScheduler: 'oa:open-scheduler',
   openWorkspace: 'oa:open-workspace',
-  // Open Terminal (a new shell) has no key; ⌃` toggles the terminal group.
+  // Open Terminal (⌃`): the last terminal, or a new shell.
   openTerminal: 'oa:open-terminal',
   // A transcript plan-review card or ``plan`` row asks for the session plan.
   openPlan: 'oa:open-plan',
   // View menu: layout commands (their keys match physical codes or Control).
   splitReviewPanel: 'oa:split-review-panel',
   splitReviewPanelDown: 'oa:split-review-panel-down',
-  toggleTerminalGroup: 'oa:toggle-terminal-group',
   toggleFocusMode: 'oa:toggle-focus-mode',
   resetLayout: 'oa:reset-layout',
 } as const

@@ -40,7 +40,6 @@ pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
 pub const MENU_REVIEW_PANEL: &str = "review_panel";
 pub const MENU_SPLIT_REVIEW_PANEL: &str = "split_review_panel";
 pub const MENU_SPLIT_REVIEW_PANEL_DOWN: &str = "split_review_panel_down";
-pub const MENU_TOGGLE_TERMINAL: &str = "toggle_terminal";
 pub const MENU_MAXIMIZE_REVIEW_PANEL: &str = "maximize_review_panel";
 pub const MENU_FOCUS_MODE: &str = "focus_mode";
 pub const MENU_RESET_LAYOUT: &str = "reset_layout";
@@ -228,14 +227,9 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         Some("CmdOrCtrl+Shift+\\"),
     )?;
     // The Control key on every OS, as in editors: ⌘` already switches windows on macOS.
-    // The one terminal key: it shows the terminals, or starts a shell.
-    let view_toggle_terminal = MenuItem::with_id(
-        app,
-        MENU_TOGGLE_TERMINAL,
-        "Terminal",
-        true,
-        Some("Ctrl+`"),
-    )?;
+    // The one terminal key: it shows the last terminal, or starts a shell.
+    let view_terminal =
+        MenuItem::with_id(app, MENU_TERMINAL, "Open Terminal", true, Some("Ctrl+`"))?;
     let view_maximize_review_panel = MenuItem::with_id(
         app,
         MENU_MAXIMIZE_REVIEW_PANEL,
@@ -253,9 +247,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_text_size = crate::app_menu::text_size_submenu(app)?;
     let view_reset_layout =
         MenuItem::with_id(app, MENU_RESET_LAYOUT, "Reset Layout", true, None::<&str>)?;
-    // A new shell; no key of its own (⌃` above shows or starts one).
-    let view_terminal =
-        MenuItem::with_id(app, MENU_TERMINAL, "Open Terminal", true, None::<&str>)?;
     // The run picker (model, thinking, account): ⌘. / Ctrl+., the in-app
     // binding (web/src/lib/app-shortcuts.ts).
     let view_agent_capabilities = MenuItem::with_id(
@@ -385,7 +376,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&view_review_panel)
         .item(&view_split_review_panel)
         .item(&view_split_review_panel_down)
-        .item(&view_toggle_terminal)
         .item(&view_terminal)
         .item(&view_maximize_review_panel)
         .item(&view_focus_mode)
@@ -700,7 +690,6 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_REVIEW_PANEL => emit_frontend_command(app, "review_panel"),
         MENU_SPLIT_REVIEW_PANEL => emit_frontend_command(app, "split_review_panel"),
         MENU_SPLIT_REVIEW_PANEL_DOWN => emit_frontend_command(app, "split_review_panel_down"),
-        MENU_TOGGLE_TERMINAL => emit_frontend_command(app, "toggle_terminal"),
         MENU_MAXIMIZE_REVIEW_PANEL => emit_frontend_command(app, "maximize_review_panel"),
         MENU_FOCUS_MODE => emit_frontend_command(app, "focus_mode"),
         MENU_RESET_LAYOUT => emit_frontend_command(app, "reset_layout"),
@@ -1211,7 +1200,7 @@ mod tests {
         external_usage_access_key, macos_tray_icon, MENU_FOCUS_MODE, MENU_MAXIMIZE_REVIEW_PANEL,
         MENU_NEW_SESSION, MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_RESET_LAYOUT,
         MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL_DOWN, MENU_TERMINAL,
-        MENU_TOGGLE_SIDEBAR, MENU_TOGGLE_TERMINAL,
+        MENU_TOGGLE_SIDEBAR,
     };
 
     #[test]
@@ -1226,7 +1215,6 @@ mod tests {
         assert_eq!(MENU_REVIEW_PANEL, "review_panel");
         assert_eq!(MENU_SPLIT_REVIEW_PANEL, "split_review_panel");
         assert_eq!(MENU_SPLIT_REVIEW_PANEL_DOWN, "split_review_panel_down");
-        assert_eq!(MENU_TOGGLE_TERMINAL, "toggle_terminal");
         assert_eq!(MENU_MAXIMIZE_REVIEW_PANEL, "maximize_review_panel");
         assert_eq!(MENU_FOCUS_MODE, "focus_mode");
         assert_eq!(MENU_RESET_LAYOUT, "reset_layout");

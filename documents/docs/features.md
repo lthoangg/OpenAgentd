@@ -862,7 +862,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older
     turns load, and one **Jump to latest** chip counts what arrived since
-    (`3 new`).
+    (`3 new`). Closing the sidebar while the Review panel is open no longer
+    leaves the chat scrolled up a little with the chip showing.
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running
     clock. It sits under the team call that started or messaged the

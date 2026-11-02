@@ -403,9 +403,14 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       lastContentHeight = nextContentHeight
       lastClientHeight = nextClientHeight
       // Recorded while reading too, so a later shrink is measured against
-      // the content as it was, not as it was at the last scroll event.
+      // the content as it was, not as it was at the last scroll event. The
+      // view too: a shrink clamps it to the new end, and when the layout
+      // grows back before that clamp's scroll event (the sidebar closing
+      // beside the Review panel widens the chat for a frame), the event must
+      // not read as the reader scrolling up from where they were before.
       lastContentHeightRef.current = nextContentHeight
       lastScrollHeightRef.current = el.scrollHeight
+      lastScrollTopRef.current = el.scrollTop
       if (!attachedRef.current) return
       if (pointerDownRef.current) return
       if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return

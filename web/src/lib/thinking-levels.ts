@@ -10,6 +10,7 @@ import type { ModelCatalogEntry } from '@/api/types'
  */
 export function pickableThinkingLevels(entry: ModelCatalogEntry | undefined, known: boolean): string[] {
   if (!known || !entry) return []
-  const levels = entry.thinking_levels.filter((value) => value !== '__none__')
+  // An older server, or a partial entry, may leave the list out.
+  const levels = (entry.thinking_levels ?? []).filter((value) => value !== '__none__')
   return levels.length === 1 && levels[0] === 'none' ? [] : levels
 }

@@ -28,4 +28,9 @@ describe('pickableThinkingLevels', () => {
     expect(pickableThinkingLevels(model('a:b', ['__none__']), true)).toEqual([])
     expect(pickableThinkingLevels(model('a:b', ['none']), true)).toEqual([])
   })
+
+  it('does not throw on an entry without a level list (an older server)', () => {
+    const partial = { ...models[0], thinking_levels: undefined } as unknown as ModelCatalogEntry
+    expect(pickableThinkingLevels(partial, true)).toEqual([])
+  })
 })

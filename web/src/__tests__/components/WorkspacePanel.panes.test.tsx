@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
 import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockLayoutRequest, DockViewRequest } from '@/components/WorkspacePanel/dock-tabs'
@@ -60,6 +61,7 @@ beforeEach(() => {
   _resetKeyboardForTests()
   _resetTerminalStoreForTests()
   useGitPanelStore.setState({ workspaces: {} })
+  useLayoutStore.setState({ dockMaximized: false })
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
@@ -143,6 +145,21 @@ describe('splitting the Review panel', () => {
     await act(async () => { within(pane(4)).getByRole('button', { name: /^Close pane/ }).click() })
     expect(panes()).toHaveLength(3)
     expect(within(pane(1)).getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  // ⌘⇧D is the whole panel, as the header's panel button is: every pane
+  // stays, only the panel grows.
+  it('maximizes the whole panel with every pane in it, not the focused pane alone', async () => {
+    const { update } = await renderPanel({ viewRequest: GIT })
+    await update({ layoutRequest: { action: 'split-right', key: 1 } })
+    expect(panes()).toHaveLength(2)
+
+    await act(async () => { useLayoutStore.setState({ dockMaximized: true }) })
+
+    expect(panes()).toHaveLength(2)
+    expect(within(pane(1)).getByRole('button', { name: 'Git' })).toBeTruthy()
+    expect(screen.getByRole('separator', { name: 'Resize panes' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /^Restore Review panel/ })).toHaveLength(1)
   })
 
   it('says so instead of splitting a pane too small for two', async () => {

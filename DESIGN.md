@@ -681,7 +681,7 @@ drawer and full-screen sheet.
   Covering, the panel stops above the composer (`--composer-h`), so a message
   can be written beside the diff; maximized (`Mod+Shift+D`) it covers both.
   What it covers stays mounted, `inert`. Maximize lasts until toggled or Escape;
-  with several panes it shows the focused one.
+  it grows the whole panel, every pane in it (never one pane alone).
 - **Toggles slide, resizes do not.** Showing or hiding the sidebar or the
   Review panel slides its width (`base`, `ease-sheet`) with a CSS transition
   set only while the toggle runs (`useToggleTween`, `ResizableAside`

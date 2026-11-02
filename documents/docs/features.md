@@ -783,7 +783,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     transcript but not the composer, so you can write while reading a diff;
     maximized
     (`⌘⇧D`/`Ctrl+Shift+D`) it covers both until you restore it or press
-    Escape.
+    Escape. Maximizing grows the whole panel with every pane in it; before,
+    with several panes only the focused one showed.
   - Showing or hiding the sidebar or the Review panel slides it in or out
     (a quarter second); its rows ride the moving edge instead of rewrapping,
     and the composer keeps its focus and draft. Dragging an edge or resizing

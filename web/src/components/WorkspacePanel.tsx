@@ -770,11 +770,8 @@ export function WorkspacePanel({
   )
 
   // ── Panes ─────────────────────────────────────────────────────────────────
-  // Maximized with several panes: the focused one takes the whole panel.
-  const onScreen = useMemo(
-    () => new Set(maximizeState === true && shownPanes.length > 1 ? [focused] : shownPanes),
-    [maximizeState, shownPanes, focused],
-  )
+  // Maximize (⌘⇧D) grows the whole panel: every pane stays on screen.
+  const onScreen = useMemo(() => new Set(shownPanes), [shownPanes])
   const many = onScreen.size > 1
   // A bar being dragged: its split's sizes until the drop.
   const [liveSizes, setLiveSizes] = useState<{ key: string; sizes: number[] } | null>(null)
@@ -943,8 +940,8 @@ export function WorkspacePanel({
         data-focus-order={order}
         aria-label={many ? `Pane ${order + 1}` : undefined}
         role={many ? 'group' : undefined}
-        // Off screen (hidden terminals, or another pane maximized): kept
-        // mounted, out of the layout and of the accessibility tree.
+        // Off screen (hidden terminals): kept mounted, out of the layout and
+        // of the accessibility tree.
         hidden={!box}
         className={cn('absolute flex min-h-0 min-w-0 flex-col', !box && 'hidden')}
         style={box ? paneStyle(box) : undefined}

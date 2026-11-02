@@ -627,6 +627,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     touch screens. On a phone every primary button is 44px tall.
   - Text fields' placeholders use the muted tone, which reads at AA on every
     surface.
+  - In the desktop app the blue focus ring shows only while Tab or F6 moves
+    focus. Closing a menu with Escape, a shortcut such as ⌘B, or typing no
+    longer rings the button focus lands on. Text fields everywhere (search,
+    Settings, renaming) mark focus with a darker edge, as the composer does,
+    instead of a blue glow.
   - Error toasts stay until you close them, and a toast can carry an action.
     Deleting a session shows **Session deleted · Undo** for 5 seconds; Undo
     brings the session back (and reopens it if it was open).

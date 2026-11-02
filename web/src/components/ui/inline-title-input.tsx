@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * ``row`` sits inside a list row or tab (the focus colour is its edge);
+ * ``row`` sits inside a list row or tab (a strong edge marks it as a field);
  * ``field`` is a standalone text field on the page: the usual border and
- * input fill, with the focus ring while it is open.
+ * input fill, its edge strengthening while it is open. Neither glows blue:
+ * the blue ring marks keyboard focus.
  */
 const VARIANT_CLASS = {
-  row: 'rounded-xs border border-(--focus-ring) bg-(--bg-page) px-1 text-(--color-text) outline-none ring-2 ring-(--focus-ring)/25',
-  field: 'rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-1.5 text-(--color-text) outline-none focus:ring-2 focus:ring-(--focus-ring)',
+  row: 'rounded-xs border border-(--color-border-strong) bg-(--bg-page) px-1 text-(--color-text) outline-none',
+  field: 'rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-1.5 text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong)',
 } as const
 
 /**

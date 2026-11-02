@@ -32,7 +32,9 @@ function Input({ className, ref, ...props }: InputProps) {
         'placeholder:text-(--color-text-muted)',
         // Interaction
         'outline-none transition-colors focus:outline-none focus-visible:outline-none',
-        'focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30',
+        // A clicked field shows focus the composer's way: a stronger edge,
+        // no blue glow (the blue ring marks keyboard focus).
+        'focus:border-(--color-border-strong)',
         // States
         'disabled:cursor-not-allowed disabled:opacity-50',
         'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',

@@ -107,6 +107,12 @@ const RULES: Rule[] = [
     },
   },
   {
+    name: 'blue-field-focus',
+    why: 'a clicked text field shows focus the composer\'s way, a border-strong edge; a blue glow on every click is not native (the ring is for keyboard focus)',
+    pattern: /(?:focus|focus-within|focus-visible):border-\(--focus-ring\)|(?:focus|focus-within):ring-(?:[1-9]|\(--focus-ring\))|(?<![\w:-])ring-\(--focus-ring\)\/\d+/g,
+    allow: {},
+  },
+  {
     name: 'pulsing-text',
     why: 'pulse only a live dot, a mark or a skeleton; pulsing words are hard to read (state goes in a chip or a static "…")',
     pattern: /(?<![\w-])animate-pulse(?![\w-])/g,

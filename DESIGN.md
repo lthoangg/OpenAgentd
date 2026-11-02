@@ -685,8 +685,12 @@ tooltips. Write numeric layers as `z-60`, not `z-[60]`.
 
 Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain
-decorative supplements, not the only focus indicator. Input borders also shift
-to `focus-ring`. Focus is never removed without an equally visible replacement.
+decorative supplements, not the only focus indicator. In the desktop app the
+ring follows keyboard navigation only (Tab, F6; `lib/desktop-shell.ts`):
+Escape, shortcuts and typing never draw it. Text fields mark focus the
+composer's way, their edge stepping to `border-strong`, never a blue glow
+(lint: `blue-field-focus`). Focus is never removed without an equally visible
+replacement.
 
 ### Motion
 

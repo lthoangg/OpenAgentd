@@ -557,7 +557,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               }
             }}
             spellCheck={false}
-            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 pointer-coarse:h-9"
+            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) pointer-coarse:h-9"
           />
         </form>
         {agentAction && (

@@ -228,6 +228,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         Some("CmdOrCtrl+Shift+\\"),
     )?;
     // The Control key on every OS, as in editors: ⌘` already switches windows on macOS.
+    // The one terminal key: it shows the terminals, or starts a shell.
     let view_toggle_terminal = MenuItem::with_id(
         app,
         MENU_TOGGLE_TERMINAL,
@@ -252,13 +253,9 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_text_size = crate::app_menu::text_size_submenu(app)?;
     let view_reset_layout =
         MenuItem::with_id(app, MENU_RESET_LAYOUT, "Reset Layout", true, None::<&str>)?;
-    let view_terminal = MenuItem::with_id(
-        app,
-        MENU_TERMINAL,
-        "Open Terminal",
-        true,
-        Some("CmdOrCtrl+Shift+`"),
-    )?;
+    // A new shell; no key of its own (⌃` above shows or starts one).
+    let view_terminal =
+        MenuItem::with_id(app, MENU_TERMINAL, "Open Terminal", true, None::<&str>)?;
     // The run picker (model, thinking, account): ⌘. / Ctrl+., the in-app
     // binding (web/src/lib/app-shortcuts.ts).
     let view_agent_capabilities = MenuItem::with_id(

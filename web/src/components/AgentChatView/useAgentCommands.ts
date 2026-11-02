@@ -172,7 +172,7 @@ export function useAgentCommands({
           action: handleOpenPreview,
         }]
       : []),
-    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
+    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'A new shell in the workspace (runs on the connected server)', action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },

@@ -216,7 +216,6 @@ export function useCommandPalette({
       useLayoutStore.getState().setDockMaximized(false)
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     }),
-    appShortcut('terminal', () => { handleOpenTerminal() }),
     appShortcut('toggleTerminal', () => { handleToggleTerminalGroup() }, { enabled: Boolean(workspace), allowInEditable: true }),
     appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('splitDockDown', () => { handleSplitDockDown() }, { enabled: !isMobile && Boolean(workspace) }),

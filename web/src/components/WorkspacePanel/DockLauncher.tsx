@@ -54,7 +54,7 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))
   view('btw', 'Side questions', <MessageCircleQuestion size={14} aria-hidden="true" />, actions.onOpenSideQuestions)
   view('schedule', 'Scheduled tasks', <CalendarClock size={14} aria-hidden="true" />, actions.onOpenSchedule)
-  tool('terminal', 'Terminal', <TerminalSquare size={14} aria-hidden="true" />, actions.onOpenTerminal, shortcutLabel(APP_SHORTCUTS.terminal, os))
+  tool('terminal', 'Terminal', <TerminalSquare size={14} aria-hidden="true" />, actions.onOpenTerminal)
   tool('preview', 'Preview', <Globe size={14} aria-hidden="true" />, actions.onOpenPreview)
   tool('file', 'Find file…', <Search size={14} aria-hidden="true" />, actions.onOpenFile, shortcutLabel(APP_SHORTCUTS.quickOpen, os))
   return rows

@@ -43,7 +43,6 @@ describe('APP_SHORTCUTS', () => {
     expect(chordOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true, alt: false })
     expect(chordOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false, alt: false })
     expect(chordOf(APP_SHORTCUTS.previousPrompt)).toEqual({ key: 'ArrowUp', mod: true, shift: false, alt: true })
-    expect(chordOf(APP_SHORTCUTS.terminal)).toEqual({ key: '`', code: 'Backquote', mod: true, shift: true, alt: false })
   })
 
   it('opens the run picker on ⌘. (Ctrl+.), matched on the physical key', () => {
@@ -56,6 +55,13 @@ describe('APP_SHORTCUTS', () => {
     expect(chordOf(APP_SHORTCUTS.toggleTerminal)).toEqual({ key: '`', code: 'Backquote', ctrl: true, shift: false, alt: false })
     expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'macos')).toBe('⌃`')
     expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'linux')).toBe('Ctrl+`')
+    expect(shortcutLabel(APP_SHORTCUTS.toggleTerminal, 'windows')).toBe('Ctrl+`')
+  })
+
+  it('has one terminal key: no ⌘⇧` (Ctrl+Shift+`) for a new shell', () => {
+    expect(Object.keys(APP_SHORTCUTS)).not.toContain('terminal')
+    const backquote = Object.values(APP_SHORTCUTS).filter((s) => 'code' in s && s.code === 'Backquote')
+    expect(backquote).toEqual([APP_SHORTCUTS.toggleTerminal])
   })
 
   it('has the layout shortcuts of the View menu', () => {

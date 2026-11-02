@@ -10,8 +10,7 @@ export const APP_EVENTS = {
   // Opens without toggling, e.g. on the task ``useUIStore.focusScheduledTask`` named.
   openScheduler: 'oa:open-scheduler',
   openWorkspace: 'oa:open-workspace',
-  // The terminal key is matched on the physical Backquote code, which a
-  // synthetic key press does not carry.
+  // Open Terminal (a new shell) has no key; ⌃` toggles the terminal group.
   openTerminal: 'oa:open-terminal',
   // A transcript plan-review card or ``plan`` row asks for the session plan.
   openPlan: 'oa:open-plan',

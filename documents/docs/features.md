@@ -733,10 +733,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     comments when its tab moves.
   - Terminals open in a pane of their own under the others, so a diff and a
     shell show at once; files never open there. **Terminal** (Control and the
-    backquote key, on every system) shows or hides the terminal panes; hidden
-    shells keep running, and the status bar says **N terminals running** (a
-    click shows them). `⌘⇧` (`Ctrl+Shift`) with the backquote key still opens
-    a new terminal.
+    backquote key, on every system) shows or hides the terminal panes, or
+    starts a shell when there is none; hidden shells keep running, and the
+    status bar says **N terminals running** (a click shows them). It is the
+    only terminal key: `⌘⇧` (`Ctrl+Shift`) with the backquote key no longer
+    opens one; a new shell is in the panel's **+** menu and the palette.
   - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
     files. A file or diff opened from a list or a link opens as an *italic*
     preview tab that the next one replaces; double-click it or choose **Keep
@@ -1079,7 +1080,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
     closes an open dock tab first). Edit added Find in Transcript (`⌘F`) *(deprecated; removed in v3.14.0)*; View
-    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick). A new Help menu
+    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick; *removed in v3.40.0*). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
     Hide/Hide Others/Show All. Reload and Force Reload no longer have

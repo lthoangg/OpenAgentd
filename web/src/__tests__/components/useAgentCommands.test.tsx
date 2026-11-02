@@ -206,13 +206,13 @@ describe("useAgentCommands — reload-window", () => {
 //  Open Terminal command
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — open-terminal", () => {
-  it("appears with Ctrl+Shift+` shortcut when a handler is provided", () => {
+  it("starts a new shell and has no key of its own (Ctrl+` toggles the terminals)", () => {
     const handleOpenTerminal = mock(() => {})
     const { result } = renderHook(() =>
       useAgentCommands(makeArgs({ handleOpenTerminal })),
     )
     const cmd = byId(result.current, "open-terminal")
-    expect(cmd.shortcut).toBe("Ctrl+Shift+`")
+    expect(cmd.shortcut).toBeUndefined()
     cmd.action()
     expect(handleOpenTerminal).toHaveBeenCalledTimes(1)
   })

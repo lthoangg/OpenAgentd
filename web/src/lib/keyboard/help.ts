@@ -92,7 +92,6 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys(appOnly('Dock tab 1 to 8, and the last'), chordOf(APP_SHORTCUTS.dockTab1), chordOf(APP_SHORTCUTS.dockTab9)),
         keys(appOnly('Next and previous dock tab'), NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD),
         keys('Move the focused dock tab', { key: 'ArrowLeft', alt: true, shift: true }, { key: 'ArrowRight', alt: true, shift: true }),
-        app('terminal', 'Open terminal'),
       ],
     },
     {

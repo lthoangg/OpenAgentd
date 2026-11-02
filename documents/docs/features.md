@@ -831,7 +831,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     request into the composer for you to send.
     Each row leads with the file name, its folder after it in muted text,
     so files in one deep folder no longer look alike; an empty list says
-    **No changes** once.
+    **No changes** once. The status letter takes its lines' color: **A**
+    green, **D** red, **M** orange (all three were orange).
   - A tab's close button is always visible, dimmed on tabs that are not
     open; terminal tabs show it on touch too.
   - **Git**: one **View** menu holds Graph view and All branches. History

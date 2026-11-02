@@ -3,8 +3,7 @@ import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 export interface WorkspaceGitState {
-  subTab: 'changes' | 'commits' | 'tree'
-  allBranches: boolean
+  subTab: 'changes' | 'commits'
   expandedCommitSha: string | null
   expandedDiffs: string[]
   expandedCommitFiles: string[]
@@ -12,7 +11,6 @@ export interface WorkspaceGitState {
 
 export const DEFAULT_WORKSPACE_STATE: WorkspaceGitState = {
   subTab: 'changes',
-  allBranches: false,
   expandedCommitSha: null,
   expandedDiffs: [],
   expandedCommitFiles: [],
@@ -21,8 +19,7 @@ export const DEFAULT_WORKSPACE_STATE: WorkspaceGitState = {
 interface GitPanelStore {
   workspaces: Record<string, WorkspaceGitState>
   getWorkspaceState: (workspacePath: string) => WorkspaceGitState
-  setSubTab: (workspacePath: string, subTab: 'changes' | 'commits' | 'tree') => void
-  setAllBranches: (workspacePath: string, allBranches: boolean) => void
+  setSubTab: (workspacePath: string, subTab: WorkspaceGitState['subTab']) => void
   setExpandedCommitSha: (workspacePath: string, sha: string | null) => void
   setExpandedDiffs: (workspacePath: string, paths: string[]) => void
   toggleDiffExpanded: (workspacePath: string, path: string) => void
@@ -34,11 +31,28 @@ const ensureWorkspaceState = (state: { workspaces: Record<string, WorkspaceGitSt
   if (!state.workspaces[workspacePath]) {
     state.workspaces[workspacePath] = {
       subTab: 'changes',
-      allBranches: false,
       expandedCommitSha: null,
       expandedDiffs: [],
       expandedCommitFiles: [],
     }
+  }
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+
+/**
+ * One stored workspace, as any build wrote it. Builds before v3.40.0 had a
+ * graph view (`tree`) with an All branches toggle; the graph is gone, so it
+ * opens as the commit list and the toggle is dropped.
+ */
+function readWorkspaceState(value: unknown): WorkspaceGitState {
+  const stored = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return {
+    subTab: stored.subTab === 'commits' || stored.subTab === 'tree' ? 'commits' : 'changes',
+    expandedCommitSha: typeof stored.expandedCommitSha === 'string' ? stored.expandedCommitSha : null,
+    expandedDiffs: strings(stored.expandedDiffs),
+    expandedCommitFiles: strings(stored.expandedCommitFiles),
   }
 }
 
@@ -55,13 +69,6 @@ export const useGitPanelStore = create<GitPanelStore>()(
         set((state) => {
           ensureWorkspaceState(state, workspacePath)
           state.workspaces[workspacePath].subTab = subTab
-        })
-      },
-
-      setAllBranches: (workspacePath, allBranches) => {
-        set((state) => {
-          ensureWorkspaceState(state, workspacePath)
-          state.workspaces[workspacePath].allBranches = allBranches
         })
       },
 
@@ -112,6 +119,14 @@ export const useGitPanelStore = create<GitPanelStore>()(
     })),
     {
       name: 'oa.gitPanelStore',
+      merge: (persisted, current) => {
+        const stored = (persisted as { workspaces?: unknown } | undefined)?.workspaces
+        const workspaces = stored && typeof stored === 'object' ? stored as Record<string, unknown> : {}
+        return {
+          ...current,
+          workspaces: Object.fromEntries(Object.entries(workspaces).map(([path, value]) => [path, readWorkspaceState(value)])),
+        }
+      },
     }
   )
 )

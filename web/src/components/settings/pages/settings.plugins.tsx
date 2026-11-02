@@ -23,7 +23,7 @@ import { SettingsPage } from '@/components/settings/SettingsPage'
 import { ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 
-const CODE = 'rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text) break-all [box-decoration-break:clone]'
+const CODE = 'rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text) break-all [box-decoration-break:clone]'
 
 /** Hook names as words; the raw name stays in the title for matching docs. */
 const HOOK_LABEL: Record<string, string> = {
@@ -57,7 +57,7 @@ function PluginRow({ plugin }: { plugin: PluginStatus }) {
       {plugin.errors.length > 0 && (
         <ul className="space-y-1">
           {plugin.errors.map((e) => (
-            <li key={e} className="break-words font-mono text-[11px] leading-relaxed text-(--color-error)">{e}</li>
+            <li key={e} className="break-words font-mono text-meta leading-relaxed text-(--color-error)">{e}</li>
           ))}
         </ul>
       )}

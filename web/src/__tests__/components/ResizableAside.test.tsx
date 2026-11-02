@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useRef } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
-import { PanelResizeHandle, ResizableAside, settledWidthBesidePanels } from '@/components/ResizableAside'
+import {
+  PANEL_SLIDE_MS,
+  PanelResizeHandle,
+  ResizableAside,
+  onPanelSlideBeside,
+  settledWidthBesidePanels,
+  usePanelSlideBeside,
+} from '@/components/ResizableAside'
+import { useElementWidth } from '@/hooks/use-element-width'
+import { useFakeTimers } from '../fake-timers'
 
 // rAF is async in browsers: queue frames and flush them explicitly.
 const frames: FrameRequestCallback[] = []
@@ -72,6 +82,62 @@ describe('ResizableAside', () => {
     expect(screen.queryByRole('separator')).toBeNull()
   })
 
+  // Desktop panels show and hide as a straight cut. Through an animation the
+  // width waited for a frame, and a throttled frame loop (a hidden window)
+  // left the panel at 0 px; as a style it is there on the first paint.
+  it('sets the width as a plain style with instantWidth, without waiting for a frame', () => {
+    const { rerender } = render(
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0.01 }, instantWidth: true })}
+      >
+        <p>content</p>
+      </ResizableAside>,
+    )
+    const aside = screen.getByRole('complementary', { name: 'Panel' })
+    expect(aside.style.width).toBe('300px')
+    expect(aside.getAttribute('data-panel-target-width')).toBe('300')
+    expect(frames).toHaveLength(0)
+
+    rerender(
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={() => ({ animate: { width: 0 }, transition: { duration: 0.01 }, instantWidth: true })}
+      >
+        <p>content</p>
+      </ResizableAside>,
+    )
+    expect(aside.style.width).toBe('0px')
+  })
+
+  // Opening and closing slide: a CSS width transition, set only for the
+  // toggle, so a window resize or a drag still moves the edge at once. CSS,
+  // not a frame loop, so a hidden window still ends at the right width.
+  it('tweens the width with a CSS transition only while tweenWidth is set', () => {
+    const panel = (tweenWidth: boolean, width: number) => (
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={() => ({ animate: { width }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
+      >
+        <p>content</p>
+      </ResizableAside>
+    )
+    const { rerender } = render(panel(false, 300))
+    const aside = screen.getByRole('complementary', { name: 'Panel' })
+    expect(aside.style.transition).toBe('')
+
+    rerender(panel(true, 0))
+    expect(aside.style.width).toBe('0px')
+    expect(aside.style.transition).toBe('width var(--motion-base) var(--ease-sheet)')
+
+    rerender(panel(false, 0))
+    expect(aside.style.transition).toBe('')
+    expect(frames).toHaveLength(0)
+  })
+
   // Closing tweens the aside's width to 0. Content that tracked that width
   // reflowed every frame (a long plan: ~10 ms a frame); pinned to the target
   // width it is only clipped by the shrinking aside.
@@ -108,6 +174,68 @@ describe('ResizableAside', () => {
     fireEvent.pointerDown(screen.getByRole('separator'), { button: 0, clientX: 100, pointerType: 'mouse' })
     moveTo(150)
     expect(content.style.width).toBe('100%')
+  })
+
+  // The header's caps line up with the sidebar and the Review panel by
+  // reading their widths from CSS properties, so they follow a drag and a
+  // show/hide slide frame by frame.
+  describe('publishWidthAs', () => {
+    const realObserver = globalThis.ResizeObserver
+    const observers: Array<{ callback: ResizeObserverCallback; options?: ResizeObserverOptions; disconnected: boolean }> = []
+    beforeEach(() => {
+      observers.length = 0
+      globalThis.ResizeObserver = class {
+        private entry: { callback: ResizeObserverCallback; options?: ResizeObserverOptions; disconnected: boolean }
+        constructor(callback: ResizeObserverCallback) {
+          this.entry = { callback, disconnected: false }
+          observers.push(this.entry)
+        }
+        observe(_target: Element, options?: ResizeObserverOptions) { this.entry.options = options }
+        unobserve() {}
+        disconnect() { this.entry.disconnected = true }
+      } as unknown as typeof ResizeObserver
+    })
+    afterEach(() => {
+      globalThis.ResizeObserver = realObserver
+      document.documentElement.style.removeProperty('--oa-test-w')
+    })
+
+    const panel = (publish: boolean) => (
+      <ResizableAside
+        aria-label="Panel"
+        publishWidthAs={publish ? '--oa-test-w' : undefined}
+        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+        getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0 }, instantWidth: true })}
+      >
+        <p>content</p>
+      </ResizableAside>
+    )
+    const published = () => document.documentElement.style.getPropertyValue('--oa-test-w')
+
+    it('writes its border-box width to the root as it changes', () => {
+      render(panel(true))
+      const aside = screen.getByRole('complementary', { name: 'Panel' })
+      aside.getBoundingClientRect = () => ({ width: 264.5 }) as DOMRect
+      act(() => observers[0]?.callback([], {} as ResizeObserver))
+
+      expect(published()).toBe('264.5px')
+      // The border box: a panel closed to 0 still draws its 1px edge until
+      // the edge is dropped, and that change must be seen too.
+      expect(observers[0]?.options).toEqual({ box: 'border-box' })
+    })
+
+    it('clears the property when it stops publishing or unmounts', () => {
+      const { rerender, unmount } = render(panel(true))
+      expect(published()).toBe('0px')
+      rerender(panel(false))
+      expect(published()).toBe('')
+      expect(observers[0]?.disconnected).toBe(true)
+
+      rerender(panel(true))
+      expect(published()).toBe('0px')
+      unmount()
+      expect(published()).toBe('')
+    })
   })
 })
 
@@ -146,5 +274,68 @@ describe('settledWidthBesidePanels', () => {
     expect(settledWidthBesidePanels(row(264, 264))).toBe(736)
     cleanup()
     expect(settledWidthBesidePanels(row(1, 0))).toBe(999)
+  })
+})
+
+describe('a panel beside a sliding one', () => {
+  let timers: ReturnType<typeof useFakeTimers> | null = null
+  afterEach(() => {
+    timers?.restore()
+    timers = null
+  })
+
+  // The Review panel beside the center: its width is a ratio of the center.
+  function Center() {
+    const ref = useRef<HTMLDivElement | null>(null)
+    const width = useElementWidth(ref, settledWidthBesidePanels, onPanelSlideBeside)
+    const sliding = usePanelSlideBeside(ref)
+    const attach = (node: HTMLDivElement | null) => {
+      if (node) node.getBoundingClientRect = () => ({ width: 736 }) as DOMRect
+      ref.current = node
+    }
+    return <div ref={attach}>{`${width} ${sliding ? 'sliding' : 'still'}`}</div>
+  }
+  // The sidebar is 264px on screen; ``target`` is where its width is headed.
+  const row = (target: number, tweenWidth: boolean) => (
+    <div ref={(node) => {
+      const sidebar = node?.querySelector('aside')
+      if (sidebar) sidebar.getBoundingClientRect = () => ({ width: 264 }) as DOMRect
+    }}>
+      <ResizableAside
+        aria-label="Sidebar"
+        resize={{ width: 264, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize sidebar' }}
+        getMotion={() => ({ animate: { width: target }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
+      >
+        <p>sidebar</p>
+      </ResizableAside>
+      <Center />
+    </div>
+  )
+
+  // Measured a ResizeObserver callback and a frame later, the Review panel
+  // jumped to its new width a few frames into the sidebar's slide: the chat
+  // between them overshot, then snapped back.
+  it('re-measures in the commit the panel beside it starts sliding, and slides along until it ends', () => {
+    const view = render(row(264, false))
+    expect(screen.getByText('736 still')).toBeTruthy()
+    timers = useFakeTimers()
+
+    view.rerender(row(0, true))
+
+    // No frame was run: the width is there for the slide's first paint.
+    expect(frames).toHaveLength(0)
+    expect(screen.getByText('1000 sliding')).toBeTruthy()
+    act(() => timers!.tick(PANEL_SLIDE_MS - 1))
+    expect(screen.getByText('1000 sliding')).toBeTruthy()
+    act(() => timers!.tick(1))
+    expect(screen.getByText('1000 still')).toBeTruthy()
+  })
+
+  it('does not slide along with a width change that is not a show or hide', () => {
+    const view = render(row(264, false))
+
+    view.rerender(row(300, false))
+
+    expect(screen.getByText('736 still')).toBeTruthy()
   })
 })

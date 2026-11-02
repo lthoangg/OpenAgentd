@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -33,7 +33,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -164,6 +164,8 @@ describe('WorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () => {
       rerender = render(renderPanel(readme.path, 1)).rerender
     })
     await waitFor(() => expect(screen.getByRole('button', { name: `Close ${readme.name}` })).toBeTruthy())
+    // Files open as a preview tab, which the next file replaces: keep it.
+    fireEvent.doubleClick(screen.getByRole('button', { name: readme.name }))
     await act(async () => { rerender(renderPanel(other.path, 2)) })
     await waitFor(() => expect(screen.getByRole('button', { name: `Close ${other.name}` })).toBeTruthy())
     onFileSelect.mockClear()

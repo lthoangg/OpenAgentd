@@ -33,9 +33,9 @@ interface Rule {
 
 const RULES: Rule[] = [
   {
-    name: 'sub-floor-text',
-    why: 'index.css clamps 8–10.5px to 11px; write text-[11px] so the class matches the result',
-    pattern: /(?<![\w-])(?:md:)?text-\[(?:8|9|10|10\.5)px\]/g,
+    name: 'px-text',
+    why: 'type is rem so it follows Text size and Dynamic Type; use text-meta, text-xs, text-code, text-sm…',
+    pattern: /(?<![\w-])text-\[\d+(?:\.\d+)?px\]/g,
     allow: {},
   },
   {
@@ -75,8 +75,6 @@ const RULES: Rule[] = [
       // Rendered content: PDF page and sized web-preview viewport.
       'components/PdfDocumentViewer.tsx': 1,
       'components/Preview/PreviewTabView.tsx': 1,
-      // The composer floats over the transcript (rest and minimized states).
-      'components/InputComposer.tsx': 2,
       // Design-board preview card, not product UI.
       'components/previews/FormPrimitivesPreview.tsx': 1,
     },
@@ -100,6 +98,18 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'accent-selection-fill',
+    why: 'a chosen segment, tab or option fills with --color-fill-selected (a raised tone on dark), not the near-white accent, which outshines the content in dark mode',
+    pattern: /(?:[\w-]+:)?bg-\(--color-accent\)\s+(?:[\w-]+:)?text-\(--color-text-on-accent\)/g,
+    allow: {},
+  },
+  {
+    name: 'border-tone-hover',
+    why: 'a control on the keycap wash hovers to --color-fill-key-hover, half way to a chosen fill; a border tone is as dark as the chosen sand on paper, so a hovered option looked picked',
+    pattern: /(?<![\w-])(?:[\w-]+:)*hover:bg-\(--color-border(?:-subtle|-strong)?\)/g,
+    allow: {},
+  },
+  {
     name: 'faint-focus-ring',
     why: 'keyboard focus is a solid 2px ring or outline in --focus-ring; a 40% one is hard to see',
     pattern: /focus-visible:(?:ring|outline)-\(--focus-ring\)\/\d+/g,
@@ -107,6 +117,12 @@ const RULES: Rule[] = [
       // The composer's attachment strip: the composer stays exactly as it is.
       'components/FilePreviewStrip.tsx': 5,
     },
+  },
+  {
+    name: 'blue-field-focus',
+    why: 'a clicked text field shows focus the composer\'s way, a border-strong edge; a blue glow on every click is not native (the ring is for keyboard focus)',
+    pattern: /(?:focus|focus-within|focus-visible):border-\(--focus-ring\)|(?:focus|focus-within):ring-(?:[1-9]|\(--focus-ring\))|(?<![\w:-])ring-\(--focus-ring\)\/\d+/g,
+    allow: {},
   },
   {
     name: 'pulsing-text',
@@ -127,6 +143,54 @@ const RULES: Rule[] = [
     name: 'bracket-z-index',
     why: 'write numeric z-index as z-60, not z-[60]',
     pattern: /(?<![\w-])z-\[\d+\]/g,
+    allow: {},
+  },
+  {
+    name: 'hover-only',
+    why: 'nothing appears only on hover: show an action at rest (muted) or put it in the More / right-click / long-press menu',
+    pattern: /^(?=.*(?<![\w:/-])(?:md:)?opacity-0(?![\w-]))(?=.*group-hover(?:\/[\w-]+)?:opacity-100).*$/g,
+    allow: {
+      // A tooltip-style caption, not an action.
+      'components/FileLightbox.tsx': 1,
+      // The transcript's ambient timeline; scrolling does the same job.
+      'components/AgentView/TimelineScrubber.tsx': 1,
+    },
+  },
+  // ── Contrast with the existing palette (DESIGN.md → Colors) ─────────────
+  {
+    name: 'subtle-on-wash',
+    why: 'subtle text is AA only on the page and the sidebar; on a keycap wash, a card or a surface use text-muted',
+    pattern: /^(?=.*(?<![\w:-])text-\(--color-text-subtle\))(?=.*(?<![\w:-])bg-\(--(?:bg-key|bg-card|color-surface)\)).*$/g,
+    allow: {},
+  },
+  {
+    name: 'subtle-placeholder',
+    why: 'fields sit on surfaces and cards, where subtle falls under 4.5:1 in dark mode; placeholders use text-muted',
+    pattern: /placeholder(?:-|:text-)\(--color-text-subtle\)/g,
+    allow: {},
+  },
+  {
+    name: 'solid-hue-text',
+    why: 'solid state hues are ~2:1 on paper; text and icons use the -text tones (accent-orange-text, accent-green-text, accent-blue-text)',
+    pattern: /(?<![\w-])text-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)/g,
+    allow: {},
+  },
+  {
+    name: 'solid-hue-dot',
+    why: 'status dots, bars and marks use the -text tones, which reach 3:1 on paper; the solid hues stay for checked controls',
+    pattern: /(?<![\w:-])bg-\(--(?:color-(?:warning|success|info)|accent-(?:blue|green|orange))\)(?![\w/-])/g,
+    allow: {},
+  },
+  {
+    name: 'stray-blue',
+    why: 'Signal Blue is the logo and keyboard focus only (--logo-signal, --focus-ring); states, links, file names, washes and checked controls use ink, the warm accent or a state hue',
+    pattern: /--accent-blue(?:-soft|-text)?(?![\w-])|#(?:5865F2|1877F2)(?![\w])/gi,
+    allow: {},
+  },
+  {
+    name: 'focus-colour-off-focus',
+    why: 'the focus colour marks keyboard focus only: hover, drag, drop and open states use the warm ramp (border-strong, text-muted)',
+    pattern: /(?<![^\s'"`])(?![^\s'"`]*focus[^\s'"`]*:)[^\s'"`]*(?:bg|border|text)-\(--focus-ring\)/g,
     allow: {},
   },
   // ── Motion (DESIGN.md → Motion) ──────────────────────────────────────────

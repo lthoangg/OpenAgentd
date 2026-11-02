@@ -14,6 +14,7 @@ pub mod schema;
 pub mod sse;
 pub mod startup;
 pub mod usage;
+mod usage_cache;
 pub mod util;
 pub mod watch;
 

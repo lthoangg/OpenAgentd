@@ -71,17 +71,51 @@ async function syncNativeWindowTitle(title: string): Promise<void> {
 }
 
 /**
- * Badge the app icon (the macOS dock) with the number of sessions waiting on
- * the user; zero clears it. Every window sets the same count, so the last
- * one to update wins without disagreeing.
+ * The ``(n) `` this module last put in front of the title, so the next count
+ * can swap it out without touching a title that merely starts with digits.
+ */
+let titleCountPrefix = ''
+
+/**
+ * Show the number of sessions waiting on the user in front of the title:
+ * the browser tab, and on routes that never build their own title. A route
+ * that does (``syncDesktopWindowTitle``) writes the same prefix, so either
+ * may run first. Returns whether the title changed.
+ */
+function applyTitleCount(count: number): boolean {
+  if (typeof document === 'undefined') return false
+  const next = count > 0 ? `(${count}) ` : ''
+  let base = document.title
+  if (titleCountPrefix && base.startsWith(titleCountPrefix)) base = base.slice(titleCountPrefix.length)
+  else if (next && base.startsWith(next)) base = base.slice(next.length)
+  titleCountPrefix = next
+  const title = next + base
+  if (title === document.title) return false
+  document.title = title
+  return true
+}
+
+/**
+ * Badge the app with the number of sessions waiting on the user; zero clears
+ * it. The desktop shell draws it: the dock (macOS), the launcher (Linux), a
+ * taskbar overlay (Windows). The phone apps badge their own icon, and a
+ * browser tab shows the count in its title. Every window sets the same
+ * count, so the last one to update wins without disagreeing.
  */
 export async function syncDesktopBadgeCount(count: number): Promise<void> {
+  const titleChanged = applyTitleCount(count)
   if (!getPlatform().isTauri) return
+  if (titleChanged && isDesktopShell()) void syncNativeWindowTitle(document.title)
   try {
+    if (isDesktopShell()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('set_attention_badge', { count })
+      return
+    }
     const { getCurrentWindow } = await import('@tauri-apps/api/window')
     await getCurrentWindow().setBadgeCount(count > 0 ? count : undefined)
   } catch (err) {
-    // Windows has no badge API, and a badge is never worth an error.
+    // A badge is never worth an error.
     console.debug('app badge update failed', err)
   }
 }

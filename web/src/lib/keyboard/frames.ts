@@ -27,6 +27,8 @@ export interface ForwardedChord {
   key: string
   code?: string
   mod: boolean
+  /** The Control key itself on every OS (⌃⌥←, ⌃Tab); never with ``mod``. */
+  ctrl?: boolean
   shift: boolean
   alt: boolean
 }
@@ -46,6 +48,7 @@ function forwardedChord(chord: KeyChord): ForwardedChord {
     shift: Boolean(chord.shift),
     alt: Boolean(chord.alt),
   }
+  if (chord.ctrl) out.ctrl = true
   if (chord.code) out.code = chord.code
   return out
 }
@@ -68,9 +71,11 @@ export function frameKeyForwarderScript(keymap: FrameKeymap): string {
   return `(function(){var m=${json};var NS=${JSON.stringify(FRAME_KEYS_NS)};`
     + 'function norm(k){return k.length===1?k.toLowerCase():k}'
     + 'function editable(t){if(!t||t.nodeType!==1)return false;var n=t.tagName;return n==="INPUT"||n==="TEXTAREA"||n==="SELECT"||!!t.isContentEditable}'
-    + 'function hit(e){var p=m.mac?e.metaKey:e.ctrlKey,o=m.mac?e.ctrlKey:e.metaKey;if(o)return false;'
+    + 'function hit(e){var p=m.mac?e.metaKey:e.ctrlKey,o=m.mac?e.ctrlKey:e.metaKey;'
     // Like the host: chords without ⌘/Ctrl are typing inside a field.
-    + 'for(var i=0;i<m.chords.length;i++){var c=m.chords[i];if(p!==c.mod||e.altKey!==c.alt||e.shiftKey!==c.shift)continue;if(!c.mod&&editable(e.target))continue;'
+    // A ``ctrl`` chord is Control on every OS, with ⌘ up.
+    + 'for(var i=0;i<m.chords.length;i++){var c=m.chords[i];if(c.ctrl){if(!e.ctrlKey||e.metaKey)continue}else if(o||p!==c.mod)continue;'
+    + 'if(e.altKey!==c.alt||e.shiftKey!==c.shift)continue;if(!c.mod&&!c.ctrl&&editable(e.target))continue;'
     + 'if(c.code?e.code===c.code:norm(e.key)===c.key)return true}return false}'
     + "window.addEventListener('keydown',function(e){if(e.defaultPrevented||e.isComposing)return;"
     + "var esc=m.escape&&e.key==='Escape'&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!e.shiftKey;"

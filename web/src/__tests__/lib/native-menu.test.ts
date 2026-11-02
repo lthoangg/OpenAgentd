@@ -1,0 +1,134 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+let platform: { isTauri: boolean; os: string } = { isTauri: true, os: 'macos' }
+mock.module('@/hooks/use-platform', () => ({ getPlatform: () => platform }))
+
+let invokeResult: () => Promise<unknown> = async () => null
+const invoke = mock(async (..._args: unknown[]) => invokeResult())
+mock.module('@tauri-apps/api/core', () => ({ invoke }))
+
+const { createAltTapDetector, hasAppMenuButton, showAppMenu } = await import('@/lib/native-menu')
+
+beforeEach(() => {
+  platform = { isTauri: true, os: 'macos' }
+  invokeResult = async () => null
+  invoke.mockClear()
+})
+
+describe('the application menu button', () => {
+  const cases: [string, boolean, boolean][] = [
+    ['windows', true, true],
+    ['linux', true, true],
+    ['macos', true, false],
+    ['ios', true, false],
+    ['windows', false, false],
+  ]
+  it.each(cases)('on %s (tauri %s) is %s', (os, isTauri, expected) => {
+    platform = { isTauri, os }
+    expect(hasAppMenuButton()).toBe(expected)
+  })
+
+  it('pops the menu up at the point in the Windows and Linux apps', async () => {
+    platform = { isTauri: true, os: 'windows' }
+
+    expect(await showAppMenu({ x: 12, y: 36 })).toBe(true)
+
+    expect(invoke.mock.calls).toEqual([['show_app_menu', { x: 12, y: 36 }]])
+  })
+
+  it('has no menu to pop up on macOS, where the menu bar is the menu', async () => {
+    expect(await showAppMenu({ x: 12, y: 36 })).toBe(false)
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('reports a menu the shell could not show', async () => {
+    platform = { isTauri: true, os: 'linux' }
+    invokeResult = async () => {
+      throw new Error('no menu')
+    }
+    expect(await showAppMenu({ x: 0, y: 0 })).toBe(false)
+  })
+})
+
+describe('a bare Alt tap', () => {
+  let taps = 0
+  let alt: ReturnType<typeof createAltTapDetector>
+
+  beforeEach(() => {
+    taps = 0
+    alt = createAltTapDetector(() => {
+      taps += 1
+    })
+    document.body.innerHTML = '<input id="field" /><button id="button">Go</button>'
+  })
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  const down = (key: string, init: KeyboardEventInit = {}) => alt.onKeyDown(new KeyboardEvent('keydown', { key, ...init }))
+  const up = (key: string, init: KeyboardEventInit = {}) => alt.onKeyUp(new KeyboardEvent('keyup', { key, ...init }))
+
+  it('opens the menu when Alt goes down and up with nothing between', () => {
+    down('Alt', { altKey: true })
+    up('Alt')
+    expect(taps).toBe(1)
+  })
+
+  it('does not open when another key came between: Alt is part of a shortcut', () => {
+    down('Alt', { altKey: true })
+    down('f', { altKey: true })
+    up('f')
+    up('Alt')
+    expect(taps).toBe(0)
+  })
+
+  it('does not open for Alt held with Ctrl, Meta or Shift', () => {
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) {
+      down('Alt', { altKey: true, ...init })
+      up('Alt')
+    }
+    expect(taps).toBe(0)
+  })
+
+  it('does not open after a mouse press (Alt+click) or when the window loses focus (Alt+Tab)', () => {
+    down('Alt', { altKey: true })
+    alt.onPointerDown()
+    up('Alt')
+    down('Alt', { altKey: true })
+    alt.onBlur()
+    up('Alt')
+    expect(taps).toBe(0)
+  })
+
+  it('leaves the tap to a text field that has focus', () => {
+    ;(document.getElementById('field') as HTMLInputElement).focus()
+    down('Alt', { altKey: true })
+    up('Alt')
+    expect(taps).toBe(0)
+  })
+
+  it('still opens while a button has focus', () => {
+    ;(document.getElementById('button') as HTMLButtonElement).focus()
+    down('Alt', { altKey: true })
+    up('Alt')
+    expect(taps).toBe(1)
+  })
+
+  it('ignores a key release it never saw go down, and held-key repeats', () => {
+    up('Alt')
+    expect(taps).toBe(0)
+    down('Alt', { altKey: true })
+    down('x')
+    down('Alt', { altKey: true, repeat: true })
+    up('Alt')
+    expect(taps).toBe(0)
+  })
+
+  it('opens again on the next tap', () => {
+    for (let i = 0; i < 2; i += 1) {
+      down('Alt', { altKey: true })
+      up('Alt')
+    }
+    expect(taps).toBe(2)
+  })
+})

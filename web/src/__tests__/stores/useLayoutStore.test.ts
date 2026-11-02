@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 
-import { LAYOUT_STORAGE_KEY, useLayoutStore } from '@/stores/useLayoutStore'
+import { LAYOUT_STORAGE_KEY, useLayoutStore, windowLayoutStorage } from '@/stores/useLayoutStore'
 import { DOCK_DEFAULT_RATIO } from '@/lib/workbench-layout'
 
 beforeEach(() => {
+  useLayoutStore.setState({ sidebarCollapsed: null, sidebarWidth: 264, dockRatio: DOCK_DEFAULT_RATIO, dockOpen: false, dockMaximized: false })
   localStorage.clear()
-  useLayoutStore.setState({ sidebarCollapsed: null, sidebarWidth: 264, dockRatio: DOCK_DEFAULT_RATIO, dockMaximized: false })
+  sessionStorage.clear()
 })
 
 function persisted(): Record<string, unknown> {
@@ -47,5 +48,36 @@ describe('useLayoutStore', () => {
     expect(useLayoutStore.getState().dockMaximized).toBe(true)
     useLayoutStore.getState().toggleDockMaximized()
     expect(useLayoutStore.getState().dockMaximized).toBe(false)
+  })
+
+  it('remembers whether the Review panel is open (its panes belong to each session)', () => {
+    useLayoutStore.getState().setDockOpen(true)
+    expect(persisted().dockOpen).toBe(true)
+    expect(persisted()).not.toHaveProperty('dockSplitRatio')
+  })
+
+  it('keeps each window to its own layout, and seeds a new window from the last one saved', () => {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, '{"state":{"sidebarWidth":300}}')
+    // A new window has nothing of its own yet: it starts from the last layout.
+    expect(windowLayoutStorage.getItem(LAYOUT_STORAGE_KEY)).toBe('{"state":{"sidebarWidth":300}}')
+    windowLayoutStorage.setItem(LAYOUT_STORAGE_KEY, '{"state":{"sidebarWidth":320}}')
+    expect(sessionStorage.getItem(LAYOUT_STORAGE_KEY)).toBe('{"state":{"sidebarWidth":320}}')
+    // Another window saving later does not move this one.
+    localStorage.setItem(LAYOUT_STORAGE_KEY, '{"state":{"sidebarWidth":400}}')
+    expect(windowLayoutStorage.getItem(LAYOUT_STORAGE_KEY)).toBe('{"state":{"sidebarWidth":320}}')
+  })
+
+  it('resets the layout to its defaults', () => {
+    const store = useLayoutStore.getState()
+    store.setSidebarWidth(400)
+    store.setDockRatio(0.7)
+    store.setDockMaximized(true)
+    store.setSidebarCollapsed(true, false)
+    store.resetLayout()
+    const state = useLayoutStore.getState()
+    expect(state.sidebarWidth).toBe(264)
+    expect(state.dockRatio).toBe(DOCK_DEFAULT_RATIO)
+    expect(state.dockMaximized).toBe(false)
+    expect(state.sidebarCollapsed).toBeNull()
   })
 })

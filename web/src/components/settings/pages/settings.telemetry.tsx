@@ -1,5 +1,5 @@
 /**
- * Settings → Telemetry — how many days local traces and metrics are kept.
+ * Settings → Retention — how many days local traces and metrics are kept.
  * A daily sweep deletes older files; saving a new value sweeps right away.
  * "Keep forever" stores 0 (the server's "never delete").
  */
@@ -37,7 +37,7 @@ export function TelemetrySettingsPage() {
     normalize: normalizeTelemetry,
     hydrate: hydrateTelemetry,
     onSave: (value) => updateTelemetry.mutateAsync(value),
-    successTitle: 'Data retention saved',
+    successTitle: 'Retention saved',
   })
   const maxDays = telemetryQ.data?.max_retention_days ?? FALLBACK_MAX_DAYS
   const defaultDays = telemetryQ.data?.default_retention_days ?? TELEMETRY_DEFAULT.retention_days
@@ -52,7 +52,7 @@ export function TelemetrySettingsPage() {
 
   return (
     <SettingsPage
-      title="Data retention"
+      title="Retention"
       description="Traces and metrics for every turn are stored on this computer and power the Usage view. Nothing is sent anywhere."
       draft={{ ...draft, canSave: draft.canSave && !daysError }}
       saveBlockedReason={daysError ? `Fix the number of days to save. ${daysError}` : null}
@@ -65,7 +65,7 @@ export function TelemetrySettingsPage() {
       loading={telemetryQ.isLoading}
       error={telemetryQ.error}
     >
-      <PanelSection title="Retention" flush>
+      <PanelSection title="Local history" flush>
         <PanelRow
           label="Keep forever"
           htmlFor="telemetry-keep-forever"

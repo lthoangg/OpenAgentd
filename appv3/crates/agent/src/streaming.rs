@@ -264,13 +264,27 @@ impl<'a> RetryStream<'a> {
                         let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
                         tracing::warn!("llm_provider_quota_wait model={} status={} wait={:.0}s quota_wait={}/{}", self.label, status, wait, self.quota_waits, MAX_QUOTA_WAITS);
                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
-                        let msg = format!(
-                            "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
-                            self.label,
-                            format_duration(wait)
-                        );
+                        // A session pinned to one account waits for that
+                        // account; the user can switch it to Auto instead.
+                        let (wait_status, msg) = match self.provider.pinned_credential() {
+                            Some(account) => (
+                                "waiting_credential",
+                                format!(
+                                    "{account} is pinned for this session and hit its usage limit. Waiting {} for it to reset. Use Auto to continue on another account now, or stop at any time.",
+                                    format_duration(wait)
+                                ),
+                            ),
+                            None => (
+                                "waiting_quota",
+                                format!(
+                                    "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
+                                    self.label,
+                                    format_duration(wait)
+                                ),
+                            ),
+                        };
                         self.notify_retry(ProviderStatus {
-                            status: "waiting_quota".into(),
+                            status: wait_status.into(),
                             model: Some(self.label.clone()),
                             attempt: Some(self.attempt + 1),
                             max_attempts: Some(MAX_RETRIES),
@@ -764,6 +778,8 @@ mod tests {
         ok: MockProvider,
         calls: Mutex<Vec<&'static str>>,
         kw: Kwargs,
+        /// The session is pinned to "a" under this label.
+        pinned: Option<&'static str>,
     }
 
     impl TwoKeys {
@@ -776,6 +792,7 @@ mod tests {
                 ok: MockProvider::new(vec![MockProvider::text("from work")]),
                 calls: Mutex::default(),
                 kw: Kwargs::new(),
+                pinned: None,
             }
         }
         fn serving_b(&self) -> bool {
@@ -821,6 +838,28 @@ mod tests {
         fn credential_recovery_secs(&self) -> Option<f64> {
             self.recovers_after.map(|d| d.saturating_sub(self.started.elapsed()).as_secs_f64())
         }
+        fn pinned_credential(&self) -> Option<String> {
+            self.pinned.map(String::from)
+        }
+    }
+
+    /// A session pinned to an account that hit its limit waits for that
+    /// account, and says it is the pin (so the user can pick Auto instead).
+    #[tokio::test(start_paused = true)]
+    async fn a_pinned_account_at_its_limit_waits_for_it_and_says_so() {
+        let provider = Arc::new(TwoKeys { pinned: Some("Personal"), ..TwoKeys::new(false, Some(Duration::from_secs(600))) });
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider.clone(), "codex:gpt-5.4", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        assert_eq!(drain(&mut rs).await.unwrap(), "from work");
+        let statuses = log.0.lock().unwrap();
+        let wait = statuses.iter().find(|s| s.status == "waiting_credential").unwrap_or_else(|| panic!("{statuses:?}"));
+        let msg = wait.message.as_deref().unwrap();
+        assert!(msg.starts_with("Personal is pinned for this session") && msg.contains("Use Auto"), "{msg}");
+        assert!(statuses.iter().all(|s| s.status != "switched_credential" && s.status != "waiting_quota"), "{statuses:?}");
     }
 
     /// Quota on one credential moves the same call to the next credential

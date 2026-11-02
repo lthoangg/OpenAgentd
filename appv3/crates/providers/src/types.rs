@@ -445,4 +445,14 @@ pub trait LlmProvider: Send + Sync {
     fn credential_recovery_secs(&self) -> Option<f64> {
         None
     }
+    /// `(id, label)` of the stored credential that served this provider's
+    /// latest request; `None` for a provider without stored credentials.
+    fn served_credential(&self) -> Option<(String, String)> {
+        None
+    }
+    /// Label of the credential this provider is pinned to (a session's
+    /// chosen account); `None` on Auto.
+    fn pinned_credential(&self) -> Option<String> {
+        None
+    }
 }

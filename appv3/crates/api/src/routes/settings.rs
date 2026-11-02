@@ -523,6 +523,7 @@ async fn list_providers() -> ApiResult<Response> {
             "env_pinned": appv3_providers::pool::env_pinned(id),
             "supports_multiple_credentials": prov::supports_multiple_credentials(id),
             "supports_credential_usage": prov::supports_credential_usage(id),
+            "supports_usage": prov::supports_usage(id),
         }));
     }
     let any = out.iter().any(|p| p["is_configured"] == json!(true));
@@ -599,12 +600,30 @@ async fn usage_summary(q: Qs) -> ApiResult<Response> {
 async fn provider_usage(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response> {
     let token = q.opt("api_key");
     let credential_id = q.opt("credential_id").filter(|c| !c.is_empty());
-    match usage::get_provider_usage(&id, token.as_deref(), credential_id.as_deref()).await {
+    let force = q.bool("force_refresh", false)?;
+    match usage::get_usage(&id, token.as_deref(), credential_id.as_deref(), force).await {
         Ok(v) => Ok(json(v)),
-        Err(UsageError::Unsupported(_)) => Err(ApiError::not_found(format!("Usage monitoring unsupported for '{id}'."))),
-        Err(UsageError::Credentials(m)) => Err(ApiError::not_found(m)),
-        Err(UsageError::Rejected(m)) => Err(ApiError::unprocessable(m)),
-        Err(UsageError::Unavailable(_)) => Err(ApiError::new(502, "Provider usage unavailable.")),
+        Err(error) => Err(usage_error(error)),
+    }
+}
+
+fn usage_error(error: UsageError) -> ApiError {
+    match error {
+        UsageError::RateLimited { retry_after, retry_at, last_good } => ApiError::with_detail(
+            429,
+            json!({
+                "code": "usage_rate_limited", "message": "Usage is rate-limited.", "retry_after": retry_after,
+                "retry_at": retry_at, "last_good": last_good,
+            }),
+        )
+        .header("retry-after", &retry_after.unwrap_or(60).to_string()),
+        UsageError::Unsupported(_) => ApiError::with_detail(404, json!({"code":"usage_unsupported", "message":"Usage monitoring is not supported for this provider."})),
+        UsageError::Credentials(_) => ApiError::with_detail(404, json!({"code":"usage_credentials", "message":"Reconnect this account to check usage."})),
+        UsageError::Rejected(_) => ApiError::with_detail(422, json!({"code":"usage_rejected", "message":"Usage is not available for this account."})),
+        UsageError::Unavailable(_) => ApiError::with_detail(502, json!({"code":"usage_unavailable", "message":"Provider usage is unavailable right now."})),
+        UsageError::UnavailableWithData(last_good) => {
+            ApiError::with_detail(502, json!({"code":"usage_unavailable", "message":"Provider usage is unavailable right now.", "last_good":last_good}))
+        }
     }
 }
 
@@ -612,10 +631,7 @@ async fn provider_reset(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response
     let credential_id = q.opt("credential_id").filter(|c| !c.is_empty());
     match usage::consume_provider_reset(&id, credential_id.as_deref()).await {
         Ok(v) => Ok(json(v)),
-        Err(UsageError::Unsupported(_)) => Err(ApiError::not_found(format!("Rate limit reset unsupported for '{id}'."))),
-        Err(UsageError::Credentials(m)) => Err(ApiError::new(401, m)),
-        Err(UsageError::Rejected(m)) => Err(ApiError::unprocessable(m)),
-        Err(UsageError::Unavailable(m)) => Err(ApiError::new(502, m)),
+        Err(error) => Err(usage_error(error)),
     }
 }
 
@@ -804,6 +820,7 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
     .map_err(store_err)?
     .ok_or_else(|| ApiError::not_found(format!("Credential '{requested}' not found for '{id}'.")))?;
     cred_store::clear_cooldown(&id, &cid);
+    usage::invalidate_usage(&id, Some(&cid));
     let _ = rs::clear_provider_cached_models(&id);
     tracing::info!("provider_credentials_saved provider={} credential={} names={:?}", id, cid, names);
     let (default_model, agents_updated) = configure_default_model_for(&id).await;
@@ -913,15 +930,23 @@ pub fn credentials_json(entry: &Value) -> Value {
     Value::Array(f.provider(id).iter().map(|c| credential_meta(entry, c, in_use.as_deref() == Some(c.id.as_str()))).collect())
 }
 
-async fn list_credentials(AxPath(id): AxPath<String>) -> ApiResult<Response> {
+async fn list_credentials(axum::extract::State(st): axum::extract::State<AppState>, AxPath(id): AxPath<String>) -> ApiResult<Response> {
     let entry = find_or_404(&id)?;
     cred_store::load().map_err(store_err)?;
+    // v3 addition: how many sessions are pinned to each credential.
+    let pinned = appv3_db::pinned_credential_counts(&st.pool).await?;
+    let mut credentials = credentials_json(entry);
+    for c in credentials.as_array_mut().into_iter().flatten() {
+        let n = c.get("id").and_then(Value::as_str).and_then(|id| pinned.get(id)).copied().unwrap_or(0);
+        c["pinned_sessions"] = json!(n);
+    }
     Ok(json(json!({
         "provider": id,
-        "credentials": credentials_json(entry),
+        "credentials": credentials,
         "env_pinned": appv3_providers::pool::env_pinned(&id),
         "supports_multiple_credentials": prov::supports_multiple_credentials(&id),
         "supports_credential_usage": prov::supports_credential_usage(&id),
+        "supports_usage": prov::supports_usage(&id),
     })))
 }
 
@@ -1004,6 +1029,7 @@ async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Byt
     .map_err(store_err)?;
     let c = updated.ok_or_else(|| ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")))?;
     if !token.is_empty() || !extra.is_empty() {
+        usage::invalidate_usage(&id, Some(&cid));
         cred_store::clear_cooldown(&id, &cid);
         let _ = rs::clear_provider_cached_models(&id);
     }
@@ -1019,6 +1045,7 @@ async fn delete_credential(AxPath((id, cid)): AxPath<(String, String)>) -> ApiRe
         return Err(ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")));
     }
     cred_store::clear_cooldown(&id, &cid);
+    usage::invalidate_usage(&id, Some(&cid));
     if !prov::provider_is_configured(entry) {
         let _ = rs::forget_provider_models(&id);
     }

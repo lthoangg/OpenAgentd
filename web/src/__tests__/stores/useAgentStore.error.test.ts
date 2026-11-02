@@ -112,7 +112,7 @@ describe("_handleSSEEvent: done", () => {
 describe("team error toast subscriber", () => {
   function makePush() {
     // mock() only accepts AnyFunction; cast to the typed signature for setState
-    return mock(() => undefined) as unknown as (t: Omit<Toast, "id">, durationMs?: number) => void;
+    return mock(() => "t-1") as unknown as (t: Omit<Toast, "id">, durationMs?: number | null) => string;
   }
 
   it("pushes an error toast when error changes from null to a string", () => {

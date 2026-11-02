@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { providerView, trayStatus, windowLabel } from '@/tray/providerView'
+import { TRAY_STATUS_LABEL, failureReason, hasNoServer, providerView, trayStatus, windowLabel } from '@/tray/providerView'
 import type { TrayUsageItem, TrayUsageResult } from '@/tray/usage'
 
 const NOW = 1_700_000_000
@@ -39,6 +39,11 @@ describe('providerView', () => {
     expect(view.plan).toBe('Plus')
     expect(view.rows.map((row) => row.label)).toEqual(['5-hour', 'Weekly'])
     expect(view.tone).toBe('warn')
+  })
+
+  it('names the account in use when the provider pools several', () => {
+    expect(providerView({ ...codex, account: 'Work' }, NOW).name).toBe('OpenAI Codex · Work')
+    expect(providerView({ ...codex, account: null }, NOW).name).toBe('OpenAI Codex')
   })
 
   it('keeps a limit name that says more than the provider name', () => {
@@ -113,6 +118,29 @@ describe('trayStatus', () => {
     expect(trayStatus({ ...result([]), summary: null, error: 'connection refused' }, null)).toBe('offline')
   })
 
+  // "Can't reach No Server Connected": every failure used to read as offline.
+  it('tells having no server apart from not reaching one', () => {
+    const none: TrayUsageResult = { ...result([]), summary: null, server_name: 'No server connected', server_id: 'auto', error: 'No server is connected.' }
+    expect(hasNoServer(none)).toBe(true)
+    expect(trayStatus(none, null)).toBe('no-server')
+    expect(hasNoServer({ ...none, server_id: 'bundled' })).toBe(false)
+    expect(hasNoServer(result([]))).toBe(false)
+    expect(hasNoServer(null)).toBe(false)
+  })
+
+  it('uses one vocabulary with the notch and the pet', () => {
+    expect(TRAY_STATUS_LABEL.offline).toBe("Can't reach")
+    expect(TRAY_STATUS_LABEL['no-server']).toBe('No server connected')
+    expect(Object.values(TRAY_STATUS_LABEL)).not.toContain('Offline')
+  })
+
+  it('says in words why a refresh failed, without the raw error', () => {
+    expect(failureReason('operation timed out')).toBe('The server took too long to answer.')
+    expect(failureReason('provider usage summary returned an error status: 401 Unauthorized')).toBe('The server rejected the access key.')
+    expect(failureReason('error sending request for url (http://127.0.0.1:4082)')).toBe("The server didn't answer. It may be stopped or asleep.")
+    expect(failureReason(null)).toBe("The server didn't answer. It may be stopped or asleep.")
+  })
+
   it('ranks providers by their worst limit', () => {
     const at = (percent: number) => item({
       provider: `p${percent}`,
@@ -129,5 +157,154 @@ describe('trayStatus', () => {
   it('keeps showing the last reading when only a refresh failed', () => {
     const at = item({ provider: 'p', label: 'P', usage: { provider: 'p', limits: [{ primary: { used_percent: 10 } }] } })
     expect(trayStatus(result([at], 'timeout'), null)).toBe('ok')
+  })
+
+  it('does not read a throttled usage check as the inference quota being hit', () => {
+    const hot = item({
+      provider: 'hot',
+      label: 'Hot',
+      status: 'rate_limited',
+      stale: true,
+      usage: { provider: 'hot', limits: [{ primary: { used_percent: 100 } }] },
+    })
+    const calm = item({ provider: 'calm', label: 'Calm', usage: { provider: 'calm', limits: [{ primary: { used_percent: 10 } }] } })
+    expect(trayStatus(result([hot, calm]), null)).toBe('ok')
+    expect(trayStatus(result([hot]), null)).toBe('delayed')
+    expect(TRAY_STATUS_LABEL.delayed).toBe('Usage delayed')
+  })
+})
+
+describe('providerView rate limiting', () => {
+  const staleUnavailable = (over: Partial<TrayUsageItem> = {}) => item({
+    provider: 'openai',
+    label: 'OpenAI Codex',
+    status: 'unavailable',
+    error: 'timeout',
+    stale: true,
+    usage: {
+      provider: 'openai',
+      updated_at: NOW - 120,
+      limits: [{ primary: { used_percent: 96, window_minutes: 300, resets_at: NOW + 3600 } }],
+    },
+    ...over,
+  })
+
+  it('keeps last-good numbers of an unavailable provider, marked old, without alerting', () => {
+    const view = providerView(staleUnavailable(), NOW)
+    expect(view.status).toBeNull()
+    expect(view.stale).toBe(true)
+    expect(view.held).toBe(true)
+    expect(view.rateLimited).toBe(false)
+    expect(view.retry).toBeNull()
+    expect(view.updated).toBe('2m ago')
+    expect(view.rows.map((row) => row.kind === 'meter' && Math.round(row.percent))).toEqual([96])
+    expect(view.reached).toBe(false)
+    expect(view.tone).toBe('ok')
+  })
+
+  it('never presents unavailable numbers as fresh, whatever the stale flag says', () => {
+    expect(providerView(staleUnavailable({ stale: false }), NOW).stale).toBe(true)
+  })
+
+  it('still reads plain unavailable when there are no numbers to keep', () => {
+    expect(providerView(staleUnavailable({ usage: null }), NOW)).toMatchObject({ status: 'unavailable', held: false, rows: [] })
+    expect(providerView(staleUnavailable({ usage: { provider: 'openai', limits: [] } }), NOW).status).toBe('unavailable')
+  })
+
+  it('ranks the topline without a stale unavailable provider', () => {
+    const stale = staleUnavailable()
+    const calm = item({ provider: 'calm', label: 'Calm', usage: { provider: 'calm', limits: [{ primary: { used_percent: 10 } }] } })
+    const result = (items: TrayUsageItem[]): TrayUsageResult => ({
+      summary: { items, checked_at: NOW, cached: false },
+      server_name: 'Local Bundled',
+      server_id: 'bundled',
+      servers: [],
+      selected_server_id: 'auto',
+    })
+    expect(trayStatus(result([stale, calm]), null)).toBe('ok')
+    expect(trayStatus(result([stale]), null)).toBe('delayed')
+  })
+
+  const limited = (over: Partial<TrayUsageItem> = {}) => item({
+    provider: 'openai',
+    label: 'OpenAI Codex',
+    status: 'rate_limited',
+    error: 'HTTP 429',
+    stale: true,
+    retry_at: NOW + 300,
+    retry_after: 300,
+    ...over,
+  })
+  const lastGood = {
+    provider: 'openai',
+    updated_at: NOW - 720,
+    limits: [{ primary: { used_percent: 96, window_minutes: 300, resets_at: NOW + 3600 } }],
+  }
+
+  it('with no last-good snapshot is its own status with the retry time', () => {
+    expect(providerView(limited({ stale: false }), NOW)).toMatchObject({
+      name: 'OpenAI Codex',
+      status: 'rate-limited',
+      rateLimited: true,
+      retry: 'Retry in 5m',
+      reached: false,
+      tone: 'ok',
+      rows: [],
+    })
+  })
+
+  it('keeps last-good numbers, marked old, without claiming a limit is reached', () => {
+    const view = providerView(limited({ usage: lastGood }), NOW)
+    expect(view.status).toBeNull()
+    expect(view.rateLimited).toBe(true)
+    expect(view.stale).toBe(true)
+    expect(view.retry).toBe('Retry in 5m')
+    expect(view.updated).toBe('12m ago')
+    expect(view.rows.map((row) => row.kind === 'meter' && Math.round(row.percent))).toEqual([96])
+    expect(view.reached).toBe(false)
+    expect(view.tone).toBe('ok')
+  })
+
+  it('never presents a throttled snapshot as fresh, whatever the stale flag says', () => {
+    expect(providerView(limited({ stale: false, usage: lastGood }), NOW).stale).toBe(true)
+  })
+
+  it('treats missing, past or odd timing as safe', () => {
+    const retry = (over: Partial<TrayUsageItem>) => providerView(limited({ retry_at: null, retry_after: null, ...over }), NOW).retry
+    expect(retry({})).toBe('Retry later')
+    expect(retry({ retry_after: 7200 })).toBe('Retry in 2h')
+    expect(retry({ retry_at: NOW - 5, retry_after: 999 })).toBe('Retrying soon')
+    expect(retry({ retry_after: 0 })).toBe('Retrying soon')
+    expect(retry({ retry_at: NOW + 20 })).toBe('Retry in <1m')
+    expect(retry({ retry_at: Number.NaN, retry_after: -1 })).toBe('Retrying soon')
+    expect(retry({ retry_at: undefined, retry_after: undefined })).toBe('Retry later')
+  })
+
+  it('bounds absurd timing instead of printing it', () => {
+    const retry = (over: Partial<TrayUsageItem>) => providerView(limited({ retry_at: null, retry_after: null, ...over }), NOW).retry
+    expect(retry({ retry_after: Number.MAX_VALUE })).toBe('Retry later')
+    expect(retry({ retry_at: Number.MAX_VALUE })).toBe('Retry later')
+    expect(retry({ retry_after: 40 * 86_400 })).toBe('Retry later')
+    expect(retry({ retry_after: Number.POSITIVE_INFINITY })).toBe('Retry later')
+    expect(retry({ retry_at: Number.MIN_SAFE_INTEGER })).toBe('Retrying soon')
+    expect(retry({ retry_after: 3 * 86_400 })).toBe('Retry in 3d')
+  })
+
+  it('tolerates a missing or non-numeric updated_at', () => {
+    expect(providerView(limited({ usage: { ...lastGood, updated_at: undefined } }), NOW).updated).toBeNull()
+    expect(providerView(limited({ usage: { ...lastGood, updated_at: null } }), NOW).updated).toBeNull()
+  })
+
+  it('does not show retry or an age on ordinary providers', () => {
+    const view = providerView(codex, NOW)
+    expect(view).toMatchObject({ rateLimited: false, retry: null, updated: null })
+  })
+
+  it('keeps showing the usage of a status it does not know', () => {
+    const future = item({ provider: 'p', label: 'P', status: 'some_future_status', usage: { provider: 'p', limits: [{ primary: { used_percent: 30 } }] } })
+    const view = providerView(future, NOW)
+    expect(view.rows).toHaveLength(1)
+    expect(view.rateLimited).toBe(false)
+    expect(providerView(item({ provider: 'p', label: 'P', status: 'some_future_status' }), NOW).status).toBe('no-data')
   })
 })

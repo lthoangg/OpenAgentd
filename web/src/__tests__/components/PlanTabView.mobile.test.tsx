@@ -14,6 +14,7 @@ mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => true, MOBILE_QUERY
 import { PlanTabView } from '@/components/WorkspacePanel/PlanTabView'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
+import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion, SessionPlan } from '@/api/types'
 
@@ -52,6 +53,7 @@ beforeEach(() => {
   answers = []
   clearQuestionDrafts()
   clearPlanReviewDrafts()
+  resetPlanDecisionChoice()
   document.documentElement.removeAttribute('data-keyboard-open')
   useAgentStore.setState({ sessionId: 's-1', pendingQuestion: REVIEW, resolvedQuestions: {}, markTurnResuming: () => {} })
   globalThis.fetch = mock(async (input: unknown, rawInit?: unknown) => {

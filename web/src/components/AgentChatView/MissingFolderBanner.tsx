@@ -59,7 +59,7 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
         title="This session's folder was moved or deleted."
         action={(
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={onOpenFolder}>Open folder…</Button>
+            <Button size="sm" onClick={onOpenFolder}>Open workspace…</Button>
             <Button size="sm" variant="ghost" onClick={() => { void hideWorkspace() }}>Hide workspace</Button>
           </div>
         )}

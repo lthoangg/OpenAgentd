@@ -47,7 +47,7 @@ beforeEach(() => {
   globalCallbacks = null
   globalSignals = []
   useLspInstallStore.setState({ request: null })
-  useUnreadStore.setState({ ids: [] })
+  useUnreadStore.setState({ ids: [], failed: [] })
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })
 
@@ -724,6 +724,8 @@ describe('handleGlobalEvent', () => {
     await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'failed', status: 'error' }, 1, () => 1)
 
     expect(useUnreadStore.getState().ids).toEqual(['done', 'failed'])
+    // The sidebar says Failed for the one whose turn ended in an error.
+    expect(useUnreadStore.getState().failed).toEqual(['failed'])
   })
 
   it('marks the shown session unread only while the window is hidden', async () => {
@@ -820,7 +822,7 @@ describe('handleGlobalEvent', () => {
       queryKeys.coding.files('/abs/proj'),
       queryKeys.coding.status('~/proj'),
       queryKeys.coding.diff('~/proj'),
-      queryKeys.coding.history('~/proj', 50, false),
+      queryKeys.coding.history('~/proj', 50),
       queryKeys.session.files('sess-1'),
       queryKeys.coding.files('/other'),
     ]
@@ -838,9 +840,9 @@ describe('handleGlobalEvent', () => {
 
   it('leaves git history alone for plain file changes', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.coding.history('/abs/proj', 50, false), {})
+    client.setQueryData(queryKeys.coding.history('/abs/proj', 50), {})
     await handleGlobalEvent(client, 'workspace_files_changed', { workspace: '/abs/proj', paths: ['a'], git: false }, 1, () => 1)
-    expect(client.getQueryState(queryKeys.coding.history('/abs/proj', 50, false))?.isInvalidated).toBe(false)
+    expect(client.getQueryState(queryKeys.coding.history('/abs/proj', 50))?.isInvalidated).toBe(false)
   })
 
   it('invalidates only the resources named by config_changed', async () => {

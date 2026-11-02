@@ -95,8 +95,7 @@ function ColorField({ value, onChange, onValidChange }: {
       <div
         className={cn(
           'flex h-9 items-center gap-2 rounded-sm border bg-(--bg-input) pr-2.5 pl-2 transition-colors sm:w-36',
-          'focus-within:border-(--focus-ring) focus-within:ring-2 focus-within:ring-(--focus-ring)/30',
-          invalid ? 'border-(--color-error) ring-2 ring-(--color-error)/20' : 'border-(--color-border)',
+          invalid ? 'border-(--color-error) ring-2 ring-(--color-error)/20' : 'border-(--color-border-subtle) focus-within:border-(--color-border-strong)',
         )}
       >
         <input
@@ -115,13 +114,13 @@ function ColorField({ value, onChange, onValidChange }: {
           aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined}
           maxLength={9}
-          placeholder="#3b82f6"
+          placeholder="#a78bfa"
           autoComplete="off"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)"
         />
       </div>
-      {invalid && <p id={errorId} className="text-[11px] text-(--color-error)">Use a hex colour such as #3b82f6.</p>}
+      {invalid && <p id={errorId} className="text-meta text-(--color-error)">Use a hex colour such as #a78bfa.</p>}
     </div>
   )
 }
@@ -314,7 +313,7 @@ export function WorkspaceGroupsSettings() {
                               type="button"
                               aria-label={`Remove ${repo.name} from ${group.name}`}
                               onClick={() => setMember(group, repo.path, false)}
-                              className="inline-flex size-5 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-9"
+                              className="inline-flex size-6 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-9"
                             >
                               <X size={ICON_SIZE_INLINE} aria-hidden="true" />
                             </button>
@@ -374,7 +373,7 @@ export function WorkspaceGroupsSettings() {
       )}
 
       {error && (
-        <p role="alert" className="border-t border-(--color-border-subtle) px-4 py-3 text-[11px] leading-relaxed text-(--color-error)">
+        <p role="alert" className="border-t border-(--color-border-subtle) px-4 py-3 text-meta leading-relaxed text-(--color-error)">
           {error}
         </p>
       )}

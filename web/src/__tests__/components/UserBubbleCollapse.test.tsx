@@ -384,6 +384,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     const user = userEvent.setup()
     const content = "Test message"
     const timestamp = new Date("2026-04-29T12:00:00Z")
+    // An earlier prompt: only the latest one keeps its row at rest.
     const blocks: ContentBlock[] = [
       {
         id: "1",
@@ -391,6 +392,7 @@ describe("AgentView — UserBubble collapse feature", () => {
         content,
         timestamp,
       },
+      { id: "2", type: "user", content: "A later prompt" },
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
@@ -420,10 +422,12 @@ describe("AgentView — UserBubble collapse feature", () => {
         timestamp: new Date("2026-04-29T12:00:00Z"),
         extra: { model: "openrouter:anthropic/claude-sonnet-4.5" },
       },
+      { id: "2", type: "user", content: "A later prompt" },
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
-    const modelLabel = screen.getByText("claude-sonnet-4.5")
+    const modelLabel = container.querySelector("[data-model-name]") as HTMLElement
+    expect(modelLabel.textContent).toBe("openrouter:anthropic/claude-sonnet-4.5")
     expect(modelLabel.closest("div")?.className).toContain("opacity-0")
 
     await user.hover(container.querySelector("div[class*='group']")!)
@@ -461,6 +465,7 @@ describe("AgentView — UserBubble collapse feature", () => {
         content,
         timestamp,
       },
+      { id: "2", type: "user", content: "A later prompt" },
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
@@ -674,7 +679,7 @@ describe("AgentView — design feedback in user messages", () => {
     const content = composeWithDesignFeedback("Please fix these", [feedback])
     render(<AgentView blocks={[{ id: "u1", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
     expect(screen.getByText("Please fix these")).toBeTruthy()
-    const card = screen.getByRole("region", { name: "Design feedback · 2 comments" })
+    const card = screen.getByRole("region", { name: "Preview comments · 2 comments" })
     expect(card.textContent).toContain("localhost:5173/pricing · Mobile 390×844")
     expect(card.textContent).toContain("Make this larger")
     expect(card.textContent).toContain("@src/Pricing.tsx#L42-L71")
@@ -686,7 +691,7 @@ describe("AgentView — design feedback in user messages", () => {
   it("renders a feedback-only message without an empty bubble", () => {
     const content = composeWithDesignFeedback("", [feedback])
     const { container } = render(<AgentView blocks={[{ id: "u2", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
-    expect(screen.getByRole("region", { name: "Design feedback · 2 comments" })).toBeTruthy()
+    expect(screen.getByRole("region", { name: "Preview comments · 2 comments" })).toBeTruthy()
     expect(container.querySelector(".selectable-text")).toBeNull()
   })
 })

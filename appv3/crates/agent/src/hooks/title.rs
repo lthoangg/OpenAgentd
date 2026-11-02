@@ -330,11 +330,22 @@ fn enabled_title_settings() -> Option<appv3_core::runtime_settings::TitleGenerat
     }
 }
 
+/// The kwargs for a configured title model: the session's pinned credential
+/// rides along, so a title on the pinned provider is billed to that account
+/// too. A pin of another provider is dropped by the pool (`build_pooled`).
+fn title_model_kwargs(pin: Option<&str>) -> Kwargs {
+    let mut kw = Kwargs::new();
+    if let Some(id) = pin {
+        kw.insert(appv3_providers::pool::PIN_KWARG.into(), json!(id));
+    }
+    kw
+}
+
 /// The configured title model, or the session's own provider when none is
 /// set. `None` when the configured model cannot be built.
-fn resolve_title_provider(default_provider: Arc<dyn LlmProvider>, cfg: &appv3_core::runtime_settings::TitleGenerationSettings) -> Option<Arc<dyn LlmProvider>> {
+fn resolve_title_provider(default_provider: Arc<dyn LlmProvider>, cfg: &appv3_core::runtime_settings::TitleGenerationSettings, pin: Option<&str>) -> Option<Arc<dyn LlmProvider>> {
     if let Some(m) = cfg.model.as_deref().filter(|m| !m.is_empty()) {
-        return match appv3_providers::build_provider(Some(m), Kwargs::new()) {
+        return match appv3_providers::build_provider(Some(m), title_model_kwargs(pin)) {
             Ok(p) => Some(p),
             Err(e) => {
                 tracing::warn!("title_generation_disabled reason=provider_build_failed model={} error={}", m, e);
@@ -345,19 +356,19 @@ fn resolve_title_provider(default_provider: Arc<dyn LlmProvider>, cfg: &appv3_co
     Some(default_provider)
 }
 
-/// `build_title_generation_hook`.
-pub fn build_title_generation_hook(default_provider: Arc<dyn LlmProvider>, pool: DbPool) -> Option<TitleGenerationHook> {
+/// `build_title_generation_hook`. `pin` is the session's pinned credential.
+pub fn build_title_generation_hook(default_provider: Arc<dyn LlmProvider>, pool: DbPool, pin: Option<&str>) -> Option<TitleGenerationHook> {
     let cfg = enabled_title_settings()?;
-    let provider = resolve_title_provider(default_provider, &cfg)?;
+    let provider = resolve_title_provider(default_provider, &cfg, pin)?;
     Some(TitleGenerationHook { provider, pool, wait_timeout: title_wait_seconds(&cfg), task: Mutex::new(None) })
 }
 
 /// The summarization hook's callback that retitles the session from each
 /// summary, when titles and `update_after_compaction` are both on. The
 /// retitle runs in the background; the turn never waits for it.
-pub fn build_summary_retitle(default_provider: Arc<dyn LlmProvider>, pool: DbPool) -> Option<super::summarization::OnSummary> {
+pub fn build_summary_retitle(default_provider: Arc<dyn LlmProvider>, pool: DbPool, pin: Option<&str>) -> Option<super::summarization::OnSummary> {
     let cfg = enabled_title_settings().filter(|c| c.update_after_compaction)?;
-    let provider = resolve_title_provider(default_provider, &cfg)?;
+    let provider = resolve_title_provider(default_provider, &cfg, pin)?;
     Some(Arc::new(move |session_id: &str, summary: &str, latest_prompt: Option<&str>| {
         otel::spawn(retitle_from_summary(session_id.to_string(), summary.to_string(), latest_prompt.map(String::from), provider.clone(), pool.clone()));
     }))
@@ -403,6 +414,13 @@ impl Hook for TitleGenerationHook {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_configured_title_model_carries_the_sessions_pin() {
+        let kw = title_model_kwargs(Some("work"));
+        assert_eq!(kw.get(appv3_providers::pool::PIN_KWARG), Some(&json!("work")));
+        assert!(title_model_kwargs(None).is_empty());
+    }
 
     #[test]
     fn zero_wait_timeout_turns_the_wait_off() {

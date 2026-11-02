@@ -318,7 +318,15 @@ impl ProviderPlugin for JsProviderPlugin {
 
     async fn get_usage(&self, store: &CredentialStore) -> Result<Value, PluginUsageError> {
         let v = self.call("getUsage", &[credentials_arg(store)]).await.map_err(|e| {
-            if e.prop_str("kind") == Some("invalid") {
+            if e.prop_str("kind") == Some("http") && e.props.get("status").and_then(|s| s.as_u64()) == Some(429) {
+                // Only the wait crosses over: never the message, body or other headers.
+                let headers = header_pairs(e.props.get("headers"));
+                let retry_after = crate::usage::retry_after_from_pairs(headers.iter().map(|(k, v)| (k.as_str(), v.as_str())), chrono::Utc::now());
+                PluginUsageError::RateLimited { retry_after }
+            } else if e.prop_str("kind") == Some("auth") || (e.prop_str("kind") == Some("http") && matches!(e.props.get("status").and_then(|s| s.as_u64()), Some(401 | 403))) {
+                // Rejected credentials: a sign-in problem, without the upstream text.
+                PluginUsageError::Value("Provider credentials were rejected.".into())
+            } else if e.prop_str("kind") == Some("invalid") {
                 PluginUsageError::Value(e.message)
             } else {
                 PluginUsageError::Other(e.message)

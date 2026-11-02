@@ -1,12 +1,11 @@
 /**
- * AppBackendDialog — the backend connection panel in an overlay, for places
- * that need it outside Settings: the loading screen (no backend yet), the
- * footer health dot, and a scanned `openagentd://connect` link. Settings →
- * Connection renders the same `AppBackendPanel` as a page.
+ * AppBackendDialog — the Server panel in an overlay, for places that need it
+ * outside Settings: the loading screen (no server yet), the footer health
+ * dot, and a scanned `openagentd://connect` link. Settings → Server renders
+ * the same `AppBackendPanel` as a page. One close button, in the header.
  */
 import { Server } from 'lucide-react'
 import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
-import { Button } from '@/components/ui/button'
 import { OVERLAY_BODY } from '@/components/ui/panel-tokens'
 import { AppBackendPanel, type AppBackendPrefill } from '@/components/AppBackendPanel'
 
@@ -17,7 +16,7 @@ interface AppBackendDialogProps {
   open: boolean
   /** Called when the dialog should open or close. */
   onOpenChange: (open: boolean) => void
-  /** Fill the form and test it; the user still confirms with Save & Connect. */
+  /** Fill the form and test it; the user still confirms with Save and use. */
   prefill?: AppBackendPrefill | null
 }
 
@@ -25,22 +24,15 @@ export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBack
   // Always mounted: AppOverlay owns the enter and exit, so closing fades out
   // like every other overlay instead of snapping shut.
   return (
-    <AppOverlay open={open} onClose={() => onOpenChange(false)} label="Backend connection" maxWidth="640px">
+    <AppOverlay open={open} onClose={() => onOpenChange(false)} label="Server" maxWidth="640px">
       <OverlayHeader
-        title="Backend connection"
+        title="Server"
         icon={<Server size={14} />}
         onClose={() => onOpenChange(false)}
-        closeLabel="Close server settings"
       />
 
       <div className={OVERLAY_BODY}>
         <AppBackendPanel active={open} prefill={prefill} showNetworkAccess />
-      </div>
-
-      <div className="flex flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 select-none md:px-6">
-        <Button type="button" variant="default" onClick={() => onOpenChange(false)}>
-          Close
-        </Button>
       </div>
     </AppOverlay>
   )

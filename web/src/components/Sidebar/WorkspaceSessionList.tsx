@@ -5,6 +5,9 @@ import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { getSession } from '@/api/client/agent'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { DURATIONS_S } from '@/lib/motion'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import type { SessionResponse } from '@/api/types'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
 
@@ -19,7 +22,7 @@ export function WorkspaceSessionList({
   currentSessionId,
   runningSessions,
   editingSessionId = null,
-  collapsed = false,
+  collapsed: collapsedProp = false,
   showDetails = true,
   draftActive = false,
   mobileLongPressActions = false,
@@ -61,6 +64,12 @@ export function WorkspaceSessionList({
   onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const multiCheckout = paths !== undefined && paths.length > 1
+  // Collapsing folds the list away (the Collapsible around it): keep the
+  // expanded rows on screen until that motion ends, or the fold would close
+  // over an already emptied list.
+  const reduced = useReducedMotion() ?? false
+  const { mounted: holdExpanded } = useDeferredUnmount(!collapsedProp, reduced ? 0 : DURATIONS_S.base * 1000)
+  const collapsed = collapsedProp && !holdExpanded
   const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   // An older server ignores the multi-checkout filter and sends every
@@ -98,7 +107,7 @@ export function WorkspaceSessionList({
       {draftActive && <DraftSessionRow />}
       {!collapsed && sessions.isLoading && <SessionRowsSkeleton />}
       {!collapsed && sessions.isError && workspaceSessions.length === 0 && (
-        <p role="alert" className="flex min-h-6 items-center gap-2 pl-6 text-[11px] text-(--color-text-muted)">
+        <p role="alert" className="flex min-h-6 items-center gap-2 pl-6 text-meta text-(--color-text-muted)">
           Couldn't load sessions.
           <button
             type="button"
@@ -110,7 +119,7 @@ export function WorkspaceSessionList({
         </p>
       )}
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && !sessions.isError && !draftActive && (
-        <p className="flex h-6 items-center pl-6 text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
+        <p className="flex h-6 items-center pl-6 text-meta text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {rows.map((session) => {
         const isCurrent = session.id === currentSessionId

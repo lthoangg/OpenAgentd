@@ -66,7 +66,7 @@ export function SessionSearch({
       <div role="region" aria-label="Search results" className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {needle && !isFetching && results.length === 0 && (
           <div className="flex flex-col items-start gap-1 px-1.5 py-1">
-            <p className="break-words text-[11px] text-(--color-text-subtle)">No sessions match “{query}”.</p>
+            <p className="break-words text-meta text-(--color-text-subtle)">No sessions match “{query}”.</p>
             <button
               type="button"
               className={`${ROW_TEXT_ACTION} -ml-2`}
@@ -93,7 +93,7 @@ export function SessionSearch({
           ))}
         </ul>
         {hasMore && (
-          <p className="px-1.5 py-1 text-[11px] text-(--color-text-subtle)">Showing the newest matches; type more to narrow.</p>
+          <p className="px-1.5 py-1 text-meta text-(--color-text-subtle)">Showing the newest matches; type more to narrow.</p>
         )}
       </div>
     </div>

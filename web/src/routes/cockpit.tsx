@@ -3,7 +3,7 @@ import { Outlet, useParams, useNavigate, useSearch } from '@tanstack/react-route
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentChatView } from '@/components/AgentChatView'
 import { getSession, validateWorkspace } from '@/api/client'
-import { ApiValidationError } from '@/api/client/_shared'
+import { isMissingSessionError } from '@/lib/session-errors'
 import { latestTopLevelSession } from '@/components/Sidebar.workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
@@ -12,7 +12,7 @@ import { queryKeys } from '@/queries'
 import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLastWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
-import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
+import { useNeedsYouCount } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
 import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-window'
 
@@ -50,7 +50,7 @@ function AgentLayoutBase() {
     enabled: Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
     // A session the server does not have will not appear on a retry.
-    retry: (failures, error) => !(error instanceof ApiValidationError && error.status === 404) && failures < 3,
+    retry: (failures, error) => !isMissingSessionError(error) && failures < 3,
   })
   // The session a draft's first message just created. The router lands on
   // its id before the session list refetch or `getSession` knows it, and a
@@ -63,7 +63,8 @@ function AgentLayoutBase() {
     : draftWorkspace
   const chatWorkspace = useChatWorkspace()
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
-  const needsYou = useNeedsYouBadge()
+  // Only the number, for the title: the app root runs the badge itself.
+  const needsYou = useNeedsYouCount()
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
@@ -239,7 +240,7 @@ function AgentLayoutBase() {
         sessionId={sessionId}
         workspace={workspace}
         sessionLoading={Boolean(sessionId) && !workspace && sessionQuery.isLoading}
-        sessionNotFound={Boolean(sessionId) && !workspace && sessionQuery.error instanceof ApiValidationError && sessionQuery.error.status === 404}
+        sessionNotFound={Boolean(sessionId) && !workspace && isMissingSessionError(sessionQuery.error)}
       />
       <Outlet />
     </>

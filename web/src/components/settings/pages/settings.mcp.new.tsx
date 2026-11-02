@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useCreateMcpServerMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { McpServerForm } from '@/components/settings/McpServerForm'
 import {
   draftToServerBody,
@@ -78,8 +79,6 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
         saving={createMut.isPending}
         error={saveError}
         validationHint={firstError}
-        onSave={handleCreate}
-        saveLabel="Create server"
         onBack={onBack}
       />
 
@@ -88,6 +87,24 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
           <McpServerForm value={draft} onChange={setDraft} isNew disabled={createMut.isPending} errors={fieldErrors} />
         </div>
       </div>
+
+      <SaveBar
+        shortcut
+        saveLabel="Create server"
+        draft={{
+          dirty,
+          canSave: dirty && !invalid && !createMut.isPending,
+          isSaving: createMut.isPending,
+          save: handleCreate,
+          reset: () => {
+            setDraft(TEMPLATE)
+            setSaveError(null)
+          },
+        }}
+        onSave={() => { void handleCreate() }}
+        saveBlockedReason={invalid ? (firstError ?? 'Fix the errors above to create it.') : null}
+        discardDescription="The server goes back to the starting template."
+      />
     </div>
   )
 }

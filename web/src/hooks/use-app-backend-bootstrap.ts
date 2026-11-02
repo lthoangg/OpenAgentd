@@ -8,6 +8,7 @@ import {
   switchToBundledAppBackend,
 } from '@/lib/app-backend'
 import { queryClient } from '@/lib/query-client'
+import { clearProviderUsage } from '@/queries/providerUsageCache'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
@@ -201,6 +202,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
 
     const unsubscribe = onApiBaseUrlChange(() => {
       queryClient.clear()
+      clearProviderUsage(queryClient)
       useLspInstallStore.getState().dismiss()
     })
     return () => {

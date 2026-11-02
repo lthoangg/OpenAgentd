@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, CheckCircle2, Copy, Loader2, TerminalSquare } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { queryKeys } from '@/queries'
+import { forgetProviderUsageKey } from '@/queries/providerUsageCache'
 import { invalidateModelSetup } from '@/queries/model-setup'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
@@ -19,6 +20,7 @@ export function OAuthLoginDialog({
   onOpenChange,
   credentialId,
   accountLabel,
+  renewsProviderSignIn = false,
 }: {
   provider: ProviderInfo
   open: boolean
@@ -27,6 +29,11 @@ export function OAuthLoginDialog({
   credentialId?: string
   /** Display name of the account being reconnected. */
   accountLabel?: string
+  /**
+   * The sign-in is the provider's single connection (no account list): its
+   * provider-wide usage is what a successful login renews.
+   */
+  renewsProviderSignIn?: boolean
 }) {
   const [events, setEvents] = useState<OAuthLoginEvent[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +47,20 @@ export function OAuthLoginDialog({
   // events (multi-credential plugins); until then it is the reconnect target.
   const loginCredentialIdRef = useRef<string | undefined>(credentialId)
   const queryClient = useQueryClient()
+  // Read through a ref: the login stream effect must not restart when the list
+  // refreshes mid-login and this flips.
+  const renewsProviderSignInRef = useRef(renewsProviderSignIn)
+  useEffect(() => {
+    renewsProviderSignInRef.current = renewsProviderSignIn
+  })
+  // A renewed sign-in is a new reading: drop what was held for exactly that
+  // account (or the provider-wide one), cooldown or sign-in block included.
+  // Adding a different account touches neither.
+  const renewUsage = useCallback(() => {
+    const account = loginCredentialIdRef.current
+    if (account) forgetProviderUsageKey(queryClient, provider.id, account)
+    else if (renewsProviderSignInRef.current) forgetProviderUsageKey(queryClient, provider.id)
+  }, [queryClient, provider.id])
   const latest = events.at(-1)
   const deviceEvent = events.find((event) => event.event === 'device_code')
   const isSuccess = latest?.event === 'success'
@@ -77,6 +98,8 @@ export function OAuthLoginDialog({
           }
           if (event.event === 'success' && !successHandledRef.current) {
             successHandledRef.current = true
+            // A signed-in-again account is a new reading: drop what was held, cooldown included.
+            renewUsage()
             void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })
             void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
             void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
@@ -117,7 +140,7 @@ export function OAuthLoginDialog({
       credentialId,
     )
     return () => abort.abort()
-  }, [authMode, credentialId, open, provider.id, provider.label, queryClient])
+  }, [authMode, credentialId, open, provider.id, provider.label, queryClient, renewUsage])
 
   const hasAccounts = supportsMultipleCredentials(provider) && (provider.stored_credentials?.length ?? 0) > 0
   const title = credentialId
@@ -156,7 +179,7 @@ export function OAuthLoginDialog({
             </div>
           </div>
           {deviceEvent?.user_code && (
-            <div className="overflow-hidden rounded-md border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
+            <div className="overflow-hidden rounded-md bg-(--bg-key)">
               <div className="p-3 text-center sm:p-5">
                 <p className="label-caps text-(--color-text-muted)">Device code</p>
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -172,7 +195,7 @@ export function OAuthLoginDialog({
                           className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
                           aria-label="Copy device code"
                         >
-                          {codeCopied ? <Check size={14} className="text-(--color-success)" /> : <Copy size={14} />}
+                          {codeCopied ? <Check size={14} className="text-(--accent-green-text)" /> : <Copy size={14} />}
                         </Button>
                       }
                     />
@@ -189,7 +212,7 @@ export function OAuthLoginDialog({
                 )}
               </div>
               {provider.id === 'codex' && authMode !== 'browser' && !isSuccess && (
-                <div className="border-t border-(--accent-blue)/20 bg-(--bg-page)/70 p-3 text-left sm:p-4">
+                <div className="border-t border-(--color-border-subtle) bg-(--bg-page)/70 p-3 text-left sm:p-4">
                   <p className="text-xs font-medium text-(--color-text)">Workspace account?</p>
                   <p className="mt-1 text-xs leading-relaxed text-(--color-text-muted)">
                     If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
@@ -219,6 +242,7 @@ export function OAuthLoginDialog({
                 submitOAuthCallback(provider.id, code, loginCredentialIdRef.current)
                   .then((result) => {
                     setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
+                    renewUsage()
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
                     void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
@@ -240,7 +264,7 @@ export function OAuthLoginDialog({
             </form>
           )}
           {isSuccess && (
-            <p className="text-sm text-(--color-success)">Connected successfully.</p>
+            <p className="text-sm text-(--accent-green-text)">Connected successfully.</p>
           )}
           {error && <p className="text-sm text-(--color-error)">{error}</p>}
           {events.length > 0 && (

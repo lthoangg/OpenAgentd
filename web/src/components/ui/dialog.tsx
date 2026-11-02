@@ -24,9 +24,11 @@ import {
   useState,
   type ComponentPropsWithRef,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { getPlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { Button } from '@/components/ui/button'
@@ -123,6 +125,11 @@ interface DialogContentProps extends ComponentPropsWithRef<'div'> {
   size?: keyof typeof DIALOG_SIZE
   /** Panel padding; ``none`` for dialogs that draw their own header strip. */
   padding?: keyof typeof DIALOG_PADDING
+  /**
+   * What takes focus as the dialog opens (the default button: Enter presses
+   * it). Without it, the first control does, which in a footer is Cancel.
+   */
+  initialFocus?: RefObject<HTMLElement | null>
 }
 
 const DIALOG_SIZE = {
@@ -146,20 +153,20 @@ const DIALOG_PADDING = {
  * panels lay out their own footer.
  */
 const FOOTER_BLEED = {
-  default: '-mx-4 -mb-4 mt-4 p-4',
-  compact: '-mx-3 -mb-3 mt-3 p-3',
+  default: 'mt-5',
+  compact: 'mt-4',
   none: '',
 } as const
 
 const DialogPaddingContext = createContext<keyof typeof DIALOG_PADDING>('default')
 
-function DialogContent({ className, children, showCloseButton = true, size = 'sm', padding = 'default', ...props }: DialogContentProps) {
+function DialogContent({ className, children, showCloseButton = true, size = 'sm', padding = 'default', initialFocus, ...props }: DialogContentProps) {
   const { open, setOpen, titleId } = useDialog()
   // Unmount when the exit animation (`animation-duration-(--motion-fast)`) ends.
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  useModalFocus(open && mounted, () => setOpen(false))
+  useModalFocus(open && mounted, () => setOpen(false), initialFocus)
 
   if (!mounted) return null
 
@@ -183,7 +190,7 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
           'w-full max-w-[calc(100%-2rem)]',
           DIALOG_SIZE[size],
           'max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
-          'rounded-lg border border-(--color-border) bg-(--bg-card)',
+          'rounded-lg border border-(--color-border-subtle) bg-(--bg-card)',
           DIALOG_PADDING[padding],
           'text-sm text-(--color-text) shadow-(--shadow-depth) outline-none',
           closing
@@ -219,13 +226,30 @@ function DialogHeader({ className, ...props }: ComponentPropsWithRef<'div'>) {
   return <div data-slot="dialog-header" className={cn('flex flex-col gap-2', className)} {...props} />
 }
 
+/**
+ * Children go Cancel first, then the primary action. On wide screens the row
+ * follows the host OS: Cancel · Primary (macOS, iOS, Linux), or Primary ·
+ * Cancel on Windows. Phones stack them with the primary on top, except
+ * Android, whose dialogs end in a row of text buttons (Material).
+ */
 function DialogFooter({ className, showCloseButton = false, children, ...props }: ComponentPropsWithRef<'div'> & { showCloseButton?: boolean }) {
   const { setOpen } = useDialog()
   const padding = useContext(DialogPaddingContext)
+  const os = getPlatform().os
+  const primaryFirst = os === 'windows'
+  const textButtons = os === 'android'
   return (
     <div
       data-slot="dialog-footer"
-      className={cn('flex flex-col-reverse gap-2 rounded-b-lg border-t border-(--color-border) bg-(--bg-key)/50 sm:flex-row sm:justify-end', FOOTER_BLEED[padding], className)}
+      data-button-order={primaryFirst ? 'primary-first' : 'cancel-first'}
+      data-button-style={textButtons ? 'text' : 'filled'}
+      className={cn(
+        textButtons
+          ? 'flex flex-row flex-wrap justify-end gap-1'
+          : cn('flex flex-col-reverse gap-2', primaryFirst ? 'sm:flex-row-reverse sm:justify-start' : 'sm:flex-row sm:justify-end'),
+        FOOTER_BLEED[padding],
+        className,
+      )}
       {...props}
     >
       {children}

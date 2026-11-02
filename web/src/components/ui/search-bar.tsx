@@ -91,10 +91,10 @@ function SearchBar({
           // Shape
           'flex min-h-10 items-center gap-1.5 rounded-sm border md:min-h-8',
           // Surface
-          'border-(--color-border) bg-(--bg-input)',
-          // Focus-within ring — matches Input primitive behaviour
+          'border-(--color-border-subtle) bg-(--bg-input)',
+          // Focus strengthens the edge, as on the Input primitive
           'transition-colors',
-          'focus-within:border-(--focus-ring) focus-within:ring-2 focus-within:ring-(--focus-ring)/30',
+          'focus-within:border-(--color-border-strong)',
         )}
       >
         {/* Search icon — non-interactive, purely decorative */}
@@ -151,7 +151,7 @@ function SearchBar({
           <span
             aria-live="polite"
             aria-atomic="true"
-            className="mr-2.5 shrink-0 font-mono text-xs md:text-[11px] tabular-nums text-(--color-text-subtle) select-none"
+            className="mr-2.5 shrink-0 font-mono text-xs md:text-meta tabular-nums text-(--color-text-subtle) select-none"
           >
             {count === 1 ? '1 item' : `${count} items`}
           </span>

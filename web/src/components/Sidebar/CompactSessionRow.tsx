@@ -28,7 +28,7 @@ export function CompactSessionRow({
       <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold' : 'font-medium'}`}>
         {session.title || 'Untitled'}
       </span>
-      <span className="max-w-[40%] shrink-0 truncate font-mono text-[11px] text-(--color-text-subtle)">
+      <span className="max-w-[40%] shrink-0 truncate font-mono text-meta text-(--color-text-subtle)">
         {workspaceName}
       </span>
     </button>

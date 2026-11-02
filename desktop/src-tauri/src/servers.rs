@@ -130,6 +130,27 @@ pub fn focused_window_covers(caller: &str, focused: Option<&str>, external: &Has
     focused.is_some_and(|label| label != caller && window_server(label, external) == window_server(caller, external))
 }
 
+/// The open app window that shows the session `key` (an [`island::id_key`]),
+/// from what every window reported (`viewing`): the focused one if it is
+/// among them, else the first by label. Any server: a session id is a UUID,
+/// and one machine's server reached by two URLs is one server to the user.
+///
+/// [`island::id_key`]: crate::island::id_key
+pub fn window_showing_session(
+    key: &str,
+    viewing: &HashMap<String, String>,
+    focused: Option<&str>,
+    app_windows: &[String],
+) -> Option<String> {
+    let shows = |label: &&str| viewing.get(*label).is_some_and(|shown| shown == key);
+    focused
+        .into_iter()
+        .chain(app_windows.iter().map(String::as_str))
+        .filter(|label| app_windows.iter().any(|w| w.as_str() == *label))
+        .find(shows)
+        .map(str::to_string)
+}
+
 // ── App state ───────────────────────────────────────────────────────────────
 
 /// Labels of the open app windows (not the tray popup or the island), sorted.
@@ -329,5 +350,29 @@ mod tests {
         assert!(focused_window_covers("main-3", Some("main"), &map), "both on the builtin");
         assert!(!focused_window_covers("main", Some("main"), &map), "the caller itself decides");
         assert!(!focused_window_covers("main", None, &map));
+    }
+
+    fn viewing(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(label, key)| (label.to_string(), key.to_string())).collect()
+    }
+
+    // One session lives in one window: every way to open it asks first which
+    // window already shows it.
+    #[test]
+    fn the_window_that_shows_a_session_is_found_among_the_open_ones() {
+        let windows = labels(&["main", "main-2", "main-3"]);
+        let shown = viewing(&[("main", "aa"), ("main-2", "bb"), ("main-3", "bb")]);
+        assert_eq!(window_showing_session("aa", &shown, None, &windows).as_deref(), Some("main"));
+        assert_eq!(window_showing_session("bb", &shown, None, &windows).as_deref(), Some("main-2"), "first by label");
+        assert_eq!(window_showing_session("bb", &shown, Some("main-3"), &windows).as_deref(), Some("main-3"), "the focused one wins a tie");
+        assert_eq!(window_showing_session("cc", &shown, None, &windows), None);
+    }
+
+    #[test]
+    fn a_window_that_closed_or_shows_nothing_never_counts() {
+        let windows = labels(&["main"]);
+        let shown = viewing(&[("main-2", "bb")]);
+        assert_eq!(window_showing_session("bb", &shown, Some("main-2"), &windows), None, "closed, though it still reports");
+        assert_eq!(window_showing_session("bb", &viewing(&[]), None, &windows), None);
     }
 }

@@ -10,18 +10,21 @@
  * Closing only hides the panel; Clear deletes. While it is closed and the
  * session has side questions, a small chip reopens it (so does a bare
  * `/btw` or Cmd+K → Side Questions).
+ *
+ * Clear asks first, through the shared ConfirmDialog: deleting every side
+ * question of the session cannot be undone. The chip is always "Side
+ * questions" (one name; it truncates when space is short).
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { copyText } from '@/components/ChatContextMenu'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { MarkdownBlock } from '@/utils/markdown'
-
-/** How long Clear waits for its confirming second press. */
-const CLEAR_CONFIRM_MS = 3000
 
 interface BtwPanelProps {
   sessionId: string | null
@@ -31,21 +34,35 @@ interface BtwPanelProps {
   chipOnly?: boolean
   /** What the chip does; defaults to reopening this panel. */
   onReopen?: () => void
-  /** Shorten the chip label to "btw" (the composer is minimized). */
-  compact?: boolean
 }
 
-export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, compact = false }: BtwPanelProps) {
+/** An icon action with its name in a tooltip. */
+function HeaderAction({ label, tooltip, children, ...props }: {
+  label: string
+  tooltip: string
+  children: React.ReactNode
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button size="icon-xs" variant="ghost" aria-label={label} {...props}>
+            {children}
+          </Button>
+        }
+      />
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }: BtwPanelProps) {
   const btw = useSideQuestions(sessionId, { countEnabled, listEnabled: chipOnly ? false : undefined })
   const [confirmClear, setConfirmClear] = useState(false)
   const { exchanges, view } = btw
   const open = btw.open && !chipOnly
-
-  useEffect(() => {
-    if (!confirmClear) return
-    const timer = setTimeout(() => setConfirmClear(false), CLEAR_CONFIRM_MS)
-    return () => clearTimeout(timer)
-  }, [confirmClear])
 
   if (!sessionId) return null
   const store = useBtwStore.getState()
@@ -53,19 +70,28 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, 
   if (!open) {
     if (btw.total <= 0) return null
     return (
-      <button
-        type="button"
-        onClick={() => (onReopen ? onReopen() : store.reopen(sessionId))}
-        aria-label={`Show side questions (${btw.total})`}
-        title="Side questions (/btw)"
-        // Floats over the transcript like the jump-to-latest chip, so the
-        // composer never moves for it.
-        className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex h-7 origin-bottom-right items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
-      >
-        <MessageCircleQuestion size={13} aria-hidden="true" />
-        <span className="font-medium">{compact ? 'btw' : 'Side questions'}</span>
-        <span className="tabular-nums text-(--color-text-subtle)">{btw.total}</span>
-      </button>
+      <div className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex max-w-[calc(100%-1.5rem)] origin-bottom-right animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
+        <Tooltip className="min-w-0">
+          <TooltipTrigger
+            className="min-w-0"
+            render={
+              <button
+                type="button"
+                onClick={() => (onReopen ? onReopen() : store.reopen(sessionId))}
+                aria-label={`Show side questions (${btw.total})`}
+                // Floats over the transcript like the jump-to-latest chip, so the
+                // composer never moves for it.
+                className="flex h-7 min-w-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--color-fill-key-hover) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 pointer-coarse:h-9 pointer-coarse:px-3"
+              >
+                <MessageCircleQuestion size={13} aria-hidden="true" className="shrink-0" />
+                <span className="min-w-0 truncate font-medium">Side questions</span>
+                <span className="shrink-0 tabular-nums text-(--color-text-muted)">{btw.total}</span>
+              </button>
+            }
+          />
+          <TooltipContent>Side questions (/btw)</TooltipContent>
+        </Tooltip>
+      </div>
     )
   }
 
@@ -78,12 +104,8 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, 
     store.setView(sessionId, next === count - 1 ? null : next)
   }
   const onClear = () => {
-    if (!confirmClear) {
-      setConfirmClear(true)
-      return
-    }
-    setConfirmClear(false)
-    store.clear(sessionId).catch((err: unknown) => {
+    // Failures surface as a toast; the dialog closes either way.
+    return store.clear(sessionId).catch((err: unknown) => {
       useToastStore.getState().push({ tone: 'error', title: 'Could not clear side questions', description: err instanceof Error ? err.message : String(err) })
     })
   }
@@ -94,6 +116,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, 
   }
 
   return (
+    <>
     <section
       aria-label="Side questions"
       data-swipe-ignore
@@ -108,48 +131,40 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, 
         }
       }}
       // Rises out of the composer it sits on (DESIGN.md → Motion: ``base``).
-      className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)"
+      className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)"
     >
-      <header className="flex h-8 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) pl-2.5 pr-1">
+      <header className="flex h-8 shrink-0 items-center gap-0.5 pl-2.5 pr-1">
         <span className="font-medium text-(--color-text)">Side questions</span>
-        <span className="ml-1.5 hidden truncate text-(--color-text-subtle) sm:inline">Not added to the chat</span>
+        <span className="ml-1.5 hidden truncate text-(--color-text-muted) sm:inline">Not added to the chat</span>
         <span className="flex-1" />
         {count > 1 && (
           <>
-            <Button size="icon-xs" variant="ghost" aria-label="Earlier side question" title="Earlier (Shift+←)" disabled={index <= 0} onClick={() => step(-1)}>
+            <HeaderAction label="Earlier side question" tooltip="Earlier (Shift+←)" disabled={index <= 0} onClick={() => step(-1)}>
               <ChevronLeft />
-            </Button>
-            <span className="px-0.5 tabular-nums text-(--color-text-subtle)" aria-live="polite">
+            </HeaderAction>
+            <span className="px-0.5 tabular-nums text-(--color-text-muted)" aria-live="polite">
               {index + 1}/{count}
             </span>
-            <Button size="icon-xs" variant="ghost" aria-label="Later side question" title="Later (Shift+→)" disabled={index >= count - 1} onClick={() => step(1)}>
+            <HeaderAction label="Later side question" tooltip="Later (Shift+→)" disabled={index >= count - 1} onClick={() => step(1)}>
               <ChevronRight />
-            </Button>
+            </HeaderAction>
           </>
         )}
-        <Button size="icon-xs" variant="ghost" aria-label="Copy answer" title="Copy answer as Markdown" disabled={!current?.answer} onClick={() => current && copyText(current.answer)}>
+        <HeaderAction label="Copy answer" tooltip="Copy answer as Markdown" disabled={!current?.answer} onClick={() => current && copyText(current.answer)}>
           <Copy />
-        </Button>
-        <Button
-          size={confirmClear ? 'xs' : 'icon-xs'}
-          variant={confirmClear ? 'danger-subtle' : 'ghost'}
-          aria-label={confirmClear ? 'Confirm: delete all side questions' : 'Clear side questions'}
-          title={confirmClear ? undefined : 'Delete all side questions of this session'}
-          disabled={count === 0}
-          onClick={onClear}
-        >
+        </HeaderAction>
+        <HeaderAction label="Clear side questions" tooltip="Delete all side questions of this session" disabled={count === 0} onClick={() => setConfirmClear(true)}>
           <Trash2 />
-          {confirmClear && <span>Clear all</span>}
-        </Button>
-        <Button size="icon-xs" variant="ghost" aria-label="Close side questions" title="Close (Esc)" onClick={() => store.dismiss(sessionId)}>
+        </HeaderAction>
+        <HeaderAction label="Close side questions" tooltip="Close (Esc)" onClick={() => store.dismiss(sessionId)}>
           <X />
-        </Button>
+        </HeaderAction>
       </header>
       <div className="max-h-[calc(var(--app-vh,100vh)*0.4)] min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2">
         {current ? (
           <ExchangeView exchange={current} sessionId={sessionId} />
         ) : btw.isLoading ? (
-          <p className="text-(--color-text-subtle)">Loading side questions…</p>
+          <p className="text-(--color-text-muted)">Loading side questions…</p>
         ) : (
           <p className="text-(--color-text-muted)">
             No side questions yet. Type <code className="font-mono">/btw</code> and a question to ask one without adding it to the chat.
@@ -157,7 +172,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, 
         )}
       </div>
       {current?.status === 'streaming' && (
-        <footer className="flex shrink-0 justify-end border-t border-(--color-border-subtle) px-1.5 py-1">
+        <footer className="flex shrink-0 justify-end px-1.5 py-1">
           <Button size="xs" variant="ghost" onClick={onStop}>
             <Square className="size-3" />
             Stop
@@ -165,6 +180,15 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen, 
         </footer>
       )}
     </section>
+    <ConfirmDialog
+      open={confirmClear}
+      onOpenChange={setConfirmClear}
+      title="Delete all side questions?"
+      description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
+      confirmLabel="Delete all"
+      onConfirm={onClear}
+    />
+    </>
   )
 }
 
@@ -177,12 +201,12 @@ export function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; s
       {exchange.answer ? (
         <MarkdownBlock content={exchange.answer} sessionId={sessionId} isStreaming={streaming && exchange.live} />
       ) : streaming ? (
-        <p role="status" className="text-(--color-text-subtle)">Thinking…</p>
+        <p role="status" className="text-(--color-text-muted)">Thinking…</p>
       ) : null}
       {exchange.status === 'error' && (
         <p role="alert" className="text-(--color-error)">{exchange.error || 'The side question failed.'}</p>
       )}
-      {exchange.status === 'stopped' && <p className="text-(--color-text-subtle)">Stopped.</p>}
+      {exchange.status === 'stopped' && <p className="text-(--color-text-muted)">Stopped.</p>}
     </div>
   )
 }

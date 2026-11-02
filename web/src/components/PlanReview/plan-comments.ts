@@ -17,7 +17,7 @@
  * the plan (`> …`). The transcript card parses the same text back to show the
  * comments rather than a flattened quote.
  */
-import { useCallback, useEffect, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore, type RefObject } from 'react'
 import { createPersistedDraftMap } from '@/lib/persisted-drafts'
 
 export interface PlanComment {
@@ -36,6 +36,9 @@ export interface ParsedPlanReview {
 const QUOTE_MAX = 300
 const COMMENT_HEADING = /^\*\*Comment \d+\*\*$/
 const OVERALL_HEADING = '**Overall**'
+
+/** Mirrors the server's ``PLAN_REVIEW_MAX_ANSWER_CHARS``: the whole review must fit. */
+export const PLAN_FEEDBACK_MAX_CHARS = 8000
 
 function tidy(text: string): string {
   return text.replace(/\r\n?/g, '\n').trim()
@@ -222,6 +225,47 @@ export interface PlanReviewDraft {
 const MAX_DRAFTS = 20
 const drafts = createPersistedDraftMap<PlanReviewDraft>({ storageKey: 'oa.drafts.planReview.v1', max: MAX_DRAFTS })
 
+/**
+ * The Plan tab and the transcript card edit one review at the same time, so a
+ * draft change is announced: each re-renders from the same record instead of
+ * keeping a copy that goes stale.
+ */
+const draftListeners = new Set<() => void>()
+
+function draftsChanged(): void {
+  for (const listener of draftListeners) listener()
+}
+
+function subscribeReviewDrafts(listener: () => void): () => void {
+  draftListeners.add(listener)
+  return () => {
+    draftListeners.delete(listener)
+  }
+}
+
+/** What a review with nothing written holds (one object, so snapshots stay equal). */
+export const EMPTY_PLAN_REVIEW_DRAFT: PlanReviewDraft = { comments: [], overall: '' }
+
+/** The stored draft, or the shared empty one; safe as a ``useSyncExternalStore`` snapshot. */
+export function snapshotPlanReviewDraft(questionId: string | null): PlanReviewDraft {
+  return (questionId && drafts.get(questionId)) || EMPTY_PLAN_REVIEW_DRAFT
+}
+
+/** The review's draft, live: it follows edits made in the Plan tab or on the card. */
+export function usePlanReviewDraft(questionId: string | null): PlanReviewDraft {
+  return useSyncExternalStore(
+    subscribeReviewDrafts,
+    () => snapshotPlanReviewDraft(questionId),
+    () => EMPTY_PLAN_REVIEW_DRAFT,
+  )
+}
+
+/** The Markdown answer a draft sends with Request changes, a half-written comment included. */
+export function planReviewAnswer(draft: PlanReviewDraft): string {
+  const pending = draft.composer?.text.trim() ? [{ quote: draft.composer.quote, text: draft.composer.text }] : []
+  return formatPlanReview([...draft.comments, ...pending], draft.overall)
+}
+
 export function readPlanReviewDraft(questionId: string | null): PlanReviewDraft {
   return (questionId && drafts.get(questionId)) || { comments: [], overall: '' }
 }
@@ -229,18 +273,22 @@ export function readPlanReviewDraft(questionId: string | null): PlanReviewDraft 
 export function writePlanReviewDraft(questionId: string, draft: PlanReviewDraft): void {
   if (draft.comments.length === 0 && !draft.overall && !draft.composer) {
     drafts.delete(questionId)
+    draftsChanged()
     return
   }
   drafts.set(questionId, draft)
+  draftsChanged()
 }
 
 export function forgetPlanReviewDraft(questionId: string): void {
   drafts.delete(questionId)
+  draftsChanged()
 }
 
 /** Test seam. */
 export function clearPlanReviewDrafts(): void {
   drafts.clear()
+  draftsChanged()
 }
 
 /** CSS Custom Highlight names; styled in `index.css`. */

@@ -116,7 +116,7 @@ export function NewSessionScreen({
               onOpenFolder={onOpenFolder}
             />
             {branch && (
-              <span className="inline-flex min-w-0 items-center gap-1 font-mono text-[11px] text-(--color-text-subtle)">
+              <span className="inline-flex min-w-0 items-center gap-1 font-mono text-meta text-(--color-text-subtle)">
                 <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                 <span className="truncate">{branch}</span>
               </span>
@@ -130,7 +130,7 @@ export function NewSessionScreen({
             <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
           )}
           {!isMobile && (
-            <p className="text-[11px] text-(--color-text-subtle)" aria-label="Shortcuts">
+            <p className="text-meta text-(--color-text-subtle)" aria-label="Shortcuts">
               Type <kbd className="font-mono text-(--color-text-muted)">/</kbd> for commands,{' '}
               <kbd className="font-mono text-(--color-text-muted)">@</kbd> to mention a file
             </p>

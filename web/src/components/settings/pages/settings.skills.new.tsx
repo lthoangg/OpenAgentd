@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useCreateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { validateSkillDraft } from '@/components/settings/schema'
 import { PanelSection } from '@/components/ui/panel-section'
 import { Textarea } from '@/components/ui/textarea'
@@ -41,6 +42,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
   const draftErrors = validateSkillDraft(content)
   const invalid = draftErrors !== null
   const firstDraftError = draftErrors ? Object.values(draftErrors)[0] : null
+  const dirty = content !== TEMPLATE
 
   const handleCreate = async () => {
     setSaveError(null)
@@ -61,20 +63,18 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
       <EditorSubHeader
         kind="skill"
         name="New skill"
-        dirty={content !== TEMPLATE}
+        dirty={dirty}
         invalid={invalid}
         saving={createMut.isPending}
         error={saveError}
         validationHint={firstDraftError}
-        onSave={handleCreate}
-        saveLabel="Create skill"
         onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
           <PanelSection title="Skill file" description="SKILL.md, loaded by an agent when a task needs it.">
-            <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="mb-2.5 text-meta leading-relaxed text-(--color-text-muted)">
               The settings block at the top needs <span className="font-mono">name</span> and{' '}
               <span className="font-mono">description</span>. Name a sub-skill{' '}
               <span className="font-mono">parent/sub</span>. The text below is what the agent reads.
@@ -86,7 +86,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
               rows={28}
               spellCheck={false}
               aria-invalid={invalid || undefined}
-              className="min-h-96 font-mono text-[13px] leading-relaxed"
+              className="min-h-96 font-mono text-code leading-relaxed"
             />
             <p className="mt-2 text-xs text-(--color-text-muted)">
               Saved as <span className="font-mono text-(--color-text)">{name}</span>, from the <span className="font-mono">name</span> line.
@@ -94,6 +94,25 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
           </PanelSection>
         </div>
       </div>
+
+      <SaveBar
+        shortcut
+        saveLabel="Create skill"
+        draft={{
+          dirty,
+          canSave: dirty && !invalid && !createMut.isPending,
+          isSaving: createMut.isPending,
+          save: handleCreate,
+          reset: () => {
+            setContent(TEMPLATE)
+            setName('new-skill')
+            setSaveError(null)
+          },
+        }}
+        onSave={() => { void handleCreate() }}
+        saveBlockedReason={invalid ? (firstDraftError ?? 'Fix the errors above to create it.') : null}
+        discardDescription="The skill goes back to the starting template."
+      />
     </div>
   )
 }

@@ -10,13 +10,18 @@
  *   />
  *
  * Radio semantics: a ``radiogroup`` of ``radio`` buttons with a roving tab
- * stop; arrows, Home and End move and select. The track is a keycap well and
- * the chosen segment is a card fill — no shadow, no border colour.
+ * stop; arrows, Home and End move and select. The track is a keycap wash with
+ * no border and no padding ring; the chosen segment fills it edge to edge with
+ * the theme accent (Bark on paper, paper on dark) and inverts its text, like a
+ * native segmented control. No shadow, no border. Once the segments have
+ * widths, that fill is one element that slides from the old choice to the
+ * new one (``base``, ``ease-out``) as on macOS and iOS, the words crossing
+ * over to the inverted tone at the same pace.
  *
  * ``segmentedTrackClass`` / ``segmentedItemClass`` expose the same look for
  * controls that need other semantics (e.g. a toggle-button group).
  */
-import type { KeyboardEvent, ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -43,7 +48,7 @@ const ITEM_SIZE: Record<SegmentedSize, string> = {
 /** Track (container) classes. */
 export function segmentedTrackClass({ size = 'default', fill = false }: { size?: SegmentedSize; fill?: boolean } = {}): string {
   return cn(
-    'inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-key) p-0.5 scrollbar-none',
+    'relative inline-flex max-w-full shrink-0 items-stretch overflow-hidden overflow-x-auto rounded-sm bg-(--bg-key) scrollbar-none',
     TRACK_SIZE[size],
     fill && 'flex w-full',
   )
@@ -65,16 +70,16 @@ export function segmentedItemClass({
   dimDisabled?: boolean
 }): string {
   return cn(
-    'inline-flex h-full items-center justify-center gap-1.5 rounded-xs border border-transparent font-medium whitespace-nowrap select-none',
+    'inline-flex h-full items-center justify-center gap-1.5 font-medium whitespace-nowrap select-none',
     'transition-colors duration-(--motion-instant)',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)',
     dimDisabled ? 'disabled:cursor-not-allowed disabled:opacity-50' : 'disabled:cursor-default',
     '[&_svg]:pointer-events-none [&_svg]:shrink-0',
     ITEM_SIZE[size],
     iconOnly && 'aspect-square px-0',
     fill && 'flex-1',
     active
-      ? 'bg-(--bg-card) text-(--color-text)'
+      ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
       : 'text-(--color-text-muted) hover:text-(--color-text-2)',
   )
 }
@@ -111,6 +116,53 @@ export interface SegmentedControlProps<T extends string> {
 const PREVIOUS_KEYS = new Set(['ArrowLeft', 'ArrowUp'])
 const NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown'])
 
+interface IndicatorBox { x: number; w: number }
+
+/**
+ * The sliding fill for a segmented track: put ``trackRef`` on the track,
+ * ``indicator`` first inside it, and ``slideItemClass`` on every segment.
+ * ``chosen`` selects the chosen segment (radio or pressed toggle). The box
+ * follows value changes and resizes (a Text size change, a fill-width
+ * track) and is null until the segments have widths, so the first frame
+ * never slides in from 0 and the chosen segment keeps its own fill until then.
+ */
+export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria-checked="true"]'): {
+  trackRef: RefObject<HTMLDivElement | null>
+  indicator: ReactNode
+  slideItemClass: string
+} {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState<IndicatorBox | null>(null)
+  useLayoutEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    const measure = () => {
+      const segment = track.querySelector<HTMLElement>(chosen)
+      const next = segment && segment.offsetWidth > 0 ? { x: segment.offsetLeft, w: segment.offsetWidth } : null
+      setBox((current) => (current?.x === next?.x && current?.w === next?.w ? current : next))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [value, chosen])
+  const indicator = box ? (
+    // A 1px box scaled to the segment's width: it moves by transform alone,
+    // and has no corners for the scale to distort (the track clips the ends).
+    <span
+      aria-hidden="true"
+      data-segment-indicator=""
+      className="pointer-events-none absolute inset-y-0 left-0 w-px origin-left bg-(--color-fill-selected) transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
+      style={{ translate: `${box.x}px 0px`, scale: `${box.w} 1` }}
+    />
+  ) : null
+  // Above the fill, the words cross to the inverted tone at its pace rather
+  // than ahead of it.
+  const slideItemClass = cn('relative duration-(--motion-fast)', box && 'bg-transparent')
+  return { trackRef, indicator, slideItemClass }
+}
+
 export function SegmentedControl<T extends string>({
   label,
   value,
@@ -126,6 +178,7 @@ export function SegmentedControl<T extends string>({
   const enabled = options.filter((option) => !disabled && !option.disabled)
   // The chosen segment is the tab stop; fall back to the first enabled one.
   const tabStop = enabled.some((option) => option.value === value) ? value : enabled[0]?.value
+  const { trackRef, indicator, slideItemClass } = useSegmentIndicator(value)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: T) => {
     if (!enabled.length) return
@@ -149,12 +202,14 @@ export function SegmentedControl<T extends string>({
 
   return (
     <div
+      ref={trackRef}
       role="radiogroup"
       aria-label={label}
       aria-disabled={disabled || undefined}
       data-slot="segmented-control"
       className={cn(segmentedTrackClass({ size, fill }), className)}
     >
+      {indicator}
       {options.map((option) => {
         const active = option.value === value
         const button = (
@@ -176,6 +231,7 @@ export function SegmentedControl<T extends string>({
             onKeyDown={(event) => handleKeyDown(event, option.value)}
             className={cn(
               segmentedItemClass({ active, size, fill, iconOnly: option.label == null }),
+              slideItemClass,
               itemClassName,
               option.className,
             )}

@@ -165,6 +165,31 @@ describe('ToastStack auto-dismiss', () => {
 })
 
 describe('ToastStack status-message semantics (WCAG 4.1.3)', () => {
+  it('keeps an error toast up until the user closes it', () => {
+    const timers = useFakeTimers()
+    try {
+      useToastStore.getState().push({ tone: 'error', title: 'Could not save' })
+      render(<ToastStack />)
+      act(() => timers.tick(60_000))
+      expect(screen.getByText('Could not save')).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+      expect(screen.queryByText('Could not save')).toBeNull()
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('runs the toast action and closes the toast', () => {
+    const retry = mock(() => {})
+    useToastStore.getState().push({ tone: 'error', title: 'Could not load', action: { label: 'Retry', onAction: retry } })
+    render(<ToastStack />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Could not load')).toBeNull()
+  })
+
   it('gives an error toast role="alert" and aria-live="assertive" so it interrupts assistive tech', () => {
     useToastStore.setState({
       toasts: [{ id: 't-err', tone: 'error', title: 'Something failed', durationMs: 4500 }],
@@ -191,5 +216,56 @@ describe('ToastStack status-message semantics (WCAG 4.1.3)', () => {
     const info = screen.getByText('Heads up').closest('[role]')!
     expect(info.getAttribute('role')).toBe('status')
     expect(info.getAttribute('aria-live')).toBe('polite')
+  })
+})
+
+describe('ToastStack placement', () => {
+  it('lists the newest toast first, so it sits nearest the top edge of its column', () => {
+    useToastStore.setState({
+      toasts: [
+        { id: 't-1', tone: 'info', title: 'First', durationMs: null },
+        { id: 't-2', tone: 'error', title: 'Second', durationMs: null },
+        { id: 't-3', tone: 'success', title: 'Third', durationMs: null },
+      ],
+    })
+    render(<ToastStack />)
+
+    const shown = Array.from(document.querySelectorAll('[role="status"], [role="alert"]')).map((el) => el.querySelector('p')?.textContent)
+    expect(shown).toEqual(['Third', 'Second', 'First'])
+  })
+
+  it('keeps each toast live-region role when the order flips', () => {
+    useToastStore.setState({
+      toasts: [
+        { id: 't-1', tone: 'info', title: 'First', durationMs: null },
+        { id: 't-2', tone: 'error', title: 'Second', durationMs: null },
+      ],
+    })
+    render(<ToastStack />)
+
+    expect(screen.getByText('Second').closest('[role]')?.getAttribute('role')).toBe('alert')
+    expect(screen.getByText('First').closest('[role]')?.getAttribute('role')).toBe('status')
+  })
+
+  it('does not reorder the store while reversing for display', () => {
+    useToastStore.setState({
+      toasts: [
+        { id: 't-1', tone: 'info', title: 'First', durationMs: null },
+        { id: 't-2', tone: 'info', title: 'Second', durationMs: null },
+      ],
+    })
+    render(<ToastStack />)
+
+    expect(useToastStore.getState().toasts.map((t) => t.id)).toEqual(['t-1', 't-2'])
+  })
+
+  it('leaves positioning to the notice column: not fixed itself, full width on phones', () => {
+    const { container } = render(<ToastStack />)
+    const classes = (container.firstElementChild as HTMLElement).className.split(/\s+/)
+
+    expect(classes).not.toContain('fixed')
+    expect(classes).not.toContain('mobile-safe-toast')
+    expect(classes).toContain('w-full')
+    expect(classes).toContain('sm:max-w-sm')
   })
 })

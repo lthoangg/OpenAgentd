@@ -13,7 +13,8 @@ import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { TELEMETRY_RANGES, type TelemetryRange } from '@/stores/useTelemetryStore'
 import { cn } from '@/lib/utils'
-import { modelName, workspaceName } from './model'
+import { workspaceName } from './model'
+import { ModelName } from '@/components/ui/model-name'
 
 const ALL = '__all__'
 
@@ -71,7 +72,7 @@ export function FilterBar({
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--color-border) px-3 py-2 sm:px-4">
-      <span className="text-[11px] text-(--color-text-subtle) max-sm:sr-only" aria-hidden="true">Range</span>
+      <span className="text-meta text-(--color-text-subtle) max-sm:sr-only" aria-hidden="true">Range</span>
       <SegmentedControl
         label="Time range"
         size="sm"
@@ -87,7 +88,7 @@ export function FilterBar({
       />
 
       {facets === null ? (
-        <span className="text-[11px] text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
+        <span className="text-meta text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
       ) : null}
 
       {workspaces.length > 0 && (
@@ -130,21 +131,21 @@ export function FilterBar({
           <DropdownItem value={ALL}>All models</DropdownItem>
           {models.map((pm) => (
             <DropdownItem key={pm} value={pm} title={pm}>
-              <span className="truncate font-mono">{modelName(pm)}</span>
+              <ModelName id={pm} />
             </DropdownItem>
           ))}
         </Dropdown>
       )}
 
       {session !== null && (
-        <span className="flex h-7 max-w-64 shrink-0 items-center gap-1 rounded-sm border border-(--color-border-strong) bg-(--bg-card) pr-0.5 pl-2 text-xs text-(--color-text)">
+        <span className="flex h-7 max-w-64 shrink-0 items-center gap-1 rounded-sm bg-(--bg-key) pr-0.5 pl-2 text-xs text-(--color-text)">
           <span className="text-(--color-text-muted)">Session</span>
           <span className="min-w-0 truncate font-medium">{sessionLabel ?? 'Loading…'}</span>
           <button
             type="button"
             onClick={() => onSessionChange(null)}
             aria-label="Remove session filter"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--color-fill-key-hover) hover:text-(--color-text) pointer-coarse:size-9"
           >
             <X size={12} aria-hidden="true" />
           </button>
@@ -157,11 +158,11 @@ export function FilterBar({
           aria-pressed={errorsOnly}
           onClick={() => onErrorsOnlyChange(!errorsOnly)}
           className={cn(
-            'h-7 shrink-0 rounded-sm border px-2.5 text-xs transition-colors pointer-coarse:min-h-9',
+            'h-7 shrink-0 rounded-sm px-2.5 text-xs transition-colors pointer-coarse:min-h-9',
             'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--focus-ring)',
             errorsOnly
-              ? 'border-(--color-error)/45 bg-(--color-error-subtle) text-(--color-error)'
-              : 'border-(--color-border) bg-(--bg-card) text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)',
+              ? 'bg-(--color-error-subtle) text-(--color-error)'
+              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-fill-key-hover) hover:text-(--color-text)',
           )}
         >
           Failed only

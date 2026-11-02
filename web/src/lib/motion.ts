@@ -33,14 +33,15 @@ export const EASINGS = {
 
 /**
  * Enter/exit for a card in the floating notices column (the TypeScript tools
- * prompt, the update card): rises in at ``base``, fades out at ``fast``.
+ * prompt, the update card): drops in from the header at ``base``, fades out
+ * at ``fast``.
  * Spread onto a ``motion`` element that is a direct child of
  * ``AnimatePresence``. Reduced motion: no movement at all.
  */
 export function noticePresence(reduced: boolean) {
   if (reduced) return { initial: false as const }
   return {
-    initial: { opacity: 0, y: 8 },
+    initial: { opacity: 0, y: -8 },
     animate: { opacity: 1, y: 0, transition: { duration: DURATIONS_S.base, ease: EASINGS.out } },
     exit: { opacity: 0, scale: 0.98, transition: { duration: DURATIONS_S.fast, ease: EASINGS.inOut } },
   }

@@ -73,7 +73,7 @@ function TimeUnit({
       onChange={handleChange}
       onKeyDown={handleKey}
       aria-label={label}
-      className="h-7 w-10 rounded-xs border border-(--color-border) bg-(--bg-page) text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-1 focus:ring-(--focus-ring)/30 focus:outline-none focus-visible:outline-none"
+      className="h-7 w-10 rounded-xs border border-(--color-border-subtle) bg-(--bg-page) text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) focus:outline-none focus-visible:outline-none"
     />
   )
 }
@@ -158,16 +158,16 @@ export function DateTimePicker({
           />
 
           {/* Time + Done row */}
-          <div className="flex items-center justify-between gap-3 border-t border-(--color-border) bg-(--bg-sidebar)/60 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 border-t border-(--color-border-subtle) bg-(--bg-sidebar)/60 px-3 py-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-(--color-text-muted)">Time</span>
+              <span className="text-meta font-medium text-(--color-text-muted)">Time</span>
               {isMobile ? (
                 <input
                   type="time"
                   aria-label="Time"
                   value={`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`}
                   onChange={handleNativeTime}
-                  className="h-7 rounded-xs border border-(--color-border) bg-(--bg-page) px-1.5 text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-1 focus:ring-(--focus-ring)/30 focus:outline-none focus-visible:outline-none"
+                  className="h-7 rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-1.5 text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) focus:outline-none focus-visible:outline-none accent-(--color-accent)"
                 />
               ) : (
                 <>

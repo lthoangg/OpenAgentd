@@ -50,5 +50,5 @@ it('fails when a lazy surface has no chunk of its own (bundled into another one)
 it('keeps the startup budget below the size before the lazy surfaces', () => {
   expect(LIMITS.eagerGzipBytes).toBeLessThan(810_000)
   expect(LIMITS.eagerBytes).toBeLessThan(2_654_000)
-  expect(LAZY_SURFACES).toEqual(expect.arrayContaining(['SettingsModal', 'TelemetryOverlay', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult']))
+  expect(LAZY_SURFACES).toEqual(expect.arrayContaining(['SettingsModal', 'TelemetryOverlay', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker']))
 })

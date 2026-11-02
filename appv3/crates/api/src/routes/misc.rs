@@ -90,6 +90,7 @@ async fn oauth_disconnect(AxPath(id): AxPath<String>, axum::extract::RawQuery(q)
     if !still_connected {
         let _ = rs::forget_provider_models(&id);
     }
+    crate::usage::invalidate_usage(&id, credential_id.as_deref());
     Ok(json(json!({"ok": true, "provider": id, "credential_id": credential_id})))
 }
 
@@ -139,7 +140,12 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
         let tx = tx.clone();
         let failed = failed.clone();
         let credential_id = credential_id.clone();
+        let provider_id = id.clone();
+        let usage_account = credential_id.clone().or_else(|| builtin.then(|| slot.credential_id.clone()));
         Arc::new(move |event: &str, mut data: Value| {
+            if event == "success" {
+                crate::usage::invalidate_usage(&provider_id, usage_account.as_deref());
+            }
             if event == "failed" {
                 failed.store(true, std::sync::atomic::Ordering::SeqCst);
             }
@@ -299,6 +305,9 @@ async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
     if let Some((_, d)) = evs.iter().find(|(e, _)| e == "failed") {
         let msg = d.get("message").map(|m| m.as_str().map(String::from).unwrap_or_else(|| appv3_agent::pystr::py_str(m))).unwrap_or_else(|| "OAuth callback failed".into());
         return Err(ApiError::new(400, msg));
+    }
+    if evs.iter().any(|(event, _)| event == "success") {
+        crate::usage::invalidate_usage(&id, bound.as_deref());
     }
     let mut body = Map::new();
     body.insert("ok".into(), json!(true));

@@ -3,8 +3,12 @@ import type { SessionResponse } from '@/api/types'
 import { needsYouSessions } from '@/lib/active-sessions'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
 import { CompactSessionRow } from './CompactSessionRow'
+import { SidebarHeading } from './SidebarHeading'
 
-/** Sessions stopped on a question, from every workspace, above the tree. */
+/**
+ * Sessions stopped on a question, from every workspace, above the tree. Part
+ * of the sidebar's one scroller: no scroll area of its own.
+ */
 export function NeedsYouSection({
   currentSessionId,
   workspaceName,
@@ -19,12 +23,9 @@ export function NeedsYouSection({
   if (sessions.length === 0) return null
 
   return (
-    <section aria-label="Needs you" className="shrink-0 border-b border-(--color-border-subtle) pb-1.5">
-      <div className="flex h-8 items-center gap-1.5 pl-3 pr-1.5 text-[11px] leading-none">
-        <span className="label-caps text-(--color-text-subtle)">Needs you</span>
-        <span className="tabular-nums text-(--color-warning)">{sessions.length}</span>
-      </div>
-      <ul className="max-h-48 space-y-px overflow-y-auto px-1.5">
+    <section aria-label="Needs you" className="shrink-0 pb-1.5">
+      <SidebarHeading label="Needs you" count={sessions.length} countLabel={`${sessions.length} waiting`} tone="warning" />
+      <ul className="space-y-px px-1.5">
         {sessions.map((session) => (
           <li key={session.id}>
             <CompactSessionRow

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { Check, CircleAlert, Pause, X } from 'lucide-react'
+import { Check, CircleAlert, Pause, WifiOff, X } from 'lucide-react'
 import { DURATIONS_S } from '@/lib/motion'
 import {
   DEFAULT_ISLAND_SETTINGS,
+  STATE_WORD,
   type IslandGoal,
   type IslandMode,
   type IslandPointer,
@@ -13,6 +14,7 @@ import {
   type IslandStatus,
   type IslandView,
   type NotchGeometry,
+  type UnreachableServer,
   allFailed,
   compactCount,
   compactLabels,
@@ -25,31 +27,37 @@ import {
   islandWidth,
   listOrder,
   primarySessionId,
+  quickChoices,
+  rowSignature,
+  serverSignature,
+  serversWithoutLater,
+  withAnswered,
+  withoutLater,
 } from './status'
 
 const STATE_COMMAND = 'island_state'
 const FIT_COMMAND = 'island_fit'
 const OPEN_COMMAND = 'island_open_session'
-const DISMISS_COMMAND = 'island_dismiss'
+const ANSWER_COMMAND = 'island_answer'
+const RETRY_COMMAND = 'island_retry'
 const MENU_COMMAND = 'island_context_menu'
 const STATUS_EVENT = 'island-status'
 const GEOMETRY_EVENT = 'island-geometry'
 const SETTINGS_EVENT = 'island-settings-changed'
 /** The shell polls the pointer: WebKit gives no hover to a window that can't take focus. */
 const POINTER_EVENT = 'island-pointer'
-/** Stable empty list, so effects keyed on it don't rerun every render. */
+/** Stable empty lists, so effects keyed on them don't rerun every render. */
 const NO_SESSIONS: IslandSession[] = []
+const NO_SERVERS: UnreachableServer[] = []
 /** The canvas shows with the pill still inside the notch; it grows out after this. */
 const ENTER_DELAY_MS = 34
 /** The canvas stays up this long after the pill starts shrinking back in. */
 const EXIT_MS = DURATIONS_S.slow * 1000
+/** A list opened by a click closes once the pointer has been away this long. */
+const PINNED_LEAVE_MS = 2500
 
 function openSession(sessionId: string | null) {
   if (sessionId) void invoke(OPEN_COMMAND, { sessionId }).catch(() => {})
-}
-
-function dismiss(sessionId: string) {
-  void invoke(DISMISS_COMMAND, { sessionId }).catch(() => {})
 }
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
@@ -89,72 +97,141 @@ function StateMark({ mode, failed, goal }: { mode: IslandMode; failed: boolean; 
       ? <CircleAlert size={13} className="island-mark island-mark--failed" aria-hidden="true" />
       : <Check size={13} strokeWidth={3} className="island-mark island-mark--done" aria-hidden="true" />
   }
+  if (mode === 'offline') return <WifiOff size={13} className="island-mark island-mark--paused" aria-hidden="true" />
   if (mode === 'needs_input') return <span className="island-dot" aria-hidden="true" />
   return <span className="island-spinner" aria-hidden="true" />
 }
 
-function RowMark({ session }: { session: IslandSession }) {
-  const { state } = session
-  const goal = outcomeOf(session)
-  if ((state === 'done' || state === 'failed') && goal) return <GoalOutcomeMark goal={goal} size={12} />
-  if (state === 'needs_input') return <span className="island-dot" aria-hidden="true" />
-  if (state === 'done') return <Check size={12} strokeWidth={3} className="island-mark island-mark--done" aria-hidden="true" />
-  if (state === 'failed') return <CircleAlert size={12} className="island-mark island-mark--failed" aria-hidden="true" />
-  return <span className="island-spinner" aria-hidden="true" />
+/** The word that says a row's state: colour alone never does. */
+function StateChip({ session }: { session: IslandSession }) {
+  return <span className="island-chip" data-state={session.state}>{STATE_WORD[session.state]}</span>
 }
 
-function SessionRow({ session, hover, onMenu }: {
-  session: IslandSession
-  hover: RowHover | null
+/** Which control the pointer is over, as `data-hit` keys it (the shell sends positions, not :hover). */
+function hitAt(pointer: IslandPointer | null): string | null {
+  if (!pointer?.inside || typeof document.elementFromPoint !== 'function') return null
+  return document.elementFromPoint(pointer.x, pointer.y)?.closest('[data-hit]')?.getAttribute('data-hit') ?? null
+}
+
+/** An answer being sent, or one the shell could not take. */
+type Sending = 'sending' | 'failed'
+
+interface RowActions {
+  hit: string | null
+  sending: ReadonlyMap<string, Sending>
   onMenu: (event: MouseEvent<HTMLElement>, sessionId: string) => void
-}) {
-  const hovered = hover?.id === session.id
+  onAnswer: (session: IslandSession, choice: string) => void
+  onLater: (session: IslandSession) => void
+}
+
+function SessionRow({ session, actions }: { session: IslandSession; actions: RowActions }) {
+  const { hit, sending, onMenu, onAnswer, onLater } = actions
   const waiting = session.state === 'needs_input'
-  const unread = session.state === 'done' || session.state === 'failed'
-  const meta = [session.server, waiting ? 'Open' : goalLabel(session) ?? session.workspace].filter(Boolean).join(' · ')
+  const attention = waiting || session.state === 'done' || session.state === 'failed'
+  const meta = [session.server, goalLabel(session) ?? session.workspace].filter(Boolean).join(' · ')
+  const choices = quickChoices(session)
+  const send = session.questionId ? sending.get(session.questionId) : undefined
+  const hover = (key: string) => (hit === key ? '' : undefined)
   return (
-    <li className="island-row-item" data-unread={unread ? '' : undefined} onContextMenu={(event) => onMenu(event, session.id)}>
+    <li className="island-row-item" data-state={session.state} onContextMenu={(event) => onMenu(event, session.id)}>
       <button
         type="button"
         className="island-row"
         data-row={session.id}
-        data-hover={hovered ? '' : undefined}
+        data-hit={`row:${session.id}`}
+        data-hover={hover(`row:${session.id}`)}
         onClick={() => openSession(session.id)}
       >
-        <RowMark session={session} />
+        <StateChip session={session} />
         <span className="island-row-title">{session.title}</span>
         <span className="island-row-meta">{meta}</span>
         {waiting && session.question && <span className="island-row-question">{session.question}</span>}
       </button>
-      {unread && (
+      {attention && (
         <button
           type="button"
-          className="island-dismiss"
-          data-row={session.id}
-          data-dismiss=""
-          data-hover={hovered && hover?.dismiss ? '' : undefined}
-          aria-label={`Dismiss ${session.title}`}
-          onClick={() => dismiss(session.id)}
+          className="island-later"
+          data-hit={`later:${session.id}`}
+          data-hover={hover(`later:${session.id}`)}
+          data-tip="Later"
+          aria-label={`Later: ${session.title}`}
+          onClick={() => onLater(session)}
         >
-          <X size={12} strokeWidth={2.5} aria-hidden="true" />
+          <X size={14} strokeWidth={2.5} aria-hidden="true" />
         </button>
+      )}
+      {waiting && (
+        <div className="island-actions">
+          {choices.map((choice, index) => (
+            <button
+              key={choice}
+              type="button"
+              className="island-action"
+              data-primary={index === 0 ? '' : undefined}
+              data-hit={`choice:${session.id}:${index}`}
+              data-hover={hover(`choice:${session.id}:${index}`)}
+              disabled={send === 'sending'}
+              onClick={() => onAnswer(session, choice)}
+            >
+              {choice}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="island-action"
+            data-primary={choices.length === 0 ? '' : undefined}
+            data-hit={`open:${session.id}`}
+            data-hover={hover(`open:${session.id}`)}
+            onClick={() => openSession(session.id)}
+          >
+            Open to answer
+          </button>
+          {send === 'failed' && <span className="island-action-note" role="alert">Couldn't send. Open to answer.</span>}
+        </div>
       )}
     </li>
   )
 }
 
-interface RowHover {
-  id: string
-  /** Over the row's × rather than the row itself. */
-  dismiss: boolean
-}
-
-/** The row under the pointer, from the shell's pointer position. */
-function rowAt(pointer: IslandPointer | null): RowHover | null {
-  if (!pointer?.inside || typeof document.elementFromPoint !== 'function') return null
-  const target = document.elementFromPoint(pointer.x, pointer.y)?.closest('[data-row]')
-  const id = target?.getAttribute('data-row')
-  return id ? { id, dismiss: target?.hasAttribute('data-dismiss') ?? false } : null
+function ServerRow({ server, hit, onRetry, onLater }: {
+  server: UnreachableServer
+  hit: string | null
+  onRetry: () => void
+  onLater: (server: UnreachableServer) => void
+}) {
+  const retry = `retry:${server.id}`
+  const later = `later:server:${server.id}`
+  return (
+    <li className="island-row-item island-row-item--server" data-state="offline">
+      <div className="island-row island-row--static">
+        <span className="island-chip" data-state="offline">Can't reach</span>
+        <span className="island-row-title">{server.name}</span>
+        <span className="island-row-meta">{server.reason === 'key_rejected' ? 'Access key rejected' : 'Not answering'}</span>
+      </div>
+      <button
+        type="button"
+        className="island-later"
+        data-hit={later}
+        data-hover={hit === later ? '' : undefined}
+        data-tip="Later"
+        aria-label={`Later: ${server.name}`}
+        onClick={() => onLater(server)}
+      >
+        <X size={14} strokeWidth={2.5} aria-hidden="true" />
+      </button>
+      <div className="island-actions">
+        <button
+          type="button"
+          className="island-action"
+          data-hit={retry}
+          data-hover={hit === retry ? '' : undefined}
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      </div>
+    </li>
+  )
 }
 
 export function Island() {
@@ -168,6 +245,13 @@ export function Island() {
   const [open, setOpen] = useState(false)
   /** The pill is shrinking back in; the canvas stays up until it has. */
   const [closing, setClosing] = useState(false)
+  /** The list was opened by a click on the pill. */
+  const [pinned, setPinned] = useState(false)
+  /** Rows put off with "Later", by row id → what they looked like (see `rowSignature`). */
+  const [later, setLater] = useState<ReadonlyMap<string, string>>(() => new Map())
+  /** Questions answered from here, until the shell's snapshot says so too. */
+  const [answered, setAnswered] = useState<ReadonlySet<string>>(() => new Set())
+  const [sending, setSending] = useState<ReadonlyMap<string, Sending>>(() => new Map())
   const listRef = useRef<HTMLUListElement>(null)
   const wasVisible = useRef(false)
   /** The last snapshot seen; an older one arriving late is dropped. */
@@ -212,11 +296,39 @@ export function Island() {
 
   // Live updates still arrive, but cannot shrink the pill under a native menu.
   const displayedStatus = menuStatus ?? status
-  const sessions = displayedStatus?.sessions ?? NO_SESSIONS
-  const unread = displayedStatus?.unread ?? NO_SESSIONS
+  const allSessions = displayedStatus?.sessions ?? NO_SESSIONS
+  const allUnread = displayedStatus?.unread ?? NO_SESSIONS
+  const allServers = displayedStatus?.unreachable ?? NO_SERVERS
+  // What is on show: answered questions run again, and rows put off for later
+  // stay away until something about them changes.
+  const sessions = useMemo(() => withoutLater(withAnswered(allSessions, answered), later), [allSessions, answered, later])
+  const unread = useMemo(() => withoutLater(allUnread, later), [allUnread, later])
+  const servers = useMemo(() => serversWithoutLater(allServers, later), [allServers, later])
   const hovered = menuStatus !== null || (pointer?.inside ?? false)
-  const mode = islandMode(sessions, unread, hovered, settings)
+  const mode = islandMode(sessions, unread, hovered, settings, pinned, servers)
   const wantVisible = mode !== 'hidden'
+
+  // The list a click opened closes again once the pointer has been away a while.
+  useEffect(() => {
+    if (!pinned) return
+    if (!wantVisible) {
+      setPinned(false)
+      return
+    }
+    if (hovered) return
+    const timer = setTimeout(() => setPinned(false), PINNED_LEAVE_MS)
+    return () => clearTimeout(timer)
+  }, [pinned, hovered, wantVisible])
+
+  // Rows that came back (changed) or went away leave nothing behind.
+  useEffect(() => {
+    if (later.size === 0) return
+    const live = new Map<string, string>()
+    for (const row of [...allSessions, ...allUnread]) live.set(row.id, rowSignature(row))
+    for (const server of allServers) live.set(`server:${server.id}`, serverSignature(server))
+    const kept = [...later].filter(([key, signature]) => live.get(key) === signature)
+    if (kept.length !== later.size) setLater(new Map(kept))
+  }, [later, allSessions, allUnread, allServers])
 
   // Grow out of the notch once the canvas is up; shrink back in, then let
   // the canvas go.
@@ -241,9 +353,9 @@ export function Island() {
   })
   if (wantVisible) {
     shown.current = {
-      mode: compactMode(sessions, unread),
-      ...compactLabels(sessions, unread),
-      count: compactCount(sessions, unread),
+      mode: compactMode(sessions, unread, servers),
+      ...compactLabels(sessions, unread, servers),
+      count: compactCount(sessions, unread, servers),
       failed: allFailed(unread),
       // One unread goal names its outcome, so its mark shows it too.
       goal: unread.length === 1 ? outcomeOf(unread[0]) : null,
@@ -254,7 +366,7 @@ export function Island() {
   useLayoutEffect(() => {
     if (mode !== 'expanded' || !listRef.current) return
     setListHeight(listRef.current.scrollHeight)
-  }, [mode, sessions, unread])
+  }, [mode, sessions, unread, servers, sending])
 
   const sizeMode: IslandMode = open ? mode : 'hidden'
   const width = geometry ? islandWidth(sizeMode, geometry) : 0
@@ -270,7 +382,42 @@ export function Island() {
     void invoke(FIT_COMMAND, { width: hit.width, height, visible, shift: hit.shift }).catch(() => {})
   }, [geometry, sizeMode, width, height, visible])
 
-  const hoverRow = rowAt(pointer)
+  const hit = hitAt(pointer)
+
+  const putOff = useCallback((key: string, signature: string) => {
+    setLater((current) => new Map(current).set(key, signature))
+  }, [])
+
+  const answer = useCallback((session: IslandSession, choice: string) => {
+    const questionId = session.questionId
+    if (!questionId) return
+    setSending((current) => new Map(current).set(questionId, 'sending'))
+    void invoke(ANSWER_COMMAND, { sessionId: session.id, questionId, answers: [[choice]] })
+      .then(() => {
+        // Taken, or already answered elsewhere: either way it is not waiting.
+        setAnswered((current) => new Set(current).add(questionId))
+      })
+      .catch((error: unknown) => {
+        console.error('island: answer failed', error)
+        setSending((current) => new Map(current).set(questionId, 'failed'))
+      })
+      .finally(() => {
+        setSending((current) => {
+          if (current.get(questionId) !== 'sending') return current
+          const next = new Map(current)
+          next.delete(questionId)
+          return next
+        })
+      })
+  }, [])
+
+  const rowActions: RowActions = {
+    hit,
+    sending,
+    onMenu,
+    onAnswer: answer,
+    onLater: (session) => putOff(session.id, rowSignature(session)),
+  }
 
   if (!geometry) return null
 
@@ -281,8 +428,17 @@ export function Island() {
     '--notch-width': `${geometry.hasNotch ? geometry.width : 0}px`,
     '--notch-height': `${geometry.height}px`,
   } as CSSProperties
-  const onBar = () => openSession(primarySessionId(sessions, unread))
-  const label = `${lead}: ${detail}. Open in OpenAgentd`
+  const primary = primarySessionId(sessions, unread)
+  // A click opens the list; with hover on, the list is already open and a
+  // click on the bar goes to the session it names. Opened by a click, the
+  // bar closes it again.
+  const onBar = () => {
+    if (mode !== 'expanded' && !settings.expandOnHover) setPinned(true)
+    else if (pinned) setPinned(false)
+    else openSession(primary)
+  }
+  const barAction = mode === 'expanded' ? (pinned ? 'Close the list' : 'Open in OpenAgentd') : 'Show the list'
+  const label = `${lead}: ${detail}. ${barAction}`
 
   return (
     <div className="island-canvas" onContextMenu={(event) => event.preventDefault()}>
@@ -295,7 +451,7 @@ export function Island() {
       >
         <span className="island-ear island-ear--left" aria-hidden="true" />
         <div className="island-body">
-          <button type="button" className="island-bar" onClick={onBar} onContextMenu={(event) => onMenu(event, primarySessionId(sessions, unread))} aria-label={wantVisible ? label : 'No active sessions'} tabIndex={wantVisible ? 0 : -1}>
+          <button type="button" className="island-bar" onClick={onBar} onContextMenu={(event) => onMenu(event, primary)} aria-label={wantVisible ? label : 'No active sessions'} aria-expanded={mode === 'expanded'} tabIndex={wantVisible ? 0 : -1}>
             <span className="island-lead" role="status" aria-live="polite">
               {barMode !== 'hidden' && (
                 <span key={barMode} className="island-swap island-lead-inner">
@@ -310,7 +466,16 @@ export function Island() {
           </button>
           {mode === 'expanded' && (
             <ul ref={listRef} className="island-list" aria-label="Sessions">
-              {listOrder(sessions, unread).map((session) => <SessionRow key={session.id} session={session} hover={hoverRow} onMenu={onMenu} />)}
+              {listOrder(sessions, unread).map((session) => <SessionRow key={session.id} session={session} actions={rowActions} />)}
+              {servers.map((server) => (
+                <ServerRow
+                  key={server.id}
+                  server={server}
+                  hit={hit}
+                  onRetry={() => void invoke(RETRY_COMMAND).catch(() => {})}
+                  onLater={(item) => putOff(`server:${item.id}`, serverSignature(item))}
+                />
+              ))}
             </ul>
           )}
         </div>

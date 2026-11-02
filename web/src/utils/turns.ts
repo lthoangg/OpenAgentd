@@ -107,6 +107,15 @@ export function turnModel(blocks: ContentBlock[]): { model: string; thinkingLeve
   return undefined
 }
 
+/** The account (key or sign-in) that answered a turn, when the provider has several. */
+export function turnAccount(blocks: ContentBlock[]): string | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const label = blocks[i].extra?.credential_label
+    if (typeof label === 'string' && label) return label
+  }
+  return undefined
+}
+
 /**
  * The model and thinking level of each prompt, keyed by block id: the ones
  * that answered it, or, before an answer names one, the ones it was sent

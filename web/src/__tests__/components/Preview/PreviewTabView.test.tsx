@@ -137,11 +137,11 @@ const element = {
 }
 
 describe('PreviewTabView', () => {
-  /** Ready the page, turn Design on, pick the element, and add a comment. */
+  /** Ready the page, turn Comment on, pick the element, and add a comment. */
   async function addComment(frameWindow: Window, text: string, picked: typeof element = element) {
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
     const design = await waitFor(() => {
-      const button = screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
       if (button.disabled) throw new Error('not ready')
       return button
     })
@@ -162,9 +162,9 @@ describe('PreviewTabView', () => {
     await waitFor(() => expect(address.value).toBe('http://localhost:5173/pricing'))
   })
 
-  it('enables Design only once the page reports ready from its own origin', async () => {
+  it('enables Comment only once the page reports ready from its own origin', async () => {
     const { frameWindow } = await renderView()
-    const design = () => screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement
+    const design = () => screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
     expect(design().disabled).toBe(true)
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' }, 'http://evil.example')
     expect(design().disabled).toBe(true)
@@ -177,7 +177,7 @@ describe('PreviewTabView', () => {
     const { frameWindow, commands, onSendComments } = await renderView()
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
     const design = await waitFor(() => {
-      const button = screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
       if (button.disabled) throw new Error('not ready')
       return button
     })
@@ -204,8 +204,8 @@ describe('PreviewTabView', () => {
   it('edits a comment in the list, and keeps picking after each comment', async () => {
     const { frameWindow, commands, onSendComments } = await renderView()
     await addComment(frameWindow, 'Make this larger')
-    // Design stays on: the next element is one click away.
-    expect(screen.getByRole('button', { name: /Stop picking/ }).getAttribute('aria-pressed')).toBe('true')
+    // Comment stays on: the next element is one click away.
+    expect(screen.getByRole('button', { name: /Stop commenting/ }).getAttribute('aria-pressed')).toBe('true')
     expect(commands.filter((c) => c.type === 'set-mode').at(-1)?.mode).toBe('inspect')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit comment 1' }))
@@ -226,9 +226,9 @@ describe('PreviewTabView', () => {
   it('toggles picking with Alt+C from the dock or the page', async () => {
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
-    const pressed = () => screen.getByRole('button', { name: /Design|Stop picking/ }).getAttribute('aria-pressed')
-    await waitFor(() => expect((screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement).disabled).toBe(false))
-    expect(screen.getByRole('button', { name: /Design/ }).getAttribute('aria-label')).toMatch(/\((⌥C|Alt\+C)\)/)
+    const pressed = () => screen.getByRole('button', { name: /^Comment|Stop commenting/ }).getAttribute('aria-pressed')
+    await waitFor(() => expect((screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.getByRole('button', { name: /^Comment/ }).getAttribute('aria-label')).toMatch(/\((⌥C|Alt\+C)\)/)
 
     fireEvent.keyDown(window, { key: 'ç', code: 'KeyC', altKey: true })
     expect(pressed()).toBe('true')
@@ -253,9 +253,9 @@ describe('PreviewTabView', () => {
     })
     const iframe = await waitFor(() => document.querySelector('iframe') as HTMLIFrameElement)
     fromPage(iframe.contentWindow as Window, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
-    await waitFor(() => expect((screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() => expect((screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.keyDown(window, { key: 'ç', code: 'KeyC', altKey: true })
-    expect(screen.getByRole('button', { name: /Design/ }).getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByRole('button', { name: /^Comment/ }).getAttribute('aria-pressed')).toBe('false')
   })
 
   it('closes its tab when the page forwards the close-tab shortcut', async () => {
@@ -292,7 +292,7 @@ describe('PreviewTabView', () => {
     expect(keymap.chords).toContainEqual(expect.objectContaining({ key: 'w' }))
 
     const design = await waitFor(() => {
-      const button = screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
       if (button.disabled) throw new Error('not ready')
       return button
     })
@@ -319,7 +319,58 @@ describe('PreviewTabView', () => {
     expect(screen.getByText('2 entries')).toBeTruthy()
   })
 
-  it('on a phone, folds Console, Design and Open in browser into a More menu so the address keeps its width', async () => {
+  it('starts the console afresh on each new page, as a browser does', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok', doc: 'a' })
+    fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }] })
+    // The same page answering hello keeps its output.
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok', doc: 'a' })
+    expect(await screen.findByRole('button', { name: 'Console (1 errors)' })).toBeTruthy()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok', doc: 'b' })
+    expect(await screen.findByRole('button', { name: 'Console' })).toBeTruthy()
+  })
+
+  it('shows its own "Nothing is running" state for a server that is down, with Back, Forward and Comment off', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Waiting for localhost:5173', status: 'down' })
+    expect(await screen.findByText('Nothing is running on localhost:5173 yet')).toBeTruthy()
+    const back = screen.getByRole('button', { name: 'Back' }) as HTMLButtonElement
+    expect(back.disabled).toBe(true)
+    expect(back.getAttribute('aria-description')).toBe("Can't go back: nothing is running on localhost:5173 yet")
+    expect((screen.getByRole('button', { name: 'Forward' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Comment (unavailable on this page)' }) as HTMLButtonElement).disabled).toBe(true)
+
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    await waitFor(() => expect(screen.queryByText('Nothing is running on localhost:5173 yet')).toBeNull())
+    expect((screen.getByRole('button', { name: /^Comment on an element/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('shows a loading bar from the moment the page starts to leave until the next one loads', async () => {
+    const { iframe, frameWindow } = await renderView()
+    expect(screen.queryByRole('progressbar', { name: 'Loading page' })).toBeNull()
+    fromPage(frameWindow, { type: 'leaving' })
+    expect(screen.getByRole('progressbar', { name: 'Loading page' })).toBeTruthy()
+    fireEvent.load(iframe)
+    expect(screen.queryByRole('progressbar', { name: 'Loading page' })).toBeNull()
+  })
+
+  it('stops commenting on Esc pressed in the dock, not only in the page', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    const design = await waitFor(() => {
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    })
+    fireEvent.click(design)
+    const stop = screen.getByRole('button', { name: /^Stop commenting/ })
+    expect(stop.getAttribute('aria-pressed')).toBe('true')
+    stop.focus()
+    fireEvent.keyDown(stop, { key: 'Escape' })
+    expect(screen.getByRole('button', { name: /^Comment on an element/ }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('on a phone, folds Console, Comment and Open in browser into a More menu so the address keeps its width', async () => {
     isMobile = true
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }] })
@@ -329,10 +380,82 @@ describe('PreviewTabView', () => {
     expect(screen.getByRole('textbox', { name: 'Preview address' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'More preview actions' }))
-    expect(screen.getByRole('menuitem', { name: /^Design/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /^Comment/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Open in browser' })).toBeTruthy()
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Console (1 errors)' }))
     expect(screen.getByText('boom')).toBeTruthy()
+  })
+
+  it('on touch, keeps the tool buttons at 28px with a 36px hit area, and the address field at 36px in a bar that grows for it', async () => {
+    isMobile = true
+    await renderView()
+    const controls = [
+      screen.getByRole('button', { name: 'Device size' }),
+      screen.getByRole('button', { name: 'More preview actions' }),
+      screen.getByRole('button', { name: 'Reload' }),
+    ]
+    for (const control of controls) {
+      // No 36px touch growth (h-9, min-h-9, size-9) on any of them.
+      expect(control.className).not.toMatch(/pointer-coarse:(min-)?h-9|pointer-coarse:size-9/)
+      expect(control.className).toMatch(/pointer-coarse:h-7|pointer-coarse:size-7|(^|\s)h-7(\s|$)/)
+    }
+    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    expect(address.className).toContain('pointer-coarse:h-9')
+    // A min-height bar, so the taller field is not clipped.
+    expect(address.closest('form')?.parentElement?.className).toContain('min-h-10')
+  })
+
+  it('has a 32px address field in text-xs, not the 24px 11px one', async () => {
+    await renderView()
+    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    expect(address.className).toMatch(/(^|\s)h-8(\s|$)/)
+    expect(address.className).toMatch(/(^|\s)text-xs(\s|$)/)
+    expect(address.className).not.toMatch(/text-meta|(^|\s)h-6(\s|$)/)
+  })
+
+  it('types the address like a browser bar: no capitals, corrections or spell check, a URL keyboard with Go', async () => {
+    await renderView()
+    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    expect(address.getAttribute('autocapitalize')).toBe('off')
+    expect(address.getAttribute('autocorrect')).toBe('off')
+    expect(address.getAttribute('spellcheck')).toBe('false')
+    expect(address.getAttribute('inputmode')).toBe('url')
+    expect(address.getAttribute('enterkeyhint')).toBe('go')
+  })
+
+  it('says why Back and Forward are disabled, and enables them once the page is ready', async () => {
+    const { frameWindow } = await renderView()
+    const back = screen.getByRole('button', { name: 'Back' }) as HTMLButtonElement
+    const forward = screen.getByRole('button', { name: 'Forward' }) as HTMLButtonElement
+    expect(back.disabled).toBe(true)
+    expect(back.getAttribute('aria-description')).toBe("Can't go back yet: the page is still loading")
+    expect(forward.getAttribute('aria-description')).toBe("Can't go forward yet: the page is still loading")
+
+    // The tooltip says the reason, not just "Back", while the button is disabled.
+    fireEvent.mouseEnter(back.parentElement as HTMLElement)
+    expect((await screen.findByRole('tooltip', undefined, { timeout: 1500 })).textContent).toBe("Can't go back yet: the page is still loading")
+    fireEvent.mouseLeave(back.parentElement as HTMLElement)
+
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Back' }) as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.getByRole('button', { name: 'Back' }).getAttribute('aria-description')).toBeNull()
+  })
+
+  it('names the missing script when the page never answers, and calls the tool Comment', async () => {
+    const { iframe } = await renderView()
+    fireEvent.load(iframe)
+    expect(await screen.findByText(/Comment tools and the console are unavailable on this page/, undefined, { timeout: 2000 })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Back' }).getAttribute('aria-description')).toBe("Can't go back on this page: it did not load the preview script")
+    expect(screen.getByRole('button', { name: 'Comment (unavailable on this page)' })).toBeTruthy()
+    // The old names are gone from the toolbar.
+    expect(screen.queryByRole('button', { name: /Design|Inspect/ })).toBeNull()
+  })
+
+  it('labels the comment box and list "comment", not "design comment"', async () => {
+    const { frameWindow } = await renderView()
+    await addComment(frameWindow, 'Make this larger')
+    expect(screen.getByRole('region', { name: 'Comments' })).toBeTruthy()
+    expect(screen.queryByRole('group', { name: /design/i })).toBeNull()
   })
 
   it('keeps the tools when the page reloads again before the first load is judged', async () => {
@@ -350,14 +473,14 @@ describe('PreviewTabView', () => {
     // Past the first load's grace period and the second's.
     await new Promise((resolve) => setTimeout(resolve, 1000))
     expect(screen.queryByText(/did not load the preview script/)).toBeNull()
-    expect((screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('says so when a loaded page never answers the inspector', async () => {
     const { iframe } = await renderView()
     fireEvent.load(iframe)
     expect(await screen.findByText(/did not load the preview script/, undefined, { timeout: 2000 })).toBeTruthy()
-    expect((screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows when the agent is using the page', async () => {
@@ -428,6 +551,19 @@ describe('PreviewTabView', () => {
       const alert = await screen.findByRole('alert')
       expect(alert.textContent).toContain("'nope.html' is not a file in the workspace. Start with / for a page on localhost:5173.")
       expect(onOpenTarget).not.toHaveBeenCalled()
+    })
+
+    it('says in place that another site cannot be previewed, without opening a tab for it', async () => {
+      const { onOpenTarget } = await renderView()
+      enterAddress('https://example.com/docs')
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toContain('Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files, not example.com.')
+      expect(onOpenTarget).not.toHaveBeenCalled()
+      expect(previewBodies).toHaveLength(1)
+      // Nothing to retry: the address was wrong. Editing it clears the message.
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+      fireEvent.change(screen.getByRole('textbox', { name: 'Preview address' }), { target: { value: 'localhost:3000' } })
+      expect(screen.queryByRole('alert')).toBeNull()
     })
 
     it('falls back to the dev server for a full path that is not a workspace file', async () => {

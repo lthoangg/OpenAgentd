@@ -38,11 +38,11 @@ describe('BASE_SLASH_COMMANDS', () => {
 
     expect(redo).toBeDefined()
     expect(redo?.label).toBe('Redo')
-    expect(redo?.description).toBe('Redo the next undone message')
+    expect(redo?.description).toBe('Redo the last message you undid')
 
     expect(redoAll).toBeDefined()
     expect(redoAll?.label).toBe('Redo All')
-    expect(redoAll?.description).toBe('Restore all undone messages back to the live tip')
+    expect(redoAll?.description).toBe('Redo every message you undid, up to the latest')
   })
 
   it('does not offer /goal: a goal starts from a plan review, not a command', () => {
@@ -123,7 +123,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: true,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new', 'init'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new', 'init', 'model', 'think', 'mcp'])
   })
 
   it('does not show /init in coding mode without a workspace', () => {
@@ -193,7 +193,7 @@ describe('useSlashCommands', () => {
     )
 
     const ids = result.current.slashCommands.map((c) => c.id)
-    expect(ids).toEqual(['btw', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
+    expect(ids).toEqual(['btw', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init', 'model', 'think', 'mcp'])
   })
 
   const undone = (content: string, extra: Record<string, unknown> | null): AgentCommandResponse => ({

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The system pickers (ShellPlugin.pickOne) in the app's ink. Left to the
+  activity's theme, the dialog's accent resolved to white: Cancel vanished on
+  the light surface. Bark (web/src/styles/tokens.css, light and dark accent)
+  colours the Cancel button and the chosen radio, as in the web UI.
+-->
+<resources>
+    <style name="OpenAgentdDialog" parent="android:Theme.DeviceDefault.Light.Dialog.Alert">
+        <item name="android:colorAccent">#FF3F3429</item>
+    </style>
+    <style name="OpenAgentdDialog.Dark" parent="android:Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:colorAccent">#FFF5EBD8</item>
+    </style>
+</resources>

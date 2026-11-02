@@ -69,7 +69,7 @@ export function useTitleWash(ref: RefObject<HTMLElement | null>, sessionId: stri
     const el = ref.current
     if (!el || reduced || typeof el.animate !== 'function' || !isFreshAutoTitle(sessionId, text)) return
     const style = getComputedStyle(el)
-    const wash = style.getPropertyValue('--accent-blue-soft').trim()
+    const wash = style.getPropertyValue('--color-fill-selected').trim()
     if (!wash) return
     el.animate(
       [

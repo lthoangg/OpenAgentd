@@ -138,6 +138,8 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let session_id = form.opt("session_id");
     let model_raw = form.opt("model");
     let thinking_raw = form.opt("thinking_level");
+    // v3 addition: the account a new session's draft was pinned to.
+    let credential_raw = form.opt("credential_id").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
     let mentions: Option<Vec<String>> = match form.opt("mentions") {
         None => None,
         Some(raw) => match serde_json::from_str::<Value>(&raw) {
@@ -227,6 +229,26 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
             .await?;
         }
         db::update_session(&st.pool, &sid, db::SessionUpdate { interaction_mode: Some("plan".into()), ..Default::default() }).await?;
+    }
+    // Pinned before the message is dispatched, so the first turn already
+    // runs on the chosen account.
+    if let Some(cred) = credential_raw {
+        let row = match db::get_session(&st.pool, &sid).await? {
+            Some(row) => row,
+            None => {
+                let id = db::codec::parse_uuid(&sid).ok_or_else(|| ApiError::unprocessable("Invalid session id."))?;
+                let new = db::NewSession {
+                    id: Some(id),
+                    agent_name: Some(agent.name()),
+                    workspace: ws.clone().unwrap_or_default(),
+                    model: model.clone().or_else(|| agent.agent().model_id.clone()),
+                    ..Default::default()
+                };
+                db::create_session(&st.pool, new).await?
+            }
+        };
+        let model_change = if model_provided { Some(model.clone()) } else { None };
+        save_run_settings(&st.pool, &sid, row, model_change, None, Some(Some(cred))).await?;
     }
     let message = message.unwrap_or_default();
     let attachments = form.files;
@@ -764,14 +786,23 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let data: Vec<Value> = sessions
         .iter()
         .map(|s| {
-            let subs: Vec<Value> =
-                children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_response(c, &overlay(c)))).collect();
+            let subs: Vec<Value> = children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_json(c, &overlay(c)))).collect();
             let mut o = overlay(s);
             o.subagents = subs;
-            Value::Object(session_response(s, &o))
+            Value::Object(session_json(s, &o))
         })
         .collect();
     Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
+}
+
+/// `session_response` plus, as a v3 addition omitted on Auto, the pinned
+/// account's name, so the tray and run chip need no credentials lookup.
+fn session_json(s: &db::ChatSession, o: &SessionOverlay) -> Map<String, Value> {
+    let mut m = session_response(s, o);
+    if let Some(label) = s.credential_id.as_deref().and_then(appv3_providers::pool::credential_label_by_id) {
+        m.insert("credential_label".into(), Value::String(label));
+    }
+    m
 }
 
 /// Record a session's folder as a sidebar workspace, filed under its
@@ -805,6 +836,7 @@ async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     let wt_from = opt_str_field(&b, "worktree_from")?;
     let wt_name = opt_str_field(&b, "worktree_name")?;
     let wt_branch = opt_str_field(&b, "worktree_branch")?;
+    let credential = opt_str_field(&b, "credential_id")?.filter(|c| !c.trim().is_empty());
     let (model, thinking) = validate_model_settings(model.as_deref(), thinking.as_deref())?;
 
     let has = |o: &Option<String>| o.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
@@ -830,8 +862,13 @@ async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
                 .await?
         }
     };
+    // v3 addition: a new session can start pinned to an account.
+    let session = match credential.filter(|_| created) {
+        Some(cred) => save_run_settings(&st.pool, &session.id.clone(), session, None, None, Some(Some(cred))).await?,
+        None => session,
+    };
     register_session_workspace(&st.pool, &workspace).await?;
-    let mut m = session_response(&session, &SessionOverlay::default());
+    let mut m = session_json(&session, &SessionOverlay::default());
     m.insert("created".into(), json!(created));
     Ok(json(Value::Object(m)))
 }
@@ -843,7 +880,7 @@ async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>)
     let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
     let goal = db::live_session_goal(&st.pool, &sid).await?;
     let (goal_status, goal_turns) = (goal.as_ref().map(|g| g.status.clone()), goal.as_ref().map(|g| (g.turns_used, g.max_turns)));
-    let m = session_response(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
+    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
     Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
 }
 
@@ -887,11 +924,31 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
             None
         }
     };
+    // v3 additions: the run settings the next message uses, saved as they
+    // are chosen. A key that is present sets the field; `null` clears it
+    // (the agent's default model or level, or Auto for the credential).
+    let mut nullable = |key: &str| -> Option<Option<String>> {
+        match b.get(key) {
+            None => None,
+            Some(Value::Null) => Some(None),
+            Some(Value::String(v)) => Some(Some(v.trim().to_string()).filter(|v| !v.is_empty())),
+            Some(o) => {
+                errs.push(verr("string_type", &loc(&["body", key]), "Input should be a valid string", o.clone()));
+                None
+            }
+        }
+    };
+    let model = nullable("model");
+    let thinking = nullable("thinking_level");
+    let credential = nullable("credential_id");
     if !errs.is_empty() {
         return Err(ApiError::validation(errs));
     }
-    if title.is_none() && mode.is_none() && pinned.is_none() {
-        return Err(value_error("Provide a title, interaction_mode or pinned.", b));
+    if title.is_none() && mode.is_none() && pinned.is_none() && model.is_none() && thinking.is_none() && credential.is_none() {
+        return Err(value_error("Provide a title, interaction_mode, pinned, model, thinking_level or credential_id.", b));
+    }
+    if let Some(Some(m)) = &model {
+        validate_model_settings(Some(m), None)?;
     }
     let clean_title = |t: &Option<String>| -> ApiResult<Option<String>> {
         match t {
@@ -920,12 +977,18 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
         if let Some(t) = clean_title(&title)? {
             row = db::update_session(&st.pool, &sid, db::SessionUpdate::user_title(t)).await?.unwrap_or(row);
         }
-        let resp = session_response(&row, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: Some(m), ..Default::default() });
+        if model.is_some() || thinking.is_some() || credential.is_some() {
+            row = save_run_settings(&st.pool, &sid, row, model, thinking, credential).await?;
+        }
+        let resp = session_json(&row, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: Some(m), ..Default::default() });
         return Ok(json(Value::Object(resp)));
     }
     let mut row = row;
     if let Some(t) = clean_title(&title)? {
         row = db::update_session(&st.pool, &sid, db::SessionUpdate::user_title(t)).await?.unwrap_or(row);
+    }
+    if model.is_some() || thinking.is_some() || credential.is_some() {
+        row = save_run_settings(&st.pool, &sid, row, model, thinking, credential).await?;
     }
     if let Some(m) = &mode {
         row = appv3_agent::interaction_mode::set_mode(&st.pool, &sid, m).await?.0;
@@ -934,7 +997,46 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
             resolve_agent_for_existing_session(&st.pool, &sid).await?.goal_after_code_mode(&sid);
         }
     }
-    Ok(json(Value::Object(session_response(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))
+    Ok(json(Value::Object(session_json(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))
+}
+
+/// Store a session's model, thinking level and pinned credential (each
+/// `Some` field; `Some(None)` clears it). A pinned credential must be an
+/// enabled credential of the session model's provider, from a provider that
+/// pools its credentials; changing the model to another provider returns
+/// the session to Auto.
+async fn save_run_settings(
+    pool: &DbPool,
+    sid: &str,
+    row: db::ChatSession,
+    model: Option<Option<String>>,
+    thinking: Option<Option<String>>,
+    credential: Option<Option<String>>,
+) -> ApiResult<db::ChatSession> {
+    let effective_model = match &model {
+        Some(m) => m.clone(),
+        None => row.model.clone(),
+    };
+    let provider_of = |m: &Option<String>| m.as_deref().and_then(|m| m.split_once(':')).map(|(p, _)| p.to_string());
+    let mut credential = credential;
+    if let Some(Some(id)) = &credential {
+        let Some(owner) = appv3_providers::pool::credential_provider(id) else {
+            return Err(ApiError::unprocessable("That account or key no longer exists."));
+        };
+        if provider_of(&effective_model).is_some_and(|p| p != owner) {
+            return Err(ApiError::unprocessable("That account or key belongs to another provider than the session's model."));
+        }
+        if !appv3_providers::pool::pin_usable(&owner, id) {
+            return Err(ApiError::unprocessable("That account or key is turned off, or the provider's key comes from the server's environment."));
+        }
+    } else if credential.is_none() && model.is_some() {
+        let pinned_provider = row.credential_id.as_deref().and_then(appv3_providers::pool::credential_provider);
+        if pinned_provider.is_some() && pinned_provider != provider_of(&effective_model) {
+            credential = Some(None);
+        }
+    }
+    let upd = db::SessionUpdate { model, thinking_level: thinking, credential_id: credential, ..Default::default() };
+    Ok(db::update_session(pool, sid, upd).await?.unwrap_or(row))
 }
 
 /// `chat_service.delete_session`.
@@ -1058,7 +1160,7 @@ fn lead_part<'a>(root: &db::ChatSession, msgs: &'a [db::SessionMessage], totals:
     let effective = root.agent_name.clone().unwrap_or_else(|| if root.parent_session_id.is_none() { "code".into() } else { "member".into() });
     let usage = totals.map(|t| t.get(&root.id).copied().unwrap_or((0.0, 0)));
     let rid = db::codec::api_uuid(&root.id);
-    let session = session_response(
+    let session = session_json(
         root,
         &SessionOverlay {
             agent_name: Some(effective),

@@ -1,6 +1,8 @@
 /**
- * JumpToLatestChip — "↓ N new" on the floating composer while the reader is
- * scrolled away from the live end of the transcript.
+ * JumpToLatestChip — "↓ N new" while the reader is scrolled away from the
+ * live end of the transcript, or "↓ Jump to latest" when nothing new has
+ * arrived. The one jump control: on the floating composer, or in the
+ * transcript itself when there is no composer (a subagent's session).
  *
  * It rises in at ``base`` and fades out at ``fast`` (DESIGN.md → Motion);
  * while it fades it is out of reach and keeps its last count.
@@ -13,34 +15,65 @@ import { DURATIONS_S } from '@/lib/motion'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useDeferredUnmount } from './ui/_use-deferred-unmount'
 
-export function JumpToLatestChip({ below = false }: { below?: boolean }) {
-  const unseen = useTranscriptFollowStore((s) => s.unseen)
+/** Where the chip floats: above or below the composer, or inside the transcript's own corner. */
+type ChipSide = 'above' | 'below' | 'inside'
+
+const SIDE_CLASS: Record<ChipSide, string> = {
+  above: 'bottom-full mb-3',
+  below: 'top-full mt-3',
+  inside: 'bottom-4',
+}
+
+/**
+ * The chip itself. ``unseen`` is ``null`` while the transcript follows its
+ * live end (the chip is out of reach), else the blocks that arrived since the
+ * reader scrolled away.
+ */
+export function JumpToLatest({ unseen, onJump, side = 'above', fadeOut = true }: {
+  unseen: number | null
+  onJump: () => void
+  side?: ChipSide
+  /** Fade out when the reader is back at the live end, rather than vanish. */
+  fadeOut?: boolean
+}) {
   const [lastUnseen, setLastUnseen] = useState(unseen ?? 0)
   if (unseen !== null && unseen !== lastUnseen) setLastUnseen(unseen)
   const { mounted, closing } = useDeferredUnmount(unseen !== null, DURATIONS_S.fast * 1000)
-  if (!mounted && unseen === null) return null
+  if (unseen === null && (!fadeOut || !mounted)) return null
   const count = unseen ?? lastUnseen
   const leaving = closing || unseen === null
   return (
     <button
       type="button"
-      data-side={below ? 'below' : 'above'}
-      onClick={() => useTranscriptFollowStore.getState().jumpToLatest?.()}
+      data-side={side}
+      onClick={onJump}
       aria-label={count > 0 ? `Jump to latest, ${count} new` : 'Jump to latest'}
       aria-hidden={leaving || undefined}
       inert={leaving}
       // Centred by margin against ``inset-x-0`` (DESIGN.md: no transform
       // layout). The gap clears the composer's drag grip.
       className={cn(
-        'absolute inset-x-0 z-10 mx-auto flex h-7 w-fit items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100',
-        below ? 'top-full mt-3' : 'bottom-full mb-3',
+        'touch-hit absolute inset-x-0 z-10 mx-auto flex h-7 w-fit items-center gap-1 rounded-full bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100',
+        SIDE_CLASS[side],
         leaving
           ? 'pointer-events-none animate-out fade-out-0 zoom-out-95 fill-mode-forwards animation-duration-(--motion-fast) ease-(--ease-in-out)'
-          : cn('pointer-events-auto animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)', below ? 'slide-in-from-top-1' : 'slide-in-from-bottom-1'),
+          : cn('pointer-events-auto animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)', side === 'below' ? 'slide-in-from-top-1' : 'slide-in-from-bottom-1'),
       )}
     >
       <ArrowDown size={13} aria-hidden="true" />
-      {count > 0 && <span className="pr-0.5 font-medium tabular-nums">{count} new</span>}
+      <span className="pr-0.5 font-medium tabular-nums">{count > 0 ? `${count} new` : 'Jump to latest'}</span>
     </button>
+  )
+}
+
+/** The chip on the floating composer, fed by the transcript's follow state. */
+export function JumpToLatestChip({ below = false }: { below?: boolean }) {
+  const unseen = useTranscriptFollowStore((s) => s.unseen)
+  return (
+    <JumpToLatest
+      unseen={unseen}
+      side={below ? 'below' : 'above'}
+      onJump={() => useTranscriptFollowStore.getState().jumpToLatest?.()}
+    />
   )
 }

@@ -88,7 +88,7 @@ function SectionCardBadge({ className, ...props }: ComponentPropsWithRef<'span'>
       className={cn(
         'shrink-0 select-none rounded-xs border border-(--color-border)',
         'bg-(--bg-key) px-1.5 py-0.5',
-        'text-[11px] font-semibold text-(--color-text-muted)',
+        'text-meta font-semibold text-(--color-text-muted)',
         className,
       )}
       {...props}

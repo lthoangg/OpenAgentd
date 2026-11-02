@@ -20,7 +20,8 @@ import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { usePlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { TEXT_SIZES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
@@ -31,7 +32,7 @@ export interface UseAgentCommandsGoal {
 }
 
 interface UseAgentCommandsArgs {
-  toggleAgentCapabilities: () => void
+  toggleRunPicker: () => void
   /** Opens the task list (dock Tasks tab on desktop, popover otherwise). */
   toggleTasks: () => void
   /** Opens scheduled tasks (dock Schedule tab with a workspace, overlay otherwise). */
@@ -44,10 +45,18 @@ interface UseAgentCommandsArgs {
   // Session
   handleNewSession: () => void
 
-  /** Attached workspace only — opens the terminal tab. */
+  /** Attached workspace only — shows the last terminal tab, or starts a shell. */
   handleOpenTerminal: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
   handleToggleDockMaximized?: () => void
+  /** Desktop with a workspace: split the Review panel's focused pane right (⌘\) or down (⌘⇧\). */
+  handleSplitDock?: () => void
+  handleSplitDockDown?: () => void
+  /** Desktop: hide the sidebar and the Review panel, or bring them back. */
+  handleToggleFocusMode?: () => void
+  focusMode?: boolean
+  /** Desktop: find in this session's transcript (⌘F). */
+  handleFindInSession?: () => void
   /** Only while the session has a plan: opens it (dock Plan tab, or the task popover without a workspace). */
   handleOpenPlan?: () => void
   /** The plan is waiting for the user's review. */
@@ -74,7 +83,7 @@ function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
 }
 
 export function useAgentCommands({
-  toggleAgentCapabilities,
+  toggleRunPicker,
   toggleTasks,
   toggleScheduler,
   handleWorkspaceFiles,
@@ -83,6 +92,11 @@ export function useAgentCommands({
   handleNewSession,
   handleOpenTerminal,
   handleToggleDockMaximized,
+  handleSplitDock,
+  handleSplitDockDown,
+  handleToggleFocusMode,
+  focusMode = false,
+  handleFindInSession,
   handleOpenPlan,
   planAwaitingReview = false,
   handleOpenPreview,
@@ -93,11 +107,13 @@ export function useAgentCommands({
   const { preference: theme, setPreference: setTheme } = useThemePreference()
   const readerMode = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
   const toggleReaderMode = useDisplayPrefsStore((s) => s.toggleTranscriptStyle)
+  const textSize = useDisplayPrefsStore((s) => s.textSize)
+  const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
   const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
-    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Model, thinking level and tools for this session', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
+    { id: 'agent-info',       group: 'Session',    label: 'Model and Thinking…', description: 'Model, thinking level and account for the next message', keywords: 'model thinking account key reasoning provider switch', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleRunPicker },
     { id: 'todos',            group: 'View',       label: 'Tasks',          description: "The agent's task list and progress", keywords: 'todos task list progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     ...(handleOpenPlan
       ? [{
@@ -109,7 +125,7 @@ export function useAgentCommands({
           action: handleOpenPlan,
         }]
       : []),
-    { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Panel', description: 'Show or hide the review panel and its open tabs', keywords: 'changed files dock panel review', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
+    { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Panel', description: 'Show or hide the Review panel and its open tabs', keywords: 'changed files dock panel review', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleOpenSideQuestions
       ? [{
           id: 'side-questions',
@@ -121,10 +137,22 @@ export function useAgentCommands({
         }]
       : []),
     ...(handleOpenGit
-      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
+      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the Review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
       : []),
     ...(handleToggleDockMaximized
-      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
+      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the Review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
+      : []),
+    ...(handleSplitDock
+      ? [{ id: 'split-dock', group: 'View' as const, label: 'Split Review Panel Right', description: 'A new pane beside the focused one; closing its last tab joins it back', keywords: 'dock split pane group side by side right vertical', shortcut: shortcutLabel(KEYS.splitDock, os), action: handleSplitDock }]
+      : []),
+    ...(handleSplitDockDown
+      ? [{ id: 'split-dock-down', group: 'View' as const, label: 'Split Review Panel Down', description: 'A new pane under the focused one; closing its last tab joins it back', keywords: 'dock split pane group top bottom down horizontal', shortcut: shortcutLabel(KEYS.splitDockDown, os), action: handleSplitDockDown }]
+      : []),
+    ...(handleToggleFocusMode
+      ? [{ id: 'focus-mode', group: 'View' as const, label: focusMode ? 'Leave Focus Mode' : 'Focus Mode', description: focusMode ? 'Bring the sidebar and Review panel back' : 'Hide the sidebar and Review panel; again to bring them back', keywords: 'zen distraction free hide panels', shortcut: shortcutLabel(KEYS.focusMode, os), action: handleToggleFocusMode }]
+      : []),
+    ...(handleFindInSession
+      ? [{ id: 'find-in-session', group: 'Session' as const, label: 'Find in Session', description: 'Search this conversation', keywords: 'search text transcript', shortcut: shortcutLabel(KEYS.findInSession, os), action: handleFindInSession }]
       : []),
     { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.sidebar, os), action: handleSidebarToggle },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Create, pause and run scheduled agent tasks', keywords: 'scheduler schedule cron', action: toggleScheduler },
@@ -133,12 +161,12 @@ export function useAgentCommands({
           id: 'open-preview',
           group: 'View' as const,
           label: 'Open Preview',
-          description: 'Show a local dev server or HTML file in the review panel',
+          description: 'Show a local dev server or HTML file in the Review panel',
           keywords: 'browser web view localhost dev server design inspect',
           action: handleOpenPreview,
         }]
       : []),
-    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
+    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
@@ -160,6 +188,24 @@ export function useAgentCommands({
       action: () => {},
     },
     {
+      id: 'text-size',
+      group: 'View',
+      label: 'Text Size…',
+      description: `Compact, Default or Large. Now: ${TEXT_SIZES.find((size) => size.value === textSize)?.label ?? 'Default'}`,
+      keywords: 'font zoom bigger smaller density',
+      page: {
+        placeholder: 'Text size…',
+        commands: TEXT_SIZES.map(({ value, label }) => ({
+          id: `text-size-${value}`,
+          label,
+          description: value === textSize ? 'Current' : undefined,
+          action: () => setTextSize(value),
+        })),
+      },
+      action: () => {},
+    },
+    { id: 'reset-layout', group: 'View', label: 'Reset Layout', description: 'Sidebar and Review panel sizes back to their defaults', keywords: 'restore default width panels', action: () => useLayoutStore.getState().resetLayout() },
+    {
       id: 'toggle-reader-mode',
       group: 'View',
       label: 'Toggle Reader Mode',
@@ -174,5 +220,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleToggleFocusMode, focusMode, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

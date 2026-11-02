@@ -47,9 +47,9 @@ function reason(cause: unknown): string {
 
 type View = 'diagram' | 'code'
 
-const TOGGLE_CLASS = 'h-5 rounded-xs px-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-text) aria-pressed:bg-(--bg-card) aria-pressed:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+const TOGGLE_CLASS = 'h-5 rounded-xs px-1.5 text-meta font-medium text-(--color-text-muted) hover:text-(--color-text) aria-pressed:bg-(--bg-card) aria-pressed:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
-const HEADER_BUTTON_CLASS = 'flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
+const HEADER_BUTTON_CLASS = 'flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-[color,background-color,opacity] duration-(--motion-instant) ease-(--ease-in-out) hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs'
 
 function MermaidFullscreen({ source, onClose }: { source: string; onClose: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -85,7 +85,7 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
 
   return createPortal(
     <div
-      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-(--color-overlay) backdrop-blur-xs reduce-transparency:backdrop-blur-none"
+      className="mobile-safe-overlay below-window-caption fixed inset-0 z-50 flex flex-col bg-(--color-overlay) backdrop-blur-xs reduce-transparency:backdrop-blur-none"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -204,7 +204,7 @@ export function MermaidBlock({ source }: { source: string }) {
                   className={HEADER_BUTTON_CLASS}
                   aria-label="Copy code"
                 >
-                  {copied ? <Check size={13} className="text-(--color-success)" /> : <Copy size={13} />}
+                  {copied ? <Check size={13} className="text-(--accent-green-text)" /> : <Copy size={13} />}
                 </button>
               }
             />
@@ -226,7 +226,7 @@ export function MermaidBlock({ source }: { source: string }) {
         <div ref={hostRef} className="w-full" />
       </div>
       {showCode && (
-        <pre className="overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
+        <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
           <code>{source}</code>
         </pre>
       )}

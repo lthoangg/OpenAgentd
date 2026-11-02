@@ -680,13 +680,16 @@
   function keymapHit(event) {
     var primary = keymap.mac ? event.metaKey : event.ctrlKey;
     var other = keymap.mac ? event.ctrlKey : event.metaKey;
-    if (other) return false;
     var key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     for (var i = 0; i < keymap.chords.length; i++) {
       var c = keymap.chords[i];
-      if (primary !== !!c.mod || event.altKey !== !!c.alt || event.shiftKey !== !!c.shift) continue;
+      // A `ctrl` chord is the Control key on every OS (⌃`, ⌃⌥←), with Cmd up.
+      if (c.ctrl) {
+        if (!event.ctrlKey || event.metaKey) continue;
+      } else if (other || primary !== !!c.mod) continue;
+      if (event.altKey !== !!c.alt || event.shiftKey !== !!c.shift) continue;
       // Like the dock: chords without Cmd/Ctrl are typing inside a field.
-      if (!c.mod && isEditable(event.target)) continue;
+      if (!c.mod && !c.ctrl && isEditable(event.target)) continue;
       if (c.code ? event.code === c.code : key === c.key) return true;
     }
     return false;
@@ -814,15 +817,23 @@
     reportLocation('location');
   });
 
+  // Names this document: the same on every `ready` it sends (the reply to
+  // `hello` too), so the dock tells a new page from the same one answering.
+  var DOC_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+
   function sendReady() {
     var down = !!doc.querySelector('meta[name="openagentd-preview"][content="upstream-down"]');
-    post({ type: 'ready', path: pagePath(), title: doc.title || '', status: down ? 'down' : 'ok' });
+    post({ type: 'ready', path: pagePath(), title: doc.title || '', status: down ? 'down' : 'ok', doc: DOC_ID });
   }
 
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', sendReady);
   else sendReady();
   w.addEventListener('load', function () {
     reportLocation('location');
+  });
+  // A full navigation is starting: the dock shows it loading until the next page's `load`.
+  w.addEventListener('beforeunload', function () {
+    post({ type: 'leaving' });
   });
 
   // ── Agent commands ────────────────────────────────────────────────────

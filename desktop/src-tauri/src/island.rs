@@ -43,17 +43,28 @@
 //! user stopped, or a background idle compaction, has nothing new to read.
 //! A session only finishes on its own server: a server that is no longer
 //! followed (its last window closed) drops out without reporting anything.
-//! Clicking a row opens it in a window on its server.
+//! Clicking a row opens it in a window on its server, or focuses the window
+//! that already shows it: [`open_session`] is the one router every path
+//! that opens a session goes through (this island, the pet, the tray, an OS
+//! notification, "Open in new window"), so a session is in one window.
 //!
 //! Reading is shared: opening or dismissing a session here, on the desktop
 //! pet, or in an app window goes through [`mark_session_read`], which clears
 //! it from this list, drops the pet's bubbles about it, and tells the other
 //! app windows (`session-read`) so their sidebars clear its unread mark.
 //!
+//! A session waiting on the user carries the question the server holds for
+//! it. One plain single-choice question is answered from the row, the pet's
+//! bubble or the notification (`crate::answers`, [`answer_question`]); after
+//! an answer the row clears at once and the next refetch confirms it.
+//!
 //! A session working toward a goal shows how far it has got (the list's
 //! `goal_turns_used` / `goal_max_turns`), and when its last turn ends the row
 //! says what became of the goal, from the `goal` the finishing turn's
 //! `desktop_notification` carries, so the notch and the notification agree.
+//!
+//! The feed runs on every desktop platform, island or not: the tray's
+//! "Needs you" list and mark read it too.
 
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
@@ -129,8 +140,8 @@ const POINTER_NEAR: f64 = 240.0;
 const MAX_UNREAD: usize = 6;
 /// How the memo records a turn that only compacted an idle session.
 const IDLE_COMPACTION_STATUS: &str = "idle_compaction";
-/// What a row calls the builtin sidecar, as the Backend connection panel does.
-const BUILTIN_NAME: &str = "Builtin";
+/// What a row calls the builtin sidecar: one name on every surface.
+const BUILTIN_NAME: &str = "Built-in server";
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -143,6 +154,9 @@ pub struct IslandSettings {
     pub show_when_frontmost: bool,
     /// Keep finished sessions ("Done" / "Failed") until they are opened.
     pub show_finished: bool,
+    /// Open the list when the pointer rests on the pill. Off by default: the
+    /// pill opens when clicked, so a 400 px black panel never lands over the
+    /// menu bar or the window beneath it on a stray hover.
     pub expand_on_hover: bool,
 }
 
@@ -152,7 +166,7 @@ impl Default for IslandSettings {
             enabled: true,
             show_when_frontmost: false,
             show_finished: true,
-            expand_on_hover: true,
+            expand_on_hover: false,
         }
     }
 }
@@ -209,6 +223,13 @@ pub struct IslandSession {
     /// The session's goal: its progress while it runs, what became of it
     /// once its last turn ended.
     pub goal: Option<IslandGoal>,
+    /// The open question's id, while the session waits on the user.
+    pub question_id: Option<String>,
+    /// Buttons that answer the question in place (see
+    /// `answers::OpenQuestion::quick_choices`); empty when it needs the app.
+    pub choices: Vec<String>,
+    /// The account the session is pinned to; `None` on Auto.
+    pub account: Option<String>,
 }
 
 /// A session's goal, as the island shows it.
@@ -247,6 +268,21 @@ pub struct IslandStatus {
     pub sessions: Vec<IslandSession>,
     /// Finished sessions not opened yet, newest first.
     pub unread: Vec<IslandSession>,
+    /// Servers that dropped off after being followed, or refuse the key.
+    pub unreachable: Vec<UnreachableServer>,
+}
+
+/// A followed server the shell can't talk to: its rows are gone, and the
+/// island says so instead of showing nothing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreachableServer {
+    /// [`ServerId::key`].
+    pub id: String,
+    /// What rows call it.
+    pub name: String,
+    /// `unreachable` or `key_rejected`.
+    pub reason: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,6 +341,13 @@ fn menu_selection(id: &str) -> Option<(SessionAction, &str)> {
     Some((action, session_id))
 }
 
+/// The menu id whose selection opens `session_id` (see [`handle_menu_event`]):
+/// the native tray menu's "Needs you" rows use it.
+#[cfg(any(not(target_os = "macos"), test))]
+pub fn open_menu_id(session_id: &str) -> String {
+    format!("island:{}:{session_id}", SessionAction::Open.key())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotchGeometry {
@@ -345,6 +388,9 @@ pub struct SessionRow {
     pub goal_turns_used: Option<i64>,
     #[serde(default)]
     pub goal_max_turns: Option<i64>,
+    /// The pinned account's name; missing on Auto, or from older backends.
+    #[serde(default)]
+    pub credential_label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -382,13 +428,13 @@ fn session_title(title: Option<&str>) -> String {
 
 /// The island's list from an active-sessions page. A v2 server ignores
 /// `active=true` and returns a normal page, so the flags are checked here too.
-pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String>, chat_root: Option<&str>) -> Vec<IslandSession> {
+pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>, chat_root: Option<&str>) -> Vec<IslandSession> {
     let mut sessions: Vec<IslandSession> = rows
         .into_iter()
         .filter(|row| row.parent_session_id.is_none() && (row.running || row.background_work || row.needs_input))
         .map(|row| {
             let state = if row.needs_input { SessionState::NeedsInput } else { SessionState::Running };
-            let question = row.needs_input.then(|| questions.get(&id_key(&row.id)).cloned()).flatten();
+            let asked = row.needs_input.then(|| questions.get(&id_key(&row.id))).flatten();
             // The turn that runs, or between turns (subagents) the last one taken.
             let goal = match (row.goal_status.as_deref(), row.goal_turns_used, row.goal_max_turns) {
                 (Some("active"), Some(used), Some(max)) => {
@@ -401,10 +447,13 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, String
                 workspace: row.workspace.as_deref().and_then(|w| session_workspace_label(w, chat_root)),
                 id: row.id,
                 state,
-                question,
+                question: asked.and_then(|a| a.text.clone()),
+                question_id: asked.and_then(|a| a.id.clone()),
+                choices: asked.map(|a| a.choices.clone()).unwrap_or_default(),
                 server: None,
                 server_id: None,
                 goal,
+                account: row.credential_label,
             }
         })
         .collect();
@@ -435,7 +484,7 @@ pub fn newly_finished(
                 _ => SessionState::Done,
             };
             let goal = goals.get(&key).cloned();
-            Some(IslandSession { state, question: None, goal, ..session.clone() })
+            Some(IslandSession { state, question: None, question_id: None, choices: Vec::new(), goal, ..session.clone() })
         })
         .collect()
 }
@@ -485,6 +534,27 @@ pub struct ServerFeed {
     /// Its active sessions, as last fetched.
     pub sessions: Vec<IslandSession>,
     pub watch: WatchState,
+    /// A list was fetched from it at some point. A server that never answered
+    /// (a laptop asleep since launch) is not announced as lost.
+    pub ever_connected: bool,
+    /// Failed connection attempts in a row.
+    pub failures: u32,
+}
+
+/// A server that dropped off is announced after this many failed attempts in
+/// a row: one retry usually covers a hiccup, and the island should not flash
+/// "Can't reach" at every blip.
+const UNREACHABLE_AFTER_FAILURES: u32 = 2;
+
+impl ServerFeed {
+    /// The reason to tell the user this server can't be reached, if any.
+    fn unreachable_reason(&self) -> Option<&'static str> {
+        match self.watch {
+            WatchState::KeyRejected => Some("key_rejected"),
+            WatchState::Reconnecting if self.ever_connected && self.failures >= UNREACHABLE_AFTER_FAILURES => Some("unreachable"),
+            _ => None,
+        }
+    }
 }
 
 /// Every followed server's active sessions, and the unread ones from all of
@@ -502,8 +572,53 @@ impl Feeds {
         if self.servers.contains_key(server) {
             return false;
         }
-        self.servers.insert(server.clone(), ServerFeed { name, sessions: Vec::new(), watch: WatchState::Connecting });
+        self.servers.insert(server.clone(), ServerFeed { name, ..ServerFeed::default() });
         true
+    }
+
+    /// `server`'s connection attempt number `failures` (in a row) failed.
+    /// True when that changed whether it is announced as unreachable.
+    pub fn set_failures(&mut self, server: &ServerId, failures: u32) -> bool {
+        let Some(feed) = self.servers.get_mut(server) else {
+            return false;
+        };
+        let before = feed.unreachable_reason();
+        feed.failures = failures;
+        feed.unreachable_reason() != before
+    }
+
+    /// The followed servers that can't be reached, for the island's rows.
+    pub fn unreachable(&self) -> Vec<UnreachableServer> {
+        self.servers
+            .iter()
+            .filter_map(|(id, feed)| {
+                feed.unreachable_reason().map(|reason| UnreachableServer { id: id.key().to_string(), name: feed.name.clone(), reason })
+            })
+            .collect()
+    }
+
+    /// `session_key`'s question was answered (here or elsewhere): its row
+    /// stops waiting at once; the next fetch confirms it. True when it changed.
+    pub fn resolve_question(&mut self, session_key: &str) -> bool {
+        let mut changed = false;
+        for session in self.servers.values_mut().flat_map(|feed| feed.sessions.iter_mut()) {
+            if session.state == SessionState::NeedsInput && id_key(&session.id) == session_key {
+                session.state = SessionState::Running;
+                session.question = None;
+                session.question_id = None;
+                session.choices.clear();
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// The server a session of the active lists lives on.
+    pub fn server_of(&self, session_key: &str) -> Option<ServerId> {
+        self.servers
+            .iter()
+            .find(|(_, feed)| feed.sessions.iter().any(|s| id_key(&s.id) == session_key))
+            .map(|(id, _)| id.clone())
     }
 
     /// Record where `server`'s connection stands. True when that changed
@@ -560,6 +675,8 @@ impl Feeds {
         let sessions_changed = feed.sessions != next;
         // A fresh list means the server is reachable.
         let watch_changed = std::mem::replace(&mut feed.watch, WatchState::Connected) != WatchState::Connected;
+        feed.ever_connected = true;
+        feed.failures = 0;
         let unread_changed = merge_unread(&mut self.unread, finished, &next, viewed);
         feed.sessions = next;
         sessions_changed || unread_changed || watch_changed
@@ -616,12 +733,25 @@ pub fn merged_lists(
     (sessions, unread)
 }
 
+/// What a waiting session asks, as far as the shell knows: the text comes
+/// from the notification until the server's own copy arrives (with the id and
+/// the buttons that can answer it in place).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Asked {
+    pub text: Option<String>,
+    pub id: Option<String>,
+    pub choices: Vec<String>,
+}
+
+/// Waiting sessions whose question is fetched on one refresh, at most.
+const MAX_QUESTION_FETCHES: usize = 8;
+
 /// What the stream told us between refetches: each waiting session's
 /// question, how each turn ended, and what became of a goal whose last turn
 /// just ended.
 #[derive(Debug, Default)]
 pub struct FeedMemo {
-    questions: HashMap<String, String>,
+    questions: HashMap<String, Asked>,
     statuses: HashMap<String, String>,
     goals: HashMap<String, IslandGoal>,
     /// Sessions running an idle compaction, kept out of the list.
@@ -684,12 +814,31 @@ impl FeedMemo {
                 if let (Some(id), Some(body)) = (data["session_id"].as_str(), data["body"].as_str()) {
                     let body = body.trim();
                     if !body.is_empty() {
-                        self.questions.insert(id_key(id), body.to_string());
+                        self.questions.entry(id_key(id)).or_default().text = Some(body.to_string());
                     }
                 }
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Take the server's copy of what `session_id` waits on (`None`: nothing
+    /// is open any more, so any buttons and id from before are stale).
+    fn learn(&mut self, session_id: &str, question: Option<&crate::answers::OpenQuestion>) {
+        let asked = self.questions.entry(id_key(session_id)).or_default();
+        match question {
+            Some(question) => {
+                if let Some(text) = question.text() {
+                    asked.text = Some(text.to_string());
+                }
+                asked.id = Some(question.id.clone());
+                asked.choices = question.quick_choices();
+            }
+            None => {
+                asked.id = None;
+                asked.choices.clear();
+            }
         }
     }
 
@@ -899,16 +1048,20 @@ struct Shared {
     /// The saved servers, as last read from the config file: which are
     /// enabled, and their names. Refreshed by [`servers_changed`].
     saved: Vec<crate::config::SavedAppServer>,
+    /// Servers whose list should be fetched again soon (an answer was sent),
+    /// without waiting for an event.
+    refresh_requested: HashSet<ServerId>,
 }
 
 impl Shared {
     /// Merge the feeds into `status`. The new snapshot, if it changed.
     fn rebuild(&mut self) -> Option<IslandStatus> {
         let (sessions, unread) = self.feeds.lists();
-        if self.status.sessions == sessions && self.status.unread == unread {
+        let unreachable = self.feeds.unreachable();
+        if self.status.sessions == sessions && self.status.unread == unread && self.status.unreachable == unreachable {
             return None;
         }
-        self.status = IslandStatus { seq: self.status.seq + 1, sessions, unread };
+        self.status = IslandStatus { seq: self.status.seq + 1, sessions, unread, unreachable };
         Some(self.status.clone())
     }
 }
@@ -931,6 +1084,7 @@ fn shared() -> &'static Mutex<Shared> {
             menu_open: false,
             viewing: HashMap::new(),
             saved: Vec::new(),
+            refresh_requested: HashSet::new(),
         })
     })
 }
@@ -1199,16 +1353,27 @@ fn stream_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
-/// The feed runs while the island or the pet is on.
+/// The feed runs whenever the app does: the tray's "Needs you" list and its
+/// mark read it even with the island and the pet off. (It used to run only
+/// while one of them was on.)
 fn is_enabled() -> bool {
-    // Never hold the island's lock while taking the pet's.
-    let island = shared().lock().unwrap().settings.enabled;
-    island || crate::pet::is_enabled()
+    true
 }
 
-/// The island or the pet was switched on or off: start or stop the feed now.
+/// The island or the pet was switched on or off, or a server asked to be
+/// retried: wake the feed now.
 pub fn wake_feed() {
     feed_wake().notify_waiters();
+}
+
+/// `server`'s list should be fetched again soon.
+fn request_refresh(server: &ServerId) {
+    shared().lock().unwrap().refresh_requested.insert(server.clone());
+    feed_wake().notify_waiters();
+}
+
+fn take_refresh_request(server: &ServerId) -> bool {
+    shared().lock().unwrap().refresh_requested.remove(server)
 }
 
 /// Wait up to `duration`, or less if the feature is switched on or off.
@@ -1300,7 +1465,10 @@ async fn follow_server(app: AppHandle, server: ServerId) {
             let watch = if rejected { WatchState::KeyRejected } else { WatchState::Reconnecting };
             edit_feeds(&app, |feeds| {
                 let emptied = feeds.clear_sessions(&server);
-                feeds.set_watch(&server, watch) || emptied
+                let watch_changed = feeds.set_watch(&server, watch);
+                // A server that keeps failing is announced as unreachable.
+                let announced = feeds.set_failures(&server, failures);
+                watch_changed || announced || emptied
             });
             let delay = if rejected {
                 RETRY_AUTH_REJECTED
@@ -1380,6 +1548,10 @@ async fn follow(
         if !is_enabled() {
             return Ok(());
         }
+        // An answer was sent: the list changes now, not at the next event.
+        if take_refresh_request(server) {
+            refresh_at.get_or_insert(Instant::now() + REFRESH_DEBOUNCE);
+        }
         let now = Instant::now();
         let active = shared().lock().unwrap().feeds.is_active(server);
         let due = refresh_at.is_some_and(|at| now >= at)
@@ -1417,10 +1589,32 @@ async fn refresh(
         .json()
         .await
         .context("parse active sessions")?;
+    learn_questions(client, base, token, &page.data, memo).await;
     let mut next = active_sessions(page.data, &memo.questions, memo.chat_root.as_deref());
     memo.hide_compacting(&mut next);
     publish(app, server, next, memo);
     Ok(())
+}
+
+/// Ask the server what each waiting session asks (its text, id and the
+/// buttons that can answer it), a few at a time. Best effort: a session whose
+/// question can't be read keeps the notification's text and "Open to answer".
+async fn learn_questions(client: &reqwest::Client, base: &str, token: Option<&str>, rows: &[SessionRow], memo: &mut FeedMemo) {
+    let mut fetches = tokio::task::JoinSet::new();
+    for row in rows.iter().filter(|row| row.parent_session_id.is_none() && row.needs_input).take(MAX_QUESTION_FETCHES) {
+        let (client, base, token, id) = (client.clone(), base.to_string(), token.map(str::to_string), row.id.clone());
+        fetches.spawn(async move {
+            let question = crate::answers::fetch_question_at(&client, &base, token.as_deref(), &id).await;
+            (id, question)
+        });
+    }
+    while let Some(done) = fetches.join_next().await {
+        match done {
+            Ok((id, Ok(question))) => memo.learn(&id, question.as_ref()),
+            Ok((id, Err(error))) => log::debug!("island: could not read the question of {id}: {error:#}"),
+            Err(error) => log::debug!("island: question fetch ended early: {error}"),
+        }
+    }
 }
 
 /// The Chat workspace path from `GET /api/agent/workspace/tree`. Best effort:
@@ -1474,10 +1668,12 @@ fn publish(app: &AppHandle, server: &ServerId, next: Vec<IslandSession>, memo: &
     send_status(app, &status);
 }
 
-/// Send a new snapshot to the island and the pet.
+/// Send a new snapshot to the island, the pet and the tray.
 fn send_status(app: &AppHandle, status: &IslandStatus) {
     let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, status);
     crate::pet::status_changed(app, status);
+    crate::tray_popup::status_changed(app, status);
+    crate::menu::update_tray_needs_you(app, status);
 }
 
 /// Change the feeds, and tell the island if that changed what it shows.
@@ -1542,6 +1738,12 @@ pub(crate) fn viewed_session(app: &AppHandle) -> Option<String> {
     s.viewing.get(&label).cloned()
 }
 
+/// The merged snapshot of every followed server, as last sent: the tray's
+/// "Needs you" list reads it.
+pub(crate) fn status_snapshot() -> IslandStatus {
+    shared().lock().unwrap().status.clone()
+}
+
 // ── Commands ────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -1588,19 +1790,62 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
         mark_session_read(app, session_id, None);
         return Ok(());
     }
-    if action == SessionAction::NewWindow {
-        crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
-        mark_session_read(app, session_id, None);
-        return Ok(());
-    }
-    open_session_on_server(app, server, session_id).await?;
+    let mode = if action == SessionAction::NewWindow { OpenIn::NewWindow } else { OpenIn::Existing };
+    open_session(app, server, session_id, mode).await?;
     mark_session_read(app, session_id, None);
     Ok(())
 }
 
-/// Open `session_id` in an app window on `server`, opening a window there
-/// if none is on it. Also used by the desktop pet.
-pub(crate) async fn open_session_on_server(app: &AppHandle, server: ServerId, session_id: &str) -> Result<()> {
+// ── The session → window router ─────────────────────────────────────────────
+
+/// Where a session opens when no window shows it yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OpenIn {
+    /// The server's window: the focused one, the active one, any other.
+    Existing,
+    /// A window of its own ("Open in new window").
+    NewWindow,
+}
+
+/// Bring forward the app window that already shows `session_id`, if one
+/// does (every app window reports its session: [`island_viewing`]). One
+/// session lives in one window, so this comes before any other choice.
+pub(crate) fn focus_window_showing(app: &AppHandle, session_id: &str) -> bool {
+    let key = id_key(session_id);
+    let windows = crate::servers::app_window_labels(app);
+    let focused = crate::servers::focused_app_window(app);
+    let label = {
+        let s = shared().lock().unwrap();
+        crate::servers::window_showing_session(&key, &s.viewing, focused.as_deref(), &windows)
+    };
+    match label.and_then(|label| app.get_webview_window(&label)) {
+        Some(window) => {
+            crate::window::show_window(&window);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Open `session_id` of `server`. The one router behind every way to open a
+/// session (the island, the pet, the tray, an OS notification, "Open in new
+/// window", a session path given to `app_new_window`):
+///
+/// 1. a window that already shows it comes forward;
+/// 2. else, for [`OpenIn::NewWindow`], a new window opens on the server;
+/// 3. else the server's window shows it (the focused one, the active one,
+///    any other), and with no window on that server (an enabled saved server
+///    watched in the background, or its last window just closed) one opens
+///    there. Never on another server, where the session is not found.
+pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: &str, mode: OpenIn) -> Result<()> {
+    if focus_window_showing(app, session_id) {
+        return Ok(());
+    }
+    let path = format!("/{session_id}");
+    if mode == OpenIn::NewWindow {
+        crate::window::create_app_window_on_server(app, server, &path).await?;
+        return Ok(());
+    }
     let windows = crate::servers::app_window_labels(app);
     let target = crate::servers::window_for_server(
         &server,
@@ -1615,16 +1860,82 @@ pub(crate) async fn open_session_on_server(app: &AppHandle, server: ServerId, se
             app.emit_to(target.label(), "desktop-notification-clicked", payload)?;
             crate::window::show_window(&target);
         }
-        // No window is on that server (an enabled saved server watched in
-        // the background, or the last window there just closed): open one
-        // on it. Never on another server, where the session is not found.
         None => {
-            crate::window::create_app_window_on_server(app, server, &format!("/{session_id}")).await?;
+            crate::window::create_app_window_on_server(app, server, &path).await?;
         }
     }
     Ok(())
 }
 
+/// The session id in an app path (`/<id>`, maybe with a query or hash).
+pub(crate) fn session_id_from_path(path: &str) -> Option<String> {
+    let id = path.trim_start_matches('/').split(['/', '?', '#']).next()?;
+    crate::answers::is_id(id).then(|| id.to_string())
+}
+
+/// Open a session a surface (the tray, a notification) names, from the
+/// active lists, through the router; read errors are shown as a dialog.
+pub(crate) fn dispatch_open(app: &AppHandle, session_id: String) {
+    dispatch_session_action(app, session_id, SessionAction::Open);
+}
+
+// ── Answering in place ──────────────────────────────────────────────────────
+
+/// Post an answer to `session_id`'s open question on `server`, and clear the
+/// question on every surface, whether the server took it (`Answered`) or had
+/// already lost it (`Gone`: answered in the app or on another device).
+pub(crate) async fn answer_question(
+    app: &AppHandle,
+    server: &ServerId,
+    session_id: &str,
+    question_id: &str,
+    answers: &[Vec<String>],
+) -> Result<crate::answers::AnswerOutcome> {
+    let outcome = crate::answers::submit(app, server, session_id, question_id, answers).await?;
+    log::info!("answer: session={} outcome={outcome:?}", id_key(session_id));
+    mark_answered(app, session_id);
+    request_refresh(server);
+    Ok(outcome)
+}
+
+/// `session_id`'s question is answered: the island's row stops waiting, the
+/// pet drops the question's bubble, and the tray reloads.
+pub(crate) fn mark_answered(app: &AppHandle, session_id: &str) {
+    let key = id_key(session_id);
+    edit_feeds(app, |feeds| feeds.resolve_question(&key));
+    crate::pet::question_answered(app, &key);
+}
+
+/// Answer the question of a session the island shows, with one of the
+/// buttons on its row. The shell picks the server from the session itself.
+#[tauri::command]
+pub async fn island_answer(
+    app: AppHandle,
+    window: WebviewWindow,
+    session_id: String,
+    question_id: String,
+    answers: Vec<Vec<String>>,
+) -> Result<crate::answers::AnswerOutcome, String> {
+    if window.label() != ISLAND_WINDOW {
+        return Err("Only the island answers from its rows.".into());
+    }
+    let server = shared().lock().unwrap().feeds.server_of(&id_key(&session_id));
+    let Some(server) = server else {
+        // Not in any active list any more: nothing is waiting here.
+        mark_answered(&app, &session_id);
+        return Ok(crate::answers::AnswerOutcome::Gone);
+    };
+    answer_question(&app, &server, &session_id, &question_id, &answers).await.map_err(|error| format!("{error:#}"))
+}
+
+/// "Retry" on a server the island says it can't reach: try now, not at the
+/// next backoff.
+#[tauri::command]
+pub fn island_retry(window: WebviewWindow) {
+    if window.label() == ISLAND_WINDOW {
+        wake_feed();
+    }
+}
 fn report_island_error(app: &AppHandle, title: &str, error: &anyhow::Error) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
     log::warn!("island: {title}: {error:#}");
@@ -1925,11 +2236,24 @@ mod tests {
             goal_status: None,
             goal_turns_used: None,
             goal_max_turns: None,
+            credential_label: None,
         }
     }
 
     fn session(id: &str, state: SessionState) -> IslandSession {
-        IslandSession { id: id.into(), title: format!("T{id}"), workspace: None, state, question: None, server: None, server_id: None, goal: None }
+        IslandSession {
+            id: id.into(),
+            title: format!("T{id}"),
+            workspace: None,
+            state,
+            question: None,
+            question_id: None,
+            choices: Vec::new(),
+            server: None,
+            server_id: None,
+            goal: None,
+            account: None,
+        }
     }
 
     const REMOTE: &str = "http://192.168.1.30:4082";
@@ -1993,6 +2317,8 @@ mod tests {
         assert_eq!(menu_selection("settings"), None);
         assert_eq!(menu_selection("island:delete:a"), None);
         assert_eq!(menu_selection("island:open"), None);
+        // The native tray menu's "Needs you" rows use the same id to open a session.
+        assert_eq!(menu_selection(&open_menu_id("5f0c1d2e-3a4b")), Some((SessionAction::Open, "5f0c1d2e-3a4b")));
     }
 
     fn ids(sessions: &[IslandSession]) -> Vec<&str> {
@@ -2203,11 +2529,29 @@ mod tests {
     }
 
     #[test]
+    fn a_pinned_session_names_its_account() {
+        let page: SessionPage =
+            serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "credential_label": "Work"}, {"id": "b", "running": true}]}"#).unwrap();
+        let sessions = active_sessions(page.data, &HashMap::new(), None);
+        assert_eq!(sessions[0].account.as_deref(), Some("Work"));
+        assert_eq!(sessions[1].account, None, "Auto names no account");
+        let wire = serde_json::to_value(&sessions[0]).unwrap();
+        assert_eq!(wire["account"], "Work");
+    }
+
+    #[test]
     fn a_blank_title_reads_untitled_and_the_question_follows_the_session() {
-        let questions = HashMap::from([(id_key("AB-CD"), "Keep the old format?".to_string())]);
+        let asked = Asked { text: Some("Keep the old format?".into()), id: Some("q-1".into()), choices: vec!["Keep".into(), "Drop".into()] };
+        let questions = HashMap::from([(id_key("AB-CD"), asked)]);
         let sessions = active_sessions(vec![row("ab-cd", Some("  "), false, true)], &questions, None);
         assert_eq!(sessions[0].title, "Untitled session");
         assert_eq!(sessions[0].question.as_deref(), Some("Keep the old format?"));
+        assert_eq!(sessions[0].question_id.as_deref(), Some("q-1"));
+        assert_eq!(sessions[0].choices, ["Keep", "Drop"]);
+
+        // A session that no longer waits shows no question, whatever the memo holds.
+        let running = active_sessions(vec![row("ab-cd", Some("T"), true, false)], &questions, None);
+        assert_eq!((running[0].question.as_deref(), running[0].question_id.as_deref(), running[0].choices.len()), (None, None, 0));
     }
 
     #[test]
@@ -2352,7 +2696,7 @@ mod tests {
         assert!(memo.note(&event("desktop_notification", ask)));
         let done = serde_json::json!({"session_id": "b", "status": "error"});
         assert!(memo.note(&event("session_turn_completed", done)));
-        assert_eq!(memo.questions.get("a").map(String::as_str), Some("Which branch?"));
+        assert_eq!(memo.questions.get("a").and_then(|q| q.text.as_deref()), Some("Which branch?"));
         assert_eq!(memo.statuses.get("b").map(String::as_str), Some("error"));
 
         memo.settle(&[session("a", SessionState::Running)]);
@@ -2362,6 +2706,133 @@ mod tests {
         memo.statuses.insert("a".into(), "completed".into());
         assert!(memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a"}))));
         assert!(memo.statuses.is_empty(), "a new turn forgets the last outcome");
+    }
+
+    fn open_question(id: &str, text: &str, options: &[&str]) -> crate::answers::OpenQuestion {
+        let options: Vec<_> = options.iter().map(|label| serde_json::json!({ "label": label })).collect();
+        let body = serde_json::json!({ "question": { "id": id, "questions": [{ "question": text, "options": options }] } });
+        crate::answers::parse_question(&body).unwrap()
+    }
+
+    // The notification only has text; the server's copy adds the id the
+    // answer is posted to, and the buttons a surface may show.
+    #[test]
+    fn the_servers_copy_of_a_question_adds_its_id_and_buttons_to_the_notification_text() {
+        let mut memo = FeedMemo::default();
+        let ask = serde_json::json!({"kind": "input_needed", "session_id": "a", "body": "Which branch?"});
+        memo.note(&event("desktop_notification", ask));
+        memo.learn("a", Some(&open_question("q-1", "Which branch? (main or dev)", &["main", "dev"])));
+        let asked = memo.questions.get("a").unwrap();
+        assert_eq!((asked.id.as_deref(), asked.text.as_deref()), (Some("q-1"), Some("Which branch? (main or dev)")));
+        assert_eq!(asked.choices, ["main", "dev"]);
+
+        // Nothing open any more (answered meanwhile): no stale id or buttons.
+        memo.learn("a", None);
+        let asked = memo.questions.get("a").unwrap();
+        assert_eq!((asked.id.as_deref(), asked.choices.len()), (None, 0));
+        assert_eq!(asked.text.as_deref(), Some("Which branch? (main or dev)"));
+    }
+
+    #[test]
+    fn answering_clears_the_waiting_row_on_every_server_it_is_listed_on() {
+        let mut feeds = two_servers(&["a"], &["r"]);
+        let mut asked = session("q", SessionState::NeedsInput);
+        asked.question = Some("Which branch?".into());
+        asked.question_id = Some("q-1".into());
+        asked.choices = vec!["main".into()];
+        feeds.update(&remote(), vec![session("r", SessionState::Running), asked], &HashMap::new(), &HashMap::new(), None, true);
+        assert_eq!(feeds.server_of("q"), Some(remote()));
+        assert_eq!(feeds.server_of("nope"), None);
+
+        assert!(feeds.resolve_question("q"));
+        let (sessions, _) = feeds.lists();
+        let row = sessions.iter().find(|s| s.id == "q").unwrap();
+        assert_eq!((row.state, row.question.as_deref(), row.question_id.as_deref(), row.choices.len()), (SessionState::Running, None, None, 0));
+        assert!(!feeds.resolve_question("q"), "already clear");
+        assert!(!feeds.resolve_question("a"), "a running session has no question to clear");
+    }
+
+    // The island used to drop a lost server's rows without a word.
+    #[test]
+    fn a_server_that_keeps_failing_after_it_answered_is_announced_as_unreachable() {
+        let mut feeds = two_servers(&["a"], &["r"]);
+        assert!(feeds.unreachable().is_empty());
+
+        feeds.clear_sessions(&remote());
+        feeds.set_watch(&remote(), WatchState::Reconnecting);
+        assert!(!feeds.set_failures(&remote(), 1), "one failed retry is a blip");
+        assert!(feeds.unreachable().is_empty());
+        assert!(feeds.set_failures(&remote(), UNREACHABLE_AFTER_FAILURES), "the second one is not");
+        assert_eq!(
+            feeds.unreachable(),
+            [UnreachableServer { id: REMOTE.into(), name: REMOTE_NAME.into(), reason: "unreachable" }]
+        );
+        assert_eq!(serde_json::to_value(&feeds.unreachable()[0]).unwrap(), serde_json::json!({"id": REMOTE, "name": REMOTE_NAME, "reason": "unreachable"}));
+
+        // It is back: the row goes with the next list.
+        assert!(feeds.update(&remote(), vec![], &HashMap::new(), &HashMap::new(), None, true));
+        assert!(feeds.unreachable().is_empty());
+    }
+
+    #[test]
+    fn a_server_that_never_answered_is_not_announced_but_a_refused_key_is() {
+        let mut feeds = Feeds::default();
+        feeds.join(&remote(), REMOTE_NAME.into());
+        feeds.set_watch(&remote(), WatchState::Reconnecting);
+        feeds.set_failures(&remote(), 5);
+        assert!(feeds.unreachable().is_empty(), "a laptop asleep since launch is not news");
+
+        feeds.set_watch(&remote(), WatchState::KeyRejected);
+        assert_eq!(feeds.unreachable()[0].reason, "key_rejected");
+    }
+
+    #[test]
+    fn the_snapshot_changes_when_only_the_unreachable_servers_do() {
+        let mut shared = Shared {
+            status: IslandStatus::default(),
+            feeds: two_servers(&["a"], &[]),
+            geometry: NotchGeometry::default(),
+            settings: IslandSettings::default(),
+            frontmost: false,
+            wants_visible: false,
+            size: (0.0, 0.0),
+            shift: 0.0,
+            canvas: None,
+            pill: None,
+            pointer: None,
+            menu_open: false,
+            viewing: HashMap::new(),
+            saved: Vec::new(),
+            refresh_requested: HashSet::new(),
+        };
+        assert!(shared.rebuild().is_some());
+        assert!(shared.rebuild().is_none(), "nothing changed");
+        shared.feeds.set_watch(&remote(), WatchState::Reconnecting);
+        shared.feeds.set_failures(&remote(), UNREACHABLE_AFTER_FAILURES);
+        shared.feeds.servers.get_mut(&remote()).unwrap().ever_connected = true;
+        let status = shared.rebuild().expect("the unreachable row is a change");
+        assert_eq!(status.unreachable.len(), 1);
+        assert_eq!(status.seq, 2);
+    }
+
+    #[test]
+    fn the_island_opens_on_a_click_by_default_and_hover_is_an_option() {
+        assert!(!IslandSettings::default().expand_on_hover);
+        let hover: IslandSettingsPatch = serde_json::from_str(r#"{"expandOnHover": true}"#).unwrap();
+        assert!(IslandSettings::default().with(hover).expand_on_hover);
+        let saved: IslandSettings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+        assert!(!saved.expand_on_hover, "settings saved before it existed open on a click");
+    }
+
+    #[test]
+    fn a_session_path_names_the_session_to_open() {
+        let id = "5f0c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f";
+        assert_eq!(session_id_from_path(&format!("/{id}")).as_deref(), Some(id));
+        assert_eq!(session_id_from_path(&format!("/{id}?tab=review")).as_deref(), Some(id));
+        assert_eq!(session_id_from_path(&format!("/{id}/files#top")).as_deref(), Some(id));
+        for other in ["", "/", "/settings", "/new", "/../x", "/abc"] {
+            assert_eq!(session_id_from_path(other), None, "{other}");
+        }
     }
 
     #[test]

@@ -1,9 +1,12 @@
 import { describe, it, expect, afterEach, beforeEach, mock, spyOn } from "bun:test"
-import { act, render, screen, cleanup } from "@testing-library/react"
+import { act, render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { useUIStore } from "@/stores/useUIStore"
 import type { ContentBlock } from "@/api/types"
+
+const { stopAgent: realStopAgent, sendMessage: realSendMessage, setSessionRunSettings: realSetSessionRunSettings } = useAgentStore.getState()
 
 beforeEach(() => {
   localStorage.clear()
@@ -16,7 +19,13 @@ afterEach(() => {
   cleanup()
   localStorage.clear()
   act(() => {
-    useAgentStore.setState({ sessionId: null })
+    useAgentStore.setState({
+      sessionId: null,
+      _workspace: null,
+      stopAgent: realStopAgent,
+      sendMessage: realSendMessage,
+      setSessionRunSettings: realSetSessionRunSettings,
+    })
   })
 })
 
@@ -52,9 +61,11 @@ function makeUserBlock(id: string, content = "continue"): ContentBlock {
 }
 
 describe("AgentView — waiting_quota status rendering", () => {
-  it("renders quota wait block with custom message", () => {
+  it("renders quota wait block, with the provider's message one Copy details away", async () => {
     const customMsg =
       "Provider quota exhausted for codex:gpt-5.4. Waiting 2h 00m for reset. Agent will automatically resume work. You can stop anytime."
+    const writeText = mock(async (_text: unknown) => {})
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true, writable: true })
     render(
       <AgentView
         blocks={[makeQuotaBlock("q1", "codex:gpt-5.4", customMsg)]}
@@ -65,11 +76,16 @@ describe("AgentView — waiting_quota status rendering", () => {
 
     expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
     expect(screen.getByText("2h 00m")).toBeTruthy()
-    // The provider's own wording stays one hover away.
-    expect(document.querySelector(`[title="${customMsg}"]`)).toBeTruthy()
+    // No native hover title: the provider's own wording is a visible action.
+    expect(document.querySelector("[title]")).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy details" })) })
+    expect(writeText).toHaveBeenCalledWith(customMsg)
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy()
   })
 
-  it("renders default message when custom message is omitted", () => {
+  it("renders default message when custom message is omitted, with Stop on the card", () => {
+    const stopAgent = mock(async () => {})
+    act(() => { useAgentStore.setState({ stopAgent }) })
     render(
       <AgentView
         blocks={[makeQuotaBlock("q2", "copilot:claude-sonnet-4")]}
@@ -80,8 +96,23 @@ describe("AgentView — waiting_quota status rendering", () => {
 
     expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
     expect(screen.getByText("2h 00m")).toBeTruthy()
-    expect(screen.getByText("claude-sonnet-4")).toBeTruthy()
-    expect(screen.getByText(/Resumes automatically\. Stop anytime\./)).toBeTruthy()
+    expect(document.querySelector("[data-model-name]")?.textContent).toContain("claude-sonnet-4")
+    expect(screen.getByText(/used up its provider quota.*Resumes automatically\./)).toBeTruthy()
+    // Nothing to copy without the provider's message; no pinned-account choices either.
+    expect(screen.queryByRole("button", { name: "Copy details" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Use Auto for this session" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Choose account…" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
+    expect(stopAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it("names the account when the status carries one", () => {
+    const block = makeQuotaBlock("q-account", "codex:gpt-5.4")
+    block.extra = { ...block.extra, credential_label: "Work" }
+    render(<AgentView blocks={[block]} currentBlocks={[]} isWorking={true} />)
+
+    expect(screen.getByText("Work")).toBeTruthy()
+    expect(screen.getByText(/on account/)).toBeTruthy()
   })
 
   it("updates the countdown every minute", () => {
@@ -183,5 +214,63 @@ describe("AgentView — waiting_quota status rendering", () => {
 
     expect(screen.queryByText("Waiting for quota reset")).toBeNull()
     expect(localStorage.getItem("openagentd:quota-wait:quota-session")).toBeNull()
+  })
+})
+
+describe("AgentView — waiting for the pinned account", () => {
+  const PINNED_MESSAGE =
+    "Personal is pinned for this session and hit its usage limit. Waiting 2h 00m for it to reset. Use Auto to continue on another account now, or stop at any time."
+
+  function makePinnedBlock(id: string, message: string | undefined = PINNED_MESSAGE): ContentBlock {
+    const block = makeQuotaBlock(id, "codex:gpt-5.4", message)
+    block.extra = { ...block.extra, status: "waiting_credential" }
+    return block
+  }
+
+  it("is the same card, naming the account and the model, with every way forward", () => {
+    render(<AgentView blocks={[makePinnedBlock("p1")]} currentBlocks={[]} isWorking={true} />)
+
+    expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
+    expect(screen.getByText("2h 00m")).toBeTruthy()
+    expect(screen.getByText("Personal")).toBeTruthy()
+    expect(screen.getByText("gpt-5.4").closest("[data-model-name]")?.className).toContain("font-mono")
+    for (const name of ["Use Auto for this session", "Choose account…", "Stop", "Copy details"]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy()
+    }
+    expect(screen.queryByText("Provider status updated.")).toBeNull()
+  })
+
+  it("opens the run picker from Choose account…", () => {
+    const openRunPicker = mock((_focus?: unknown) => {})
+    const original = useUIStore.getState().openRunPicker
+    act(() => { useUIStore.setState({ openRunPicker }) })
+    try {
+      render(<AgentView blocks={[makePinnedBlock("p2")]} currentBlocks={[]} isWorking={true} />)
+      fireEvent.click(screen.getByRole("button", { name: "Choose account…" }))
+      expect(openRunPicker).toHaveBeenCalledWith("model")
+    } finally {
+      act(() => { useUIStore.setState({ openRunPicker: original }) })
+    }
+  })
+
+  it("drops the pin, stops, and continues on Auto", async () => {
+    const setSessionRunSettings = mock(async (_settings: unknown) => true)
+    const stopAgent = mock(async (_options?: unknown) => {})
+    const sendMessage = mock(async (..._args: unknown[]) => true)
+    act(() => { useAgentStore.setState({ setSessionRunSettings, stopAgent, sendMessage, _workspace: "/work" }) })
+    render(<AgentView blocks={[makePinnedBlock("p3")]} currentBlocks={[]} isWorking={true} />)
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use Auto for this session" })) })
+
+    expect(setSessionRunSettings).toHaveBeenCalledWith({ credentialId: null })
+    expect(stopAgent).toHaveBeenCalledWith({ keepGoal: true })
+    expect(sendMessage).toHaveBeenCalledWith("Continue.", undefined, { workspace: "/work" })
+    act(() => { useAgentStore.setState({ _workspace: null }) })
+  })
+
+  it("says 'the pinned account' when the status does not name it", () => {
+    render(<AgentView blocks={[makePinnedBlock("p4", "Waiting.")]} currentBlocks={[]} isWorking={true} />)
+
+    expect(screen.getByText(/The pinned account hit its usage limit/)).toBeTruthy()
   })
 })

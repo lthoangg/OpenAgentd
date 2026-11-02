@@ -1,12 +1,14 @@
 /**
- * Tab state for the review dock's editor strip.
+ * Tab state for the Review panel's editor strips.
  *
- * Owns which tabs are open and which is active; keeps terminal tabs in step
- * with the terminal store; starts over (empty) when the dock is handed
- * another workspace; handles the shell's "open terminal" and "open Git /
- * Tasks / Schedule" requests; and closes the active tab on Mod+W. Opening
- * tabs that need query data (changed files, commits by sha) stays with the
- * dock, which owns those queries.
+ * Owns which tabs are open, in which pane (``dock-panes.ts``), and which is
+ * active in each; keeps terminal tabs in step with the workspace's shells
+ * (new ones join the focused pane); remembers the panes per session
+ * (``dock-memory.ts``); handles the shell's requests (open a view, a diff, a
+ * preview, an attachment, a terminal; split); and the keys that act on the
+ * focused pane (⌘W, ⌘1–9, ⌃Tab). Opening tabs that need query data
+ * (changed files, commits by sha) stays with the dock, which owns those
+ * queries.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -14,13 +16,14 @@ import { useShallow } from 'zustand/react/shallow'
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
 import type { PreviewTarget } from '@/api/preview'
 import { appShortcut, useAppShortcut, useShortcuts } from '@/lib/keyboard/hooks'
-import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
+import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, NEXT_DOCK_TAB_KEYS, PREV_DOCK_TAB_CHORD, PREV_DOCK_TAB_KEYS } from '@/lib/app-shortcuts'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
 import {
   type AttachmentTabRequest,
   type DiffTabRequest,
+  type DockLayoutRequest,
   type DockTab,
   type DockView,
   type DockViewRequest,
@@ -38,22 +41,40 @@ import {
   terminalTabId,
   viewTab,
 } from './dock-tabs'
-
-/**
- * Open ``tab``: an open one is updated in place; a new one goes right after
- * ``afterId`` (the active tab), as in editors and browsers. New terminals
- * go at the end.
- */
-function withTab(current: DockTab[], tab: DockTab, afterId: string): DockTab[] {
-  const index = current.findIndex((item) => item.id === tab.id)
-  if (index >= 0) return current.map((item, i) => (i === index ? tab : item))
-  const after = tab.type === 'terminal' ? -1 : current.findIndex((item) => item.id === afterId)
-  if (after < 0) return [...current, tab]
-  return [...current.slice(0, after + 1), tab, ...current.slice(after + 1)]
-}
+import {
+  type Axis,
+  type DockPanes,
+  type OpenTabOptions,
+  type PaneId,
+  type SplitSide,
+  EMPTY_DOCK_PANES,
+  activateTab,
+  canSplitOff,
+  closePane as closePaneState,
+  closeTabs as closePaneTabs,
+  focusPane as focusPaneState,
+  joinPanes,
+  keepTab,
+  moveTab,
+  moveWithinPane,
+  nextPaneFor,
+  openTab as openPaneTab,
+  paneOf,
+  paneOrder,
+  paneTabs,
+  planTabToward,
+  resizeSplit as resizeSplitState,
+  splitPane as splitPaneState,
+  syncTerminalTabs,
+} from './dock-panes'
+import { dockMemoryKey, loadDockPanes, saveDockPanes } from './dock-memory'
 
 interface DockTabsOptions {
   workspace: string
+  /** Tabs are remembered per session (a draft per workspace). */
+  sessionId?: string | null
+  /** Phones: one strip, no panes. */
+  mobile?: boolean
   /** False while the dock is closed (kept mounted, hidden): its keys are off. */
   open?: boolean
   chatWorkspace: boolean
@@ -70,13 +91,28 @@ interface DockTabsOptions {
   /** Shell request to open (or focus) a message attachment's tab. */
   attachmentRequest?: AttachmentTabRequest | null
   handledAttachmentRequestKeyRef?: React.RefObject<number>
+  /** Split requests (⌘\, ⌘⇧\). */
+  layoutRequest?: DockLayoutRequest | null
+  handledLayoutRequestKeyRef?: React.RefObject<number>
   /** Called after a tab leaves the strip (close button, middle-click, Mod+W). */
   onTabClosed?: (tab: DockTab) => void
   /** Move keyboard focus to a tab's button (after ⌘1–9 / ⌃Tab from the dock). */
   focusTab?: (id: string) => void
-  /** Mod+W with no tab open: close the dock itself. */
+  /** Mod+W with no tab open: close the dock. */
   onCloseDock?: () => void
+  /** Whether ``pane`` has room to split along ``axis`` (measured by the dock; omitted, it always has). */
+  canSplitPane?: (pane: PaneId, axis: Axis) => boolean
+  /** A split was refused for want of room. */
+  onNoRoomToSplit?: () => void
 }
+
+/** Where a dragged tab lands: a place in a strip, a pane's middle, or a new pane on its edge. */
+export type TabDropTarget =
+  | { kind: 'strip'; pane: PaneId; index: number }
+  | { kind: 'pane'; pane: PaneId }
+  | { kind: 'split'; pane: PaneId; side: SplitSide }
+
+const AXIS_OF_SIDE: Record<SplitSide, Axis> = { left: 'row', right: 'row', up: 'column', down: 'column' }
 
 /** A terminal whose shell still runs: closing it asks first. */
 function isRunningTerminal(tab: DockTab | undefined): boolean {
@@ -94,50 +130,69 @@ function focusIsInDock(): boolean {
   return typeof document !== 'undefined' && document.activeElement?.closest('[data-review-dock]') != null
 }
 
+/** A request handler that runs once per key, even across a remount. */
+function useKeyedRequest<T extends { key: number }>(
+  request: T | null | undefined,
+  parentRef: React.RefObject<number | null> | undefined,
+  handle: (request: T) => void,
+) {
+  const fallback = useRef<number | null>(0)
+  const ref = parentRef ?? fallback
+  const latest = useRef(handle)
+  latest.current = handle
+  useEffect(() => {
+    if (ref.current === null) ref.current = 0
+    if (!request || request.key <= ref.current) return
+    ref.current = request.key
+    latest.current(request)
+  }, [request, ref])
+}
+
 export function useDockTabs({
   workspace,
+  sessionId = null,
+  mobile = false,
   open = true,
   chatWorkspace,
   onFileSelect,
   terminalOpenKey,
-  handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
+  handledTerminalOpenKeyRef,
   viewRequest,
-  handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
+  handledViewRequestKeyRef,
   onActiveViewChange,
   diffRequest,
-  handledDiffRequestKeyRef: parentHandledDiffRequestKeyRef,
+  handledDiffRequestKeyRef,
   previewRequest,
-  handledPreviewRequestKeyRef: parentHandledPreviewRequestKeyRef,
+  handledPreviewRequestKeyRef,
   attachmentRequest,
-  handledAttachmentRequestKeyRef: parentHandledAttachmentRequestKeyRef,
+  handledAttachmentRequestKeyRef,
+  layoutRequest,
+  handledLayoutRequestKeyRef,
   onTabClosed,
   focusTab,
   onCloseDock,
+  canSplitPane,
+  onNoRoomToSplit,
 }: DockTabsOptions) {
-  // The strip starts empty, on the launcher: Git opens on demand like any
-  // other tab. Chat workspaces never show it (the root is not a repository).
-  const [tabs, setTabs] = useState<DockTab[]>([])
-  // A panel mounted for a project workspace can be re-used for a chat one, so
-  // filter the review tab out of the strip rather than only skipping it at
-  // construction time.
-  const visibleTabs = chatWorkspace ? tabs.filter((tab) => tab.type !== 'review') : tabs
-  const [activeTabId, setActiveTabId] = useState('')
-  // Read by the tab-opening updaters, which insert after the active tab.
-  const activeTabIdRef = useRef(activeTabId)
-  useEffect(() => {
-    activeTabIdRef.current = activeTabId
-  }, [activeTabId])
-  // The dock stays open across workspace switches, so this instance can be
-  // handed another workspace. Tabs belong to the workspace they were opened
-  // in: start over empty (no file tabs pointing into the old tree). Terminal
-  // tabs are re-derived from the new workspace's sessions by the sync effect
-  // below.
-  const [tabsWorkspace, setTabsWorkspace] = useState(workspace)
-  if (tabsWorkspace !== workspace) {
-    setTabsWorkspace(workspace)
-    setTabs([])
-    setActiveTabId('')
+  // Each session keeps its own panes. A switch shows the next session's
+  // (or one empty pane); a draft's tabs carry over to the session it becomes.
+  const memoryKey = dockMemoryKey(sessionId, workspace)
+  const [state, setState] = useState<DockPanes>(() => loadDockPanes(memoryKey) ?? EMPTY_DOCK_PANES)
+  const [stateKey, setStateKey] = useState(memoryKey)
+  if (stateKey !== memoryKey) {
+    const loaded = loadDockPanes(memoryKey)
+    const draftBecameSession = !loaded && stateKey === dockMemoryKey(null, workspace) && sessionId !== null
+    setStateKey(memoryKey)
+    if (!draftBecameSession) setState(loaded ?? EMPTY_DOCK_PANES)
   }
+  useEffect(() => {
+    saveDockPanes(stateKey, state)
+  }, [stateKey, state])
+  // Phones have one strip: panes remembered from a desktop window join.
+  const paneCount = paneOrder(state.layout).length
+  useEffect(() => {
+    if (mobile && paneCount > 1) setState(joinPanes)
+  }, [mobile, paneCount])
 
   const terminalMetas = useTerminalStore(
     useShallow((s) =>
@@ -146,161 +201,118 @@ export function useDockTabs({
         .sort((a, b) => a.order - b.order),
     ),
   )
+  // Shells belong to the workspace: adopt them into whatever tabs are shown.
+  useEffect(() => {
+    setState((current) => syncTerminalTabs(current, terminalMetas))
+  }, [terminalMetas, stateKey])
 
-  const activeTab = useMemo<DockTab | undefined>(() => {
-    const found = visibleTabs.find((item) => item.id === activeTabId)
-    if (found) return found
-    const termId = terminalIdFromTabId(activeTabId)
+  // A chat workspace is not a repository: no Git tab in its strips.
+  const hidden = useCallback((tab: DockTab) => chatWorkspace && tab.type === 'review', [chatWorkspace])
+  const shownPanes = useMemo(() => paneOrder(state.layout), [state.layout])
+  const strips = useMemo<Record<PaneId, DockTab[]>>(
+    () => Object.fromEntries(Object.keys(state.panes).map((pane) => [pane, paneTabs(state, pane).filter((tab) => !hidden(tab))])),
+    [state, hidden],
+  )
+  const activeTabs = useMemo<Record<PaneId, DockTab | undefined>>(() => Object.fromEntries(Object.keys(state.panes).map((pane) => {
+    const id = state.panes[pane].active
+    const strip = strips[pane] ?? []
+    const found = strip.find((item) => item.id === id)
+    if (found) return [pane, found]
+    const termId = terminalIdFromTabId(id)
     const meta = termId ? terminalMetas.find((m) => m.id === termId) : undefined
-    if (meta) return { id: activeTabId, type: 'terminal', title: meta.title, termId: meta.id }
-    return visibleTabs[0]
-  }, [visibleTabs, activeTabId, terminalMetas])
+    if (meta) return [pane, { id, type: 'terminal', title: meta.title, termId: meta.id }]
+    return [pane, strip[0]]
+  })), [state.panes, strips, terminalMetas])
+  const focused: PaneId = shownPanes.includes(state.focused) ? state.focused : shownPanes[0] ?? state.focused
+  const activeTab = activeTabs[focused]
+  const activeTabId = activeTab?.id ?? ''
+  const visibleTabs = useMemo(() => paneOrder(state.layout).flatMap((pane) => strips[pane] ?? []), [state.layout, strips])
 
-  const openTab = useCallback((tab: DockTab) => {
-    setTabs((current) => withTab(current, tab, activeTabIdRef.current))
-    setActiveTabId(tab.id)
+  // ── Opening ───────────────────────────────────────────────────────────────
+  type OpenOptions = { pane?: PaneId; preview?: boolean }
+  const openTab = useCallback((tab: DockTab, options?: OpenTabOptions) => {
+    setState((current) => openPaneTab(current, tab, options))
   }, [])
 
-  const openFileTab = useCallback((file: WorkspaceFileInfo) => {
-    openTab({ id: fileTabId(file.path), type: 'file', title: file.name || basename(file.path), file })
+  const openFileTab = useCallback((file: WorkspaceFileInfo, options?: OpenOptions) => {
+    openTab({ id: fileTabId(file.path), type: 'file', title: file.name || basename(file.path), file }, options)
     onFileSelect?.(file)
   }, [openTab, onFileSelect])
 
-  const openDiffTab = useCallback((file: ChangedFileInfo) => {
-    openTab({ id: diffTabId(file.path), type: 'diff', title: basename(file.path), path: file.path, status: file.status })
+  const openDiffTab = useCallback((file: ChangedFileInfo, options?: OpenOptions) => {
+    openTab({ id: diffTabId(file.path), type: 'diff', title: basename(file.path), path: file.path, status: file.status }, options)
   }, [openTab])
 
-  const openCommitTab = useCallback((commit: GitCommit) => {
-    openTab({ id: commitTabId(commit.sha), type: 'commit', title: commit.short_sha, commit })
+  const openCommitTab = useCallback((commit: GitCommit, options?: OpenOptions) => {
+    openTab({ id: commitTabId(commit.sha), type: 'commit', title: commit.short_sha, commit }, options)
   }, [openTab])
 
   /** Open or focus the preview for ``target``; an open tab navigates to it. */
-  const openPreviewTab = useCallback((target: PreviewTarget, options?: { focusOnly?: boolean }) => {
+  const openPreviewTab = useCallback((target: PreviewTarget, options?: { focusOnly?: boolean; pane?: PaneId }) => {
     const id = previewTabId(target)
-    setTabs((current) => {
-      const existing = current.find((item) => item.id === id)
-      if (existing && options?.focusOnly) return current
+    setState((current) => {
+      const existing = current.tabs.find((item) => item.id === id)
+      if (existing && options?.focusOnly) return activateTab(current, id)
       const navKey = existing?.type === 'preview' ? existing.navKey + 1 : 0
-      return withTab(current, { id, type: 'preview', title: previewTabTitle(target), target, navKey }, activeTabIdRef.current)
+      return openPaneTab(current, { id, type: 'preview', title: previewTabTitle(target), target, navKey }, { pane: options?.pane })
     })
-    setActiveTabId(id)
   }, [])
 
   /** Open the Git tab, or show the open one. Never in a chat workspace. */
-  const openGitTab = useCallback(() => {
-    if (!chatWorkspace) openTab(REVIEW_TAB)
+  const openGitTab = useCallback((pane?: PaneId) => {
+    if (!chatWorkspace) openTab(REVIEW_TAB, { pane })
   }, [chatWorkspace, openTab])
 
-  /** Move a tab to ``toIndex`` of the strip (drag, ⌥⇧←/→, the tab menu). */
-  const moveTab = useCallback((id: string, toIndex: number) => {
-    setTabs((current) => {
-      const from = current.findIndex((item) => item.id === id)
-      if (from < 0) return current
-      const to = Math.max(0, Math.min(current.length - 1, toIndex))
-      if (from === to) return current
-      const next = [...current]
-      const [tab] = next.splice(from, 1)
-      next.splice(to, 0, tab)
-      return next
-    })
-  }, [])
-
-  // Keep terminal tabs in step with the store without re-sorting the strip:
-  // a terminal stays where the user put it. Gone sessions drop out, renamed
-  // ones update in place, and new ones join at the end.
-  useEffect(() => {
-    setTabs((current) => {
-      const metas = new Map(terminalMetas.map((meta) => [meta.id, meta]))
-      let changed = false
-      const kept: DockTab[] = []
-      for (const item of current) {
-        if (item.type !== 'terminal') {
-          kept.push(item)
-          continue
-        }
-        const meta = metas.get(item.termId)
-        if (!meta) {
-          changed = true
-        } else if (meta.title !== item.title) {
-          changed = true
-          kept.push({ ...item, title: meta.title })
-        } else {
-          kept.push(item)
-        }
-      }
-      const present = new Set(kept.map((item) => (item.type === 'terminal' ? item.termId : null)))
-      const added: DockTab[] = terminalMetas
-        .filter((meta) => !present.has(meta.id))
-        .map((meta) => ({ id: terminalTabId(meta.id), type: 'terminal', title: meta.title, termId: meta.id }))
-      return changed || added.length > 0 ? [...kept, ...added] : current
-    })
-  }, [terminalMetas])
-
-  const openTerminal = useCallback(() => {
+  /** A new shell: in ``pane`` when opened from a strip, else the focused pane. */
+  const openTerminal = useCallback((pane?: PaneId) => {
     const id = useTerminalStore.getState().open({ workspace }, workspace)
     const meta = useTerminalStore.getState().sessionsForContext(workspace).find((m) => m.id === id)
-    openTab({ id: terminalTabId(id), type: 'terminal', title: meta?.title ?? `Terminal ${id}`, termId: id })
+    const tab: DockTab = { id: terminalTabId(id), type: 'terminal', title: meta?.title ?? `Terminal ${id}`, termId: id }
+    openTab(tab, pane ? { pane } : undefined)
   }, [workspace, openTab])
 
+  /** Open Terminal: show the last shell (where it is), or start one. */
   const focusOrOpenTerminal = useCallback(() => {
     const metas = useTerminalStore.getState().sessionsForContext(workspace)
     const last = metas[metas.length - 1]
-    if (last) setActiveTabId(terminalTabId(last.id))
+    if (last) setState((current) => activateTab(syncTerminalTabs(current, metas), terminalTabId(last.id)))
     else openTerminal()
   }, [workspace, openTerminal])
 
-  const fallbackHandledTerminalOpenKeyRef = useRef(0)
-  const handledTerminalOpenKeyRef = parentHandledTerminalOpenKeyRef ?? fallbackHandledTerminalOpenKeyRef
-  useEffect(() => {
-    if (handledTerminalOpenKeyRef.current === null) {
-      handledTerminalOpenKeyRef.current = 0
+  // ── Splitting ─────────────────────────────────────────────────────────────
+  /** Split ``pane`` on ``side`` (with ``tabId`` moved in), if there is room. */
+  const splitPane = useCallback((pane: PaneId, side: SplitSide, tabId?: string) => {
+    if (mobile) return
+    if (canSplitPane && !canSplitPane(pane, AXIS_OF_SIDE[side])) {
+      onNoRoomToSplit?.()
+      return
     }
-    if (terminalOpenKey > handledTerminalOpenKeyRef.current) {
-      handledTerminalOpenKeyRef.current = terminalOpenKey
-      focusOrOpenTerminal()
-    }
-  }, [terminalOpenKey, focusOrOpenTerminal, handledTerminalOpenKeyRef])
+    setState((current) => splitPaneState(current, pane, side, tabId))
+  }, [mobile, canSplitPane, onNoRoomToSplit])
 
-  const fallbackHandledViewRequestKeyRef = useRef(0)
-  const handledViewRequestKeyRef = parentHandledViewRequestKeyRef ?? fallbackHandledViewRequestKeyRef
-  useEffect(() => {
-    if (!viewRequest || viewRequest.key <= handledViewRequestKeyRef.current) return
-    handledViewRequestKeyRef.current = viewRequest.key
-    if (chatWorkspace && viewRequest.view === 'review') return
-    openTab(viewTab(viewRequest.view))
-  }, [viewRequest, openTab, handledViewRequestKeyRef, chatWorkspace])
+  // ── Shell requests ────────────────────────────────────────────────────────
+  useKeyedRequest({ key: terminalOpenKey }, handledTerminalOpenKeyRef, focusOrOpenTerminal)
+  useKeyedRequest(viewRequest, handledViewRequestKeyRef, (request) => {
+    if (chatWorkspace && request.view === 'review') return
+    openTab(viewTab(request.view))
+  })
+  // Files and diffs opened from the transcript or a list are previews.
+  useKeyedRequest(diffRequest, handledDiffRequestKeyRef, (request) => {
+    openDiffTab({ path: request.path, status: request.status ?? 'M', additions: 0, deletions: 0 }, { preview: true })
+  })
+  useKeyedRequest(previewRequest, handledPreviewRequestKeyRef, (request) => {
+    openPreviewTab(request.target, { focusOnly: request.focusOnly })
+  })
+  useKeyedRequest(attachmentRequest, handledAttachmentRequestKeyRef, (request) => {
+    openTab(attachmentTab(request.item), { preview: true })
+  })
+  useKeyedRequest(layoutRequest, handledLayoutRequestKeyRef, (request) => {
+    if (mobile) return
+    splitPane(focused, request.action === 'split-right' ? 'right' : 'down')
+  })
 
-  const fallbackHandledDiffRequestKeyRef = useRef(0)
-  const handledDiffRequestKeyRef = parentHandledDiffRequestKeyRef ?? fallbackHandledDiffRequestKeyRef
-  useEffect(() => {
-    if (!diffRequest || diffRequest.key <= handledDiffRequestKeyRef.current) return
-    handledDiffRequestKeyRef.current = diffRequest.key
-    openDiffTab({
-      path: diffRequest.path,
-      status: diffRequest.status ?? 'M',
-      additions: 0,
-      deletions: 0,
-    })
-  }, [diffRequest, openDiffTab, handledDiffRequestKeyRef])
-
-  const fallbackHandledPreviewRequestKeyRef = useRef(0)
-  const handledPreviewRequestKeyRef = parentHandledPreviewRequestKeyRef ?? fallbackHandledPreviewRequestKeyRef
-  useEffect(() => {
-    if (!previewRequest || previewRequest.key <= handledPreviewRequestKeyRef.current) return
-    handledPreviewRequestKeyRef.current = previewRequest.key
-    openPreviewTab(previewRequest.target, { focusOnly: previewRequest.focusOnly })
-  }, [previewRequest, openPreviewTab, handledPreviewRequestKeyRef])
-
-  const fallbackHandledAttachmentRequestKeyRef = useRef(0)
-  const handledAttachmentRequestKeyRef = parentHandledAttachmentRequestKeyRef ?? fallbackHandledAttachmentRequestKeyRef
-  useEffect(() => {
-    if (!attachmentRequest || attachmentRequest.key <= handledAttachmentRequestKeyRef.current) return
-    handledAttachmentRequestKeyRef.current = attachmentRequest.key
-    openTab(attachmentTab(attachmentRequest.item))
-  }, [attachmentRequest, openTab, handledAttachmentRequestKeyRef])
-
-  const activeView: DockView | null =
-    activeTab && isViewTab(activeTab) ? activeTab.type : null
+  // ── Active view (for the shell's toggles) ─────────────────────────────────
+  const activeView: DockView | null = activeTab && isViewTab(activeTab) ? activeTab.type : null
   const onActiveViewChangeRef = useRef(onActiveViewChange)
   useEffect(() => {
     onActiveViewChangeRef.current = onActiveViewChange
@@ -310,38 +322,44 @@ export function useDockTabs({
   }, [activeView])
   useEffect(() => () => onActiveViewChangeRef.current?.(null), [])
 
+  // A pane's active tab went away without a close (its terminal exited, or
+  // a chat workspace hides Git): show its first tab, or its launcher.
   useEffect(() => {
-    // The active tab went away without a close (its terminal exited, or a
-    // chat workspace hides Git), or tabs appeared on the launcher (terminals
-    // adopted on mount): show the first tab, or the launcher.
-    if (activeTabId === '') {
-      if (visibleTabs.length > 0) setActiveTabId(visibleTabs[0].id)
-      return
-    }
-    const termId = terminalIdFromTabId(activeTabId)
-    const known = visibleTabs.some((tab) => tab.id === activeTabId)
-    const liveTerminal = termId !== null && terminalMetas.some((m) => m.id === termId)
-    if (!known && !liveTerminal) setActiveTabId(visibleTabs[0]?.id ?? '')
-  }, [visibleTabs, activeTabId, terminalMetas])
+    setState((current) => {
+      let next = current
+      for (const [pane, value] of Object.entries(current.panes)) {
+        const strip = paneTabs(current, pane).filter((tab) => !hidden(tab))
+        const known = strip.some((tab) => tab.id === value.active)
+        const termId = terminalIdFromTabId(value.active)
+        const liveTerminal = termId !== null && terminalMetas.some((m) => m.id === termId) && paneOf(current, value.active) === pane
+        const fallback = strip[0]?.id ?? ''
+        if (!known && !liveTerminal && value.active !== fallback) {
+          next = { ...next, panes: { ...next.panes, [pane]: { ...next.panes[pane], active: fallback } } }
+        }
+      }
+      return next
+    })
+  }, [strips, terminalMetas, hidden])
 
-  /** Close several tabs at once (no confirmation; see ``requestCloseTabs``). */
-  const closeTabs = (ids: readonly string[]) => {
+  // ── Closing ───────────────────────────────────────────────────────────────
+  /**
+   * Close several tabs at once (no confirmation; see ``requestCloseTabs``).
+   * ``show`` is the tab left on show in their pane (the one a tab menu was
+   * opened on), instead of the one used before.
+   */
+  const closeTabs = (ids: readonly string[], show?: string) => {
     const closing = new Set(ids)
     if (closing.size === 0) return
-    const targets = tabs.filter((item) => closing.has(item.id))
+    const targets = state.tabs.filter((item) => closing.has(item.id))
     for (const target of targets) {
       if (target.type === 'terminal') useTerminalStore.getState().close(target.termId)
     }
-    setTabs((current) => current.filter((item) => !closing.has(item.id)))
+    const next = closePaneTabs(show && !closing.has(show) ? activateTab(state, show) : state, ids)
+    setState(next)
     for (const target of targets) onTabClosed?.(target)
     if (closing.has(activeTabId)) {
-      // Editor convention: the neighbour on the right, else the left; with
-      // none left the dock shows its launcher.
-      const index = visibleTabs.findIndex((item) => item.id === activeTabId)
-      const right = visibleTabs.slice(index + 1).find((item) => !closing.has(item.id))
-      const neighbour = right ?? visibleTabs.slice(0, index).reverse().find((item) => !closing.has(item.id))
-      setActiveTabId(neighbour?.id ?? '')
-      onFileSelect?.(neighbour?.type === 'file' ? neighbour.file : null)
+      const shown = next.tabs.find((tab) => tab.id === next.panes[next.focused]?.active)
+      onFileSelect?.(shown?.type === 'file' ? shown.file : null)
     }
   }
   const closeTab = (id: string) => closeTabs([id])
@@ -351,86 +369,146 @@ export function useDockTabs({
   // button is a deliberate click and closes right away, unless a command is
   // running in that terminal: closing would kill it.
   const [confirmCloseIds, setConfirmCloseIds] = useState<string[] | null>(null)
+  const confirmShowRef = useRef<string | undefined>(undefined)
+  const findTab = (id: string) => visibleTabs.find((tab) => tab.id === id)
   /** Close tabs, asking first when that would stop a running shell. */
-  const requestCloseTabs = (ids: readonly string[]) => {
-    if (ids.some((id) => isRunningTerminal(visibleTabs.find((tab) => tab.id === id)))) setConfirmCloseIds([...ids])
-    else closeTabs(ids)
+  const requestCloseTabs = (ids: readonly string[], show?: string) => {
+    confirmShowRef.current = show
+    if (ids.some((id) => isRunningTerminal(findTab(id)))) setConfirmCloseIds([...ids])
+    else closeTabs(ids, show)
   }
   /** The tab's × and middle-click: asks only while a command is running. */
   const requestCloseTab = (id: string) => {
-    if (isBusyTerminal(visibleTabs.find((tab) => tab.id === id))) setConfirmCloseIds([id])
+    confirmShowRef.current = undefined
+    if (isBusyTerminal(findTab(id))) setConfirmCloseIds([id])
     else closeTab(id)
   }
-  const idsOf = (list: readonly DockTab[]) => list.map((tab) => tab.id)
-  /** Tab menu: every other tab. The kept tab becomes the active one. */
+  const stripOf = (id: string) => strips[paneOf(state, id) ?? ''] ?? []
+  /** Tab menu: every other tab of its pane. The kept tab becomes active. */
   const closeOtherTabs = (id: string) => {
-    setActiveTabId(id)
-    requestCloseTabs(idsOf(visibleTabs.filter((tab) => tab.id !== id)))
+    setState((current) => activateTab(current, id))
+    requestCloseTabs(stripOf(id).filter((tab) => tab.id !== id).map((tab) => tab.id), id)
   }
-  /** Tab menu: the tabs after this one. */
-  const closeTabsToRight = (id: string) => {
-    const index = visibleTabs.findIndex((tab) => tab.id === id)
+  /** Tab menu: the tabs after (or before) this one in its pane; it shows if the open one goes. */
+  const closeTabsBeside = (id: string, side: 'left' | 'right') => {
+    const strip = stripOf(id)
+    const index = strip.findIndex((tab) => tab.id === id)
     if (index < 0) return
-    if (visibleTabs.slice(index + 1).some((tab) => tab.id === activeTabId)) setActiveTabId(id)
-    requestCloseTabs(idsOf(visibleTabs.slice(index + 1)))
+    const beside = side === 'right' ? strip.slice(index + 1) : strip.slice(0, index)
+    if (beside.length === 0) return
+    const takesActive = beside.some((tab) => tab.id === state.panes[paneOf(state, id) ?? '']?.active)
+    if (takesActive) setState((current) => activateTab(current, id))
+    requestCloseTabs(beside.map((tab) => tab.id), takesActive ? id : undefined)
   }
-  // On the empty launcher the key closes the dock; with the dock closed it
-  // is left alone, so the desktop's native Close Window still works. Behind
-  // a dialog the dispatcher swallows it.
+  const closeTabsToRight = (id: string) => closeTabsBeside(id, 'right')
+  const closeTabsToLeft = (id: string) => closeTabsBeside(id, 'left')
+  /** Tab menu: every tab of its pane, and so the pane. */
+  const closeAllTabs = (id: string) => requestCloseTabs(stripOf(id).map((tab) => tab.id))
+  /** Close an empty pane (its strip's ×, ⌘W on its launcher). */
+  const closePane = useCallback((pane: PaneId) => setState((current) => closePaneState(current, pane)), [])
+  // On an empty launcher the key closes its pane, or with one pane the dock;
+  // with the dock closed it is left alone, so the desktop's native Close
+  // Window still works. Behind a dialog the dispatcher swallows it.
   useAppShortcut('closeTab', () => {
     if (!activeTab) {
-      onCloseDock?.()
+      if (shownPanes.length > 1) closePane(focused)
+      else onCloseDock?.()
       return
     }
     if (isRunningTerminal(activeTab)) {
+      confirmShowRef.current = undefined
       setConfirmCloseIds([activeTab.id])
       return
     }
-    closeTab(activeTabId)
+    closeTab(activeTab.id)
   }, {
-    enabled: open && (activeTab === undefined ? onCloseDock !== undefined : activeTab.id === activeTabId),
+    enabled: open && (activeTab !== undefined || shownPanes.length > 1 || onCloseDock !== undefined),
   })
+  // ⌃⌥+arrow (Ctrl+Alt elsewhere): the focused tab goes to that
+  // side, into a new pane or, as its pane's only tab, into the pane there.
+  // From the composer and a terminal too.
+  const sendTabToward = (side: SplitSide) => {
+    const plan = planTabToward(state, focused, activeTab?.id, side)
+    if (plan.kind === 'move') setState((current) => moveTab(current, plan.tabId, plan.target))
+    else splitPane(plan.pane, side, plan.tabId)
+  }
+  const towardOptions = { enabled: open && !mobile, allowInEditable: true }
+  useShortcuts([
+    appShortcut('splitTabLeft', () => { sendTabToward('left') }, towardOptions),
+    appShortcut('splitTabRight', () => { sendTabToward('right') }, towardOptions),
+    appShortcut('splitTabUp', () => { sendTabToward('up') }, towardOptions),
+    appShortcut('splitTabDown', () => { sendTabToward('down') }, towardOptions),
+  ])
   const confirmCloseTab = () => {
-    if (confirmCloseIds) closeTabs(confirmCloseIds)
+    if (confirmCloseIds) closeTabs(confirmCloseIds, confirmShowRef.current)
     setConfirmCloseIds(null)
   }
   const cancelCloseTab = () => setConfirmCloseIds(null)
   // What the confirmation names: the running terminals among the batch.
   const confirmCloseTitles = (confirmCloseIds ?? [])
-    .map((id) => visibleTabs.find((tab) => tab.id === id))
+    .map((id) => findTab(id))
     .filter((tab) => isRunningTerminal(tab))
     .map((tab) => tab!.title)
 
-  // ⌘1–⌘8 pick a tab by position, ⌘9 the last one (browsers, editors);
-  // ⌃Tab / ⌃⇧Tab step through them. Only while the dock is open. Focus
-  // follows only when it was already in the dock, so switching the file
-  // beside the composer does not pull the caret out of it.
-  const activateTab = (id: string | undefined) => {
-    if (!id) return
-    const follow = focusIsInDock()
-    setActiveTabId(id)
+  // ── Activating, moving ────────────────────────────────────────────────────
+  const activate = useCallback((id: string) => {
+    setState((current) => activateTab(current, id))
     const tab = visibleTabs.find((item) => item.id === id)
     if (tab?.type === 'file') onFileSelect?.(tab.file)
+  }, [onFileSelect, visibleTabs])
+  const focusPane = useCallback((pane: PaneId) => setState((current) => focusPaneState(current, pane)), [])
+  const keep = useCallback((id: string) => setState((current) => keepTab(current, id)), [])
+  const moveWithin = useCallback((id: string, toIndex: number) => setState((current) => moveWithinPane(current, id, toIndex)), [])
+  const moveToNextPane = useCallback((id: string) => setState((current) => {
+    const target = nextPaneFor(current, id)
+    return target ? moveTab(current, id, target) : current
+  }), [])
+  const canMoveToNextPane = useCallback((id: string) => !mobile && nextPaneFor(state, id) !== null, [mobile, state])
+  const canSplitTab = useCallback((id: string) => !mobile && canSplitOff(state, id), [mobile, state])
+  /** A dragged tab let go over ``target``. */
+  const dropTab = useCallback((id: string, target: TabDropTarget) => {
+    if (target.kind === 'split') splitPane(target.pane, target.side, id)
+    else setState((current) => moveTab(current, id, target.pane, target.kind === 'strip' ? target.index : undefined))
+  }, [splitPane])
+  const resizeSplit = useCallback((path: readonly number[], sizes: readonly number[]) => {
+    setState((current) => resizeSplitState(current, path, sizes))
+  }, [])
+
+  // ⌘1–⌘8 pick a tab of the focused pane by position, ⌘9 the last one
+  // (browsers, editors); ⌃Tab / ⌃⇧Tab step through them, and so do ⌘⇧] /
+  // ⌘⇧[ and Ctrl+PageDown / PageUp. Only while the dock is open. Focus
+  // follows only when it was already in the dock, so
+  // switching the file beside the composer does not pull the caret out of it.
+  const focusedStrip = strips[focused] ?? []
+  const activateByKey = (id: string | undefined) => {
+    if (!id) return
+    const follow = focusIsInDock()
+    activate(id)
     if (follow) focusTab?.(id)
   }
   const stepTab = (delta: number) => {
-    if (visibleTabs.length === 0) return
-    const index = Math.max(0, visibleTabs.findIndex((tab) => tab.id === activeTabId))
-    activateTab(visibleTabs[(index + delta + visibleTabs.length) % visibleTabs.length]?.id)
+    if (focusedStrip.length === 0) return
+    const index = Math.max(0, focusedStrip.findIndex((tab) => tab.id === activeTabId))
+    activateByKey(focusedStrip[(index + delta + focusedStrip.length) % focusedStrip.length]?.id)
   }
   useShortcuts([
     ...DOCK_TAB_SHORTCUTS.map((name, i) => appShortcut(name, () => {
-      activateTab(i === DOCK_TAB_SHORTCUTS.length - 1 ? visibleTabs.at(-1)?.id : visibleTabs[i]?.id)
+      activateByKey(i === DOCK_TAB_SHORTCUTS.length - 1 ? focusedStrip.at(-1)?.id : focusedStrip[i]?.id)
     })),
     { chord: NEXT_DOCK_TAB_CHORD, handler: () => stepTab(1), options: { allowInEditable: true } },
     { chord: PREV_DOCK_TAB_CHORD, handler: () => stepTab(-1), options: { allowInEditable: true } },
-  ], { enabled: open && visibleTabs.length > 0 })
+    ...Object.values(NEXT_DOCK_TAB_KEYS).map((chord) => ({ chord, handler: () => stepTab(1), options: { allowInEditable: true } })),
+    ...Object.values(PREV_DOCK_TAB_KEYS).map((chord) => ({ chord, handler: () => stepTab(-1), options: { allowInEditable: true } })),
+  ], { enabled: open && focusedStrip.length > 0 })
 
   return {
-    tabs,
+    state,
+    shownPanes,
+    strips,
+    activeTabs,
+    focused,
     visibleTabs,
     activeTabId,
-    setActiveTabId,
     activeTab,
     terminalMetas,
     openTab,
@@ -440,10 +518,23 @@ export function useDockTabs({
     openPreviewTab,
     openGitTab,
     openTerminal,
-    moveTab,
+    activate,
+    setActiveTabId: activate,
+    focusPane,
+    keep,
+    moveWithin,
+    moveToNextPane,
+    canMoveToNextPane,
+    canSplitTab,
+    splitPane,
+    dropTab,
+    closePane,
+    resizeSplit,
     closeTab: requestCloseTab,
     closeOtherTabs,
     closeTabsToRight,
+    closeTabsToLeft,
+    closeAllTabs,
     confirmCloseOpen: confirmCloseIds !== null,
     confirmCloseTitles,
     confirmCloseTab,

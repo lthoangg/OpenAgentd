@@ -492,7 +492,7 @@ describe("InputComposer — design feedback chips", () => {
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     act(() => { ref.current?.addDesignFeedback(feedback) })
-    expect(screen.getByText("Design feedback · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
     expect(textarea.value).toBe("")
     expect((screen.getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(false)
 
@@ -502,7 +502,7 @@ describe("InputComposer — design feedback chips", () => {
     const [message, , mentions] = onSubmit.mock.calls[0] as [string, unknown, string[]]
     expect(message).toBe(composeWithDesignFeedback("Please fix", [feedback]))
     expect(mentions).toEqual(["src/Pricing.tsx#L42-L71"])
-    expect(screen.queryByText("Design feedback · 1 comment")).toBeNull()
+    expect(screen.queryByText("Preview comments · 1 comment")).toBeNull()
   })
 
   it("sends feedback alone, and can remove it", () => {
@@ -514,7 +514,7 @@ describe("InputComposer — design feedback chips", () => {
     const other = { ...feedback, where: "http://localhost:5173/about" }
     act(() => { ref.current?.addDesignFeedback(other) })
     fireEvent.click(screen.getAllByRole("button", { name: "Remove design feedback" })[0])
-    expect(screen.getAllByText("Design feedback · 1 comment")).toHaveLength(1)
+    expect(screen.getAllByText("Preview comments · 1 comment")).toHaveLength(1)
     // The removed feedback goes back to its Preview tab rather than away.
     expect(onDesignFeedbackRemoved.mock.calls).toEqual([[feedback]])
     fireEvent.keyDown(screen.getByLabelText("Message input"), { key: "Enter" })
@@ -527,12 +527,12 @@ describe("InputComposer — design feedback chips", () => {
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     act(() => { ref.current?.setValue(composeWithDesignFeedback("Undone text", [feedback])) })
     expect(textarea.value).toBe("Undone text")
-    expect(screen.getByText("Design feedback · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
     act(() => { ref.current?.setValue("") })
-    expect(screen.queryByText("Design feedback · 1 comment")).toBeNull()
+    expect(screen.queryByText("Preview comments · 1 comment")).toBeNull()
     act(() => { ref.current?.appendValue(composeWithDesignFeedback("held", [feedback]), { paragraph: true }) })
     expect(textarea.value).toBe("held")
-    expect(screen.getByText("Design feedback · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
   })
 })
 
@@ -540,29 +540,16 @@ describe("InputComposer — design feedback chips", () => {
 // Interaction mode
 // ─────────────────────────────────────────────────────────────────────────────
 describe("InputComposer — interaction mode", () => {
-  it("shows the mode control only while expanded", () => {
-    const onInteractionModeChange = mock(() => {})
-    const { rerender } = render(
+  it("shows the mode control on the run deck, always", () => {
+    render(
       <InputComposer
-        minimized
         interactionMode="code"
-        onInteractionModeChange={onInteractionModeChange}
+        onInteractionModeChange={() => {}}
         onSubmit={() => {}}
       />,
     )
-
-    expect(screen.queryByRole("button", { name: "Code mode" })).toBeNull()
-
-    rerender(
-      <InputComposer
-        minimized={false}
-        interactionMode="code"
-        onInteractionModeChange={onInteractionModeChange}
-        onSubmit={() => {}}
-      />,
-    )
-
-    expect(screen.getByRole("button", { name: "Code mode" })).toBeTruthy()
+    const deck = document.querySelector("[data-run-deck]") as HTMLElement
+    expect(deck.contains(screen.getByRole("button", { name: "Code mode" }))).toBe(true)
   })
 
   it("switches modes with Tab when empty and when containing a draft", async () => {
@@ -626,23 +613,77 @@ describe("InputComposer — interaction mode", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Minimized state
+// Run deck
 // ─────────────────────────────────────────────────────────────────────────────
-describe("InputComposer — minimized state", () => {
-  it("hides message slot when minimized", () => {
-    render(<InputComposer onSubmit={() => {}} minimized />)
-    const slot = screen.getByLabelText("Message input").closest('div[aria-hidden="true"]') as HTMLElement
-    expect(slot.getAttribute("aria-hidden")).toBe("true")
+describe("InputComposer — run deck", () => {
+  it("keeps the textarea enabled and in the Tab order: the composer never collapses", () => {
+    render(<InputComposer onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(false)
+    expect(textarea.tabIndex).toBe(0)
+    expect(screen.queryByRole("button", { name: "Expand input bar" })).toBeNull()
   })
 
-  it("re-enables textarea on minimize → expand", async () => {
-    const { rerender } = render(<InputComposer onSubmit={() => {}} minimized={false} />)
+  it("puts the deck controls between the mode toggle and Send", () => {
+    render(
+      <InputComposer
+        onSubmit={() => {}}
+        interactionMode="code"
+        onInteractionModeChange={() => {}}
+        deck={<button type="button">Run chip</button>}
+        deckEnd={<button type="button">Context</button>}
+      />,
+    )
+    const deck = document.querySelector("[data-run-deck]") as HTMLElement
+    const names = Array.from(deck.querySelectorAll("button")).map((b) => b.getAttribute("aria-label") ?? b.textContent)
+    expect(names).toEqual(["Attach file", "Code mode", "Plan mode", "Run chip", "Context", "Send message"])
+  })
+
+  it("hands the + control actions that start a mention at the caret", async () => {
+    const onFileRefsNeeded = mock(() => {})
+    let actions: { startToken: (t: "@" | "#") => void; setDraft: (t: string) => void } | null = null
+    render(
+      <InputComposer
+        onSubmit={() => {}}
+        onFileRefsNeeded={onFileRefsNeeded}
+        renderPlus={(a) => { actions = a; return <button type="button">Add</button> }}
+      />,
+    )
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    rerender(<InputComposer onSubmit={() => {}} minimized />)
-    expect(textarea.getAttribute("disabled")).not.toBeNull()
-    rerender(<InputComposer onSubmit={() => {}} minimized={false} />)
+    fireEvent.change(textarea, { target: { value: "look at" } })
+    textarea.setSelectionRange(7, 7)
+    act(() => actions!.startToken("@"))
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
-    expect(textarea.getAttribute("disabled")).toBeNull()
+    expect(textarea.value).toBe("look at @")
+    expect(onFileRefsNeeded).toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Attach file" })).toBeNull()
+  })
+
+  it("replaces the draft for a side question", async () => {
+    let actions: { setDraft: (t: string) => void } | null = null
+    render(<InputComposer onSubmit={() => {}} renderPlus={(a) => { actions = a; return null }} />)
+    act(() => actions!.setDraft("/btw "))
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    expect(textarea.value).toBe("/btw ")
+  })
+
+  it("draws no border on the deck controls: only the composer field has one", () => {
+    render(<InputComposer onSubmit={() => {}} interactionMode="code" onInteractionModeChange={() => {}} />)
+    for (const name of ["Attach file", "Send message"]) {
+      expect(screen.getByRole("button", { name }).className.split(" ")).not.toContain("border")
+    }
+    const pill = document.querySelector("[data-composer-pill]") as HTMLElement
+    expect(pill.className.split(" ")).toContain("border")
+  })
+
+  it("marks focus with a neutral border step, not a Signal Blue glow", () => {
+    // The composer keeps focus nearly all the time, so a blue ring was a
+    // standing halo that muddied the warm border in dark mode.
+    render(<InputComposer onSubmit={() => {}} />)
+    const classes = (document.querySelector("[data-composer-pill]") as HTMLElement).className.split(" ")
+    expect(classes).toContain("border-(--color-border)")
+    expect(classes).toContain("focus-within:border-(--color-border-strong)")
+    expect(classes.some((c) => c.startsWith("focus-within:ring"))).toBe(false)
   })
 })
 
@@ -685,10 +726,6 @@ describe("InputComposer — height reset after submit", () => {
 
     expect(textarea.value).toBe("")
     expect(textarea.style.height).toBe("auto")
-    // Expanded always renders the textarea on its own full-width row —
-    // clearing the content resets height, not the (static) row layout.
-    const slot = textarea.closest("div.min-w-0") as HTMLElement
-    expect(slot.style.flexBasis).toBe("100%")
   })
 
   it("expands the composer to fit a multiline snippet insertion", async () => {
@@ -708,10 +745,6 @@ describe("InputComposer — height reset after submit", () => {
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
     expect(textarea.value).toBe("line one\nline two\nline three")
     expect(textarea.style.height).toBe("60px")
-    // Expanded always renders the message slot on its own row (flexBasis:
-    // 100%), independent of content — this just guards that invariant.
-    const slot = textarea.closest("div.min-w-0") as HTMLElement
-    expect(slot.style.flexBasis).toBe("100%")
   })
 })
 

@@ -143,10 +143,34 @@ describe('Review dock Tasks tab', () => {
     const first = await renderPanel({ request: { view: 'tasks', key: 1 }, handledRef })
     await screen.findByRole('button', { name: 'Tasks' })
     expect(handledRef.current).toBe(1)
+    // Closed before the remount: the session's remembered tabs no longer
+    // hold it, so only a replayed request could bring it back.
+    await act(async () => { screen.getByRole('button', { name: 'Close Tasks' }).click() })
     first.unmount()
 
     await renderPanel({ request: { view: 'tasks', key: 1 }, handledRef })
     expect(screen.queryByRole('button', { name: 'Tasks' })).toBeNull()
+  })
+
+  it('remembers the session\'s tabs across a remount', async () => {
+    const handledRef = { current: 0 }
+    const first = await renderPanel({ request: { view: 'tasks', key: 1 }, handledRef })
+    await screen.findByRole('button', { name: 'Tasks' })
+    first.unmount()
+
+    await renderPanel({ request: { view: 'tasks', key: 1 }, handledRef })
+    expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  it('shows another session\'s own tabs, and the first session\'s again on return', async () => {
+    const view = await renderPanel({ request: { view: 'tasks', key: 1 } })
+    await screen.findByRole('button', { name: 'Tasks' })
+
+    await act(async () => { view.rerenderWith({ sessionId: 'session-2', request: null }) })
+    expect(screen.queryByRole('button', { name: 'Tasks' })).toBeNull()
+
+    await act(async () => { view.rerenderWith({ sessionId: 'session-1', request: null }) })
+    expect(screen.getByRole('button', { name: 'Tasks' })).toBeTruthy()
   })
 
   it('reports null when the view tab is closed or the dock unmounts', async () => {
@@ -193,12 +217,12 @@ describe('Review dock Plan tab', () => {
   })
 })
 
-describe('Review dock BTW tab', () => {
+describe('Review dock side questions tab', () => {
   it('opens and focuses the side questions tab for a btw request and reports the active view', async () => {
     const reported: (DockView | null)[] = []
     await renderPanel({ request: { view: 'btw', key: 1 }, onActiveViewChange: (v) => reported.push(v) })
 
-    const tab = await screen.findByRole('button', { name: 'BTW side questions' })
+    const tab = await screen.findByRole('button', { name: 'Side questions' })
     expect(tab.getAttribute('aria-current')).toBe('true')
     expect(await screen.findByText('Which file holds the router?')).toBeTruthy()
     expect(reported.at(-1)).toBe('btw')

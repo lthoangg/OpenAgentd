@@ -175,7 +175,6 @@ export interface WorkspaceGitHistoryResponse {
   is_git_repo: boolean
   commits: GitCommit[]
   next_cursor?: string | null
-  graph: string
 }
 
 export interface WorkspaceCommitDiffResponse {
@@ -256,6 +255,8 @@ export interface SessionResponse {
   pending_interaction_mode?: SessionInteractionMode | null
   model?: string | null
   thinking_level?: string | null
+  /** The stored credential (key or account) the session is pinned to; absent on Auto (v3). */
+  credential_id?: string | null
   running?: boolean
   subagents?: SessionResponse[]
   /**

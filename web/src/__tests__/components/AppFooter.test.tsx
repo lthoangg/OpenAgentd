@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
 import { HealthDot } from '@/components/HealthDot'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
+import { useTerminalStore, _resetTerminalStoreForTests, type TerminalSessionMeta } from '@/stores/useTerminalStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { APP_EVENTS } from '@/lib/app-events'
 import { queryKeys } from '@/queries/keys'
 
 const navigate = mock(() => Promise.resolve())
@@ -146,61 +148,9 @@ describe('AppFooter', () => {
     expect(footer.className.split(' ')).not.toContain('bg-(--bg-sidebar)')
   })
 
-  it('renders model name and thinking level when provided and triggers session settings', async () => {
-    const user = userEvent.setup()
-    const onToggleSessionSettings = mock(() => {})
-    renderWithQueryClient(
-      <AppFooter
-        sessionModel="anthropic/claude-3-7-sonnet"
-        sessionThinkingLevel="high"
-        onToggleSessionSettings={onToggleSessionSettings}
-      />
-    )
-    const modelButton = screen.getByRole('button', { name: /anthropic\/claude-3-7-sonnet/i })
-    expect(modelButton).toBeTruthy()
-    expect(screen.getByText('claude-3-7-sonnet')).toBeTruthy()
-    expect(screen.getByText('high')).toBeTruthy()
-
-    await user.hover(modelButton)
-    expect((await screen.findByRole('tooltip')).textContent).toMatch(/anthropic\/claude-3-7-sonnet.*Thinking: high.*Change model/)
-
-    fireEvent.click(modelButton)
-    expect(onToggleSessionSettings).toHaveBeenCalledTimes(1)
-  })
-
-  it('falls back to the agent default model when the session has no override', () => {
-    renderWithQueryClient(
-      <AppFooter sessionModel={null} defaultModel="openai/gpt-5" onToggleSessionSettings={() => {}} />
-    )
-    expect(screen.getByRole('button', { name: /openai\/gpt-5/i })).toBeTruthy()
-  })
-
-  it('shows the agent thinking level when the session sets none', async () => {
-    const user = userEvent.setup()
-    renderWithQueryClient(
-      <AppFooter sessionModel={null} defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
-    )
-    const button = screen.getByRole('button', { name: /openai\/gpt-5/i })
-    expect(screen.getByText('high')).toBeTruthy()
-
-    await user.hover(button)
-    expect((await screen.findByRole('tooltip')).textContent).toMatch(/openai\/gpt-5Thinking: high/)
-  })
-
-  it('drops the agent thinking level once the session picks another model', () => {
-    renderWithQueryClient(
-      <AppFooter sessionModel="anthropic/claude-sonnet" defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
-    )
-    expect(screen.getByText('claude-sonnet')).toBeTruthy()
-    expect(screen.queryByText('high')).toBeNull()
-  })
-
-  it('prefers the session thinking level over the agent one', () => {
-    renderWithQueryClient(
-      <AppFooter sessionModel={null} sessionThinkingLevel="low" defaultModel="openai/gpt-5" defaultThinkingLevel="high" />
-    )
-    expect(screen.getByText('low')).toBeTruthy()
-    expect(screen.queryByText('high')).toBeNull()
+  it('leaves the model to the run deck under the composer', () => {
+    renderWithQueryClient(<AppFooter workspace="/tmp/repo" sessionId="s1" />)
+    expect(screen.queryByRole('button', { name: /model/i })).toBeNull()
   })
 
   it('renders fast mode pill when fast mode is enabled', async () => {
@@ -211,6 +161,12 @@ describe('AppFooter', () => {
     expect(screen.getByText('fast')).toBeTruthy()
     await user.hover(screen.getByText('fast'))
     expect((await screen.findByRole('tooltip')).textContent).toMatch(/^Fast mode is on/)
+  })
+
+  it('lets the keyboard reach every status item, the fast mode pill too', () => {
+    renderWithQueryClient(<AppFooter sessionFastMode={true} />)
+    const pill = screen.getByRole('img', { name: 'Fast mode is on' })
+    expect(pill.tabIndex).toBe(0)
   })
 
 
@@ -244,6 +200,131 @@ describe('AppFooter', () => {
   it('leaves the spend out until the summary loads', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
+  })
+})
+
+/** Shells keep running with the terminal group hidden: the status bar says so. */
+describe('AppFooter terminals', () => {
+  const WORKSPACE = '/path/to/project'
+  const realFetch = globalThis.fetch
+
+  /** Metadata only: no PTY, no socket, so the footer is the only thing under test. */
+  function seedTerminals(...sessions: Array<{ contextKey: string; status: TerminalSessionMeta['status'] }>) {
+    useTerminalStore.setState({
+      sessions: Object.fromEntries(sessions.map((session, i) => {
+        const id = `term-${i + 1}`
+        return [id, { id, title: `Terminal ${i + 1}`, order: i + 1, ...session }]
+      })),
+    })
+  }
+  const item = () => screen.queryByRole('button', { name: /terminals? running$/ })
+
+  beforeEach(() => {
+    _resetTerminalStoreForTests()
+    globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
+  })
+  afterEach(() => {
+    cleanup()
+    _resetTerminalStoreForTests()
+    globalThis.fetch = realFetch
+  })
+
+  it('says "1 terminal running" for a single live shell', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('1 terminal running')
+  })
+
+  it('says "N terminals running" for several, connecting ones included', () => {
+    seedTerminals(
+      { contextKey: WORKSPACE, status: 'connected' },
+      { contextKey: WORKSPACE, status: 'connecting' },
+      { contextKey: WORKSPACE, status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('3 terminals running')
+  })
+
+  it('is hidden while the workspace has no terminals', () => {
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+    expect(screen.queryByText(/running/)).toBeNull()
+  })
+
+  it('does not count shells that ended or failed', () => {
+    seedTerminals(
+      { contextKey: WORKSPACE, status: 'exited' },
+      { contextKey: WORKSPACE, status: 'error' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+
+    cleanup()
+    seedTerminals(
+      { contextKey: WORKSPACE, status: 'exited' },
+      { contextKey: WORKSPACE, status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('1 terminal running')
+  })
+
+  it("does not count another workspace's terminals", () => {
+    seedTerminals(
+      { contextKey: '/path/to/other', status: 'connected' },
+      { contextKey: '/path/to/other', status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+
+    cleanup()
+    seedTerminals(
+      { contextKey: '/path/to/other', status: 'connected' },
+      { contextKey: WORKSPACE, status: 'connected' },
+    )
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()?.textContent).toBe('1 terminal running')
+  })
+
+  it('shows none when no workspace is attached', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    renderWithQueryClient(<AppFooter />)
+    expect(item()).toBeNull()
+  })
+
+  it('follows shells as they start and end', () => {
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    expect(item()).toBeNull()
+
+    act(() => seedTerminals({ contextKey: WORKSPACE, status: 'connecting' }))
+    expect(item()?.textContent).toBe('1 terminal running')
+
+    act(() => seedTerminals({ contextKey: WORKSPACE, status: 'connected' }, { contextKey: WORKSPACE, status: 'connected' }))
+    expect(item()?.textContent).toBe('2 terminals running')
+
+    act(() => seedTerminals({ contextKey: WORKSPACE, status: 'exited' }))
+    expect(item()).toBeNull()
+  })
+
+  it('is a focusable 24px status item like the others', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+    const button = item()!
+    expect(screen.getByLabelText('Status bar').contains(button)).toBe(true)
+    expect(button.tabIndex).toBe(0)
+    expect(button.className.split(' ')).toContain('h-6')
+  })
+
+  it('shows the terminals on click, once', () => {
+    seedTerminals({ contextKey: WORKSPACE, status: 'connected' })
+    const opened = mock(() => {})
+    window.addEventListener(APP_EVENTS.openTerminal, opened)
+    try {
+      renderWithQueryClient(<AppFooter workspace={WORKSPACE} />)
+      fireEvent.click(item()!)
+      expect(opened).toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener(APP_EVENTS.openTerminal, opened)
+    }
   })
 })
 

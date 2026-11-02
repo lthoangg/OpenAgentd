@@ -77,14 +77,14 @@ describe('scroll memory', () => {
     await scrollTo(root, 500)
     // Up to 250: block a2 is the first in view, 50 px above the top.
     await scrollTo(root, 250)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
     await show(rerender, 'b', 'b')
     expect(root.scrollTop).toBe(500)
 
     await show(rerender, 'a', 'a')
     expect(root.scrollTop).toBe(250)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
   })
 
   it('keeps following a session left at the bottom', async () => {
@@ -101,6 +101,6 @@ describe('scroll memory', () => {
     root.scrollTop = 0
     await show(rerender, 'a', 'a')
     expect(root.scrollTop).toBe(500)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 })

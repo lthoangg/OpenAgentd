@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { forwardRef } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { HANDOFF_ACTIVE_MS } from '@/components/AgentChatView/useDraftHandoff'
-import type { ComposerHandoff } from '@/components/FloatingInputComposer'
+import type { ComposerHandoff } from '@/components/composer/Composer'
 
 // What AgentChatView last handed its composer.
 let latestCapture: ((snapshot: ComposerHandoff) => void) | undefined
@@ -48,11 +48,11 @@ mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () =>
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     closeScheduler: () => {},
-    closeAgentCapabilities: () => {},
+    closeRunPicker: () => {},
   }),
 }))
 mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () => {} }) }))
@@ -83,11 +83,11 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHead
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
-mock.module('@/components/FloatingInputComposer', () => ({
-  FloatingInputComposer: forwardRef<
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
     unknown,
     { onHandoffCapture?: (snapshot: ComposerHandoff) => void; enterFrom?: ComposerHandoff | null; placement?: string }
-  >(function FloatingInputComposerMock({ onHandoffCapture, enterFrom, placement }, _ref) {
+  >(function ComposerMock({ onHandoffCapture, enterFrom, placement }, _ref) {
     latestCapture = onHandoffCapture
     latestEnterFrom = enterFrom
     latestPlacement = placement
@@ -203,7 +203,7 @@ describe('AgentChatView draft → chat hand-off', () => {
     useAgentStore.setState({ isAgentWorking: true })
     rerender(<AgentChatView workspace="/repo/handoff" />)
 
-    expect(latestPlacement).toBe('floating')
+    expect(latestPlacement).toBe('docked')
     expect(latestEnterFrom).toEqual(snapshot)
     expect(screen.getByTestId('transcript')).toBeTruthy()
     expect(screen.getByTestId('new-session-screen-leaving')).toBeTruthy()

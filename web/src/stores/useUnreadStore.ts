@@ -28,7 +28,9 @@ const MAX_UNREAD = 200
 interface UnreadState {
   /** Oldest first; capped so deleted sessions cannot pile up forever. */
   ids: string[]
-  markUnread: (sessionId: string) => void
+  /** The unread sessions whose latest turn ended in an error (a subset of `ids`). */
+  failed: string[]
+  markUnread: (sessionId: string, options?: { failed?: boolean }) => void
   /** Read here: cleared, and reported to the desktop shell. */
   markRead: (sessionId: string) => void
   /** Read elsewhere (the shell said so): cleared, not reported back. */
@@ -47,30 +49,36 @@ export const useUnreadStore = create<UnreadState>()(
   persist(
     (set, get) => ({
       ids: [],
-      markUnread: (sessionId) => {
-        if (get().ids.includes(sessionId)) return
-        set({ ids: [...get().ids, sessionId].slice(-MAX_UNREAD) })
+      failed: [],
+      markUnread: (sessionId, options) => {
+        const ids = get().ids.includes(sessionId) ? get().ids : [...get().ids, sessionId].slice(-MAX_UNREAD)
+        // The latest turn decides: a clean finish clears an earlier failure.
+        const others = get().failed.filter((id) => id !== sessionId && ids.includes(id))
+        const failed = options?.failed ? [...others, sessionId] : others
+        if (ids === get().ids && failed.length === get().failed.length && failed.every((id, i) => id === get().failed[i])) return
+        set({ ids, failed })
       },
       markRead: (sessionId) => {
         if (!get().ids.includes(sessionId)) return
-        set({ ids: get().ids.filter((id) => id !== sessionId) })
+        set({ ids: get().ids.filter((id) => id !== sessionId), failed: get().failed.filter((id) => id !== sessionId) })
         reportRead(sessionId)
       },
       applyRemoteRead: (sessionId) => {
         const key = sessionKey(sessionId)
         const ids = get().ids.filter((id) => sessionKey(id) !== key)
-        if (ids.length !== get().ids.length) set({ ids })
+        if (ids.length !== get().ids.length) set({ ids, failed: get().failed.filter((id) => sessionKey(id) !== key) })
       },
     }),
     {
       name: UNREAD_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ ids: state.ids }),
+      partialize: (state) => ({ ids: state.ids, failed: state.failed }),
       merge: (persisted, current) => {
-        const ids = (persisted as { ids?: unknown } | undefined)?.ids
-        return Array.isArray(ids)
-          ? { ...current, ids: ids.filter((id): id is string => typeof id === 'string') }
-          : current
+        const stored = persisted as { ids?: unknown; failed?: unknown } | undefined
+        if (!Array.isArray(stored?.ids)) return current
+        const ids = stored.ids.filter((id): id is string => typeof id === 'string')
+        const failed = Array.isArray(stored.failed) ? stored.failed.filter((id): id is string => typeof id === 'string' && ids.includes(id)) : []
+        return { ...current, ids, failed }
       },
     },
   ),

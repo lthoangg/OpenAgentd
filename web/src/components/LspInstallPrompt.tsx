@@ -198,7 +198,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
               </div>
             </div>
 
-            <div className="mt-3 space-y-1 pl-6 font-mono text-[11px] text-(--color-text-subtle)">
+            <div className="mt-3 space-y-1 pl-6 font-mono text-meta text-(--color-text-subtle)">
               <p className="break-all">{request.workspace}</p>
               <p>Language server {request.languageServerVersion}, TypeScript {request.typeScriptVersion}</p>
             </div>

@@ -42,7 +42,8 @@ describe('DesktopSettingsPage notch status', () => {
     expect(await toggle('Agent status in the notch')).toHaveAttribute('aria-checked', 'true')
     expect(await toggle('Show while OpenAgentd is in front')).toHaveAttribute('aria-checked', 'false')
     expect(await toggle('Keep finished sessions until opened')).toHaveAttribute('aria-checked', 'true')
-    expect(await toggle('Expand on hover')).toHaveAttribute('aria-checked', 'true')
+    // Whatever the default is: it follows the island's own defaults, which the notch work changes.
+    expect(await toggle('Expand on hover')).toHaveAttribute('aria-checked', String(DEFAULT_ISLAND_SETTINGS.expandOnHover))
     expect(screen.queryByRole('switch', { name: /nothing is running/ })).toBeNull()
   })
 

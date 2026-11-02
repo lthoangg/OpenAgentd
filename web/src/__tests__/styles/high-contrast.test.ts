@@ -77,6 +77,35 @@ describe('prefers-contrast: more', () => {
     expect(props(baseTokens, /:root\.dark\s*\{/)['--color-text-muted']).toBe('#9C8A72')
     expect(props(baseTokens, /:root\.dark\s*\{/)['--color-border']).toBe('#3A2F23')
   })
+
+  for (const theme of [
+    { name: 'light', selector: /:root,\s*:root\.light\s*\{/ },
+    { name: 'dark', selector: /:root\.dark\s*\{/ },
+  ]) {
+    it(`lifts the ${theme.name} selection fill to 3:1 on the track, its label still AA`, () => {
+      const base = props(baseTokens, theme.selector)
+      const high = props(contrastBlock, theme.selector)
+      expect(contrast(high['--color-fill-selected'], base['--bg-key'])).toBeGreaterThanOrEqual(3)
+      expect(contrast(high['--color-text-on-selected'], high['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(high['--color-text-on-danger'], high['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it(`lifts the ${theme.name} menu highlight to 3:1 on the menu, its label still AA`, () => {
+      const base = props(baseTokens, theme.selector)
+      const high = props(contrastBlock, theme.selector)
+      expect(contrast(high['--color-fill-highlight'], base['--bg-card'])).toBeGreaterThanOrEqual(3)
+      expect(contrast(high['--color-text-on-highlight'], high['--color-fill-highlight'])).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it(`steps the ${theme.name} key hover further off the keycap wash, still short of the chosen fill`, () => {
+      const base = props(baseTokens, theme.selector)
+      const high = props(contrastBlock, theme.selector)
+      const step = (fill: string) => contrast(fill, base['--bg-key'])
+      expect(step(high['--color-fill-key-hover'])).toBeGreaterThan(step(base['--color-fill-key-hover']))
+      expect(step(high['--color-fill-key-hover'])).toBeLessThan(step(high['--color-fill-selected']))
+      expect(contrast(base['--color-text'], high['--color-fill-key-hover'])).toBeGreaterThanOrEqual(4.5)
+    })
+  }
 })
 
 describe('forced-colors: active', () => {

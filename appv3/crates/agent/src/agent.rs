@@ -656,6 +656,12 @@ impl Agent {
             if let Some(t) = state.meta_str("thinking_level") {
                 extra.insert("thinking_level".into(), json!(t));
             }
+            // Additive v3 keys: the stored credential (key or account) that
+            // answered, so the transcript can name it after a reload.
+            if let Some((id, label)) = provider.served_credential() {
+                extra.insert("credential_id".into(), json!(id));
+                extra.insert("credential_label".into(), json!(label));
+            }
             if let Some(u) = &usage {
                 let ud = usage_to_dict(u, model_for_msg.as_deref());
                 extra.insert("usage".into(), ud.clone());

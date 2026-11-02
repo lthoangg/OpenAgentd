@@ -16,6 +16,7 @@ afterEach(() => {
   delete document.documentElement.dataset.openagentdWindowId
   delete window.__OAD_APP_ID__
   delete window.__OAD_WINDOW_ID__
+  delete window.__OAD_OPENER_THEME__
   document.documentElement.classList.remove('dark', 'light')
   document.querySelector('meta[name="theme-color"][data-openagentd-theme]')?.remove()
 })
@@ -42,6 +43,16 @@ describe('theme', () => {
     history.replaceState(null, '', '/?oa-app-id=com.openagentd.desktop&oa-window-id=main-2')
     document.documentElement.dataset.openagentdWindowId = 'main-2'
 
+    expect(readStoredPreference()).toBe('system')
+  })
+
+  it("keeps the opener window's pick in a new window until it has its own", () => {
+    window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+    window.__OAD_WINDOW_ID__ = 'main-4'
+    window.__OAD_OPENER_THEME__ = 'dark'
+    expect(readStoredPreference()).toBe('dark')
+
+    setThemePreference('system')
     expect(readStoredPreference()).toBe('system')
   })
 

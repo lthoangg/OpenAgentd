@@ -123,7 +123,7 @@ function IconButton({
         type="button"
         onClick={onClick}
         aria-label={label}
-        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
+        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
       >
         {icon}
       </button>
@@ -535,7 +535,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
   return createPortal(
     <div
       ref={overlayRef}
-      className="mobile-safe-overlay fixed inset-0 z-50 flex select-none flex-col bg-black/80"
+      className="mobile-safe-overlay below-window-caption fixed inset-0 z-50 flex select-none flex-col bg-black/80"
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
       style={{ opacity: 0, transition: 'opacity var(--motion-fast) var(--ease-out)' }}
       onClick={closeLightbox}
@@ -576,7 +576,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
             type="button"
             aria-label={prevLabel}
             onClick={(e) => { e.stopPropagation(); goPrev() }}
-            className="absolute left-[max(0.75rem,env(safe-area-inset-left,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card)/80 text-(--color-text) backdrop-blur transition-colors hover:bg-(--bg-key) reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none reduce-transparency:hover:bg-(--bg-key) sm:flex"
+            className="absolute left-[max(0.75rem,env(safe-area-inset-left,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) sm:flex"
           >
             <ChevronLeft size={22} />
           </button>
@@ -584,7 +584,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
             type="button"
             aria-label={nextLabel}
             onClick={(e) => { e.stopPropagation(); goNext() }}
-            className="absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card)/80 text-(--color-text) backdrop-blur transition-colors hover:bg-(--bg-key) reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none reduce-transparency:hover:bg-(--bg-key) sm:flex"
+            className="absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) sm:flex"
           >
             <ChevronRight size={22} />
           </button>

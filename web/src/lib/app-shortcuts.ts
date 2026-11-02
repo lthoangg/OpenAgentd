@@ -5,7 +5,8 @@
  * labels in tooltips and the command palette, the chords swallowed behind
  * dialogs, and synthetic dispatch from native menu commands all read from
  * here, so a key changes in one place. Every shortcut uses the platform's
- * primary modifier (⌘ on macOS, Ctrl elsewhere); see ``keyboard-shortcut.ts``.
+ * primary modifier (⌘ on macOS, Ctrl elsewhere; see ``keyboard-shortcut.ts``),
+ * except the few marked ``ctrl``, which are the Control key on every OS (⌃⌥←).
  */
 import type { OS } from '@/hooks/use-platform'
 import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
@@ -17,16 +18,34 @@ export interface AppShortcut {
   code?: string
   shift?: boolean
   alt?: boolean
+  /** The Control key itself on every OS instead of the primary modifier. */
+  ctrl?: boolean
   /** May replace an open overlay instead of being blocked by it. */
   switcher?: boolean
 }
 
 export const APP_SHORTCUTS = {
   newSession: { key: 'N' },
-  // Shift dodges bare ⌘A (Select All).
-  sessionSettings: { key: 'A', shift: true },
+  // The run picker (model, thinking, account): one short chord, matched on
+  // the physical key for layouts that print another character there.
+  sessionSettings: { key: '.', code: 'Period' },
   workspaceFiles: { key: 'D' },
   maximizeDock: { key: 'D', shift: true },
+  // Split the focused Review panel pane right or down, as often as there is
+  // room; closing a pane's last tab joins it back.
+  splitDock: { key: '\\', code: 'Backslash' },
+  splitDockDown: { key: '\\', code: 'Backslash', shift: true },
+  // Send the focused tab left, right, up or down (⌃⌥+arrow, Ctrl+Alt
+  // elsewhere): a new pane on that side with the tab in it, or
+  // the pane there when it is its pane's only tab.
+  splitTabLeft: { key: 'ArrowLeft', ctrl: true, alt: true },
+  splitTabRight: { key: 'ArrowRight', ctrl: true, alt: true },
+  splitTabUp: { key: 'ArrowUp', ctrl: true, alt: true },
+  splitTabDown: { key: 'ArrowDown', ctrl: true, alt: true },
+  // Hide everything but the chat; again to put the layout back.
+  focusMode: { key: 'F', shift: true },
+  // Find in this session's transcript (only while focus is in the chat).
+  findInSession: { key: 'F' },
   tasks: { key: 'T' },
   quickOpen: { key: 'P', switcher: true },
   commandPalette: { key: 'K', switcher: true },
@@ -38,14 +57,17 @@ export const APP_SHORTCUTS = {
   focusChat: { key: 'I' },
   closeTab: { key: 'W' },
   settings: { key: ',', switcher: true },
+  // Save the form on the open Settings page or editor. Bound only inside the
+  // Settings modal (`within: settingsRoot`), never app-wide; listed here so the
+  // key is spelled out in one place and swallowed behind dialogs like the rest.
+  save: { key: 'S' },
   historyBack: { key: '[' },
   historyForward: { key: ']' },
   // Alt keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean.
   previousPrompt: { key: 'ArrowUp', alt: true },
   nextPrompt: { key: 'ArrowDown', alt: true },
-  // Matched on the physical Backquote key: layouts report Shift+` as `~`,
-  // `` ` `` or `Dead`, which a character match cannot express.
-  terminal: { key: '`', code: 'Backquote', shift: true },
+  // No terminal key: Open Terminal in the palette and the Review panel's "+"
+  // menu start one, and a focused terminal keeps Control+` for its shell.
   openGit: { key: 'G', shift: true },
   shortcutsHelp: { key: '/', switcher: true },
   // Dock tabs by position; matched on the digit key so layouts that print
@@ -71,9 +93,28 @@ export const DOCK_TAB_SHORTCUTS = [
 /** Next / previous dock tab: Control+Tab on every OS (not ⌘Tab, the app switcher). */
 export const NEXT_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true }
 export const PREV_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true, shift: true }
+/**
+ * The same steps the platform's way: ⌘⇧] / ⌘⇧[
+ * on macOS, Ctrl+PageDown / PageUp elsewhere. Both
+ * pairs work on every OS; the brackets match the physical key, which prints
+ * "{" and "}" with Shift.
+ */
+export const NEXT_DOCK_TAB_KEYS = {
+  mac: { key: ']', code: 'BracketRight', mod: true, shift: true },
+  other: { key: 'PageDown', ctrl: true, shift: false },
+} as const satisfies Record<string, KeyChord>
+export const PREV_DOCK_TAB_KEYS = {
+  mac: { key: '[', code: 'BracketLeft', mod: true, shift: true },
+  other: { key: 'PageUp', ctrl: true, shift: false },
+} as const satisfies Record<string, KeyChord>
 
 /** The chord the keyboard dispatcher matches for a shortcut. */
 export function chordOf(shortcut: AppShortcut): KeyChord {
+  if (shortcut.ctrl) {
+    const chord: KeyChord = { key: shortcut.key, ctrl: true, shift: shortcut.shift ?? false, alt: shortcut.alt ?? false }
+    if (shortcut.code) chord.code = shortcut.code
+    return chord
+  }
   const chord: KeyChord = { key: shortcut.key, mod: true, alt: shortcut.alt ?? false }
   // A symbol key leaves Shift open: some layouts need it to type "/" or "[".
   const symbol = !shortcut.code && shortcut.key.length === 1 && !/[a-z0-9]/i.test(shortcut.key)
@@ -87,10 +128,10 @@ export const APP_SHORTCUT_CHORDS: readonly KeyChord[] = Object.values(APP_SHORTC
 
 /** Human-readable label, e.g. ``⌘⇧D`` or ``Ctrl+Shift+D``. */
 export function shortcutLabel(shortcut: AppShortcut, os: OS): string {
-  return formatShortcut(shortcut.key, os, { shift: shortcut.shift, alt: shortcut.alt })
+  return formatShortcut(shortcut.key, os, { shift: shortcut.shift, alt: shortcut.alt, ctrl: shortcut.ctrl })
 }
 
 /** Fire the shortcut as a synthetic key press (palette items, native menus). */
 export function dispatchAppShortcut(shortcut: AppShortcut, os: OS): void {
-  dispatchShortcutKey(shortcut.key.toLowerCase(), os, { shift: shortcut.shift, alt: shortcut.alt, code: shortcut.code })
+  dispatchShortcutKey(shortcut.key.toLowerCase(), os, { shift: shortcut.shift, alt: shortcut.alt, code: shortcut.code, ctrl: shortcut.ctrl })
 }

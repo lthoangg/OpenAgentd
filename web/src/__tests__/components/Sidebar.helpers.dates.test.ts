@@ -87,14 +87,14 @@ describe('orderWorkspacePaths', () => {
 })
 
 describe('groupSessionsByStatus', () => {
-  it('puts waiting sessions first, then working ones, then the rest without repeats', () => {
+  it('puts waiting sessions first, then running ones, then the rest without repeats', () => {
     const waiting = session('waiting', { running: true, needs_input: true })
     const working = session('working', { running: true })
     const idle = session('idle')
     const groups = groupSessionsByStatus([working, idle, waiting], [waiting, working])
     expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([
       ['Needs you', ['waiting']],
-      ['Working', ['working']],
+      ['Running', ['working']],
       ['Recent', ['idle']],
     ])
   })
@@ -104,9 +104,9 @@ describe('groupSessionsByStatus', () => {
     expect(groupSessionsByStatus([], [])).toEqual([])
   })
 
-  it('keeps a lead under Working while its subagents still work', () => {
+  it('keeps a lead under Running while its subagents still work', () => {
     const lead = session('lead', { running: false, subagents: [session('child', { running: true, parent_session_id: 'lead' })] })
     const groups = groupSessionsByStatus([lead], [lead])
-    expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([['Working', ['lead']]])
+    expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([['Running', ['lead']]])
   })
 })

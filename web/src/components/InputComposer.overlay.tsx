@@ -94,7 +94,7 @@ function MentionOverlayComponent({
   if (ranges.length === 0 && value.length === 0) return null
 
   // Build alternating plain-text + colored-mention spans in one pass.
-  // Files paint in ``--accent-blue-text``, directories in
+  // Files paint in ink (``--color-text``), directories in
   // ``--accent-orange-text``; both tokens are defined per-theme to stay
   // readable against the surface, unlike ``--color-accent`` which equals
   // ``--color-text`` in the dark palette. Fallback to file styling when
@@ -109,7 +109,7 @@ function MentionOverlayComponent({
     const colorClass =
       kind === 'directory'
         ? 'text-(--accent-orange-text)'
-        : 'text-(--accent-blue-text)'
+        : 'text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2'
     segments.push(
       <span
         key={r.start}

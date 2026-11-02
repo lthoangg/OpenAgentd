@@ -34,7 +34,7 @@ afterEach(cleanup)
 function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {}) {
   const noop = () => {}
   return {
-    toggleAgentCapabilities: noop,
+    toggleRunPicker: noop,
     toggleTasks: noop,
     toggleScheduler: noop,
     handleWorkspaceFiles: noop,
@@ -59,7 +59,7 @@ describe("useAgentCommands — shortcut labels", () => {
   it("documented shortcuts are present with their platform-formatted labels", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(result.current, "new-chat").shortcut).toBe("Ctrl+N")
-    expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+Shift+A")
+    expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+.")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+D")
     expect(byId(result.current, "scheduled-tasks").shortcut).toBeUndefined()
@@ -71,9 +71,10 @@ describe("useAgentCommands — shortcut labels", () => {
 
   it("describes what each view command opens", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPreview: () => {} })))
-    expect(byId(result.current, "agent-info").description).toBe("Model, thinking level and tools for this session")
+    expect(byId(result.current, "agent-info").label).toBe("Model and Thinking…")
+    expect(byId(result.current, "agent-info").description).toBe("Model, thinking level and account for the next message")
     expect(byId(result.current, "scheduled-tasks").description).toBe("Create, pause and run scheduled agent tasks")
-    expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the review panel")
+    expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the Review panel")
     expect(byId(result.current, "go-settings").description).toBe("Agents, skills, providers and more")
   })
 
@@ -120,7 +121,7 @@ describe("useAgentCommands — shortcut labels", () => {
   it("names Ctrl+D Toggle Review Panel and lists Open Git only for project workspaces", () => {
     const noGit = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(noGit.result.current, "workspace-files").label).toBe("Toggle Review Panel")
-    expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the review panel and its open tabs")
+    expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the Review panel and its open tabs")
     expect(noGit.result.current.find((c) => c.id === "open-git")).toBeUndefined()
 
     const handleOpenGit = mock(() => {})
@@ -205,13 +206,14 @@ describe("useAgentCommands — reload-window", () => {
 //  Open Terminal command
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — open-terminal", () => {
-  it("appears with Ctrl+Shift+` shortcut when a handler is provided", () => {
+  it("is the one terminal entry, with no key of its own", () => {
     const handleOpenTerminal = mock(() => {})
     const { result } = renderHook(() =>
       useAgentCommands(makeArgs({ handleOpenTerminal })),
     )
     const cmd = byId(result.current, "open-terminal")
-    expect(cmd.shortcut).toBe("Ctrl+Shift+`")
+    expect(cmd.shortcut).toBeUndefined()
+    expect(result.current.filter((c) => /terminal/i.test(c.label))).toEqual([cmd])
     cmd.action()
     expect(handleOpenTerminal).toHaveBeenCalledTimes(1)
   })
@@ -271,5 +273,56 @@ describe("useAgentCommands — navigation", () => {
 
     act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Layout — split, focus mode, find, text size, reset
+// ════════════════════════════════════════════════════════════════════════════
+describe("useAgentCommands — layout", () => {
+  it("lists the layout commands only when the shell can run them", () => {
+    const none = renderHook(() => useAgentCommands(makeArgs()))
+    for (const id of ["split-dock", "focus-mode", "find-in-session"]) {
+      expect(none.result.current.find((c) => c.id === id)).toBeUndefined()
+    }
+  })
+
+  it("runs each layout handler, with its shortcut", () => {
+    const split = mock(() => {})
+    const focus = mock(() => {})
+    const find = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({
+      handleSplitDock: split,
+      handleToggleFocusMode: focus,
+      handleFindInSession: find,
+    })))
+    expect(byId(result.current, "split-dock").label).toBe("Split Review Panel Right")
+    expect(byId(result.current, "split-dock").shortcut).toBe("Ctrl+\\")
+    expect(byId(result.current, "focus-mode").shortcut).toBe("Ctrl+Shift+F")
+    expect(byId(result.current, "find-in-session").shortcut).toBe("Ctrl+F")
+    byId(result.current, "split-dock").action()
+    byId(result.current, "focus-mode").action()
+    byId(result.current, "find-in-session").action()
+    expect([split, focus, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1, 1])
+  })
+
+  it("names Focus Mode by what it will do", () => {
+    const off = renderHook(() => useAgentCommands(makeArgs({ handleToggleFocusMode: () => {} })))
+    expect(byId(off.result.current, "focus-mode").label).toBe("Focus Mode")
+    const on = renderHook(() => useAgentCommands(makeArgs({ handleToggleFocusMode: () => {}, focusMode: true })))
+    expect(byId(on.result.current, "focus-mode").label).toBe("Leave Focus Mode")
+  })
+
+  it("sets the text size from its page, marking the current one", () => {
+    useDisplayPrefsStore.getState().setTextSize("default")
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const page = () => byId(result.current, "text-size").page!
+    expect(page().commands.map((c) => c.label)).toEqual(["Compact", "Default", "Large"])
+    expect(byId(page().commands, "text-size-default").description).toBe("Current")
+
+    act(() => byId(page().commands, "text-size-large").action())
+    expect(useDisplayPrefsStore.getState().textSize).toBe("large")
+    expect(byId(result.current, "text-size").description).toMatch(/Now: Large$/)
+    act(() => useDisplayPrefsStore.getState().setTextSize("default"))
   })
 })

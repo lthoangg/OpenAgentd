@@ -70,4 +70,36 @@ describe('SegmentedControl', () => {
     )
     expect(screen.getByRole('radio', { name: 'Dark' })).toBeTruthy()
   })
+
+  // Like a native segmented control, the fill slides from the old choice to
+  // the new one instead of jumping. Before layout (no widths yet) the chosen
+  // segment keeps its own fill.
+  test('slides one fill under the chosen segment once the segments have widths', () => {
+    const widths = new Map([['Alpha', [0, 50]], ['Beta', [50, 40]], ['Gamma', [90, 60]]])
+    const left = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft')
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
+    Object.defineProperty(HTMLElement.prototype, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return widths.get(this.textContent ?? '')?.[0] ?? 0 } })
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get(this: HTMLElement) { return widths.get(this.textContent ?? '')?.[1] ?? 0 } })
+    try {
+      const view = render(<SegmentedControl label="Letters" value="a" onChange={() => {}} options={OPTIONS} />)
+      const fill = document.querySelector<HTMLElement>('[data-segment-indicator]')!
+      expect(fill.style.translate).toBe('0px 0px')
+      expect(fill.style.scale).toBe('50 1')
+      expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('bg-transparent')
+
+      view.rerender(<SegmentedControl label="Letters" value="c" onChange={() => {}} options={OPTIONS} />)
+      expect(fill.style.translate).toBe('90px 0px')
+      expect(fill.style.scale).toBe('60 1')
+      expect(fill.className).toContain('transition-[translate,scale]')
+    } finally {
+      if (left) Object.defineProperty(HTMLElement.prototype, 'offsetLeft', left)
+      if (width) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', width)
+    }
+  })
+
+  test('keeps the plain fill on the chosen segment until it can measure', () => {
+    renderControl('a')
+    expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('bg-(--color-fill-selected)')
+    expect(screen.getByRole('radio', { name: 'Alpha' }).className).not.toContain('bg-transparent')
+  })
 })

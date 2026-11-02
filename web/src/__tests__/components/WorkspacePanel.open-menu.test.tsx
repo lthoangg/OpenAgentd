@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -84,8 +84,8 @@ async function renderPanel({ mobile = false, plan = PLAN, chatWorkspace = false,
 }
 
 async function openMenu() {
-  await userEvent.setup().click(screen.getByRole('button', { name: 'Open in the review panel' }))
-  return screen.getByRole('menu', { name: 'Open in the review panel' })
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Open in Review panel' }))
+  return screen.getByRole('menu', { name: 'Open in Review panel' })
 }
 
 const rowNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))
@@ -96,12 +96,30 @@ describe('Review dock "+" menu', () => {
     await screen.findByRole('button', { name: 'Session plan' })
 
     const menu = await openMenu()
-    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…', 'Split Right', 'Split Down'])
 
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Git' }))
     expect(screen.queryByRole('menu')).toBeNull()
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
     expect(screen.getByRole('button', { name: 'Session plan' })).toBeTruthy()
+  })
+
+  // A double-click on a tab bar's free space opens the same menu as "+",
+  // where the pointer is.
+  it('opens the same menu from a double-click or right-click on the free end of the strip', async () => {
+    await renderPanel()
+    await screen.findByRole('button', { name: 'Session plan' })
+    const gap = document.querySelector<HTMLElement>('[data-dock-strip-gap]')!
+
+    fireEvent.doubleClick(gap, { clientX: 120, clientY: 18 })
+    const menu = screen.getByRole('menu', { name: 'Open in Review panel' })
+    expect(rowNames(menu)).toContain('Split Right')
+    expect(menu.style.left).toBe('120px')
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    fireEvent.contextMenu(gap, { clientX: 140, clientY: 18 })
+    expect(screen.getByRole('menu', { name: 'Open in Review panel' })).toBeTruthy()
   })
 
   it('shows an open tab instead of adding another', async () => {
@@ -122,9 +140,9 @@ describe('Review dock "+" menu', () => {
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
     // Refresh is for Git, diff, commit and file tabs only
     expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open in Review panel' })).toBeTruthy()
     // Icon only on phones: the + carries the name, no "Open…" text.
-    expect(screen.getByRole('button', { name: 'Open in the review panel' }).textContent).toBe('')
+    expect(screen.getByRole('button', { name: 'Open in Review panel' }).textContent).toBe('')
     // Tasks and side questions open above the chat on phones, not in the
     // dock; the plan and the goal open here everywhere.
     expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
@@ -136,7 +154,7 @@ describe('Review dock "+" menu', () => {
     expect(screen.queryByRole('button', { name: 'New terminal' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open in dock' })).toBeNull()
-    const open = screen.getByRole('button', { name: 'Open in the review panel' })
+    const open = screen.getByRole('button', { name: 'Open in Review panel' })
     expect(open.textContent).toBe('')
   })
 
@@ -172,7 +190,8 @@ describe('Review dock "+" menu', () => {
 
       const tab = screen.getByRole('button', { name: 'Goal 7/50' })
       expect(tab.getAttribute('aria-current')).toBe('true')
-      expect(document.querySelector('[data-goal-now]')?.textContent).toBe('Working · turn 7/50')
+      // The tab's view loads on first use (``lazySurface``).
+      await waitFor(() => expect(document.querySelector('[data-goal-now]')?.textContent).toBe('Working · turn 7/50'))
 
       await act(async () => {
         client.setQueryData(queryKeys.goal('session-1'), { goal: { ...GOAL, status: 'paused', pause_reason: 'stopped' } })
@@ -185,8 +204,56 @@ describe('Review dock "+" menu', () => {
 
   it('puts a live goal on the empty launcher', async () => {
     await renderPanel({ plan: null, goal: GOAL })
-    const launcher = screen.getByRole('group', { name: 'Open in the review panel' })
+    const launcher = screen.getByRole('group', { name: 'Open in Review panel' })
     expect(launcher.textContent).toContain('Goal')
-    expect(screen.getByRole('heading', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Open in Review panel' })).toBeTruthy()
+  })
+
+  it('lists on the empty launcher what the "+" menu lists, views then tools', async () => {
+    await renderPanel({ plan: null })
+    const launcher = screen.getByRole('group', { name: 'Open in Review panel' })
+    const names = within(launcher).getAllByRole('button').map((row) => row.getAttribute('aria-label')?.replace(/ \(.*\)$/, ''))
+    expect(names).toEqual(['Git', 'Goal', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(launcher.querySelectorAll('[data-launcher-divider]')).toHaveLength(1)
+
+    await userEvent.setup().click(within(launcher).getByRole('button', { name: 'Tasks (Ctrl+T)' }))
+    expect(screen.getByRole('button', { name: 'Tasks' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  it('opened by the user with nothing in it, puts focus on the launcher, and the arrows move down its rows', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // The shell mounts the panel as it opens, with the request that opened it.
+    const handled = { current: 0 }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspacePanel workspace={WORKSPACE} open sessionId="session-1" plan={null} launcherFocusKey={1} handledLauncherFocusKeyRef={handled} />
+      </QueryClientProvider>,
+    )
+    const launcher = await screen.findByRole('group', { name: 'Open in Review panel' })
+    const rows = within(launcher).getAllByRole('button')
+    // Two animation frames after opening; give a loaded machine time for them.
+    await waitFor(() => expect(document.activeElement).toBe(rows[0]), { timeout: 3000 })
+    expect(handled.current).toBe(1)
+
+    const user = userEvent.setup()
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(rows[1])
+    await user.keyboard('{End}')
+    expect(document.activeElement).toBe(rows.at(-1))
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(rows[0])
+    await user.keyboard('{ArrowUp}')
+    expect(document.activeElement).toBe(rows.at(-1))
+    await user.keyboard('{Home}')
+    expect(document.activeElement).toBe(rows[0])
+    // Mounts the whole panel and waits two frames: slow on a loaded machine.
+  }, 20_000)
+
+  it('leaves focus alone when it opens on remembered tabs, or already open at start', async () => {
+    await renderPanel({ plan: null })
+    // Open from the start (restored with the window): nothing is taken.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(document.activeElement).toBe(document.body)
   })
 })

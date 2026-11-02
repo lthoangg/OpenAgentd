@@ -37,8 +37,11 @@ import {
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 import { Callout } from '@/components/ui/callout'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { settingsRoot } from '@/components/settings/settings-root'
+import { getPlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
 
@@ -119,7 +122,7 @@ export function MemorySettingsPage() {
   })
 
   // ⌘S / Ctrl+S saves the open file.
-  useShortcut({ key: 'S', mod: true }, () => {
+  useShortcut(chordOf(APP_SHORTCUTS.save), () => {
     const current = saveActionRef.current
     if (!current.selectedPath || !current.isDirty || current.isSaving) return false
     void current.handleSave()
@@ -223,7 +226,7 @@ export function MemorySettingsPage() {
               {lintFindings.map((f, i) => (
                 <li key={i} className="flex flex-wrap items-center gap-1.5 leading-relaxed">
                   <span className="font-mono font-semibold">[{f.code}]</span>
-                  <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+                  <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text)">
                     {f.path}
                   </code>
                   <span>{f.message}</span>
@@ -302,7 +305,7 @@ export function MemorySettingsPage() {
                       )}
                       aria-hidden="true"
                     />
-                    <span className="truncate font-mono text-[11px]">{p.path}</span>
+                    <span className="truncate font-mono text-meta">{p.path}</span>
                   </button>
                 )
               })
@@ -321,7 +324,7 @@ export function MemorySettingsPage() {
                     {selectedPath}
                   </span>
                   {isDirty && (
-                    <span className="hidden items-center gap-1 font-mono text-xs md:text-[11px] text-(--color-text-muted) sm:inline-flex">
+                    <span className="hidden items-center gap-1 font-mono text-xs md:text-meta text-(--color-text-muted) sm:inline-flex">
                       <span
                         className="h-1.5 w-1.5 rounded-full bg-(--color-text)"
                         aria-hidden="true"
@@ -342,16 +345,22 @@ export function MemorySettingsPage() {
                       Delete page…
                     </DropdownItem>
                   </Dropdown>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={!fileData || !isDirty || saveMut.isPending}
-                    title="Save (⌘S)"
-                  >
-                    <Save size={11} aria-hidden="true" />
-                    <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSave}
+                          disabled={!fileData || !isDirty || saveMut.isPending}
+                        >
+                          <Save size={11} aria-hidden="true" />
+                          <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{`Save (${shortcutLabel(APP_SHORTCUTS.save, getPlatform().os)})`}</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
               <div className="relative flex min-h-0 flex-1 flex-col">
@@ -391,7 +400,7 @@ export function MemorySettingsPage() {
                 aria-hidden="true"
               />
               <p className="text-xs font-semibold text-(--color-text)">No page selected</p>
-              <p className="mt-1 text-[11px] text-(--color-text-muted)">
+              <p className="mt-1 text-meta text-(--color-text-muted)">
                 Select a memory page to edit or create a new one.
               </p>
             </div>
@@ -437,7 +446,7 @@ export function MemorySettingsPage() {
             <DialogTitle>Delete this memory page?</DialogTitle>
             <DialogDescription>
               Agents lose{' '}
-              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text)">
                 {selectedPath}
               </code>
  and its notes. This can&apos;t be undone.
@@ -461,7 +470,7 @@ export function MemorySettingsPage() {
             <DialogTitle>New memory page</DialogTitle>
             <DialogDescription>
               Enter the page path relative to global memory (e.g.{' '}
-              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-meta text-(--color-text)">
                 topics/database.md
               </code>
               ).

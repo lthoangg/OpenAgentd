@@ -87,6 +87,10 @@ export interface PetBubble {
   sessionId: string | null
   title: string
   body: string
+  /** A question's id, once the shell has read it from the server. */
+  questionId?: string | null
+  /** Buttons that answer the question in place (at most four); empty when it needs the app. */
+  choices?: string[]
 }
 
 // ── Size and motion ────────────────────────────────────────────────────────
@@ -314,6 +318,8 @@ export function petPose({ status, reaction, sitting, held = false, zoom = null, 
 export interface BubbleState {
   /** Questions waiting on the user, oldest first. They stay until answered. */
   questions: PetBubble[]
+  /** Questions put off with "Later": folded behind the badge, still waiting. */
+  later: string[]
   /** The finished turn or reminder on show; it fades into `unread`. */
   current: PetBubble | null
   /** Faded or crowded-out bubbles, newest first, behind the badge. */
@@ -322,12 +328,14 @@ export interface BubbleState {
   listOpen: boolean
 }
 
-export const EMPTY_BUBBLES: BubbleState = { questions: [], current: null, unread: [], listOpen: false }
+export const EMPTY_BUBBLES: BubbleState = { questions: [], later: [], current: null, unread: [], listOpen: false }
 
 export type BubbleAction =
   | { type: 'notify'; bubble: PetBubble }
   | { type: 'fade'; id: string }
   | { type: 'dismiss'; id: string }
+  | { type: 'showQuestion'; id: string }
+  | { type: 'answered'; key: string }
   | { type: 'readSession'; key: string }
   | { type: 'status'; status: PetStatus }
   | { type: 'toggleList' }
@@ -338,19 +346,33 @@ function pushUnread(unread: PetBubble[], bubble: PetBubble): PetBubble[] {
   return [bubble, ...unread.filter((u) => u.id !== bubble.id)].slice(0, MAX_UNREAD)
 }
 
+/** The question on the stage: the first one not put off. */
+export function shownQuestion(state: Pick<BubbleState, 'questions' | 'later'>): PetBubble | null {
+  return state.questions.find((q) => !state.later.includes(q.id)) ?? null
+}
+
+/** The questions folded behind the badge. */
+export function hiddenQuestions(state: Pick<BubbleState, 'questions' | 'later'>): PetBubble[] {
+  const shown = shownQuestion(state)
+  return state.questions.filter((q) => q !== shown)
+}
+
 export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleState {
   switch (action.type) {
     case 'notify': {
       const { bubble } = action
       if (state.questions.some((q) => q.id === bubble.id) || state.current?.id === bubble.id) return state
       if (bubble.tone === 'input') {
-        // One question per session: a newer one replaces it.
-        const questions = [...state.questions.filter((q) => !bubble.sessionId || q.sessionId !== bubble.sessionId), bubble]
+        // One question per session: a newer one replaces it (and is new, so
+        // it shows even if the one it replaces was put off).
+        const replaced = state.questions.filter((q) => bubble.sessionId && q.sessionId === bubble.sessionId).map((q) => q.id)
+        const questions = [...state.questions.filter((q) => !replaced.includes(q.id)), bubble]
+        const later = state.later.filter((id) => !replaced.includes(id))
         // A question takes the stage; what was on show waits behind the badge.
         const unread = state.current ? pushUnread(state.unread, state.current) : state.unread
-        return { ...state, questions, current: null, unread, listOpen: false }
+        return { ...state, questions, later, current: null, unread, listOpen: false }
       }
-      if (state.questions.length > 0) return { ...state, unread: pushUnread(state.unread, bubble) }
+      if (shownQuestion(state)) return { ...state, unread: pushUnread(state.unread, bubble) }
       const unread = state.current ? pushUnread(state.unread, state.current) : state.unread
       return { ...state, current: bubble, unread, listOpen: false }
     }
@@ -359,12 +381,40 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
       return { ...state, current: null, unread: pushUnread(state.unread, state.current) }
     }
     case 'dismiss': {
+      // A question is never lost by dismissing it: "Later" folds it behind
+      // the badge, where it waits until it is answered.
+      if (state.questions.some((q) => q.id === action.id)) {
+        return state.later.includes(action.id) ? state : { ...state, later: [...state.later, action.id], listOpen: false }
+      }
       const unread = state.unread.filter((u) => u.id !== action.id)
       return {
-        questions: state.questions.filter((q) => q.id !== action.id),
+        ...state,
         current: state.current?.id === action.id ? null : state.current,
         unread,
-        listOpen: state.listOpen && unread.length > 0,
+        listOpen: state.listOpen && unread.length + state.questions.length > 0,
+      }
+    }
+    case 'showQuestion': {
+      const question = state.questions.find((q) => q.id === action.id)
+      if (!question) return state
+      return {
+        ...state,
+        questions: [question, ...state.questions.filter((q) => q.id !== action.id)],
+        later: state.later.filter((id) => id !== action.id),
+        listOpen: false,
+      }
+    }
+    case 'answered': {
+      // Answered here or anywhere: the question is gone from every surface.
+      const answered = state.questions.filter((q) => q.sessionId && sessionKey(q.sessionId) === action.key).map((q) => q.id)
+      if (answered.length === 0) return state
+      const questions = state.questions.filter((q) => !answered.includes(q.id))
+      const unread = state.unread
+      return {
+        ...state,
+        questions,
+        later: state.later.filter((id) => !answered.includes(id)),
+        listOpen: state.listOpen && unread.length + questions.length > 0,
       }
     }
     case 'readSession': {
@@ -377,14 +427,14 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
         ...state,
         current: about(state.current) ? null : state.current,
         unread,
-        listOpen: state.listOpen && unread.length > 0,
+        listOpen: state.listOpen && unread.length + state.questions.length > 0,
       }
     }
     case 'status':
       // Nothing waits on the user any more: the questions were answered.
-      return action.status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [] } : state
+      return action.status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [], later: [] } : state
     case 'toggleList':
-      return { ...state, listOpen: !state.listOpen && state.unread.length > 0 }
+      return { ...state, listOpen: !state.listOpen && state.unread.length + state.questions.length > 0 }
     case 'clearUnread':
       // Finished turns and reminders only: a question still waits on you.
       return { ...state, current: null, unread: [], listOpen: false }
@@ -395,20 +445,33 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
 
 export type VisibleBubble =
   | { type: 'bubble'; bubble: PetBubble; fades: boolean }
-  | { type: 'list'; items: PetBubble[] }
+  | { type: 'list'; questions: PetBubble[]; unread: PetBubble[] }
   | null
 
-/** What shows above the pet: the open list, a waiting question, or the latest bubble. */
+/** What shows above the pet: the open list, a question not put off, or the latest bubble. */
 export function visibleBubble(state: BubbleState): VisibleBubble {
-  if (state.listOpen && state.unread.length > 0) return { type: 'list', items: state.unread }
-  if (state.questions[0]) return { type: 'bubble', bubble: state.questions[0], fades: false }
+  if (state.listOpen && state.unread.length + state.questions.length > 0) {
+    return { type: 'list', questions: state.questions, unread: state.unread }
+  }
+  const question = shownQuestion(state)
+  if (question) return { type: 'bubble', bubble: question, fades: false }
   if (state.current) return { type: 'bubble', bubble: state.current, fades: true }
   return null
 }
 
-/** The badge count on the pet: unread bubbles plus questions behind the one on show. */
+/** The badge count on the pet: unread bubbles plus questions behind the one on show (or put off). */
 export function badgeCount(state: BubbleState): number {
-  return state.unread.length + Math.max(0, state.questions.length - 1)
+  return state.unread.length + hiddenQuestions(state).length
+}
+
+/** What the badge says in words (it is a button): which of its items need you. */
+export function badgeLabel(state: BubbleState): string {
+  const waiting = hiddenQuestions(state).length
+  const parts = [
+    waiting > 0 ? `${waiting} ${waiting === 1 ? 'needs' : 'need'} you` : '',
+    state.unread.length > 0 ? `${state.unread.length} unread` : '',
+  ].filter(Boolean)
+  return parts.join(', ')
 }
 
 /**

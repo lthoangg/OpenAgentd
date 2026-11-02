@@ -4,7 +4,8 @@
  * Labels come from the same chords the handlers match, per platform.
  */
 import type { OS } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, NEXT_DOCK_TAB_KEYS, PREV_DOCK_TAB_CHORD, PREV_DOCK_TAB_KEYS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
+import { NEXT_REGION_CHORD, PREV_REGION_CHORD } from '@/lib/focus-regions'
 
 import { formatChord, type KeyChord } from './chord'
 import { HISTORY_ALT_BACK, HISTORY_ALT_FORWARD, usesAltArrowHistory } from './history-keys'
@@ -43,7 +44,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('settings', 'Settings'),
         app('shortcutsHelp', 'Keyboard shortcuts'),
         app('sidebar', 'Toggle sidebar'),
-        app('sessionSettings', 'Session settings'),
+        app('focusMode', 'Focus mode'),
+        app('sessionSettings', 'Model and thinking'),
         altHistory ? keys('Back', chordOf(APP_SHORTCUTS.historyBack), HISTORY_ALT_BACK) : app('historyBack', 'Back'),
         altHistory ? keys('Forward', chordOf(APP_SHORTCUTS.historyForward), HISTORY_ALT_FORWARD) : app('historyForward', 'Forward'),
       ],
@@ -52,6 +54,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       title: 'Moving around',
       entries: [
         keys('Next and previous control', { key: 'Tab' }, { key: 'Tab', shift: true }),
+        keys('Next and previous area', NEXT_REGION_CHORD, PREV_REGION_CHORD),
         keys('Previous and next sidebar row', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
         keys('First and last sidebar row', { key: 'Home' }, { key: 'End' }),
         keys('Collapse and expand a sidebar workspace', { key: 'ArrowLeft' }, { key: 'ArrowRight' }),
@@ -70,7 +73,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Send after the current turn', { key: 'Enter', alt: true }),
         keys('Switch Plan and Code mode', { key: 'Tab' }),
         keys('Earlier and later sent messages', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
-        keys('Minimize the input', { key: 'Escape' }),
+        app('findInSession', 'Find in this session'),
         app('previousPrompt', 'Previous prompt'),
         app('nextPrompt', 'Next prompt'),
         app('tasks', 'Tasks'),
@@ -79,14 +82,22 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
     {
       title: 'Review panel',
       entries: [
-        app('workspaceFiles', 'Show or hide the review panel'),
+        app('workspaceFiles', 'Show or hide the Review panel'),
+        app('splitDock', 'Split the focused pane right'),
+        app('splitDockDown', 'Split the focused pane down'),
+        keys('Send the focused tab left, right, up or down', chordOf(APP_SHORTCUTS.splitTabLeft), chordOf(APP_SHORTCUTS.splitTabRight), chordOf(APP_SHORTCUTS.splitTabUp), chordOf(APP_SHORTCUTS.splitTabDown)),
         app('openGit', 'Open Git'),
-        app('maximizeDock', 'Maximize the review panel'),
+        app('maximizeDock', 'Maximize the Review panel'),
         app('closeTab', 'Close tab'),
         keys(appOnly('Dock tab 1 to 8, and the last'), chordOf(APP_SHORTCUTS.dockTab1), chordOf(APP_SHORTCUTS.dockTab9)),
-        keys(appOnly('Next and previous dock tab'), NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD),
+        keys(
+          appOnly('Next and previous dock tab'),
+          NEXT_DOCK_TAB_CHORD,
+          PREV_DOCK_TAB_CHORD,
+          mac ? NEXT_DOCK_TAB_KEYS.mac : NEXT_DOCK_TAB_KEYS.other,
+          mac ? PREV_DOCK_TAB_KEYS.mac : PREV_DOCK_TAB_KEYS.other,
+        ),
         keys('Move the focused dock tab', { key: 'ArrowLeft', alt: true, shift: true }, { key: 'ArrowRight', alt: true, shift: true }),
-        app('terminal', 'Open terminal'),
       ],
     },
     {
@@ -100,8 +111,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
     {
       title: 'Preview',
       entries: [
-        keys('Toggle Design picking', { key: 'C', code: 'KeyC', alt: true }),
-        keys('Stop picking', { key: 'Escape' }),
+        keys('Comment on an element (toggle)', { key: 'C', code: 'KeyC', alt: true }),
+        keys('Stop commenting', { key: 'Escape' }),
       ],
     },
     {
@@ -112,8 +123,19 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Open and leave a Command Palette list', { key: 'ArrowRight' }, { key: 'ArrowLeft' }),
         keys('Zoom in and out', { key: '+' }, { key: '-' }),
         keys('Reset zoom', { key: '0' }),
-        keys('Save settings', { key: 'S', mod: true }),
+        app('save', 'Save settings'),
       ],
     },
+    // The desktop app's global shortcuts (desktop/src-tauri/src/global_shortcuts.rs):
+    // off until "Global Shortcuts" is ticked in the OpenAgentd menu.
+    ...(desktopApp
+      ? [{
+          title: 'From any app (when Global Shortcuts is on)',
+          entries: [
+            keys('Show OpenAgentd', { key: 'O', mod: true, alt: true }),
+            keys('Next session that needs you', { key: 'J', mod: true, alt: true }),
+          ],
+        }]
+      : []),
   ]
 }

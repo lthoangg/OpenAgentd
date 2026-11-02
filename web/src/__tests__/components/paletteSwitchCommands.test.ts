@@ -117,6 +117,18 @@ describe('Switch Workspace/Session…', () => {
     docs.onOpenPage?.()
     expect(handlers.loadWorkspace).toHaveBeenCalledWith('/repo/docs')
   })
+
+  it('marks only the page whose sessions are still loading', () => {
+    const { commands } = build({ loadingWorkspace: '/repo/docs' })
+    expect(byId(workspaces(commands), 'workspace:/repo/docs').page!.loading).toBe(true)
+    expect(byId(workspaces(commands), 'workspace:/repo/app').page!.loading).toBe(false)
+    expect(build().commands.every((c) => !c.page!.loading)).toBe(true)
+  })
+
+  it('marks the current workspace\'s own command loading too, as it shares that page', () => {
+    const { commands } = build({ loadingWorkspace: '/repo/app' })
+    expect(byId(commands, 'workspace-sessions').page!.loading).toBe(true)
+  })
 })
 
 describe('a workspace session page', () => {

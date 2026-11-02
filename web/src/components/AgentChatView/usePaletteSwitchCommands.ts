@@ -42,7 +42,7 @@ export function usePaletteSwitchCommands({
   const [openedWorkspace, setOpenedWorkspace] = useState<string | null>(null)
   // One page, kept in the infinite-list shape so the event stream's in-place
   // row patches (running, needs input, renames) reach it like the sidebar's.
-  const { data: workspacePages } = useInfiniteQuery({
+  const { data: workspacePages, isPending: workspacePending } = useInfiniteQuery({
     queryKey: queryKeys.session.sessions.palette(openedWorkspace ?? ''),
     queryFn: ({ signal }) => listSessions(null, WORKSPACE_SESSION_LIMIT, { workspace: openedWorkspace, sort: 'activity' }, signal),
     initialPageParam: null as string | null,
@@ -60,6 +60,7 @@ export function usePaletteSwitchCommands({
       workspaceSessions: openedWorkspace && workspacePages
         ? { path: openedWorkspace, sessions: workspacePages.pages.flatMap((page) => page.data) }
         : null,
+      loadingWorkspace: openedWorkspace !== null && workspacePending ? openedWorkspace : null,
       shortcuts: {
         switchWorkspace: shortcutLabel(APP_SHORTCUTS.switchWorkspace, os),
         workspaceSessions: shortcutLabel(APP_SHORTCUTS.workspaceSessions, os),
@@ -72,5 +73,5 @@ export function usePaletteSwitchCommands({
       },
       loadWorkspace: setOpenedWorkspace,
     },
-  ), [navigate, openedWorkspace, os, sessionId, sessionPages, tree, workspace, workspacePages])
+  ), [navigate, openedWorkspace, os, sessionId, sessionPages, tree, workspace, workspacePages, workspacePending])
 }

@@ -57,7 +57,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -87,7 +87,7 @@ beforeEach(() => {
     if (url.includes('/workspace/files/read')) return new Response('const after = 3')
     if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, { workspace: WORKSPACE, is_git_repo: true, diff: DIFF, untracked: [] })
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE, name: 'project', is_git_repo: true }))
-    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [commit], graph: '', next_cursor: null }))
+    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [commit], next_cursor: null }))
     if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commit.sha, diff: COMMIT_DIFF }))
     return new Response(null, { status: 404 })
   }) as typeof fetch
@@ -173,18 +173,23 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'app.ts' }).getAttribute('aria-current')).toBe('true')
   })
 
-  it('opens a tab after the active one, and closing it focuses its right neighbour', async () => {
+  it('opens a tab after the active one, and closing it goes back to the tab used before', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
-    await user.click(screen.getByRole('button', { name: 'Open src/app.ts' }))
+    // Open file is in the row's ⋯ menu.
+    await user.click(screen.getByRole('button', { name: 'More actions for src/app.ts' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
+    // Opened from the list it is a preview tab; keep it, or the diff would replace it.
+    await user.dblClick(screen.getByRole('button', { name: 'app.ts' }))
     await user.click(screen.getByRole('button', { name: 'Git' }))
     // [Git, app.ts] → the diff opens right after Git: [Git, app.ts diff, app.ts].
     await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
     await user.click(screen.getByRole('button', { name: 'Close app.ts diff' }))
 
     expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'app.ts' }).getAttribute('aria-current')).toBe('true')
+    // Git was on show before the diff, not its neighbour app.ts.
+    expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
   })
 
   it('middle-click closes a closable tab', async () => {
@@ -199,13 +204,56 @@ describe('Review dock diff tabs', () => {
 
   it('offers row actions on Shift+F10', async () => {
     await renderPanel()
-    const row = screen.getByRole('button', { name: /diff for src\/app\.ts/ })
+    const row = screen.getByRole('button', { name: 'Open diff tab for src/app.ts' })
 
     await act(async () => {
       row.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }))
     })
     const menu = screen.getByRole('menu', { name: 'Actions for src/app.ts' })
     expect(within(menu).getByRole('menuitem', { name: /Open diff in tab/ })).toBeTruthy()
+  })
+
+  it('opens the diff as a preview tab from a click on the row; the chevron only peeks', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Expand diff for src/app.ts' }))
+    expect(screen.getByText('const after = 3')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
+    expect(diffTab.closest('[data-dock-tab-preview]')).toBeTruthy()
+  })
+
+  it('keeps a ⋯ button on every row, with the same actions as the right-click menu', async () => {
+    const user = userEvent.setup()
+    const onFileSelect = mock(() => {})
+    await renderPanel(onFileSelect)
+
+    const more = screen.getByRole('button', { name: 'More actions for src/app.ts' })
+    // Nothing to reveal: no hover or focus-only classes on it or its row.
+    expect(more.className).not.toMatch(/hidden|opacity-0/)
+    expect(more.className).toContain('pointer-coarse:size-9')
+    await user.click(more)
+    const menu = screen.getByRole('menu', { name: 'Actions for src/app.ts' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open diff in tab',
+      'Open file',
+      'Copy file path',
+      'Discard changes…',
+    ])
+
+    await user.click(within(menu).getByRole('menuitem', { name: 'Open file' }))
+    expect(onFileSelect).toHaveBeenCalledWith(appFile)
+  })
+})
+
+describe('Review dock Changes list', () => {
+  it('offers no commit button: committing is left to the agent and the terminal', async () => {
+    await renderPanel()
+
+    expect(screen.queryByRole('button', { name: /commit/i })).toBeNull()
   })
 })
 
@@ -250,7 +298,7 @@ describe('Git view toolbar', () => {
     expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0].id)
   })
 
-  it('shows commits under History and swaps in the graph with its toggle', async () => {
+  it('shows the commit list under History, with no View menu or graph', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
@@ -258,16 +306,9 @@ describe('Git view toolbar', () => {
     await waitFor(() => expect(screen.getByText('docs: refresh readme')).toBeTruthy())
     const history = screen.getByRole('tab', { name: 'History' })
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
-    const graph = screen.getByRole('checkbox', { name: 'Graph view' }) as HTMLInputElement
-    expect(graph.checked).toBe(false)
-    expect(screen.queryByRole('checkbox', { name: 'All branches' })).toBeNull()
-
-    await user.click(graph)
-
-    expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('tree')
-    expect((screen.getByRole('checkbox', { name: 'Graph view' }) as HTMLInputElement).checked).toBe(true)
-    expect(screen.getByRole('checkbox', { name: 'All branches' })).toBeTruthy()
-    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
+    expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('commits')
+    expect(screen.queryByRole('button', { name: 'View' })).toBeNull()
+    expect(screen.queryByText(/Graph view|All branches/)).toBeNull()
   })
 
   it('leaves file search to Quick Open and names what Refresh reloads on the Git tab', async () => {
@@ -339,7 +380,8 @@ describe('Review dock tabs keep their scroll position', () => {
   it('a file tab opens where it was left after visiting another tab', async () => {
     const user = userEvent.setup()
     await renderPanel()
-    await user.click(screen.getByRole('button', { name: 'Open src/app.ts' }))
+    await user.click(screen.getByRole('button', { name: 'More actions for src/app.ts' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
     const fileScroller = () => document.querySelector('[data-select-container]') as HTMLElement | null
     await waitFor(() => expect(fileScroller()).toBeTruthy())
     await scrollTo(fileScroller()!, 120)

@@ -102,7 +102,7 @@ function UpdatesSection() {
         label={
           <span className="flex items-center gap-2">
             Desktop app
-            <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[11px] font-semibold text-(--color-text-muted) select-none">
+            <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-meta font-semibold text-(--color-text-muted) select-none">
               {statusTitle(status)}
             </span>
           </span>
@@ -228,14 +228,14 @@ export function AboutSettingsPage() {
           <CommunityLink
             href="https://discord.gg/cz6GQHQUMg"
             icon={MessageSquare}
-            tint="bg-[#5865F2]/10 text-[#5865F2]"
+            tint="bg-(--bg-key) text-(--color-text-2)"
             title="Discord server"
             body="Join the chat, ask questions, and get help from the community."
           />
           <CommunityLink
             href="https://www.facebook.com/groups/1256361676707935"
             icon={Users}
-            tint="bg-[#1877F2]/10 text-[#1877F2]"
+            tint="bg-(--bg-key) text-(--color-text-2)"
             title="Facebook group"
             body="Connect with other OpenAgentd users and maintainers on Facebook."
           />

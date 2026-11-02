@@ -16,17 +16,20 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
   {
     id: 'btw',
-    label: 'BTW',
+    label: 'Side question',
     description: 'Ask a side question without adding it to the chat',
     keepInputOpen: true,
     insertText: 'btw',
   },
   { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
-  { id: 'redo', label: 'Redo', description: 'Redo the next undone message' },
-  { id: 'redo-all', label: 'Redo All', description: 'Restore all undone messages back to the live tip' },
-  { id: 'new', label: 'New Chat', description: 'Start a fresh agent conversation' },
+  { id: 'redo', label: 'Redo', description: 'Redo the last message you undid' },
+  { id: 'redo-all', label: 'Redo All', description: 'Redo every message you undid, up to the latest' },
+  { id: 'new', label: 'New session', description: 'Start a fresh agent conversation' },
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
+  { id: 'model', label: 'Model', description: 'Choose the model, thinking level and account' },
+  { id: 'think', label: 'Think', description: 'Change the thinking level' },
+  { id: 'mcp', label: 'MCP', description: 'MCP servers for this session' },
 ]
 
 export const BUILT_IN_SLASH_COMMAND_IDS = new Set<string>(
@@ -166,6 +169,10 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
       case 'redo-all':
         return revertedCount > 0 && !isWorking
       case 'init':
+      // They open the run deck's picker and "+" menu, which a workspace has.
+      case 'model':
+      case 'think':
+      case 'mcp':
         return inWorkspace
       case 'new':
         return true

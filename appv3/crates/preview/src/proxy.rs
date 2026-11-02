@@ -247,12 +247,14 @@ fn wants_html(headers: &HeaderMap) -> bool {
 
 /// Shown while nothing listens on the target; refreshes itself so the page
 /// appears once the dev server starts. It also says the address bar opens
-/// workspace files, for when there is no dev server to wait for.
+/// workspace files, for when there is no dev server to wait for. The Preview
+/// tab covers it with its own notice; this one is seen in a browser.
 pub(crate) fn not_running_page(target: &UrlTarget) -> Response {
     let authority = target.authority();
     let html = format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"2\"><meta name=\"openagentd-preview\" content=\"upstream-down\"><title>Waiting for {authority}</title>\
-<style>body{{font:14px/1.5 system-ui,sans-serif;color:#555;display:grid;place-items:center;height:100vh;margin:0;background:#fafaf8}}code{{font-family:ui-monospace,monospace}}</style></head>\
+<style>:root{{color-scheme:light dark}}body{{font:14px/1.5 system-ui,sans-serif;color:#6e604f;display:grid;place-items:center;height:100vh;margin:0;background:#faf6ec}}code{{font-family:ui-monospace,monospace}}\
+@media (prefers-color-scheme:dark){{body{{color:#b8a47e;background:#1a1714}}}}</style></head>\
 <body><div><p>Nothing is running on <code>{authority}</code> yet.</p><p>Start the dev server; this page retries every 2 seconds.</p>\
 <p>Or type a workspace file path, like <code>docs/index.html</code>, in the address bar.</p></div></body></html>"
     );

@@ -16,8 +16,8 @@ function Checkbox({ className, onChange, onCheckedChange, checkClassName, ...pro
         type="checkbox"
         data-slot="checkbox"
         className={cn(
-          'peer size-[18px] appearance-none rounded-sm border border-(--color-border-strong) bg-(--bg-page) transition-colors outline-none',
-          'checked:border-(--accent-blue) checked:bg-(--accent-blue)',
+          'peer size-[18px] appearance-none rounded-sm border-[1.5px] border-(--color-text-subtle) bg-(--bg-page) transition-colors outline-none',
+          'checked:border-(--color-accent) checked:bg-(--color-accent)',
           'focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,

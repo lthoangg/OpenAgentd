@@ -121,7 +121,7 @@ export function RecentSessionsList({
             >
               <SessionStatusMark status={sessionStatus(session, unreadIds.includes(session.id))} />
               <span className="min-w-0 flex-1 truncate font-medium">{session.title || 'Untitled'}</span>
-              <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">
+              <span className="shrink-0 font-mono text-meta text-(--color-text-subtle)">
                 {formatCompactRelative(sessionActivityTime(session), now)}
               </span>
             </button>

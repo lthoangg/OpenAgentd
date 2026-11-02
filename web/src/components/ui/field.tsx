@@ -62,7 +62,7 @@ function Field({
       )}
       {children}
       {error ? (
-        <p id={errorId} className="text-[11px] leading-relaxed text-(--color-error)">{error}</p>
+        <p id={errorId} className="text-meta leading-relaxed text-(--color-error)">{error}</p>
       ) : hint ? (
         <p className={TEXT.hint}>{hint}</p>
       ) : null}

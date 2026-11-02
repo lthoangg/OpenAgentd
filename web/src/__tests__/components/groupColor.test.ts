@@ -9,10 +9,10 @@ describe('groupColor', () => {
     expect(groupColorHex({ id: 'g-1', color: '#A78BFA' })).toBe('#a78bfa')
   })
 
-  it('derives a stable, non-red accent from the id when none is picked or the colour is unusable', () => {
+  it('derives a stable accent from the id when none is picked or the colour is unusable: never red, never Signal Blue', () => {
     for (const id of ids) {
       const derived = groupColor({ id, color: null })
-      expect(derived).toMatch(/^var\(--accent-(blue|green|orange|purple|pink)\)$/)
+      expect(derived).toMatch(/^var\(--accent-(green|orange|purple|pink)\)$/)
       expect(groupColor({ id })).toBe(derived)
       expect(groupColor({ id, color: 'url(x)' })).toBe(derived)
     }

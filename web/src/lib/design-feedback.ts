@@ -156,10 +156,10 @@ export function designFeedbackMentions(feedback: DesignFeedback): string[] {
   return [...out]
 }
 
-/** ``Design feedback · 3 comments`` */
+/** ``Preview comments · 3 comments`` */
 export function designFeedbackSummary(feedback: DesignFeedback): string {
   const n = feedback.items.length
-  return `Design feedback · ${n} ${n === 1 ? 'comment' : 'comments'}`
+  return `Preview comments · ${n} ${n === 1 ? 'comment' : 'comments'}`
 }
 
 /** ``message`` for plain-text surfaces: each block becomes a one-line summary. */

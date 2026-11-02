@@ -1,11 +1,25 @@
 import type { ComponentProps } from 'react'
-import { describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 
+// The header renames through the sidebar's mutation; the real one needs a QueryClient.
+const renameMutate = mock((..._args: unknown[]) => {})
+mock.module('@/queries/useSessionsQuery', () => ({
+  useUpdateSessionTitleMutation: () => ({ mutate: renameMutate }),
+}))
+
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
+import { useToastStore } from '@/stores/useToastStore'
+
+beforeEach(() => {
+  renameMutate.mockClear()
+  useToastStore.setState({ toasts: [] })
+})
 
 function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
@@ -22,8 +36,7 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     tasksViewActive: false,
     workspacePanel: null,
     onWorkspaceFiles: () => undefined,
-    agentCapabilitiesOpen: false,
-    onToggleAgentCapabilities: () => undefined,
+    onToggleRunPicker: () => undefined,
     showMobileActions: false,
     setShowMobileActions: () => undefined,
     mobileActionsDragOffset: null,
@@ -44,29 +57,97 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
   })
 
-  it('keeps the mobile header to sidebar, title, Session settings, Review panel and More', () => {
-    const { container } = renderHeader({ isMobile: true })
+  it('keeps the mobile header to sidebar, title, Review panel and More: the run deck has the model and context', () => {
+    const { container } = renderHeader({ isMobile: true, headerTokens: { input: 50_000, output: 1_000, trigger: 100_000 } })
     const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-    expect(names).toEqual(['Toggle sidebar', 'Session settings', 'Review panel', 'More actions'])
+    expect(names).toEqual(['Toggle sidebar', 'Review panel', 'More actions'])
   })
 
-  it('opens Session settings in one tap from the mobile header', async () => {
+  it('leaves context use to the run deck on desktop too', () => {
+    renderHeader({ isMobile: false, headerTokens: { input: 50_000, output: 1_000, trigger: 100_000 } })
+    const header = document.querySelector('header') as HTMLElement
+    expect(header.querySelector('[aria-label^="Input:"]')).toBeNull()
+    expect(header).not.toHaveTextContent('50K')
+  })
+
+  it('has no command palette button: the title sits over the chat, the palette is a key away', () => {
+    renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    expect(screen.queryByRole('button', { name: /Command palette/ })).not.toBeInTheDocument()
+    const main = document.querySelector('[data-header-main]') as HTMLElement
+    expect(main.children[0]).toHaveTextContent('Fix updater restart')
+  })
+
+  describe('full-height columns on desktop', () => {
+    // The header splits where the columns below it do, so the sidebar and
+    // the Review panel read as columns from the top of the window down, as
+    // in a native app, instead of starting under a full-width bar.
+    const cap = (name: 'sidebar' | 'dock') => document.querySelector(`[data-header-cap="${name}"]`) as HTMLElement
+    const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
+    const rule = (selector: string) => css.match(new RegExp(`\\${selector} \\{([^}]*)\\}`))?.[1] ?? ''
+
+    it('puts the sidebar toggle in a cap as wide as the sidebar, with no line beside it', () => {
+      renderHeader({ isMobile: false })
+      const lead = cap('sidebar')
+      expect(lead.contains(screen.getByRole('button', { name: 'Toggle sidebar' }))).toBe(true)
+      expect(lead).toHaveClass('oa-header-cap-sidebar')
+      const geometry = rule('.oa-header-cap-sidebar')
+      expect(geometry).toContain('min-width: var(--oa-sidebar-w, 0px);')
+      // The column edges start under the header: no "|" between the caps.
+      expect(geometry).not.toContain('border-right')
+      // The header's own bottom line runs over the sidebar; the cap adds none.
+      expect(geometry).not.toContain('border-bottom')
+    })
+
+    it('puts the Task list and Review panel buttons in a cap as wide as the Review panel', () => {
+      renderHeader({ isMobile: false })
+      const trail = cap('dock')
+      expect(trail.contains(screen.getByRole('button', { name: 'Task list' }))).toBe(true)
+      expect(trail.contains(screen.getByRole('button', { name: 'Review panel' }))).toBe(true)
+      expect(trail).toHaveClass('oa-header-cap-dock')
+      const geometry = rule('.oa-header-cap-dock')
+      expect(geometry).toContain('min-width: var(--oa-dock-w, 0px);')
+      expect(geometry).not.toContain('border-left')
+    })
+
+    it("draws the header's bottom line across the whole window, over the sidebar too", () => {
+      // With no "|" between the caps, a line that stopped at the sidebar's
+      // edge left an open corner there; one full-width line makes one bar.
+      const { container } = renderHeader({ isMobile: false })
+      const header = container.querySelector('header') as HTMLElement
+      expect(header.className.split(' ')).toContain('border-b')
+      expect((document.querySelector('[data-header-main]') as HTMLElement).className.split(' ')).not.toContain('border-b')
+      expect(cap('sidebar').className.split(' ').some((c) => c.startsWith('border'))).toBe(false)
+    })
+
+    it('keeps the traffic lights in the sidebar cap, with room before the sidebar toggle', () => {
+      const { container } = renderHeader({ isMobile: false, isMacOverlay: true })
+      // The buttons end near 66px; the toggle's glyph starts about 20px on,
+      // as in native Mac apps, not against the zoom button.
+      expect(cap('sidebar')).toHaveClass('pl-[80px]')
+      expect(container.querySelector('header')).not.toHaveClass('pl-[80px]')
+    })
+
+    it('keeps one bar on phones', () => {
+      const { container } = renderHeader({ isMobile: true })
+      expect(document.querySelector('[data-header-cap]')).toBeNull()
+      expect(container.querySelector('header')?.className.split(' ')).toContain('border-b')
+    })
+  })
+
+  it('lets the title take the middle on phones', () => {
+    const { container } = renderHeader({ isMobile: true })
+    expect(container.querySelector('header')).toHaveClass('grid-cols-[auto_minmax(0,1fr)_auto]')
+  })
+
+  it('opens the run picker from the mobile More sheet, then closes the sheet', async () => {
     const user = userEvent.setup()
-    const onToggleAgentCapabilities = mock(() => undefined)
-    renderHeader({ isMobile: true, onToggleAgentCapabilities })
+    const onToggleRunPicker = mock(() => undefined)
+    const onCloseMobileActionsMenu = mock(() => undefined)
+    renderHeader({ isMobile: true, showMobileActions: true, onToggleRunPicker, onCloseMobileActionsMenu })
 
-    await user.click(screen.getByRole('button', { name: 'Session settings' }))
-    expect(onToggleAgentCapabilities).toHaveBeenCalledTimes(1)
-  })
-
-  it('marks the mobile Session settings button active while the panel is open', () => {
-    renderHeader({ isMobile: true, agentCapabilitiesOpen: true })
-    expect(screen.getByRole('button', { name: 'Session settings' }).className).toContain('bg-(--bg-key)')
-  })
-
-  it('keeps the Session settings button off the desktop header', () => {
-    renderHeader({ isMobile: false })
-    expect(screen.queryByRole('button', { name: 'Session settings' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Model and thinking' }))
+    expect(onToggleRunPicker).toHaveBeenCalledTimes(1)
+    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the desktop header on the page tone in light mode', () => {
@@ -92,23 +173,206 @@ describe('AgentChatHeader', () => {
     expect(screen.getByRole('button', { name: 'Toggle sidebar' }).tabIndex).toBe(0)
   })
 
-  // Sessions are renamed from the sidebar; the header only shows the title.
-  it('shows the desktop session title as text, not a rename control', async () => {
-    const user = userEvent.setup()
+  describe('renaming from the header', () => {
+    const TITLE_BUTTON = 'Rename session: Fix updater restart'
+
+    it('shows the desktop title as a button that names its action, with no field until asked', () => {
+      renderHeader({ isMobile: false })
+
+      const button = screen.getByRole('button', { name: TITLE_BUTTON })
+      expect(button).toHaveTextContent('Fix updater restart')
+      expect(button.tabIndex).toBe(0)
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    })
+
+    it('hints at the double-click in a tooltip', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.hover(screen.getByRole('button', { name: TITLE_BUTTON }))
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Double-click to rename')
+    })
+
+    it('turns into a selected text field on double-click, in the title font, with a 1px field border', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+
+      const field = screen.getByLabelText('Session title') as HTMLInputElement
+      expect(document.activeElement).toBe(field)
+      expect(field.value).toBe('Fix updater restart')
+      expect(field.selectionStart).toBe(0)
+      expect(field.selectionEnd).toBe('Fix updater restart'.length)
+      const classes = field.className.split(/\s+/)
+      expect(classes).toContain('bg-(--bg-input)')
+      expect(classes).toContain('border')
+      expect(classes).toContain('border-(--color-border-subtle)')
+      // Size and weight come from the header's title, not a field-specific class.
+      expect(classes.some((c) => /^text-(xs|sm|base|\[)/.test(c))).toBe(false)
+      expect(screen.queryByRole('button', { name: TITLE_BUTTON })).not.toBeInTheDocument()
+    })
+
+    it('saves through the sidebar mutation on Enter, then shows the button again with focus on it', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      // Typing straight away replaces the whole title: it opened selected.
+      await user.keyboard('Shorter title{Enter}')
+
+      expect(renameMutate).toHaveBeenCalledTimes(1)
+      expect(renameMutate.mock.calls[0]?.[0]).toEqual({ id: 'session-1', title: 'Shorter title' })
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: TITLE_BUTTON }))
+    })
+
+    it('saves when focus leaves the field, without pulling focus back', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('{End} v2')
+      await user.click(screen.getByRole('button', { name: 'Toggle sidebar' }))
+
+      expect(renameMutate).toHaveBeenCalledTimes(1)
+      expect(renameMutate.mock.calls[0]?.[0]).toEqual({ id: 'session-1', title: 'Fix updater restart v2' })
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Toggle sidebar' }))
+    })
+
+    it('cancels on Escape, and hands focus back to the title', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('Never saved{Escape}')
+
+      expect(renameMutate).not.toHaveBeenCalled()
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: TITLE_BUTTON }))
+    })
+
+    it('cancels an empty or an unchanged title', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('{Backspace}   {Enter}')
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      fireEvent.blur(screen.getByLabelText('Session title'))
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+
+      expect(renameMutate).not.toHaveBeenCalled()
+    })
+
+    it('opens with F2 while the title has focus', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      screen.getByRole('button', { name: TITLE_BUTTON }).focus()
+      await user.keyboard('{F2}')
+
+      expect(screen.getByLabelText('Session title')).toHaveValue('Fix updater restart')
+    })
+
+    it('opens with Enter, but not on a single mouse click', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.click(screen.getByRole('button', { name: TITLE_BUTTON }))
+      expect(screen.queryByLabelText('Session title')).toBeNull()
+
+      screen.getByRole('button', { name: TITLE_BUTTON }).focus()
+      await user.keyboard('{Enter}')
+      expect(screen.getByLabelText('Session title')).toHaveValue('Fix updater restart')
+    })
+
+    it('says so when the server refuses the new name', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false })
+
+      await user.dblClick(screen.getByRole('button', { name: TITLE_BUTTON }))
+      await user.keyboard('{End}!{Enter}')
+      const options = renameMutate.mock.calls[0]?.[1] as { onError: () => void }
+      options.onError()
+
+      expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['Could not rename session'])
+    })
+
+    it('keeps a subagent session read-only, like its sidebar row', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: false, canRenameSession: false })
+
+      expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+      await user.dblClick(screen.getByText('Fix updater restart'))
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    })
+
+    it('has nothing to rename before a session exists', () => {
+      renderHeader({ isMobile: false, sessionId: null })
+
+      expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+    })
+
+    it('leaves renaming to the drawer on phones', async () => {
+      const user = userEvent.setup()
+      renderHeader({ isMobile: true })
+
+      expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+      await user.dblClick(screen.getByText('Fix updater restart'))
+      expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    })
+  })
+
+  it('opens the drawer from a menu icon on phones and folds the rail with a panel icon on desktop', () => {
+    const phone = renderHeader({ isMobile: true })
+    const phoneIcon = screen.getByRole('button', { name: 'Toggle sidebar' }).querySelector('svg')
+    expect(phoneIcon?.getAttribute('class')).toContain('lucide-menu')
+    expect(phoneIcon?.getAttribute('class')).not.toContain('lucide-panel-left')
+    phone.unmount()
+
     renderHeader({ isMobile: false })
+    const desktopIcon = screen.getByRole('button', { name: 'Toggle sidebar' }).querySelector('svg')
+    expect(desktopIcon?.getAttribute('class')).toContain('lucide-panel-left')
+    expect(desktopIcon?.getAttribute('class')).not.toContain('lucide-menu')
+  })
 
-    const title = screen.getByText('Fix updater restart')
-    expect(title.closest('button')).toBeNull()
-    expect(screen.queryByRole('button', { name: /rename/i })).not.toBeInTheDocument()
+  it('gives every desktop header control a 36px hit area on touch, not only on phones', () => {
+    const { container } = renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    const buttons = Array.from(container.querySelectorAll<HTMLElement>('header button'))
 
-    await user.dblClick(title)
-    expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    expect(buttons.map((el) => el.getAttribute('aria-label'))).toEqual([
+      'Toggle sidebar',
+      'Rename session: Fix updater restart',
+      'Task list',
+      'Review panel',
+    ])
+    for (const el of buttons) {
+      expect([el.getAttribute('aria-label'), /pointer-coarse:(?:size-9|h-9|min-h-9)/.test(el.className)]).toEqual([el.getAttribute('aria-label'), true])
+      // No ``max-md:`` gate: a touch tablet in the desktop layout needs it too.
+      expect(el.className).not.toContain('max-md:pointer-coarse')
+    }
+    // The title grows to 36px on touch with its words centred in it, in line
+    // with the workspace name, not stuck to the top.
+    expect(screen.getByRole('button', { name: 'Rename session: Fix updater restart' }).className).toContain('items-center')
+  })
+
+  it('has two layout buttons on desktop: the sidebar on the left and the Review panel on the right', () => {
+    const { container } = renderHeader({ isMobile: false, onOpenPalette: () => undefined })
+    const labels = Array.from(container.querySelectorAll('header button')).map((el) => el.getAttribute('aria-label'))
+
+    expect(labels[0]).toBe('Toggle sidebar')
+    expect(labels.at(-1)).toBe('Review panel')
+    expect(labels.filter((label) => /sidebar|review|files|panel|dock/i.test(label ?? ''))).toEqual(['Toggle sidebar', 'Review panel'])
   })
 
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
-    for (const name of ['Toggle sidebar', 'Session settings', 'Review panel', 'More actions']) {
+    for (const name of ['Toggle sidebar', 'Review panel', 'More actions']) {
       expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
     }
   })
@@ -123,34 +387,10 @@ describe('AgentChatHeader', () => {
     expect(screen.getByRole('dialog', { name: 'More actions' })).toHaveTextContent('Context (tokens)')
   })
 
-  it('hides token meter when headerTokens is undefined', () => {
-    renderHeader({ headerTokens: undefined })
-    expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
-  })
-
-  it('shows the context ring in the mobile header, before Session settings', async () => {
-    const user = userEvent.setup()
-    const { container } = renderHeader({ isMobile: true, headerTokens: { input: 50_000, output: 1_000, trigger: 100_000 } })
-
-    const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-    expect(names[1]).toMatch(/^Input: 50,000 of 100,000/)
-    expect(names.slice(2)).toEqual(['Session settings', 'Review panel', 'More actions'])
-
-    const ring = screen.getByRole('button', { name: /^Input:/ })
-    expect(ring.className).toContain('pointer-coarse:size-9')
-    await user.click(ring)
-    expect(screen.getByRole('tooltip')).toHaveTextContent('50%')
-  })
-
   it('pads the More sheet list clear of the home indicator', () => {
     renderHeader({ isMobile: true, showMobileActions: true })
     const list = screen.getByRole('dialog', { name: 'More actions' }).querySelector('[data-mobile-actions-list]') as HTMLElement
     expect(list.className).toContain('pb-safe')
-  })
-
-  it('leaves the context ring off the mobile header of a chat with no session yet', () => {
-    renderHeader({ isMobile: true, sessionId: null, headerTokens: { input: 0, output: 0 } })
-    expect(screen.queryByRole('button', { name: /^Input:/ })).not.toBeInTheDocument()
   })
 
   it('runs the mobile terminal action before closing the drawer', async () => {
@@ -242,25 +482,9 @@ describe('AgentChatHeader', () => {
     expect(screen.queryByText('/Users/name')).not.toBeInTheDocument()
   })
 
-  it('opens the command palette from the desktop command center', async () => {
-    const user = userEvent.setup()
-    const onOpenPalette = mock(() => {})
-    renderHeader({ isMobile: false, onOpenPalette })
-
-    await user.click(screen.getByRole('button', { name: /Search or run a command/ }))
-
-    expect(onOpenPalette).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps the command center off the mobile header', () => {
-    renderHeader({ isMobile: true, onOpenPalette: () => undefined })
-
-    expect(screen.queryByRole('button', { name: /Search or run a command/ })).not.toBeInTheDocument()
-  })
-
   it('reflects the review dock state on its toggle', () => {
     const { rerender } = renderHeader({ isMobile: false, workspacePanel: null })
-    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Review panel' })).toHaveAttribute('aria-pressed', 'false')
 
     rerender(
       <AgentChatHeader
@@ -276,15 +500,14 @@ describe('AgentChatHeader', () => {
         tasksViewActive={false}
         workspacePanel="changed"
         onWorkspaceFiles={() => undefined}
-        agentCapabilitiesOpen={false}
-        onToggleAgentCapabilities={() => undefined}
+        onToggleRunPicker={() => undefined}
         showMobileActions={false}
         setShowMobileActions={() => undefined}
         onToggleScheduler={() => undefined}
         onCloseMobileActionsMenu={() => undefined}
       />,
     )
-    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Review panel' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('routes the desktop Tasks button through onToggleTasks with progress and pressed state', async () => {

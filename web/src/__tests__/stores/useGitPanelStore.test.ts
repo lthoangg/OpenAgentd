@@ -3,6 +3,7 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 
 function resetStore(): void {
   useGitPanelStore.setState({ workspaces: {} })
+  localStorage.removeItem('oa.gitPanelStore')
 }
 
 afterEach(resetStore)
@@ -21,16 +22,23 @@ describe('useGitPanelStore', () => {
     expect(state.subTab).toBe('commits')
   })
 
-  it('toggles allBranches checkbox state', () => {
-    const path = '/repo/project-a'
-    useGitPanelStore.getState().setAllBranches(path, true)
+  it('opens a stored Graph view as the commit list and forgets All branches', async () => {
+    // Builds before v3.40.0 stored the graph as `tree`, with its toggle.
+    localStorage.setItem('oa.gitPanelStore', JSON.stringify({
+      state: {
+        workspaces: {
+          '/repo/graph': { subTab: 'tree', allBranches: true, expandedCommitSha: 'abc', expandedDiffs: ['a.ts'], expandedCommitFiles: [] },
+          '/repo/changes': { subTab: 'changes', allBranches: false, expandedCommitSha: null, expandedDiffs: [], expandedCommitFiles: [] },
+        },
+      },
+      version: 0,
+    }))
 
-    let state = useGitPanelStore.getState().getWorkspaceState(path)
-    expect(state.allBranches).toBe(true)
+    await useGitPanelStore.persist.rehydrate()
 
-    useGitPanelStore.getState().setAllBranches(path, false)
-    state = useGitPanelStore.getState().getWorkspaceState(path)
-    expect(state.allBranches).toBe(false)
+    const graph = useGitPanelStore.getState().getWorkspaceState('/repo/graph')
+    expect(graph).toEqual({ subTab: 'commits', expandedCommitSha: 'abc', expandedDiffs: ['a.ts'], expandedCommitFiles: [] })
+    expect(useGitPanelStore.getState().getWorkspaceState('/repo/changes').subTab).toBe('changes')
   })
 
   it('sets and toggles expandedDiffs correctly', () => {
@@ -84,10 +92,10 @@ describe('useGitPanelStore', () => {
     const pathA = '/repo/project-a'
     const pathB = '/repo/project-b'
 
-    useGitPanelStore.getState().setSubTab(pathA, 'tree')
+    useGitPanelStore.getState().setSubTab(pathA, 'changes')
     useGitPanelStore.getState().setSubTab(pathB, 'commits')
 
-    expect(useGitPanelStore.getState().getWorkspaceState(pathA).subTab).toBe('tree')
+    expect(useGitPanelStore.getState().getWorkspaceState(pathA).subTab).toBe('changes')
     expect(useGitPanelStore.getState().getWorkspaceState(pathB).subTab).toBe('commits')
   })
 })

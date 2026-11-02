@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import { useRef } from 'react'
 
-import { isFocusStranded, useClaimStrandedFocus, useReturnFocusFromDock } from '@/hooks/use-dock-focus'
+import { isFocusStranded, useClaimStrandedFocus, useReturnFocusFromDock, useStartInComposer } from '@/hooks/use-dock-focus'
 
 afterEach(cleanup)
 
@@ -123,5 +123,42 @@ describe('useReturnFocusFromDock', () => {
     screen.getByRole('button', { name: 'Dock tab' }).focus()
     rerender(<ReturnHarness open={false} covered={false} enabled={false} onReturn={onReturn} />)
     expect(onReturn).not.toHaveBeenCalled()
+  })
+})
+
+function StartHarness({ session }: { session: string }) {
+  useStartInComposer(true, session, () => document.getElementById('composer')?.focus())
+  return <textarea id="composer" aria-label="Composer" />
+}
+
+describe('useStartInComposer', () => {
+  const original = window.matchMedia
+  const stubPointer = (fine: boolean) => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(pointer: fine)' ? fine : false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia
+  }
+  afterEach(() => {
+    window.matchMedia = original
+  })
+
+  it('starts in the composer when a session opens with a mouse or trackpad', () => {
+    stubPointer(true)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    render(<StartHarness session="a" />)
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Composer' }))
+  })
+
+  // A touch-first tablet raises its on-screen keyboard for a focused field;
+  // no native app does that when a conversation opens.
+  it('waits for a tap on a touch screen', () => {
+    stubPointer(false)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    const { rerender } = render(<StartHarness session="a" />)
+    rerender(<StartHarness session="b" />)
+    expect(document.activeElement).not.toBe(screen.getByRole('textbox', { name: 'Composer' }))
   })
 })

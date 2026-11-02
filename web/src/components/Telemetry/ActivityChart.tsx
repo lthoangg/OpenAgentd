@@ -76,7 +76,7 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
         )}
       </SectionCardHeader>
       <div className="px-3 pt-2 pb-2.5">
-        <div className="mb-1 flex items-baseline justify-between text-[11px] text-(--color-text-subtle)">
+        <div className="mb-1 flex items-baseline justify-between text-meta text-(--color-text-subtle)">
           <span>
             {peakPoint ? (
               <>
@@ -94,7 +94,7 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
           )}
         </div>
         <div className="flex gap-2">
-        <div aria-hidden="true" className="flex h-28 w-12 shrink-0 flex-col justify-between text-right font-mono text-[11px] text-(--color-text-subtle)">
+        <div aria-hidden="true" className="flex h-28 w-12 shrink-0 flex-col justify-between text-right font-mono text-meta text-(--color-text-subtle)">
           <span>{metric === 'spend' ? formatSpend(max) : formatCompact(max)}</span>
           <span>{metric === 'spend' ? '$0' : '0'}</span>
         </div>
@@ -138,13 +138,13 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
         </div>
         </div>
         {points.length > 0 && (
-          <div className="mt-1 ml-14 flex justify-between font-mono text-[11px] text-(--color-text-subtle)">
+          <div className="mt-1 ml-14 flex justify-between font-mono text-meta text-(--color-text-subtle)">
             <span>{dayLabel(points[0].day)}</span>
             {mid && <span>{dayLabel(mid.day)}</span>}
             {points.length > 1 && <span>{dayLabel(points[points.length - 1].day)}</span>}
           </div>
         )}
-        <p className="mt-1.5 flex justify-between gap-2 text-[11px] text-(--color-text-subtle)" aria-live="polite">
+        <p className="mt-1.5 flex justify-between gap-2 text-meta text-(--color-text-subtle)" aria-live="polite">
           <span className="text-(--color-text-muted)">{pickedPoint ? barLabel(pickedPoint) : 'Select a bar for its numbers.'}</span>
           <span>Days in UTC</span>
         </p>

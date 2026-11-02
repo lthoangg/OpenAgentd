@@ -13,6 +13,28 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 
+const DEFAULT_WIDTH = window.innerWidth
+
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
+const realMatchMedia = window.matchMedia
+/** A touch-first device: ``(pointer: coarse)`` matches. */
+function setTouchFirst(touch: boolean) {
+  window.matchMedia = ((query: string) => ({
+    matches: touch && query === '(pointer: coarse)',
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia
+}
+
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 }
@@ -22,7 +44,7 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
     isMobile: false,
     workspace: '/repo/project',
     toggleScheduler: mock(() => useUIStore.getState().toggleScheduler()),
-    toggleAgentCapabilities: mock(() => {}),
+    toggleRunPicker: mock(() => {}),
     togglePalette: mock(() => {}),
     toggleQuickOpen: mock(() => {}),
     ...overrides,
@@ -33,14 +55,18 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 beforeEach(() => {
   useUIStore.setState({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
     schedulerOpenPending: false,
     scheduledTaskFocus: null,
   })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setViewportWidth(DEFAULT_WIDTH)
+  window.matchMedia = realMatchMedia
+})
 
 describe('useOverlayState app events', () => {
   it('opens the scheduler dock tab on toggleScheduler', () => {
@@ -79,6 +105,7 @@ describe('useOverlayState app events', () => {
   })
 
   it('expands the sidebar and requests the folder picker on openWorkspace', () => {
+    setViewportWidth(1440)
     useLayoutStore.getState().setSidebarCollapsed(true, false)
     const { result } = renderOverlay()
 
@@ -86,6 +113,110 @@ describe('useOverlayState app events', () => {
 
     expect(result.current.openWorkspaceDialogKey).toBe(1)
     expect(result.current.sidebarCollapsed).toBe(false)
+  })
+
+  // A narrow desktop window still pushes the chat with the sidebar, as
+  // desktop apps do, while the chat keeps its width beside it.
+  it('pushes the chat with the sidebar in an 856px desktop window', () => {
+    setViewportWidth(856)
+    useLayoutStore.getState().setSidebarCollapsed(true, false)
+    const { result } = renderOverlay()
+    expect(result.current.sidebarDrawer).toBe(false)
+
+    act(() => result.current.handleSidebarToggle())
+
+    expect(result.current.sidebarCollapsed).toBe(false)
+    expect(result.current.sidebarDrawerOpen).toBe(false)
+  })
+
+  // With the Review panel open there is no room to push: the sidebar covers
+  // the chat as a drawer, and the remembered column state is left alone.
+  it('makes the sidebar a drawer in an 856px window while the Review panel is open', () => {
+    setViewportWidth(856)
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    const { result } = renderOverlay()
+    expect(result.current.sidebarDrawer).toBe(false)
+
+    act(() => result.current.handleOpenGit())
+
+    expect(result.current.sidebarDrawer).toBe(true)
+    expect(result.current.sidebarDrawerOpen).toBe(false)
+    act(() => result.current.handleSidebarToggle())
+    expect(result.current.sidebarDrawerOpen).toBe(true)
+    expect(useLayoutStore.getState().sidebarCollapsed).toBe(false)
+  })
+
+  // Below 1180 px a touch tablet's sidebar is a drawer over the chat: it
+  // opens instead, and the remembered column state is left alone.
+  it('opens the sidebar drawer on openWorkspace on a narrow touch tablet', () => {
+    setTouchFirst(true)
+    setViewportWidth(1024)
+    useLayoutStore.getState().setSidebarCollapsed(true, false)
+    const { result } = renderOverlay()
+    expect(result.current.sidebarDrawer).toBe(true)
+
+    act(() => dispatchAppEvent(APP_EVENTS.openWorkspace))
+
+    expect(result.current.openWorkspaceDialogKey).toBe(1)
+    expect(result.current.sidebarDrawerOpen).toBe(true)
+    expect(useLayoutStore.getState().sidebarCollapsed).toBe(true)
+  })
+
+  it('closes the drawer once the window is wide enough for the sidebar column', () => {
+    setTouchFirst(true)
+    setViewportWidth(1024)
+    const { result } = renderOverlay()
+    act(() => result.current.handleSidebarToggle())
+    expect(result.current.sidebarDrawerOpen).toBe(true)
+
+    act(() => setViewportWidth(1440))
+
+    expect(result.current.sidebarDrawer).toBe(false)
+    expect(result.current.sidebarDrawerOpen).toBe(false)
+  })
+
+  it('focus mode hides the sidebar and the Review panel, and puts both back', () => {
+    setViewportWidth(1440)
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    const { result } = renderOverlay()
+    act(() => result.current.handleOpenGit())
+    expect(result.current.workspacePanel).toBe('changed')
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
+    expect(result.current.focusMode).toBe(true)
+    expect(result.current.sidebarCollapsed).toBe(true)
+    expect(result.current.workspacePanel).toBeNull()
+
+    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
+    expect(result.current.focusMode).toBe(false)
+    expect(result.current.sidebarCollapsed).toBe(false)
+    expect(result.current.workspacePanel).toBe('changed')
+  })
+
+  it('showing the sidebar in focus mode ends it, as is', () => {
+    setViewportWidth(1440)
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    const { result } = renderOverlay()
+    act(() => result.current.handleOpenGit())
+    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
+
+    act(() => result.current.handleSidebarToggle())
+
+    expect(result.current.focusMode).toBe(false)
+    expect(result.current.sidebarCollapsed).toBe(false)
+    // The Review panel stays hidden: focus mode ended without restoring it.
+    expect(result.current.workspacePanel).toBeNull()
+  })
+
+  it('opens the Review panel and asks it to split right, then down', () => {
+    const { result } = renderOverlay()
+
+    act(() => dispatchAppEvent(APP_EVENTS.splitReviewPanel))
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'split-right', key: 1 })
+
+    act(() => dispatchAppEvent(APP_EVENTS.splitReviewPanelDown))
+    expect(result.current.dockLayoutRequest).toEqual({ action: 'split-down', key: 2 })
   })
 
   it('opens a terminal tab on openTerminal', () => {

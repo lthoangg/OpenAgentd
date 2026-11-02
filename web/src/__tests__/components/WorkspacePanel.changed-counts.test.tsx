@@ -47,7 +47,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
@@ -69,7 +69,7 @@ beforeEach(() => {
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
     if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, diffResponse)
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
-    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [], graph: '', next_cursor: null }))
+    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: true, commits: [], next_cursor: null }))
     return new Response(null, { status: 404 })
   }) as typeof fetch
 })
@@ -87,7 +87,7 @@ describe('Changes tab counters', () => {
       )
     })
     const row = await waitFor(() => {
-      const button = screen.getByRole('button', { name: /diff for doc\.md/ })
+      const button = screen.getByRole('button', { name: 'Open diff tab for doc.md' })
       expect(button).toBeTruthy()
       return button
     })

@@ -7,7 +7,9 @@ import {
   PLAIN_HIDDEN_WIDTH,
   WING_WIDTH,
   EAR_WIDTH,
+  MAX_QUICK_CHOICES,
   compactCount,
+  compactMode,
   compactLabels,
   goalLabel,
   islandHitBox,
@@ -17,8 +19,15 @@ import {
   islandWidth,
   listOrder,
   primarySessionId,
+  quickChoices,
+  rowSignature,
+  serverSignature,
+  serversWithoutLater,
+  withAnswered,
+  withoutLater,
   type IslandGoal,
   type IslandSession,
+  type UnreachableServer,
 } from '@/island/status'
 
 const running = (id: string, title = `Task ${id}`): IslandSession =>
@@ -31,6 +40,8 @@ const failed = (id: string, title = `Failed ${id}`): IslandSession =>
   ({ id, title, workspace: 'web', state: 'failed', question: null })
 const withGoal = (session: IslandSession, goal: IslandGoal): IslandSession => ({ ...session, goal })
 const defaults = DEFAULT_ISLAND_SETTINGS
+const hover = { ...defaults, expandOnHover: true }
+const lost: UnreachableServer = { id: 'http://nas:4082', name: 'NAS', reason: 'unreachable' }
 
 describe('islandMode', () => {
   it('is hidden with nothing active and nothing unread', () => {
@@ -49,25 +60,58 @@ describe('islandMode', () => {
     expect(islandMode([running('a'), waiting('b')], [done('x')], false, defaults)).toBe('needs_input')
   })
 
-  it('expands on hover to list active and unread sessions', () => {
-    expect(islandMode([running('a')], [], true, defaults)).toBe('expanded')
-    expect(islandMode([], [done('x')], true, defaults)).toBe('expanded')
+  // The notch used to open a 400px panel over the menu bar on a stray hover.
+  it('opens on a click by default, and hover is an option', () => {
+    expect(defaults.expandOnHover).toBe(false)
+    expect(islandMode([running('a')], [], true, defaults)).toBe('running')
+    expect(islandMode([running('a')], [], false, defaults, true)).toBe('expanded')
+    expect(islandMode([], [done('x')], false, defaults, true)).toBe('expanded')
   })
 
-  it('does not expand on hover when that is turned off', () => {
-    expect(islandMode([running('a')], [], true, { ...defaults, expandOnHover: false })).toBe('running')
+  it('expands on hover to list active and unread sessions when that is chosen', () => {
+    expect(islandMode([running('a')], [], true, hover)).toBe('expanded')
+    expect(islandMode([], [done('x')], true, hover)).toBe('expanded')
+    expect(islandMode([running('a')], [], false, hover)).toBe('running')
+  })
+
+  it('has nothing to open while nothing is shown', () => {
+    expect(islandMode([], [], true, hover, true)).toBe('hidden')
+  })
+
+  it('says a server cannot be reached when that is all there is', () => {
+    expect(compactMode([], [], [lost])).toBe('offline')
+    expect(compactMode([running('a')], [], [lost])).toBe('running')
+    expect(islandMode([], [], false, defaults, true, [lost])).toBe('expanded')
   })
 })
 
 describe('compactLabels', () => {
   it('names a single session and counts several', () => {
-    expect(compactLabels([running('a', 'Refactor auth')], [])).toEqual({ lead: 'Working', detail: 'Refactor auth' })
-    expect(compactLabels([running('a'), running('b')], [])).toEqual({ lead: 'Working', detail: '2 sessions' })
+    expect(compactLabels([running('a', 'Refactor auth')], [])).toEqual({ lead: 'Running', detail: 'Refactor auth' })
+    expect(compactLabels([running('a'), running('b')], [])).toEqual({ lead: 'Running', detail: '2 sessions' })
   })
 
   it('counts only the waiting sessions while any wait', () => {
-    expect(compactLabels([waiting('a', 'Plan review'), running('b')], [])).toEqual({ lead: 'Needs input', detail: 'Plan review' })
-    expect(compactLabels([waiting('a'), waiting('b'), running('c')], [])).toEqual({ lead: 'Needs input', detail: '2 sessions' })
+    expect(compactLabels([waiting('a', 'Plan review'), running('b')], [])).toEqual({ lead: 'Needs you', detail: 'Plan review' })
+    expect(compactLabels([waiting('a'), waiting('b'), running('c')], [])).toEqual({ lead: 'Needs you', detail: '2 sessions' })
+  })
+
+  // One vocabulary on every surface (the sidebar, the pet, the tray).
+  it('never says "Needs input", "Working" or "Finished"', () => {
+    const words = [
+      compactLabels([waiting('a')], []).lead,
+      compactLabels([running('a')], []).lead,
+      compactLabels([], [done('x')]).lead,
+      compactLabels([], [failed('x')]).lead,
+      compactLabels([], [], [lost]).lead,
+    ]
+    expect(words).toEqual(['Needs you', 'Running', 'Done', 'Failed', "Can't reach"])
+  })
+
+  it('names the server that cannot be reached, or counts several', () => {
+    expect(compactLabels([], [], [lost])).toEqual({ lead: "Can't reach", detail: 'NAS' })
+    expect(compactLabels([], [], [lost, { ...lost, id: 'b', name: 'Lab' }])).toEqual({ lead: "Can't reach", detail: '2 servers' })
+    expect(compactCount([], [], [lost, { ...lost, id: 'b' }])).toBe(2)
   })
 
   it('reports unread finishes, or failures', () => {
@@ -78,13 +122,13 @@ describe('compactLabels', () => {
 
   it('shows unread finishes over running work, and a waiting session over both', () => {
     expect(compactLabels([running('a', 'Docs')], [done('x', 'Fix tooltip slide')])).toEqual({ lead: 'Done', detail: 'Fix tooltip slide' })
-    expect(compactLabels([running('a'), waiting('b', 'Plan review')], [done('x')])).toEqual({ lead: 'Needs input', detail: 'Plan review' })
+    expect(compactLabels([running('a'), waiting('b', 'Plan review')], [done('x')])).toEqual({ lead: 'Needs you', detail: 'Plan review' })
   })
 
   it("shows a goal's progress while it runs, and what became of it once it ended", () => {
     const goal = withGoal(running('a', 'Migrate'), { status: 'active', turn: 7, maxTurns: 50 })
     expect(compactLabels([goal], [])).toEqual({ lead: 'Goal 7/50', detail: 'Migrate' })
-    expect(compactLabels([goal, running('b')], [])).toEqual({ lead: 'Working', detail: '2 sessions' })
+    expect(compactLabels([goal, running('b')], [])).toEqual({ lead: 'Running', detail: '2 sessions' })
 
     expect(compactLabels([], [withGoal(done('x', 'Migrate'), { status: 'achieved' })])).toEqual({ lead: 'Goal achieved', detail: 'Migrate' })
     expect(compactLabels([], [withGoal(done('x'), { status: 'paused' })]).lead).toBe('Goal paused')
@@ -106,12 +150,14 @@ describe('islandWidth and islandHeight', () => {
   const notch = { hasNotch: true, width: 188, height: 38 }
   const plain = { hasNotch: false, width: 200, height: 24 }
 
-  it('shrinks into the notch when hidden and grows one narrow wing, left of it', () => {
+  it('shrinks into the notch when hidden and grows one wing, left of it, wide enough for a word', () => {
     expect(islandWidth('hidden', notch)).toBe(188)
     expect(islandWidth('running', notch)).toBe(188 + WING_WIDTH)
     expect(islandWidth('done', notch)).toBe(188 + WING_WIDTH)
-    // Narrow enough to stay clear of the frontmost app's menus.
-    expect(WING_WIDTH).toBeLessThanOrEqual(48)
+    expect(islandWidth('offline', notch)).toBe(188 + WING_WIDTH)
+    // "Needs you" and a count fit; more would crowd the frontmost app's menus.
+    expect(WING_WIDTH).toBeGreaterThanOrEqual(96)
+    expect(WING_WIDTH).toBeLessThanOrEqual(128)
   })
 
   it('keeps the right of the notch clear while compact, and centres when expanded', () => {
@@ -136,7 +182,7 @@ describe('islandWidth and islandHeight', () => {
   it('uses small fixed pills without a notch, and widens when expanded', () => {
     expect(islandWidth('hidden', plain)).toBe(PLAIN_HIDDEN_WIDTH)
     expect(islandWidth('running', plain)).toBe(PLAIN_WIDTH)
-    expect(PLAIN_WIDTH).toBeLessThanOrEqual(64)
+    expect(PLAIN_WIDTH).toBeGreaterThanOrEqual(96)
     expect(islandWidth('expanded', plain)).toBe(EXPANDED_WIDTH)
     expect(islandWidth('expanded', notch)).toBe(EXPANDED_WIDTH)
   })
@@ -172,5 +218,56 @@ describe('listOrder', () => {
   it('lists waiting sessions, then unread finishes, then running work', () => {
     const order = listOrder([running('r'), waiting('w')], [done('x'), failed('y')]).map((s) => s.id)
     expect(order).toEqual(['w', 'x', 'y', 'r'])
+  })
+})
+
+describe('quickChoices', () => {
+  const asking = (choices: string[], patch: Partial<IslandSession> = {}): IslandSession =>
+    ({ ...waiting('w'), questionId: 'q1', choices, ...patch })
+
+  it('offers the options of a question the shell can answer, up to four', () => {
+    expect(quickChoices(asking(['Wait for Work', 'Use Auto']))).toEqual(['Wait for Work', 'Use Auto'])
+    expect(MAX_QUICK_CHOICES).toBe(4)
+    expect(quickChoices(asking(['a', 'b', 'c', 'd']))).toHaveLength(4)
+  })
+
+  it('sends a question that needs typing, or has too many options, to the app', () => {
+    expect(quickChoices(asking([]))).toEqual([])
+    expect(quickChoices(asking(['a', 'b', 'c', 'd', 'e']))).toEqual([])
+    expect(quickChoices({ ...waiting('w') })).toEqual([])
+  })
+
+  it('has nothing to answer without the open question id, or once it stopped waiting', () => {
+    expect(quickChoices(asking(['a'], { questionId: null }))).toEqual([])
+    expect(quickChoices(asking(['a'], { state: 'running' }))).toEqual([])
+  })
+})
+
+describe('Later', () => {
+  it('hides a row until something about it changes', () => {
+    const later = new Map([['w', rowSignature({ ...waiting('w'), questionId: 'q1' })]])
+    const rows = [{ ...waiting('w'), questionId: 'q1' }, done('x')]
+    expect(withoutLater(rows, later).map((r) => r.id)).toEqual(['x'])
+    // A new question on the same session is news.
+    expect(withoutLater([{ ...waiting('w'), questionId: 'q2' }], later).map((r) => r.id)).toEqual(['w'])
+    // So is the turn ending.
+    expect(withoutLater([done('w')], later).map((r) => r.id)).toEqual(['w'])
+  })
+
+  it('hides a server that cannot be reached until it recovers and drops again', () => {
+    const later = new Map([[`server:${lost.id}`, serverSignature(lost)]])
+    expect(serversWithoutLater([lost], later)).toEqual([])
+    expect(serversWithoutLater([{ ...lost, reason: 'key_rejected' }], later)).toHaveLength(1)
+    expect(serversWithoutLater([lost], new Map())).toEqual([lost])
+  })
+})
+
+describe('withAnswered', () => {
+  it('shows a question answered here as running again before the shell says so', () => {
+    const asked = { ...waiting('w'), questionId: 'q1', choices: ['Yes', 'No'] }
+    const [row, other] = withAnswered([asked, waiting('v')], new Set(['q1']))
+    expect(row).toMatchObject({ state: 'running', question: null, questionId: null, choices: [] })
+    expect(other.state).toBe('needs_input')
+    expect(withAnswered([asked], new Set())[0]).toBe(asked)
   })
 })

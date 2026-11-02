@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
 import { AppLayout } from './routes/cockpit'
 import { SchedulerPage } from './routes/scheduler'
+import { SettingsPage } from './routes/settings'
 import { TelemetryPage } from './routes/telemetry'
 
 const rootRoute = createRootRoute({
@@ -87,6 +88,18 @@ const schedulerRoute = createRoute({
   component: SchedulerPage,
 })
 
+// /settings and /settings/<section> — deep-link shim: opens the Settings modal, then /
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings',
+  component: SettingsPage,
+})
+const settingsSectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/$section',
+  component: SettingsPage,
+})
+
 const routeTree = rootRoute.addChildren([
   packagedIndexRoute,
   appLayoutRoute.addChildren([newSessionRoute, sessionRoute]),
@@ -94,6 +107,8 @@ const routeTree = rootRoute.addChildren([
   legacyCodingSessionRoute,
   telemetryRoute,
   schedulerRoute,
+  settingsRoute,
+  settingsSectionRoute,
 ])
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' })

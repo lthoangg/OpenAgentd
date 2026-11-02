@@ -44,6 +44,7 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       currentBlocks={props.currentBlocks ?? []}
       isWorking={props.isWorking ?? false}
       onMentionFileOpen={props.onMentionFileOpen}
+      jumpToLatestInComposer={props.jumpToLatestInComposer}
     />
   )
 }
@@ -253,7 +254,8 @@ describe("AgentView — message windowing", () => {
 })
 
 describe("AgentView — AssistantFooter", () => {
-  it("renders queued messages below the streaming assistant turn", () => {
+  // No composer in this view (a subagent's session), so the queue stays here.
+  it("renders queued messages below the streaming assistant turn when there is no composer", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
@@ -271,6 +273,26 @@ describe("AgentView — AssistantFooter", () => {
     const queued = screen.getByText("queued after response")
     expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
+  })
+
+  it("leaves the queue to the composer's tray when a composer is up", () => {
+    useAgentStore.setState({
+      sessionId: "session-a",
+      _pendingMessages: [
+        { id: "q1", sessionId: "session-a", content: "queued after response" },
+      ],
+    })
+
+    renderStream({
+      blocks: [makeUserBlock("u1", "start")],
+      currentBlocks: [makeTextBlock("a1", "streaming response")],
+      isWorking: true,
+      jumpToLatestInComposer: true,
+    })
+
+    expect(screen.getByText("streaming response")).toBeTruthy()
+    expect(screen.queryByText("queued after response")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Edit queued message" })).toBeNull()
   })
 
   it("collapses long queued messages", async () => {
@@ -597,7 +619,8 @@ describe("AgentView — AssistantFooter", () => {
       // Footer should render because there's a non-user block with timestamp
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      // The footer also carries "Edit prompt" for the prompt this turn answered.
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) => /\d+:\d+/.test(el.textContent ?? ""))
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })
@@ -654,7 +677,7 @@ describe("AgentView — AssistantFooter", () => {
       expect(copyBtn).toBeNull()
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) => /\d+:\d+/.test(el.textContent ?? ""))
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })
@@ -803,7 +826,7 @@ describe("AgentView — footer model label", () => {
     return { id, type: "text", content: `answer ${id}`, extra: { model } }
   }
 
-  it("names the model on every answer", () => {
+  it("names the model on every answer as provider:model", () => {
     const { container } = renderStream({
       blocks: [
         makeUserBlock("u1", "one"),
@@ -818,7 +841,8 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5", "gpt-5", "claude-opus-4"])
+    expect(labels).toEqual(["openai:gpt-5", "openai:gpt-5", "anthropic:claude-opus-4"])
+    expect(container.querySelector("[data-turn-model]")?.className).toContain("font-mono")
   })
 
   it("names the thinking level in each answer's turn details", () => {
@@ -842,7 +866,7 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5", "gpt-5", "gpt-5", "gpt-5"])
+    expect(labels).toEqual(["openai:gpt-5", "openai:gpt-5", "openai:gpt-5", "openai:gpt-5"])
     const details = screen.getAllByRole("button", { name: /Turn details/ }).map((el) => el.getAttribute("aria-label"))
     expect(details.map((d) => /thinking (\w+)/.exec(d ?? "")?.[1] ?? null)).toEqual(["high", "high", "low", null])
   })
@@ -864,6 +888,6 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5 · high", "claude-opus-4", "gpt-5 · low"])
+    expect(labels).toEqual(["openai:gpt-5 · high", "anthropic:claude-opus-4", "openai:gpt-5 · low"])
   })
 })

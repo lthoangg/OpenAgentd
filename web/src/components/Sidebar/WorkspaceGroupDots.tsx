@@ -22,7 +22,7 @@ export function WorkspaceGroupDots({ groups }: { groups: readonly WorkspaceGroup
       {groups.slice(0, MAX_DOTS).map((g) => (
         <span key={g.id} className="size-1.5 rounded-full" style={{ backgroundColor: groupColor(g) }} />
       ))}
-      {extra > 0 && <span className="font-mono text-[11px] leading-none text-(--color-text-subtle)">+{extra}</span>}
+      {extra > 0 && <span className="font-mono text-meta leading-none text-(--color-text-subtle)">+{extra}</span>}
     </span>
   )
 }

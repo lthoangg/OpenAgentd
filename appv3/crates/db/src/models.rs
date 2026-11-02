@@ -42,6 +42,9 @@ pub struct ChatSession {
     pub last_message_at: Option<String>,
     /// The user renamed the session, so automatic retitling leaves it alone.
     pub title_locked: bool,
+    /// The stored credential (key or account) the session is pinned to;
+    /// `None` is Auto (the provider's pool picks and rotates).
+    pub credential_id: Option<String>,
 }
 
 impl ChatSession {

@@ -22,6 +22,11 @@
 //! feed asks the same question, so a notification shows in exactly one
 //! place. Hidden (a full-screen app, OpenAgentd in front with that option
 //! off, the screen locked), the banner is used as before.
+//!
+//! A question stays with the pet until it is answered: "Later" only folds
+//! its bubble behind the badge, and the right-click menu lists it first.
+//! When the server holds one plain single-choice question, the bubble gets
+//! its options as buttons ([`pet_answer`], through `island::answer_question`).
 
 #![cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 
@@ -43,6 +48,8 @@ pub const PET_STATE_EVENT: &str = "pet-state";
 pub const PET_NOTIFICATION_EVENT: &str = "pet-notification";
 /// The pointer near the pet, in the page's CSS pixels, or null once it leaves.
 pub const PET_POINTER_EVENT: &str = "pet-pointer";
+/// A session's question was answered somewhere: the page drops its bubble.
+pub const PET_QUESTION_ANSWERED_EVENT: &str = "pet-question-answered";
 /// Other apps' windows the pet can climb, front first, in the page's CSS pixels.
 pub const PET_WINDOWS_EVENT: &str = "pet-windows";
 /// The pet settings changed; sent to every window.
@@ -66,6 +73,9 @@ const GEOMETRY_EVERY: Duration = Duration::from_secs(2);
 const BAR_EVERY: Duration = Duration::from_secs(15);
 const MAX_SEEN: usize = 64;
 const MAX_ROUTES: usize = 50;
+/// How long a question's bubble waits for the server to say what its
+/// options are; past it the bubble shows with "Open to answer" only.
+const QUESTION_WAIT: Duration = Duration::from_secs(3);
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -251,6 +261,16 @@ pub fn bubble_tone(kind: &str, title: &str) -> &'static str {
         "reminder_fired" => "remind",
         _ if title.starts_with("Failed") => "failed",
         _ => "done",
+    }
+}
+
+/// A notification's title in the app's one vocabulary. The backend titles a
+/// question "Needs input · web"; every surface (the bubble, the system
+/// notification, the lists) says "Needs you".
+pub fn display_title(kind: &str, title: &str) -> String {
+    match title.strip_prefix("Needs input").filter(|_| kind == "input_needed") {
+        Some(rest) => format!("Needs you{rest}"),
+        None => title.to_string(),
     }
 }
 
@@ -481,6 +501,8 @@ struct Route {
     notification_id: String,
     session_id: String,
     server: ServerId,
+    /// The notification's kind: a question is never read away by a dismiss.
+    kind: String,
 }
 
 struct Shared {
@@ -853,6 +875,10 @@ pub struct PetBubble {
     pub session_id: Option<String>,
     pub title: String,
     pub body: String,
+    /// A question's id, once the server has said it (see [`with_question`]).
+    pub question_id: Option<String>,
+    /// Buttons that answer the question in place; empty when it needs the app.
+    pub choices: Vec<String>,
 }
 
 /// The bubble for a `desktop_notification` event, if it is one.
@@ -860,10 +886,10 @@ pub fn bubble_from_event(data: &str) -> Option<PetBubble> {
     let v: serde_json::Value = serde_json::from_str(data).ok()?;
     let id = v["notification_id"].as_str()?.to_string();
     let kind = v["kind"].as_str()?.to_string();
-    let title = v["title"].as_str()?.to_string();
+    let title = display_title(&kind, v["title"].as_str()?);
     let body = v["body"].as_str().unwrap_or_default().to_string();
     let session_id = v["session_id"].as_str().map(str::to_string);
-    Some(PetBubble { tone: bubble_tone(&kind, &title), id, kind, session_id, title, body })
+    Some(PetBubble { tone: bubble_tone(&kind, &title), id, kind, session_id, title, body, question_id: None, choices: Vec::new() })
 }
 
 /// The feed saw a notification on `server`: show it in the bubble when the
@@ -896,12 +922,50 @@ fn offer(app: &AppHandle, server: &ServerId, bubble: PetBubble) -> bool {
             if s.routes.len() >= MAX_ROUTES {
                 s.routes.pop_front();
             }
-            s.routes.push_back(Route { notification_id: bubble.id.clone(), session_id, server: server.clone() });
+            s.routes.push_back(Route { notification_id: bubble.id.clone(), session_id, server: server.clone(), kind: bubble.kind.clone() });
         }
     }
     log::info!("pet: bubble kind={} tone={}", bubble.kind, bubble.tone);
-    let _ = app.emit_to(PET_WINDOW, PET_NOTIFICATION_EVENT, bubble);
+    if bubble.kind == "input_needed" && bubble.session_id.is_some() {
+        // The notification only says what was asked; the options and the id
+        // to answer come from the server.
+        let (app, server) = (app.clone(), server.clone());
+        tauri::async_runtime::spawn(async move {
+            let bubble = with_question(&app, &server, bubble).await;
+            let _ = app.emit_to(PET_WINDOW, PET_NOTIFICATION_EVENT, bubble);
+        });
+    } else {
+        let _ = app.emit_to(PET_WINDOW, PET_NOTIFICATION_EVENT, bubble);
+    }
     true
+}
+
+/// `bubble` with the options and the id of the question its session holds.
+/// Best effort: without them the bubble offers "Open to answer" alone.
+async fn with_question(app: &AppHandle, server: &ServerId, bubble: PetBubble) -> PetBubble {
+    let Some(session_id) = bubble.session_id.clone() else {
+        return bubble;
+    };
+    match tokio::time::timeout(QUESTION_WAIT, crate::answers::fetch_question(app, server, &session_id)).await {
+        Ok(Ok(Some(question))) => with_open_question(bubble, &question),
+        Ok(Ok(None)) => bubble,
+        Ok(Err(e)) => {
+            log::debug!("pet: could not read the question of {session_id}: {e:#}");
+            bubble
+        }
+        Err(_) => bubble,
+    }
+}
+
+/// `bubble` carrying what `question` says: its id, and the buttons that can
+/// answer it. The notification's own body stays unless it was empty.
+pub fn with_open_question(mut bubble: PetBubble, question: &crate::answers::OpenQuestion) -> PetBubble {
+    bubble.question_id = Some(question.id.clone());
+    bubble.choices = question.quick_choices();
+    if bubble.body.trim().is_empty() {
+        bubble.body = question.text().unwrap_or_default().to_string();
+    }
+    bubble
 }
 
 /// A bubble for a notification an app window asked to show.
@@ -913,8 +977,10 @@ pub fn bubble_from_request(kind: &str, notification_id: Option<&str>, session_id
         kind: kind.to_string(),
         tone: bubble_tone(kind, title),
         session_id: session_id.map(str::to_string),
-        title: title.to_string(),
+        title: display_title(kind, title),
         body: body.to_string(),
+        question_id: None,
+        choices: Vec::new(),
     }
 }
 
@@ -960,18 +1026,50 @@ fn open_notification(app: &AppHandle, notification_id: &str) {
     };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        match crate::island::open_session_on_server(&app, route.server, &route.session_id).await {
+        match crate::island::open_session(&app, route.server, &route.session_id, crate::island::OpenIn::Existing).await {
             Ok(()) => crate::island::mark_session_read(&app, &route.session_id, None),
             Err(e) => log::warn!("pet: could not open session: {e:#}"),
         }
     });
 }
 
-/// The sessions the dismissed bubbles are about, once each.
+/// Answer the question a bubble asks with one of its buttons. The route
+/// (the server and session the bubble was made for) decides where it goes.
+#[tauri::command]
+pub async fn pet_answer(
+    app: AppHandle,
+    window: WebviewWindow,
+    notification_id: String,
+    question_id: String,
+    answers: Vec<Vec<String>>,
+) -> Result<crate::answers::AnswerOutcome, String> {
+    if window.label() != PET_WINDOW {
+        return Err("Only the pet answers from its bubbles.".into());
+    }
+    let route = shared().lock().unwrap().routes.iter().find(|r| r.notification_id == notification_id && r.kind == "input_needed").cloned();
+    let Some(route) = route else {
+        return Err("This question is no longer open here.".into());
+    };
+    crate::island::answer_question(&app, &route.server, &route.session_id, &question_id, &answers)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// A session's question was answered (an [`id_key`]), here or elsewhere: the
+/// page drops its bubble.
+pub fn question_answered(app: &AppHandle, key: &str) {
+    if !is_enabled() {
+        return;
+    }
+    let _ = app.emit_to(PET_WINDOW, PET_QUESTION_ANSWERED_EVENT, serde_json::json!({ "sessionKey": key }));
+}
+
+/// The sessions the dismissed bubbles are about, once each. A question is
+/// not one of them: it still waits on the user, so "Later" must not read it away.
 fn dismissed_sessions(routes: &VecDeque<Route>, notification_ids: &[String]) -> Vec<String> {
     let mut sessions: Vec<String> = Vec::new();
     for id in notification_ids.iter().take(MAX_ROUTES) {
-        if let Some(route) = routes.iter().find(|r| &r.notification_id == id) {
+        if let Some(route) = routes.iter().find(|r| &r.notification_id == id && r.kind != "input_needed") {
             if !sessions.iter().any(|s| id_key(s) == id_key(&route.session_id)) {
                 sessions.push(route.session_id.clone());
             }
@@ -1076,8 +1174,9 @@ pub fn parse_menu_id(id: &str) -> Option<PetMenuAction<'_>> {
     Some(PetMenuAction::Movement(movement))
 }
 
-/// The unread rows of the menu: the newest few, titles cut to fit, and
-/// whether each can be opened (only a notification about a session can).
+/// The rows of one menu section (questions, or unread): the newest few,
+/// titles cut to fit, and whether each can be opened (only a notification
+/// about a session can).
 pub fn unread_rows(unread: &[MenuUnread], openable: impl Fn(&str) -> bool) -> Vec<(String, String, bool)> {
     unread
         .iter()
@@ -1126,9 +1225,17 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) -> bool {
 }
 
 /// Right-click on the pet: a native menu at (`x`, `y`), CSS pixels in the
-/// pet window. The promise stays pending until the menu closes.
+/// pet window, listing what waits on the user (`questions`) before what was
+/// missed (`unread`). The promise stays pending until the menu closes.
 #[tauri::command]
-pub async fn pet_menu(app: AppHandle, window: WebviewWindow, x: f64, y: f64, unread: Vec<MenuUnread>) -> Result<(), String> {
+pub async fn pet_menu(
+    app: AppHandle,
+    window: WebviewWindow,
+    x: f64,
+    y: f64,
+    unread: Vec<MenuUnread>,
+    questions: Option<Vec<MenuUnread>>,
+) -> Result<(), String> {
     if window.label() != PET_WINDOW {
         return Err("Only the pet can show its menu.".into());
     }
@@ -1139,7 +1246,7 @@ pub async fn pet_menu(app: AppHandle, window: WebviewWindow, x: f64, y: f64, unr
     let (tx, rx) = tokio::sync::oneshot::channel();
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        let result = show_menu(&handle, &window, x, y, &unread);
+        let result = show_menu(&handle, &window, x, y, &questions.unwrap_or_default(), &unread);
         if let Err(e) = &result {
             log::warn!("pet: could not show its menu: {e:#}");
         }
@@ -1150,16 +1257,25 @@ pub async fn pet_menu(app: AppHandle, window: WebviewWindow, x: f64, y: f64, unr
 }
 
 /// Main thread only.
-fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, unread: &[MenuUnread]) -> Result<()> {
+fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, questions: &[MenuUnread], unread: &[MenuUnread]) -> Result<()> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
-    let (movement, character, rows) = {
+    let (movement, character, question_rows, rows) = {
         let s = shared().lock().unwrap();
-        let rows = unread_rows(unread, |id| s.routes.iter().any(|r| r.notification_id == id));
-        (s.settings.movement, s.settings.character, rows)
+        let openable = |id: &str| s.routes.iter().any(|r| r.notification_id == id);
+        (s.settings.movement, s.settings.character, unread_rows(questions, openable), unread_rows(unread, openable))
     };
     let menu = Menu::new(app)?;
+    // What waits on the user comes first.
+    if !question_rows.is_empty() {
+        menu.append(&MenuItem::with_id(app, "pet:heading:needs-you", "Needs you", false, None::<&str>)?)?;
+        for (id, title, openable) in &question_rows {
+            menu.append(&MenuItem::with_id(app, menu_id(PetMenuAction::Open(id)), title, *openable, None::<&str>)?)?;
+        }
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
     if !rows.is_empty() {
+        menu.append(&MenuItem::with_id(app, "pet:heading:unread", "Unread", false, None::<&str>)?)?;
         for (id, title, openable) in &rows {
             menu.append(&MenuItem::with_id(app, menu_id(PetMenuAction::Open(id)), title, *openable, None::<&str>)?)?;
         }
@@ -1179,8 +1295,8 @@ fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, unread: &[
         characters.append(&CheckMenuItem::with_id(app, menu_id(PetMenuAction::Character(choice)), label, true, choice == character, None::<&str>)?)?;
     }
     menu.append(&characters)?;
-    menu.append(&MenuItem::with_id(app, crate::menu::MENU_SETTINGS, "Pet Settings…", true, None::<&str>)?)?;
-    menu.append(&MenuItem::with_id(app, MENU_TOGGLE_PET, "Hide Pet", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, crate::menu::MENU_SETTINGS, "Desktop Pet Settings…", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, MENU_TOGGLE_PET, "Hide Desktop Pet", true, None::<&str>)?)?;
     // Keep taking clicks while the menu tracks the pointer (AppKit runs a
     // nested loop), and hold no lock across it.
     shared().lock().unwrap().capture = true;
@@ -1601,6 +1717,8 @@ mod tests {
                 session_id: Some("s1".into()),
                 title: "Failed · web".into(),
                 body: "Fix login".into(),
+                question_id: None,
+                choices: Vec::new(),
             })
         );
         assert_eq!(bubble_from_event(r#"{"kind":"assistant_done","title":"x"}"#), None, "no id");
@@ -1614,6 +1732,17 @@ mod tests {
         assert_eq!(Some(request), bubble_from_event(event), "same id, so it shows once");
         let no_id = bubble_from_request("assistant_done", None, None, "Done", "x");
         assert_eq!(no_id.id, bubble_from_request("assistant_done", None, None, "Done", "x").id);
+    }
+
+    #[test]
+    fn a_question_is_titled_in_the_one_vocabulary_whatever_the_backend_calls_it() {
+        assert_eq!(display_title("input_needed", "Needs input · api"), "Needs you · api");
+        assert_eq!(display_title("input_needed", "Needs input"), "Needs you");
+        assert_eq!(display_title("input_needed", "Needs you · api"), "Needs you · api");
+        assert_eq!(display_title("assistant_done", "Needs input · api"), "Needs input · api", "only a question's title is renamed");
+        let event = r#"{"notification_id":"n1","kind":"input_needed","session_id":"s1","title":"Needs input · api","body":"Keep v1?"}"#;
+        assert_eq!(bubble_from_event(event).unwrap().title, "Needs you · api");
+        assert_eq!(bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?").title, "Needs you · api");
     }
 
     #[test]
@@ -1634,14 +1763,18 @@ mod tests {
             workspace: None,
             state,
             question: None,
+            question_id: None,
+            choices: Vec::new(),
             server: None,
             server_id: None,
             goal: None,
+            account: None,
         };
         let status = IslandStatus {
             seq: 1,
             sessions: vec![session("a", SessionState::NeedsInput), session("b", SessionState::Running), session("c", SessionState::Running)],
             unread: vec![session("d", SessionState::Done)],
+            unreachable: Vec::new(),
         };
         assert_eq!(pet_status(&status), PetStatus { running: 2, needs_input: 1 });
     }
@@ -1817,17 +1950,45 @@ mod tests {
         assert!(pet.get("remote").is_none());
         assert_eq!(
             strings(&pet["permissions"]),
-            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-dismiss", "allow-pet-drag-end", "allow-pet-menu"],
+            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-answer", "allow-pet-dismiss", "allow-pet-drag-end", "allow-pet-menu"],
         );
     }
 
     #[test]
     fn dismissing_bubbles_reads_their_sessions_once_each() {
-        let route = |n: &str, s: &str| Route { notification_id: n.into(), session_id: s.into(), server: ServerId::Bundled };
+        let route = |n: &str, s: &str| Route { notification_id: n.into(), session_id: s.into(), server: ServerId::Bundled, kind: "assistant_done".into() };
         let routes: VecDeque<Route> = [route("n1", "aa-bb"), route("n2", "AABB"), route("n3", "cc")].into_iter().collect();
         let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(dismissed_sessions(&routes, &ids(&["n1", "n2", "n3", "unknown"])), ["aa-bb", "cc"]);
         assert!(dismissed_sessions(&routes, &ids(&["reminder-without-session"])).is_empty());
+    }
+
+    // The pet's × used to read the session of a question away, and with it
+    // the pet's only way back to the question.
+    #[test]
+    fn later_on_a_question_never_reads_its_session() {
+        let route = |n: &str, s: &str, kind: &str| Route { notification_id: n.into(), session_id: s.into(), server: ServerId::Bundled, kind: kind.into() };
+        let routes: VecDeque<Route> = [route("q1", "aa", "input_needed"), route("d1", "bb", "assistant_done")].into_iter().collect();
+        let ids = ["q1".to_string(), "d1".to_string()];
+        assert_eq!(dismissed_sessions(&routes, &ids), ["bb"]);
+    }
+
+    #[test]
+    fn a_question_bubble_carries_the_options_the_server_holds() {
+        let body = serde_json::json!({ "question": { "id": "q-1", "questions": [{ "question": "Use which account?", "options": [{ "label": "Work" }, { "label": "Auto" }] }] } });
+        let question = crate::answers::parse_question(&body).unwrap();
+        let bubble = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs you · api", "Use which account?");
+        let asked = with_open_question(bubble, &question);
+        assert_eq!((asked.question_id.as_deref(), asked.choices.as_slice()), (Some("q-1"), ["Work".to_string(), "Auto".to_string()].as_slice()));
+        assert_eq!(asked.body, "Use which account?");
+
+        // An empty notification body takes the question's own text.
+        let silent = with_open_question(bubble_from_request("input_needed", Some("n2"), Some("s1"), "Needs you", ""), &question);
+        assert_eq!(silent.body, "Use which account?");
+
+        let json = serde_json::to_value(&asked).unwrap();
+        assert_eq!(json["questionId"], "q-1");
+        assert_eq!(json["choices"], serde_json::json!(["Work", "Auto"]));
     }
 
     #[test]

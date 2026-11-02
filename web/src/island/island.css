@@ -13,11 +13,14 @@
   --island-row-hover: rgba(255, 255, 255, 0.08);
   --island-row-press: rgba(255, 255, 255, 0.12);
   --island-spinner-track: rgba(124, 194, 240, 0.3);
+  /* Behind the "Later" tooltip: opaque, so it reads over the row beneath. */
+  --island-tip-bg: #2b2b2b;
   /* Concave corners where the pill meets the top of the screen
    * (EAR_WIDTH in status.ts). */
   --island-ear: 8px;
-  /* The compact pill's one wing, left of the notch (WING_WIDTH in status.ts). */
-  --island-wing: 44px;
+  /* The compact pill's one wing, left of the notch: the mark and a word
+   * (WING_WIDTH in status.ts). */
+  --island-wing: 112px;
 }
 /* ── End island-only values ───────────────────────────────────────────── */
 
@@ -35,7 +38,7 @@ body {
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.35;
   color: var(--color-text);
@@ -183,11 +186,11 @@ button:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* ── Compact: the mark, and a count for several, in one narrow wing ───── */
+/* ── Compact: the mark, a word, and a count for several, in one wing ──── */
 .island:not([data-mode="expanded"]) .island-bar {
   grid-template-columns: var(--island-wing) var(--notch-width);
   gap: 0;
-  padding: 0;
+  padding: 0 6px;
 }
 
 .island[data-notch="false"]:not([data-mode="expanded"]) .island-bar {
@@ -201,15 +204,6 @@ button:focus-visible {
 
 .island:not([data-mode="expanded"]) .island-lead {
   justify-content: center;
-}
-
-/* The words stay for screen readers (the lead is a live region). */
-.island:not([data-mode="expanded"]) .island-lead .island-text {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
 }
 
 .island-count {
@@ -236,6 +230,10 @@ button:focus-visible {
 .island[data-mode="needs_input"] .island-lead,
 .island[data-mode="expanded"] .island-lead:has(.island-dot) {
   color: var(--accent-orange);
+}
+
+.island[data-mode="offline"] .island-lead {
+  color: var(--color-text-muted);
 }
 
 .island-mark {
@@ -320,11 +318,12 @@ button:focus-visible {
 
 .island-row {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 8px;
   width: 100%;
-  padding: 7px 8px;
+  /* The right padding keeps the 28px "Later" button clear of the meta text. */
+  padding: 7px 40px 7px 8px;
   border-radius: 12px;
   transition: background-color var(--motion-fast) var(--ease-out);
 }
@@ -340,8 +339,46 @@ button:focus-visible {
   background: var(--island-row-press);
 }
 
-.island-row .island-dot {
-  justify-self: center;
+/* A row that only informs (a server that can't be reached) takes no clicks. */
+.island-row--static {
+  cursor: default;
+}
+
+.island-row--static:hover {
+  background: none;
+}
+
+/* The word that says a row's state, beside its mark's colour. */
+.island-chip {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  background: var(--island-row-hover);
+  color: var(--color-text-muted);
+}
+
+.island-chip[data-state="needs_input"] {
+  background: color-mix(in srgb, var(--accent-orange) 24%, transparent);
+  color: var(--accent-orange);
+}
+
+.island-chip[data-state="running"] {
+  background: color-mix(in srgb, var(--accent-blue) 22%, transparent);
+  color: var(--accent-blue);
+}
+
+.island-chip[data-state="done"] {
+  background: color-mix(in srgb, var(--color-success) 22%, transparent);
+  color: var(--color-success);
+}
+
+.island-chip[data-state="failed"] {
+  background: color-mix(in srgb, var(--color-error) 24%, transparent);
+  color: var(--color-error);
 }
 
 .island-row-title {
@@ -367,46 +404,96 @@ button:focus-visible {
   -webkit-line-clamp: 2;
   overflow: hidden;
   margin-top: 2px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--accent-orange-text);
 }
 
-/* Unread rows: the × takes the workspace's place while the row is hovered. */
 .island-row-item {
   position: relative;
 }
 
-.island-row-meta,
-.island-dismiss {
-  transition: opacity var(--motion-fast) var(--ease-out);
-}
-
-.island-dismiss {
+/* "Later": 28px, always there on a row that wants you, never hover-only. */
+.island-later {
   position: absolute;
-  top: 50%;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-top: -11px;
+  width: 28px;
+  height: 28px;
   border-radius: 9999px;
   color: var(--color-text-muted);
-  opacity: 0;
 }
 
-.island-dismiss[data-hover],
-.island-dismiss:hover {
+.island-later[data-hover],
+.island-later:hover {
   color: var(--color-text);
   background: var(--island-row-press);
 }
 
-.island-row-item:has([data-hover]) .island-dismiss {
-  opacity: 1;
+/* Its own tooltip (no native title): a word beside the button. */
+.island-later[data-hover]::after,
+.island-later:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--island-tip-bg);
+  color: var(--color-text);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
-.island-row-item[data-unread]:has([data-hover]) .island-row-meta {
-  opacity: 0;
+/* Buttons that answer a question, or retry a server: 28px high. */
+.island-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.island-action {
+  height: 28px;
+  max-width: 100%;
+  padding: 0 11px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--island-row-hover);
+  color: var(--color-text);
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.island-action[data-primary] {
+  background: var(--color-text);
+  color: var(--island-bg);
+  font-weight: 600;
+}
+
+.island-action[data-hover],
+.island-action:hover:not(:disabled) {
+  background: var(--island-row-press);
+}
+
+.island-action[data-primary][data-hover],
+.island-action[data-primary]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 85%, transparent);
+}
+
+.island-action:disabled {
+  opacity: 0.5;
+}
+
+.island-action-note {
+  font-size: 11px;
+  color: var(--color-error);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -417,8 +504,7 @@ button:focus-visible {
   .island-bar,
   .island-ear,
   .island-row,
-  .island-row-meta,
-  .island-dismiss {
+  .island-action {
     transition-duration: 0.01ms;
     transition-delay: unset;
   }

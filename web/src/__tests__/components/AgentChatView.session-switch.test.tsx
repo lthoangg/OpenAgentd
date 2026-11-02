@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
-import { forwardRef, useImperativeHandle } from 'react'
+import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
 let agentsLoading = false
@@ -50,11 +50,11 @@ mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () =>
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     closeScheduler: () => {},
-    closeAgentCapabilities: () => {},
+    closeRunPicker: () => {},
   }),
 }))
 mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () => {} }) }))
@@ -70,7 +70,12 @@ mock.module('@/api/client', () => ({
 }))
 mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, removeWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
-mock.module('@/components/AgentView', () => ({ AgentView: () => <div data-testid="transcript" /> }))
+mock.module('@/components/AgentView', () => ({
+  AgentView: ({ jumpToLatestInComposer }: { jumpToLatestInComposer?: boolean }) => (
+    <div data-testid="transcript" data-composer-tray={jumpToLatestInComposer ? '' : undefined} />
+  ),
+}))
+mock.module('@/components/PendingMessageQueue', () => ({ PendingMessageQueue: () => <div data-testid="pending-queue" /> }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
@@ -78,16 +83,16 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHead
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
-mock.module('@/components/FloatingInputComposer', () => ({
-  FloatingInputComposer: forwardRef<
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { disabled?: boolean }
-  >(function FloatingInputComposerMock({ disabled }, ref) {
+    { disabled?: boolean; queue?: ReactNode }
+  >(function ComposerMock({ disabled, queue }, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,
     }))
-    return <div data-testid="composer" data-disabled={disabled ? '' : undefined} />
+    return <div data-testid="composer" data-disabled={disabled ? '' : undefined}>{queue}</div>
   }),
 }))
 
@@ -112,6 +117,7 @@ mock.module('@/stores/useAgentStore', () => {
     isAgentWorking: false,
     isContinuing: false,
     sessionId: null as string | null,
+    parentSessionId: null as string | null,
     sessionTitle: null,
     sessionModel: null,
     sessionThinkingLevel: null,
@@ -146,7 +152,7 @@ afterEach(cleanup)
 beforeEach(() => {
   agentsLoading = false
   workspaceTree = undefined
-  useAgentStore.setState({ sessionId: null, _workspace: null })
+  useAgentStore.setState({ sessionId: null, parentSessionId: null, _workspace: null })
 })
 
 describe('AgentChatView — switching sessions', () => {
@@ -198,7 +204,7 @@ describe('AgentChatView — switching sessions', () => {
 
     expect(screen.getByTestId('transcript')).toBeTruthy()
     expect(screen.getByText("This session's folder was moved or deleted.")).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Open folder…' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open workspace…' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Hide workspace' })).toBeTruthy()
   })
 
@@ -208,5 +214,24 @@ describe('AgentChatView — switching sessions', () => {
     render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
 
     expect(screen.queryByText("This session's folder was moved or deleted.")).toBeNull()
+  })
+
+  it("puts a main session's message queue in the composer's tray, not in the transcript", () => {
+    useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
+
+    expect(screen.getByTestId('composer').contains(screen.getByTestId('pending-queue'))).toBe(true)
+    expect(screen.getAllByTestId('pending-queue')).toHaveLength(1)
+    // The transcript is told the composer carries it, so it draws no second queue.
+    expect(screen.getByTestId('transcript').hasAttribute('data-composer-tray')).toBe(true)
+  })
+
+  it("leaves a subagent's queue in its transcript: there is no composer to hold it", () => {
+    useAgentStore.setState({ sessionId: 'session-sub', parentSessionId: 'session-main', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-sub" workspace="/repo/b" />)
+
+    expect(screen.queryByTestId('composer')).toBeNull()
+    // No tray, so the transcript is not told to leave its queue out.
+    expect(screen.getByTestId('transcript').hasAttribute('data-composer-tray')).toBe(false)
   })
 })

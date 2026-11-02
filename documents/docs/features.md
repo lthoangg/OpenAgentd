@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-31
+updated: 2026-11-02
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.39.0 · October 31, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.39.0)
+**Latest release:** v3.40.0 · November 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.40.0)
 
 ---
 
@@ -232,7 +232,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   app-wide, and page copy is shorter. A saved link to the old Automation
   section opens Workspaces.
 - **Roomier Scheduled tasks, Session settings and Keyboard shortcuts**
-  `[v3.21.0]` — these panels now use the same layout as Settings: titled
+  `[v3.21.0]` (Session settings *(deprecated)* in v3.40.0: model, thinking and
+  account moved to the run picker, MCP servers to the composer's **+** menu,
+  and the tool list to Settings → Agents) — these panels now use the same layout as Settings: titled
   sections above their cards, label-left / control-right rows, more space
   between fields, one notice style, and sentence-case labels. A scheduled
   task's detail reads Status, then **Delivery**, **Schedule**, **Prompt** and
@@ -269,8 +271,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     found**; Help opens the keyboard shortcuts; MCP never shows "Connect
     required" for a running server; the browser build hides **Updates**.
   - **Status bar** shows the server (`built-in`), the model ID with its
-    provider and thinking level as chips, and spend with its period
-    (`$0.55 · 24h`), each with a tooltip.
+    provider and thinking level as chips (moved to the run deck in
+    v3.40.0), and spend with its period (`$0.55 · 24h`), each with a tooltip.
   - **Review panel** (was the review dock) has one **+** (Open) button for
     views, terminals, previews and files; Refresh appears only where it
     reloads something and names what it reloads. Tab menus use sentence case
@@ -292,7 +294,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Phones.** The header shows the session title with its workspace under
     it, and keeps five controls: sidebar, title, **Session settings**,
     Review panel and **More**, so the model and thinking level are one tap
-    away. The sidebar drawer's
+    away (since v3.40.0 four: the model moved to the run deck under the
+    composer). The sidebar drawer's
     footer has Settings, Usage, the server and the theme.
     More holds Tasks (with the open count and goal ring), Session settings,
     context use, prompt stepping, Find file, Terminal, Scheduled tasks and the
@@ -320,10 +323,11 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Mono reasoning** `[v3.38.0, v3.39.0]` — the thinking trace reads inline
   in the transcript as small mono text with bold section headers, always
   open, with no quote bar. (v3.38.0 showed it in muted italics.)
-- **Toolbar controls fit on touch** `[v3.39.0]` — on a touch screen the
+- **Toolbar controls fit on touch** `[v3.39.0, v3.40.0]` — on a touch screen the
   review panel's view toolbar keeps its 32px height: the Rendered / Source
   switch and the icon actions (download, copy, preview) are 28px instead of
-  spilling past it, and icon actions keep a 36px tap area.
+  spilling past it, and icon actions keep a 36px tap area. The Preview
+  tab's address bar, device menu and `⋯` menu are 28px too (v3.40.0).
 - **No duplicate messages on resume** `[v3.37.0]` — reopening the phone app
   or reloading mid-turn no longer repeats the reply or a steer message, and
   a step saved during the reconnect shows up right away instead of at the
@@ -331,7 +335,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
-- **In-app auto-updater** `[v1.22.0, v1.99.8, v1.115.1]` — bottom-right update card + Settings → About
+- **In-app auto-updater** `[v1.22.0, v1.99.8, v1.115.1]` — top-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads, draggable and minimizable floating update card `[v2.3.0]`,
   GitHub release notes rendered inline. Desktop checks at startup and every 6
   hours, including on a foreground return once that interval is due; choosing
@@ -359,7 +363,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
   background, so mobile notifications arrive only while it is running.
   Notifications are shorter `[v3.3.0]`: the title is a status and the workspace
-  name (`Done · openagentd`, `Failed · …`, `Needs input · …`, `Plan ready · …`),
+  name (`Done · openagentd`, `Failed · …`, `Needs you · …` (`Needs input` before v3.40.0), `Plan ready · …`),
   and the session title, question, or plan summary shows as one line of up to
   100 characters. A failed turn now notifies too. Stopping a turn or dismissing
   a question does not, and a lead that is waiting on subagents notifies once,
@@ -381,11 +385,20 @@ run from the terminal (the native Rust binary since v3.0.0).
   and `openagentd://scheduler?task=<id>` links they use work from anywhere,
   and links into the Android app now also work on older Android System
   WebView versions.
-- **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
-  opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
-  Both use the compact warm-paper search surface, keyboard navigation, and a
-  visible warning when a capped workspace listing omits files.
-  A Quick Open query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
+- **Command palette and Find file** `[v2.3.0, updated v3.40.0]` — `⌘K`/`Ctrl+K`
+  opens one search over app actions, sessions and workspace files; `⌘P`/`Ctrl+P`
+  (Find file) opens the same palette scoped to files. It uses the compact
+  warm-paper search surface, keyboard navigation, and a visible warning when a
+  capped workspace listing omits files. With an empty query `⌘K` lists the
+  commands; typing shows up to eight **Commands**, eight **Sessions** (titles
+  from every workspace, best match then newest, labelled with workspace and
+  age; choosing one opens it) and twenty **Files** under their headings, and
+  the arrow keys run across them as one list. Find file shows a Files label
+  before the field; Backspace on an empty query (or a click on the label)
+  widens it to all three, and a leading `>` searches commands only. A list
+  that is still loading shows Loading… instead of "Nothing here yet", and the
+  field is 16px on touch phones so iOS does not zoom `[v3.40.0]`.
+  A file query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
   opens the pick with those lines selected `[v3.0.0]`.
   `⌘F`/`Ctrl+F` transcript find *(deprecated; removed in v3.14.0, along with
   every `⌘F` binding)*;
@@ -524,7 +537,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     transcript marks each goal turn and each claim's verdict; each turn's
     divider says why the goal went on (no claim yet, the check said not yet,
     the check gave no verdict, or you resumed it), with the check's full reason
-    on hover or tap. An achieved goal shows in blue. The sidebar marks sessions
+    on hover or tap. An achieved goal shows in blue (green since v3.40.0). The sidebar marks sessions
     with a live goal, one notification ("Goal achieved", "Goal blocked", or
     "Goal paused") arrives when the goal ends, and on macOS the notch shows a
     running goal's progress ("Goal 7/50") and the same outcome. In the Reader
@@ -574,6 +587,467 @@ run from the terminal (the native Rust binary since v3.0.0).
   **Appearance** section with a System / Light / Dark choice, and the Command
   Palette has **Theme…**, a list of System, Light and Dark that marks the
   current one `[v3.21.0]`. The mobile drawer keeps its theme button.
+- **Native look, fewer borders, readable everywhere** `[v3.40.0]`:
+  - Interface text uses the operating system's own font (SF Pro on macOS and
+    iOS, Segoe UI Variable on Windows, Roboto on Android, the desktop font on
+    Linux, the one set in the desktop's settings). Code, paths and model
+    names stay in JetBrains Mono.
+  - With a keyboard on an iPad or iPhone, shortcuts use ⌘ as on a Mac
+    (⌘N, ⌘K, ⌘.) and their hints say so.
+  - Buttons, chips, tabs and segmented controls have no borders. The primary
+    button is filled with the theme's Bark colour. The chosen segment (Code /
+    Plan, for example), a chosen tab or question option are filled edge to edge with a
+    quiet tone a step off their track, with the normal text colour: a light
+    sand in light mode (no dark brown blocks), a raised warm tone in dark mode
+    (no near-white block that glows brighter than the words around it). The
+    menu row under the pointer or the keyboard, the model picker's included,
+    and the command palette's active row take a lighter wash than that, as a
+    native list's hover, so moving the pointer down a menu does not darken
+    each row it crosses. Buttons, chips and a question's options that rest on
+    the light keycap fill hover half way to the chosen tone, so a hovered
+    option no longer looks picked. In the
+    palette only the row the keys or a real mouse move chose lights, never a
+    second one under a resting pointer. Tooltips are light cards in light
+    mode; a switch that is off is a light track there. With the system's
+    Increase contrast on, the fills step back up. Menus, cards and dialogs
+    keep one thin frame, and nothing inside them adds another.
+  - A switch that is on is a deeper blue in dark mode, so its knob stands out.
+    *(Replaced in v3.40.0: switches are the warm accent, below.)*
+  - **Blue is the logo and keyboard focus only** `[v3.40.0]`. Everything else
+    that used Signal Blue takes the warm palette: switches, checkboxes and
+    radios fill with the accent (Bark in light mode, cream in dark); file names
+    in prompts and the composer, links and web results are ink with a quiet
+    underline; "running", "starting" and other info chips and notices are ink
+    on the keycap wash; selected text takes the sand selection fill; an open
+    dropdown, pane and panel resize handles, and tab drop zones use the warm
+    ramp; an achieved goal and a met Done when are green; a working goal, the
+    streaming caret and live dots are ink; groups that have not picked a
+    colour are never blue; autofilled fields keep the field colour.
+  - Review panel tabs are borderless pills; the open tab is filled with the
+    page colour and set in medium weight, with no coloured edge.
+  - Dialog buttons follow the operating system: Cancel then the action on
+    macOS, iOS and Linux, the action first on Windows. The footer has no
+    border or fill of its own.
+  - Settings → General is now **Appearance**, with a new **Text size** choice
+    (Compact, Default, Large) remembered per device. Default is 1px larger than
+    before (13px interface text, 12px captions); Compact keeps the old density.
+    On iOS the system text size multiplies on top. **Previews** chooses whether
+    a page the agent previews opens in the Review panel by itself or waits for
+    a click on its card.
+  - Every text colour pair reaches WCAG AA with the existing palette: subtle
+    text moves to the muted tone on washes and cards, coloured words and light
+    mode status dots use their darker text tone, and checkbox and radio
+    outlines are heavier.
+  - Nothing appears on hover only: copy buttons, close buttons, turn actions
+    and expand chevrons are always visible (dimmed until used). A sidebar or
+    commit row's Pin and **⋯** appear in place of its time on hover or
+    keyboard focus; the same items are always on right-click and long-press.
+  - Native tooltips (`title`) render as the app's own tooltip, with the same
+    delay and look everywhere. A click, right-click or key press while one
+    is still waiting to appear cancels it, so none opens over a menu.
+  - The status bar is 28px with 24px items, and header controls are 36px on
+    touch screens. On a phone every primary button is 44px tall.
+  - Text fields' placeholders use the muted tone, which reads at AA on every
+    surface.
+  - In the desktop app the blue focus ring shows only while Tab or F6 moves
+    focus. Closing a menu with Escape, a shortcut such as ⌘B, or typing no
+    longer rings the button focus lands on. Text fields everywhere (search,
+    Settings, renaming) mark focus with a darker edge, as the composer does,
+    instead of a blue glow.
+  - Error toasts stay until you close them, and a toast can carry an action.
+    Deleting a session shows **Session deleted · Undo** for 5 seconds; Undo
+    brings the session back (and reopens it if it was open).
+  - Screen readers hear "Agent is working", "Turn finished" and "Needs you: …"
+    for the open session.
+- **Run deck under the composer** `[v3.40.0]`:
+  - The composer sits at the foot of the chat on every screen, in line with
+    the transcript, up to the reading width, and is always open. It can no
+    longer be dragged or minimized.
+  - Under the text a run deck says how the next message runs: **+**,
+    Code / Plan, the run chip (`provider:model · Thinking · Account`), the
+    context ring and Send. There is no separate MCP button: while a server
+    needs you (sign in, or it failed) **+** carries a small dot, says which
+    server to screen readers, and opens at its MCP section. On a narrow
+    composer the chip stacks into two lines and the provider part gives way
+    first; then a long model name gives up its middle
+    (`antigravit…sonnet-4-6`, or `sonnet-4-6` alone on a phone), the same in
+    the picker and the turn footer, so the part that tells models apart
+    stays. In Plan mode the placeholder says the agent reads and proposes
+    without editing files.
+  - The run chip opens one picker for model, thinking and account: search
+    models (recent ones first), step thinking with ←/→, pick an account with
+    its state and quota left, or **Reset to default** / **Make default**.
+    Every pick is saved on the session at once and survives a reload; if the
+    save fails, a toast says so and offers **Retry**. Open it
+    with `⌘.`/`Ctrl+.` (it was `⌘⇧A`/`Ctrl+Shift+A`), `/model`, `/think`, or
+    **Model and Thinking…** in the palette or the View menu. On phones it is a
+    bottom sheet.
+  - The picker opens on the model that runs (highlighted and scrolled into
+    view, so Enter keeps it), lists each model whole as `provider:model`,
+    and when neither the session nor the agent sets a thinking level it says
+    the model's own default applies. The cursor is in its search as it
+    opens, from a click or the shortcut, so typing filters at once (with
+    Reduce Motion on, it was left nowhere).
+    As in the palette, a pointer resting on the list does not take the
+    highlight from the keyboard when the list opens, filters or scrolls under
+    it; only moving the mouse does.
+  - The model search matches loosely, as the palette and Settings do
+    (`sonnet46` finds `claude-sonnet-4-6`), and ranks the closest model
+    first in one list, so Enter picks it. While a search narrows the list,
+    the picker keeps its size and stays on the chip: the search field no
+    longer moves under the typing, and a short result no longer leaves the
+    picker hanging above the composer. Any popover opening upward now stays
+    on its button when its content changes size.
+  - **+** holds Attach, Mention a file, Snippet, Side question and the MCP
+    servers (state in words, Sign in, on/off); `/mcp` opens it there.
+  - A model reads `provider:model` in mono wherever it appears: the run
+    chip, each answer's and prompt's details, the waiting and retry notes,
+    Usage, the first-run card and Settings → Agents. When space runs out the
+    `provider:` part gives way first; the full ID is in the tooltip.
+  - The context ring opens the token numbers and **Summarize now**. The
+    header and status bar no longer show the context meter or the model.
+    Its full track is drawn, so a part-filled ring reads as a gauge, not a
+    spinner. Its labels are in the UI font and only the numbers in mono, as
+    in an answer's details.
+  - The composer marks focus with a darker border rather than a blue glow.
+  - On phones the header keeps four controls (sidebar, title, Review panel,
+    More), and Send is a 44px target.
+  - Messages queued while a turn runs sit in the tray above the text, with
+    the side question and the **Jump to latest** chip.
+  - On a touch tablet, in the app or a browser, the composer rides up on the
+    soft keyboard as it does on phones, and Settings ends above the keyboard
+    so its Save bar stays reachable. The header is 44px there, so its touch
+    buttons sit inside it, and workspace rows use the phone's short marks
+    (**missing**, the worktree count) so the always-shown row actions leave
+    the name room.
+- **Pin a session to one account** `[v3.40.0]` — when a provider has several
+  keys or OAuth profiles, the run picker can pin the session to one of them;
+  **Auto** keeps today's rotation. A pinned session only ever uses that
+  account, and so do its subagents on the same provider, its title (also a
+  separate title model on the same provider) and its summaries. If the
+  account is cooling down, the turn waits and says so, with **Use Auto for
+  this session**, **Choose account…** and **Stop**. If the provider rejects
+  it (signed out, out of credit), the turn stops with the same choices and
+  **Reconnect…**, and the run picker offers **Reconnect** beside that
+  account. If the account is deleted or disabled, the session goes back to
+  Auto with a note. Each answer's footer names the account it ran on, and
+  Settings → Providers shows how many sessions pin each account. The desktop
+  tray names the account a pinned session runs on (**Pinned to Work**), and
+  its Provider limits name the account in use when a provider has several
+  (**OpenAI Codex · Work**).
+- **Review panel panes, as in an editor** `[v3.40.0]`:
+  - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
+    Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
+    one button for each.
+  - On desktop the sidebar and the Review panel run up to the top of the
+    window, as in a native app: the header splits where they do, with the
+    sidebar toggle (and, on macOS, the window buttons, with a native gap
+    before the toggle) over the sidebar, the title over the chat, and the
+    Task list and Review panel buttons over the panel. The header reads as
+    one bar: no lines between those parts, and one line under all of it,
+    over the sidebar too. The split follows a drag or a slide. The
+    Review panel's tab strip shares the sidebar's tone, and its open tab is
+    marked the way the sidebar marks the open session.
+  - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel
+    Down** (`⌘⇧\`/`Ctrl+Shift+\`) split the pane you are in, as often as
+    there is room; each pane has its own tabs. The new pane is empty and lists
+    what it can open. A pane too small for two says so instead of splitting.
+    Drag the line between two panes to resize them, or double-click it to
+    share the room evenly; closing a pane's last tab closes the pane.
+  - With several panes, the one you are in is plain to see: the tabs and
+    buttons of every other pane fade to half, as an inactive window's title
+    bar does, so it is clear where `⌘W`, `⌘1`–`⌘9` and a newly opened file
+    go. A click into a web preview page focuses its pane too.
+  - Drag a tab to another pane's tab strip to move it there, onto the middle
+    of a pane to add it to that pane, or onto a pane's edge to split that pane
+    with the tab in the new half; the place it will land lights up as you
+    drag. Escape puts it back. The tab menu does the same with Split Right,
+    Split Left, Split Up, Split Down and Move to Next Pane, and a web preview
+    keeps its page and comments when its tab moves.
+  - **⌃⌥ + arrow** (`Ctrl+Alt` + arrow on Windows and Linux)
+    sends the focused tab left, right, up or down: the pane splits on that
+    side with the tab in the new half, or, when it is its pane's only tab,
+    the tab joins the pane on that side (with no pane there, an empty one
+    opens, as with `⌘\`). The keys work from the composer and from a
+    terminal too, and the tab menu shows them beside its four splits.
+  - A terminal is a tab like any other: it opens in the pane you are in,
+    beside its files, and a split puts a diff and a shell side by side.
+    There is no terminal pane under the others any more, and nothing hides
+    one. Terminals have no key: **Open Terminal** in the command palette
+    (and the View menu) shows the last terminal, or starts a shell when
+    there is none, and the panel's **+** menu and launcher start a new one.
+    `⌘⇧` (`Ctrl+Shift`) with the backquote key no longer opens one, and a
+    focused terminal keeps Control and the backquote key for its shell.
+    Shells keep running with the panel closed, and the status bar says
+    **N terminals running** (a click shows them).
+  - Tabs work like an editor's: views (Git, Plan, Tasks…) come first, then
+    files. A file or diff opened from a list or a link opens as an *italic*
+    preview tab that the next one replaces; double-click it or choose **Keep
+    Open** to keep it. When the strip is full, a tab count lists every tab.
+    The tab menu has, in groups, Close, Close Others, Close to the
+    Left, Close to the Right, Close All (the pane goes with its tabs); Keep
+    Open, Split Right, Split Left, Split Up, Split Down, Move to Next Pane,
+    Move Left, Move Right; Copy Path and Reveal in Git.
+  - Closing the open tab goes back to the tab you used before it
+    in that pane (it used to show its right neighbour); a double-click or
+    right-click on the free end of a tab strip opens its **+** menu where the
+    pointer is; and besides `⌃Tab`/`⌃⇧Tab`, `⌘⇧]`/`⌘⇧[` on macOS and
+    `Ctrl+PageDown`/`Ctrl+PageUp` on Windows and Linux step through the
+    focused pane's tabs (in the desktop app; browsers keep these keys).
+  - Each session remembers its own panes and tabs, so switching back shows
+    the same diff and plan; terminals belong to the workspace; whether the
+    panel is open, and its sizes, belong to the window. **Reset Layout** in
+    the palette puts the sizes back.
+  - In a narrow desktop window the sidebar and the Review panel still sit
+    beside the chat while they fit (the panel down to 740px of chat and
+    panel together); with the panel open and no room left, the sidebar opens
+    as a drawer over the chat `[v3.40.0]`. On a touch tablet the sidebar is a
+    drawer below 1180px, and when the chat and the panel share less than
+    860px (an 820px tablet in portrait) the Review panel covers the
+    transcript but not the composer, so you can write while reading a diff;
+    maximized
+    (`⌘⇧D`/`Ctrl+Shift+D`) it covers both until you restore it or press
+    Escape. Maximizing grows the whole panel with every pane in it; before,
+    with several panes only the focused one showed.
+  - Showing or hiding the sidebar or the Review panel slides it in or out
+    (a quarter second); its rows ride the moving edge instead of rewrapping,
+    and the composer keeps its focus and draft. With the Review panel open,
+    the panel slides to its new width alongside the sidebar, so the chat
+    between them moves in one motion. Dragging an edge or resizing
+    the window still moves it at once. Workspace session lists, a session's
+    subagents and the Reader view's folded steps open and close with the same
+    smooth fold; the chosen segment of a segmented control (Code / Plan,
+    Changes / History…) slides to the new choice, and switches ease their
+    thumb to a soft stop.
+  - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
+    panel; press it again to bring both back.
+  - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the
+    loaded conversation, with the match count and ↑/↓ to step through.
+  - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
+    each Review panel group and the status bar.
+  - Code blocks, tables, diagrams and an expanded tool's output can widen to
+    960px when the chat has room; prose keeps its reading width.
+- **Sidebar and header: fewer steps** `[v3.40.0]`:
+  - **New session** sits at the top of the sidebar at all times (it does what
+    `⌘N`/`Ctrl+N` does).
+  - A workspace's name opens its latest session (a new one when it has
+    none); the chevron beside it folds the list.
+  - Pinned, Needs you, the sessions and Scheduled scroll together in one
+    list, under one style of section header with an always-visible chevron.
+    Needs you counts in words ("2 waiting"). Scheduled is always there, with
+    **+** for a new task. A row whose session is busy, waiting, finished
+    unseen or failed says so in words in place of its time: **Running**,
+    **Needs you**, **Done**, **Failed**.
+  - While the workspace list first loads it shows placeholder rows, and if it
+    fails, **Retry**; "No workspaces yet" only means there are none.
+  - A session's menu (⋯, right-click, long-press) has **Open in new window**
+    (desktop app), **Rename**, **Pin**, **Copy link**, **Share…** (where the
+    system has a share sheet) and **Delete session…**. A copied link opens
+    the session again: an `openagentd://` link from the apps, the page
+    address from a browser. Touch keeps the pin mark on pinned rows.
+  - Double-click the session title in the header (or press F2 or Enter on
+    it) to rename it there.
+  - The status bar's items are all reachable with Tab, the fast mode pill too.
+  - One name for each thing: **Review panel**, **New session**, **Side
+    questions**, **Open workspace…**, **Workspace** and **Worktree** (never
+    folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
+    server**.
+  - The header has no command palette button (`⌘K`/`Ctrl+K`, the View menu
+    and the phone's More sheet open it), and a hidden sidebar leaves no
+    hairline at the window's edge.
+- **Transcript: act where you read** `[v3.40.0]`:
+  - Under the last finished answer, **Copy · Edit prompt · Undo** show at
+    rest as icons, each named in its tooltip, then the files
+    changed (a file icon, the count and `+added -removed`). While a turn
+    runs, Edit prompt shows dimmed and says it is available when the turn
+    ends. A prompt's own Edit and Copy icons are the same size.
+  - The files changed toggle lists the files the turn edited, with their line
+    counts, in both transcript styles (Reader and Detailed); a file opens its
+    diff.
+  - A turn that waits (a pinned account cooling down, a reconnect) or stops
+    shows one card: what happened, since when, what you can do, and **Copy
+    details**.
+  - When only the session model's provider is missing, the notice above the
+    chat names it ("Connect xAI Grok to keep chatting", with the model) and
+    offers **Choose model** beside **Open Providers**, instead of asking for
+    "a model provider" as if none were set up.
+  - Each answer's footer names the account it ran on.
+  - A long thinking trace scrolls inside a capped box; **Show full
+    reasoning** lifts the cap.
+    Runs of blank lines in a trace (Gemini sends three between paragraphs)
+    show as one paragraph break.
+  - Scrolling up shows a **Loading earlier messages…** row while older
+    turns load, and one **Jump to latest** chip counts what arrived since
+    (`3 new`). Closing the sidebar while the Review panel is open no longer
+    leaves the chat scrolled up a little with the chip showing.
+  - A subagent row is a button that opens the subagent's session, with its
+    state in words (Running, Done, Failed, Needs you, Stopped) and a running
+    clock. It sits under the team call that started or messaged the
+    subagent, so following it is one click. A subagent's question lists its
+    options, says the main agent answers it, and offers **Open subagent
+    session**.
+  - Copy buttons on code blocks, tool arguments, commands and output are
+    always visible and say "Copied"; a bare code fence gets the same header.
+    Tool section headers are real buttons.
+  - On touch, a long press on a message, a code block or a link opens its
+    menu as the app's bottom sheet, the iOS app included. A tool row has
+    a menu too (right-click or long-press): **Copy arguments** and **Copy
+    result**.
+  - The plan tool's chip reads **Open plan**, like every other way to the
+    plan.
+  - A question card always ends in **Send**, dimmed with its reason until
+    something is answered; **Skip this question** is its own button. Keys
+    1–9 pick an option (the next number is "Type your own answer"), Enter
+    sends, and Back / Next page through several questions. Double-clicking
+    an answer picks it and sends (or goes to the next question).
+  - An open tool row's arguments and output show in full, widened past the
+    text column, no longer cut at its edges.
+  - A plan review is decided on its card: **Approve** (or **Approve and keep
+    going (N turns)** when a goal would start, with the real count),
+    **Request changes**, which opens a comment box straight away, and **Open
+    plan**. In the Plan tab every paragraph, list item and heading has a
+    **Comment** action, and the tab and the card share one draft.
+  - Each queued message has **Remove**, and the notice that follows has
+    **Undo**.
+  - The undo notice is one card: "Last 2 messages undone. Redo brings them
+    back; sending a new message discards them.", then **Redo**, **Redo all**
+    and **Show messages**.
+  - Deleting all side questions asks first, in a dialog.
+  - A subagent's session offers **Return to main agent**.
+  - Every heading level in an answer reads as a heading: `####` and below
+    were plain text, and `###` was fainter than the text under it. A task
+    list shows its checkboxes in place of bullets, in the theme's colour.
+- **Review panel views** `[v3.40.0]`:
+  - **Changes**: clicking a row opens its diff as a preview tab, and the
+    chevron peeks at it in place. Every row has **⋯** with the same items as
+    right-click and the long-press sheet.
+    Each row leads with the file name, its folder after it in muted text,
+    so files in one deep folder no longer look alike; an empty list says
+    **No changes** once. The status letter takes its lines' color: **A**
+    green, **D** red, **M** orange (all three were orange).
+  - A tab's close button is always visible, dimmed on tabs that are not
+    open; terminal tabs show it on touch too.
+  - **Git**: History is the current branch's commit list, with no graph
+    view or All branches toggle (a stored graph view opens as the list).
+    History rows are 28px (36px on touch), and a failed load has **Retry**.
+  - **Scheduled**: **New task** is a regular button, and **Run now**,
+    **Pause** and **Resume** sit in each task's ⋯ menu, in words, on every
+    platform.
+  - **Preview**: the address field is taller, and a dimmed Back or Forward
+    says why. Annotating a page is called commenting everywhere: **Comment
+    on an element**, **Stop commenting**, and the composer chip reads
+    "Preview comments · 2 comments".
+    While a page loads, a thin bar runs along the address field. A dev
+    server that is not up yet shows "Nothing is running on localhost:5173
+    yet" in the app's own colours (dark mode too), with Back, Forward and
+    Comment off until it starts. The console starts afresh on each new page,
+    so a stale error count does not outlive a reload. Esc anywhere in the
+    tab stops commenting. The address bar turns away other sites
+    (`example.com`, `https://…`) in place instead of opening a broken tab,
+    takes `0.0.0.0:8000` as this computer, and types like a browser's (no
+    capitals or corrections, a URL keyboard with Go); an address error has
+    no pointless Retry and clears as you edit. `⌃⌥` + arrow and `⌃Tab`
+    work from inside the page too.
+  - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
+    are always visible and touch-sized.
+- **Settings: one way to save, every setting findable** `[v3.40.0]`:
+  - Every page of fields saves the same way: a bar appears once something
+    changed, with **Discard…** and **Save** (`⌘S`/`Ctrl+S`). The agent,
+    skill and MCP editors use it too, so their headers no longer carry a
+    Save of their own. Switches still apply at once.
+  - The search field finds single settings, not just pages: choosing one
+    opens its page, scrolls to it and focuses it. Search works on phones
+    too.
+  - A provider's accounts are one list under "Tried in this order", with
+    **Use first** to move one to the top; each says how many sessions pin
+    it ("Pinned by 2 sessions").
+  - **Save** on a key checks it first; when the check fails it says why,
+    with **Retry** and **Save anyway**.
+  - The backend panel: selecting a server shows its details, **Use**
+    switches to it, and the one in use is marked **In use**; a stopped
+    built-in server offers **Start and use**.
+  - The first-run card names the action ("Use Ollama"), and the section is
+    called **Retention** (with "Local history" inside it).
+  - Below 900px wide the Settings navigation shows icons only.
+  - Settings opens with the cursor in its search field (in the page when
+    the icons-only navigation hides the field), not on Close with its
+    tooltip showing, and the card keeps the same gap above the status bar
+    as below the header.
+- **Native on every platform** `[v3.40.0]`:
+  - Native means the feel, not the operating system's widgets: right-click
+    and ⋯ menus, dropdowns and pickers are the app's own on every platform,
+    desktop and phone apps included. A right-click menu opens at the
+    pointer with the same items as ⋯, and the arrow keys and Escape work
+    in it.
+  - One menu at a time, as in a native app: opening a menu, a dialog,
+    Settings or the palette closes any menu or popover already open (the
+    model and thinking picker, a right-click menu, **+**, the Tasks
+    popover, the sidebar drawer of a narrow window), unless it was opened
+    from inside it. A keyboard shortcut closes open menus too, and so does
+    a click into a web preview page. Before, a picker could stay open over
+    Settings.
+  - On Windows and Linux the menu bar is hidden: **☰** at the left of the
+    header, or tapping Alt, opens the application menu. Its View menu has
+    Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
+    Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size and
+    Reset Layout
+    (macOS has them in its menu bar), and Quick Open is now **Find File…**.
+    Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
+    window, and on Linux the bar no longer comes back when the window is
+    shown again.
+  - On Windows the header is the title bar, as on macOS: Minimize,
+    Maximize and Close sit at its right end, drawn as Windows 11 draws
+    them, and resting the pointer on Maximize opens Snap Layouts. Drag the
+    header to move the window; double-click it to maximize.
+  - Dialog buttons follow the system's order (the action first on Windows,
+    after Cancel elsewhere; text buttons on Android). Enter confirms a safe
+    action; a destructive one never takes Enter, Cancel does.
+  - The number of sessions that need you shows on the Dock (macOS), the
+    taskbar (Windows) and the launcher (Linux), and in a browser tab's
+    title.
+  - **Share…** on a session opens the system share sheet: the macOS share
+    menu, the Windows Share window, the iOS and Android share sheets, or
+    Web Share in a browser that has it. Linux copies the link.
+  - Zoom is remembered, and a new window opens at the zoom and in the theme
+    of the window it came from; Text size is shared by every window. On
+    macOS it opens one step down and right of that window, as Mac windows
+    cascade.
+  - On macOS, a two-finger swipe goes back and forward between the sessions
+    opened in the window, and scroll bars follow System Settings.
+  - Optional global shortcuts, off by default: **Global Shortcuts** in the
+    OpenAgentd menu turns on `⌥⌘O`/`Ctrl+Alt+O` (Show OpenAgentd) and
+    `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you).
+  - On Android the system font size now enlarges text, up to 125%, as
+    Dynamic Type does on iOS.
+  - In the phone apps, long-press menus (sessions, tabs, tool rows,
+    messages) open as the app's bottom sheet. Bottom sheets close with a
+    downward drag, and a swipe from the left edge brings back the session
+    list.
+- **Needs you everywhere, answered in place** `[v3.40.0]`:
+  - The notch status, the pet, the tray and system notifications share one
+    feed and one set of words: **Needs you**, **Running**, **Done**,
+    **Failed** and **Can't reach**. "Builtin" is now "Built-in server".
+  - A question with a few choices can be answered from the notch list, the
+    pet's bubble or the notification's buttons; anything else offers **Open
+    to answer**. Answering anywhere clears it everywhere.
+  - The notch status opens on click; pointing at it opens it only with
+    **Expand on hover** on. Its × means Later. When a server stops
+    answering, a **Can't reach** row offers Retry.
+  - The pet keeps a question until it is answered: × folds it behind the
+    badge, and its menu lists questions first.
+  - A question card in the transcript no longer sticks on "Waiting for an
+    answer…": once the turn is over and no question is open, it says **No
+    answer recorded** with what was asked, and a card closed from another
+    window (or by a stop this window missed) reads "Already resolved from
+    another window or device" after the next load.
+  - The tray popup lists the sessions that need you and the running ones,
+    says **No server connected** when there is none, and its usage section
+    is **Provider limits**. On Windows and Linux the tray menu starts with
+    the sessions that need you.
+  - Opening a session from anywhere (notch, pet, tray, a notification, Open
+    in new window) focuses the window that already shows it. When one
+    session is open in two windows anyway, the window in the background
+    shows the draft as it is typed in the other.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -608,9 +1082,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
-- **Floating surfaces keep content visible** `[v3.0.0]` — on desktop, toasts,
-  the update card, and the language-tools prompt stack in one bottom-right
-  column above the status bar instead of overlapping each other.
+- **Floating surfaces keep content visible** `[v3.0.0]` — toasts, the update
+  card, and the language-tools prompt stack in one column instead of
+  overlapping each other. The column hangs from the top right, under the app
+  header (full width on phones, safe areas respected, newest toast nearest the
+  top edge), so the composer and its run deck keep the bottom.
 - **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
   errors (rate limits, auth 401, connection drops) are now displayed directly within
   the chat transcript area as persistent error callout cards, while action validation
@@ -680,7 +1156,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
     closes an open dock tab first). Edit added Find in Transcript (`⌘F`) *(deprecated; removed in v3.14.0)*; View
-    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick). A new Help menu
+    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick; *removed in v3.40.0*). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
     Hide/Hide Others/Show All. Reload and Force Reload no longer have
@@ -767,15 +1243,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     still run, and the list and a click on the pill follow the same order.
     A session that
     finishes on screen in the focused window, a turn you stopped yourself,
-    and a background idle compaction show nothing. Hover it to list the
+    and a background idle compaction show nothing. Click it to list the
     sessions, waiting ones first with their question, then the finished
-    ones with a × to dismiss, then running ones; click a row or the pill to
-    open that session. The pill grows out of the notch, springs open on hover and
-    shrinks back in, and clicks beside it still reach the menu bar. It never
-    takes focus and steps aside for full-screen apps. Settings → General →
-    Desktop turns it off, and can also keep it up while OpenAgentd is in
-    front (off by default), stop keeping finished sessions, or stop hover
-    from expanding it.
+    ones with a × to dismiss, then running ones; click a row to open that
+    session, or the pill again to close the list. Pointing at it opens the
+    list only with **Expand on hover** on (off by default); a click on the
+    pill then opens the session it names. The pill grows out of the notch,
+    springs open and shrinks back in, and clicks beside it still reach the
+    menu bar. It never takes focus and steps aside for full-screen apps.
+    Settings → General → Desktop turns it off, and can also keep it up
+    while OpenAgentd is in front (off by default), stop keeping finished
+    sessions, or turn on **Expand on hover**.
     Since `[v3.29.0]` it follows every server that has a window open,
     instead of one server picked from the focused window (with a saved
     server as fallback): a server that is down no longer leaves it empty,
@@ -1102,7 +1580,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     composer; `/redo` brings the undone turns back), reachable from the
     keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
-    opens Session Settings.
+    opens the run picker (Session Settings before v3.40.0).
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the
@@ -1184,7 +1662,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     closed behind its "N files changed" header.
 - **The composer while the agent works** `[v3.0.0, updated v3.4.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
-    composer, wherever it is dragged, and counts what arrived since.
+    composer and counts what arrived since.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
     done, which holds the message in this window and sends it as a turn of
@@ -1357,6 +1835,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `agentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. Since `[v3.29.0]` the desktop app never connects to a saved server on its own: launch always starts the builtin backend, and saved servers are listed with Online/Offline and Connect, joining only the window where you click Connect (the next launch is back on builtin). The mobile app, which has no builtin backend, still reconnects to its last server.
+  - **Add and edit in place** `[v3.40.0]` — Settings → Server opens no form by itself: **Add a server**, at the end of the list, opens the form for a new one (Test, then **Save and use**). Each saved server has **Edit**, which opens its form right under its row; **Save** updates it there without switching to it (a new address or access key needs a passing Test first, a rename does not). Escape or **Cancel** closes the form and puts focus back on the button that opened it. A scanned connect link still opens the add form filled in.
   The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server connection dialog.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 - **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
@@ -1643,6 +2122,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   Settings while a session runs no longer switches that run: member reports,
   queued steers and answered questions continue on the config the run started
   with, and the edit applies from the user's next message `[v3.30.0]`.
+  Since `[v3.40.0]` the choice is made in the run picker under the composer,
+  saved on the session as soon as it is picked (not on the next send), and
+  can include the account to run on.
 - **Coding agent profile** `[since v1.0, updated v2.1.0]` — `agents/code.md` is the
  root profile tuned for workspace-aware coding sessions.
 - **Built-in first-party agent profile** `[v1.23.0, v1.118.0, v2.14.0]` — the default `code`
@@ -1720,10 +2202,17 @@ agent against it.
   - **Movable dock tabs and Git on demand** `[v3.5.0]` — the dock works like
     an editor's tab bar.
     - A new dock opens empty, on a launcher with Git, Terminal, Preview and
-      Open File. Git is an ordinary tab you can close and move; it opens from
+      Open File; since `[v3.40.0]` it lists everything the tab strip's **+**
+      menu does (Git, Goal, Plan, Tasks, Side questions, Scheduled tasks, then
+      Terminal, Preview and Find file), so nothing needs the menu while the
+      panel is empty. Git is an ordinary tab you can close and move; it opens from
       the status-bar branch, `⌘⇧G` / `Ctrl+Shift+G`, **Open Git** in the
       palette, or the launcher. `⌘D` is **Toggle Review Dock**, and `⌘W` on
       the empty launcher closes the dock.
+      Since `[v3.40.0]` opening the panel with nothing in it puts focus on
+      the launcher's first row, so ↓/↑ (Home, End) and Return pick what to
+      open; a panel that comes back with its tabs, or opens on a tab, keeps
+      focus where it was.
     - New tabs open right after the active one. Drag a tab to move it, or
       use `⌥⇧←/→` (`Alt+Shift+←/→`) or **Move Left / Move Right** in its menu.
       A dragged tab lifts and follows the pointer while the others slide
@@ -1803,7 +2292,7 @@ agent against it.
   sidebar, the chat, the review dock and a status bar. The status bar shows
   the connected backend and its health, the branch with
   commits to push/pull and uncommitted changes (a click opens the review dock),
-  the session model, and the last 24 hours of spend (a click opens Telemetry on
+  the session model (moved to the run deck in v3.40.0), and the last 24 hours of spend (a click opens Telemetry on
   that range); scheduled tasks and the theme moved to the sidebar, the palette
   and Settings. In light mode the header, sidebar, status bar and chat share
   one page tone; dark mode sets the chrome on a darker rail. The sidebar opens expanded on windows at least 1280px
@@ -1811,7 +2300,7 @@ agent against it.
   area and always leaves the chat at least 400px; on narrower windows it opens
   over the chat instead. Both dividers resize by drag or keyboard (arrow keys,
   Home/End, Enter to reset), and the layout is remembered.
-  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
+  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle *(deprecated — the graph and All Branches are removed in v3.40.0; History lists the current branch's commits)*. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
     - **Git Commit Actions (Undo & Revert)** `[v1.88.0]` — right-clicking a commit/file on desktop opens a native-feeling context menu at the cursor, while long-pressing on mobile opens a touch-friendly action sheet. Allows you to **Undo commit** (soft-resets the last commit, keeping all changes staged in your working copy) or **Revert commit** (creates a new commit that reverts the changes of the selected commit, with auto-abort protection if conflicts occur), and confirmation dialogs use responsive side-by-side buttons on desktop.
     - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
       sub-tab shows a 24-hour `HH:MM` alongside the date so same-day commits
@@ -1979,6 +2468,12 @@ agent against it.
   nested YAML as source, collapsed past 8 fields) `[v3.36.0]`. A **Rendered / Source** switch in the
   file tab header returns to the line-numbered source, and a `path:line`
   reference opens the source at that line `[v3.31.0]`.
+  Since `[v3.40.0]` HTML in a rendered Markdown file shows as it does on
+  GitHub instead of as tags: a README's centred logo and badges,
+  `<picture>` (with relative images from the file's folder), `<kbd>`,
+  `<sub>` and collapsible `<details>` sections. It is rebuilt from an
+  allowlist, so scripts, styles, frames, forms and event handlers never run;
+  agent replies still show HTML as text.
   Links and file-named code spans in a rendered Markdown file open the
   workspace file in a new tab, at the line when one is given; paths read from
   the file's folder, then the workspace root. HTML files open in Preview, and
@@ -2354,6 +2849,15 @@ agnostic by design.
   they opt in with `supportsMultipleCredentials: true`; they then get the same
   account list, switching, and cooldowns, with per-account OAuth tokens kept in
   `credentials.yaml` `[v3.30.0]`.
+- **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Providers
+  shows each enabled profile's quota windows, spend caps and credits in its
+  own row, without a duplicate provider-wide usage block. Disabled profiles
+  do not request usage. Usage checks share a per-account cache across clients
+  of the same server; provider rate limits show a retry countdown and pause
+  checks until that time, including manual refresh. Last-known measurements
+  keep their original timestamp and are marked old. A usage-check rate limit
+  does not put the profile's chat requests into cooldown. Plan names and
+  currency appear when reported by the provider.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or
@@ -2647,6 +3151,7 @@ Four orthogonal ways to add capability.
   hot-reloaded via `POST /api/mcp/apply`. A configured server is automatically
   available to the coding agent; agent Markdown no longer needs a per-agent MCP
   selection. OAuth-backed setup. Session Settings shows every configured server
+  (the composer's **+** menu since v3.40.0)
   and can enable/disable it globally or connect OAuth-backed servers in place
   `[v1.52.2]`. Each server gets its own row showing connection state and tool count, with a
   toggle and an OAuth connect/reconnect action; the list re-polls while a server is

@@ -26,7 +26,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -34,19 +34,19 @@ mock.module('@/hooks/use-platform', () => ({
   usePlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
   getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
 }))
-// The mocked aside does not animate: tests finish its tween by hand.
-let finishTween: (() => void) | undefined
+// The mocked aside does not animate; it keeps the inline style the panel
+// sets (desktop widths are a straight cut, not a tween), its ref and the
+// width target a neighbour sizes itself by.
 mock.module('framer-motion', () => ({
   motion: {
-    aside: ({ children, className, 'aria-label': ariaLabel, onAnimationComplete }: {
+    aside: ({ children, className, 'aria-label': ariaLabel, style, ref, 'data-panel-target-width': target }: {
       children: React.ReactNode
       className?: string
       'aria-label'?: string
-      onAnimationComplete?: () => void
-    }) => {
-      finishTween = onAnimationComplete
-      return <aside className={className} aria-label={ariaLabel}>{children}</aside>
-    },
+      style?: React.CSSProperties
+      ref?: React.Ref<HTMLElement>
+      'data-panel-target-width'?: number
+    }) => <aside ref={ref} className={className} aria-label={ariaLabel} style={style} data-panel-target-width={target}>{children}</aside>,
   },
 }))
 
@@ -81,16 +81,15 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ centerWidth: 1000 })
 
     expect(dock.className).toContain('md:relative')
-    const separator = screen.getByRole('separator', { name: 'Resize review panel' })
+    const separator = screen.getByRole('separator', { name: 'Resize Review panel' })
     // 45% of a 1000px center, capped so the chat keeps 400px.
     expect(separator.getAttribute('aria-valuenow')).toBe('450')
     expect(separator.getAttribute('aria-valuemax')).toBe('600')
-    // The body keeps that width while the aside tweens open...
+    // Showing it is a straight cut, not a tween: the aside takes its width
+    // as a style at once (no animation frame needed), and the body fills it,
+    // so a later resize moves it with the edge.
+    expect(dock.style.width).toBe('450px')
     const body = dock.querySelector<HTMLElement>('[data-review-dock]')!
-    expect(body.parentElement!.style.width).toBe('450px')
-    // ...then fills it, so a later resize moves it with the edge instead of
-    // clipping its far side or leaving it blank until the tween ends.
-    act(() => finishTween?.())
     expect(body.parentElement!.style.width).toBe('100%')
 
     fireEvent.keyDown(separator, { key: 'ArrowLeft' })
@@ -104,26 +103,84 @@ describe('Review dock layout', () => {
     const user = userEvent.setup()
     const { dock } = await renderPanel({ centerWidth: 1000 })
 
-    await user.click(screen.getByRole('button', { name: /^Maximize review panel/ }))
+    await user.click(screen.getByRole('button', { name: /^Maximize Review panel/ }))
 
     expect(useLayoutStore.getState().dockMaximized).toBe(true)
     expect(dock.className).toContain('md:absolute')
-    expect(screen.queryByRole('separator', { name: 'Resize review panel' })).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'Resize Review panel' })).toBeNull()
     // Reading-column tabs widen off this marker.
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: /^Restore review panel/ }))
+    await user.click(screen.getByRole('button', { name: /^Restore Review panel/ }))
     expect(useLayoutStore.getState().dockMaximized).toBe(false)
     expect(dock.className).toContain('md:relative')
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
+  })
+
+  it('slides in the first time it opens too (mounted by the toggle), from 0 to its width', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspacePanel workspace={WORKSPACE} open slideIn centerWidth={1000} />
+        </QueryClientProvider>,
+      )
+    })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.style.width).toBe('450px')
+    expect(dock.style.transition).toContain('width')
+  })
+
+  it('slides shut on desktop: the width tweens for the toggle only, the body held at its open width', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const panel = (open: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <WorkspacePanel workspace={WORKSPACE} open={open} centerWidth={1000} />
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(panel(true)) })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.style.transition).toBe('')
+
+    await act(async () => { view!.rerender(panel(false)) })
+
+    expect(dock.style.width).toBe('0px')
+    expect(dock.style.transition).toContain('width')
+    // Clipped, not reflowed: the body rides the moving edge at 450px.
+    expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).toBe('450px')
   })
 
   it('falls back to an overlay without a maximize toggle when the center is too narrow', async () => {
     const { dock } = await renderPanel({ centerWidth: 600 })
 
     expect(dock.className).toContain('md:absolute')
-    expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review panel/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Maximize|Restore) Review panel/ })).toBeNull()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
+  })
+
+  // A desktop window keeps the chat beside the panel down to 740px of center;
+  // a touch tablet covers the transcript below 860px (layout.html, 820px).
+  it('sits beside the chat in an 856px desktop window but covers it on an 820px touch tablet', async () => {
+    const realMatchMedia = window.matchMedia
+    try {
+      const { dock } = await renderPanel({ centerWidth: 856 })
+      expect(dock.className).toContain('md:relative')
+      cleanup()
+
+      window.matchMedia = ((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia
+      const tablet = await renderPanel({ centerWidth: 820 })
+      expect(tablet.dock.className).toContain('md:absolute')
+    } finally {
+      window.matchMedia = realMatchMedia
+    }
   })
 
   it('measures the center element it is given so the shell need not re-render on resize', async () => {
@@ -175,7 +232,54 @@ describe('Review dock layout', () => {
     })
 
     // 45% of the 1100px center the sidebar leaves, not of the 1000px now.
-    expect(screen.getByRole('separator', { name: 'Resize review panel' }).getAttribute('aria-valuenow')).toBe('495')
+    expect(screen.getByRole('separator', { name: 'Resize Review panel' }).getAttribute('aria-valuenow')).toBe('495')
+  })
+
+  // Re-sized only once the center had grown (a ResizeObserver callback and
+  // a frame later), the panel jumped a few frames into the sidebar's slide,
+  // and the chat between them overshot, then snapped back.
+  it('slides with a sidebar showing or hiding beside the center, from the same commit', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const { ResizableAside } = await import('@/components/ResizableAside')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const centerRef: { current: HTMLDivElement | null } = { current: null }
+    const attach = (node: HTMLDivElement | null) => {
+      if (node) node.getBoundingClientRect = () => ({ width: 1000 }) as DOMRect
+      centerRef.current = node
+    }
+    // The sidebar is 100px on screen; ``target`` is where its width is headed.
+    const row = (target: number, tweenWidth: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <div ref={(node) => {
+          const sidebar = node?.querySelector<HTMLElement>('aside[aria-label="Sidebar"]')
+          if (sidebar) sidebar.getBoundingClientRect = () => ({ width: 100 }) as DOMRect
+        }}>
+          <ResizableAside
+            aria-label="Sidebar"
+            resize={{ width: 100, min: 0, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize sidebar' }}
+            getMotion={() => ({ animate: { width: target }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
+          >
+            <p>sidebar</p>
+          </ResizableAside>
+          <div ref={attach}>
+            <WorkspacePanel workspace={WORKSPACE} open centerRef={centerRef} />
+          </div>
+        </div>
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(row(100, false)) })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.style.width).toBe('450px')
+    expect(dock.style.transition).toBe('')
+
+    act(() => view!.rerender(row(0, true)))
+
+    // 45% of the 1100px center the sidebar leaves, on the sidebar's curve.
+    expect(dock.style.width).toBe('495px')
+    expect(dock.style.transition).toContain('width')
+    // The body fills the panel, so it moves with the edge rather than clipping.
+    expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).toBe('100%')
   })
 
   it('takes focus stranded in the covered chat so keyboard users land on the active tab', async () => {
@@ -222,7 +326,7 @@ describe('Review dock layout', () => {
   it('leaves hiding to the header toggle: the tab bar has no hide button', async () => {
     await renderPanel()
 
-    expect(screen.queryByRole('button', { name: /^(Hide|Close) review panel/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Hide|Close) Review panel/ })).toBeNull()
   })
 
   it('keeps mobile on the full-screen sheet without desktop window controls', async () => {
@@ -230,10 +334,10 @@ describe('Review dock layout', () => {
     const { dock } = await renderPanel({ mobile: true })
 
     expect(dock.className).toContain('mobile-safe-top')
-    expect(screen.queryByRole('separator', { name: 'Resize review panel' })).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'Resize Review panel' })).toBeNull()
     // No window controls; the "Open…" button is the one control that stays
-    expect(screen.queryByRole('button', { name: /^(Maximize|Restore|Hide|Close) review panel/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Open in the review panel' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^(Maximize|Restore|Hide|Close) Review panel/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open in Review panel' })).toBeTruthy()
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 

@@ -131,7 +131,7 @@ export function ModelsPanel({
         aria-expanded={expanded}
         className={cn(
           'flex min-h-9 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
-          'text-xs md:text-[11px] text-(--color-text-muted) transition-colors',
+          'text-xs md:text-meta text-(--color-text-muted) transition-colors',
           'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
           expanded && 'border-b border-(--color-border)',
@@ -141,7 +141,7 @@ export function ModelsPanel({
           <span className="block truncate text-xs font-medium text-(--color-text)">
             Models <span className="font-normal text-(--color-text-muted) tabular-nums">· {indexed.length} available</span>
           </span>
-          <span className="block truncate text-xs md:text-[11px] text-(--color-text-muted) tabular-nums">
+          <span className="block truncate text-xs md:text-meta text-(--color-text-muted) tabular-nums">
             {allVisible ? 'All shown in pickers' : `${visibleCount} shown in pickers`}
             {search ? ` · ${visible.length} match` : ''}
           </span>
@@ -175,7 +175,7 @@ export function ModelsPanel({
                 { value: 'selected', label: allVisible ? 'Only selected' : `Only selected (${visibleSet.size})` },
               ]}
             />
-            <p className="min-w-0 text-xs md:text-[11px] leading-relaxed text-(--color-text-muted) sm:flex-1">
+            <p className="min-w-0 text-xs md:text-meta leading-relaxed text-(--color-text-muted) sm:flex-1">
               {pickerMode === 'all'
                 ? 'Every model below appears in model pickers.'
                 : allVisible
@@ -188,7 +188,7 @@ export function ModelsPanel({
               at MODEL_ROWS_SHOWN rows before "Show all" anyway. */}
           <ul className="-mx-0.5 md:max-h-56 md:overflow-y-auto">
             {visible.length === 0 ? (
-              <li className="px-2 py-3 text-center text-xs md:text-[11px] text-(--color-text-muted)">
+              <li className="px-2 py-3 text-center text-xs md:text-meta text-(--color-text-muted)">
                 No matching models.
               </li>
             ) : (
@@ -210,7 +210,7 @@ export function ModelsPanel({
                 <button
                   type="button"
                   onClick={() => setShowAll(true)}
-                  className="w-full rounded-xs px-2 py-1.5 text-center text-xs md:text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                  className="w-full rounded-xs px-2 py-1.5 text-center text-xs md:text-meta text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                 >
                   Show all {visible.length} {search.trim() ? 'matches' : 'models'}
                 </button>
@@ -291,7 +291,7 @@ function ModelRow({
         <Tooltip className="min-w-0 max-w-full md:flex-1">
           <TooltipTrigger
             className="min-w-0 max-w-full md:flex-1"
-            render={<span className="block min-w-0 break-all font-mono text-xs md:flex-1 md:truncate md:text-[11px] text-(--color-text)">{qualifiedId}</span>}
+            render={<span className="block min-w-0 break-all font-mono text-xs md:flex-1 md:truncate md:text-meta text-(--color-text)">{qualifiedId}</span>}
           />
           <TooltipContent>{qualifiedId}</TooltipContent>
         </Tooltip>
@@ -303,10 +303,10 @@ function ModelRow({
               render={
                 <span
                   className={cn(
-                    'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] tabular-nums select-none',
+                    'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-meta tabular-nums select-none',
                     priceBadge.isFree
-                      ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
-                      : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
+                      ? 'bg-(--color-success-subtle) text-(--accent-green-text) font-medium'
+                      : 'bg-(--bg-key) text-(--color-text-muted)',
                   )}
                 >
                   {priceBadge.label}
@@ -326,12 +326,13 @@ function ModelRow({
           disabled={savingVisibleModels}
           aria-pressed={selected}
           aria-label={`${selected ? 'Hide' : 'Show'} ${qualifiedId} ${selected ? 'from' : 'in'} model pickers`}
+          // 24px, 36px on touch. Borderless: the word (Shown / Hidden) and the fill carry the state.
           className={cn(
-            'flex h-8 min-w-16 shrink-0 items-center justify-center gap-1 rounded-xs px-1.5 md:h-6',
-            'text-xs md:text-[11px] font-medium transition-colors',
+            'flex h-6 min-w-16 shrink-0 items-center justify-center gap-1 rounded-xs px-1.5 pointer-coarse:h-9',
+            'text-xs font-medium transition-colors',
             selected
               ? 'bg-(--color-success-subtle) text-(--accent-green-text)'
-              : 'border border-(--color-border) text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-fill-key-hover) hover:text-(--color-text)',
             savingVisibleModels && 'opacity-50 cursor-not-allowed',
           )}
         >
@@ -340,26 +341,27 @@ function ModelRow({
         </button>
       )}
 
-      {/* Copy button — hidden on Tauri mobile (use long-press context menu instead) */}
-      {!isTauriMobile && (
-        <button
-          type="button"
-          onClick={() => void onCopy(qualifiedId)}
-          aria-label={`Copy ${qualifiedId}`}
-          className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs md:h-6 md:w-6',
-            'text-(--color-text-muted)',
-            'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
-            'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
-          )}
-        >
-          <Copy size={11} aria-hidden="true" />
-        </button>
-      )}
+      {/* Copy: shown at rest on every platform (24px, 36px on touch); the
+          right-click / long-press menu has it too, but is not the only way. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={() => void onCopy(qualifiedId)}
+              aria-label={`Copy ${qualifiedId}`}
+              className="flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9"
+            >
+              <Copy size={11} aria-hidden="true" />
+            </button>
+          }
+        />
+        <TooltipContent>Copy model ID</TooltipContent>
+      </Tooltip>
 
       {/* Context menu */}
       {actionsPoint && (
-        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)} layerClassName="z-70">
+        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)}>
           <button
             type="button"
             role="menuitem"

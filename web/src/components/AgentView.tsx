@@ -9,17 +9,16 @@
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
- * single `AssistantTurnFooter` (copy + timestamp); only the trailing turn hides
- * its footer while the agent is actively streaming. The same shared
- * `AssistantTurn` component (see `AssistantTurnFooter.tsx`) is used by
- * `AgentPane` for split/unified modes.
+ * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, Undo, and
+ * the turn's details); only the trailing turn hides its footer while the turn
+ * is open. Undo belongs to the last finished turn.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
 import { Seal } from '@/components/brand/Logo'
 
 import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { lazySurface } from '@/lib/lazy-surface'
@@ -27,11 +26,15 @@ import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn, type AssistantTurnProps } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
+import { JumpToLatest } from './JumpToLatestChip'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix, shortModelName } from '@/utils/format'
+import { extractSleepPrefix } from '@/utils/format'
 import { Callout } from '@/components/ui/callout'
+import { Button } from '@/components/ui/button'
+import { useUIStore } from '@/stores/useUIStore'
 import { Chip } from '@/components/ui/chip'
+import { ModelName } from '@/components/ui/model-name'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -45,7 +48,8 @@ import { RestartDivider } from './AgentView/RestartDivider'
 import { goalTurnInfo } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
-import { ErrorCard } from './AgentView/ErrorCard'
+import { CopyDetailsButton, ErrorCard } from './AgentView/ErrorCard'
+import { providerErrorDetails, switchedAccount, waitAccount } from './AgentView/provider-status'
 import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
 import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
@@ -110,6 +114,16 @@ function pinnedPromptShows(prompt: ContentBlock, revertTime: number | null): boo
   return revertTime === null || at === undefined || at < revertTime
 }
 
+/** The run picker, on its model list: how a failed turn gets another model. */
+function openModelPicker(): void {
+  useUIStore.getState().openRunPicker('model')
+}
+
+/** Undo the last message and its answer; the store puts the prompt back in the composer. */
+function undoLatestTurn(): void {
+  void useAgentStore.getState().undoAgent()
+}
+
 function isProviderErrorBlock(block: ContentBlock): boolean {
   if (block.type !== 'provider_status') return false
   const status = block.extra?.status
@@ -139,6 +153,10 @@ interface QuotaWait {
   model?: string
   message?: string
   resetsAt?: number
+  /** The session is pinned to the account that ran out: it waits for that one. */
+  pinned?: boolean
+  /** The account that ran out, when the server names it. */
+  account?: string
 }
 
 const QUOTA_WAIT_STORAGE_PREFIX = 'openagentd:quota-wait:'
@@ -191,7 +209,9 @@ function removeStoredQuotaWait(sessionId: string | undefined): void {
 }
 
 function quotaWaitFromBlock(block: ContentBlock): QuotaWait | null {
-  if (block.type !== 'provider_status' || block.extra?.status !== 'waiting_quota') return null
+  if (block.type !== 'provider_status' || !block.extra) return null
+  const status = block.extra.status
+  if (status !== 'waiting_quota' && status !== 'waiting_credential') return null
 
   const model = typeof block.extra.model === 'string' ? block.extra.model : undefined
   const resetsAt = typeof block.extra.resets_at === 'number' && Number.isFinite(block.extra.resets_at)
@@ -203,6 +223,8 @@ function quotaWaitFromBlock(block: ContentBlock): QuotaWait | null {
     model,
     message: typeof block.extra.message === 'string' ? block.extra.message : undefined,
     resetsAt,
+    pinned: status === 'waiting_credential',
+    account: waitAccount(block.extra),
   }
 }
 
@@ -238,9 +260,11 @@ function formatQuotaCountdown(resetsAt: number, now = Date.now()): string | null
 }
 
 /**
- * A provider quota ran out and the turn waits for it to reset (DESIGN.md →
- * Notices). Calm on purpose: it resolves itself, so no pulse and no alarm
- * words. The provider's own message stays one hover away.
+ * The turn is waiting for a provider quota to reset (DESIGN.md → Notices):
+ * one card whether the session runs on Auto or is pinned to the account that
+ * ran out. Calm on purpose: it resolves itself, so no pulse and no alarm
+ * words. Stop is always on the card; the pinned wait adds the ways around it.
+ * The provider's own message is one "Copy details" away.
  */
 function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessionId?: string; persist: boolean }) {
   const [now, setNow] = useState(() => Date.now())
@@ -261,16 +285,17 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
   }, [now, sessionId, wait.resetsAt])
 
   const countdown = wait.resetsAt === undefined ? undefined : formatQuotaCountdown(wait.resetsAt, now)
-  const model = shortModelName(wait.model)
+  const modelName = wait.model ? <ModelName id={wait.model} className="align-bottom text-(--color-text-2)" /> : null
+  const accountName = wait.account ? <span className="font-semibold text-(--color-text-2)">{wait.account}</span> : null
 
   return (
-    <div className="my-2" title={wait.message || undefined}>
+    <div className="my-2">
       <Callout
         tone="warning"
         role="status"
         title={
           <>
-            Waiting for quota reset
+            {wait.pinned ? 'Waiting for the pinned account' : 'Waiting for quota reset'}
             {countdown !== undefined && (
               <span className="font-normal text-(--color-text-muted)" aria-live="polite">
                 {countdown === null ? ' · resuming now' : <>{' · resumes in '}<span className="font-mono tabular-nums">{countdown}</span></>}
@@ -278,12 +303,62 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
             )}
           </>
         }
+        action={<WaitActions pinned={Boolean(wait.pinned) && persist} details={wait.message} />}
       >
         <span className="text-(--color-text-muted)">
-          {model ? <><span className="font-mono">{model}</span> used up its provider quota. </> : 'The provider quota is used up. '}
-          Resumes automatically. Stop anytime.
+          {wait.pinned
+            ? <>
+                {accountName ? <>Account {accountName}</> : 'The pinned account'} hit its usage limit
+                {modelName && <>{' on '}{modelName}</>}
+                . This session resumes on it when the limit resets, or continue now on Auto.
+              </>
+            : <>
+                {modelName ? <>{modelName} used up its provider quota</> : 'The provider quota is used up'}
+                {accountName && <>{' on account '}{accountName}</>}
+                . Resumes automatically.
+              </>}
         </span>
       </Callout>
+    </div>
+  )
+}
+
+/**
+ * The ways out of a wait, on the card itself. Always Stop. A pinned wait adds
+ * dropping the pin to go on now (the wait stops, and the turn continues on
+ * Auto) and picking another account. Copy details hands over the provider's
+ * own message.
+ */
+function WaitActions({ pinned, details }: { pinned: boolean; details?: string }) {
+  const [busy, setBusy] = useState(false)
+  const useAuto = async () => {
+    setBusy(true)
+    try {
+      const store = useAgentStore.getState()
+      if (!(await store.setSessionRunSettings({ credentialId: null }))) return
+      const workspace = useAgentStore.getState()._workspace
+      await useAgentStore.getState().stopAgent({ keepGoal: true })
+      if (workspace) await useAgentStore.getState().sendMessage('Continue.', undefined, { workspace })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {pinned && (
+        <>
+          <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void useAuto()}>
+            Use Auto for this session
+          </Button>
+          <Button type="button" size="sm" onClick={() => useUIStore.getState().openRunPicker('model')}>
+            Choose account…
+          </Button>
+        </>
+      )}
+      <Button type="button" size="sm" variant="ghost" onClick={() => void useAgentStore.getState().stopAgent()}>
+        Stop
+      </Button>
+      {details && <CopyDetailsButton text={details} size="sm" />}
     </div>
   )
 }
@@ -300,7 +375,6 @@ function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode
   errorType?: unknown
   statusCode?: unknown
 }) {
-  const short = shortModelName(model) ?? 'model'
   // Dropped connections retry without a budget until the network is back.
   const progress = typeof maxAttempts === 'number'
     ? `${String(attempt ?? '?')}/${maxAttempts}`
@@ -314,7 +388,7 @@ function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode
     >
       <span>
         {'Retrying '}
-        <span className="font-mono text-(--color-text-2)" title={model}>{short}</span>
+        {model ? <ModelName id={model} className="align-bottom text-(--color-text-2)" /> : 'the model'}
         {' · attempt '}
         <span className="font-mono tabular-nums">{progress}</span>
         {typeof delay === 'number' && <>{' · in '}<span className="font-mono tabular-nums">{formatMetaDuration(delay * 1000)}</span></>}
@@ -373,12 +447,16 @@ function providerErrorTitle(title: unknown): string {
   return title
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
   /** Rewind to a prompt the user wrote; ignored for agent reports. */
   onEdit?: (blockId: string) => void
+  /** A turn is running: Edit shows, disabled, until it ends. */
+  editLocked?: boolean
+  /** The prompt's Edit and Copy show at rest (the latest prompt), not only on hover or focus. */
+  actionsAtRest?: boolean
   /** The model and thinking level a prompt ran with; strings so memo holds while streaming. */
   promptModel?: string
   promptThinkingLevel?: string
@@ -397,7 +475,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (goalTurn) return <GoalTurnDivider info={goalTurn} />
       const restart = restartNoteInfo(block)
       if (restart) return <RestartDivider info={restart} />
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
@@ -419,17 +497,21 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       const customMsg = block.extra?.message as string | undefined
 
       if (isProviderErrorBlock(block)) {
+        const title = providerErrorTitle(block.extra?.title)
+        const message = customMsg || block.content
         return (
           <ErrorCard
-            title={providerErrorTitle(block.extra?.title)}
-            message={customMsg || block.content}
+            title={title}
+            message={message}
+            details={providerErrorDetails({ title, message, extra: block.extra })}
+            code={typeof block.extra?.code === 'string' ? block.extra.code : undefined}
             onRetry={onRetry}
             onSwitchModel={onSwitchModel}
           />
         )
       }
 
-      if (status === 'waiting_quota') {
+      if (status === 'waiting_quota' || status === 'waiting_credential') {
         if (block.id !== activeQuotaWaitBlockId) return null
         const wait = quotaWaitFromBlock(block)
         return wait ? <QuotaWaitNotice wait={wait} sessionId={sessionId} persist /> : null
@@ -448,12 +530,26 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
           />
         )
       }
-      let message = 'Provider status updated.'
       if (status === 'switched_credential') {
         // A key or account hit its limit; the same turn continues on the next one.
-        message = customMsg || `Switched ${shortModelName(model) ?? 'model'} to another credential.`
+        const { account, reason } = switchedAccount(block.extra)
+        return (
+          <div role="status" data-credential-switch className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-(--color-text-muted)">
+            <Chip tone="info">
+              {account ? <>Switched to account <span className="font-semibold">{account}</span></> : 'Switched account'}
+            </Chip>
+            <span className="min-w-0 break-words">
+              {reason ?? (model ? <><ModelName id={model} className="align-bottom" /> continues on another account.</> : 'The model continues on another account.')}
+            </span>
+          </div>
+        )
       }
-      return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
+      let message = 'Provider status updated.'
+      if (status === 'pin_released') {
+        // The pinned account was removed or turned off: the session is on Auto.
+        message = customMsg || 'The pinned account is gone, so this session is back on Auto.'
+      }
+      return <p className="rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
     case 'tool': {
       const mcpApp = (block.extra as { mcp_app?: unknown } | undefined)?.mcp_app
@@ -564,7 +660,8 @@ export function AgentView({
   const handleEdit = useCallback((blockId: string) => {
     void useAgentStore.getState().revertToMessage(blockId)
   }, [])
-  const editHandler = isTurnOpen ? undefined : handleEdit
+  // While a turn runs a prompt cannot be rewound: Edit shows, disabled, with its reason.
+  const editLocked = isTurnOpen
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -599,7 +696,20 @@ export function AgentView({
   )
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
-  const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel
+  const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
+  // Undo sits under the last finished answer and acts on its prompt, as Retry
+  // does for a failure. A turn that ended on a failure keeps its way forward
+  // on the error card, so the footer does not offer it twice.
+  const turnActionsApply = canRetry && !showsLastError && endingProviderError(trailingBlocks) === undefined
+  const undoTurn = turnActionsApply ? undoLatestTurn : undefined
+  // The newest prompt keeps its Edit and Copy at rest; older ones show them on hover or focus.
+  const latestTypedPromptId = useMemo(() => {
+    for (let i = turnItems.length - 1; i >= 0; i--) {
+      const item = turnItems[i]
+      if (item.kind === 'user' && isTypedPromptBlock(item.block)) return item.block.id
+    }
+    return undefined
+  }, [turnItems])
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -614,6 +724,8 @@ export function AgentView({
   // The seek is capped well below the manual jump's budget: every page it
   // lands renders at once, as one turn, before the reader asked for any of it.
   const hasMoreHistory = useAgentStore((s) => s.hasMore)
+  // An earlier page is on its way in above the first row (scrolling up, or a prompt jump).
+  const loadingOlder = useAgentStore((s) => s._loadingOlder)
   const hasLoadedPrompt = useMemo(
     () => turnItems.some((item) => item.kind === 'user' && isTypedPromptBlock(item.block)),
     [turnItems],
@@ -726,6 +838,20 @@ export function AgentView({
   // Phone: drag or tap the transcript to put the keyboard away.
   useDismissKeyboardOnTouch(scrollRef)
 
+  // Code, tables, diagrams and diffs may widen past the 768px prose column
+  // to 960px when the chat has room (see `.oa-transcript-col` in index.css).
+  // A variable, not a container query: size containment would also contain
+  // the column's fixed-position descendants.
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root || typeof ResizeObserver === 'undefined') return
+    const sync = () => root.style.setProperty('--oa-transcript-w', `${root.clientWidth}px`)
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [scrollRef])
+
   // A switch fades the next session's transcript in once it has something to
   // show, before paint so its first frame never shows at full strength. The
   // first session on mount, and the first message of a new or empty chat
@@ -745,23 +871,33 @@ export function AgentView({
     el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATIONS_S.fast * 1000, easing: ENTER_EASE })
   }, [contentRef, isEmpty, isLoadingHistory, reducedMotion, sessionId])
 
-  // ── Follow state for the composer's jump chip ─────────────────────────────
-  // Counted from the newest block when the reader scrolled away, so earlier
-  // messages loading in above never read as new.
+  // ── Follow state for the jump chip ─────────────────────────────────────────
+  // One chip, with the count: on the composer when it is up (the store carries
+  // the state to it), else in the transcript's own corner. Counted from the
+  // newest block when the reader scrolled away, so earlier messages loading in
+  // above never read as new.
   const followAnchorRef = useRef<string | null>(null)
+  const unseenRef = useRef<number | null>(null)
+  const [inlineUnseen, setInlineUnseen] = useState<number | null>(null)
+  const publishUnseen = useCallback((unseen: number | null) => {
+    unseenRef.current = unseen
+    if (!jumpToLatestInComposer) {
+      setInlineUnseen(unseen)
+      return
+    }
+    if (useTranscriptFollowStore.getState().unseen !== unseen) useTranscriptFollowStore.setState({ unseen })
+  }, [jumpToLatestInComposer])
   useEffect(() => {
-    if (!jumpToLatestInComposer) return
     if (!showScrollBtn) {
       followAnchorRef.current = null
-      if (useTranscriptFollowStore.getState().unseen !== null) useTranscriptFollowStore.setState({ unseen: null })
+      publishUnseen(null)
       return
     }
     followAnchorRef.current ??= (liveTail[liveTail.length - 1] ?? blocks[blocks.length - 1])?.id ?? ''
     const counted = countBlocksAfter(blocks, followAnchorRef.current, liveTail)
     // A reconcile can swap the anchor's id; keep the last count then.
-    const unseen = counted ?? useTranscriptFollowStore.getState().unseen ?? 0
-    if (useTranscriptFollowStore.getState().unseen !== unseen) useTranscriptFollowStore.setState({ unseen })
-  }, [blocks, jumpToLatestInComposer, liveTail, showScrollBtn])
+    publishUnseen(counted ?? unseenRef.current ?? 0)
+  }, [blocks, liveTail, publishUnseen, showScrollBtn])
   useEffect(() => {
     if (!jumpToLatestInComposer) return
     useTranscriptFollowStore.setState({ jumpToLatest: () => scrollToBottom('smooth') })
@@ -991,14 +1127,23 @@ export function AgentView({
     {/* Vertical only: ``overflow-y: auto`` alone turns ``overflow-x`` to auto, and
         one over-wide row then let the whole transcript pan sideways on touch.
         Code, tables and diagrams scroll inside their own boxes. */}
-    <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto">
+    <div
+      ref={scrollRef}
+      onWheel={cancelPromptJump}
+      onTouchMove={cancelPromptJump}
+      // F6 stops here; focused itself, so the arrow and page keys scroll it.
+      data-focus-region="transcript"
+      data-region-self=""
+      aria-label="Transcript"
+      className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto"
+    >
       {/* A held transcript (a switch in progress) is for looking at only.
           The one being left dims while the next one loads. */}
       <div
         ref={contentRef}
         inert={hold !== null}
         data-session-hold={hold?.kind}
-        className={`mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
+        className={`oa-transcript-col mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
       >
         {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
         {isEmpty && !isLoadingHistory && (
@@ -1035,6 +1180,13 @@ export function AgentView({
                   <div aria-hidden="true" data-history-gap="" className="border-t border-dashed border-(--color-border-strong)" />
                 </>
               )}
+              {/* Where earlier pages come in from: the row stands in for them while they load. */}
+              {loadingOlder && (
+                <div role="status" data-loading-earlier="" className="flex items-center justify-center gap-2 py-1 text-xs text-(--color-text-muted)">
+                  <Loader2 size={13} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+                  Loading earlier messages…
+                </div>
+              )}
               {visibleTurnItems.map((item, k) => {
                  const globalTurnIndex = hiddenTurnCount + k
                  if (item.kind === 'user') {
@@ -1048,7 +1200,9 @@ export function AgentView({
                          block={item.block}
                          isStreaming={false}
                          sessionId={sessionId}
-                         onEdit={editHandler}
+                         onEdit={handleEdit}
+                         editLocked={editLocked}
+                         actionsAtRest={item.block.id === latestTypedPromptId}
                          promptModel={promptModelById.get(item.block.id)?.model}
                          promptThinkingLevel={promptModelById.get(item.block.id)?.thinkingLevel}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
@@ -1077,6 +1231,9 @@ export function AgentView({
                   // own start mark, the prompt's time survives a reload.
                   const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : isTrailingTurn ? pinnedStartedAt : undefined
+                  // The prompt this answer came from, for the footer's Edit prompt.
+                  const promptItem = turnItems[globalTurnIndex - 1]
+                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) ? promptItem.block.id : undefined
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
@@ -1094,6 +1251,11 @@ export function AgentView({
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                       renderBlock={renderTurnBlock}
+                     promptId={promptId}
+                     onEditPrompt={handleEdit}
+                     editLocked={editLocked}
+                     // Only the last finished turn can be undone.
+                     onUndo={isTrailingTurn ? undoTurn : undefined}
                    />
                  )
                 })}
@@ -1122,7 +1284,10 @@ export function AgentView({
               </div>
             )}
 
-            <PendingMessageQueue />
+            {/* With a composer (``jumpToLatestInComposer``) the queue sits in
+                its tray, right above the box. Without one (a subagent's
+                session) it stays here, under the turn it waits behind. */}
+            {!jumpToLatestInComposer && <PendingMessageQueue />}
 
             {showsLastError && lastError && (
               <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />
@@ -1137,17 +1302,10 @@ export function AgentView({
       contentRef={contentRef}
     />
     </div>
-    {showScrollBtn && !jumpToLatestInComposer && (
-        <button
-          onClick={() => scrollToBottom('smooth')}
-          // Centred by margin rather than a percentage translate (DESIGN.md:
-          // no transform-based layout).
-          className="touch-hit absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100 animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)"
-          aria-label="Scroll to bottom"
-        >
-          <ChevronDown size={14} />
-        </button>
-
+    {/* The floating composer carries the chip when it is up; with none (a
+        subagent's session) the same chip sits in the transcript's corner. */}
+    {!jumpToLatestInComposer && (
+      <JumpToLatest unseen={showScrollBtn ? inlineUnseen ?? 0 : null} side="inside" fadeOut={false} onJump={() => scrollToBottom('smooth')} />
     )}
     </div>
     </FileRefContext.Provider>

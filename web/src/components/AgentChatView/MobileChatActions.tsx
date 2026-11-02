@@ -3,7 +3,7 @@
  *
  * The phone header keeps three controls (sidebar, Review panel, More), so
  * everything else for the session lives here, grouped by what it acts on:
- * the session (tasks, its settings, context use, jumping between prompts),
+ * the session (tasks, model and thinking, context use, jumping between prompts),
  * the workspace (find file, terminal, scheduled tasks) and the app (command
  * palette). The More button carries the open-task count and the goal ring
  * that the Tasks button used to.
@@ -38,7 +38,8 @@ export interface MobileChatActionsProps {
   /** A live goal's ring and its one-line state ("Goal 3/50"). */
   goalTone?: GoalTone
   goalText?: string | null
-  onSessionSettings: () => void
+  /** Opens the run picker; the run deck under the composer has the same chip. */
+  onModelSettings: () => void
   /** Context use for the session; the section hides without it. */
   tokens?: AgentTopbarTokens
   onScheduler: () => void
@@ -74,7 +75,7 @@ export function MobileChatActions({
   openTasks = 0,
   goalTone,
   goalText,
-  onSessionSettings,
+  onModelSettings,
   tokens,
   onScheduler,
   onOpenTerminal,
@@ -109,7 +110,7 @@ export function MobileChatActions({
               {openTasks > 0 && (
                 <span
                   aria-hidden="true"
-                  className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[11px] leading-3.5 text-(--bg-page) pointer-coarse:right-1.5 pointer-coarse:top-1.5"
+                  className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-meta leading-3.5 text-(--bg-page) pointer-coarse:right-1.5 pointer-coarse:top-1.5"
                 >
                   {openTasks > 9 ? '9+' : openTasks}
                 </span>
@@ -181,7 +182,7 @@ export function MobileChatActions({
                 >
                   Tasks
                 </Row>
-                <Row onClick={onSessionSettings}>Session settings</Row>
+                <Row onClick={onModelSettings}>Model and thinking</Row>
                 {tokens && (
                   <dl className="mx-2 my-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-(--bg-key)/50 px-3 py-2 text-xs">
                     <dt className="text-(--color-text-muted)">Context (tokens)</dt>
@@ -194,7 +195,7 @@ export function MobileChatActions({
                         <dd className="text-right font-mono tabular-nums text-(--color-text)">{formatSpend(tokens.sessionCostUsd)}</dd>
                       </>
                     )}
-                    <dd className="col-span-2 text-[11px] text-(--color-text-muted)">
+                    <dd className="col-span-2 text-meta text-(--color-text-muted)">
                       Older messages are summarized when context reaches {formatCompact(trigger)} tokens.
                     </dd>
                   </dl>

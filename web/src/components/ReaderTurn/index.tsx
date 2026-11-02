@@ -1,6 +1,6 @@
 /**
- * Reader mode's two additions to a turn (rules in ``segments.ts``): the row
- * standing in for the work, and the list of files the turn edited.
+ * Reader mode's addition to a turn (rules in ``segments.ts``): the row
+ * standing in for the work.
  *
  * The row uses the tool-call row language (mono label, trailing chevron, no
  * card), so the fold reads as one more step. Opened, the steps render as
@@ -16,22 +16,18 @@
  * A compaction divider ends the row before it, which then shows its counts;
  * the steps after the divider get a row of their own.
  *
- * The file list starts closed behind its "N files changed" header, so a turn
- * that touched many files still ends on its answer; open, the header pins.
+ * The files a turn changed are listed on every finished turn's footer, in
+ * both transcript styles (``AgentView/TurnFileList.tsx``).
  */
-import { useContext, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronUp } from 'lucide-react'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { Collapsible } from '@/components/ui/collapsible'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
-import { FileRefContext } from '../FileRefLink'
-import { FileTypeIcon } from '../FileTypeIcon'
 import { subscribeLiveClock } from '../ToolCall'
 import { getToolDisplay } from '../ToolCall/display'
-import { ChangeCounts } from '../WorkspacePanel/ChangeCounts'
-import type { ChangedFileInfo } from '../WorkspacePanel/diff-helpers'
 import { isAgentReport } from '@/utils/turns'
 import { summarizeWork, workSummaryDetail } from './segments'
 
@@ -108,7 +104,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
         >
           {live ? (
             <>
-              <span className="size-1.5 shrink-0 rounded-full bg-(--color-info)" aria-hidden="true" />
+              <span className="size-1.5 shrink-0 rounded-full bg-(--color-text-2)" aria-hidden="true" />
               <span className="shrink-0 font-semibold text-(--color-text)">Working</span>
               {elapsed && <span className="shrink-0 text-(--color-text-muted)">{` · ${elapsed}`}</span>}
               {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}
@@ -123,7 +119,8 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
           />
         </button>
       </div>
-      {open && (
+      {/* Opening and closing fold the steps (height motion), not a cut. */}
+      <Collapsible open={open}>
         <div id={bodyId} className={cn('ml-1 min-w-0 border-l border-(--color-border) pl-3', BELOW_ROW)}>
           {children}
           <button
@@ -140,75 +137,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
             <span>Collapse</span>
           </button>
         </div>
-      )}
-    </div>
-  )
-}
-
-/** The files a finished turn edited; each opens its git diff in the review dock. */
-export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] }) {
-  const opener = useContext(FileRefContext)
-  const { open, setOpen, close, anchorRef } = useStickyFold()
-  const listId = useId()
-  if (files.length === 0) return null
-  const additions = files.reduce((sum, file) => sum + file.additions, 0)
-  const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
-  const rowClass = 'flex h-(--spacing-list-row) w-full min-w-0 items-center gap-2 px-3 text-left text-xs text-(--color-text-2)'
-  const hoverClass = 'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-key:bg-(--bg-key)/60 focus-visible:outline-none'
-
-  return (
-    // ``overflow-clip``, not ``hidden``: a clipping scroller would stop the open header pinning.
-    <section aria-label="Files changed this turn" className="my-2 overflow-clip rounded-sm border border-(--color-border) bg-(--bg-card)">
-      <button
-        ref={anchorRef}
-        type="button"
-        onClick={(event) => (open ? close(event.currentTarget) : setOpen(true))}
-        aria-expanded={open}
-        aria-controls={listId}
-        className={cn('flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-text-2) pointer-coarse:min-h-9', open && cn(PINNED_HEADER, 'bg-(--bg-card)'), hoverClass)}
-      >
-        <ChevronRight
-          size={12}
-          aria-hidden
-          className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
-        />
-        <span>{`${files.length} ${files.length === 1 ? 'file' : 'files'} changed`}</span>
-        <span className="flex items-center gap-1.5 font-mono text-xs md:text-[11px]">
-          {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
-          {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
-        </span>
-      </button>
-      <Collapsible open={open}>
-        <ul id={listId} className="divide-y divide-(--color-border-subtle) border-t border-(--color-border-subtle)">
-          {files.map((file) => {
-            const content = (
-              <>
-                <FileTypeIcon name={file.path} size={13} />
-                <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-                <ChangeCounts file={file} />
-              </>
-            )
-            const ref = { path: file.path }
-            const canOpen = Boolean(opener && opener.canOpen(ref) && (opener.openDiff ? true : file.status !== 'D'))
-            return (
-              <li key={file.path}>
-                {canOpen ? (
-                  <button
-                    type="button"
-                    title={opener?.openDiff ? `Open diff for ${file.path}` : `Open ${file.path}`}
-                    onClick={() => (opener?.openDiff ? opener.openDiff({ path: file.path, status: file.status }) : opener?.open(ref))}
-                    className={cn(rowClass, hoverClass)}
-                  >
-                    {content}
-                  </button>
-                ) : (
-                  <div className={rowClass}>{content}</div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
       </Collapsible>
-    </section>
+    </div>
   )
 }

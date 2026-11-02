@@ -46,6 +46,14 @@ describe('TerminalTabButton', () => {
     expect(useTerminalStore.getState().sessions[id]).toBeUndefined()
   })
 
+  it('keeps the × on touch too, at 36px, so a phone can close a terminal without a long press', async () => {
+    const { id } = await setup(true)
+    const close = screen.getByRole('button', { name: 'Close Terminal 1' })
+    expect(close.className).toContain('pointer-coarse:size-9')
+    fireEvent.click(close)
+    expect(useTerminalStore.getState().sessions[id]).toBeUndefined()
+  })
+
   it('desktop right-click opens a menu with Rename and Close', async () => {
     await setup()
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal 1' }))
@@ -121,7 +129,9 @@ describe('TerminalTabButton', () => {
     const { id } = await setup(true)
     const button = screen.getByRole('button', { name: 'Terminal 1' })
     fireEvent.pointerDown(button, { pointerType: 'touch', clientX: 10, clientY: 10 })
-    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
+    // The sheet opens after the long-press delay: wait as the test above does,
+    // or a loaded full-suite run times out while the tab is still pressing.
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }, { timeout: 1500 }))
 
     const input = await screen.findByLabelText('Terminal name')
     fireEvent.change(input, { target: { value: 'Logs' } })

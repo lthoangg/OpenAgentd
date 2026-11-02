@@ -15,7 +15,9 @@ import {
   type TrayUsageWindow,
   clampPercent,
   formatAmount,
+  formatAgo,
   formatResetIn,
+  formatRetry,
   meterTone,
 } from './usage'
 
@@ -48,12 +50,23 @@ export interface ProviderView {
   /** Plan tier, capitalised ("Plus"), when the provider reports one. */
   plan: string | null
   stale: boolean
+  /** The provider throttled its usage check (status ``rate_limited``). */
+  rateLimited: boolean
+  /**
+   * The usage check did not complete (throttled, or unavailable with
+   * last-known numbers kept): the numbers are old and never drive alerts.
+   */
+  held: boolean
+  /** "Retry in 5m" / "Retrying soon" / "Retry later"; only when rate limited. */
+  retry: string | null
+  /** Age of the shown numbers ("12m ago") when they are old and say so. */
+  updated: string | null
   /** Worst tone across the rows. */
   tone: MeterTone
   /** A limit is used up (100%, a reached cap, or no credits left). */
   reached: boolean
   /** Set instead of rows when there is nothing to measure. */
-  status: 'reconnect' | 'unavailable' | 'no-data' | null
+  status: 'reconnect' | 'unavailable' | 'rate-limited' | 'no-data' | null
   rows: Row[]
 }
 
@@ -192,33 +205,68 @@ function capitalise(text: string | null | undefined): string | null {
 }
 
 export function providerView(item: TrayUsageItem, now: number = Date.now() / 1000): ProviderView {
-  const base = { key: item.provider, name: item.label, stale: item.stale }
+  // A throttled usage check is neither fresh nor a quota signal: whatever
+  // numbers come with it are old, and it never raises the alert tone.
+  const rateLimited = item.status === 'rate_limited'
+  const limits = item.usage?.limits ?? []
+  const unavailableWithNumbers = item.status === 'unavailable' && limits.length > 0
+  const stale = item.stale || rateLimited || unavailableWithNumbers
+  const base = {
+    key: item.provider,
+    // With several accounts, say whose limits these are (the one in use).
+    name: item.account ? `${item.label} · ${item.account}` : item.label,
+    stale,
+    rateLimited,
+    held: false,
+    retry: rateLimited ? formatRetry(item, now) : null,
+    updated: stale ? formatAgo(item.usage?.updated_at, now) : null,
+  }
   const empty = (status: ProviderView['status']): ProviderView => ({ ...base, plan: null, tone: 'ok', reached: false, status, rows: [] })
   if (item.status === 'credentials_missing') return empty('reconnect')
-  if (item.status === 'unavailable') return empty('unavailable')
-  const limits = item.usage?.limits ?? []
+  if (item.status === 'unavailable' && !unavailableWithNumbers) return empty('unavailable')
   const rows = limits.flatMap((limit, index) => limitRows(item, limit, index, now))
-  if (rows.length === 0) return empty('no-data')
+  if (rows.length === 0) return empty(rateLimited ? 'rate-limited' : 'no-data')
+  const held = rateLimited || unavailableWithNumbers
   return {
     ...base,
+    held,
     plan: capitalise(limits.find((limit) => limit.plan_type)?.plan_type),
-    tone: worst(rows.map((row) => row.tone)),
-    reached: rows.some((row) => (row.kind === 'meter' ? row.reached : row.tone === 'crit')),
+    tone: held ? 'ok' : worst(rows.map((row) => row.tone)),
+    reached: !held && rows.some((row) => (row.kind === 'meter' ? row.reached : row.tone === 'crit')),
     status: null,
     rows,
   }
 }
 
-export type TrayStatus = 'loading' | 'offline' | 'none' | 'ok' | 'warn' | 'crit' | 'reached'
+export type TrayStatus = 'loading' | 'no-server' | 'offline' | 'none' | 'delayed' | 'ok' | 'warn' | 'crit' | 'reached'
 
+/** One vocabulary with the notch and the pet: "Can't reach", never "Offline". */
 export const TRAY_STATUS_LABEL: Record<TrayStatus, string> = {
   loading: 'Checking',
-  offline: 'Offline',
+  'no-server': 'No server connected',
+  offline: "Can't reach",
   none: 'No providers',
+  delayed: 'Usage delayed',
   ok: 'Within limits',
   warn: 'Getting close',
   crit: 'Near limit',
   reached: 'Limit reached',
+}
+
+/**
+ * The app is on no server: the shell answers "auto" (not a server's id) when
+ * it has none to read the limits from.
+ */
+export function hasNoServer(result: TrayUsageResult | null): boolean {
+  return result !== null && !result.summary && result.server_id === 'auto'
+}
+
+/** In words, why a refresh failed; the raw error stays in the log. */
+export function failureReason(error: string | null | undefined): string {
+  const text = (error ?? '').toLowerCase()
+  if (/timed out|timeout|deadline/.test(text)) return 'The server took too long to answer.'
+  if (/\b(401|403)\b|access key|unauthori[sz]ed|forbidden|rejected/.test(text)) return 'The server rejected the access key.'
+  return "The server didn't answer. It may be stopped or asleep."
 }
 
 /**
@@ -227,9 +275,13 @@ export const TRAY_STATUS_LABEL: Record<TrayStatus, string> = {
  */
 export function trayStatus(result: TrayUsageResult | null, loadError: string | null): TrayStatus {
   const summary = result?.summary
+  if (hasNoServer(result)) return 'no-server'
   if (!summary) return result?.error || loadError ? 'offline' : 'loading'
   const views = summary.items.map((item) => providerView(item))
   if (views.length === 0) return 'none'
-  if (views.some((view) => view.reached)) return 'reached'
-  return worst(views.map((view) => view.tone))
+  // A throttled usage check says nothing about the quota: rank the rest.
+  const measured = views.filter((view) => !view.held && !view.rateLimited)
+  if (measured.length === 0) return 'delayed'
+  if (measured.some((view) => view.reached)) return 'reached'
+  return worst(measured.map((view) => view.tone))
 }

@@ -14,12 +14,6 @@ export function workspaceName(path: string | null): string {
   return pathBasename(path)
 }
 
-/** ``provider:model`` → the model part (provider shows in the tooltip). */
-export function modelName(providerModel: string): string {
-  const index = providerModel.indexOf(':')
-  return index >= 0 ? providerModel.slice(index + 1) : providerModel
-}
-
 /** Display name for a ``by_session`` row: its title, else what it was. */
 export function sessionName(row: Pick<SessionUsage, 'title' | 'deleted' | 'parent_session_id' | 'agent_name'>): string {
   if (row.title) return row.title

@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
@@ -32,7 +32,7 @@ mock.module('lucide-react', () => ({
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
-  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
+  Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -89,17 +89,27 @@ describe('WorkspacePanel terminal tabs', () => {
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 
-  it('"Open…" → Terminal opens additional numbered sessions', async () => {
+  it('opens the first terminal in an empty panel, with no empty pane above it', async () => {
     await renderPanel(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    // One pane: nothing to name it after.
+    expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
+    expect(screen.queryByRole('group', { name: 'Open in Review panel' })).toBeNull()
+  })
+
+  it('"Open…" → Terminal opens additional numbered sessions in that pane', async () => {
+    await renderPanel(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    const pane = screen.getByRole('button', { name: 'Terminal 1' }).closest<HTMLElement>('[data-dock-pane]')!
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Open in the review panel' }).click()
+      within(pane).getByRole('button', { name: 'Open in Review panel' }).click()
     })
     await act(async () => {
       screen.getByRole('menuitem', { name: 'Terminal' }).click()
     })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 2' })).toBeTruthy())
+    expect(within(pane).getByRole('button', { name: 'Terminal 2' })).toBeTruthy()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(2)
   })
 

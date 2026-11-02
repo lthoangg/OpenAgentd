@@ -182,17 +182,17 @@ describe('WorkspacePicker', () => {
       'wt-sidebar',
       'web-landing',
       'agent-sdk',
-      'Open folder…',
+      'Open workspace…',
     ])
     expect(within(listbox).getByRole('option', { name: 'openagentd' }).getAttribute('aria-selected')).toBe('true')
 
     await user.type(screen.getByRole('combobox', { name: 'Filter folders' }), 'land')
-    expect(within(listbox).getAllByRole('option').map((option) => option.textContent)).toEqual(['web-landing', 'Open folder…'])
+    expect(within(listbox).getAllByRole('option').map((option) => option.textContent)).toEqual(['web-landing', 'Open workspace…'])
     await user.keyboard('{Enter}')
     expect(onSelectWorkspace).toHaveBeenCalledWith('/work/web-landing')
   })
 
-  it('reaches Open folder… with the arrows', async () => {
+  it('reaches Open workspace… with the arrows', async () => {
     const user = userEvent.setup()
     const { onOpenFolder } = renderScreen()
     await user.click(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' }))

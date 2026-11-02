@@ -19,12 +19,12 @@ import { SpanDetailPanel } from './SpanDetailPanel'
 import { Waterfall } from './Waterfall'
 
 const ACTION_CLASS =
-  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm border pointer-coarse:h-9 pointer-coarse:px-3 border-(--color-border) bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm bg-(--bg-key) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--color-fill-key-hover) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-3'
 
 function Fact({ label, children, title, className }: { label: ReactNode; children: ReactNode; title?: string; className?: string }) {
   return (
     <div className={`flex min-w-0 flex-col gap-0.5 bg-(--bg-card) px-3 py-2 ${className ?? ''}`}>
-      <dt className="text-[11px] text-(--color-text-muted)">{label}</dt>
+      <dt className="text-meta text-(--color-text-muted)">{label}</dt>
       <dd className="truncate text-xs text-(--color-text)" title={title}>{children}</dd>
     </div>
   )
@@ -85,8 +85,8 @@ export function TraceView({
         <p className="text-sm font-medium text-(--color-text)">Trace not found</p>
         <p className="max-w-[48ch] text-xs text-(--color-text-muted)">
           {days < 90
-            ? `It isn't in the last ${days === 1 ? '24 hours' : `${days} days`}. It may be older, or past the data retention limit.`
-            : 'It may be past the data retention limit.'}
+            ? `It isn't in the last ${days === 1 ? '24 hours' : `${days} days`}. It may be older, or already removed by Settings → Retention.`
+            : 'It may have been removed by Settings → Retention.'}
         </p>
         {days < 90 && (
           <button type="button" onClick={() => setDays(90)} className={ACTION_CLASS}>

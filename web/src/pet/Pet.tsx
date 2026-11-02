@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { AlarmClock, Check, CircleAlert, MessageCircleQuestion, X } from 'lucide-react'
 
+import { sessionKey } from '@/lib/session-key'
 import { poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from './sprites'
 import {
   BUBBLE_FADE_MS,
@@ -21,6 +22,7 @@ import {
   ZOOM_DASHES,
   ZOOM_SPEED,
   badgeCount,
+  badgeLabel,
   bubbleBelow,
   bubbleLeft,
   bubbleReducer,
@@ -56,6 +58,7 @@ import {
 const STATE_COMMAND = 'pet_state'
 const FIT_COMMAND = 'pet_fit'
 const OPEN_COMMAND = 'pet_open'
+const ANSWER_COMMAND = 'pet_answer'
 const DISMISS_COMMAND = 'pet_dismiss'
 const DRAG_END_COMMAND = 'pet_drag_end'
 const MENU_COMMAND = 'pet_menu'
@@ -64,6 +67,8 @@ const NOTIFICATION_EVENT = 'pet-notification'
 const MENU_EVENT = 'pet-menu-action'
 /** A session was read somewhere (an app window, the notch, here). */
 const SESSION_READ_EVENT = 'pet-session-read'
+/** A session's question was answered somewhere (here, the notch, a notification, the app). */
+const QUESTION_ANSWERED_EVENT = 'pet-question-answered'
 /** Where the pointer is while it is near the pet (CSS px), or null once it leaves. */
 const POINTER_EVENT = 'pet-pointer'
 /** Other apps' windows it can climb, front first (CSS px); empty when it may not. */
@@ -77,6 +82,9 @@ const FIT_EVERY_MS = 100
 const POKE_SAY_MS = 2500
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
+
+/** An answer being sent, or one the shell could not take, by bubble id. */
+type Answering = 'sending' | 'failed'
 
 /** Dismissed finished turns and reminders: their sessions are read everywhere. */
 function reportDismissed(items: PetBubble[]): void {
@@ -139,8 +147,8 @@ function Sprite({ character, pose, colour }: { character: PetCharacter; pose: Pe
 }
 
 const TONE_LABEL: Record<BubbleTone, string> = {
-  input: 'Needs your answer',
-  done: 'Finished',
+  input: 'Needs you',
+  done: 'Done',
   failed: 'Failed',
   remind: 'Reminder',
 }
@@ -176,6 +184,7 @@ export function Pet() {
   const [jumping, setJumping] = useState(false)
   const [say, setSay] = useState<{ text: string; at: number } | null>(null)
   const [fold, setFold] = useState<Fold | null>(null)
+  const [answering, setAnswering] = useState<ReadonlyMap<string, Answering>>(() => new Map())
   const reducedMotion = useReducedMotion()
 
   const petRef = useRef<HTMLDivElement>(null)
@@ -208,6 +217,7 @@ export function Pet() {
   const petHeight = PET_HEIGHT * scale
   const visible = visibleBubble(bubbles)
   const badge = badgeCount(bubbles)
+  const badgeText = badgeLabel(bubbles)
   const active = Boolean(settings?.enabled && view?.shown)
 
   // ── Shell data ──────────────────────────────────────────────────────────
@@ -247,6 +257,12 @@ export function Pet() {
     SESSION_READ_EVENT,
     useCallback((payload: { sessionKey: string }) => {
       if (typeof payload?.sessionKey === 'string') dispatch({ type: 'readSession', key: payload.sessionKey })
+    }, []),
+  )
+  useShellEvent<{ sessionKey: string }>(
+    QUESTION_ANSWERED_EVENT,
+    useCallback((payload: { sessionKey: string }) => {
+      if (typeof payload?.sessionKey === 'string') dispatch({ type: 'answered', key: payload.sessionKey })
     }, []),
   )
   useShellEvent<PointerAt>(POINTER_EVENT, setPointer)
@@ -609,10 +625,12 @@ export function Pet() {
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     const unread = bubbles.unread.map(({ id, title }) => ({ id, title }))
+    // What waits on you is listed first.
+    const questions = bubbles.questions.map(({ id, title }) => ({ id, title }))
     // It stands where it was clicked until the menu closes (the command
     // returns then), and sits a while after.
     setMenuOpen(true)
-    void invoke(MENU_COMMAND, { x: event.clientX, y: event.clientY, unread })
+    void invoke(MENU_COMMAND, { x: event.clientX, y: event.clientY, unread, questions })
       .catch(() => {})
       .finally(() => {
         setMenuOpen(false)
@@ -622,12 +640,34 @@ export function Pet() {
 
   const open = (bubble: PetBubble) => {
     if (bubble.sessionId) void invoke(OPEN_COMMAND, { notificationId: bubble.id }).catch(() => {})
+    // A question stays (folded behind the badge) until it is answered.
     dispatch({ type: 'dismiss', id: bubble.id })
   }
 
   const dismiss = (bubble: PetBubble) => {
     reportDismissed([bubble])
     dispatch({ type: 'dismiss', id: bubble.id })
+  }
+
+  const answer = (bubble: PetBubble, choice: string) => {
+    const questionId = bubble.questionId
+    if (!questionId || !bubble.sessionId) return
+    const key = sessionKey(bubble.sessionId)
+    setAnswering((current) => new Map(current).set(bubble.id, 'sending'))
+    void invoke(ANSWER_COMMAND, { notificationId: bubble.id, questionId, answers: [[choice]] })
+      .then(() => {
+        // Taken, or already answered elsewhere: either way it is not waiting.
+        dispatch({ type: 'answered', key })
+        setAnswering((current) => {
+          const next = new Map(current)
+          next.delete(bubble.id)
+          return next
+        })
+      })
+      .catch((error: unknown) => {
+        console.error('pet: answer failed', error)
+        setAnswering((current) => new Map(current).set(bubble.id, 'failed'))
+      })
   }
 
   if (!active || !settings || x === null) return null
@@ -645,32 +685,60 @@ export function Pet() {
   const showLaptop = carrying || pose === 'work' || pose === 'alert'
   const laptopFold = !carrying && pose === 'work' ? fold : null
   const laptopClass = carrying ? ' pet-laptop--carried' : laptopFold ? ` pet-laptop--${laptopFold}` : ''
+  const petLabel = status.needsInput > 0 ? 'Desktop pet: an agent needs you' : 'Desktop pet'
 
   return (
     // The browser's own menu (Reload, Inspect) never shows over the pet.
     <div className="pet-strip" onContextMenu={(event) => event.preventDefault()}>
+      {/* What the pet is doing, for screen readers: apart from the buttons. */}
+      <div className="pet-sr" role="status" aria-live="polite">{status.needsInput > 0 ? petLabel : ''}</div>
       {visible?.type === 'bubble' && (
         <div
           ref={bubbleRef}
           key={visible.bubble.id}
           className={`pet-bubble pet-bubble--${visible.bubble.tone}${bubbleSide}`}
           style={bubbleStyle}
-          role="status"
+          role="group"
+          aria-label={TONE_LABEL[visible.bubble.tone]}
         >
-          <button type="button" className="pet-bubble-close" aria-label="Dismiss" onClick={() => dismiss(visible.bubble)}>
-            <X size={13} aria-hidden="true" />
+          {/* The words are a live region of their own; the buttons are outside it. */}
+          <div className="pet-bubble-text" role="status">
+            <span className="pet-chip">
+              <ToneMark tone={visible.bubble.tone} />
+              {TONE_LABEL[visible.bubble.tone]}
+            </span>
+            <div className="pet-bubble-title">{visible.bubble.title}</div>
+            {visible.bubble.body && <div className="pet-bubble-body">{visible.bubble.body}</div>}
+          </div>
+          <button
+            type="button"
+            className="pet-bubble-close"
+            aria-label={visible.bubble.tone === 'input' ? 'Later' : 'Dismiss'}
+            onClick={() => dismiss(visible.bubble)}
+          >
+            <X size={14} aria-hidden="true" />
           </button>
-          <span className="pet-chip">
-            <ToneMark tone={visible.bubble.tone} />
-            {TONE_LABEL[visible.bubble.tone]}
-          </span>
-          <div className="pet-bubble-title">{visible.bubble.title}</div>
-          {visible.bubble.body && <div className="pet-bubble-body">{visible.bubble.body}</div>}
           {visible.bubble.sessionId && (
             <div className="pet-bubble-actions">
-              <button type="button" className="pet-button" onClick={() => open(visible.bubble)}>
-                {visible.bubble.tone === 'input' ? 'Answer' : 'Open'}
+              {visible.bubble.tone === 'input' && (visible.bubble.questionId ? visible.bubble.choices ?? [] : []).map((choice, index) => (
+                <button
+                  key={choice}
+                  type="button"
+                  className={index === 0 ? 'pet-button' : 'pet-button pet-button--quiet'}
+                  disabled={answering.get(visible.bubble.id) === 'sending'}
+                  onClick={() => answer(visible.bubble, choice)}
+                >
+                  {choice}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={visible.bubble.tone === 'input' && (visible.bubble.choices ?? []).length > 0 ? 'pet-button pet-button--quiet' : 'pet-button'}
+                onClick={() => open(visible.bubble)}
+              >
+                {visible.bubble.tone === 'input' ? 'Open to answer' : 'Open'}
               </button>
+              {answering.get(visible.bubble.id) === 'failed' && <span className="pet-bubble-note" role="alert">Couldn't send. Open to answer.</span>}
             </div>
           )}
         </div>
@@ -680,24 +748,47 @@ export function Pet() {
           ref={bubbleRef}
           className={`pet-bubble pet-bubble--list${bubbleSide}`}
           style={bubbleStyle}
+          role="group"
+          aria-label="Waiting and unread"
         >
           <button type="button" className="pet-bubble-close" aria-label="Close" onClick={() => dispatch({ type: 'toggleList' })}>
-            <X size={13} aria-hidden="true" />
+            <X size={14} aria-hidden="true" />
           </button>
-          <div className="pet-bubble-title pet-bubble-title--list">{visible.items.length} unread</div>
-          {visible.items.map((item) => (
-            <div key={item.id} className="pet-list-row">
-              <span className={`pet-chip pet-chip--icon pet-bubble--${item.tone}`}>
-                <ToneMark tone={item.tone} />
-              </span>
-              <button type="button" className="pet-list-open" onClick={() => open(item)} title={item.body}>
-                {item.title}
-              </button>
-              <button type="button" className="pet-list-dismiss" aria-label="Dismiss" onClick={() => dismiss(item)}>
-                <X size={12} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
+          {visible.questions.length > 0 && (
+            <>
+              <div className="pet-bubble-title pet-bubble-title--list">Needs you</div>
+              {visible.questions.map((item) => (
+                <div key={item.id} className="pet-list-row">
+                  <span className={`pet-chip pet-chip--icon pet-bubble--${item.tone}`}>
+                    <ToneMark tone={item.tone} />
+                  </span>
+                  <button type="button" className="pet-list-open" onClick={() => dispatch({ type: 'showQuestion', id: item.id })}>
+                    {item.title}
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+          {visible.unread.length > 0 && (
+            <>
+              <div className={`pet-bubble-title pet-bubble-title--list${visible.questions.length > 0 ? ' pet-bubble-title--next' : ''}`}>
+                {visible.unread.length} unread
+              </div>
+              {visible.unread.map((item) => (
+                <div key={item.id} className="pet-list-row">
+                  <span className={`pet-chip pet-chip--icon pet-bubble--${item.tone}`}>
+                    <ToneMark tone={item.tone} />
+                  </span>
+                  <button type="button" className="pet-list-open" onClick={() => open(item)}>
+                    {item.title}
+                  </button>
+                  <button type="button" className="pet-list-dismiss" aria-label={`Dismiss ${item.title}`} onClick={() => dismiss(item)}>
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
       <div
@@ -709,15 +800,14 @@ export function Pet() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onContextMenu={onContextMenu}
-        role="img"
-        aria-label={status.needsInput > 0 ? 'Desktop pet: an agent needs your answer' : 'Desktop pet'}
       >
         {badge > 0 && (
           <button
             ref={badgeRef}
             type="button"
             className="pet-badge"
-            aria-label={`${badge} unread`}
+            data-needs-you={bubbles.questions.length > 0 ? '' : undefined}
+            aria-label={badgeText}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => dispatch({ type: 'toggleList' })}
           >
@@ -733,7 +823,7 @@ export function Pet() {
         {pose === 'look' && <span className="pet-mark pet-mark--look">♪</span>}
         {pose === 'pant' && <span className="pet-mark pet-mark--pant">~</span>}
         {pose === 'sleep' && <span className="pet-zzz">z z</span>}
-        <div className="pet-body">
+        <div className="pet-body" role="img" aria-label={petLabel}>
           <Sprite character={character} pose={pose} colour={settings.colour} />
         </div>
         {showLaptop && (

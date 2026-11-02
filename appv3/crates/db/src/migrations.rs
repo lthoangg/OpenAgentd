@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000029";
+pub const ALEMBIC_HEAD: &str = "00000030";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -70,7 +70,10 @@ pub const ALEMBIC_HEAD: &str = "00000029";
 ///   written when the turn starts and deleted when it ends. A row left
 ///   behind by a stopped or crashed server is a turn to continue on the next
 ///   start; `restart_resumes` caps that at one continuation per turn.
-pub const MIGRATIONS: [(&str, &str); 29] = [
+/// - 00000030: `chat_sessions.credential_id`, the stored credential (key or
+///   account) the session is pinned to. NULL is Auto: the provider's pool
+///   picks and rotates as before.
+pub const MIGRATIONS: [(&str, &str); 30] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -100,6 +103,7 @@ pub const MIGRATIONS: [(&str, &str); 29] = [
     ("00000027", include_str!("../resources/migrations/00000027.sql")),
     ("00000028", include_str!("../resources/migrations/00000028.sql")),
     ("00000029", include_str!("../resources/migrations/00000029.sql")),
+    ("00000030", include_str!("../resources/migrations/00000030.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -372,7 +376,7 @@ CREATE TABLE "chat_sessions" (
 	model VARCHAR(255), 
 	thinking_level VARCHAR(50), 
 	history_revision INTEGER DEFAULT '0' NOT NULL, 
-	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, title_locked BOOLEAN DEFAULT 0 NOT NULL, 
+	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, title_locked BOOLEAN DEFAULT 0 NOT NULL, credential_id VARCHAR(64), 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(parent_session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
 );

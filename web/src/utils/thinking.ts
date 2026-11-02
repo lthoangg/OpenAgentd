@@ -22,6 +22,12 @@ export interface ThinkingSection {
 // whitespace. Title is one line of non-asterisk, non-newline characters.
 const HEADER_RE = /^\s*\*\*([^*\n]+)\*\*\s*$/gm
 
+/** Runs of blank lines (Gemini joins chunks with "\n\n\n\n") become one
+ *  paragraph break: the trace is shown with ``white-space: pre-wrap``. */
+function tidy(body: string): string {
+  return body.trim().replace(/\n[^\S\n]*(?:\n[^\S\n]*)+\n/g, '\n\n')
+}
+
 /**
  * Split reasoning text into ordered ``ThinkingSection``s.
  *
@@ -30,6 +36,7 @@ const HEADER_RE = /^\s*\*\*([^*\n]+)\*\*\s*$/gm
  * - Each ``**Title**`` introduces a new section whose body extends to the
  *   next header or end of input.
  * - Empty sections (no header, no body) are dropped.
+ * - Blank lines between paragraphs collapse to one.
  */
 export function splitSections(content: string): ThinkingSection[] {
   const sections: ThinkingSection[] = []
@@ -41,7 +48,7 @@ export function splitSections(content: string): ThinkingSection[] {
     const match = HEADER_RE.exec(content)
     if (!match) break
 
-    const body = content.slice(lastIndex, match.index).trim()
+    const body = tidy(content.slice(lastIndex, match.index))
     if (pendingHeader !== null || body) {
       sections.push({ header: pendingHeader, body })
     }
@@ -49,7 +56,7 @@ export function splitSections(content: string): ThinkingSection[] {
     lastIndex = match.index + match[0].length
   }
 
-  const tail = content.slice(lastIndex).trim()
+  const tail = tidy(content.slice(lastIndex))
   if (pendingHeader !== null || tail) {
     sections.push({ header: pendingHeader, body: tail })
   }

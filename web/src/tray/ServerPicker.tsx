@@ -60,7 +60,6 @@ export function ServerPicker({ servers, selected, label, open, active, onOpenCha
         aria-expanded={open}
         aria-controls={open ? 'tray-server-list' : undefined}
         aria-label={`Server: ${label}`}
-        title={label}
         onClick={() => onOpenChange(!open)}
       >
         <Server size={12} strokeWidth={2} aria-hidden="true" />

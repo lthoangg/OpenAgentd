@@ -159,6 +159,12 @@ export interface AgentStoreState {
   sessionPendingInteractionMode: SessionInteractionMode | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
+  /**
+   * The stored credential (key or account) the session is pinned to;
+   * ``null`` is Auto. Saved on the session as it is chosen; a new-session
+   * draft holds it locally and sends it with the first message.
+   */
+  sessionCredentialId: string | null
   /** True while model/thinking settings are local overrides not yet confirmed by the server. */
   _sessionSettingsDirty: boolean
   _sessionSettingsVersion: number
@@ -232,6 +238,13 @@ export interface AgentStoreState {
   cacheInvalidations: CacheInvalidation[]
 }
 
+/** Fields of a run-settings change; an absent field is left as it is. */
+export interface RunSettingsPatch {
+  model?: string | null
+  thinkingLevel?: string | null
+  credentialId?: string | null
+}
+
 export interface SendMessageOptions {
   workspace: string
   model?: string | null
@@ -245,6 +258,12 @@ export interface AgentStoreActions {
   sendMessage: (content: string, files: File[] | undefined, options: SendMessageOptions) => Promise<boolean>
   setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
+  /**
+   * Change how the next message runs: model, thinking level, account. Shows
+   * at once and is saved on the session (PATCH); a refusal puts the previous
+   * choice back. Resolves ``true`` once saved (or held locally on a draft).
+   */
+  setSessionRunSettings: (patch: RunSettingsPatch) => Promise<boolean>
   compactAgent: () => Promise<void>
   /** ``restoreDraft: false`` skips putting the undone prompt back in the composer. */
   undoAgent: (options?: { restoreDraft?: boolean }) => Promise<AgentCommandResponse | undefined>
@@ -315,7 +334,7 @@ export interface AgentStoreActions {
    * between the history read and the attach.
    */
   fillAttachGap: (sessionId: string) => Promise<void>
-  beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
+  beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; credentialId?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   /**
    * Load older pages until one holds a prompt the user wrote (at most

@@ -54,7 +54,7 @@ import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
-import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -107,9 +107,7 @@ function DropdownItem({
       className={cn(
         MENU_ITEM_CLASS,
         'outline-none',
-        'transition-colors hover:bg-(--bg-key) focus-key:bg-(--bg-key)',
-        highlighted && 'bg-(--bg-key)',
-        active ? 'text-(--color-text)' : 'text-(--color-text-2)',
+        'text-(--color-text)',
         className,
       )}
       onClick={() => {
@@ -143,6 +141,9 @@ export interface DropdownProps {
   'aria-invalid'?: boolean | 'true' | 'false'
   'aria-describedby'?: string
   disabled?: boolean
+  /** Keep the trigger's own height on touch instead of growing it to 36px,
+   *  for triggers inside a 32px toolbar (they size themselves). */
+  dense?: boolean
 }
 
 function Dropdown({
@@ -159,6 +160,7 @@ function Dropdown({
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedby,
   disabled,
+  dense = false,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
   // Matches the exit's ``animation-duration-(--motion-fast)`` below.
@@ -221,7 +223,8 @@ function Dropdown({
   }, [open])
 
   // Escape closes it while it is the top layer (the trigger handles its own).
-  useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
+  // Opening it closes the other menus and popovers, not the one it sits in.
+  const layer = useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
   // Drop the active option when the menu closes so a stale
   // aria-activedescendant never points at a hidden node.
@@ -356,8 +359,9 @@ function Dropdown({
         data-popup-open={open || undefined}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
-          'justify-between pointer-coarse:min-h-9',
-          open && 'border-(--focus-ring)',
+          'justify-between',
+          !dense && 'pointer-coarse:min-h-9',
+          open && 'border-(--color-border-strong)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}
@@ -384,7 +388,8 @@ function Dropdown({
           role={value !== undefined ? 'listbox' : 'menu'}
           data-slot="dropdown-panel"
           className={cn(
-            'fixed z-50 flex flex-col gap-0.5',
+            // The menu layer (ui/context-menu MENU_LAYER_CLASS): above notices.
+            'fixed z-70 flex flex-col gap-0.5',
             'min-w-(--dropdown-anchor-width) overscroll-contain',
             MENU_PANEL_CLASS,
             'outline-none',
@@ -405,7 +410,7 @@ function Dropdown({
           )}
           style={{ top: pos.top, left: pos.left, '--dropdown-anchor-width': `${pos.width}px` } as React.CSSProperties}
         >
-          {items}
+          <KeyLayerScope layer={layer}>{items}</KeyLayerScope>
         </div>,
         document.body,
       )}

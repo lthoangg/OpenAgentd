@@ -2,26 +2,21 @@
  * GitViewToolbar — the single 32px toolbar under the Git review tab.
  *
  * One segmented control on every platform — Changes and History — plus the
- * view's options on the right (expand-all for Changes; Graph, and with it
- * All branches, for History). History covers two stored sub-tabs: the
- * commit list (``commits``) and the graph (``tree``). The segments are real
- * ARIA tabs; the caller renders the matching ``tabpanel`` using
- * ``gitViewPanelId`` / ``gitViewTabId`` so the ids line up.
+ * Changes view's expand-all on the right. History is the commit list
+ * (stored as ``commits``). The segments are real ARIA tabs; the caller
+ * renders the matching ``tabpanel`` using ``gitViewPanelId`` /
+ * ``gitViewTabId`` so the ids line up.
  */
-import { ChevronsDownUp, ChevronsUpDown, SlidersHorizontal } from 'lucide-react'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { CommitSyncBadge } from './CommitDetail'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 
-export type GitSubTab = 'changes' | 'commits' | 'tree'
-type GitViewSegment = 'changes' | 'history'
+export type GitSubTab = 'changes' | 'commits'
 
-const segmentOf = (tab: GitSubTab): GitViewSegment => (tab === 'changes' ? 'changes' : 'history')
-export const gitViewTabId = (idBase: string, tab: GitSubTab) => `${idBase}-${segmentOf(tab)}-tab`
+export const gitViewTabId = (idBase: string, tab: GitSubTab) => `${idBase}-${tab}-tab`
 export const gitViewPanelId = (idBase: string) => `${idBase}-panel`
 
 export interface GitViewToolbarProps {
@@ -36,11 +31,7 @@ export interface GitViewToolbarProps {
   /** ``null`` when there is nothing to expand. */
   allExpanded: boolean | null
   onToggleExpandAll: () => void
-  allBranches: boolean
-  onAllBranchesChange: (value: boolean) => void
 }
-
-const CHECKBOX_CLASS = 'border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)'
 
 export function GitViewToolbar({
   idBase,
@@ -53,12 +44,10 @@ export function GitViewToolbar({
   mobile,
   allExpanded,
   onToggleExpandAll,
-  allBranches,
-  onAllBranchesChange,
 }: GitViewToolbarProps) {
-  const trigger = (segment: GitViewSegment) => ({
-    value: segment,
-    id: `${idBase}-${segment}-tab`,
+  const trigger = (tab: GitSubTab) => ({
+    value: tab,
+    id: gitViewTabId(idBase, tab),
     'aria-controls': gitViewPanelId(idBase),
   })
   const expandLabel = allExpanded ? 'Collapse all diffs' : 'Expand all diffs'
@@ -66,16 +55,15 @@ export function GitViewToolbar({
   return (
     <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-page) px-2">
       <Tabs
-        value={segmentOf(subTab)}
+        value={subTab}
         onValueChange={(value) => {
-          if (value === 'changes') onSubTabChange('changes')
-          else if (value === 'history' && subTab === 'changes') onSubTabChange('commits')
+          if (value === 'changes' || value === 'commits') onSubTabChange(value)
         }}
         className={cn('min-w-0', mobile && 'flex-1')}
       >
         <TabsList size="sm" aria-label="Git view" className={mobile ? 'w-full' : undefined}>
           <TabsTrigger {...trigger('changes')}>Changes ({changedCount})</TabsTrigger>
-          <TabsTrigger {...trigger('history')}>
+          <TabsTrigger {...trigger('commits')}>
             <span className="inline-flex items-center gap-1">
               History
               {commitsAhead != null && commitsAhead > 0 && (
@@ -107,49 +95,6 @@ export function GitViewToolbar({
             />
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
-        )}
-        {mobile && subTab !== 'changes' && (
-          // Phones: the two options share a menu, so the tabs keep the width.
-          <Dropdown
-            aria-label="History options"
-            align="end"
-            trigger={<SlidersHorizontal size={14} aria-hidden="true" />}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center border-0 bg-transparent p-0 [&>svg]:hidden')}
-            panelClassName="w-44"
-          >
-            {[
-              <DropdownItem key="graph" active={subTab === 'tree'} onSelect={() => onSubTabChange(subTab === 'tree' ? 'commits' : 'tree')}>
-                Graph view
-              </DropdownItem>,
-              subTab === 'tree' && (
-                <DropdownItem key="branches" active={allBranches} onSelect={() => onAllBranchesChange(!allBranches)}>
-                  All branches
-                </DropdownItem>
-              ),
-            ].filter(Boolean)}
-          </Dropdown>
-        )}
-        {!mobile && subTab !== 'changes' && (
-          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
-            <Checkbox
-              checked={subTab === 'tree'}
-              onChange={(event) => onSubTabChange(event.currentTarget.checked ? 'tree' : 'commits')}
-              className={CHECKBOX_CLASS}
-              checkClassName="peer-checked:text-(--color-text)"
-            />
-            <span className="whitespace-nowrap">Graph view</span>
-          </label>
-        )}
-        {!mobile && subTab === 'tree' && (
-          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
-            <Checkbox
-              checked={allBranches}
-              onChange={(event) => onAllBranchesChange(event.currentTarget.checked)}
-              className={CHECKBOX_CLASS}
-              checkClassName="peer-checked:text-(--color-text)"
-            />
-            <span className="whitespace-nowrap">All branches</span>
-          </label>
         )}
       </div>
     </div>

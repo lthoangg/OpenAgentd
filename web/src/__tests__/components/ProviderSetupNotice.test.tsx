@@ -51,4 +51,21 @@ describe('ProviderSetupNotice', () => {
     expect(screen.getAllByRole('status')).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Dismiss provider setup notice' })).toBeNull()
   })
+
+  it("names the session model's provider when only that one is missing, and offers another model", () => {
+    // "Connect a model provider" read as if none were set up while nine were.
+    const onChooseModel = mock(() => {})
+    renderNotice({
+      hasConfiguredProvider: false,
+      missingProvider: { label: 'Antigravity', model: 'agy:antigravity-claude-sonnet-4-6' },
+      onChooseModel,
+    })
+
+    const status = screen.getByRole('status')
+    expect(status.textContent).toContain('Connect Antigravity to keep chatting')
+    expect(status.textContent).toContain('agy:antigravity-claude-sonnet-4-6')
+    expect(status.textContent).not.toContain('Connect a model provider')
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }))
+    expect(onChooseModel).toHaveBeenCalledTimes(1)
+  })
 })

@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 let isTauri = true
+let os = 'macos'
 const setBadgeCount = mock(async (..._args: unknown[]) => {})
 const setTitle = mock(async (..._args: unknown[]) => {})
-mock.module('@/hooks/use-platform', () => ({ getPlatform: () => ({ isTauri, os: 'macos' }) }))
+const invoke = mock(async (..._args: unknown[]) => {})
+mock.module('@/hooks/use-platform', () => ({ getPlatform: () => ({ isTauri, os }) }))
 mock.module('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ setBadgeCount, setTitle }) }))
+mock.module('@tauri-apps/api/core', () => ({ invoke }))
 
 const { buildDesktopWindowTitle, syncDesktopBadgeCount, syncDesktopWindowTitle } = await import('@/lib/window-title')
 
 beforeEach(() => {
   isTauri = true
+  os = 'macos'
   setBadgeCount.mockClear()
   setTitle.mockClear()
+  invoke.mockClear()
+  document.title = 'OpenAgentd'
 })
 
 describe('buildDesktopWindowTitle', () => {
@@ -88,18 +94,93 @@ describe('syncDesktopWindowTitle', () => {
 })
 
 describe('syncDesktopBadgeCount', () => {
-  it('badges the app icon with the count and clears it at zero', async () => {
+  it('has the desktop shell badge the app with the count, and clear it at zero', async () => {
+    await syncDesktopBadgeCount(3)
+    await syncDesktopBadgeCount(0)
+
+    expect(invoke.mock.calls).toEqual([
+      ['set_attention_badge', { count: 3 }],
+      ['set_attention_badge', { count: 0 }],
+    ])
+    expect(setBadgeCount).not.toHaveBeenCalled()
+  })
+
+  it.each(['windows', 'linux'])('does the same on %s', async (platform) => {
+    os = platform
+    await syncDesktopBadgeCount(2)
+    expect(invoke.mock.calls).toEqual([['set_attention_badge', { count: 2 }]])
+  })
+
+  it('leaves the phone apps to badge their own icon', async () => {
+    os = 'ios'
+
     await syncDesktopBadgeCount(3)
     await syncDesktopBadgeCount(0)
 
     expect(setBadgeCount.mock.calls).toEqual([[3], [undefined]])
+    expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('does nothing outside the desktop app', async () => {
+  it('does not call the shell outside the desktop app', async () => {
     isTauri = false
 
     await syncDesktopBadgeCount(3)
 
     expect(setBadgeCount).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('survives a shell without the command', async () => {
+    invoke.mockImplementation(async () => {
+      throw new Error('unknown command')
+    })
+    try {
+      await syncDesktopBadgeCount(1)
+    } finally {
+      invoke.mockImplementation(async () => {})
+    }
+  })
+})
+
+describe('the count in the title', () => {
+  it('puts the count in front of a browser tab title, and takes it off at zero', async () => {
+    isTauri = false
+    document.title = 'Scheduler'
+
+    await syncDesktopBadgeCount(2)
+    expect(document.title).toBe('(2) Scheduler')
+    await syncDesktopBadgeCount(3)
+    expect(document.title).toBe('(3) Scheduler')
+    await syncDesktopBadgeCount(0)
+    expect(document.title).toBe('Scheduler')
+  })
+
+  it('does not stack a second count on a title the chat layout already prefixed', async () => {
+    isTauri = false
+    document.title = 'app - Fix'
+    await syncDesktopBadgeCount(1)
+
+    // The chat layout writes its own title with the new count first…
+    syncDesktopWindowTitle({ workspaceName: 'app', sessionTitle: 'Fix', needsYou: 2 })
+    expect(document.title).toBe('(2) app - Fix')
+    // …and the badge sync that follows finds it already there.
+    await syncDesktopBadgeCount(2)
+    expect(document.title).toBe('(2) app - Fix')
+    await syncDesktopBadgeCount(0)
+    expect(document.title).toBe('app - Fix')
+  })
+
+  it('does not touch a title that merely starts with digits', async () => {
+    isTauri = false
+    document.title = '(3) things'
+    await syncDesktopBadgeCount(0)
+    expect(document.title).toBe('(3) things')
+  })
+
+  it('updates the native window title in the desktop app too', async () => {
+    document.title = 'Scheduler'
+    await syncDesktopBadgeCount(4)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(setTitle.mock.calls.at(-1)).toEqual(['(4) Scheduler'])
   })
 })

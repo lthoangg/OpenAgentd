@@ -14,7 +14,7 @@
  * motion.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ComposerHandoff } from '../FloatingInputComposer'
+import type { ComposerHandoff } from '../composer/Composer'
 
 /** How long the hand-off state lasts: the 400ms glide plus a little slack. */
 export const HANDOFF_ACTIVE_MS = 450

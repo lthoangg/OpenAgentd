@@ -132,7 +132,7 @@ describe('reduced motion — MobileChatActions drawer', () => {
     onOpenChange: () => {},
     title: 'Fix the login bug',
     subtitle: 'app',
-    onSessionSettings: () => {},
+    onModelSettings: () => {},
     onScheduler: () => {},
   }
 

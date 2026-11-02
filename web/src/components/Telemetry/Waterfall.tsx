@@ -21,7 +21,6 @@ import { formatInt, formatMs } from '@/utils/telemetryFormat'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { CATEGORY_ORDER, SpanTypeChip, categoryBarClass, categoryDescription } from './categories'
-import { modelName } from './model'
 
 /** Name, bar and duration columns, shared by the header and every row. */
 const COLS =
@@ -48,23 +47,24 @@ export function spanSummary(span: SpanDetail, category: SpanCategory): string | 
   const errorType = attrString(a, 'error.type')
   if (span.status === 'ERROR') return errorType ?? 'failed'
   const model = attrString(a, 'gen_ai.response.model') ?? attrString(a, 'gen_ai.request.model')
-  // Skip what the raw name already says (`chat <model>`, `agent_run <agent>`).
-  const fresh = (part: string | null | undefined) => (part && !span.name.includes(part) ? part : null)
+  // Skip what the raw name already says (`chat <model>`, `agent_run <agent>`);
+  // the name carries the model without its `provider:` part.
+  const fresh = (part: string | null | undefined) => (part && !span.name.includes(part.slice(part.indexOf(':') + 1)) ? part : null)
   const join = (...parts: Array<string | null | undefined>) => parts.filter(Boolean).join(' · ') || null
   switch (category) {
     case 'agent_run':
       return fresh(attrString(a, 'gen_ai.agent.name'))
     case 'chat': {
       const out = attrNumber(a, 'gen_ai.usage.output_tokens')
-      return join(fresh(model && modelName(model)), out !== null ? `out ${formatInt(out)}` : null)
+      return join(fresh(model), out !== null ? `out ${formatInt(out)}` : null)
     }
     case 'goal': {
       const met = a['goal_check.met']
-      return join(met === true ? 'met' : met === false ? 'not yet' : null, fresh(model && modelName(model)))
+      return join(met === true ? 'met' : met === false ? 'not yet' : null, fresh(model))
     }
     case 'summarization':
     case 'title':
-      return fresh(model && modelName(model))
+      return fresh(model)
     default:
       return null
   }
@@ -114,7 +114,7 @@ export function Waterfall({
 
   return (
     <div className="flex shrink-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-(--color-text-muted)">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta text-(--color-text-muted)">
         <span>
           {rows.length} span{rows.length === 1 ? '' : 's'} · trace duration{' '}
           <span className="font-mono text-(--color-text-2)">{formatMs(bounds.duration_ms)}</span>
@@ -136,7 +136,7 @@ export function Waterfall({
       <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
         <div>
           <div
-            className={cn(COLS, 'h-7 border-b border-(--color-border-subtle) px-3 font-mono text-[11px] text-(--color-text-muted) select-none')}
+            className={cn(COLS, 'h-7 border-b border-(--color-border-subtle) px-3 font-mono text-meta text-(--color-text-muted) select-none')}
           >
             <span>Span</span>
             <span
@@ -207,7 +207,7 @@ const WaterfallRow = memo(function WaterfallRow({
               <span className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
                 <span className="truncate font-mono font-medium text-(--color-text)">{span.name}</span>
                 {summary && (
-                  <span className={cn('max-w-[60%] shrink-0 truncate text-[11px]', isError ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
+                  <span className={cn('max-w-[60%] shrink-0 truncate text-meta', isError ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
                     {summary}
                   </span>
                 )}

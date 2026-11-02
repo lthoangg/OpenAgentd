@@ -32,7 +32,7 @@ export interface RecentTurnsProps {
   showAgent?: boolean
 }
 
-const TH = 'px-3 py-1.5 text-[11px] font-medium text-(--color-text-muted) whitespace-nowrap'
+const TH = 'px-3 py-1.5 text-meta font-medium text-(--color-text-muted) whitespace-nowrap'
 const TD = 'px-3 py-2 whitespace-nowrap'
 
 export function RecentTurns({
@@ -56,7 +56,7 @@ export function RecentTurns({
     <SectionCard>
       <SectionCardHeader className="flex items-center justify-between gap-2 py-1">
         <span>Recent turns</span>
-        <span className="font-normal normal-case tracking-normal text-(--color-text-subtle)">
+        <span className="font-normal normal-case tracking-normal text-(--color-text-muted)">
           {errorsOnly ? 'Failed only' : 'Newest first'}
         </span>
       </SectionCardHeader>
@@ -112,7 +112,7 @@ export function RecentTurns({
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between gap-2 border-t border-(--color-border) px-3 py-1.5 text-[11px] text-(--color-text-subtle)">
+          <div className="flex items-center justify-between gap-2 border-t border-(--color-border) px-3 py-1.5 text-meta text-(--color-text-muted)">
             <span>
               Showing {formatCompact(turns.length)} of {formatCompact(total)} turns
             </span>
@@ -166,7 +166,7 @@ function TurnRow({
             className="rounded-xs text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--focus-ring)"
           >
             <span className="block text-(--color-text-2) tabular-nums">{shortDateTime(turn.start_ms)}</span>
-            <span className="block text-[11px] leading-tight text-(--color-text-subtle)">{when}</span>
+            <span className="block text-meta leading-tight text-(--color-text-muted)">{when}</span>
           </button>
         </span>
       </td>
@@ -177,15 +177,15 @@ function TurnRow({
         </td>
       )}
       {showModel && (
-        <td className={`${TD} max-w-56 text-[11px] text-(--color-text-muted)`}>
+        <td className={`${TD} max-w-56 text-meta text-(--color-text-muted)`}>
           {model ? <ModelId id={model} /> : '-'}
         </td>
       )}
       <td className={`${TD} text-right tabular-nums text-(--color-text-2)`}>{formatMs(turn.duration_ms)}</td>
-      <td className={`${TD} text-right font-mono text-[11px] tabular-nums text-(--color-text-muted)`}>
+      <td className={`${TD} text-right font-mono text-meta tabular-nums text-(--color-text-muted)`}>
         {formatCompact(turn.input_tokens)} / {formatCompact(turn.output_tokens)}
       </td>
-      <td className={`${TD} text-right font-mono text-[11px] tabular-nums text-(--color-text)`}>
+      <td className={`${TD} text-right font-mono text-meta tabular-nums text-(--color-text)`}>
         {formatSpend(turn.estimated_cost_usd)}
       </td>
       <td className={TD}>
@@ -222,17 +222,17 @@ function TurnCard({
       >
         <span className="flex items-center justify-between gap-2">
           <span className="text-(--color-text-2) tabular-nums">
-            {shortDateTime(turn.start_ms)} <span className="text-(--color-text-subtle)">· {when}</span>
+            {shortDateTime(turn.start_ms)} <span className="text-(--color-text-muted)">· {when}</span>
           </span>
           {turn.error ? <Chip tone="error">failed</Chip> : <Chip tone="success">ok</Chip>}
         </span>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-(--color-text-muted)">
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-meta text-(--color-text-muted)">
           {showModel && model && <ModelId id={model} />}
-          <span className="font-mono tabular-nums"><span className="text-(--color-text-subtle)">dur</span> {formatMs(turn.duration_ms)}</span>
+          <span className="font-mono tabular-nums"><span className="text-(--color-text-muted)">dur</span> {formatMs(turn.duration_ms)}</span>
           <span className="font-mono tabular-nums">
-            <span className="text-(--color-text-subtle)">in/out</span> {formatCompact(turn.input_tokens)}/{formatCompact(turn.output_tokens)}
+            <span className="text-(--color-text-muted)">in/out</span> {formatCompact(turn.input_tokens)}/{formatCompact(turn.output_tokens)}
           </span>
-          <span className="font-mono tabular-nums"><span className="text-(--color-text-subtle)">cost</span> {formatSpend(turn.estimated_cost_usd)}</span>
+          <span className="font-mono tabular-nums"><span className="text-(--color-text-muted)">cost</span> {formatSpend(turn.estimated_cost_usd)}</span>
         </span>
       </button>
     </li>

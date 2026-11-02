@@ -88,7 +88,7 @@ describe('scheduler overlay — unsaved task', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
     fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
 
-    fireEvent.click(screen.getByRole('button', { name: /Existing reminder/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Existing reminder/ }))
 
     expect(await screen.findByText('Discard this task?')).toBeInTheDocument()
     expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
@@ -100,7 +100,7 @@ describe('scheduler overlay — unsaved task', () => {
 
     expect(await screen.findByRole('heading', { name: 'Existing reminder' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Task title')).toBeNull()
-    expect(screen.getByRole('button', { name: /Existing reminder/ })).toHaveAttribute('aria-current')
+    expect(screen.getByRole('button', { name: /^Existing reminder/ })).toHaveAttribute('aria-current')
   })
 
   it('shows the empty form when "New task" is chosen, and a task again when one is picked', async () => {
@@ -112,7 +112,7 @@ describe('scheduler overlay — unsaved task', () => {
     // The header button gives way to the form it opens
     expect(screen.queryByRole('button', { name: 'New task' })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /Existing reminder/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Existing reminder/ }))
     expect(await screen.findByRole('heading', { name: 'Existing reminder' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Task title')).toBeNull()
   })

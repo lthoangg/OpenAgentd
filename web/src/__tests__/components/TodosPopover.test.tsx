@@ -42,13 +42,13 @@ describe('TodosPopover', () => {
     const plan = { content: '## Summary\nDo it.', updated_at: new Date().toISOString() }
     render(<TodosPopover open onOpenChange={() => {}} todos={[]} plan={plan} onClearPlan={() => {}} />)
 
-    expect(screen.getByRole('button', { name: 'View plan' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open plan' })).toBeTruthy()
     expect(screen.getByText('No tasks yet')).toBeTruthy()
   })
 
   it('has no plan row without a saved plan', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
-    expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open plan' })).toBeNull()
   })
 
   it('closes itself and opens the Plan tab from the plan row', () => {
@@ -150,10 +150,10 @@ describe('TodosPopover', () => {
     expect(calls).toEqual([false])
   })
 
-  it('keeps the progress counter at the 11px floor on desktop', () => {
+  it('keeps the progress counter on the meta step on desktop', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
     const counter = screen.getByText('2/4 done')
-    expect(counter.className).toContain('md:text-[11px]')
+    expect(counter.className).toContain('md:text-meta')
     expect(counter.className).not.toContain('text-[10px]')
   })
 })

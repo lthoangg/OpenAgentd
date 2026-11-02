@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-share-url"
+description = "Enables the share_url command without any pre-configured scope."
+commands.allow = ["share_url"]
+
+[[permission]]
+identifier = "deny-share-url"
+description = "Denies the share_url command without any pre-configured scope."
+commands.deny = ["share_url"]

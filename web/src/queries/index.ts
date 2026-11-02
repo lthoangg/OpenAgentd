@@ -93,3 +93,4 @@ export {
   useUpdateMultimodalSettingsMutation,
 } from './useMultimodalSettingsQuery'
 export { queryKeys } from './keys'
+export { forgetProviderUsage, forgetProviderUsageKey } from './providerUsageCache'

@@ -18,6 +18,7 @@ use crate::config::{
 };
 use crate::window::{create_app_window, frontend_init_script, show_main_window};
 use crate::menu::update_tray_status;
+use crate::servers::ServerId;
 use crate::shutdown_sidecar_now;
 
 #[cfg(target_os = "macos")]
@@ -100,6 +101,81 @@ fn another_app_window_focused(app: &AppHandle, caller: &str) -> bool {
     crate::servers::focused_window_covers(caller, focused.as_deref(), &crate::servers::external_map(app))
 }
 
+/// How long a question's notification waits for the server to say what its
+/// options are; past it the notification shows with "Open to answer" alone.
+const QUESTION_WAIT: Duration = Duration::from_secs(3);
+
+/// A notification's buttons, in order, as (id, label): one per option of a
+/// question that can be answered in place, and the way into the app. A click
+/// on the notification itself is `default`, the same as that one.
+///
+/// With `open_first` the way into the app leads. macOS folds several actions
+/// into one "Options" dropdown, and notify-rust answers a click on the
+/// dropdown's face with the *first* action: that must open the app, never
+/// answer a question by accident. Elsewhere the options lead.
+fn notification_actions(choices: &[String], asks: bool, open_first: bool) -> Vec<(String, String)> {
+    let mut actions: Vec<(String, String)> = choices
+        .iter()
+        .take(crate::answers::MAX_QUICK_CHOICES)
+        .enumerate()
+        .map(|(index, choice)| (format!("answer:{index}"), choice.clone()))
+        .collect();
+    let open = ("default".to_string(), if asks { "Open to answer" } else { "Open" }.to_string());
+    if open_first {
+        actions.insert(0, open);
+    } else {
+        actions.push(open);
+    }
+    actions
+}
+
+/// The option an action id picks (`answer:<index>`), if it is one.
+fn picked_choice<'a>(action: &str, choices: &'a [String]) -> Option<&'a str> {
+    let index: usize = action.strip_prefix("answer:")?.parse().ok()?;
+    choices.get(index).map(String::as_str)
+}
+
+/// The question a notification is about, from the server, when it is one.
+/// Runs on the notification's own thread, never the async runtime's.
+fn open_question(app: &AppHandle, server: &ServerId, payload: &DesktopNotificationPayload) -> Option<crate::answers::OpenQuestion> {
+    if payload.kind != "input_needed" {
+        return None;
+    }
+    let session_id = payload.session_id.as_deref()?;
+    match wait_on_thread(QUESTION_WAIT, crate::answers::fetch_question(app, server, session_id)) {
+        Some(Ok(question)) => question,
+        Some(Err(error)) => {
+            log::debug!("desktop_notification_question_unavailable error={error:#}");
+            None
+        }
+        None => None,
+    }
+}
+
+/// Run `work` to completion from a plain thread, giving up after `wait`.
+/// The timeout is made inside the future `block_on` drives: a Tokio timer
+/// needs the runtime when it is created, and a plain thread has none.
+fn wait_on_thread<F: std::future::Future>(wait: Duration, work: F) -> Option<F::Output> {
+    tauri::async_runtime::block_on(async move { tokio::time::timeout(wait, work).await.ok() })
+}
+
+/// A click on a notification: open its session through the shared router
+/// (the window that shows it, else the server's). With no session, or if the
+/// router fails, bring the asking window (or any) forward.
+fn open_from_notification(app: &AppHandle, sender: &str, server: ServerId, session_id: Option<&str>) {
+    if let Some(session_id) = session_id {
+        let opened = crate::island::open_session(app, server, session_id, crate::island::OpenIn::Existing);
+        match tauri::async_runtime::block_on(opened) {
+            Ok(()) => return,
+            Err(error) => log::warn!("desktop_notification_open_failed error={error:#}"),
+        }
+    }
+    match app.get_webview_window(sender) {
+        Some(window) => crate::window::show_window(&window),
+        None => show_main_window(app),
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopNotificationPayload {
@@ -140,47 +216,55 @@ pub fn show_desktop_notification(
     if crate::pet::take_banner(&app, window.label(), bubble) {
         return Ok(false);
     }
-    // Past the cap the notification is still delivered, just without the
-    // "Open" action — with no actions `needs_response()` is false, so
+    // Past the cap the notification is still delivered, just without its
+    // actions — with no actions `needs_response()` is false, so
     // `wait_for_action` sends and returns instead of parking the thread.
     // Losing click-routing on a backlogged notification beats leaking an
     // unbounded number of threads.
     let routes_clicks = claim_notification_slot();
-    // A click opens the session in the window that asked: it is on the
-    // session's server, which the focused window may not be.
+    // The asking window is on the session's server, which the focused window
+    // may not be: that is where the session, and its question, live.
     let sender = window.label().to_string();
+    let server = crate::servers::window_server(&sender, &crate::servers::external_map(&app));
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
         ensure_notification_application(&app);
+        // A question the shell can answer gets its options as buttons: the
+        // notification APIs carry them as actions (XDG actions on Linux, a
+        // dropdown beside the macOS banner, buttons on a Windows toast).
+        let question = if routes_clicks { open_question(&app, &server, &payload) } else { None };
+        let choices = question.as_ref().map(|q| q.quick_choices()).unwrap_or_default();
+        let asks = payload.kind == "input_needed" && payload.session_id.is_some();
         let mut notification = notify_rust::Notification::new();
         notification
-            .summary(&payload.title)
+            .summary(&crate::pet::display_title(&payload.kind, &payload.title))
             .body(&payload.body);
         if routes_clicks {
-            notification.action("default", "Open");
+            for (id, label) in notification_actions(&choices, asks, cfg!(target_os = "macos")) {
+                notification.action(&id, &label);
+            }
         }
 
         match notification.show() {
             Ok(handle) => handle.wait_for_action(move |action| {
+                if let (Some(choice), Some(question), Some(session_id)) =
+                    (picked_choice(action, &choices), question.as_ref(), payload.session_id.as_deref())
+                {
+                    // A button: post the answer. If the server refuses it
+                    // (not a "no longer open", which clears the question
+                    // everywhere), open the session to answer it there.
+                    let answers = vec![vec![choice.to_string()]];
+                    let sent = crate::island::answer_question(&app, &server, session_id, &question.id, &answers);
+                    if let Err(error) = tauri::async_runtime::block_on(sent) {
+                        log::warn!("desktop_notification_answer_failed error={error:#}");
+                        open_from_notification(&app, &sender, server, Some(session_id));
+                    }
+                    return;
+                }
                 if action != "default" {
                     return;
                 }
-                let target = match app.get_webview_window(&sender) {
-                    Some(window) => {
-                        crate::window::show_window(&window);
-                        Some(window)
-                    }
-                    None => {
-                        show_main_window(&app);
-                        crate::window::target_webview_window(&app)
-                    }
-                };
-                let Some(target) = target.filter(|_| payload.session_id.is_some()) else {
-                    return;
-                };
-                if let Err(error) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
-                    log::warn!("desktop_notification_click_emit_failed error={error:#}");
-                }
+                open_from_notification(&app, &sender, server, payload.session_id.as_deref());
             }),
             Err(error) => log::warn!("desktop_notification_failed error={error:#}"),
         }
@@ -671,6 +755,13 @@ pub async fn app_set_network_access_key(
 
 #[tauri::command]
 pub async fn app_new_window(app: AppHandle, initial_path: Option<String>) -> Result<(), String> {
+    // One window per session: a window that already shows it comes forward
+    // instead of a second one opening (⌘-click on a session that is open).
+    if let Some(session_id) = initial_path.as_deref().and_then(crate::island::session_id_from_path) {
+        if crate::island::focus_window_showing(&app, &session_id) {
+            return Ok(());
+        }
+    }
     create_app_window(&app, None, initial_path.as_deref())
         .await
         .map(|_| ())
@@ -723,15 +814,38 @@ mod health_tests {
 #[cfg(test)]
 mod notification_tests {
     use super::{
-        claim_notification_slot, first_notification_request, MAX_PENDING_NOTIFICATIONS,
-        MAX_SEEN_NOTIFICATIONS, PENDING_NOTIFICATIONS,
+        claim_notification_slot, first_notification_request, notification_actions, picked_choice,
+        wait_on_thread, MAX_PENDING_NOTIFICATIONS, MAX_SEEN_NOTIFICATIONS, PENDING_NOTIFICATIONS,
     };
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
     #[cfg(target_os = "macos")]
     use super::notification_application_identifier;
 
     // Access-key and download behaviour is tested once in
     // `openagentd-shell-core`; the desktop keeps only what is desktop-only.
+
+    // ── wait_on_thread ──────────────────────────────────────────────────
+    //
+    // A notification asks the server for its question from its own std
+    // thread, outside any Tokio context. A question notification panicked
+    // there ("there is no reactor running") and never showed.
+
+    #[test]
+    fn a_timed_wait_runs_from_a_plain_thread() {
+        let got = std::thread::spawn(|| wait_on_thread(Duration::from_secs(5), async { 7 }))
+            .join()
+            .expect("the wait must not panic outside the async runtime");
+        assert_eq!(got, Some(7));
+    }
+
+    #[test]
+    fn a_timed_wait_gives_up_after_its_limit() {
+        let got = std::thread::spawn(|| wait_on_thread(Duration::from_millis(20), std::future::pending::<()>()))
+            .join()
+            .expect("the wait must not panic outside the async runtime");
+        assert_eq!(got, None);
+    }
 
     #[cfg(target_os = "macos")]
     #[test]
@@ -781,5 +895,48 @@ mod notification_tests {
             assert!(first_notification_request(&format!("dedupe-fill-{n}")));
         }
         assert!(first_notification_request("dedupe-a"));
+    }
+
+    fn labels(actions: &[(String, String)]) -> Vec<&str> {
+        actions.iter().map(|(_, label)| label.as_str()).collect()
+    }
+
+    #[test]
+    fn a_notification_keeps_its_single_open_button_unless_it_asks_something() {
+        let plain = notification_actions(&[], false, false);
+        assert_eq!(plain, [("default".to_string(), "Open".to_string())]);
+        // A question that can't be answered here still says what opening does.
+        assert_eq!(labels(&notification_actions(&[], true, false)), ["Open to answer"]);
+    }
+
+    #[test]
+    fn a_question_gets_one_button_per_option_and_a_way_into_the_app() {
+        let choices = vec!["Wait for Work".to_string(), "Use Auto".to_string()];
+        let actions = notification_actions(&choices, true, false);
+        assert_eq!(labels(&actions), ["Wait for Work", "Use Auto", "Open to answer"]);
+        assert_eq!(actions.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["answer:0", "answer:1", "default"]);
+
+        // Windows toasts take five buttons; four options and Open fit.
+        let many: Vec<String> = (0..9).map(|i| format!("Option {i}")).collect();
+        assert_eq!(notification_actions(&many, true, false).len(), crate::answers::MAX_QUICK_CHOICES + 1);
+    }
+
+    // notify-rust turns a click on macOS's "Options" button itself into the
+    // first action: that must not be an answer.
+    #[test]
+    fn on_macos_the_way_into_the_app_leads_so_a_stray_click_never_answers() {
+        let choices = vec!["Wait for Work".to_string(), "Use Auto".to_string()];
+        let actions = notification_actions(&choices, true, true);
+        assert_eq!(actions[0].0, "default");
+        assert_eq!(labels(&actions), ["Open to answer", "Wait for Work", "Use Auto"]);
+    }
+
+    #[test]
+    fn a_clicked_action_picks_its_option_and_nothing_else_does() {
+        let choices = vec!["Wait for Work".to_string(), "Use Auto".to_string()];
+        assert_eq!(picked_choice("answer:1", &choices), Some("Use Auto"));
+        for other in ["default", "__closed", "answer:2", "answer:x", "answer:", "Use Auto"] {
+            assert_eq!(picked_choice(other, &choices), None, "{other}");
+        }
     }
 }

@@ -36,7 +36,7 @@ body {
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.4;
   color: var(--color-text);
@@ -100,7 +100,7 @@ button:focus-visible {
 .tray-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 6px 8px 8px;
 }
 
@@ -109,11 +109,34 @@ button:focus-visible {
   color: var(--color-text);
 }
 
+.head-server {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* "2 need you": the count in words, with the colour as a second cue. */
+.head-chip {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-orange-soft);
+  color: var(--accent-orange-text);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  margin-right: auto;
+  font-size: 12px;
   font-weight: 500;
   color: var(--color-text-muted);
 }
@@ -133,7 +156,6 @@ button:focus-visible {
 .toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 0 4px 6px 8px;
 }
@@ -151,8 +173,8 @@ button:focus-visible {
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -184,14 +206,14 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 24px;
+  height: 28px;
   max-width: 160px;
-  padding: 0 7px;
+  padding: 0 8px;
   border: 1px solid var(--color-border-subtle);
   border-radius: 6px;
   background: var(--bg-card);
   color: var(--color-text-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   transition: background-color var(--motion-instant), border-color var(--motion-instant), color var(--motion-instant);
 }
@@ -292,7 +314,7 @@ button:focus-visible {
 
 .option-detail {
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -355,7 +377,7 @@ button:focus-visible {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .card-alert {
@@ -398,7 +420,7 @@ button:focus-visible {
 .row-window {
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .row-figures {
@@ -406,7 +428,7 @@ button:focus-visible {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .row-percent {
@@ -421,7 +443,7 @@ button:focus-visible {
   margin-top: 5px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 /* The fill is usage consumed; it scales (no width animation) so a refresh
@@ -489,7 +511,7 @@ button:focus-visible {
 
 .line-muted {
   font-size: 11px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .line-value {
@@ -506,16 +528,16 @@ button:focus-visible {
   gap: 3px;
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .small-btn {
-  height: 22px;
-  padding: 0 8px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-surface);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--color-text);
   transition: background-color var(--motion-instant);
@@ -523,6 +545,141 @@ button:focus-visible {
 
 .small-btn:hover:not(:disabled) {
   background: var(--bg-key);
+}
+
+/* The one thing to do: filled, as the app's primary button is. */
+.small-btn[data-primary] {
+  border-color: transparent;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+
+.small-btn[data-primary]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 88%, transparent);
+}
+
+.small-btn:disabled {
+  opacity: 0.5;
+}
+
+/* ── Sessions: what needs you, and what runs ─────────────────────────── */
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 236px;
+  margin-bottom: 6px;
+  padding: 0 2px 6px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.group-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.group-rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group-more {
+  padding: 2px 6px 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  transition: background-color var(--motion-instant);
+}
+
+button.session-row:hover {
+  background: var(--bg-key);
+}
+
+.session-row--static {
+  cursor: default;
+}
+
+.session-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--accent-blue-text);
+}
+
+.session-dot[data-tone="needs"] {
+  background: var(--accent-orange-text);
+}
+
+.session-mark {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.session-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.session-title,
+.session-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.session-title {
+  font-weight: 500;
+}
+
+.session-sub {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.session-go {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 /* ── Loading, offline, empty ─────────────────────────────────────────── */
@@ -555,7 +712,7 @@ button:focus-visible {
 
 .blank svg {
   margin-bottom: 4px;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .blank-title {
@@ -564,12 +721,22 @@ button:focus-visible {
 
 .blank-text {
   max-width: 250px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
 .blank .small-btn {
   margin-top: 8px;
+}
+
+.blank-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.blank-actions .small-btn {
+  margin-top: 0;
 }
 
 /* ── Footer and actions ──────────────────────────────────────────────── */
@@ -578,18 +745,33 @@ button:focus-visible {
   align-items: center;
   gap: 6px;
   padding: 6px 8px 2px;
-  font-size: 11px;
-  color: var(--color-text-subtle);
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
-.link-btn {
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 11px;
-  color: var(--color-text-2);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+/* A refresh that failed: the reason in words, and a button to try again. */
+.callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 2px 0;
+  padding: 6px 6px 6px 10px;
+  border-radius: 8px;
+  background: var(--color-error-subtle);
+  color: var(--color-text);
+}
+
+.callout-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.callout-text strong {
+  font-weight: 600;
+  color: var(--color-error);
 }
 
 .actions {
@@ -628,7 +810,7 @@ button:focus-visible {
   font-size: 11px;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 /* Reduced motion, as in the app (index.css): everything snaps; the

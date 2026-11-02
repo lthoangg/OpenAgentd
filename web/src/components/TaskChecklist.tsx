@@ -27,9 +27,9 @@ const STATUS_ICON: Record<TodoItem['status'], LucideIcon> = {
 }
 
 const STATUS_ICON_COLOR: Record<TodoItem['status'], string> = {
-  completed: 'text-(--color-success)',
+  completed: 'text-(--accent-green-text)',
   cancelled: 'text-(--color-text-subtle)',
-  in_progress: 'text-(--color-info)',
+  in_progress: 'text-(--color-text)',
   pending: 'text-(--color-text-muted)',
 }
 
@@ -79,7 +79,7 @@ export function TaskProgressBar({ summary }: { summary: TodoSummary }) {
       <div
         className={cn(
           'h-full w-full transition-transform duration-(--motion-base) ease-(--ease-out)',
-          summary.allDone ? 'bg-(--color-success)' : 'bg-(--color-info)',
+          summary.allDone ? 'bg-(--accent-green-text)' : 'bg-(--color-text-2)',
         )}
         style={{ translate: `${summary.progressPct - 100}% 0` }}
       />
@@ -124,7 +124,7 @@ export function TaskChecklist({ todos, overflow = 'truncate', className }: TaskC
             className={cn(
               'flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
               overflow === 'truncate' ? 'items-center' : 'items-start',
-              isInProgress ? 'bg-(--color-info-subtle) text-(--color-text)' : 'hover:bg-(--bg-key)/50',
+              isInProgress ? 'bg-(--bg-key) text-(--color-text)' : 'hover:bg-(--bg-key)/50',
             )}
           >
             <Icon

@@ -2,25 +2,28 @@
  * ActivePlanSection — the session plan as one row above the task list.
  *
  * The lead writes the plan with the ``plan`` tool, and the backend restates it
- * after every context compaction. Open shows it in the Plan tab (View opens a
- * read-only document where there is no dock); Clear stops using it in the
- * session, so later compactions stop carrying a plan the session has moved
- * past. A workspace plan file stays on disk.
+ * after every context compaction. Open plan shows it in the Plan tab (a
+ * read-only document where there is no dock — same name, one verb for it
+ * everywhere); Clear stops using it in the session, so later compactions stop
+ * carrying a plan the session has moved past. A workspace plan file stays on
+ * disk.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PLAN_STATUS_LABEL, planStatus, type PlanStatus } from '@/lib/plan'
 import { cn } from '@/lib/utils'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import type { SessionPlan } from '@/api/types'
-import { FileLightbox, type FileLightboxItem } from './FileLightbox'
+import type { FileLightboxItem } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 
 export interface ActivePlanSectionProps {
   plan: SessionPlan
   onClear: () => void
-  /** Open the plan in the Plan tab. Without it, View opens a read-only document. */
+  /** Open the plan in the Plan tab. Without it, Open plan shows a read-only document. */
   onOpen?: () => void
   clearing?: boolean
   /** Where the plan stands; without it, read from the plan alone. */
@@ -74,36 +77,36 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
       <span className="text-xs font-medium text-(--color-text)">Plan</span>
       {title && <span className="min-w-0 truncate text-xs text-(--color-text-2)" title={title}>{title}</span>}
       {plan.revision !== undefined && (
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
+        <span className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)">rev {plan.revision}</span>
       )}
-      {statusClass && <span data-plan-status-label className={cn('shrink-0 text-[11px] font-medium', statusClass)}>{statusText}</span>}
+      {statusClass && <span data-plan-status-label className={cn('shrink-0 text-meta font-medium', statusClass)}>{statusText}</span>}
       <span
-        className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)"
+        className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)"
         title={`Updated ${formatRelativeDate(plan.updated_at)}`}
       >
         {formatCompactRelative(plan.updated_at)}
       </span>
       <span className="flex-1" aria-hidden="true" />
-      {onOpen ? (
-        <Button type="button" variant="ghost" size="xs" onClick={onOpen} aria-label="Open plan">
-          Open
-        </Button>
-      ) : (
-        <Button type="button" variant="ghost" size="xs" onClick={openPlan} aria-label="View plan">
-          View
-        </Button>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        onClick={() => setConfirmClear(true)}
-        disabled={clearing}
-        aria-label="Clear plan…"
-        title="Stops using this plan in the session; the file stays."
-      >
-        Clear…
+      <Button type="button" variant="ghost" size="xs" onClick={onOpen ?? openPlan}>
+        Open plan
       </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => setConfirmClear(true)}
+              disabled={clearing}
+              aria-label="Clear plan…"
+            >
+              Clear…
+            </Button>
+          }
+        />
+        <TooltipContent>Stops using this plan in the session; the file stays.</TooltipContent>
+      </Tooltip>
       <ConfirmDialog
         open={confirmClear}
         onOpenChange={setConfirmClear}

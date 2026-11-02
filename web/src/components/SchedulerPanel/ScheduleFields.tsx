@@ -71,7 +71,7 @@ export function IntervalField({
           ))}
         </Dropdown>
         {seconds > 0 && (
-          <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-(--color-text-muted) tabular-nums">= {seconds.toLocaleString('en-US')} s</span>
+          <span className="shrink-0 whitespace-nowrap font-mono text-meta text-(--color-text-muted) tabular-nums">= {seconds.toLocaleString('en-US')} s</span>
         )}
       </div>
       {error ? (

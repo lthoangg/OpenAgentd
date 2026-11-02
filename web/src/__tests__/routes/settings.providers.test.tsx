@@ -138,7 +138,7 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.queryByText('Failed')).toBeNull()
     // A saved OAuth token whose listing failed must stay retryable — the
     // daemon re-uses the stored token, there is nothing for the user to retype.
-    expect(screen.getByRole('button', { name: 'Test sign-in' }).getAttribute('disabled')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Test' }).getAttribute('disabled')).toBeNull()
   })
 
   it('shows GitHub device-code copy for Copilot OAuth', async () => {
@@ -275,11 +275,10 @@ describe('ProvidersSettingsPage', () => {
     fireEvent.click(toggle)
     expect(screen.getByText('openai:gpt-test')).toBeTruthy()
     const copy = screen.getByLabelText('Copy openai:gpt-test')
-    expect(copy.parentElement?.className).toContain('min-h-9')
-    expect(copy.className).toContain('h-8')
-    expect(copy.className).toContain('w-8')
-    expect(copy.className).toContain('md:h-6')
-    expect(copy.className).toContain('md:w-6')
+    expect(copy.closest('li')?.className).toContain('min-h-9')
+    // 24px, 36px on touch (Review panel audit R12), shown at rest.
+    expect(copy.className).toContain('size-6')
+    expect(copy.className).toContain('pointer-coarse:size-9')
   })
 
   it('shows cached models already returned by the providers payload', async () => {
@@ -401,7 +400,7 @@ describe('ProvidersSettingsPage', () => {
 
     expect(await screen.findByText('OpenCode Zen')).toBeTruthy()
     expect(screen.queryByText(/Free models are available without an API key/i)).toBeNull()
-    const testKey = screen.getByRole('button', { name: 'Test key' })
+    const testKey = screen.getByRole('button', { name: 'Test' })
     expect(testKey.getAttribute('disabled')).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'List models' })).toBeNull()
   })
@@ -447,7 +446,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Anthropic')).toBeTruthy()
-    const testKey = screen.getByRole('button', { name: 'Test key' })
+    const testKey = screen.getByRole('button', { name: 'Test' })
     expect(testKey.getAttribute('disabled')).toBeNull()
 
     fireEvent.click(testKey)
@@ -500,7 +499,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Anthropic')).toBeTruthy()
-    const testKey = screen.getByRole('button', { name: 'Test key' })
+    const testKey = screen.getByRole('button', { name: 'Test' })
     expect(testKey.getAttribute('disabled')).toBeNull()
 
     fireEvent.click(testKey)
@@ -605,10 +604,48 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Plugin OAuth')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText('Usage')).toBeTruthy())
+    // A lone provider opens by itself; usage lives in one sign-in row, not an outer block.
+    await waitFor(() => expect(screen.getByText('Provider sign-in')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('42% used')).toBeTruthy())
+    expect(screen.queryByText('Usage')).toBeNull()
     expect(screen.getByText('Model A')).toBeTruthy()
-    expect(screen.getByText('42% used')).toBeTruthy()
     expect(screen.getByText('Live')).toBeTruthy()
+  })
+
+  it('does not poll usage for a collapsed provider', async () => {
+    const hits: string[] = []
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'one', label: 'One', description: 'd', kind: 'oauth', credentials: [], saved_credentials: {},
+            env_var: '', env_vars: [], oauth_command: '', docs_url: '', is_configured: true, is_saved: true,
+            is_reachable: true, cached_models: [], visible_models: [], is_disconnected: false,
+            supports_fast_mode: false, public_access: false,
+          },
+          {
+            id: 'two', label: 'Two', description: 'd', kind: 'oauth', credentials: [], saved_credentials: {},
+            env_var: '', env_vars: [], oauth_command: '', docs_url: '', is_configured: true, is_saved: true,
+            is_reachable: true, cached_models: [], visible_models: [], is_disconnected: false,
+            supports_fast_mode: false, public_access: false,
+          },
+        ],
+      })),
+      http.get('http://localhost/api/settings/providers/:id/usage', ({ params }) => {
+        hits.push(String(params.id))
+        return HttpResponse.json({ provider: params.id, limits: [] })
+      }),
+    )
+    renderPage()
+    const one = await screen.findByRole('button', { name: /One/ })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hits).toEqual([])
+    fireEvent.click(one)
+    await waitFor(() => expect(hits).toEqual(['one']))
+    fireEvent.click(one)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hits).toEqual(['one'])
   })
 
   it('shows active usage and credits for a configured API key provider', async () => {
@@ -693,12 +730,12 @@ describe('ProvidersSettingsPage', () => {
       const alpha = await screen.findByRole('button', { name: /Alpha/ })
       expect(alpha.getAttribute('aria-expanded')).toBe('false')
       expect(screen.queryByText('Alpha blurb')).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Test key' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Test' })).toBeNull()
 
       fireEvent.click(alpha)
       expect(alpha.getAttribute('aria-expanded')).toBe('true')
       expect(screen.getByText('Alpha blurb')).toBeTruthy()
-      expect(screen.getByRole('button', { name: 'Test key' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Test' })).toBeTruthy()
       // Bravo stays closed
       expect(screen.getByRole('button', { name: /Bravo/ }).getAttribute('aria-expanded')).toBe('false')
     })
@@ -709,7 +746,7 @@ describe('ProvidersSettingsPage', () => {
       const alpha = await screen.findByRole('button', { name: /Alpha/ })
       expect(alpha.getAttribute('aria-expanded')).toBe('true')
       expect(screen.getByText('Alpha blurb')).toBeTruthy()
-      expect(screen.getByRole('button', { name: 'Test key' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Test' })).toBeTruthy()
     })
 
     it('shows status chips and sublines in the row header', async () => {

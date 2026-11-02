@@ -32,7 +32,7 @@ mock.module('@/api/client', () => ({
 mock.module('@/components/Sidebar.workspace', () => ({ latestTopLevelSession: async () => null }))
 mock.module('@/lib/broadcast-sync', () => ({ initBroadcastSync: () => () => {}, broadcastMessage: () => {} }))
 mock.module('@/lib/window-title', () => ({ syncDesktopWindowTitle: () => {} }))
-mock.module('@/hooks/use-needs-you-badge', () => ({ useNeedsYouBadge: () => 0 }))
+mock.module('@/hooks/use-needs-you-badge', () => ({ useNeedsYouBadge: () => 0, useNeedsYouCount: () => 0 }))
 mock.module('@/queries/useChatWorkspace', () => ({ useChatWorkspace: () => null }))
 mock.module('@/lib/fresh-window', () => ({ isFreshDesktopWindow: () => false, clearFreshDesktopWindow: () => {} }))
 

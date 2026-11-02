@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -57,7 +57,14 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // markdown frontmatter table, all on the first screen.
 // v3.38.0 took 2.056 MB / 657.6 kB: cross-window unread sync, the model name
 // on text-less replies, and the web dependency bumps.
-export const LIMITS = { eagerBytes: 2_060_000, eagerGzipBytes: 659_000, largestChunkBytes: 1_180_000 }
+// v3.39.0 takes 2.063 MB / 660.0 kB with per-profile usage state and
+// per-backend cooldown isolation. Keep a small margin for this feature.
+// v3.40.0 (the UX pass: run deck, split Review panel, header caps) reached
+// 663.3 kB; the run picker, opened from the deck and never on the first
+// screen, moved behind lazySurface instead of a raised budget (660.4 kB).
+// Review panel panes and tab dragging then reached 666.0 kB; the Plan and
+// Goal tabs, which show only once opened, moved behind lazySurface (652.0 kB).
+export const LIMITS = { eagerBytes: 2_070_000, eagerGzipBytes: 661_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

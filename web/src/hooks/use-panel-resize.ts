@@ -138,7 +138,7 @@ export function panelResizeHandleClass(edge: 'left' | 'right', active: boolean):
     'absolute top-0 z-20 flex h-full w-1.5 cursor-col-resize outline-none',
     edge === 'right' ? 'right-0 justify-end' : 'left-0 justify-start',
     'after:h-full after:w-px after:bg-transparent after:transition-colors after:duration-(--motion-fast)',
-    'hover:after:w-0.5 hover:after:bg-(--focus-ring) focus-visible:after:w-0.5 focus-visible:after:bg-(--focus-outline)',
-    active ? 'after:w-0.5 after:bg-(--focus-ring)' : '',
+    'hover:after:w-0.5 hover:after:bg-(--color-border-strong) focus-visible:after:w-0.5 focus-visible:after:bg-(--focus-outline)',
+    active ? 'after:w-0.5 after:bg-(--color-text-muted)' : '',
   ].join(' ')
 }

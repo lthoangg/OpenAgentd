@@ -32,7 +32,7 @@ describe('SidebarSectionHeader', () => {
     await user.click(screen.getByRole('button', { name: 'View options' }))
     const menu = screen.getByRole('menu', { name: 'View options' })
     expect(within(menu).getByRole('menuitem', { name: 'Collapse all workspaces' })).toBeTruthy()
-    expect(within(menu).getByRole('menuitem', { name: 'Open folder…' })).toBeTruthy()
+    expect(within(menu).getByRole('menuitem', { name: 'Open workspace…' })).toBeTruthy()
   })
 
   it('has no New session button: sessions start from a folder, ⌘N or the palette', () => {

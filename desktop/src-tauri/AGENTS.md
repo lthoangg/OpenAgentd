@@ -10,6 +10,26 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   the shared server-config code in `../../native/shell-core/` (re-exported
   under the desktop's existing names).
 - `src/window.rs`: WebViews, platform chrome, zoom, and injected bridge state.
+  A new window opens at the zoom of the window it was opened from, else the
+  last zoom chosen (`shell_prefs`). Windows and Linux hide the native menu
+  bar; the app menu opens from the header's ☰ button or an Alt tap
+  (`context_menu::show_app_menu`).
+- `src/shell_prefs.rs`: `desktop-shell.json`, the shell-level preferences that
+  outlive a session: the last zoom and the global shortcuts switch.
+- `src/context_menu.rs`: the app menu as a pop-up on Windows/Linux
+  (`show_app_menu`). The page draws its own menus (right-click, ⋯) in every
+  shell; native means the feel, not the OS widget.
+- `src/app_menu.rs`: the View → Text Size check items. The page owns the
+  setting and reports it with `set_menu_text_size`; a click only emits a
+  command for the page.
+- `src/badge.rs`: the "Needs you" attention badge (`set_attention_badge`):
+  dock/launcher badge on macOS/Linux, a generated taskbar overlay per window
+  on Windows.
+- `src/share.rs`: the system share sheet (`share_url`): `NSSharingServicePicker`
+  on macOS, `DataTransferManager` on Windows, "unsupported" on Linux.
+- `src/global_shortcuts.rs`: opt-in system-wide shortcuts. The plugin is only
+  started once the user ticks "Global Shortcuts"; nothing is registered by
+  default.
 - `src/servers.rs`: which server each window is on (`ServerId`: builtin or
   one external URL). The notch, the tray's "Auto" usage, new windows and
   notification routing all ask it. A saved server is never chosen as a
@@ -34,7 +54,20 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   (`capabilities/island.json`, like the tray popup's `capabilities/tray.json`)
   and, like the tray popup, never gets the backend token
   (`window::is_overlay_window`).
-  The feed runs on every platform while the island or the pet is on.
+  The feed runs on every platform, always: the tray's "Needs you" list and
+  mark read it too. Its `open_session` is the one session → window router:
+  every way to open a session (island, pet, tray, OS notification, "Open in
+  new window", `app_new_window` with a session path) focuses the window that
+  already shows it (every app window reports its session through
+  `island_viewing`, on all desktop OSes), else uses the server's window, else
+  opens one. `answer_question` posts an answer and clears the question on
+  every surface.
+- `src/answers.rs`: reads the open question of a session
+  (`GET /api/agent/{id}/question`) and posts an answer, with the server's
+  credential. Only one plain single-choice question with a few short options
+  is answered in place (`quick_choices`); typing, several questions, plan
+  reviews and change confirmations say "Open to answer". A 409/404 on the
+  answer means it is no longer open: treated as answered elsewhere.
 - `src/pet.rs`: the desktop pet (`web/pet.html`, macOS and Windows): a
   transparent always-on-top strip along the bottom of a display's work
   area. The page reports its clickable areas (`pet_fit`) and Rust polls the
@@ -43,6 +76,8 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   `show_desktop_notification` asks `pet::take_banner` first: the pet takes
   a banner only while it is on screen. Its webview has its own capability
   (`capabilities/pet.json`) and never gets the backend token.
+  A question stays with the pet until it is answered ("Later" folds it behind
+  the badge); the right-click menu lists questions first.
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
 - `src/diagnostics.rs`: Help → Export Diagnostics: copies the desktop and

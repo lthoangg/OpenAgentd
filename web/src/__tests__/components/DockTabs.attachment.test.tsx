@@ -1,9 +1,10 @@
 /**
- * Attachment tabs: a shell request opens the attachment as a dock tab, and
- * asking again for the same upload focuses that tab instead of adding one.
+ * Attachment tabs: a shell request opens the attachment as a preview tab
+ * (the next one replaces it, as in an editor), a kept tab stays, and asking
+ * again for the same upload focuses that tab instead of adding one.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import { useDockTabs } from '@/components/WorkspacePanel/useDockTabs'
@@ -39,9 +40,20 @@ describe('dock attachment tabs', () => {
     expect(dockTabLabel(result.current.activeTab!)).toBe('Attachment a.pdf')
   })
 
+  it('opens as a preview tab that the next attachment replaces', () => {
+    const { result, rerender } = renderTabs()
+    rerender({ attachmentRequest: { item: pdf, key: 1 } })
+    const { state } = result.current
+    expect(state.panes[state.focused].preview).toBe(attachmentTabId(pdf.src))
+    rerender({ attachmentRequest: { item: png, key: 2 } })
+
+    expect(result.current.visibleTabs.map((tab) => tab.id)).toEqual([attachmentTabId(png.src)])
+  })
+
   it('focuses the open tab when the same attachment is opened again', () => {
     const { result, rerender } = renderTabs()
     rerender({ attachmentRequest: { item: pdf, key: 1 } })
+    act(() => result.current.keep(attachmentTabId(pdf.src)))
     rerender({ attachmentRequest: { item: png, key: 2 } })
     rerender({ attachmentRequest: { item: pdf, key: 3 } })
 

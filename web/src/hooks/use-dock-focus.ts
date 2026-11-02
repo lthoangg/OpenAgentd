@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react'
 
 import { focusQuietly } from '@/lib/focus/quiet'
 import { layerStack } from '@/lib/keyboard/layers'
+import { hasFinePointer } from '@/lib/pointer'
 
 /** Focus sits nowhere useful: on ``<body>``, or inside an inert subtree. */
 export function isFocusStranded(): boolean {
@@ -132,4 +133,23 @@ export function useStrandedFocusGuard(enabled: boolean, restore: () => void) {
       document.removeEventListener('keydown', onKeyDown, true)
     }
   }, [enabled])
+}
+
+/**
+ * Start in the composer once a session is on screen (``key`` changes per
+ * session), unless focus already sits on a live control.
+ *
+ * Only with a mouse or trackpad: on a touch-first device a focused text
+ * field raises the on-screen keyboard over the conversation, which no
+ * native app does when one opens. There the composer waits for a tap.
+ */
+export function useStartInComposer(enabled: boolean, key: unknown, restore: () => void) {
+  const restoreRef = useRef(restore)
+  useEffect(() => {
+    restoreRef.current = restore
+  })
+  useEffect(() => {
+    if (!enabled || typeof document === 'undefined' || !hasFinePointer()) return
+    if (document.hasFocus() && isFocusStranded()) restoreRef.current()
+  }, [enabled, key])
 }

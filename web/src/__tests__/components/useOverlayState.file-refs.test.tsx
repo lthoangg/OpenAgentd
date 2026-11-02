@@ -25,7 +25,7 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
     isMobile: false,
     workspace: WORKSPACE,
     toggleScheduler: () => {},
-    toggleAgentCapabilities: () => {},
+    toggleRunPicker: () => {},
     togglePalette: () => {},
     toggleQuickOpen: () => {},
     ...overrides,
@@ -147,24 +147,24 @@ describe('useOverlayState — opening diff references', () => {
 })
 
 describe('useOverlayState — switching model from an error', () => {
-  afterEach(() => useUIStore.setState({ agentCapabilitiesOpen: false, paletteOpen: false }))
+  afterEach(() => useUIStore.setState({ runPickerOpen: false, paletteOpen: false }))
 
   it('opens Session Settings, where the model is picked', () => {
-    const { toggleAgentCapabilities } = useUIStore.getState()
-    const { result } = renderOverlay({ toggleAgentCapabilities })
+    const { toggleRunPicker } = useUIStore.getState()
+    const { result } = renderOverlay({ toggleRunPicker })
 
     act(() => result.current.handleSwitchModel())
 
-    expect(useUIStore.getState()).toMatchObject({ agentCapabilitiesOpen: true, paletteOpen: false })
+    expect(useUIStore.getState()).toMatchObject({ runPickerOpen: true, paletteOpen: false })
   })
 
   it('leaves Session Settings open when it already is', () => {
-    const { toggleAgentCapabilities } = useUIStore.getState()
-    useUIStore.setState({ agentCapabilitiesOpen: true })
-    const { result } = renderOverlay({ toggleAgentCapabilities })
+    const { toggleRunPicker } = useUIStore.getState()
+    useUIStore.setState({ runPickerOpen: true })
+    const { result } = renderOverlay({ toggleRunPicker })
 
     act(() => result.current.handleSwitchModel())
 
-    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
+    expect(useUIStore.getState().runPickerOpen).toBe(true)
   })
 })

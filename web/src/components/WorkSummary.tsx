@@ -19,8 +19,8 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { ActivePlanSection } from './ActivePlanSection'
 
 const TONE_CLASS: Record<GoalTone, string> = {
-  active: 'text-(--accent-blue-text)',
-  achieved: 'text-(--accent-blue-text)',
+  active: 'text-(--color-text-2)',
+  achieved: 'text-(--accent-green-text)',
   wait: 'text-(--accent-orange-text)',
   paused: 'text-(--color-text-2)',
   blocked: 'text-(--color-error)',
@@ -65,7 +65,7 @@ export function GoalSummaryRow({ goal, onOpen, onAction, bare = false, className
     <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)} data-goal-summary={goal.status}>
       <span className={cn('flex shrink-0 items-center', TONE_CLASS[tone])}><GoalMark tone={tone} /></span>
       <span className="text-xs font-medium text-(--color-text)">Goal</span>
-      <span className={cn('shrink-0 text-[11px] font-medium', TONE_CLASS[tone])}>{text}</span>
+      <span className={cn('shrink-0 text-meta font-medium', TONE_CLASS[tone])}>{text}</span>
       {bare ? <span className="flex-1" aria-hidden="true" /> : (
         <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-subtle)" title={goal.objective}>{goal.objective}</span>
       )}

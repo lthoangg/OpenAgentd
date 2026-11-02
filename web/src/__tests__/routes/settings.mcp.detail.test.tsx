@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
 import type { ReactNode } from 'react'
@@ -79,7 +79,6 @@ describe('McpServerDetailPage', () => {
 
     expect((await screen.findAllByText(/Status/i)).length).toBeGreaterThan(0)
 
-    expect(screen.getByRole('button', { name: /^save$/i })).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: /server status/i })).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: /mcp transport/i })).toBeTruthy()
     expect(screen.getByPlaceholderText('npx')).toBeTruthy()
@@ -87,5 +86,40 @@ describe('McpServerDetailPage', () => {
     expect(screen.getByRole('button', { name: /remove root/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /restart server/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /delete server/i })).toBeTruthy()
+  })
+
+  it('saves and discards through the shared save bar, with no Save or Discard changes… of its own', async () => {
+    server.use(
+      http.get('http://localhost/api/mcp/servers/filesystem', () => HttpResponse.json({
+        name: 'filesystem',
+        transport: 'stdio',
+        enabled: true,
+        state: 'ready',
+        error: null,
+        tool_names: [],
+        started_at: null,
+        config: { transport: 'stdio', command: 'npx', args: ['-y', 'server'], env: {}, enabled: true },
+      })),
+    )
+
+    renderPage()
+    const command = (await screen.findByPlaceholderText('npx')) as HTMLInputElement
+
+    // Nothing to save yet: no bar, no header Save, no inline discard.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /discard/i })).toBeNull()
+
+    fireEvent.change(command, { target: { value: 'node' } })
+    const bar = await screen.findByRole('region', { name: 'Unsaved changes' })
+    expect(screen.getAllByRole('button', { name: /^save$/i })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /discard/i })).toHaveLength(1)
+    expect(bar.contains(screen.getByRole('button', { name: /^save$/i }))).toBe(true)
+
+    // Discard… asks first, then puts the saved command back.
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
+    expect(((await screen.findByPlaceholderText('npx')) as HTMLInputElement).value).toBe('npx')
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull()
   })
 })

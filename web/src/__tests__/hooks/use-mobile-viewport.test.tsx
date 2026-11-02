@@ -244,4 +244,47 @@ describe('useMobileViewportGuards', () => {
     renderHook(() => useMobileViewportGuards())
     expect(document.documentElement.getAttribute('data-mobile-shell')).toBeNull()
   })
+
+  describe('in a browser wider than a phone', () => {
+    const realMatchMedia = window.matchMedia
+    const stubMedia = (coarse: boolean) => {
+      window.matchMedia = ((query: string) => ({
+        matches: query === '(pointer: coarse)' ? coarse : false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })) as typeof window.matchMedia
+    }
+    afterEach(() => {
+      window.matchMedia = realMatchMedia
+    })
+
+    // Plan 1.12: an iPad or Android tablet browser keeps the composer on the keyboard.
+    it('binds a touch tablet, so the composer rides the soft keyboard', () => {
+      platform = { isTauri: false, os: 'ios', isMacOverlay: false }
+      stubMedia(true)
+      const vv = installVisualViewport(800, 0)
+      const { unmount } = renderHook(() => useMobileViewportGuards())
+      const root = document.documentElement
+      expect(root.hasAttribute('data-mobile-shell')).toBe(true)
+      vv.height = 460
+      vv.emit('resize')
+      expect(root.style.getPropertyValue('--app-vh')).toBe('460px')
+      expect(root.hasAttribute('data-keyboard-open')).toBe(true)
+      unmount()
+    })
+
+    it('leaves a touchscreen laptop driven by a mouse alone', () => {
+      platform = { isTauri: false, os: 'windows', isMacOverlay: false }
+      Object.defineProperty(navigator, 'maxTouchPoints', { value: 10, configurable: true, writable: true })
+      stubMedia(false)
+      installVisualViewport(800, 0)
+      renderHook(() => useMobileViewportGuards())
+      expect(document.documentElement.getAttribute('data-mobile-shell')).toBeNull()
+    })
+  })
 })

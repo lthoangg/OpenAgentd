@@ -25,6 +25,7 @@ beforeEach(() => {
   document.documentElement.classList.remove('dark', 'light')
   delete document.documentElement.dataset.openagentdAppId
   delete document.documentElement.dataset.openagentdWindowId
+  delete document.documentElement.dataset.textSize
   delete window.__OAD_APP_ID__
   delete window.__OAD_WINDOW_ID__
 })
@@ -33,6 +34,9 @@ afterEach(() => {
   localStorage.clear()
   delete window.__OAD_APP_ID__
   delete window.__OAD_WINDOW_ID__
+  delete window.__OAD_OPENER_THEME__
+  delete window.__OAD_DESKTOP_FONT__
+  document.documentElement.style.removeProperty('--font-desktop')
 })
 
 describe('theme-init pre-paint script', () => {
@@ -46,6 +50,19 @@ describe('theme-init pre-paint script', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(document.documentElement.dataset.openagentdAppId).toBe('com.openagentd.desktop')
     expect(document.documentElement.dataset.openagentdWindowId).toBe('main-2')
+  })
+
+  it("paints a new window with its opener's pick until it has its own", () => {
+    window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+    window.__OAD_WINDOW_ID__ = 'main-3'
+    window.__OAD_OPENER_THEME__ = 'dark'
+
+    runThemeInit()
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+    localStorage.setItem('oa-theme:com.openagentd.desktop:main-3', 'light')
+    runThemeInit()
+    expect(document.documentElement.classList.contains('light')).toBe(true)
   })
 
   it('falls back to the URL params when no identity is injected', () => {
@@ -66,5 +83,53 @@ describe('theme-init pre-paint script', () => {
     runThemeInit()
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('applies the saved text size before paint', () => {
+    localStorage.setItem('oa.display.v1', JSON.stringify({ state: { transcriptStyle: 'detailed', textSize: 'large' }, version: 0 }))
+
+    runThemeInit()
+
+    expect(document.documentElement.dataset.textSize).toBe('large')
+  })
+
+  it('leaves the text size unset (Default) for an unknown value', () => {
+    localStorage.setItem('oa.display.v1', JSON.stringify({ state: { textSize: 'huge' }, version: 0 }))
+
+    runThemeInit()
+
+    expect(document.documentElement.dataset.textSize).toBeUndefined()
+  })
+
+  // WebKitGTK does not give system-ui the desktop's font, so the Linux app
+  // hands it over (window.rs) and the stack puts it first.
+  it("puts the Linux desktop's font first in the interface stack", () => {
+    window.__OAD_DESKTOP_FONT__ = 'Adwaita Sans'
+
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('"Adwaita Sans"')
+  })
+
+  it('keeps a desktop font named in another script', () => {
+    window.__OAD_DESKTOP_FONT__ = 'Noto Sans CJK 日本語'
+
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('"Noto Sans CJK 日本語"')
+  })
+
+  it('ignores a desktop font name that could break out of the CSS string', () => {
+    window.__OAD_DESKTOP_FONT__ = 'Odd"; } body { color: red'
+
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('')
+  })
+
+  it('sets no desktop font outside the Linux app', () => {
+    runThemeInit()
+
+    expect(document.documentElement.style.getPropertyValue('--font-desktop')).toBe('')
   })
 })

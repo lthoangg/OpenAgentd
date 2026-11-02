@@ -69,8 +69,8 @@ export const queryKeys = {
       ['coding-workspace-diff', workspace, path] as const,
     status: (workspace: string) =>
       ['coding-workspace-status', workspace] as const,
-    history: (workspace: string, limit: number, allBranches: boolean) =>
-      ['coding-workspace-history', workspace, limit, allBranches] as const,
+    history: (workspace: string, limit: number) =>
+      ['coding-workspace-history', workspace, limit] as const,
     commitDiff: (workspace: string, sha: string) =>
       ['coding-workspace-commit-diff', workspace, sha] as const,
   },
@@ -139,11 +139,15 @@ export const queryKeys = {
     multimodal: () => ['settings', 'multimodal'] as const,
     providers: () => ['settings', 'providers'] as const,
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,
-    /** Without `credentialId`: the credential in use (and, as a prefix, every account's usage). */
+    /**
+     * Without `credentialId`: the credential in use (and, as a prefix, every
+     * account's usage). Deliberately not under `providers()`: that key is
+     * invalidated and cancelled by prefix, and must not drag usage with it.
+     */
     providerUsage: (providerId: string, credentialId?: string) =>
       credentialId
-        ? (['settings', 'providers', providerId, 'usage', credentialId] as const)
-        : (['settings', 'providers', providerId, 'usage'] as const),
+        ? (['settings', 'provider-usage', providerId, credentialId] as const)
+        : (['settings', 'provider-usage', providerId] as const),
   },
   memory: {
     tree: () => ['memory', 'tree'] as const,

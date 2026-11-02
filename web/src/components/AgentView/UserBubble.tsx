@@ -3,7 +3,8 @@ import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucid
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
-import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
+import type { FileLightboxItem, FileLightboxItemType } from '../FileLightbox'
+import { FileLightbox } from '../LazyFileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { FileRefContext } from '../FileRefLink'
 import { findCommittedMentions } from '../InputComposer.mentions'
@@ -12,7 +13,8 @@ import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import { copyText, useChatMenu } from '../ChatContextMenu'
-import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
+import { formatTime, formatFullDateTime } from '@/utils/format'
+import { ModelName } from '@/components/ui/model-name'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
@@ -37,7 +39,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
         key={`${keyPrefix}-${match.index}`}
         href={url}
         onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
-        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:text-(--accent-blue) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
+        className="text-(--color-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
         rel="noopener noreferrer"
       >
         {url}
@@ -105,7 +107,7 @@ function useRenderedLines(ref: React.RefObject<HTMLElement | null>, text: string
 export type OpenSessionHandler = (sessionId: string, workspace: string) => void
 
 const SOURCE_CHIP_CLASS =
-  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) pointer-coarse:min-h-9'
+  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) pointer-coarse:min-h-9'
 
 /** "From <workspace> · <session>" above a prompt another workspace's agent sent. */
 function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSession?: OpenSessionHandler }) {
@@ -142,7 +144,7 @@ function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSessi
  * Matches the InputComposer's overlay convention so a message looks the same
  * after send as it did while composing:
  *   - folders (token ends in ``/``)      → ``--accent-orange-text``
- *   - files (everything else, default)   → ``--accent-blue-text``
+ *   - files (everything else, default)   → ``--color-text`` (ink)
  *
  * The slash heuristic is what the picker inserts; using it (rather than
  * resolving against ``fileRefs``) keeps highlighting stable for old
@@ -166,7 +168,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
         type="button"
         data-mention-kind="file"
         onClick={() => onMentionFileOpen(path)}
-        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+        className="inline rounded-sm text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
       >
         {token}
       </button>
@@ -175,7 +177,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
         key={r.start}
         data-mention-kind={isFolder ? 'directory' : 'file'}
         className={
-          isFolder ? 'text-(--accent-orange-text)' : 'text-(--accent-blue-text)'
+          isFolder ? 'text-(--accent-orange-text)' : 'text-(--color-text)'
         }
       >
         {token}
@@ -291,7 +293,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
           <button
             type="button"
             onClick={onOpen}
-            className="flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key)/40 focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+            className="flex items-center gap-2 rounded-sm bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           >
             <span className="shrink-0 text-(--color-text-muted)">
               <FileTypeIcon name={item.name} size={14} />
@@ -305,12 +307,19 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, actionsAtRest = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
+  /** A turn is running, so the prompt cannot be rewound yet: Edit shows disabled, with the reason. */
+  editLocked?: boolean
+  /**
+   * Show Edit and Copy at rest, in the muted tone (the latest prompt). Other
+   * prompts reveal them on hover, keyboard focus and touch.
+   */
+  actionsAtRest?: boolean
   /** The model and thinking level this prompt ran with. */
   modelId?: string | null
   thinkingLevel?: string | null
@@ -332,10 +341,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const textRef = useRef<HTMLParagraphElement>(null)
   // Height before an expand/collapse, so the layout effect can animate from it.
   const toggleFromHeight = useRef<number | null>(null)
-  const modelName = shortModelName(modelId)
   const chatMenu = useChatMenu(fromAgent ? `Actions for ${fromAgent} report` : 'Actions for message', () => [
     { label: 'Copy', run: () => copyText(content) },
-    ...(onEdit && !fromAgent ? [{ label: 'Edit', run: onEdit }] : []),
+    ...(onEdit && !fromAgent && !editLocked ? [{ label: 'Edit', run: onEdit }] : []),
   ])
 
   const handleCopy = async () => {
@@ -390,7 +398,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       <button
         type="button"
         onClick={() => onOpenSession(reply.sessionId, reply.workspace)}
-        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
         title={reply.workspace}
         aria-label={`Open the replying session in ${reply.workspaceName}`}
       >
@@ -398,7 +406,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
         <ArrowUpRight size={11} aria-hidden="true" />
       </button>
     ) : (
-      <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+      <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text)">
         {fromAgent}
       </span>
     )
@@ -417,11 +425,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             ref={report.anchorRef}
             className={cn('flex items-center gap-1.5 px-0.5 text-xs text-(--color-text-muted)', reportExpanded && cn(PINNED_HEADER, 'self-stretch bg-(--bg-page)'))}
           >
-            {!reply && <span className="text-[11px] text-(--color-text-subtle)">Report from</span>}
+            {!reply && <span className="text-meta text-(--color-text-subtle)">Report from</span>}
             {sender}
-            {reply && <span className="text-[11px] text-(--color-text-subtle)">{replyLabel(reply)}</span>}
+            {reply && <span className="text-meta text-(--color-text-subtle)">{replyLabel(reply)}</span>}
             {timestamp && (
-              <span className="text-[11px] text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
+              <span className="text-meta text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
             )}
             <button
               type="button"
@@ -482,6 +490,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
   return (
     <div
+      data-user-bubble=""
       className="group mb-3 flex justify-end"
       onMouseEnter={() => setShowTime(true)}
       onMouseLeave={() => setShowTime(false)}
@@ -552,18 +561,39 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
-            {/* Hover reveals the row on desktop; touch has no hover, so it always shows there. */}
-            <div className={`flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-              {modelName && (
+            {/* The latest prompt shows the row at rest. Earlier ones reveal it on
+                hover and keyboard focus; touch has no hover, so it always shows there. */}
+            <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
+              {modelId && (
                 <span
                   data-prompt-model
-                  className="mr-1 font-mono text-[11px] text-(--color-text-subtle)"
+                  className="mr-1 flex min-w-0 font-mono text-meta text-(--color-text-subtle)"
                   title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
                 >
-                  {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
+                  <ModelName id={modelId} />
+                  {thinkingLevel && <span className="shrink-0 whitespace-pre">{` · ${thinkingLevel}`}</span>}
                 </span>
               )}
-              {onEdit && (
+              {onEdit && editLocked && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
+                      <button
+                        type="button"
+                        aria-disabled="true"
+                        onClick={(event) => event.preventDefault()}
+                        className="flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9"
+                        aria-label="Edit message, available when this turn ends"
+                      >
+                        <Pencil size={13} aria-hidden="true" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>Available when this turn ends</TooltipContent>
+                </Tooltip>
+              )}
+              {onEdit && !editLocked && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -572,7 +602,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                         className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9"
                         aria-label="Edit message"
                       >
-                        <Pencil size={11} />
+                        <Pencil size={13} aria-hidden="true" />
                       </button>
                     }
                   />
@@ -589,9 +619,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                       aria-label="Copy message"
                     >
                       {copied ? (
-                        <Check size={11} className="text-(--color-success)" />
+                        <Check size={13} aria-hidden="true" className="text-(--accent-green-text)" />
                       ) : (
-                        <Copy size={11} />
+                        <Copy size={13} aria-hidden="true" />
                       )}
                     </button>
                   }
@@ -602,7 +632,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 <Tooltip className="text-xs text-(--color-text-subtle)">
                   <TooltipTrigger
                     render={
-                      <span className="text-xs text-(--color-text-subtle)" aria-hidden={!showTime}>
+                      <span className="text-xs text-(--color-text-subtle)" aria-hidden={!(actionsAtRest || showTime)}>
                         {formatTime(timestamp)}
                       </span>
                     }

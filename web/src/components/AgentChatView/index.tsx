@@ -2,8 +2,8 @@
  * AgentChatView — top-level layout for the agent chat route.
  *
  * Owns:
- *   - Side panels (``Sidebar``, ``WorkspaceFilesPanel``, ``SessionSettingsPanel``,
- *     todos popover, command palette).
+ *   - Side panels (``Sidebar``, the Review panel, todos popover, command
+ *     palette) and the docked composer with its run deck.
  *   - The header (token totals, panel toggles).
  *   - Mount-time SSE connect + session restore (carefully sequenced so
  *     ``loadSession`` runs *before* ``connectStream`` to avoid wiping
@@ -43,9 +43,10 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useReportShownSession } from '@/lib/island-setting'
 import { useElementWidthSelect } from '@/hooks/use-element-width'
-import { settledWidthBesidePanels } from '@/components/ResizableAside'
-import { isFocusStranded, useReturnFocusFromDock, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
+import { onPanelSlideBeside, settledWidthBesidePanels } from '@/components/ResizableAside'
+import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -53,20 +54,26 @@ import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { previewTargetForFeedback } from '../Preview/preview-comments'
 import { usePreviewToolAutoOpen } from './usePreviewToolAutoOpen'
 import { useToastStore } from '@/stores/useToastStore'
-import { selectBtw, useBtwStore } from '@/stores/useBtwStore'
+import { useBtwStore } from '@/stores/useBtwStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { FolderCode, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
-import { FloatingInputComposer } from '../FloatingInputComposer'
+import { Composer } from '../composer/Composer'
+import { RunChip } from '../composer/RunChip'
+import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
+import { ContextMeter } from '../composer/ContextMeter'
+import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
+import { PendingMessageQueue } from '../PendingMessageQueue'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -78,6 +85,7 @@ import type {
   MessageAttachment,
 } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
+import { TranscriptFind } from '@/components/TranscriptFind'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -99,6 +107,7 @@ const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
 /** Stable selector: the shell only needs to know when the split stops fitting. */
 const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
+const isCenterTooNarrowForTouch = (width: number) => dockOverlaysChat(width, false, { touch: true })
 
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
@@ -107,7 +116,7 @@ interface ActiveAgentViewProps {
   fileRefOpener?: FileRefOpener
   onRetry?: () => void
   onSwitchModel?: () => void
-  /** The floating composer is up and carries the jump-to-latest chip. */
+  /** The docked composer is up: its tray carries the jump-to-latest chip and the message queue. */
   jumpToLatestInComposer?: boolean
 }
 
@@ -178,7 +187,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // browsers. See ``useTauriDrag`` for details.
   const dragHandlers = useTauriDrag()
   const inputRef = useRef<InputComposerHandle>(null)
-  const mainColumnRef = useRef<HTMLDivElement>(null)
   // Handing focus back from the dock must not summon a collapsed composer.
   const returnFocusToComposer = useCallback(() => inputRef.current?.focus?.({ expand: false }), [])
 
@@ -196,7 +204,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         loadSession: s.loadSession,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
-        setSessionModelSettings: s.setSessionModelSettings,
         setupRequired: s.setupRequired,
         dismissSetupRequired: s.dismissSetupRequired,
 
@@ -208,7 +215,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         sessionInteractionMode: s.sessionInteractionMode,
         sessionPendingInteractionMode: s.sessionPendingInteractionMode,
         sessionModel: s.sessionModel,
-        sessionThinkingLevel: s.sessionThinkingLevel,
         sessionFastMode: s.sessionFastMode,
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
@@ -234,7 +240,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     loadSession,
     beginResolvedSession,
     consumeResolvedSessionReady,
-    setSessionModelSettings,
     setupRequired,
     dismissSetupRequired,
 
@@ -246,7 +251,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     sessionInteractionMode,
     sessionPendingInteractionMode,
     sessionModel,
-    sessionThinkingLevel,
 
     leadRevertedCount,
     leadRevertedMessages,
@@ -262,18 +266,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
-  const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
   const palettePage = useUIStore((s) => s.palettePage)
   const paletteKey = useUIStore((s) => s.paletteKey)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
   const quickOpenQuery = useUIStore((s) => s.quickOpenQuery)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
-  const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
+  const toggleRunPicker = useUIStore((s) => s.toggleRunPicker)
   const togglePalette = useUIStore((s) => s.togglePalette)
   const toggleQuickOpen = useUIStore((s) => s.toggleQuickOpen)
   const closeScheduler = useUIStore((s) => s.closeScheduler)
-  const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
   const closePalette = useUIStore((s) => s.closePalette)
   const closeQuickOpen = useUIStore((s) => s.closeQuickOpen)
 
@@ -296,6 +298,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handledDockPreviewRequestKeyRef,
     dockAttachmentRequest,
     handledDockAttachmentRequestKeyRef,
+    dockLayoutRequest,
+    handledDockLayoutKeyRef,
+    dockLauncherFocusKey,
+    handledDockLauncherFocusKeyRef,
     handleOpenAttachment,
     handleOpenPreview,
     dockActiveView,
@@ -303,6 +309,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     dockViewsEnabled,
     sidebarCollapsed,
     setSidebarCollapsed,
+    sidebarDrawer,
+    sidebarDrawerOpen,
+    setSidebarDrawerOpen,
+    focusMode,
+    handleToggleFocusMode,
+    handleSplitDock,
+    handleSplitDockDown,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,
@@ -316,7 +329,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleDiffOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
-    handleToggleAgentCapabilities,
+    handleToggleRunPicker,
     handleToggleScheduler,
     handleTogglePalette,
     handleSwitchModel,
@@ -335,10 +348,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     isMobile,
     workspace,
     toggleScheduler,
-    toggleAgentCapabilities,
+    toggleRunPicker,
     togglePalette,
     toggleQuickOpen,
   })
+  // F6 / ⇧F6 walk the window's areas (sidebar, transcript, composer, the
+  // Review panel's groups, status bar). Phones have no keyboard areas.
+  useFocusRegions(!isMobile)
 
   // The other end of a workspace message: the sender's session from the
   // request's chip, the replier's session from a reply report.
@@ -376,7 +392,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   }, [])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
-  const btwOpen = useBtwStore((s) => selectBtw(sessionIdState)(s).open)
   const todos = todosData?.todos ?? []
   const { data: planData } = useSessionPlanQuery(sessionIdState)
   const plan = planData?.plan ?? null
@@ -490,6 +505,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
+  // ⌘F from the chat: find in the transcript on screen; a new session or a
+  // switch closes it.
+  const [findOpen, setFindOpen] = useState(false)
+  const handleFindInSession = useCallback(() => setFindOpen(true), [])
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    returnFocusToComposer()
+  }, [returnFocusToComposer])
+  useEffect(() => {
+    setFindOpen(false)
+  }, [sessionIdState])
+
   const handleOpenNewPreview = useCallback(() => {
     if (!workspace) return
     handleOpenPreview({ kind: 'url', url: lastPreviewUrl(workspace) ?? 'http://localhost:5173' })
@@ -581,9 +608,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     paletteCommands,
     quickOpenWorkspaceFiles,
     quickOpenFilesTruncated,
+    quickOpenFilesLoading,
     handleQuickOpenFileOpen,
   } = useCommandPalette({
     workspace,
+    paletteOpen,
     quickOpenOpen,
     sessionIdState,
     workspacePanelOpen: workspacePanel !== null,
@@ -591,12 +620,17 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleWorkspaceFiles,
     handleOpenGit: workspace && !isChatWorkspace ? handleOpenGit : undefined,
     handleSidebarToggle,
-    handleToggleAgentCapabilities,
+    handleToggleRunPicker,
     handleToggleTasks,
     handleTogglePalette,
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
+    handleSplitDock,
+    handleSplitDockDown,
+    handleToggleFocusMode,
+    focusMode,
+    handleFindInSession: sessionIdState ? handleFindInSession : undefined,
     handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
     planAwaitingReview,
     handleOpenPreview: workspace && previewsAvailable() ? handleOpenNewPreview : undefined,
@@ -614,14 +648,29 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // center itself; the shell subscribes to one bit so a sidebar tween or a
   // window drag does not re-render this whole tree every frame.
   const centerRef = useRef<HTMLDivElement>(null)
-  const centerTooNarrow = useElementWidthSelect(centerRef, isCenterTooNarrow, settledWidthBesidePanels)
+  const touchFirst = useTouchFirst()
+  const centerTooNarrow = useElementWidthSelect(
+    centerRef,
+    touchFirst ? isCenterTooNarrowForTouch : isCenterTooNarrow,
+    settledWidthBesidePanels,
+    // Decided in the commit a sidebar slide starts, as the dock's mode is.
+    onPanelSlideBeside,
+  )
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
   // After its first open the dock stays mounted, closed or not, so its tabs
   // and their live content (preview pages, unsent comments) survive a close.
   const dockOpen = workspacePanel !== null
   const [dockKept, setDockKept] = useState(dockOpen)
   if (dockOpen && !dockKept) setDockKept(true)
-  const chatCoveredByDock = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
+  // Closed when this view mounted: the dock's first mount is the show
+  // toggle (or the agent opening a view), so it slides in like a later open.
+  const [dockSlidesIn] = useState(!dockOpen)
+  // Over a narrow chat the dock covers the transcript but stops above the
+  // composer, so a message can be written beside the diff; maximized, it
+  // covers both. Whatever it covers stays mounted, inert.
+  const dockOverChat = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
+  const chatCoveredByDock = dockOverChat && dockMaximized
+  const transcriptCoveredByDock = dockOverChat && !dockMaximized
   // The dock claims focus while it covers the chat; give it back when it
   // closes or uncovers the chat so it is never left on <body>.
   useReturnFocusFromDock({
@@ -632,12 +681,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     onReturn: returnFocusToComposer,
   })
   // A desktop app always has a focused control: never leave focus on
-  // <body>, and start in the composer once a session is on screen.
+  // <body>, and start in the composer once a session is on screen (with a
+  // mouse or trackpad; a touch tablet waits for a tap, see useStartInComposer).
   useStrandedFocusGuard(!isMobile, returnFocusToComposer)
-  useEffect(() => {
-    if (isMobile || isSessionLoading || typeof document === 'undefined') return
-    if (document.hasFocus() && isFocusStranded()) returnFocusToComposer()
-  }, [isMobile, isSessionLoading, sessionIdState, returnFocusToComposer])
+  useStartInComposer(!isMobile && !isSessionLoading, sessionIdState, returnFocusToComposer)
 
   const handleRetry = useCallback(() => {
     if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)
@@ -655,15 +702,33 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       }
     : undefined), [dockViewsEnabled, handleDiffOpen, handleFileRefOpen, handleOpenAttachment, handleOpenPreview, workspace])
 
+  // How the next message runs, for the run deck under the composer.
+  const runSettings = useRunSettings(workspace)
+  const composerMode = sessionPendingInteractionMode ?? sessionInteractionMode
+  const canAskSideQuestion = Boolean(sessionIdState) && (leadHasVisibleBlocks || leadHasLiveBlocks)
+  const renderPlus = useCallback((actions: ComposerActions) => (
+    <PlusMenu
+      actions={actions}
+      workspace={workspace}
+      disabled={isSessionLoading}
+      canAskSideQuestion={canAskSideQuestion}
+      hasSnippets={snippetCommands.length > 0}
+    />
+  ), [workspace, isSessionLoading, canAskSideQuestion, snippetCommands.length])
+
+  // The docked composer's tray carries the jump-to-latest chip and the queue
+  // of messages waiting for the agent. With no composer (a subagent's
+  // session, which only the main agent directs) both stay in the transcript.
+  const composerHoldsTray = !parentSessionId && Boolean(workspace)
+
   // One composer element: inside the new-session screen while that is
-  // centered, else docked/floating at the bottom of the chat column.
-  // While a switch looks up the next session's workspace, the composer stays
-  // (disabled) instead of unmounting; sending needs `workspace` itself.
+  // centered, else docked at the bottom of the chat column. While a switch
+  // looks up the next session's workspace, the composer stays (disabled)
+  // instead of unmounting; sending needs `workspace` itself.
   const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
-    <FloatingInputComposer
+    <Composer
       ref={inputRef}
-      boundsRef={mainColumnRef}
-      placement={composerInline ? 'inline' : 'floating'}
+      placement={composerInline ? 'inline' : 'docked'}
       onHandoffCapture={draftHandoff.capture}
       enterFrom={draftHandoff.active ? draftHandoff.snapshot : null}
       onSubmit={async (content, files, mentions, delivery) => {
@@ -696,13 +761,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         // While a turn runs the composer shows its own queue/stop hint.
         isDraft && needsModelSetup
           ? 'Connect a model to start chatting'
-          : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+          : composerMode === 'plan'
+            // Says what Plan mode does before the first message does it.
+            ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
+            : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
       // shows what the user picked while the turn finishes under the old
       // mode.
-      interactionMode={sessionPendingInteractionMode ?? sessionInteractionMode}
+      interactionMode={composerMode}
       interactionModePending={sessionPendingInteractionMode !== null}
       onInteractionModeChange={(mode) => {
         setIsSwitchingInteractionMode(true)
@@ -716,19 +784,30 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       revertedMessages={leadRevertedMessages}
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
+      renderPlus={renderPlus}
+      deck={<RunChip settings={runSettings} disabled={isSessionLoading} />}
+      deckEnd={sessionIdState ? (
+        <ContextMeter
+          input={headerTokens.input}
+          output={headerTokens.output}
+          cachedPercent={headerTokens.cachedPercent}
+          sessionCostUsd={headerTokens.sessionCostUsd}
+          trigger={headerTokens.trigger}
+          canSummarize={leadHasVisibleBlocks && !isAgentWorking}
+        />
+      ) : null}
       // Desktop with a workspace: the dock's BTW tab shows side
       // questions, and here only the chip reopens it while that tab is
       // not on screen.
-      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : ({ minimized }: { minimized: boolean }) => (
+      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
         <BtwPanel
           sessionId={sessionIdState || null}
           countEnabled={leadHasVisibleBlocks}
           chipOnly={dockViewsEnabled}
-          compact={minimized}
           onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
         />
       )}
-      aboveComposerOpen={btwOpen && !dockViewsEnabled}
+      queue={composerHoldsTray ? <PendingMessageQueue /> : null}
     />
   ) : null
 
@@ -769,6 +848,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           workspace={workspace}
           chatWorkspace={chatWorkspace}
           sessionTitle={sessionTitle}
+          canRenameSession={!parentSessionId}
           onSidebarToggle={handleSidebarToggle}
           headerTokens={headerTokens}
           sessionId={sessionIdState}
@@ -779,8 +859,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
-        agentCapabilitiesOpen={agentCapabilitiesOpen}
-        onToggleAgentCapabilities={handleToggleAgentCapabilities}
+        onToggleRunPicker={handleToggleRunPicker}
         showMobileActions={showMobileActions}
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
@@ -794,23 +873,28 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       {/* Body row — sidebar + main content column. On
           mobile the Sidebar is position:fixed (overlay drawer), so it
           takes no space here and the main column is always full-width. */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
             draftWorkspace={sessionId ? null : workspace}
-            onCollapse={() => setSidebarCollapsed(true)}
+            onNewSession={handleNewSession}
+            onCollapse={() => (sidebarDrawer ? setSidebarDrawerOpen(false) : setSidebarCollapsed(true))}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            desktopCollapsed={sidebarCollapsed}
+            desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
+            drawer={sidebarDrawer}
+            dockOpen={Boolean(workspace) && workspacePanel !== null}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
-            onMobileClose={() => setMobileSidebarOpen(false)}
+            onMobileClose={() => {
+              setMobileSidebarOpen(false)
+              setSidebarDrawerOpen(false)
+            }}
         />
 
-        <div ref={centerRef} className="relative flex min-w-0 flex-1 overflow-hidden">
+        <div ref={centerRef} data-workbench-center="" className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
-          ref={mainColumnRef}
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
           inert={chatCoveredByDock}
           aria-hidden={chatCoveredByDock || undefined}
@@ -819,12 +903,15 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           data-file-drop-zone
         >
         <ConnectionBanner />
+        {findOpen && !isMobile && <TranscriptFind onClose={closeFind} />}
         {/* The draft screen carries its own setup card instead. */}
         {!isDraft && (
           <ProviderSetupNotice
             setupMessage={setupRequired?.message ?? null}
             hasConfiguredProvider={!needsModelSetup}
+            missingProvider={modelReady.status === 'needs-provider' ? { label: modelReady.provider.label, model: modelReady.model } : null}
             onOpenProviders={() => openSettings('providers')}
+            onChooseModel={() => { if (!useUIStore.getState().runPickerOpen) handleToggleRunPicker() }}
             onDismiss={dismissSetupRequired}
           />
         )}
@@ -872,10 +959,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <EmptyState
             icon={FolderCode}
             title="No workspace attached"
-            body="Choose a local project folder from the sidebar to start a session."
+            body="Open a workspace, a folder on this computer, to start a session."
             action={
               <Button type="button" onClick={handleOpenWorkspaceDialog}>
-                Open folder…
+                Open workspace…
               </Button>
             }
           />
@@ -918,7 +1005,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <motion.div
             // Opening a session whose workspace is still being looked up: the
             // chat on screen stays, for looking at only, until it is known.
-            inert={isSessionLoading}
+            // A narrow window's Review panel covers it too.
+            inert={isSessionLoading || transcriptCoveredByDock}
+            aria-hidden={transcriptCoveredByDock || undefined}
             className="flex flex-1 flex-col min-h-0"
             initial={draftHandoff.active && !reducedMotion ? { opacity: 0, y: 8 } : false}
             animate={{ opacity: isSessionLoading ? 0.7 : 1, y: 0 }}
@@ -930,7 +1019,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               fileRefOpener={fileRefOpener}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
-              jumpToLatestInComposer={!parentSessionId && Boolean(workspace)}
+              jumpToLatestInComposer={composerHoldsTray}
               emptyState={
                 effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">
@@ -953,7 +1042,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
                 than truncating the explanation to a few words. */}
             <div data-subagent-banner="" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted) sm:flex-nowrap">
               <div className="flex min-w-0 items-start gap-2 sm:items-center">
-                <span className="shrink-0 rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+                <span className="shrink-0 rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text)">
                   {leadName}
                 </span>
                 <span className="sm:truncate">The main agent directs this subagent. Open the main agent's session to send instructions.</span>
@@ -968,7 +1057,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
                 }}
                 className="shrink-0"
               >
-                Return to Lead
+                Return to main agent
               </Button>
             </div>
           </div>
@@ -984,6 +1073,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               key="review-dock"
               workspace={workspace}
               open={dockOpen}
+              slideIn={dockSlidesIn}
               chatWorkspace={isChatWorkspace}
               mobile={isMobile}
               mobileDragOffset={workspacePanelDragOffset}
@@ -1000,6 +1090,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               handledPreviewRequestKeyRef={handledDockPreviewRequestKeyRef}
               attachmentRequest={dockAttachmentRequest}
               handledAttachmentRequestKeyRef={handledDockAttachmentRequestKeyRef}
+              layoutRequest={dockLayoutRequest}
+              handledLayoutRequestKeyRef={handledDockLayoutKeyRef}
+              launcherFocusKey={dockLauncherFocusKey}
+              handledLauncherFocusKeyRef={handledDockLauncherFocusKeyRef}
               onSendPreviewComments={handleSendPreviewComments}
               onActiveViewChange={setDockActiveView}
               todos={todos}
@@ -1019,22 +1113,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         workspace={workspace}
         chatWorkspace={isChatWorkspace}
         sessionId={sessionIdState}
-        sessionModel={sessionModel}
-        defaultModel={leadAgent?.model ?? null}
-        defaultThinkingLevel={leadAgent?.thinking_level ?? null}
-        sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
-        onToggleSessionSettings={handleToggleAgentCapabilities}
         onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
       />
 
       <AgentChatPanels
-        agentCapabilitiesOpen={agentCapabilitiesOpen}
-        agentWorkspace={agentWorkspace}
-        sessionModel={sessionModel}
-        sessionThinkingLevel={sessionThinkingLevel}
-        onSessionModelSettingsChange={setSessionModelSettings}
-        onCloseAgentCapabilities={closeAgentCapabilities}
         showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
@@ -1050,11 +1133,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         palettePage={palettePage}
         paletteKey={paletteKey}
         paletteCommands={paletteCommands}
+        sessionId={sessionIdState}
         quickOpenOpen={quickOpenOpen}
         quickOpenQuery={quickOpenQuery}
         quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}
         quickOpenFilesTruncated={quickOpenFilesTruncated}
-        onQuickOpenFileOpen={handleQuickOpenFileOpen}
+        quickOpenFilesLoading={quickOpenFilesLoading}
+        onQuickOpenFileOpen={workspace ? handleQuickOpenFileOpen : undefined}
         onClosePalette={closePalette}
         onCloseQuickOpen={closeQuickOpen}
       />

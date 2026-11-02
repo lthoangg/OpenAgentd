@@ -1,6 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ActivePlanSection } from '@/components/ActivePlanSection'
+import { prefetchSurfaces } from '@/lib/lazy-surface'
+
+// The viewer and notices load lazily; load them before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 import type { SessionPlan } from '@/api/types'
 
 const PLAN: SessionPlan = { content: '## Summary\nShip the plan file.', updated_at: new Date(Date.now() - 5 * 60_000).toISOString() }
@@ -28,7 +34,7 @@ describe('ActivePlanSection', () => {
 
   it('opens the plan as a document and releases it on close', () => {
     render(<ActivePlanSection plan={PLAN} onClear={() => {}} />)
-    fireEvent.click(screen.getByRole('button', { name: 'View plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
     expect(screen.getByRole('dialog', { name: 'File preview: plan.md' })).toBeTruthy()
     expect(screen.getByText(/Ship the plan file\./)).toBeTruthy()
 
@@ -63,10 +69,25 @@ describe('ActivePlanSection', () => {
   it('opens the Plan tab instead of a document when it can', () => {
     const onOpen = mock(() => {})
     render(<ActivePlanSection plan={PLAN} onClear={() => {}} onOpen={onOpen} />)
-    expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
     expect(onOpen).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('has one verb for opening the plan, in both modes: "Open plan"', () => {
+    const { unmount } = render(<ActivePlanSection plan={PLAN} onClear={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Open plan' }).textContent).toBe('Open plan')
+    expect(screen.queryByRole('button', { name: /view plan/i })).toBeNull()
+    unmount()
+
+    render(<ActivePlanSection plan={PLAN} onClear={() => {}} onOpen={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Open plan' }).textContent).toBe('Open plan')
+    expect(screen.queryByRole('button', { name: /view plan/i })).toBeNull()
+  })
+
+  it('explains Clear in a tooltip, not a native title', () => {
+    render(<ActivePlanSection plan={PLAN} onClear={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Clear plan…' }).hasAttribute('title')).toBe(false)
   })
 
   it('shows the revision, and Approved only while the approved revision is current', () => {

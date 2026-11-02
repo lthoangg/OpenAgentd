@@ -12,6 +12,7 @@ import {
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { SaveBar } from '@/components/settings/SaveBar'
 import { McpServerForm } from '@/components/settings/McpServerForm'
 import {
   draftEquals,
@@ -62,7 +63,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
   const [draft, setDraft] = useState<McpServerDraft | null>(seedDraft)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [confirmLeave, setConfirmLeave] = useState<'back' | 'discard' | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const [seededFor, setSeededFor] = useState<string | null>(null)
@@ -127,7 +128,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
   const server = serverQ.data
   // Back goes through the same unsaved-changes check as closing Settings.
   const guardedBack = () => {
-    if (dirty) setConfirmLeave('back')
+    if (dirty) setConfirmLeave(true)
     else onBack()
   }
 
@@ -142,7 +143,6 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
         saving={updateMut.isPending}
         error={saveError}
         validationHint={firstError}
-        onSave={handleSave}
         onBack={guardedBack}
       />
 
@@ -197,13 +197,6 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 </PanelSection>
               )}
 
-              {dirty && (
-                <div className="flex items-center gap-2 text-xs text-(--color-text-muted)">
-                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
-                    onClick={() => setConfirmLeave('discard')}>Discard changes…</Button>
-                </div>
-              )}
-
               <RestartCard
                 onRestart={handleRestart}
                 pending={restartMut.isPending}
@@ -216,6 +209,23 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
           )}
         </div>
       </div>
+
+      <SaveBar
+        shortcut
+        draft={{
+          dirty,
+          canSave: dirty && !invalid && !updateMut.isPending,
+          isSaving: updateMut.isPending,
+          save: handleSave,
+          reset: () => {
+            if (seedDraft) setDraft(seedDraft)
+            setSaveError(null)
+          },
+        }}
+        onSave={() => { void handleSave() }}
+        saveBlockedReason={invalid ? (firstError ?? 'Fix the errors above to save.') : null}
+        discardDescription={`Your edits to ${name} go back to the last saved version.`}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
@@ -231,15 +241,12 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       </Dialog>
 
       <ConfirmDialog
-        open={confirmLeave !== null}
-        onOpenChange={(open) => { if (!open) setConfirmLeave(null) }}
-        title={confirmLeave === 'back' ? 'Leave without saving?' : 'Discard your changes?'}
+        open={confirmLeave}
+        onOpenChange={setConfirmLeave}
+        title="Leave without saving?"
         description={`Your edits to ${name} go back to the last saved version.`}
-        confirmLabel={confirmLeave === 'back' ? 'Leave without saving' : 'Discard changes'}
-        onConfirm={() => {
-          if (seedDraft) setDraft(seedDraft)
-          if (confirmLeave === 'back') onBack()
-        }}
+        confirmLabel="Leave without saving"
+        onConfirm={onBack}
       />
     </div>
   )
@@ -254,7 +261,7 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         <McpStatusChip server={server} />
       </PanelRow>
       <PanelRow label="Transport">
-        <Chip mono variant="outline" title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
+        <Chip mono title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
       </PanelRow>
       <PanelRow label="Started">
         <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : 'Not running'}</span>
@@ -263,7 +270,7 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         <PanelRow label={`Tools · ${server.tool_names.length}`} stack>
           <div className="flex flex-wrap gap-1.5">
             {server.tool_names.map((tool) => (
-              <Chip key={tool} mono variant="outline">{tool}</Chip>
+              <Chip key={tool} mono>{tool}</Chip>
             ))}
           </div>
         </PanelRow>

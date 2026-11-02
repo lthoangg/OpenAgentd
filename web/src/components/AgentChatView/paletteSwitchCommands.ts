@@ -27,6 +27,11 @@ export interface SwitchCommandsInput {
    * loads, that page shows the workspace's rows from ``sessions``.
    */
   workspaceSessions?: { path: string; sessions: SessionResponse[] } | null
+  /**
+   * The workspace whose full session list is still loading, if any. Its page
+   * ends in a "Loading…" row, as it shows only the recent sessions meanwhile.
+   */
+  loadingWorkspace?: string | null
   /** Shortcut labels shown on the two commands, e.g. ``⌘L`` and ``⌘⇧L``. */
   shortcuts?: { switchWorkspace?: string; workspaceSessions?: string }
   now?: Date
@@ -111,7 +116,11 @@ function workspaceCommands(input: SwitchCommandsInput, handlers: SwitchCommandHa
       id: `workspace:${r.path}`,
       label: r.label,
       description: isCurrent(r.path) ? `Current workspace · ${r.description}` : r.description,
-      page: { placeholder: `Search sessions in ${r.label}…`, commands: sessionPage(r.path, r.label, input, handlers, now) },
+      page: {
+        placeholder: `Search sessions in ${r.label}…`,
+        commands: sessionPage(r.path, r.label, input, handlers, now),
+        loading: sameWorkspacePath(input.loadingWorkspace, r.path),
+      },
       onOpenPage: () => handlers.loadWorkspace(r.path),
       action: () => {},
     }))

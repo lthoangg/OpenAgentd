@@ -89,6 +89,28 @@ pub struct UsageResponse {
     pub provider: String,
     #[serde(default)]
     pub limits: Vec<UsageLimit>,
+    /// When the backend last read these numbers (unix seconds), if it says.
+    #[serde(default, deserialize_with = "lenient_i64")]
+    pub updated_at: Option<i64>,
+}
+
+/// Optional timing fields come from a backend that may be newer or older
+/// than the shell: anything that is not a number reads as "unknown" rather
+/// than failing the whole summary. Fractions round up so "retry in 12.2s"
+/// never reads as already due.
+fn lenient_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| {
+        value.as_i64().or_else(|| {
+            value
+                .as_f64()
+                .filter(|float| float.is_finite())
+                .map(|float| float.ceil() as i64)
+        })
+    }))
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -104,6 +126,17 @@ pub struct UsageSummaryItem {
     /// payload because the live fetch failed transiently.
     #[serde(default)]
     pub stale: bool,
+    /// Unix seconds before which a throttled (``rate_limited``) provider
+    /// should not be polled again, when the upstream said.
+    #[serde(default, deserialize_with = "lenient_i64")]
+    pub retry_at: Option<i64>,
+    /// Seconds to wait, as of the response; ``retry_at`` is preferred.
+    #[serde(default, deserialize_with = "lenient_i64")]
+    pub retry_after: Option<i64>,
+    /// The account whose limits these are, when the provider pools more than
+    /// one (the one its next request uses). Older servers omit it.
+    #[serde(default)]
+    pub account: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
@@ -337,6 +370,80 @@ fn truncate_row(text: String) -> String {
     let mut truncated: String = text.chars().take(MAX_ROW_LEN.saturating_sub(1)).collect();
     truncated.push('\u{2026}');
     truncated
+}
+
+/// Truncate `text` so that `suffix` always survives: the old / retry marker
+/// is the part that says the numbers cannot be trusted as current.
+fn truncate_row_keeping_suffix(text: String, suffix: &str) -> String {
+    let suffix_len = suffix.chars().count();
+    if suffix_len == 0 {
+        return truncate_row(text);
+    }
+    let base = truncate_row_to(text, MAX_ROW_LEN.saturating_sub(suffix_len));
+    format!("{base}{suffix}")
+}
+
+fn truncate_row_to(text: String, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text;
+    }
+    let mut truncated: String = text.chars().take(max.saturating_sub(1)).collect();
+    truncated.push('\u{2026}');
+    truncated
+}
+
+/// Status of a provider whose usage endpoint answered HTTP 429. It says
+/// nothing about the inference quota, so it is neither "fresh" nor "hot".
+const RATE_LIMITED: &str = "rate_limited";
+
+/// Longest retry wait worth showing; anything beyond reads as "retry later".
+const MAX_RETRY_SECONDS: i64 = 30 * 86_400;
+
+fn is_rate_limited(item: &UsageSummaryItem) -> bool {
+    item.status == RATE_LIMITED
+}
+
+/// An item whose usage check did not complete: throttled, or unavailable
+/// with last-known-good numbers. Those numbers are old and say nothing
+/// about the inference quota, so they never drive the badge or alerts.
+fn is_held(item: &UsageSummaryItem) -> bool {
+    is_rate_limited(item) || item.status == "unavailable"
+}
+
+/// Unavailable, but the backend still sent last-known-good limits.
+fn is_unavailable_with_numbers(item: &UsageSummaryItem) -> bool {
+    item.status == "unavailable"
+        && item.usage.as_ref().is_some_and(|usage| !usage.limits.is_empty())
+}
+
+/// "retry in 5m" / "retrying soon" / "retry later" — relative, like the
+/// reset countdowns. ``retry_at`` outranks ``retry_after`` (which is only
+/// relative to the response); no timing at all is a normal case.
+fn format_retry(item: &UsageSummaryItem, now_unix: i64) -> String {
+    let seconds = item
+        .retry_at
+        .map(|at| at.saturating_sub(now_unix))
+        .or(item.retry_after);
+    match seconds {
+        None => "retry later".to_string(),
+        Some(seconds) if seconds > MAX_RETRY_SECONDS => "retry later".to_string(),
+        Some(seconds) if seconds <= 0 => "retrying soon".to_string(),
+        Some(seconds) => {
+            let minutes = seconds / 60;
+            let span = if minutes < 1 {
+                "<1m".to_string()
+            } else if minutes < 60 {
+                format!("{minutes}m")
+            } else if minutes < 24 * 60 {
+                let (hours, rem) = (minutes / 60, minutes % 60);
+                if rem == 0 { format!("{hours}h") } else { format!("{hours}h {rem}m") }
+            } else {
+                let (days, rem) = (minutes / (24 * 60), (minutes / 60) % 24);
+                if rem == 0 { format!("{days}d") } else { format!("{days}d {rem}h") }
+            };
+            format!("retry in {span}")
+        }
+    }
 }
 
 
@@ -618,12 +725,20 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
             id_suffix: format!("{}:missing", item.provider),
             text: truncate_row(format!("\u{26AA} {} \u{00B7} reconnect", item.label)),
         }],
-        "unavailable" => vec![UsageRow {
+        "unavailable" if !is_unavailable_with_numbers(item) => vec![UsageRow {
             id_suffix: format!("{}:unavailable", item.provider),
             text: truncate_row(format!(
                 "\u{26A0}\u{FE0F} {} \u{00B7} unavailable",
                 item.label
             )),
+        }],
+        // Throttled and nothing last-known-good to show.
+        RATE_LIMITED if item.usage.is_none() => vec![UsageRow {
+            id_suffix: format!("{}:rate_limited", item.provider),
+            text: truncate_row_keeping_suffix(
+                format!("\u{23F3} {}", item.label),
+                &format!(" \u{00B7} rate limited \u{00B7} {}", format_retry(item, now_unix)),
+            ),
         }],
         _ => {
             let Some(usage) = item.usage.as_ref() else {
@@ -634,7 +749,20 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
             };
             // Backend substituted last-known-good data for a transient
             // failure — keep the numbers visible but mark them, compactly.
-            let stale_suffix = if item.stale { " (old)" } else { "" };
+            // A throttled or unavailable provider's numbers are old whatever
+            // `stale` says.
+            let stale_suffix = if is_rate_limited(item) {
+                format!(
+                    " (old \u{00B7} rate limited \u{00B7} {})",
+                    format_retry(item, now_unix)
+                )
+            } else if is_unavailable_with_numbers(item) {
+                " (old \u{00B7} unavailable)".to_string()
+            } else if item.stale {
+                " (old)".to_string()
+            } else {
+                String::new()
+            };
             let measurable: Vec<LimitEntry> = usage
                 .limits
                 .iter()
@@ -656,7 +784,7 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                 };
                 return vec![UsageRow {
                     id_suffix: format!("{}:0", item.provider),
-                    text: truncate_row(format!("{text}{stale_suffix}")),
+                    text: truncate_row_keeping_suffix(text, &stale_suffix),
                 }];
             }
 
@@ -665,7 +793,7 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                 let line = format_flat_line(&item.label, &measurable[0]);
                 return vec![UsageRow {
                     id_suffix: format!("{}:0", item.provider),
-                    text: truncate_row(format!("{line}{stale_suffix}")),
+                    text: truncate_row_keeping_suffix(line, &stale_suffix),
                 }];
             }
 
@@ -680,11 +808,10 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                 .fold(0.0_f64, f64::max);
             let mut rows = vec![UsageRow {
                 id_suffix: format!("{}:header", item.provider),
-                text: truncate_row(format!(
-                    "{} {}{stale_suffix}",
-                    status_glyph(worst),
-                    item.label
-                )),
+                text: truncate_row_keeping_suffix(
+                    format!("{} {}", status_glyph(worst), item.label),
+                    &stale_suffix,
+                ),
             }];
             let truncated = measurable.len() > max_limits;
             for (idx, entry) in measurable.iter().take(max_limits).enumerate() {
@@ -773,6 +900,12 @@ pub fn backoff_delay(base: Duration, consecutive_failures: u32, max_backoff: Dur
 pub const CRITICAL_USAGE_PERCENT: f64 = 90.0;
 
 fn item_is_critical(item: &UsageSummaryItem) -> bool {
+    // A usage check that did not complete is not evidence about the
+    // inference quota, so its old snapshot never drives the badge or a
+    // notification.
+    if is_held(item) {
+        return false;
+    }
     item.usage.as_ref().is_some_and(|usage| {
         usage.limits.iter().any(|limit| {
             let window_hot = [limit.primary.as_ref(), limit.secondary.as_ref()]
@@ -863,7 +996,15 @@ impl UsageCache {
     /// crossed the critical threshold there (see [`notification_transitions`]).
     pub fn record(&mut self, server: &ServerId, body: UsageSummaryBody) -> Vec<String> {
         let previous = self.notified.get(server).cloned().unwrap_or_default();
-        let (to_notify, next) = notification_transitions(&critical_providers(&body), &previous);
+        let (to_notify, mut next) = notification_transitions(&critical_providers(&body), &previous);
+        // A throttled poll is no news either way: keep what was already
+        // notified so the next real reading doesn't re-fire it.
+        next.extend(
+            body.items
+                .iter()
+                .filter(|item| is_held(item) && previous.contains(&item.provider))
+                .map(|item| item.provider.clone()),
+        );
         self.notified.insert(server.clone(), next);
         self.errors.remove(server);
         self.snapshots.insert(server.clone(), body);
@@ -956,8 +1097,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: provider.to_string(),
+                updated_at: None,
                 limits: vec![UsageLimit {
                     limit_id: Some(provider.to_string()),
                     limit_name: None,
@@ -1057,8 +1202,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "grok".to_string(),
+                updated_at: None,
                 limits: vec![UsageLimit {
                     limit_id: None,
                     limit_name: Some("Weekly usage period".to_string()),
@@ -1093,8 +1242,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "copilot".to_string(),
+                updated_at: None,
                 limits: vec![UsageLimit {
                     limit_id: Some("premium_interactions".to_string()),
                     limit_name: Some("Premium requests".to_string()),
@@ -1134,6 +1287,9 @@ mod tests {
                     status: "credentials_missing".to_string(),
                     error: Some("token missing".to_string()),
                     stale: false,
+                    retry_at: None,
+                    retry_after: None,
+                    account: None,
                     usage: None,
                 },
                 UsageSummaryItem {
@@ -1142,6 +1298,9 @@ mod tests {
                     status: "unavailable".to_string(),
                     error: Some("timeout".to_string()),
                     stale: false,
+                    retry_at: None,
+                    retry_after: None,
+                    account: None,
                     usage: None,
                 },
             ],
@@ -1318,8 +1477,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "codex".to_string(),
+                updated_at: None,
                 limits: vec![UsageLimit {
                     limit_id: Some("codex".to_string()),
                     limit_name: None,
@@ -1357,8 +1520,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "codex".to_string(),
+                updated_at: None,
                 limits: vec![UsageLimit {
                     limit_id: Some("codex".to_string()),
                     limit_name: Some(very_long_name),
@@ -1409,7 +1576,10 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
-            usage: Some(UsageResponse { provider: "codex".to_string(), limits }),
+            retry_at: None,
+            retry_after: None,
+            account: None,
+            usage: Some(UsageResponse { provider: "codex".to_string(), limits, updated_at: None }),
         };
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 5); // header + 3 limits + "more" row
@@ -1494,8 +1664,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "agy".to_string(),
+                updated_at: None,
                 limits: vec![
                     make_limit("Gemini 3.1 Pro (High)", 10.0),
                     make_limit("Claude Sonnet 4.6", 95.0),
@@ -1544,8 +1718,12 @@ mod tests {
             status: "ok".to_string(),
             error: None,
             stale: false,
+            retry_at: None,
+            retry_after: None,
+            account: None,
             usage: Some(UsageResponse {
                 provider: "codex".to_string(),
+                updated_at: None,
                 limits: vec![UsageLimit {
                     limit_id: Some("codex".to_string()),
                     limit_name: None,
@@ -1694,6 +1872,249 @@ mod tests {
         assert_eq!(extract_host_port("http://192.168.1.10:4082/"), "192.168.1.10:4082");
         assert_eq!(extract_host_port("https://api.example.com"), "api.example.com");
         assert_eq!(extract_host_port("localhost:8000"), "localhost:8000");
+    }
+
+    fn rate_limited(
+        usage: Option<f64>,
+        stale: bool,
+        retry_at: Option<i64>,
+        retry_after: Option<i64>,
+    ) -> UsageSummaryItem {
+        let mut item = match usage {
+            Some(percent) => item_ok("codex", "OpenAI Codex", percent, Some(10_000)),
+            None => UsageSummaryItem { usage: None, ..item_ok("codex", "OpenAI Codex", 0.0, None) },
+        };
+        item.status = "rate_limited".to_string();
+        item.error = Some("HTTP 429".to_string());
+        item.stale = stale;
+        item.retry_at = retry_at;
+        item.retry_after = retry_after;
+        item
+    }
+
+    #[test]
+    fn rate_limited_with_last_good_keeps_old_numbers_and_shows_retry_time() {
+        let item = rate_limited(Some(42.0), true, Some(1_000 + 300), Some(300));
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        let text = &rows[0].text;
+        assert!(text.contains("42%"), "{text}");
+        assert!(text.contains("old"), "{text}");
+        assert!(text.contains("rate limited"), "{text}");
+        assert!(text.contains("retry in 5m"), "{text}");
+        assert!(!text.contains("reconnect") && !text.contains("unavailable"), "{text}");
+        assert!(text.chars().count() <= MAX_ROW_LEN, "{text}");
+    }
+
+    #[test]
+    fn rate_limited_usage_is_never_presented_as_fresh_even_if_stale_flag_is_missing() {
+        let item = rate_limited(Some(42.0), false, None, Some(60));
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.contains("42%") && rows[0].text.contains("old"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn rate_limited_without_last_good_gets_its_own_row_not_unavailable_or_reconnect() {
+        let item = rate_limited(None, false, Some(1_000 + 90), None);
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        let text = &rows[0].text;
+        assert!(text.contains("OpenAI Codex"), "{text}");
+        assert!(text.contains("rate limited"), "{text}");
+        assert!(text.contains("retry in 1m"), "{text}");
+        assert!(!text.contains("reconnect") && !text.contains("unavailable"), "{text}");
+        assert!(!text.contains("no usage data"), "{text}");
+    }
+
+    #[test]
+    fn rate_limited_timing_is_optional_and_never_panics() {
+        let now = 1_000;
+        let none = format_item_rows(&rate_limited(None, false, None, None), now, 3);
+        assert!(none[0].text.contains("retry later"), "{}", none[0].text);
+        let after_only = format_item_rows(&rate_limited(None, false, None, Some(7_200)), now, 3);
+        assert!(after_only[0].text.contains("retry in 2h"), "{}", after_only[0].text);
+        let past = format_item_rows(&rate_limited(None, false, Some(now - 5), Some(999)), now, 3);
+        assert!(past[0].text.contains("retrying soon"), "{}", past[0].text);
+        let zero = format_item_rows(&rate_limited(Some(10.0), true, None, Some(0)), now, 3);
+        assert!(zero[0].text.contains("retrying soon"), "{}", zero[0].text);
+        let short = format_item_rows(&rate_limited(None, false, Some(now + 20), None), now, 3);
+        assert!(short[0].text.contains("retry in <1m"), "{}", short[0].text);
+    }
+
+    #[test]
+    fn absurd_timing_is_bounded_and_never_overflows() {
+        let now = 1_000;
+        for (at, after, expected) in [
+            (Some(i64::MAX), None, "retry later"),
+            (Some(i64::MIN), None, "retrying soon"),
+            (None, Some(i64::MAX), "retry later"),
+            (None, Some(i64::MIN), "retrying soon"),
+            (None, Some(40 * 86_400), "retry later"),
+            (None, Some(3 * 86_400), "retry in 3d"),
+        ] {
+            let rows = format_item_rows(&rate_limited(None, false, at, after), now, 3);
+            assert!(rows[0].text.contains(expected), "{at:?}/{after:?}: {}", rows[0].text);
+        }
+        // Huge or non-finite floats saturate at parse time instead of wrapping.
+        let huge: UsageSummaryItem = serde_json::from_str(
+            r#"{"provider":"p","label":"P","status":"rate_limited","retry_after":1e300}"#,
+        )
+        .unwrap();
+        assert_eq!(huge.retry_after, Some(i64::MAX));
+    }
+
+    #[test]
+    fn retry_at_wins_over_retry_after() {
+        let item = rate_limited(None, false, Some(1_000 + 600), Some(60));
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.contains("retry in 10m"), "{}", rows[0].text);
+    }
+
+    fn unavailable_with_last_good(percent: f64) -> UsageSummaryItem {
+        let mut item = item_ok("codex", "OpenAI Codex", percent, Some(10_000));
+        item.status = "unavailable".to_string();
+        item.error = Some("timeout".to_string());
+        item.stale = true;
+        item
+    }
+
+    #[test]
+    fn unavailable_with_last_good_keeps_old_numbers_instead_of_discarding_them() {
+        let rows = format_item_rows(&unavailable_with_last_good(42.0), 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        let text = &rows[0].text;
+        assert!(text.contains("42%"), "{text}");
+        assert!(text.ends_with("(old \u{00B7} unavailable)"), "{text}");
+        assert!(!text.contains("reconnect") && !text.contains("retry"), "{text}");
+    }
+
+    #[test]
+    fn unavailable_last_good_is_old_even_when_the_stale_flag_is_missing() {
+        let mut item = unavailable_with_last_good(42.0);
+        item.stale = false;
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.contains("42%") && rows[0].text.contains("old"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn grouped_unavailable_last_good_marks_the_header_only() {
+        let mut item = unavailable_with_last_good(10.0);
+        let extra = item.usage.as_ref().unwrap().limits[0].clone();
+        item.usage.as_mut().unwrap().limits.push(extra);
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 3);
+        assert!(rows[0].text.contains("(old \u{00B7} unavailable)"), "{}", rows[0].text);
+        assert!(!rows[1].text.contains("unavailable"), "{}", rows[1].text);
+    }
+
+    #[test]
+    fn unavailable_without_numbers_still_renders_the_plain_unavailable_row() {
+        let mut item = unavailable_with_last_good(10.0);
+        item.usage = None;
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.ends_with("\u{00B7} unavailable"), "{}", rows[0].text);
+        item.usage = Some(UsageResponse { provider: "codex".into(), limits: vec![], updated_at: None });
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.ends_with("\u{00B7} unavailable"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn unavailable_last_good_never_trips_the_badge_or_notification() {
+        let hot = body(vec![unavailable_with_last_good(97.0)], 1_000);
+        assert!(!has_critical_usage(&hot));
+        assert!(critical_providers(&hot).is_empty());
+        let mut cache = UsageCache::default();
+        assert!(cache.record(&ServerId::Bundled, hot).is_empty());
+        // And it neither fires nor re-arms an alert already given.
+        let fresh = || body(vec![item_ok("codex", "Codex", 95.0, None)], 1);
+        let mut cache = UsageCache::default();
+        assert_eq!(cache.record(&ServerId::Bundled, fresh()), ["codex"]);
+        assert!(cache.record(&ServerId::Bundled, body(vec![unavailable_with_last_good(95.0)], 2)).is_empty());
+        assert!(cache.record(&ServerId::Bundled, fresh()).is_empty());
+    }
+
+    #[test]
+    fn grouped_rate_limited_header_carries_the_marker_and_retry() {
+        let mut item = rate_limited(Some(10.0), true, None, Some(300));
+        let extra = item.usage.as_ref().unwrap().limits[0].clone();
+        item.usage.as_mut().unwrap().limits.push(extra);
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 3);
+        assert!(rows[0].text.contains("rate limited") && rows[0].text.contains("retry in 5m"), "{}", rows[0].text);
+        assert!(!rows[1].text.contains("rate limited"), "{}", rows[1].text);
+    }
+
+    #[test]
+    fn a_long_row_keeps_its_rate_limited_marker_when_truncated() {
+        let mut item = rate_limited(Some(42.0), true, None, Some(300));
+        item.label = "A very long provider label ".repeat(5);
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.chars().count() <= MAX_ROW_LEN, "{}", rows[0].text);
+        assert!(rows[0].text.ends_with("retry in 5m)"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn unknown_status_with_usage_still_renders_the_usage() {
+        let mut item = item_ok("codex", "OpenAI Codex", 42.0, None);
+        item.status = "some_future_status".to_string();
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.contains("42%"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn rate_limited_never_trips_the_badge_or_the_critical_notification() {
+        // A usage-endpoint 429 says nothing about the *inference* quota,
+        // even when the last good snapshot was hot.
+        let body = UsageSummaryBody {
+            items: vec![rate_limited(Some(97.0), true, None, Some(300))],
+            checked_at: 1_000,
+            cached: false,
+        };
+        assert!(!has_critical_usage(&body));
+        assert!(critical_providers(&body).is_empty());
+        let mut cache = UsageCache::default();
+        assert!(cache.record(&ServerId::Bundled, body).is_empty());
+    }
+
+    #[test]
+    fn a_throttled_poll_neither_fires_nor_rearms_the_alert_for_a_hot_provider() {
+        let mut cache = UsageCache::default();
+        let hot = || body(vec![item_ok("codex", "Codex", 95.0, None)], 1);
+        assert_eq!(cache.record(&ServerId::Bundled, hot()), ["codex"]);
+        let throttled = body(vec![rate_limited(Some(95.0), true, None, None)], 2);
+        assert!(cache.record(&ServerId::Bundled, throttled).is_empty());
+        // The throttle says nothing about the quota: still already notified.
+        assert!(cache.record(&ServerId::Bundled, hot()).is_empty());
+        // A real drop below the threshold still re-arms.
+        assert!(cache.record(&ServerId::Bundled, body(vec![item_ok("codex", "Codex", 5.0, None)], 3)).is_empty());
+        assert_eq!(cache.record(&ServerId::Bundled, hot()), ["codex"]);
+    }
+
+    #[test]
+    fn rate_limited_payload_parses_with_and_without_timing_and_updated_at() {
+        let full: UsageSummaryItem = serde_json::from_str(
+            r#"{"provider":"codex","label":"Codex","status":"rate_limited","error":"429",
+                "stale":true,"retry_at":1700000300,"retry_after":300,
+                "usage":{"provider":"codex","limits":[],"updated_at":1700000000}}"#,
+        )
+        .unwrap();
+        assert_eq!((full.retry_at, full.retry_after), (Some(1_700_000_300), Some(300)));
+        assert_eq!(full.usage.unwrap().updated_at, Some(1_700_000_000));
+
+        let bare: UsageSummaryItem = serde_json::from_str(
+            r#"{"provider":"codex","label":"Codex","status":"rate_limited","usage":null}"#,
+        )
+        .unwrap();
+        assert_eq!((bare.retry_at, bare.retry_after, bare.stale), (None, None, false));
+
+        // Odd timing types degrade to "unknown" instead of failing the whole poll.
+        let odd: UsageSummaryItem = serde_json::from_str(
+            r#"{"provider":"codex","label":"Codex","status":"rate_limited","retry_at":"soon",
+                "retry_after":12.2,"usage":{"provider":"codex","updated_at":"2024-01-01T00:00:00Z"}}"#,
+        )
+        .unwrap();
+        assert_eq!((odd.retry_at, odd.retry_after), (None, Some(13)));
+        assert_eq!(odd.usage.unwrap().updated_at, None);
     }
 
     #[test]

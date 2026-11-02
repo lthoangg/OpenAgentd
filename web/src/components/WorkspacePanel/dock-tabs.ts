@@ -94,6 +94,16 @@ export interface AttachmentTabRequest {
   key: number
 }
 
+/**
+ * A layout request for the dock: ``split-right`` / ``split-down`` split the
+ * focused pane (⌘\, ⌘⇧\).
+ */
+export interface DockLayoutRequest {
+  action: 'split-right' | 'split-down'
+  /** Monotonic; the dock handles each key once. */
+  key: number
+}
+
 export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Git' }
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
 export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Scheduled tasks' }
@@ -161,7 +171,7 @@ export function dockTabLabel(tab: DockTab): string {
     case 'plan':
       return 'Session plan'
     case 'btw':
-      return 'BTW side questions'
+      return 'Side questions'
     case 'goal':
       return tab.title === 'Goal' ? 'Session goal' : tab.title
     case 'preview':

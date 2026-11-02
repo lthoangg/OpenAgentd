@@ -2,20 +2,20 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 
-import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@/api/client'
+import type { ProviderInfo, ProvidersListBody } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Chip, type ChipTone } from '@/components/ui/chip'
 import { cn } from '@/lib/utils'
-import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
+import { queryKeys, useAddProviderCredentialMutation, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { DAEMON_BASE_URL, providerKindLabel, supportsMultipleCredentials } from './providerUtils'
-import { UsagePanel } from './UsagePanel'
+import { DAEMON_BASE_URL, providerKindLabel, supportsCredentialUsage, supportsMultipleCredentials, supportsUsage } from './providerUtils'
+import { ProviderUsageBlock } from './ProfileUsage'
 import { ModelsPanel } from './ModelsPanel'
 import { OAuthLoginDialog } from './OAuthLoginDialog'
-import { CredentialList } from './CredentialList'
+import { CredentialList, ProviderSignInRow } from './CredentialList'
 
 /** Kind as a person reads it in the row's subline. */
 function kindSubline(kind: ProviderInfo['kind']): string {
@@ -26,6 +26,25 @@ function kindSubline(kind: ProviderInfo['kind']): string {
 
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`
+}
+
+/** What a check of the credentials found; `Test` and `Save` both ask for one. */
+type CheckResult = { ok: true; count: number } | { ok: false; title: string; message: string }
+
+/** Where Save is: it checks the key first, then stores it. */
+type SaveCheck = { phase: 'idle' | 'checking' | 'verified' } | { phase: 'failed'; message: string }
+
+/** A failed check, inline under the form: why, with Retry and Save anyway. */
+function SaveFailure({ message, onRetry, onSaveAnyway, busy }: { message: string; onRetry: () => void; onSaveAnyway: () => void; busy: boolean }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-sm bg-(--color-error-subtle) px-3 py-2">
+      <p className="min-w-0 flex-1 basis-48 text-xs text-(--color-error)">{message}</p>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button type="button" size="xs" variant="default" onClick={onRetry} disabled={busy}>Retry</Button>
+        <Button type="button" size="xs" variant="ghost" onClick={onSaveAnyway} disabled={busy}>Save anyway</Button>
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -42,6 +61,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const [verifiedKey, setVerifiedKey] = useState('')
   const [verifiedCloudSignature, setVerifiedCloudSignature] = useState('')
   const [hasReachabilityFailure, setHasReachabilityFailure] = useState(false)
+  const [saveCheck, setSaveCheck] = useState<SaveCheck>({ phase: 'idle' })
   // `null`: closed. `{}`: connect or add an account. `{credentialId}`: reconnect it.
   const [oauthTarget, setOauthTarget] = useState<{ credentialId?: string; label?: string } | null>(null)
   const [modelsExpanded, setModelsExpanded] = useState(false)
@@ -68,6 +88,11 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const hasCredentialList = multiCredential && (storedCredentials.length > 0 || Boolean(provider.env_pinned))
   const hasStoredKeys = multiCredential && provider.kind === 'api_key' && storedCredentials.length > 0
   const hasStoredAccounts = multiCredential && provider.kind === 'oauth' && storedCredentials.length > 0
+  // OAuth usage lives in the profile rows. Per account when the backend reads
+  // it that way; otherwise one explicit "Provider sign-in" row.
+  const usageAvailable = supportsUsage(provider) && provider.is_configured
+  const perAccountUsage = provider.kind === 'oauth' && hasCredentialList && supportsCredentialUsage(provider)
+  const showSignInUsage = provider.kind === 'oauth' && usageAvailable && !perAccountUsage
   const cloudExtra = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {}
     for (const credential of provider.credentials) {
@@ -85,9 +110,8 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const hasSavedCredentials = provider.is_saved || provider.is_configured
   const hasVerifiedKey = verifiedKey === trimmedKey && hasCandidateKey
   const hasVerifiedCloud = verifiedCloudSignature === cloudSignature && hasCloudCandidate
-  const canSave =
-    ((provider.kind === 'api_key' || provider.kind === 'oauth') && hasVerifiedKey) ||
-    (provider.kind === 'cloud_creds' && hasVerifiedCloud)
+  // Save checks the credentials itself, so it only needs something to save.
+  const canSave = provider.kind === 'cloud_creds' ? hasCloudCandidate : hasCandidateKey
 
   const daemon = DAEMON_BASE_URL[provider.id]
   const extraForRequest = useMemo<Record<string, string> | undefined>(() => {
@@ -108,11 +132,6 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     enabled: autoFetchEnabled,
     staleTime: 60_000,
   })
-  const usageQ = useProviderUsageQuery(
-    provider.id,
-    provider.is_configured,
-  )
-
   const models = useMemo<string[]>(() => {
     // Models listed by an explicit refresh in this session are known-good.
     const justListed = modelsMutation.data?.models
@@ -131,7 +150,8 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     }
   }, [autoModelsQ.data?.model_costs, modelsMutation.data?.model_costs, provider.model_costs])
 
-  const handleListModels = async () => {
+  /** Asks the provider for its models with the typed (or stored) credentials. */
+  const runCheck = async (): Promise<CheckResult> => {
     const extra = provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest
     try {
       const listed = await modelsMutation.mutateAsync({
@@ -164,28 +184,47 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         if (provider.kind === 'cloud_creds') setVerifiedCloudSignature(cloudSignature)
         setModelsExpanded(true)
         if (provider.is_configured) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(provider.id) })
+          // Only the provider-wide reading: each account's usage is its own row's.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(provider.id), exact: true })
         }
-        push({
-          tone: 'success',
-          title: 'Connection verified',
-          description: `${listed.models.length} models available.`,
-        })
-      } else {
-        push({
-          tone: 'error',
-          title: 'Unreachable',
-          description: `${provider.label} did not answer. Check the key or the address.`,
-        })
+        return { ok: true, count: listed.models.length }
       }
+      return { ok: false, title: 'Unreachable', message: `${provider.label} did not answer. Check the key or the address.` }
     } catch (err) {
       setHasReachabilityFailure(true)
-      push({
-        tone: 'error',
-        title: 'Could not test the key',
-        description: err instanceof Error ? err.message : String(err),
-      })
+      return { ok: false, title: 'Could not test', message: err instanceof Error ? err.message : String(err) }
     }
+  }
+
+  /** Test: check the credentials and say how it went. */
+  const handleListModels = async () => {
+    const result = await runCheck()
+    if (result.ok) {
+      push({ tone: 'success', title: 'Connection verified', description: `${result.count} models available.` })
+    } else {
+      push({ tone: 'error', title: result.title, description: result.message })
+    }
+  }
+
+  /**
+   * Save: check the key first ("Checking…"), store it when it passes
+   * ("Verified"), and show why inline when it does not, with Retry and Save
+   * anyway (the daemon stores a key without checking it, so a provider that
+   * cannot be reached right now never blocks saving).
+   */
+  const handleSaveChecked = async (options: { skipCheck?: boolean } = {}) => {
+    const alreadyVerified = provider.kind === 'cloud_creds' ? hasVerifiedCloud : hasVerifiedKey
+    if (!options.skipCheck && !alreadyVerified) {
+      setSaveCheck({ phase: 'checking' })
+      const result = await runCheck()
+      if (!result.ok) {
+        setSaveCheck({ phase: 'failed', message: result.message })
+        return
+      }
+    }
+    setSaveCheck({ phase: options.skipCheck ? 'idle' : 'verified' })
+    await handleSave()
+    setSaveCheck({ phase: 'idle' })
   }
 
   const handleSave = async () => {
@@ -262,13 +301,13 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       await disconnectOauthMutation.mutateAsync({ providerId: provider.id })
       push({
         tone: 'success',
-        title: 'OAuth account disconnected',
+        title: 'Signed out',
         description: provider.label,
       })
     } catch (err) {
       push({
         tone: 'error',
-        title: 'Could not disconnect OAuth account',
+        title: 'Could not sign out',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -279,11 +318,11 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const isConfiguredButUnreachable =
     hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
-  const testLabel =
-    provider.kind === 'oauth' ? 'Test sign-in'
-      : provider.kind === 'local' ? 'Test connection'
-        : provider.kind === 'cloud_creds' ? 'Test credentials'
-          : 'Test key'
+  // One verb for every kind: it checks the sign-in, key, address or credentials.
+  const testLabel = 'Test'
+  const saving = saveMutation.isPending || addCredentialMutation.isPending
+  const savingLabel = saveCheck.phase === 'checking' ? 'Checking…' : saveCheck.phase === 'verified' ? 'Verified' : 'Save'
+  const saveBusy = saving || saveCheck.phase === 'checking' || saveCheck.phase === 'verified'
   const credentialCount = storedCredentials.length
   const modelCount = provider.is_configured ? (provider.cached_models?.length ?? 0) : 0
   const subline = [
@@ -387,6 +426,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
                 onChange={(event) => {
                   setApiKey(event.target.value)
                   setVerifiedKey('')
+                  setSaveCheck({ phase: 'idle' })
                 }}
                 placeholder={
                   hasStoredKeys
@@ -411,14 +451,23 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             <Button
               type="button"
               size="sm"
+              variant="primary"
               className="w-full sm:w-auto"
-              onClick={handleSave}
-              disabled={!canSave || saveMutation.isPending || addCredentialMutation.isPending}
+              onClick={() => { void handleSaveChecked() }}
+              disabled={!canSave || saveBusy}
             >
-              {(saveMutation.isPending || addCredentialMutation.isPending) && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              {hasStoredKeys ? 'Add key' : 'Save'}
+              {(saving || saveCheck.phase === 'checking') && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              {savingLabel}
             </Button>
           </div>
+          {saveCheck.phase === 'failed' && (
+            <SaveFailure
+              message={saveCheck.message}
+              busy={saveBusy}
+              onRetry={() => { void handleSaveChecked() }}
+              onSaveAnyway={() => { void handleSaveChecked({ skipCheck: true }) }}
+            />
+          )}
           {daemon && (
             <label className="block">
               <span className="text-xs font-medium text-(--color-text)">Base URL (optional)</span>
@@ -433,23 +482,23 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               />
             </label>
           )}
-          {hasCandidateKey && !hasVerifiedKey && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
-              Click <span className="font-medium text-(--color-text)">Test key</span> to verify this key before {hasStoredKeys ? 'adding it' : 'saving'}.
+          {hasCandidateKey && saveCheck.phase === 'idle' && (
+            <p className="text-xs leading-relaxed text-(--color-text-muted)">
+              Save checks the key with {provider.label} first.{hasStoredKeys ? ' It is tried after your other keys.' : ''}
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Free models are available without an API key. Add a key to use paid models.
             </p>
           )}
           {!hasCandidateKey && hasStoredKeys && storedCredentials.length === 1 && !provider.env_pinned && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Add a second key to keep working when this one hits a rate limit or quota.
             </p>
           )}
           {!hasCandidateKey && provider.is_configured && !hasStoredKeys && !provider.env_pinned && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Key saved. Type a new one above only if you want to replace it.
             </p>
           )}
@@ -466,6 +515,9 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               setOauthTarget({ credentialId, label: storedCredentials.find((c) => c.id === credentialId)?.label })
             }
           />
+        )}
+        {showSignInUsage && (
+          <ProviderSignInRow provider={provider} accountInUse={hasCredentialList} onReconnect={() => setOauthTarget({})} />
         )}
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
           <Button
@@ -532,28 +584,10 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         </div>
       )}
 
-      {provider.is_configured && (
+      {/* API-key, local and cloud providers keep one provider-wide usage block; it mounts only while the details are open. */}
+      {provider.kind !== 'oauth' && usageAvailable && (
         <div className="space-y-2 pt-1">
-          {usageQ.isLoading ? (
-            <p role="status" className="inline-flex items-center gap-1 text-[11px] text-(--color-text-subtle)">
-              <Loader2 className="h-3 w-3 animate-spin mr-1" aria-hidden="true" />
-              Loading usage…
-            </p>
-          ) : usageQ.data && usageQ.data.limits.length > 0 ? (
-            <UsagePanel providerId={provider.id} limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
-          ) : usageQ.isError ? (
-            provider.kind === 'oauth' ? (
-              <p className="text-[11px] text-(--color-text-subtle)">
-                {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
-                  ? 'Usage monitoring is not supported for this OAuth provider yet.'
-                  : 'Usage monitor unavailable right now.'}
-              </p>
-            ) : usageQ.error instanceof ApiValidationError && usageQ.error.status !== 404 ? (
-              <p className="text-[11px] text-(--color-text-subtle)">
-                Usage monitor unavailable right now.
-              </p>
-            ) : null
-          ) : null}
+          <ProviderUsageBlock providerId={provider.id} label={provider.label} />
         </div>
       )}
 
@@ -587,6 +621,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             <Button
               type="button"
               size="sm"
+              variant="primary"
               className="w-full sm:w-auto"
               onClick={handleSave}
               disabled={saveMutation.isPending}
@@ -595,7 +630,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               Save
             </Button>
           </div>
-          <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+          <p className="text-meta leading-relaxed text-(--color-text-muted)">
             Leave blank to use the default daemon at <span className="font-mono text-(--color-text)">{daemon.placeholder}</span>.
           </p>
         </div>
@@ -614,6 +649,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
                   onChange={(e) => {
                     setCloudValues((values) => ({ ...values, [credential.name]: e.target.value }))
                     setVerifiedCloudSignature('')
+                    setSaveCheck({ phase: 'idle' })
                   }}
                   placeholder={credential.placeholder}
                   autoComplete="off"
@@ -638,21 +674,30 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             <Button
               type="button"
               size="sm"
+              variant="primary"
               className="w-full sm:w-auto"
-              onClick={handleSave}
-              disabled={!canSave || saveMutation.isPending}
+              onClick={() => { void handleSaveChecked() }}
+              disabled={!canSave || saveBusy}
             >
-              {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              Save
+              {(saving || saveCheck.phase === 'checking') && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              {savingLabel}
             </Button>
           </div>
-          {hasCloudCandidate && !hasVerifiedCloud && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
-              Click <span className="font-medium text-(--color-text)">Test credentials</span> to verify these credentials before saving.
+          {saveCheck.phase === 'failed' && (
+            <SaveFailure
+              message={saveCheck.message}
+              busy={saveBusy}
+              onRetry={() => { void handleSaveChecked() }}
+              onSaveAnyway={() => { void handleSaveChecked({ skipCheck: true }) }}
+            />
+          )}
+          {hasCloudCandidate && saveCheck.phase === 'idle' && (
+            <p className="text-xs leading-relaxed text-(--color-text-muted)">
+              Save checks these credentials with {provider.label} first.
             </p>
           )}
           {!hasCloudCandidate && provider.is_configured && (
-            <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            <p className="text-meta leading-relaxed text-(--color-text-muted)">
               Credentials saved. Type new values above only if you want to replace them.
             </p>
           )}
@@ -661,7 +706,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
 
       {/* ── Detected providers (local without base URL) ─────────────── */}
       {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
-        <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
+        <p className="text-meta leading-relaxed text-(--color-text-muted)">
           Detected from local environment or system credentials.
         </p>
       )}
@@ -690,6 +735,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
           }}
           credentialId={multiCredential ? oauthTarget.credentialId : undefined}
           accountLabel={oauthTarget.label}
+          renewsProviderSignIn={!hasStoredAccounts}
         />
       )}
       </div>

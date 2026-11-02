@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -288,15 +289,16 @@ describe('AssistantTurn — reader mode, closing a long fold', () => {
     expect(body.className).toContain('[--fold-top:1.5rem]')
   })
 
-  it('pins the open file list header so it can close from anywhere in a long list', () => {
+  it('pins the footer row of an open file list so it can close from anywhere in a long list', () => {
     renderTurn(finished, { opener: { canOpen: () => true, open: () => {}, openDiff: () => {} } })
     const files = screen.getByRole('button', { name: /1 file changed/ })
-    expect(files.className).not.toContain('sticky')
+    const row = files.closest('[role="group"]')?.parentElement as HTMLElement
+    expect(row.className).not.toContain('sticky')
 
     fireEvent.click(files)
 
-    expect(files.className).toContain('sticky')
-    expect(files.closest('section')?.className).not.toContain('overflow-hidden')
+    expect(row.className).toContain('sticky')
+    expect(screen.getByRole('list', { name: 'Files changed this turn' }).className).not.toContain('overflow-hidden')
   })
 
   it('closes from the end of the steps too, handing focus back to the row', () => {
@@ -304,12 +306,20 @@ describe('AssistantTurn — reader mode, closing a long fold', () => {
     expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
     fireEvent.click(workRow())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+    const timers = useFakeTimers()
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
 
-    expect(workRow().getAttribute('aria-expanded')).toBe('false')
-    for (const id of ['think', 'read', 'narrate', 'edit']) expect(rendered(id)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
-    expect(document.activeElement).toBe(workRow())
+      expect(workRow().getAttribute('aria-expanded')).toBe('false')
+      expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
+      expect(document.activeElement).toBe(workRow())
+      // The steps fold away: out of reach at once, gone once the fold ends.
+      expect(rendered('read')?.closest('[inert]')).toBeTruthy()
+      act(() => timers.tick(300))
+      for (const id of ['think', 'read', 'narrate', 'edit']) expect(rendered(id)).toBeNull()
+    } finally {
+      timers.restore()
+    }
   })
 
   it('puts the row where the reader clicked when the fold closes from its end', () => {

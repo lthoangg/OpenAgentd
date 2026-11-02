@@ -19,10 +19,10 @@
  * The card owns its own frame and label, because both depend on that state: a
  * resolved question still headed "Needs your input" reads as an outstanding
  * request. The frame is fluid — it takes the transcript's width at every
- * breakpoint rather than switching to a separate mobile presentation.
+ * breakpoint rather than switching to a separate mobile presentation. It is
+ * one thin frame with nothing bordered inside, and no icon before the label.
  */
 import { useCallback, type ReactNode } from 'react'
-import { MessageCircleQuestion } from 'lucide-react'
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
@@ -69,13 +69,14 @@ export function useShowsConfirmationCard(enabled: boolean, toolCallId: string | 
 export function useQuestionAwaitsUser(): (block: ContentBlock) => boolean {
   const openCallId = useAgentStore(selectOpenQuestionCallId)
   const resolvedQuestions = useAgentStore((state) => state.resolvedQuestions)
+  const turnLive = useAgentStore((state) => state.isAgentWorking)
   return useCallback(
     (block: ContentBlock) => {
       const id = block.toolCallId
       if (openCallId !== null && id === openCallId) return true
-      return !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
+      return turnLive && !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
     },
-    [openCallId, resolvedQuestions],
+    [openCallId, resolvedQuestions, turnLive],
   )
 }
 
@@ -112,6 +113,7 @@ const REASON_LABEL: Record<string, string> = {
   merged: 'Merged into the other question card',
   failed: 'Not asked — the question failed to send, so the agent continued without it',
   interrupted: 'Not asked — interrupted before the question went out',
+  unrecorded: 'No answer recorded',
 }
 
 export function AskUser({
@@ -130,12 +132,13 @@ export function AskUser({
   const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
+  const turnLive = useAgentStore((state) => state.isAgentWorking)
 
   const isOpen = pendingQuestion !== null && openCallId === toolCallId
   const { submitting, error, answer, dismiss } = useQuestionResolver(isOpen ? pendingQuestion : null)
 
   if (!isOpen) {
-    const { waiting, body } = describeResolution(resolved, result, args)
+    const { waiting, body } = describeResolution(resolved, result, args, turnLive)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
 
@@ -165,9 +168,8 @@ function QuestionShell({
   children: ReactNode
 }) {
   return (
-    <div data-question-waiting={open ? '' : undefined} className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
-      <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 label-caps text-(--color-text-muted)">
-        <MessageCircleQuestion size={12} aria-hidden />
+    <div data-question-waiting={open ? '' : undefined} className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--bg-card)">
+      <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 label-caps text-(--color-text-muted)">
         {waiting ? 'Needs your input' : 'Your input'}
       </div>
       {children}
@@ -185,6 +187,8 @@ function describeResolution(
   resolved: ResolvedQuestion | undefined,
   result: string | undefined,
   args: string | undefined,
+  /** The session's turn is still running, so the question may yet open here. */
+  turnLive: boolean,
 ): { waiting: boolean; body: ReactNode } {
   if (resolved) {
     if (resolved.answers === null) {
@@ -206,11 +210,14 @@ function describeResolution(
     }
   }
 
-  // A cold load mid-wait: the row still holds the placeholder, and the store had
-  // no open question for this call (another device answered, or this client
-  // reconnected after the fact). Still unanswered, so the label stays "waiting".
+  // The row still holds the placeholder (or nothing) and no question is open
+  // here. While the turn runs the question may still open (its event follows
+  // the call), so it waits. Once the turn is over, an open question would be
+  // in the store (a load restores it from the server), so this one closed in
+  // a way that left no outcome here: say so instead of waiting for good.
   if (isUnsettledResult(result)) {
-    return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
+    if (turnLive) return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
+    return { waiting: false, body: <ClosedQuestions reason="unrecorded" questions={parseAskedQuestions(args)} /> }
   }
 
   const text = (result ?? '').trim()
@@ -256,14 +263,14 @@ function ClosedQuestions({
   questions: QuestionItem[]
 }) {
   return (
-    <div className="flex flex-col gap-1 px-3 py-2">
-      <span className="text-[11px] leading-relaxed font-medium text-(--color-text-muted)">
+    <div className="flex flex-col gap-1 px-3 pt-1 pb-2.5">
+      <span className="text-xs leading-relaxed font-medium text-(--color-text-muted)">
         {(reason && REASON_LABEL[reason]) ?? 'Closed without an answer'}
       </span>
       {questions.map((item, index) => (
         <span
           key={index}
-          className="truncate text-[11px] leading-relaxed text-(--color-text-subtle)"
+          className="truncate text-xs leading-relaxed text-(--color-text-muted)"
         >
           {item.question}
         </span>
@@ -274,18 +281,18 @@ function ClosedQuestions({
 
 function AnswerList({ pairs }: { pairs: { question: string; answer: string }[] }) {
   return (
-    <div className="flex flex-col gap-1.5 px-3 py-2">
+    <div className="flex flex-col gap-1.5 px-3 pt-1 pb-2.5">
       {pairs.map(({ question, answer }, index) => (
         <div key={index} className="flex flex-col gap-0.5">
-          <span className="text-[11px] leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
+          <span className="text-xs leading-relaxed text-(--color-text-muted) [overflow-wrap:anywhere]">
             {question}
           </span>
           {answer && answer !== 'Unanswered' ? (
-            <span className="text-[11px] leading-relaxed font-medium break-words text-(--color-text) [overflow-wrap:anywhere]">
+            <span className="text-xs leading-relaxed font-medium break-words text-(--color-text) [overflow-wrap:anywhere]">
               {answer}
             </span>
           ) : (
-            <span className="text-[11px] leading-relaxed text-(--color-text-subtle) italic">
+            <span className="text-xs leading-relaxed text-(--color-text-muted) italic">
               Skipped
             </span>
           )}
@@ -297,7 +304,7 @@ function AnswerList({ pairs }: { pairs: { question: string; answer: string }[] }
 
 function QuestionNote({ text }: { text: string }) {
   return (
-    <p className="px-3 py-2 text-[11px] leading-relaxed text-(--color-text-muted)">
+    <p className="px-3 pt-1 pb-2.5 text-xs leading-relaxed text-(--color-text-muted)">
       {text}
     </p>
   )

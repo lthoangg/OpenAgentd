@@ -94,35 +94,36 @@ const pluginOauth: ProviderInfo = {
   ],
 }
 
+const originalFetch = globalThis.fetch
+
 describe('ProviderCard — multi-credential capability', () => {
   beforeEach(() => {
     for (const m of [mockAdd, mockSave, mockListModels, mockDisconnectOauth, mockLoginStream]) m.mockClear()
+    // The account rows ask the daemon how many sessions pin each one.
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ credentials: [] }))) as unknown as typeof fetch
   })
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    globalThis.fetch = originalFetch
+  })
 
-  it('keeps the single-key form for an api-key plugin that did not opt in', async () => {
+  it('keeps the single-key form for an api-key plugin that did not opt in, and Save checks the key first', async () => {
     renderCard({ ...pluginKey, supports_multiple_credentials: false })
     expect(screen.queryByRole('list', { name: 'PlugKey keys' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Add key' })).toBeNull()
     expect(screen.queryByPlaceholderText('Name (e.g. Work)')).toBeNull()
     fireEvent.change(screen.getByPlaceholderText('Enter a new key to replace current key'), { target: { value: 'sk-test-only' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
-    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
-    await waitFor(() => expect(save.disabled).toBe(false))
-    fireEvent.click(save)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1))
+    expect(mockListModels).toHaveBeenCalledTimes(1)
     expect(mockSave.mock.calls[0][0]).toBe('plugkey')
     expect(mockAdd).not.toHaveBeenCalled()
   })
 
-  it('lists keys and adds another one for an api-key plugin that opted in', async () => {
+  it('lists keys and adds another one for an api-key plugin that opted in, with the same Save', async () => {
     renderCard({ ...pluginKey, supports_multiple_credentials: true })
     expect(screen.getByRole('list', { name: 'PlugKey keys' })).toBeTruthy()
     fireEvent.change(screen.getByPlaceholderText('Paste another API key'), { target: { value: 'sk-test-more' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Test key' }))
-    const add = screen.getByRole('button', { name: 'Add key' }) as HTMLButtonElement
-    await waitFor(() => expect(add.disabled).toBe(false))
-    fireEvent.click(add)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mockAdd).toHaveBeenCalledTimes(1))
     expect(mockAdd.mock.calls[0][0]).toBe('plugkey')
     expect(mockSave).not.toHaveBeenCalled()
@@ -131,7 +132,8 @@ describe('ProviderCard — multi-credential capability', () => {
   it('keeps the previous behaviour when an older backend omits the flag', () => {
     renderCard(pluginKey)
     expect(screen.getByRole('list', { name: 'PlugKey keys' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Add key' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Add key' })).toBeNull()
   })
 
   it('reconnects a non-opted-in oauth plugin as one connection, never with an account', async () => {
@@ -170,21 +172,26 @@ describe('ProviderCard — multi-credential capability', () => {
     expect(mockLoginStream.mock.calls[0][4]).toBeUndefined()
   })
 
-  it('shows per-account usage in the More menu only when the backend says the provider has it', () => {
+  it('never offers a Show usage toggle on an OAuth account, whatever the capability flags say', () => {
     const { unmount } = renderCard({ ...pluginOauth, id: 'codex', supports_multiple_credentials: true, supports_credential_usage: false })
-    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
     expect(openMore('me@example.com')).not.toContain('Show usage')
     unmount()
     renderCard({ ...pluginOauth, supports_multiple_credentials: true, supports_credential_usage: true })
-    expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull()
-    expect(openMore('me@example.com')).toContain('Show usage')
+    expect(openMore('me@example.com')).not.toContain('Show usage')
   })
 
-  it('falls back to the built-in usage set when the flag is missing', () => {
-    const { unmount } = renderCard({ ...pluginOauth, id: 'codex' })
-    expect(openMore('me@example.com')).toContain('Show usage')
+  it('keeps the Show usage toggle on API keys when the backend has per-key usage', () => {
+    const two = [credential({ id: 'cred_a', label: 'Personal', in_use: true }), credential({ id: 'cred_b', label: 'Work' })]
+    const { unmount } = renderCard({ ...pluginKey, stored_credentials: two, supports_credential_usage: true })
+    expect(openMore('Personal')).toContain('Show usage')
     unmount()
-    renderCard(pluginOauth)
-    expect(openMore('me@example.com')).not.toContain('Show usage')
+    renderCard({ ...pluginKey, stored_credentials: two, supports_credential_usage: false })
+    expect(openMore('Personal')).not.toContain('Show usage')
+  })
+
+  it('does not offer usage for a disabled API key', () => {
+    const two = [credential({ id: 'cred_a', label: 'Personal', in_use: true }), credential({ id: 'cred_b', label: 'Work', disabled: true, status: 'disabled' })]
+    renderCard({ ...pluginKey, stored_credentials: two, supports_credential_usage: true })
+    expect(openMore('Work')).not.toContain('Show usage')
   })
 })

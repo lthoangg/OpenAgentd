@@ -1,9 +1,9 @@
 /**
- * ToastStack — renders all toasts from ``useToastStore``: across the top on
- * phones, and on desktop inside the ``FloatingNotices`` column above the
- * status bar, so they never cover the header's controls. Handles its own
- * mount/unmount animations; each item owns its auto-dismiss timer (see
- * ToastItem) so it can pause on hover/focus.
+ * ToastStack — renders all toasts from ``useToastStore`` at the head of the
+ * ``FloatingNotices`` column: top right under the app header, full width on
+ * phones, so they never cover the header's controls. The newest toast sits
+ * nearest the top edge. Handles its own mount/unmount animations; each item
+ * owns its auto-dismiss timer (see ToastItem) so it can pause on hover/focus.
  *
  * Swipe right or up to dismiss.
  */
@@ -20,7 +20,7 @@ const TONE_STYLES: Record<
 > = {
   success: {
     icon: CheckCircle2,
-    iconClass: 'text-(--color-success)',
+    iconClass: 'text-(--accent-green-text)',
   },
   error: {
     icon: AlertCircle,
@@ -47,15 +47,17 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
   // Auto-dismiss timer lives here (not the store) so it can pause while the
   // pointer or keyboard focus is on the toast — otherwise a toast the user is
   // reading vanishes mid-sentence. Remaining time is preserved across pauses.
+  // A null duration (every error) never runs out: it stays until closed.
   const [paused, setPaused] = useState(false)
-  const remainingRef = useRef(t.durationMs ?? 4500)
+  const remainingRef = useRef(t.durationMs === undefined ? 4500 : t.durationMs)
   useEffect(() => {
-    if (paused || remainingRef.current <= 0) return
+    const remaining = remainingRef.current
+    if (paused || remaining === null || remaining <= 0) return
     const startedAt = Date.now()
-    const timer = setTimeout(() => dismiss(t.id), remainingRef.current)
+    const timer = setTimeout(() => dismiss(t.id), remaining)
     return () => {
       clearTimeout(timer)
-      remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAt))
+      remainingRef.current = Math.max(0, remaining - (Date.now() - startedAt))
     }
   }, [paused, dismiss, t.id])
 
@@ -113,6 +115,18 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
           <p className="mt-0.5 text-xs text-(--color-text-muted)">{t.description}</p>
         )}
       </div>
+      {t.action && (
+        <button
+          type="button"
+          onClick={() => {
+            t.action?.onAction()
+            dismiss(t.id)
+          }}
+          className="-my-1 inline-flex h-7 shrink-0 items-center rounded-xs bg-(--bg-key) px-2.5 text-sm font-medium text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) pointer-coarse:h-9"
+        >
+          {t.action.label}
+        </button>
+      )}
       <button
         onClick={() => dismiss(t.id)}
         aria-label="Dismiss"
@@ -133,9 +147,10 @@ export function ToastStack() {
   const dismiss = useToastStore(dismissSelector)
 
   return (
-    <div className="mobile-safe-toast pointer-events-none fixed z-60 flex w-auto flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm md:static">
+    <div className="pointer-events-none flex w-full flex-col gap-2 sm:max-w-sm">
       <AnimatePresence initial={false}>
-        {toasts.map((t) => (
+        {/* The store appends; the column reads newest first. */}
+        {[...toasts].reverse().map((t) => (
           <ToastItem key={t.id} t={t} dismiss={dismiss} />
         ))}
       </AnimatePresence>

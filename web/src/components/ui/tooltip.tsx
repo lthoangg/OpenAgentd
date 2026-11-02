@@ -62,11 +62,26 @@ export function _resetTooltipTimingForTests(): void {
   openCount = 0
 }
 
-function isWarm(): boolean {
+/** Whether a hint opens at once: one is open, or one closed within ``WARM_MS``. */
+export function isTooltipWarm(): boolean {
   return openCount > 0 || performance.now() - lastClosedAt < WARM_MS
 }
 
-function isKeyboardFocus(el: Element): boolean {
+/** Shared timing for every hint, including the ``title`` layer (ui/title-tooltip). */
+export function noteTooltipOpened(): void {
+  openCount += 1
+}
+
+export function noteTooltipClosed(): void {
+  openCount = Math.max(0, openCount - 1)
+  lastClosedAt = performance.now()
+}
+
+function isWarm(): boolean {
+  return isTooltipWarm()
+}
+
+export function isKeyboardFocus(el: Element): boolean {
   // Focus a script handed over quietly (lib/focus/quiet.ts) is not the
   // user's keyboard moving, so it opens no hint.
   if (el.hasAttribute('data-quiet-focus')) return false
@@ -76,6 +91,10 @@ function isKeyboardFocus(el: Element): boolean {
     return false
   }
 }
+
+/** The hint's look, shared with the ``title`` layer. A raised dark chip in
+ * both themes (a cream block glowed brighter than the words in dark mode). */
+export const TOOLTIP_CONTENT_CLASS = 'pointer-events-none fixed z-9999 w-max max-w-xs rounded-sm border border-(--color-tooltip-border) px-2 py-1 text-meta bg-(--bg-tooltip) text-(--color-tooltip-text) shadow-(--shadow-depth)'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -112,11 +131,15 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLSpanElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Removes the press and key listeners a pending hover armed. */
+  const disarmRef = useRef<(() => void) | null>(null)
   const openRef = useRef(false)
 
   const clearTimer = () => {
     if (timerRef.current !== null) clearTimeout(timerRef.current)
     timerRef.current = null
+    disarmRef.current?.()
+    disarmRef.current = null
   }
   const show = () => {
     clearTimer()
@@ -135,8 +158,19 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
   }
   const hover = () => {
     if (openRef.current || timerRef.current !== null) return
-    if (isWarm()) show()
-    else timerRef.current = setTimeout(show, OPEN_DELAY_MS)
+    if (isWarm()) {
+      show()
+      return
+    }
+    timerRef.current = setTimeout(show, OPEN_DELAY_MS)
+    // A press or a key during the delay cancels the hint, as native ones do:
+    // a right-click's menu is already up when the delay runs out.
+    window.addEventListener('pointerdown', clearTimer, true)
+    window.addEventListener('keydown', clearTimer, true)
+    disarmRef.current = () => {
+      window.removeEventListener('pointerdown', clearTimer, true)
+      window.removeEventListener('keydown', clearTimer, true)
+    }
   }
   const hideRef = useRef(hide)
   hideRef.current = hide
@@ -156,6 +190,7 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
   }, [open])
   useEffect(() => () => {
     clearTimeout(timerRef.current ?? undefined)
+    disarmRef.current?.()
     if (openRef.current) {
       openRef.current = false
       openCount -= 1
@@ -318,11 +353,12 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
   }[placement]
 
   // Arrow: a 5×5 rotated square positioned at the edge facing the trigger
+  // (its two outward sides carry the box's hairline).
   const arrowClass = {
-    top: 'bottom-[-3px] left-1/2 -translate-x-1/2',
-    bottom: 'top-[-3px] left-1/2 -translate-x-1/2',
-    left: 'right-[-3px] top-1/2 -translate-y-1/2',
-    right: 'left-[-3px] top-1/2 -translate-y-1/2',
+    top: 'bottom-[-4px] left-1/2 -translate-x-1/2 border-r border-b',
+    bottom: 'top-[-4px] left-1/2 -translate-x-1/2 border-t border-l',
+    left: 'right-[-4px] top-1/2 -translate-y-1/2 border-t border-r',
+    right: 'left-[-4px] top-1/2 -translate-y-1/2 border-b border-l',
   }[placement]
 
   return createPortal(
@@ -333,8 +369,9 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       data-slot="tooltip-content"
       className={cn(
         'pointer-events-none fixed z-9999 w-max max-w-xs',
-        'rounded-sm px-2 py-1 text-[11px]',
-        'bg-(--bg-send) text-(--color-text-on-accent)',
+        'rounded-sm px-2 py-1 text-meta',
+        'border border-(--color-tooltip-border)',
+        'bg-(--bg-tooltip) text-(--color-tooltip-text)',
         'shadow-(--shadow-depth)',
         // Hide (not unmount) until the first measurement lands, so the box
         // never flashes at (0, 0) before `reposition()` places it.
@@ -352,7 +389,7 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       <span
         aria-hidden="true"
         className={cn(
-          'absolute size-[6px] rotate-45 bg-(--bg-send)',
+          'absolute size-[7px] rotate-45 border-(--color-tooltip-border) bg-(--bg-tooltip)',
           arrowClass,
         )}
       />

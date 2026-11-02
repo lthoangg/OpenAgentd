@@ -3,6 +3,7 @@
 
 mod config;
 mod diagnostics;
+mod answers;
 mod window;
 mod updater;
 mod menu;
@@ -16,6 +17,13 @@ mod watchdog;
 mod network_access;
 mod preview_relay;
 mod servers;
+mod shell_prefs;
+mod badge;
+mod context_menu;
+mod app_menu;
+mod share;
+mod global_shortcuts;
+mod caption;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -661,12 +669,21 @@ fn main() {
             preview_relay::preview_relay_open,
             preview_relay::preview_relay_close,
             menu::set_tray_session,
+            app_menu::set_menu_text_size,
+            context_menu::show_app_menu,
+            caption::show_snap_layouts,
+            badge::set_attention_badge,
+            share::share_url,
             tray_popup::get_tray_usage_summary,
+            tray_popup::tray_sessions,
+            tray_popup::tray_open_session,
             tray_popup::tray_action,
             tray_popup::tray_fit,
             island::island_state,
             island::island_fit,
             island::island_open_session,
+            island::island_answer,
+            island::island_retry,
             island::island_context_menu,
             island::island_dismiss,
             island::island_viewing,
@@ -677,6 +694,7 @@ fn main() {
             pet::pet_state,
             pet::pet_fit,
             pet::pet_open,
+            pet::pet_answer,
             pet::pet_dismiss,
             pet::pet_drag_end,
             pet::pet_menu,
@@ -689,6 +707,8 @@ fn main() {
         ])
         .setup(|app| {
             log::info!("startup: setup at_ms={}", launch_ms());
+            #[cfg(target_os = "linux")]
+            crate::window::remember_desktop_font();
             log::info!(
                 "desktop app starting version={} pid={} target_os={}",
                 env!("CARGO_PKG_VERSION"),
@@ -702,12 +722,18 @@ fn main() {
             // The backend and the HTTP client's TLS roots (~190 ms on macOS)
             // are the slowest parts of a launch, so they start before the
             // menus. Nothing is published to the tray or a window before
-            // `setup` returns: the main window can only build after it.
+            // `setup` returns: the main window can only be created after it.
             std::thread::spawn(|| {
                 crate::usage::shared_client();
             });
             let handle = app.handle().clone();
             let backend = tauri::async_runtime::spawn(start_backend(handle.clone()));
+            // But the window's task reads the app menu while `setup` still
+            // runs, and on Windows and Linux that menu is the window's bar
+            // and its shortcuts (Ctrl+Q, Ctrl+=…): install it before the
+            // task starts, or the main window often had none.
+            install_desktop_menus(app)?;
+            log::info!("startup: menus built at_ms={}", launch_ms());
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = start_backend_and_window(handle.clone(), backend).await {
                     log::error!("failed to start backend: {e:#}");
@@ -722,8 +748,6 @@ fn main() {
                         .ok();
                 }
             });
-            install_desktop_menus(app)?;
-            log::info!("startup: menus built at_ms={}", launch_ms());
             match desktop_log_path(app.handle()) {
                 Ok(path) => log::info!("desktop log path={}", path.display()),
                 Err(e) => log::warn!("desktop log path unavailable: {e:#}"),

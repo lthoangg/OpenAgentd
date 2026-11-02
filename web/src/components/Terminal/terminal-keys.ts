@@ -14,13 +14,17 @@
  * a dock tab (shells give digits no Ctrl meaning).
  *
  * On every OS, Ctrl+Tab and Ctrl+Shift+Tab step through the dock tabs, as
- * in editors: a shell has no use for them.
+ * in editors: a shell has no use for them. So does Control+Alt with an
+ * arrow, which sends the tab to a side. Control with the backquote key
+ * stays with the shell: the app has no terminal key.
  */
 import type { OS } from '@/hooks/use-platform'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 
 /** Ctrl chords that skip the shell on Windows/Linux. */
 const APP_KEYS_OVER_SHELL = new Set(['k', 'p', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+
+const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 
 /**
  * xterm custom key handler body: returns ``false`` when xterm must not
@@ -29,6 +33,7 @@ const APP_KEYS_OVER_SHELL = new Set(['k', 'p', '1', '2', '3', '4', '5', '6', '7'
 export function routeTerminalKey(event: KeyboardEvent, os: OS): boolean {
   if (event.type !== 'keydown') return true
   if (event.key === 'Tab' && event.ctrlKey && !event.metaKey && !event.altKey) return false
+  if (ARROWS.has(event.key) && event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) return false
   if (isPrimaryModifierOS(os)) return true
   if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return true
   const digit = /^Digit[1-9]$/.test(event.code) ? event.code.slice(5) : null

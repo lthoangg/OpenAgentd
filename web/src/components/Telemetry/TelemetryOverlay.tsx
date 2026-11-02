@@ -1,8 +1,10 @@
 /**
- * TelemetryOverlay — usage, spend, and turn traces as a Settings-style
+ * TelemetryOverlay — **Usage**: spend and turn traces as a Settings-style
  * overlay mounted at the app root, so the status bar, the mobile drawer, the
  * command palette, and ``/telemetry`` deep links all open the same surface
- * without leaving the current route.
+ * without leaving the current route. The name in the UI is Usage (spend and
+ * traces); a provider's own limits are "Provider limits", and the Settings
+ * page for how long this data is kept is "Retention".
  *
  * Escape steps back one level: the open span, then the trace, then the overlay.
  */
@@ -21,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { TelemetryView } from './TelemetryView'
-import { modelName, workspaceName } from './model'
+import { workspaceName } from './model'
 
 /**
  * Opening Usage lands on the selected time range (the first thing you would
@@ -54,7 +56,7 @@ function UsageScope() {
   return (
     <span className="max-sm:hidden">
       {RANGE_WORDS[days] ?? `Last ${days} days`} · {workspace ? workspaceName(workspace) : 'all workspaces'} ·{' '}
-      {model ? modelName(model) : 'all models'}
+      {model ? <span className="font-mono">{model}</span> : 'all models'}
     </span>
   )
 }

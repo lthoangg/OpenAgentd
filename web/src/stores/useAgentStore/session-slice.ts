@@ -1,13 +1,14 @@
 import type { StateCreator } from 'zustand'
-import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
+import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode, updateSessionRunSettings } from '@/api/client'
 import { takePrefetchedHistory } from '@/lib/session-prefetch'
+import { useToastStore } from '@/stores/useToastStore'
 import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages, userMessageSender } from '@/utils/messages'
 import { isRestartNoteExtra } from '@/lib/restart-note'
 import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
 import { sentFrom } from '@/utils/workspace-messages'
 import { createDefaultAgentStream } from './defaults'
-import { adoptLiveBlockIds, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
+import { adoptLiveBlockIds, applyQuestionResolution, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
@@ -405,6 +406,7 @@ export function resetSessionState(
     interactionMode?: SessionInteractionMode
     model?: string | null
     thinkingLevel?: string | null
+    credentialId?: string | null
     fastMode?: boolean
     workspace?: string | null
   },
@@ -419,6 +421,7 @@ export function resetSessionState(
   state.sessionPendingInteractionMode = null
   state.sessionModel = options.model ?? null
   state.sessionThinkingLevel = options.thinkingLevel ?? null
+  state.sessionCredentialId = options.credentialId ?? null
   state._sessionSettingsDirty = false
   state._sessionSettingsVersion = (state._sessionSettingsVersion ?? 0) + 1
   state.sessionFastMode = options.fastMode ?? false
@@ -486,6 +489,7 @@ export type SessionSlice = Pick<
   | 'sessionPendingInteractionMode'
   | 'sessionModel'
   | 'sessionThinkingLevel'
+  | 'sessionCredentialId'
   | '_sessionSettingsDirty'
   | '_sessionSettingsVersion'
   | 'sessionFastMode'
@@ -506,6 +510,7 @@ export type SessionSlice = Pick<
   | 'consumeResolvedSessionReady'
   | 'setSessionInteractionMode'
   | 'setSessionModelSettings'
+  | 'setSessionRunSettings'
   | 'loadAgentStatus'
   | 'loadSession'
   | 'reconcileTurnTail'
@@ -566,6 +571,7 @@ async function loadSessionImpl(
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
         draft.sessionModel = history.lead.model ?? null
         draft.sessionThinkingLevel = history.lead.thinking_level ?? null
+        draft.sessionCredentialId = history.lead.credential_id ?? null
       }
       draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
       draft.error = null
@@ -632,7 +638,15 @@ async function loadSessionImpl(
       const liveQuestionChanged = (draft.pendingQuestion?.id ?? null) !== questionIdAtFetch
       const restoredQuestion = liveQuestionChanged ? draft.pendingQuestion : historyQuestion
       const awaitingAnswer = restoredQuestion !== null
-      if (!liveQuestionChanged) draft.pendingQuestion = historyQuestion
+      if (!liveQuestionChanged) {
+        // The server closed the card this client showed (another window, a
+        // stop or dismissal whose event it missed): record that, or the card
+        // would fall back to its persisted placeholder and "wait" for good.
+        if (draft.pendingQuestion && draft.pendingQuestion.id !== historyQuestion?.id) {
+          applyQuestionResolution(draft, draft.pendingQuestion.id, null, 'resolved_elsewhere')
+        }
+        draft.pendingQuestion = historyQuestion
+      }
       // A review restored here may be for a plan revision this client never
       // saw written.
       if (restoredQuestion?.kind === 'plan_review') {
@@ -883,6 +897,7 @@ export const createSessionSlice: StateCreator<
   sessionPendingInteractionMode: null,
   sessionModel: null,
   sessionThinkingLevel: null,
+  sessionCredentialId: null,
   _sessionSettingsDirty: false,
   _sessionSettingsVersion: 0,
   sessionFastMode: false,
@@ -940,12 +955,14 @@ export const createSessionSlice: StateCreator<
     get()._abortController?.abort()
     const localModel = get().sessionModel
     const localThinkingLevel = get().sessionThinkingLevel
+    const localCredentialId = get().sessionCredentialId
     set((state) => {
       resetSessionState(state, {
         sessionId,
         interactionMode: options?.interactionMode,
         model: preserveLocalSettings ? localModel : options?.model,
         thinkingLevel: preserveLocalSettings ? localThinkingLevel : options?.thinkingLevel,
+        credentialId: preserveLocalSettings ? localCredentialId : options?.credentialId,
         fastMode: options?.fastMode,
         workspace: options?.workspace,
       })
@@ -989,6 +1006,54 @@ export const createSessionSlice: StateCreator<
       draft._sessionSettingsVersion += 1
       if (fastMode !== undefined) draft.sessionFastMode = fastMode
     })
+  },
+
+  setSessionRunSettings: async (patch) => {
+    const before = {
+      model: get().sessionModel,
+      thinkingLevel: get().sessionThinkingLevel,
+      credentialId: get().sessionCredentialId,
+    }
+    set((draft) => {
+      if (patch.model !== undefined) draft.sessionModel = patch.model
+      if (patch.thinkingLevel !== undefined) draft.sessionThinkingLevel = patch.thinkingLevel
+      if (patch.credentialId !== undefined) draft.sessionCredentialId = patch.credentialId
+      draft._sessionSettingsDirty = true
+      draft._sessionSettingsVersion += 1
+    })
+    const sessionId = get().sessionId
+    // A new-session draft has nothing to save yet: the first message carries it.
+    if (!sessionId) return true
+    const body: { model?: string | null; thinking_level?: string | null; credential_id?: string | null } = {}
+    if (patch.model !== undefined) body.model = patch.model
+    if (patch.thinkingLevel !== undefined) body.thinking_level = patch.thinkingLevel
+    if (patch.credentialId !== undefined) body.credential_id = patch.credentialId
+    try {
+      const saved = await updateSessionRunSettings(sessionId, body)
+      if (get().sessionId !== sessionId) return true
+      set((draft) => {
+        draft.sessionModel = saved.model ?? null
+        draft.sessionThinkingLevel = saved.thinking_level ?? null
+        draft.sessionCredentialId = saved.credential_id ?? null
+        draft._sessionSettingsDirty = false
+      })
+      return true
+    } catch (err) {
+      if (get().sessionId !== sessionId) return false
+      set((draft) => {
+        draft.sessionModel = before.model
+        draft.sessionThinkingLevel = before.thinkingLevel
+        draft.sessionCredentialId = before.credentialId
+      })
+      // A toast, not `error`: the choice is put back, and Retry sends it again.
+      useToastStore.getState().push({
+        tone: 'error',
+        title: "Couldn't save the run settings",
+        description: err instanceof Error ? err.message : undefined,
+        action: { label: 'Retry', onAction: () => void get().setSessionRunSettings(patch) },
+      })
+      return false
+    }
   },
 
   setSessionInteractionMode: async (mode) => {

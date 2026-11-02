@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-menu-text-size"
+description = "Enables the set_menu_text_size command without any pre-configured scope."
+commands.allow = ["set_menu_text_size"]
+
+[[permission]]
+identifier = "deny-set-menu-text-size"
+description = "Denies the set_menu_text_size command without any pre-configured scope."
+commands.deny = ["set_menu_text_size"]

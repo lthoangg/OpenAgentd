@@ -369,7 +369,7 @@ describe("MarkdownBlock tables", () => {
     expect(td!.querySelectorAll("br").length).toBe(3);
   });
 
-  it("renders a copy button in the top right of the table wrap with hover-only visibility", () => {
+  it("renders a copy button in the top right of the table wrap, visible at rest", () => {
     render(
       <MarkdownBlock
         content={["| A | B |", "|---|---|", "| 1 | 2 |"].join("\n")}
@@ -388,7 +388,9 @@ describe("MarkdownBlock tables", () => {
     expect(btnContainer).not.toBeNull();
     expect(btnContainer?.className).toContain("top-1");
     expect(btnContainer?.className).toContain("right-1");
-    expect(btnContainer?.className).toContain("opacity-0");
+    // Never hover-only: muted at rest, full on hover or keyboard focus.
+    expect(btnContainer?.className).not.toMatch(/(?:^|\s)opacity-0(?:\s|$)/);
+    expect(btnContainer?.className).toContain("opacity-60");
     expect(btnContainer?.className).toContain("group-hover:opacity-100");
   });
 

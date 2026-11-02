@@ -2,14 +2,18 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
+import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
+import { RunStatusAnnouncer } from '@/components/RunStatusAnnouncer'
 import { Seal } from '@/components/brand/Logo'
 import { Home } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
 import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
 import { lazySurface, prefetchSurfacesWhenIdle, useSurfaceMounted } from '@/lib/lazy-surface'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
+import { WindowCaptionButtons } from '@/components/WindowCaptionButtons'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
 import { isPageReload } from '@/lib/page-reload'
@@ -20,6 +24,7 @@ import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
+import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { getPlatform } from '@/hooks/use-platform'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { CAPABILITY, useServerCapability } from '@/queries'
@@ -58,6 +63,13 @@ function SettingsSurface() {
 function TelemetrySurface() {
   const open = useUIStore((s) => s.telemetryOpen)
   return useSurfaceMounted(open) ? <TelemetryOverlay /> : null
+}
+
+// The app badge and the tab/window title count follow the user to every
+// route, not only the chat layout.
+function NeedsYouBadgeSync() {
+  useNeedsYouBadge()
+  return null
 }
 
 export function Root() {
@@ -114,6 +126,7 @@ export function Root() {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
+      <NeedsYouBadgeSync />
       {widgetsSupported() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />
@@ -122,6 +135,7 @@ export function Root() {
       <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />
+      <WindowCaptionButtons />
       <Suspense fallback={<RouteLoadingFallback />}>
         <Outlet />
       </Suspense>
@@ -129,6 +143,8 @@ export function Root() {
       <TelemetrySurface />
       <KeyboardShortcutsSheet />
       <FloatingNotices />
+      <TitleTooltipLayer />
+      <RunStatusAnnouncer />
     </QueryClientProvider>
   )
 }
@@ -153,7 +169,7 @@ export function NotFound() {
       </div>
       <Link
         to="/"
-        className="interactive-weight flex items-center gap-2 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-4 py-2 text-sm text-(--color-accent) transition-colors hover:bg-(--bg-key)"
+        className={buttonVariants({ variant: 'primary', size: 'lg' })}
       >
         <Home size={14} />
         Go home

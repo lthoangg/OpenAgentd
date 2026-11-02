@@ -72,8 +72,8 @@ export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpe
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center px-3">
         <span
           className={cn(
-            'font-mono text-[11px] tabular-nums',
-            summary.allDone ? 'text-(--color-success)' : 'text-(--color-text-muted)',
+            'font-mono text-meta tabular-nums',
+            summary.allDone ? 'text-(--accent-green-text)' : 'text-(--color-text-muted)',
           )}
         >
           {summary.finished}/{summary.total} done

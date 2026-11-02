@@ -1,35 +1,39 @@
 /**
  * Sidebar — flat workspace + session switcher for the app's one
- * screen. Mirrors the wireframe sidebar ``Q4zeZN`` in
- * ``.diagrams/OpenAgentd-ui.pen``:
+ * screen:
  *
- *   • A "Workspaces" section header (VS Code view header) whose actions —
- *     Open folder…, Collapse all — stay reachable however long the list is.
+ *   • "New session" at the top, always visible (⌘N does the same).
+ *   • One scroller below it: Pinned, Needs you, the "Workspaces" section
+ *     (its header sticks to the top, so Search and View options stay
+ *     reachable however long the list is), then Scheduled.
  *   • Repositories and their sessions as 28 px rows, one level deep.
+ *     A repository's name opens its latest session; the chevron folds it.
  *     Worktrees are not rows: a repository lists the sessions of every
  *     checkout (its own and each worktree's) as one list, worktree sessions
  *     tagged with the worktree's name, and a checkout chip on the row
  *     narrows it to one checkout and holds the worktree actions. Sessions
- *     page in with an explicit "Show more" row, so the sidebar has exactly
- *     one scroller.
+ *     page in with an explicit "Show more" row.
  *   • Mobile drawer footer: Settings, Usage, server and theme icons. On desktop those live in the status bar.
  *
- * The 64 px icon rail from the previous design is gone — workspace
- * navigation now lives inline in a single column. ``activeWorkspace`` is
+ * ``activeWorkspace`` is
  * the workspace driving
  * the current chat; ``expandedWorkspaces`` is local UI state for which rows are
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { cn } from '@/lib/utils'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
-import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
+import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
+import { useToggleTween } from '@/hooks/useToggleTween'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import {
@@ -40,12 +44,14 @@ import {
 } from '@/lib/workbench-layout'
 import {
   Activity,
+  AppWindow,
   Check,
   ChevronRight,
   Copy,
   Folder,
   FolderPlus,
   GitBranch,
+  Link,
   Loader2,
   MessageCircle,
   MoreHorizontal,
@@ -54,10 +60,14 @@ import {
   PinOff,
   Plus,
   Settings,
+  Share,
+  SquarePen,
   Trash2,
   X,
+  type LucideIcon,
 } from 'lucide-react'
-import { APP_EVENTS } from '@/lib/app-events'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { canShareSession, copySessionLink, shareSessionLink } from '@/lib/session-link'
 import { sessionWorking } from '@/lib/active-sessions'
 import {
   useDeleteSessionMutation,
@@ -67,22 +77,26 @@ import {
 } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
-import { getCodingWorkspaceTree, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
+import { getCodingWorkspaceTree, listSessions, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
 import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { Chip } from '@/components/ui/chip'
+import { Collapsible } from '@/components/ui/collapsible'
 import {
   CONTEXT_MENU_ITEM_CLASS,
   CONTEXT_MENU_ITEM_DANGER_CLASS,
   ContextMenu,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
+import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ROW_ACTION, ROW_TEXT_ACTION, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
+import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -153,10 +167,25 @@ import { SessionSearch } from './Sidebar/SessionSearch'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
+/** How long a deleted session can be brought back before the server forgets it. */
+const SESSION_DELETE_UNDO_MS = 5000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
+/** A row of a phone's long-press sheet: a menu row at the 44px touch height. */
+const SHEET_ROW_CLASS = cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')
+
+/** One entry of a session's menu (⋯, right-click, the phone's sheet). */
+interface SessionMenuAction {
+  id: string
+  label: string
+  icon: LucideIcon
+  danger?: boolean
+  /** Starts a new group of entries. */
+  separatorBefore?: boolean
+  run: () => void
+}
 
 interface SidebarProps {
   currentSessionId?: string
@@ -166,12 +195,25 @@ interface SidebarProps {
    * shown as a "New session" row atop its list.
    */
   draftWorkspace?: string | null
+  /**
+   * Start a new session the way ⌘N does (the chat's own handler, which also
+   * clears the composer). Without it the sidebar opens a draft itself.
+   */
+  onNewSession?: () => void
   onCollapse?: () => void
   /** Bump this counter to programmatically open the workspace dialog
    *  (e.g. from a "no workspace attached" CTA). */
   openWorkspaceDialogKey?: number
   /** Desktop only: when true, the inline panel collapses to width=0. */
   desktopCollapsed?: boolean
+  /**
+   * A window too narrow to push the chat (``sidebarIsDrawer``): the sidebar
+   * is a drawer over the content (``desktopCollapsed`` false while open). A
+   * click outside it or Escape calls ``onCollapse``.
+   */
+  drawer?: boolean
+  /** Desktop: the Review panel is open, so the column leaves room for it too. */
+  dockOpen?: boolean
   /** Mobile only: whether the overlay drawer is open. */
   mobileOpen?: boolean
   /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
@@ -185,7 +227,7 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: 'Open folder',
+    title: 'Open workspace',
   })
   return typeof selected === 'string' ? selected : null
 }
@@ -195,9 +237,10 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
 function MissingBadge({ path }: { path?: string }) {
   return (
     <Chip tone="warning" data-sidebar-missing="" title={path ? `Folder not found at ${path}` : 'Folder not found on disk'}>
-      {/* Phones keep the workspace name readable; the title says the rest. */}
-      <span className="max-md:hidden">folder not found</span>
-      <span className="md:hidden">missing</span>
+      {/* Phones and touch tablets (whose row actions always show) keep the
+          workspace name readable; the title says the rest. */}
+      <span className="max-md:hidden pointer-coarse:hidden">folder not found</span>
+      <span className="hidden max-md:inline pointer-coarse:inline">missing</span>
     </Chip>
   )
 }
@@ -223,9 +266,12 @@ export function Sidebar({
   currentSessionId,
   workspace,
   draftWorkspace = null,
+  onNewSession,
   onCollapse,
   openWorkspaceDialogKey = 0,
   desktopCollapsed = false,
+  drawer = false,
+  dockOpen = false,
   mobileOpen = false,
   mobileDragOffset = null,
   onMobileClose,
@@ -236,13 +282,16 @@ export function Sidebar({
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
-  // ``onCollapse`` is wired by AgentChatView's left-chrome hamburger.
-  // We don't render an inline collapse toggle anymore — the topbar
-   // hamburger and ⌘B/Ctrl+B own that surface.
-  void onCollapse
+  // The header's sidebar button and ⌘B open and close the column; a drawer
+  // also closes on a click outside it or Escape.
+  const drawerOpen = drawer && !isMobile && !desktopCollapsed
+  // A layer like a menu: opening a dialog over it closes it, unless the
+  // dialog (or a row's menu) opened from inside it (``KeyLayerScope``).
+  const drawerLayer = useKeyLayer(drawerOpen, { kind: 'transient', onClose: () => onCollapse?.() })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
+  const dismissToast = useToastStore((s) => s.dismiss)
   const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useSessionsQuery()
   const deleteSession = useDeleteSessionMutation()
@@ -263,7 +312,13 @@ export function Sidebar({
 
   // Read straight from the shared query, so a refresh made anywhere (the
   // command palette's workspace switch, another window) shows here too.
-  const { data: workspaceTreeData } = useQuery({
+  const {
+    data: workspaceTreeData,
+    isPending: workspaceTreePending,
+    isError: workspaceTreeFailed,
+    refetch: refetchWorkspaceTree,
+    isRefetching: workspaceTreeRetrying,
+  } = useQuery({
     queryKey: queryKeys.coding.tree(),
     queryFn: getCodingWorkspaceTree,
     staleTime: WORKSPACE_TREE_STALE_MS,
@@ -452,18 +507,22 @@ export function Sidebar({
     if (worktreeEditTarget) worktreeEditInputRef.current?.focus()
   }, [worktreeEditTarget])
 
-  const openSessionSearch = useCallback(() => {
+  const openSessionSearch = () => {
     setSearchOpen(true)
     setSearchFocusKey((key) => key + 1)
-  }, [])
+  }
+  // The header with the Search button moves from above the results back
+  // into the scroller, so focus returns to it once it has re-rendered.
+  const refocusSearchButton = useRef(false)
   const closeSessionSearch = () => {
+    refocusSearchButton.current = true
     setSearchOpen(false)
-    searchButtonRef.current?.focus()
   }
   useEffect(() => {
-    window.addEventListener(APP_EVENTS.searchSessions, openSessionSearch)
-    return () => window.removeEventListener(APP_EVENTS.searchSessions, openSessionSearch)
-  }, [openSessionSearch])
+    if (searchOpen || !refocusSearchButton.current) return
+    refocusSearchButton.current = false
+    searchButtonRef.current?.focus()
+  }, [searchOpen])
 
   // A new session is a draft until its first message: nothing is created
   // here, the draft screen opens for ``path``.
@@ -476,7 +535,56 @@ export function Sidebar({
     onMobileClose?.()
   }
 
-  // A folder from Open folder…: register it (so it has a row) and open a
+  // "New session" atop the sidebar does what ⌘N does: the chat's handler
+  // when there is one, else a draft in the current workspace (or Chat).
+  // An empty draft already on screen stays; its composer takes focus.
+  const startSessionFromSidebar = () => {
+    const target = workspace ?? chatWorkspace?.path ?? null
+    if (!target) {
+      void openWorkspaceDialog()
+      return
+    }
+    if (onNewSession && workspace) {
+      onNewSession()
+      onMobileClose?.()
+    } else {
+      newSessionIn(target)
+    }
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('focus-chat-input')))
+  }
+
+  // A workspace's name opens its most recently active session (a draft when
+  // it has none) and unfolds it; the chevron beside it only folds. The
+  // workspace already on screen just unfolds: there is nothing to open.
+  const openWorkspaceLatest = async (path: string, listPaths: readonly string[], sessionTarget: string) => {
+    setExpandedWorkspaces((current) => addExpandedPaths(current, [path]))
+    if (path === activeWorkspace || worktreeSourceByDirectory.get(activeWorkspace ?? '') === path) return
+    const inList = (session: SessionResponse) =>
+      !session.parent_session_id && listPaths.includes(session.workspace ?? '')
+    // The all-workspaces list is newest first, so a workspace's newest
+    // session is in it whenever any of its sessions is.
+    let latest: SessionResponse | undefined = listPaths
+      .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
+      .filter(inList)
+      .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))[0]
+    if (!latest) {
+      try {
+        const page = await listSessions(
+          null,
+          5,
+          listPaths.length === 1 ? { workspace: listPaths[0], sort: 'activity' } : { workspaces: listPaths, sort: 'activity' },
+        )
+        // An older server ignores ``workspaces``: keep only this repository's rows.
+        latest = page.data.find(inList)
+      } catch {
+        latest = undefined
+      }
+    }
+    if (latest) handleSessionSelect(latest, latest.workspace ?? path)
+    else newSessionIn(sessionTarget)
+  }
+
+  // A folder from Open workspace…: register it (so it has a row) and open a
   // draft there.
   const openFolderDraft = async (path: string) => {
     setPendingWorkspace(path)
@@ -653,29 +761,41 @@ export function Sidebar({
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
   // Width is persisted in the layout store and clamped against the window so
-  // the chat and a side-by-side dock always keep their minimums.
+  // the chat and a side-by-side dock always keep their minimums. A drawer
+  // covers the chat, so it only has to leave the chat visible beside it.
   const viewportWidth = useViewportWidth()
+  const touch = useTouchFirst()
+  const widthContext = { dockOpen: dockOpen && !drawer, touch }
   const storedSidebarWidth = useLayoutStore((s) => s.sidebarWidth)
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth)
   const commitSidebarWidth = useCallback((width: number) => setSidebarWidth(width), [setSidebarWidth])
   const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), [setSidebarWidth])
   const sidebarResize = {
-    width: clampSidebarWidth(storedSidebarWidth, viewportWidth),
+    width: clampSidebarWidth(storedSidebarWidth, viewportWidth, widthContext),
     min: SIDEBAR_MIN_WIDTH,
-    max: sidebarMaxWidth(viewportWidth),
+    max: sidebarMaxWidth(viewportWidth, widthContext),
     edge: 'right' as const,
     onCommit: commitSidebarWidth,
     onReset: resetSidebarWidth,
     disabled: isMobile || desktopCollapsed,
     label: 'Resize sidebar',
   }
+  // Desktop: showing or hiding slides the width (a CSS transition, only for
+  // the toggle); the rows keep the open width and ride the moving edge, so
+  // they slide rather than rewrap every frame.
+  const sliding = useToggleTween(desktopCollapsed, PANEL_SLIDE_MS) && !isMobile
+  const pinRows = !isMobile && (desktopCollapsed || sliding)
   const sidebarMotion = ({ width, isResizing }: LiveWidth) => ({
     animate: isMobile
       ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
       : { width: desktopCollapsed ? 0 : width },
+    // Desktop sets the width as a style (no frame loop), sliding it only
+    // while a toggle runs; the phone drawer moves with framer-motion.
     transition: mobileDragOffset !== null
       ? { duration: 0 }
-      : { duration: isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+      : { duration: !isMobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+    instantWidth: !isMobile,
+    tweenWidth: sliding,
   })
 
   const collapseAllWorkspaces = () => {
@@ -751,18 +871,22 @@ export function Sidebar({
     void openFolderDraft(nextState.workspaceToOpen)
   }
 
+  const openInNewWindow = (session: SessionResponse) => {
+    openSessionInNewWindow({ session }).catch((err) => {
+      console.error('Failed to open session in new window:', err)
+      pushToast({
+        tone: 'error',
+        title: 'Could not open session in new window',
+        description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
+      })
+    })
+  }
+
   const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {
     if (event && shouldOpenSessionInNewWindow(event, isTauri, os)) {
       event.preventDefault()
       event.stopPropagation()
-      openSessionInNewWindow({ session }).catch((err) => {
-        console.error('Failed to open session in new window:', err)
-        pushToast({
-          tone: 'error',
-          title: 'Could not open session in new window',
-          description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
-        })
-      })
+      openInNewWindow(session)
       return
     }
 
@@ -825,12 +949,12 @@ export function Sidebar({
     onSessionEdit: handleSessionEdit,
     onSessionRename: handleSessionRename,
     onSessionRenameCancel: () => setEditingSessionId(null),
-    onSessionLongPress: (session: SessionResponse) => setMobileSessionActions({ session, workspacePath: session.workspace ?? '' }),
+    onSessionLongPress: (session: SessionResponse) => openMobileSessionActions(session, session.workspace ?? ''),
     onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
       // Phones (browser too): the titled sheet, since a truncated title has
       // no tooltip on touch.
       if (isMobile) {
-        setMobileSessionActions({ session, workspacePath: session.workspace ?? '' })
+        openMobileSessionActions(session, session.workspace ?? '')
         return
       }
       setDesktopSessionActions({ session, workspacePath: session.workspace ?? '', x: event.clientX, y: event.clientY })
@@ -838,23 +962,107 @@ export function Sidebar({
     onSessionPinToggle: toggleSessionPinned,
   }
 
+  // One list for a session's ⋯ menu, right-click and the phone's sheet.
+  const sessionMenuActions = (session: SessionResponse): SessionMenuAction[] => {
+    // Subagents are their parent's: no pin, and their title is their task.
+    const topLevel = !session.parent_session_id
+    const actions: SessionMenuAction[] = []
+    if (isTauri && !isTauriMobile) {
+      actions.push({ id: 'window', label: 'Open in new window', icon: AppWindow, run: () => openInNewWindow(session) })
+    }
+    if (topLevel) {
+      actions.push({ id: 'rename', label: 'Rename', icon: Pencil, run: () => handleSessionEdit(session) })
+      actions.push({
+        id: 'pin',
+        label: session.pinned_at ? 'Unpin' : 'Pin',
+        icon: session.pinned_at ? PinOff : Pin,
+        run: () => toggleSessionPinned(session),
+      })
+    }
+    actions.push({
+      id: 'copy-link',
+      label: 'Copy link',
+      icon: Link,
+      separatorBefore: actions.length > 0,
+      run: () => {
+        copySessionLink(session.id, isTauri).then(
+          () => pushToast({ tone: 'success', title: 'Link copied' }),
+          () => pushToast({ tone: 'error', title: 'Could not copy the link' }),
+        )
+      },
+    })
+    // Only where the system has a share sheet; elsewhere it would just copy.
+    if (canShareSession()) {
+      actions.push({
+        id: 'share',
+        label: 'Share…',
+        icon: Share,
+        run: () => {
+          shareSessionLink(session, isTauri).then(
+            (outcome) => { if (outcome === 'copied') pushToast({ tone: 'success', title: 'Link copied' }) },
+            () => pushToast({ tone: 'error', title: 'Could not share the session' }),
+          )
+        },
+      })
+    }
+    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: true, run: () => setDeleteTarget(session) })
+    return actions
+  }
+
+  // The titled sheet on a phone, the iOS app included.
+  const openMobileSessionActions = (session: SessionResponse, workspacePath: string) => {
+    setMobileSessionActions({ session, workspacePath })
+  }
+
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
+    const target = deleteTarget
+    const wasOpen = target.id === currentSessionId
+    // The row leaves at once; the server delete waits out the Undo window.
+    // Undo (or a refusal) brings the row back.
+    const undo = new AbortController()
+    const toastId = pushToast({
+      tone: 'info',
+      title: 'Session deleted',
+      description: target.title || 'Untitled',
+      action: {
+        label: 'Undo',
+        onAction: () => {
+          undo.abort()
+          if (wasOpen) navigate({ to: '/$sessionId', params: { sessionId: target.id }, replace: true })
+        },
+      },
+    }, SESSION_DELETE_UNDO_MS)
     applySessionDelete({
-      deleteTarget,
+      deleteTarget: target,
       currentSessionId,
       workspaceSessions,
-      // The row leaves at once; a refusal brings it back with this toast.
-      mutateDelete: (target) => deleteSession.mutate(target, {
-        onError: () => pushToast({ tone: 'error', title: 'Could not delete session' }),
-      }),
+      mutateDelete: (mutationTarget) => deleteSession.mutate(
+        typeof mutationTarget === 'string'
+          ? { id: mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal }
+          : { ...mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal },
+        {
+          // Past the window the Undo button can't help any more.
+          onSettled: () => dismissToast(toastId),
+          onError: () => {
+            if (undo.signal.aborted) return
+            pushToast({ tone: 'error', title: 'Could not delete session' })
+          },
+        },
+      ),
       navigate,
     })
     setDeleteTarget(null)
   }
 
+  const mobileWorkspaceActionsTitle = mobileWorkspaceActions?.kind === 'chat'
+    ? (chatWorkspace?.name ?? 'Chat')
+    : mobileWorkspaceActions
+      ? workspaceLabel(mobileWorkspaceActions.path)
+      : 'Workspace actions'
+
   return (
-    <>
+    <KeyLayerScope layer={drawerLayer}>
       {/* Mobile backdrop — closes the drawer on tap. Fades with the drag. */}
       <AnimatePresence>
         {isMobile && (mobileOpen || mobileDragOffset !== null) && (
@@ -872,11 +1080,24 @@ export function Sidebar({
           />
         )}
       </AnimatePresence>
+      {/* A desktop drawer dims what it covers, as drawer scrims do (DESIGN.md),
+          and closes on a click anywhere outside it. */}
+      {drawerOpen && (
+        <div
+          aria-hidden="true"
+          data-sidebar-drawer-backdrop=""
+          className="absolute inset-0 z-20 bg-(--color-overlay)"
+          onPointerDown={() => onCollapse?.()}
+        />
+      )}
 
     <ResizableAside
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
+      // The header's sidebar cap matches this column while it sits beside
+      // the chat (open, or sliding); a drawer or the phone sheet floats.
+      publishWidthAs={!isMobile && !drawer && (!desktopCollapsed || sliding) ? '--oa-sidebar-w' : undefined}
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
@@ -886,13 +1107,21 @@ export function Sidebar({
       className={
         isMobile
           ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
-          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
+          : drawer
+            // Closed, the drawer is 0 wide: hide it so its edge and shadow do not show.
+            ? cn('absolute inset-y-0 left-0 z-30 flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)', desktopCollapsed && !sliding && 'invisible')
+            // Collapsed to 0 wide, the border alone would still draw a 1px
+            // edge down the window side (once the slide is over).
+            : cn('relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)', desktopCollapsed && !sliding && 'border-r-0')
       }
+      data-sidebar-drawer={drawer && !isMobile ? '' : undefined}
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
 
       <div
-        className="flex min-h-0 flex-1 flex-col"
+        data-focus-region="sidebar"
+        className={cn('flex min-h-0 flex-1 flex-col', pinRows && 'shrink-0 self-end')}
+        style={pinRows ? { width: sidebarResize.width } : undefined}
         onKeyDown={(event) => {
           if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
           const target = event.target as HTMLElement
@@ -919,6 +1148,51 @@ export function Sidebar({
           header.focus()
         }}
       >
+      {/* Always visible, above the scroller: the one-step way to start. */}
+      <div className="shrink-0 px-1.5 pb-1 pt-1.5">
+        <button
+          type="button"
+          data-sidebar-new-session=""
+          onClick={startSessionFromSidebar}
+          aria-keyshortcuts={os === 'macos' || os === 'ios' ? 'Meta+N' : 'Control+N'}
+          className={`${listRowClass()} font-medium`}
+        >
+          <SquarePen size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
+          <span className="min-w-0 flex-1 truncate">New session</span>
+          <kbd aria-hidden="true" className="shrink-0 font-sans text-meta font-normal text-(--color-text-muted) pointer-coarse:hidden">
+            {shortcutLabel(APP_SHORTCUTS.newSession, os)}
+          </kbd>
+        </button>
+      </div>
+
+      {/* Section header — actions stay reachable however long the list is. */}
+      {searchOpen && (
+        <SidebarSectionHeader
+          groupBy={groupBy}
+          workspaceGroups={workspaceGroups}
+          searchOpen={searchOpen}
+          searchButtonRef={searchButtonRef}
+          onToggleSearch={closeSessionSearch}
+          onCollapseAll={collapseAllWorkspaces}
+          onOpenFolder={() => { void openWorkspaceDialog() }}
+        />
+      )}
+
+      {searchOpen ? (
+        <SessionSearch
+          currentSessionId={currentSessionId}
+          focusKey={searchFocusKey}
+          workspaceName={workspaceDisplayName}
+          onSessionSelect={(session, workspacePath, event) => {
+            setSearchOpen(false)
+            handleSessionSelect(session, workspacePath, event)
+          }}
+          onClose={closeSessionSearch}
+        />
+      ) : (
+      // The sidebar's one scroller: Pinned, Needs you, the sessions (under a
+      // header that sticks) and Scheduled scroll together.
+      <div data-sidebar-scroller="" className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
       <PinnedSection
         currentSessionId={currentSessionId}
         workspaceName={workspaceDisplayName}
@@ -937,31 +1211,19 @@ export function Sidebar({
         />
       )}
 
-      {/* Section header — actions stay reachable however long the list is. */}
       <SidebarSectionHeader
         groupBy={groupBy}
         workspaceGroups={workspaceGroups}
         searchOpen={searchOpen}
         searchButtonRef={searchButtonRef}
-        onToggleSearch={() => { if (searchOpen) closeSessionSearch(); else openSessionSearch() }}
+        onToggleSearch={openSessionSearch}
         onCollapseAll={collapseAllWorkspaces}
         onOpenFolder={() => { void openWorkspaceDialog() }}
       />
 
-      {searchOpen ? (
-        <SessionSearch
-          currentSessionId={currentSessionId}
-          focusKey={searchFocusKey}
-          workspaceName={workspaceDisplayName}
-          onSessionSelect={(session, workspacePath, event) => {
-            setSearchOpen(false)
-            handleSessionSelect(session, workspacePath, event)
-          }}
-          onClose={closeSessionSearch}
-        />
-      ) : groupBy !== 'project' ? (
+      {groupBy !== 'project' ? (
       /* Every session in one list, grouped by status or date (or not). */
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
+      <div className="flex flex-1 flex-col pb-2">
         <FlatSessionGroups
           groupBy={groupBy}
           currentSessionId={currentSessionId}
@@ -975,20 +1237,35 @@ export function Sidebar({
       </div>
       ) : (
       /* Workspace + sessions tree */
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
-        {visibleWorkspaces.length === 0 && (
+      <div className="flex flex-1 flex-col pb-2">
+        {workspaceTreeFailed && workspaceTree.length === 0 && (
+          <div role="alert" className="flex flex-col items-start gap-1 px-3 py-1.5" data-sidebar-tree-error="">
+            <p className="text-xs text-(--color-text-muted)">Couldn’t load workspaces.</p>
+            <button
+              type="button"
+              className={`${ROW_TEXT_ACTION} -ml-2`}
+              disabled={workspaceTreeRetrying}
+              onClick={() => { void refetchWorkspaceTree() }}
+            >
+              {workspaceTreeRetrying && <Loader2 size={11} className="mr-1 animate-spin" aria-hidden="true" />}
+              {workspaceTreeRetrying ? 'Retrying…' : 'Retry'}
+            </button>
+          </div>
+        )}
+
+        {!workspaceTreePending && !workspaceTreeFailed && visibleWorkspaces.length === 0 && (
           <div className="flex flex-col items-start gap-2 px-3 py-3">
-            <p className="text-xs text-(--color-text-subtle)">No workspaces yet.</p>
+            <p className="text-xs text-(--color-text-muted)">No workspaces yet.</p>
             <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
               <FolderPlus size={13} aria-hidden="true" />
-              Open folder…
+              Open workspace…
             </Button>
           </div>
         )}
 
         {activeGroupFilter && (
           // The group filter, named above the list, with a one-step way back.
-          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
+          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
             <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter) }} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">
               Group: <span className="font-mono text-(--color-text-2)">{activeGroupFilter.name}</span>
@@ -1024,11 +1301,25 @@ export function Sidebar({
             .filter(sessionWorking)
             .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
-          const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'main worktree' : 'all')
+          const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'Workspace' : 'all')
 
           return (
             <div key={path} className="relative" data-sidebar-workspace-group="">
               <div className="group mx-1.5 flex h-(--spacing-list-row) items-center rounded-sm hover:bg-(--bg-key)/40">
+                {/* The chevron folds; the name opens. Keyboard users fold with
+                    ←/→ on the name, so the chevron is not a Tab stop. Its
+                    padding keeps it over the session guide below. */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-sidebar-workspace-toggle=""
+                  onClick={() => toggleWorkspaceExpanded(path)}
+                  className="flex h-full shrink-0 items-center rounded-sm pl-1.5 pr-1 text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:pr-[19px]"
+                  aria-expanded={sourceIsExpanded}
+                  aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} workspace ${sourceLabel}`}
+                >
+                  <ChevronRight size={11} className={`shrink-0 transition-transform duration-(--motion-fast) ${sourceIsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                </button>
                 <Tooltip className="h-full min-w-0 flex-1">
                   <TooltipTrigger
                     className="h-full min-w-0 flex-1"
@@ -1041,7 +1332,7 @@ export function Sidebar({
                         onLongPress={() => setMobileWorkspaceActions({ path, sessionPath: sessionTarget, kind: sourceIsChat ? 'chat' : 'main' })}
                         type="button"
                         data-sidebar-workspace=""
-                        onClick={() => toggleWorkspaceExpanded(path)}
+                        onClick={() => { void openWorkspaceLatest(path, checkouts.listPaths, sessionTarget) }}
                         onKeyDown={(event) => {
                           const expandKey = event.key === 'ArrowRight' && !sourceIsExpanded
                           const collapseKey = event.key === 'ArrowLeft' && sourceIsExpanded
@@ -1059,17 +1350,16 @@ export function Sidebar({
                           event.preventDefault()
                           setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: event.clientX, y: event.clientY })
                         }}
-                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 text-left text-xs"
-                        aria-expanded={sourceIsExpanded}
-                        aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} workspace ${sourceLabel}`}
+                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm pr-1.5 text-left text-xs"
+                        aria-label={`Open workspace ${sourceLabel}`}
+                        aria-description={sourceIsExpanded ? 'Expanded' : 'Collapsed'}
                       >
-                        <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ${sourceIsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                         {sourceIsChat ? (
                           <MessageCircle size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                         ) : (
                           <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                         )}
-                        <span className={`truncate ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
+                        <span className={`truncate ${sourceIsActive ? 'font-medium text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                           {sourceLabel}
                         </span>
                         {workspaceByPath.get(path)?.missing && <MissingBadge path={path} />}
@@ -1109,17 +1399,17 @@ export function Sidebar({
                           {worktreeIsRemoving && <Loader2 size={11} className="shrink-0 animate-spin" aria-hidden="true" />}
                           <span className="whitespace-nowrap">
                             <span className="tabular-nums">{worktrees.length}</span>
-                            {/* Phones: the count and the branch mark the session rows use for worktrees. */}
-                            <span className="max-md:hidden">{worktrees.length === 1 ? ' worktree' : ' worktrees'}</span>
+                            {/* Phones and touch tablets: the count and the branch mark the session rows use for worktrees. */}
+                            <span className="max-md:hidden pointer-coarse:hidden">{worktrees.length === 1 ? ' worktree' : ' worktrees'}</span>
                           </span>
-                          <GitBranch size={11} className="shrink-0 md:hidden" aria-hidden="true" />
+                          <GitBranch size={11} className="hidden shrink-0 max-md:block pointer-coarse:block" aria-hidden="true" />
                         </button>
                       }
                     />
                     <TooltipContent>
                       {checkouts.selected
-                        ? `Showing ${selectedWorktree?.name ?? 'the main worktree'} only · change checkout`
-                        : `All checkouts · ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`}
+                        ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
+                        : `Showing the workspace and ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`}
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -1171,27 +1461,28 @@ export function Sidebar({
                 )}
               </div>
 
-              {(sourceIsExpanded || sourceHasRunningSession) && (
-                // One level: every checkout's sessions hang off a single
-                // guide under the chevron, status marks under the folder.
+              <Collapsible open={sourceIsExpanded || sourceHasRunningSession}>
+                {/* One level: every checkout's sessions hang off a single
+                    guide under the chevron, status marks under the folder.
+                    Expanding and collapsing fold the rows (height motion). */}
                 <div className="ml-[17px] mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1">
                   {checkouts.selected && sourceIsExpanded && (
                     // The active filter, named where its sessions are, with
                     // a one-step way back to every checkout.
-                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9">
+                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9">
                       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
                         {selectedWorktree
                           ? <GitBranch size={11} className="text-(--accent-orange-text)" />
                           : <Folder size={11} className="text-(--color-accent)" />}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2)">
-                        {selectedWorktree?.name ?? 'main worktree'}
+                        {selectedWorktree?.name ?? 'Workspace'}
                       </span>
                       <button
                         type="button"
                         onClick={() => selectCheckout(path, null)}
                         className={ROW_TEXT_ACTION}
-                        aria-label={`Show all checkouts in ${sourceLabel}`}
+                        aria-label={`Show all worktrees in ${sourceLabel}`}
                       >
                         Show all
                       </button>
@@ -1210,24 +1501,35 @@ export function Sidebar({
                     mobileLongPressActions={mobileLongPressActions}
                     editingSessionId={editingSessionId}
                     {...sessionRowHandlers}
-                    onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: session.workspace || path })}
+                    onSessionLongPress={(session) => openMobileSessionActions(session, session.workspace || path)}
                     onSessionContextActions={(session, event) => {
                       if (isMobile) {
-                        setMobileSessionActions({ session, workspacePath: session.workspace || path })
+                        openMobileSessionActions(session, session.workspace || path)
                         return
                       }
                       setDesktopSessionActions({ session, workspacePath: session.workspace || path, x: event.clientX, y: event.clientY })
                     }}
                   />
                 </div>
-              )}
+              </Collapsible>
             </div>
           )
         })}
+
+        {workspaceTreePending && (
+          // First load: placeholder rows, not "No workspaces yet".
+          <div role="status" aria-label="Loading workspaces" className="space-y-2 px-3 py-2" data-sidebar-tree-loading="">
+            <Skeleton className="h-3 w-3/5" />
+            <Skeleton className="h-3 w-2/5" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        )}
       </div>
       )}
 
       <ScheduledSection onMobileClose={onMobileClose} />
+      </div>
+      )}
       </div>
 
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
@@ -1281,9 +1583,9 @@ export function Sidebar({
           ) : nativeFolderPickerEnabled && !isTauriMobile ? (
             <>
               <DialogHeader>
-                <DialogTitle>Open folder</DialogTitle>
+                <DialogTitle>Open workspace</DialogTitle>
                 <DialogDescription>
-                  Use the desktop folder picker to choose a local project folder.
+                  Use the desktop folder picker to choose a workspace.
                 </DialogDescription>
               </DialogHeader>
               <div className="min-w-0 space-y-2">
@@ -1306,8 +1608,8 @@ export function Sidebar({
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Open folder</DialogTitle>
-                <DialogDescription>Choose a server-local project folder.</DialogDescription>
+                <DialogTitle>Open workspace</DialogTitle>
+                <DialogDescription>Choose a workspace folder on the server.</DialogDescription>
               </DialogHeader>
               <div className="min-w-0 space-y-2">
                 <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
@@ -1354,71 +1656,64 @@ export function Sidebar({
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      {/* A workspace's long-press menu on a phone: a sheet from the bottom
+          edge, like the session one below. */}
+      <BottomSheet
         open={mobileWorkspaceActions !== null}
-        onOpenChange={(open) => { if (!open) setMobileWorkspaceActions(null) }}
+        onClose={() => setMobileWorkspaceActions(null)}
+        label={mobileWorkspaceActionsTitle}
       >
-        <DialogContent>
-          <DialogHeader className="pr-8">
-            <DialogTitle>
-              {mobileWorkspaceActions?.kind === 'chat'
-                ? (chatWorkspace?.name ?? 'Chat')
-                : mobileWorkspaceActions
-                  ? workspaceLabel(mobileWorkspaceActions.path)
-                  : 'Workspace actions'}
-            </DialogTitle>
-            <DialogDescription>
-              {mobileWorkspaceActions?.kind === 'chat'
-                ? 'Choose a chat action.'
-                : 'Choose a main workspace action.'}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-            <Button
+        <div className="px-4 pb-1">
+          <p className="text-sm font-medium text-(--color-text) [overflow-wrap:anywhere]">{mobileWorkspaceActionsTitle}</p>
+          <p className="text-xs text-(--color-text-muted)">
+            {mobileWorkspaceActions?.kind === 'chat'
+              ? 'Choose a chat action.'
+              : 'Choose a main workspace action.'}
+          </p>
+        </div>
+        <div className="flex flex-col px-2 pb-3">
+            <button
               type="button"
-              variant="ghost"
-              className="justify-start"
+              className={SHEET_ROW_CLASS}
               onClick={() => {
                 const action = mobileWorkspaceActions
                 setMobileWorkspaceActions(null)
                 if (action) newSessionIn(action.sessionPath)
               }}
             >
-              <Plus size={14} aria-hidden="true" />
+              <Plus size={16} aria-hidden="true" />
               New session
-            </Button>
+            </button>
             {/* Chat's root is the home directory — the path is noise there,
                 and there is no repository to act on. */}
             {mobileWorkspaceActions?.kind !== 'chat' && (
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                className="justify-start"
+                className={SHEET_ROW_CLASS}
                 onClick={() => {
                   const action = mobileWorkspaceActions
                   setMobileWorkspaceActions(null)
                   if (action) void navigator.clipboard.writeText(action.path)
                 }}
               >
-                <Copy size={14} aria-hidden="true" />
+                <Copy size={16} aria-hidden="true" />
                 Copy path
-              </Button>
+              </button>
             )}
             {mobileWorkspaceActions?.kind === 'main' && (
               <>
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  className="justify-start"
+                  className={SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
                     if (action) void openWorktreeDialog(action.path)
                   }}
                 >
-                  <GitBranch size={14} aria-hidden="true" />
+                  <GitBranch size={16} aria-hidden="true" />
                   Create worktree…
-                </Button>
+                </button>
                 <WorkspaceGroupToggles
                   workspace={mobileWorkspaceActions.path}
                   variant="sheet"
@@ -1427,24 +1722,22 @@ export function Sidebar({
                     openSettings('workspaces')
                   }}
                 />
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  className="justify-start"
+                  className={SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
                     if (action) setRemoveWorkspaceTarget(action.path)
                   }}
                 >
-                  <span className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="size-4 shrink-0" aria-hidden="true" />
                   Hide from sidebar…
-                </Button>
+                </button>
               </>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </BottomSheet>
 
       <Dialog
         open={worktreeTarget !== null}
@@ -1457,7 +1750,7 @@ export function Sidebar({
                 <div className="min-w-0 flex-1">
                   <DialogTitle>Create worktree</DialogTitle>
                   <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
-                    Isolated checkout from {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
+                    Isolated copy of {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
                   </DialogDescription>
                 </div>
                 <button
@@ -1480,12 +1773,12 @@ export function Sidebar({
                   <Tooltip className="min-w-0">
                     <TooltipTrigger
                       className="min-w-0"
-                      render={<p className="truncate font-mono text-[11px] text-(--color-text-muted)">{worktreeTarget}</p>}
+                      render={<p className="truncate font-mono text-meta text-(--color-text-muted)">{worktreeTarget}</p>}
                     />
                     <TooltipContent>{worktreeTarget}</TooltipContent>
                   </Tooltip>
                 ) : (
-                  <p className="truncate font-mono text-[11px] text-(--color-text-muted)" />
+                  <p className="truncate font-mono text-meta text-(--color-text-muted)" />
                 )}
               </div>
               <div className="grid gap-2.5 sm:grid-cols-2">
@@ -1498,11 +1791,11 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="text-xs md:text-[11px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
+                  <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
                 </label>
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
@@ -1513,16 +1806,16 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
                     maxLength={255}
                   />
-                  <p className="text-xs md:text-[11px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
+                  <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
                 <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
-                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-[11px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
+                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">{worktreeOptions.length}</span>
                 </div>
                 {worktreeOptions.length === 0 ? (
                     <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
@@ -1537,7 +1830,7 @@ export function Sidebar({
                               render={
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-(--color-text-2)">{item.name}</p>
-                                  {item.branch && <p className="truncate text-[11px] text-(--color-text-subtle)">{item.branch}</p>}
+                                  {item.branch && <p className="truncate text-meta text-(--color-text-subtle)">{item.branch}</p>}
                                 </div>
                               }
                             />
@@ -1551,7 +1844,7 @@ export function Sidebar({
                                     type="button"
                                     onClick={() => setRemoveWorktreeTarget(item)}
                                     disabled={worktreeRemoving === item.directory}
-                                    className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                                    className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50"
                                     aria-label={`Remove worktree ${item.name}`}
                                   >
                                     {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
@@ -1561,7 +1854,7 @@ export function Sidebar({
                               <TooltipContent>Remove managed worktree</TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-[11px] text-(--color-text-subtle)">external</span>
+                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">external</span>
                           )}
                         </li>
                       ))}
@@ -1661,14 +1954,14 @@ export function Sidebar({
             checked={checkoutMenuRepository.selected === null}
             onSelect={() => { selectCheckout(checkoutMenu.repo, null); setCheckoutMenu(null) }}
           >
-            All checkouts
+            Workspace and worktrees
           </CheckoutMenuItem>
           <CheckoutMenuItem
             checked={checkoutMenuRepository.selected === checkoutMenu.repo}
             onSelect={() => { selectCheckout(checkoutMenu.repo, checkoutMenu.repo); setCheckoutMenu(null) }}
           >
             <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-            Main worktree
+            Workspace
           </CheckoutMenuItem>
           {checkoutMenuRepository.worktrees.map((item) => (
             <CheckoutMenuItem
@@ -1758,111 +2051,57 @@ export function Sidebar({
           onDismiss={() => setDesktopSessionActions(null)}
           className="min-w-44"
         >
-            {/* Only top-level sessions can be pinned. */}
-            {!desktopSessionActions.session.parent_session_id && (
+          {sessionMenuActions(desktopSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
+            <Fragment key={id}>
+              {separatorBefore && <ContextMenuSeparator />}
               <button
                 type="button"
                 role="menuitem"
-                className={CONTEXT_MENU_ITEM_CLASS}
+                className={danger ? CONTEXT_MENU_ITEM_DANGER_CLASS : CONTEXT_MENU_ITEM_CLASS}
                 onClick={() => {
-                  const { session } = desktopSessionActions
                   setDesktopSessionActions(null)
-                  toggleSessionPinned(session)
+                  run()
                 }}
               >
-                {desktopSessionActions.session.pinned_at ? <PinOff size={12} aria-hidden="true" /> : <Pin size={12} aria-hidden="true" />}
-                {desktopSessionActions.session.pinned_at ? 'Unpin' : 'Pin'}
+                <Icon size={12} aria-hidden="true" />
+                {label}
               </button>
-            )}
-            {/* Subagent titles are their task; they have no inline editor. */}
-            {!desktopSessionActions.session.parent_session_id && (
-              <button
-                type="button"
-                role="menuitem"
-                className={CONTEXT_MENU_ITEM_CLASS}
-                onClick={() => {
-                  const { session } = desktopSessionActions
-                  setDesktopSessionActions(null)
-                  handleSessionEdit(session)
-                }}
-              >
-                <Pencil size={12} aria-hidden="true" />
-                Rename
-              </button>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_DANGER_CLASS}
-              onClick={() => {
-                const { session } = desktopSessionActions
-                setDesktopSessionActions(null)
-                setDeleteTarget(session)
-              }}
-            >
-              <Trash2 size={12} aria-hidden="true" />
-              Delete session…
-            </button>
+            </Fragment>
+          ))}
         </ContextMenu>
       )}
 
-      <Dialog
+      {/* A phone's long-press menu is a sheet from the bottom edge (Android,
+          and phone browsers); the iOS app shows the system action sheet
+          instead (openMobileSessionActions). */}
+      <BottomSheet
         open={mobileSessionActions !== null}
-        onOpenChange={(open) => { if (!open) setMobileSessionActions(null) }}
+        onClose={() => setMobileSessionActions(null)}
+        label={mobileSessionActions?.session.title || 'Untitled'}
       >
-        <DialogContent>
-          <DialogHeader className="pr-8">
-            <DialogTitle>{mobileSessionActions?.session.title || 'Untitled'}</DialogTitle>
-            <DialogDescription>Choose a session action.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-            {mobileSessionActions && !mobileSessionActions.session.parent_session_id && (
-              <Button
+        <div className="px-4 pb-1">
+          <p className="text-sm font-medium text-(--color-text) [overflow-wrap:anywhere]">{mobileSessionActions?.session.title || 'Untitled'}</p>
+          <p className="text-xs text-(--color-text-muted)">Choose a session action.</p>
+        </div>
+        <div className="flex flex-col px-2 pb-3">
+          {mobileSessionActions && sessionMenuActions(mobileSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
+            <Fragment key={id}>
+              {separatorBefore && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
+              <button
                 type="button"
-                variant="ghost"
-                className="justify-start"
+                className={cn(SHEET_ROW_CLASS, danger && cn(MENU_ITEM_DANGER, 'text-(--color-error)'))}
                 onClick={() => {
-                  const action = mobileSessionActions
                   setMobileSessionActions(null)
-                  if (action?.session) toggleSessionPinned(action.session)
+                  run()
                 }}
               >
-                {mobileSessionActions.session.pinned_at ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}
-                {mobileSessionActions.session.pinned_at ? 'Unpin' : 'Pin'}
-              </Button>
-            )}
-            {/* Subagent titles are their task; they have no inline editor. */}
-            {mobileSessionActions && !mobileSessionActions.session.parent_session_id && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="justify-start"
-                onClick={() => {
-                  const action = mobileSessionActions
-                  setMobileSessionActions(null)
-                  if (action?.session) handleSessionEdit(action.session)
-                }}
-              >
-                <Pencil size={14} aria-hidden="true" />
-                Rename
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="danger-subtle"
-              className="justify-start"
-              onClick={() => {
-                const action = mobileSessionActions
-                setMobileSessionActions(null)
-                if (action?.session) setDeleteTarget(action.session)
-              }}
-            >
-              <Trash2 size={14} aria-hidden="true" />
-              Delete session…
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                <Icon size={16} aria-hidden="true" />
+                {label}
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      </BottomSheet>
 
       <Dialog
         open={worktreeEditTarget !== null}
@@ -1892,7 +2131,7 @@ export function Sidebar({
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:min-h-8"
+                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
                 aria-label="Worktree title"
                 maxLength={255}
               />
@@ -1920,6 +2159,6 @@ export function Sidebar({
         onConfirmRemoveWorktree={confirmRemoveWorktree}
       />
     </ResizableAside>
-    </>
+    </KeyLayerScope>
   )
 }

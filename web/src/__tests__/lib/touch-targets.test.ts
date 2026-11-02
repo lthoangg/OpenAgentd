@@ -15,7 +15,7 @@ const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.ur
 
 describe('coarse-pointer touch targets', () => {
   it('sets the shared list row and the dock tab strip to 36px on touch, and tightens line height', () => {
-    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*:root\s*\{\s*--spacing-list-row:\s*2\.25rem;\s*--leading-relaxed:\s*1\.5;\s*--spacing-tab-bar:\s*2\.4375rem;/)
+    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*:root\s*\{\s*--spacing-list-row:\s*2\.25rem;\s*--leading-relaxed:\s*1\.5;\s*--spacing-tab-bar:\s*2\.8125rem;/)
     expect(css).toMatch(/@media \(pointer: coarse\)\s*\{[^}]*\}\s*\.oa-prose\s*\{\s*line-height:\s*1\.6;/)
   })
 
@@ -23,6 +23,20 @@ describe('coarse-pointer touch targets', () => {
     expect(DOCK_ROW_ACTION_CLASS).toContain('pointer-coarse:size-9')
     expect(dockTabCloseClass(false)).toContain('pointer-coarse:size-9')
     expect(dockTabCloseClass(true)).toContain('pointer-coarse:size-9')
+  })
+
+  it('shows every tab close at rest: 24px, dimmed to 60% on tabs that are not open, full on hover or focus', () => {
+    for (const active of [false, true]) {
+      const close = dockTabCloseClass(active)
+      expect(close).toContain('size-6')
+      expect(close).not.toMatch(/(^|\s)(hidden|opacity-0|size-5)(\s|$)/)
+    }
+    const inactive = dockTabCloseClass(false)
+    expect(inactive).toContain('opacity-60')
+    expect(inactive).toContain('group-hover/tab:opacity-100')
+    expect(inactive).toContain('group-focus-within/tab:opacity-100')
+    expect(inactive).toContain('focus-visible:opacity-100')
+    expect(dockTabCloseClass(true)).toContain('opacity-100')
   })
 
   it('sizes buttons 36px on touch, and 40px in the Android app', () => {
@@ -37,7 +51,8 @@ describe('coarse-pointer touch targets', () => {
 
   it('makes default tab triggers 36px on touch and keeps sm tabs inside the 32px toolbar', () => {
     const tabs = readFileSync(fileURLToPath(new URL('../../components/ui/tabs.tsx', import.meta.url)), 'utf8')
-    expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-10\.5/)
+    // No padding ring or border around the triggers, so the list is one trigger tall.
+    expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-9'/)
     expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7'/)
   })
 
@@ -62,22 +77,39 @@ describe('coarse-pointer touch targets', () => {
       ['PendingMessageQueue.tsx', /aria-label="Edit queued message"\s*className="[^"]*pointer-coarse:size-9/],
       ['settings/WorkspaceGroupsSettings.tsx', /aria-label=\{`Remove \$\{repo\.name\} from[\s\S]{0,300}className="[^"]*pointer-coarse:size-9/],
       ['settings/pages/settings.providers/CredentialList.tsx', /aria-label=\{`New name for[\s\S]{0,300}className="[^"]*pointer-coarse:h-9/],
+      // Review panel views (audit R10-R12): scheduler ⋯, preview address, model list controls.
+      // ROW_ACTION is 24px and pointer-coarse:size-9 (see list-row.ts).
+      ['SchedulerPanel/TaskListItem.tsx', /className=\{ROW_ACTION\}\s*aria-haspopup="menu"\s*aria-label=\{`More actions for/],
+      ['Preview/PreviewTabView.tsx', /aria-label="Preview address"[\s\S]{0,900}className="[^"]*pointer-coarse:h-9/],
+      ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-pressed=\{selected\}[\s\S]{0,500}pointer-coarse:h-9/],
+      ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-label=\{`Copy \$\{qualifiedId\}`\}\s*className="[^"]*pointer-coarse:size-9/],
     ]
     for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
   })
 
-  it('keeps phone toasts below the app header', () => {
-    expect(css).toMatch(/\.mobile-safe-toast\s*\{\s*top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ var\(--spacing-app-header\) \+ 0\.5rem\);/)
+  it('hangs the notice column from the top right, under the app header', () => {
+    expect(css).toMatch(/\.mobile-safe-floating\s*\{\s*top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ var\(--spacing-app-header\) \+ 0\.5rem\);/)
+    // The composer and its run deck own the bottom: no rule anchors a notice there any more.
+    const rule = /\.mobile-safe-floating\s*\{[^}]*\}/.exec(css)?.[0] ?? ''
+    expect(rule).not.toMatch(/bottom\s*:/)
   })
 
-  it('uses no 44px touch sizes: phones stay compact enough for a mini screen', () => {
+  it('keeps 44px touch sizes to the phone primary action (Send): the rest stays 36px for a mini screen', () => {
     const root = fileURLToPath(new URL('../../components', import.meta.url))
+    // Decision 7: 36px for every control on touch, 44px for the phone's primary action only.
+    const primaryOnPhone = new Set(['InputComposer.tsx'])
     const offenders: string[] = []
     const files = readdirSync(root, { recursive: true, encoding: 'utf8' }).filter((f) => /\.tsx?$/.test(f))
     for (const file of files) {
+      if (primaryOnPhone.has(file)) continue
       const text = readFileSync(`${root}/${file}`, 'utf8')
       if (/pointer-coarse:[\w:\-[\]=]*(?:min-h|min-w|size|h|w)-11\b/.test(text)) offenders.push(file)
     }
     expect(offenders).toEqual([])
+  })
+
+  it('sizes the phone Send to 44px and keeps it 36px on a touch tablet', () => {
+    const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer.tsx', import.meta.url)), 'utf8')
+    expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9 max-md:pointer-coarse:size-11'/)
   })
 })

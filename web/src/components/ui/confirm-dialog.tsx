@@ -7,8 +7,12 @@
  * Controlled: the caller owns `open`. `onConfirm` may return a promise; the
  * confirm button shows a spinner and stays disabled until it settles, and
  * the dialog closes only when it resolves.
+ *
+ * Default button, as in native alerts: a non-destructive confirm takes focus,
+ * so Enter confirms; a destructive one never does: Cancel takes focus, so
+ * Enter cancels and the destructive action always needs its own press.
  */
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -43,6 +47,7 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   const [pending, setPending] = useState(false)
+  const confirmRef = useRef<HTMLButtonElement>(null)
 
   const confirm = async () => {
     setPending(true)
@@ -56,7 +61,7 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next) }}>
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} initialFocus={tone === 'danger' ? undefined : confirmRef}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -66,6 +71,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
+            ref={confirmRef}
             type="button"
             variant={tone === 'danger' ? 'danger' : 'primary'}
             onClick={() => { void confirm() }}

@@ -50,7 +50,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
         ref={ref}
         type="button"
         className={cn(
-          'inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium leading-none text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent md:h-auto md:min-w-0 md:rounded-md md:px-2.5 md:py-1.5',
+          'inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium leading-none text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent md:h-auto md:min-w-0 md:rounded-md md:px-2.5 md:py-1.5 pointer-coarse:min-h-9 pointer-coarse:min-w-9',
           className,
         )}
         {...rest}
@@ -60,7 +60,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
           <span className={cn(hideLabelOnMobile && 'hidden md:inline')}>{label}</span>
         )}
         {badge && (
-          <span className="font-mono text-xs md:text-[11px] text-(--color-text-muted)">{badge}</span>
+          <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">{badge}</span>
         )}
         {indicator && (
           <span

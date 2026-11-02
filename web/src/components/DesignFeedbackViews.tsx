@@ -14,7 +14,7 @@ function shortWhere(where: string): string {
 
 function PinNumber({ n }: { n: number }) {
   return (
-    <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--color-accent) px-1 text-[11px] font-semibold text-(--color-text-on-accent)">
+    <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--color-accent) px-1 text-meta font-semibold text-(--color-text-on-accent)">
       {n}
     </span>
   )
@@ -25,7 +25,7 @@ export function DesignFeedbackStrip({ items, onRemove, below = false }: { items:
   return (
     <div className={cn(below ? 'mt-3' : 'mb-3', '-mx-2 -my-2')}>
       <div className="overflow-x-auto px-2 py-2">
-        <ul aria-label="Design feedback" className="flex w-max flex-nowrap items-center gap-2">
+        <ul aria-label="Preview comments" className="flex w-max flex-nowrap items-center gap-2">
           {items.map((feedback, index) => (
             <li key={index} className="group relative inline-block shrink-0">
               <Tooltip>
@@ -34,7 +34,7 @@ export function DesignFeedbackStrip({ items, onRemove, below = false }: { items:
                     <div className="flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text)">
                       <MousePointerClick size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
                       <span className="font-medium">{designFeedbackSummary(feedback)}</span>
-                      <span className="max-w-40 truncate font-mono text-[11px] text-(--color-text-subtle)">{shortWhere(feedback.where)}</span>
+                      <span className="max-w-40 truncate font-mono text-meta text-(--color-text-subtle)">{shortWhere(feedback.where)}</span>
                     </div>
                   }
                 />
@@ -56,7 +56,7 @@ export function DesignFeedbackStrip({ items, onRemove, below = false }: { items:
                   event.stopPropagation()
                   onRemove(index)
                 }}
-                className="touch-hit absolute -top-2 -right-2 z-10 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) opacity-100 shadow-(--shadow-depth) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-top-1.5 md:-right-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                className="touch-hit absolute -top-2 -right-2 z-10 flex h-7 w-7 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-muted) opacity-100 shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:-top-1.5 md:-right-1.5 md:h-6 md:w-6"
               >
                 <X size={12} className="md:h-2.5 md:w-2.5" aria-hidden="true" />
               </button>
@@ -78,7 +78,7 @@ export function DesignFeedbackCard({ feedback, onMentionFileOpen }: { feedback: 
       <p className="flex min-w-0 items-center gap-1.5 text-(--color-text-muted)">
         <MousePointerClick size={12} className="shrink-0" aria-hidden="true" />
         <span className="shrink-0 font-medium">{designFeedbackSummary(feedback)}</span>
-        <span className="min-w-0 truncate font-mono text-[11px] text-(--color-text-subtle)">
+        <span className="min-w-0 truncate font-mono text-meta text-(--color-text-subtle)">
           {shortWhere(feedback.where)}
           {feedback.device ? ` · ${feedback.device}` : ''}
         </span>
@@ -90,7 +90,7 @@ export function DesignFeedbackCard({ feedback, onMentionFileOpen }: { feedback: 
             <li key={item.n} className="flex gap-2">
               <PinNumber n={item.n} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-[11px] text-(--color-text-subtle)">
+                <p className="truncate font-mono text-meta text-(--color-text-subtle)">
                   {item.element}
                   {item.text ? ` "${item.text}"` : ''}
                   {item.page ? ` · ${item.page}` : ''}
@@ -100,12 +100,12 @@ export function DesignFeedbackCard({ feedback, onMentionFileOpen }: { feedback: 
                       type="button"
                       data-mention-kind="file"
                       onClick={() => onMentionFileOpen(fileRef)}
-                      className="rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+                      className="rounded-sm text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
                     >
                       {item.source}
                     </button>
                   ) : (
-                    item.source && <span className={fileRef ? 'text-(--accent-blue-text)' : undefined}>{item.source}</span>
+                    item.source && <span className={fileRef ? 'text-(--color-text)' : undefined}>{item.source}</span>
                   )}
                 </p>
                 <p className="mt-0.5 leading-relaxed break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{item.comment}</p>

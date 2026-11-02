@@ -279,7 +279,7 @@ export function ModelCombobox({
               ...(placement && placement.maxHeight < LIST_MAX_HEIGHT ? { maxHeight: placement.maxHeight } : null),
             }}
             className={cn(
-              'z-50 max-h-64 overflow-y-auto overscroll-contain',
+              'z-70 max-h-64 overflow-y-auto overscroll-contain',
               MENU_PANEL_CLASS,
               // DESIGN.md → Motion: grows out of the field like Dropdown. It
               // closes at once: a pick or a blur should feel immediate.
@@ -320,14 +320,14 @@ export function ModelCombobox({
                       <span className="min-w-0 truncate font-mono">{o.model}</span>
                       <span className="flex shrink-0 items-center gap-1">
                         {o.vision && <Chip title="Accepts image input">Vision</Chip>}
-                        {query.trim() && <Chip mono variant="outline">{o.provider}</Chip>}
+                        {query.trim() && <Chip mono>{o.provider}</Chip>}
                       </span>
                     </button>
                   </li>
                 )
                 return showHeading
                   ? [
-                      <li key={`h:${o.provider}`} role="presentation" className="px-2.5 pt-2 pb-1 font-mono text-[11px] text-(--color-text-subtle) select-none">
+                      <li key={`h:${o.provider}`} role="presentation" className="px-2.5 pt-2 pb-1 font-mono text-meta text-(--color-text-subtle) select-none">
                         {o.provider}
                       </li>,
                       row,

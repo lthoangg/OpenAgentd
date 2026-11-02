@@ -6,7 +6,8 @@
  * The gallery now supports mixed file types via FileLightbox internally.
  */
 
-import { FileLightbox, type FileLightboxItem } from './FileLightbox'
+import type { FileLightboxItem } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 
 interface GalleryImage {
   src: string

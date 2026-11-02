@@ -5,7 +5,7 @@ import { useUIStore } from '@/stores/useUIStore'
 function resetUIStore(): void {
   useUIStore.setState({
     schedulerOpen: false,
-    agentCapabilitiesOpen: false,
+    runPickerOpen: false,
     paletteOpen: false,
     palettePage: [],
     quickOpenOpen: false,
@@ -21,16 +21,16 @@ describe('useUIStore utility modals', () => {
     useUIStore.getState().toggleScheduler()
     expect(useUIStore.getState().schedulerOpen).toBe(true)
 
-    useUIStore.getState().toggleAgentCapabilities()
+    useUIStore.getState().toggleRunPicker()
     expect(useUIStore.getState().schedulerOpen).toBe(false)
-    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
+    expect(useUIStore.getState().runPickerOpen).toBe(true)
   })
 
   it('closes the currently open modal when toggled again', () => {
-    useUIStore.getState().toggleAgentCapabilities()
-    useUIStore.getState().toggleAgentCapabilities()
+    useUIStore.getState().toggleRunPicker()
+    useUIStore.getState().toggleRunPicker()
 
-    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(false)
+    expect(useUIStore.getState().runPickerOpen).toBe(false)
     expect(useUIStore.getState().schedulerOpen).toBe(false)
   })
 
@@ -41,7 +41,7 @@ describe('useUIStore utility modals', () => {
     useUIStore.getState().togglePalette()
     expect(useUIStore.getState().paletteOpen).toBe(true)
     expect(useUIStore.getState().schedulerOpen).toBe(false)
-    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(false)
+    expect(useUIStore.getState().runPickerOpen).toBe(false)
   })
 
   it('keeps Quick Open and the Command Palette mutually exclusive', () => {
@@ -75,11 +75,11 @@ describe('useUIStore utility modals', () => {
   })
 
   it('closeAll resets all utility panels', () => {
-    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true, quickOpenOpen: true, telemetryOpen: true })
+    useUIStore.setState({ schedulerOpen: true, runPickerOpen: true, paletteOpen: true, quickOpenOpen: true, telemetryOpen: true })
     useUIStore.getState().closeAll()
     expect(useUIStore.getState()).toMatchObject({
       schedulerOpen: false,
-      agentCapabilitiesOpen: false,
+      runPickerOpen: false,
       paletteOpen: false,
       quickOpenOpen: false,
       telemetryOpen: false,

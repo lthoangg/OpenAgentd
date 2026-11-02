@@ -668,7 +668,7 @@ describe("InputComposer — @-mention picker", () => {
   })
 
   it("colors file mentions and folder mentions distinctly", async () => {
-    // Files paint in --accent-blue-text, folders in --accent-orange-text.
+    // Files paint in ink (--color-text), folders in --accent-orange-text.
     // We assert the kind via ``data-mention-kind`` (stable contract for
     // tests) and that the class names target different tokens, so a
     // future palette tweak doesn't require an exact-color test rewrite.
@@ -689,7 +689,8 @@ describe("InputComposer — @-mention picker", () => {
     expect(folderChip.getAttribute("data-mention-kind")).toBe("directory")
     expect(folderChip.className).toContain("--accent-orange-text")
     expect(fileChip.getAttribute("data-mention-kind")).toBe("file")
-    expect(fileChip.className).toContain("--accent-blue-text")
+    expect(fileChip.className).toContain("--color-text")
+    expect(fileChip.className).not.toContain("accent-blue")
   })
 })
 

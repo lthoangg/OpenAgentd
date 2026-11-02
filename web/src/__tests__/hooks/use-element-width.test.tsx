@@ -81,4 +81,28 @@ describe('useElementWidth', () => {
     resizeTo(812.6)
     expect(screen.getByText('813')).toBeTruthy()
   })
+
+  // A neighbour that knows the width is about to change says so in its own
+  // commit; a ResizeObserver callback would come a frame or more later.
+  it('re-measures at once, without waiting for a frame, when remeasureOn calls back', () => {
+    let remeasure: (() => void) | null = null
+    const remeasureOn = (_node: HTMLElement, callback: () => void) => {
+      remeasure = callback
+      return () => { remeasure = null }
+    }
+    function Probe() {
+      const ref = useRef<HTMLDivElement | null>(null)
+      const value = useElementWidth(ref, undefined, remeasureOn)
+      return <div ref={(node) => measuredRef(node, ref)}>{value}</div>
+    }
+    const view = render(<Probe />)
+    width = 1200
+
+    act(() => remeasure?.())
+
+    expect(frames).toHaveLength(0)
+    expect(screen.getByText('1200')).toBeTruthy()
+    view.unmount()
+    expect(remeasure).toBeNull()
+  })
 })

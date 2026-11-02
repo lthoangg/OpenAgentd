@@ -3,8 +3,12 @@
  *
  * Left cluster is workspace-scoped, right cluster is session-scoped:
  *   • left:  connected backend and its health · git branch with ahead/behind
- *            + dirty count
- *   • right: active model (thinking level) · fast mode · 24h spend · settings
+ *            + dirty count · "N terminals running" while the workspace has
+ *            live shells (they keep running with the Review panel closed)
+ *   • right: fast mode · 24h spend · settings
+ *
+ * The model lives on the composer's run deck, the one place to read and
+ * change it, so the status bar does not repeat it.
  *
  * The command palette entry lives in the header's command center, so the
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
@@ -14,22 +18,23 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   GitBranch,
   Settings,
+  TerminalSquare,
   Zap,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
-import { Chip } from '@/components/ui/chip'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useTerminalStore } from '@/stores/useTerminalStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
 import { sessionsSpending } from '@/lib/active-sessions'
 import { formatSpend } from '@/utils/telemetryFormat'
-import { modelParts } from '@/utils/format'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -82,26 +87,16 @@ export interface AppFooterProps {
    */
   chatWorkspace?: boolean
   sessionId?: string | null
-  sessionModel?: string | null
-  /**
-   * The lead agent's configured model. ``sessionModel`` is null until the
-   * session overrides it, so the footer shows this instead.
-   */
-  defaultModel?: string | null
-  /** The lead agent's configured thinking level, paired with ``defaultModel``. */
-  defaultThinkingLevel?: string | null
-  sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
-  onToggleSessionSettings?: () => void
   onOpenGitChanges?: () => void
   className?: string
 }
 
-/** Shared status-bar item: 20px tall, 11px text, keycap hover. */
+/** Shared status-bar item: 24px tall in the 28px bar, meta text, keycap hover. */
 const ITEM =
-  'flex h-5 min-w-0 items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+  'flex h-6 min-w-0 items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 const ICON_ITEM =
-  'flex h-5 w-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
 function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
@@ -114,28 +109,36 @@ function syncLabel(ahead: number | null | undefined, behind: number | null | und
   return parts.length > 0 ? parts.join(', ') : null
 }
 
+/**
+ * Shells of ``workspace`` that are still alive, the same ones the dock asks
+ * before closing. Terminals are keyed by the workspace path (their
+ * ``contextKey``), so another workspace's shells never count here. A number,
+ * so a shell's output or title does not re-render the footer.
+ */
+function useRunningTerminalCount(workspace: string | null | undefined): number {
+  return useTerminalStore((state) => {
+    if (!workspace) return 0
+    let running = 0
+    for (const meta of Object.values(state.sessions)) {
+      if (meta.contextKey === workspace && (meta.status === 'connected' || meta.status === 'connecting')) running += 1
+    }
+    return running
+  })
+}
+
 export const AppFooter = memo(function AppFooter({
   workspace,
   chatWorkspace = false,
-  sessionModel,
-  defaultModel,
-  defaultThinkingLevel,
-  sessionThinkingLevel,
   sessionFastMode,
-  onToggleSessionSettings,
   onOpenGitChanges,
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const activeModel = sessionModel || defaultModel || null
-  // Mirrors the backend: a session model override builds its own provider,
-  // which carries only the session's level, never the agent's.
-  const modelOverridden = Boolean(sessionModel) && sessionModel !== defaultModel
-  const activeThinkingLevel = sessionThinkingLevel || (modelOverridden ? null : defaultThinkingLevel) || null
-  const sessionSettingsShortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const spend = useFooterSpend()
   const spendLabel = spend === undefined ? null : formatSpend(spend)
+  const terminals = useRunningTerminalCount(workspace)
+  const terminalsLabel = `${terminals} ${terminals === 1 ? 'terminal' : 'terminals'} running`
 
   const isProject = Boolean(workspace) && !chatWorkspace
   const statusQuery = useQuery({
@@ -166,16 +169,15 @@ export const AppFooter = memo(function AppFooter({
     dirtyTotal > 0 ? `${dirtyTotal} changed files` : null,
     sync,
   ].filter(Boolean).join(', ')
-  const model = activeModel ? modelParts(activeModel) : null
-  const showThinking = Boolean(activeThinkingLevel) && activeThinkingLevel !== 'off'
 
   return (
     <footer
       className={cn(
-        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-[11px] text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
+        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-meta text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
         className,
       )}
       aria-label="Status bar"
+      data-focus-region="status"
     >
       {/* Left cluster — workspace scope: connection, repository state. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
@@ -210,42 +212,50 @@ export const AppFooter = memo(function AppFooter({
             </Tooltip>
           </>
         )}
+
+        {terminals > 0 && (
+          <>
+            <Divider />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    // Opens the Review panel on the last shell.
+                    onClick={() => dispatchAppEvent(APP_EVENTS.openTerminal)}
+                    className={cn(ITEM, 'shrink-0')}
+                  >
+                    <TerminalSquare size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                    <span className="whitespace-nowrap">{terminalsLabel}</span>
+                  </button>
+                }
+              />
+              <TooltipContent>
+                <span className="block">Terminals keep running while hidden</span>
+                <span className="block opacity-70">Show terminals</span>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
 
       {/* Right cluster — session scope, then app utilities. */}
       <div className="flex min-w-0 shrink items-center justify-end gap-0.5">
-        {activeModel && model && (
-          <Tooltip className="min-w-0">
-            <TooltipTrigger
-              className="min-w-0"
-              render={
-                <button
-                  type="button"
-                  onClick={onToggleSessionSettings}
-                  className={cn(ITEM, 'max-w-[320px] gap-1.5 lg:max-w-[440px]')}
-                  aria-label={`Model ${activeModel}${showThinking ? `, thinking ${activeThinkingLevel}` : ''}. Change model`}
-                >
-                  <span className="truncate font-mono">{model.short}</span>
-                  {model.provider && <Chip variant="outline" mono>{model.provider}</Chip>}
-                  {showThinking && <Chip mono>{activeThinkingLevel}</Chip>}
-                </button>
-              }
-            />
-            <TooltipContent>
-              <span className="block font-mono">{activeModel}</span>
-              {showThinking && <span className="block">{`Thinking: ${activeThinkingLevel}`}</span>}
-              <span className="block opacity-70">{`Change model · ${sessionSettingsShortcut}`}</span>
-            </TooltipContent>
-          </Tooltip>
-        )}
-
         {sessionFastMode && (
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[11px] font-medium text-(--accent-orange-text)">
+                // Not a control, but a Tab stop all the same, so its tooltip
+                // is reachable from the keyboard like every other item here.
+                <span
+                  tabIndex={0}
+                  role="img"
+                  aria-label="Fast mode is on"
+                  data-status-fast=""
+                  className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-meta font-medium text-(--accent-orange-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                >
                   <Zap size={11} aria-hidden="true" />
-                  <span>fast</span>
+                  <span aria-hidden="true">fast</span>
                 </span>
               }
             />
@@ -253,7 +263,7 @@ export const AppFooter = memo(function AppFooter({
           </Tooltip>
         )}
 
-        {(activeModel || sessionFastMode) && <Divider />}
+        {sessionFastMode && <Divider />}
 
         {spendLabel && (
           <Tooltip>

@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";
@@ -47,7 +46,7 @@
  * ───────────────────────────────────────────────────────────── */
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: var(--font-ui);
     --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Courier New', monospace;
 
 
@@ -66,10 +65,42 @@
     --spacing-mac-traffic-inset: 70px;
 
     /* Workbench chrome (see DESIGN.md → Workbench layout). */
-    --spacing-status-bar: 1.5rem;  /* 24px desktop status footer */
-    --spacing-tab-bar: 2.25rem;    /* 36px dock editor-tab strip */
+    --spacing-status-bar: 1.75rem; /* 28px desktop status footer */
+    --spacing-tab-bar: 2.3125rem;  /* 28px tab pills, 4px around, 1px hairline */
     --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
     --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
+
+    /* Type scale (DESIGN.md → Typography). Every step is rem times
+     * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
+     * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
+     * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
+     * set no line height of their own: they keep the line they sit in. */
+    --text-meta: calc(0.6875rem * var(--oa-text-scale));
+    --text-xs: calc(0.75rem * var(--oa-text-scale));
+    --text-xs--line-height: calc(1 / 0.75);
+    --text-code: calc(0.8125rem * var(--oa-text-scale));
+    --text-sm: calc(0.875rem * var(--oa-text-scale));
+    --text-sm--line-height: calc(1.25 / 0.875);
+    --text-base: calc(1rem * var(--oa-text-scale));
+    --text-base--line-height: calc(1.5 / 1);
+    --text-lg: calc(1.125rem * var(--oa-text-scale));
+    --text-lg--line-height: calc(1.75 / 1.125);
+    --text-xl: calc(1.25rem * var(--oa-text-scale));
+    --text-xl--line-height: calc(1.75 / 1.25);
+    --text-2xl: calc(1.5rem * var(--oa-text-scale));
+    --text-2xl--line-height: calc(2 / 1.5);
+}
+
+/* Text size (stores/useDisplayPrefsStore.ts, set before paint by
+ * public/theme-init.js). Default is one step above the old density. */
+:root {
+  --oa-text-scale: calc(13 / 12);
+}
+:root[data-text-size="compact"] {
+  --oa-text-scale: 1;
+}
+:root[data-text-size="large"] {
+  --oa-text-scale: calc(14 / 12);
 }
 
 @layer base {
@@ -221,32 +252,61 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
   color: var(--color-text-muted);
 }
 
+/* Selected text takes the warm selection fill, as chosen rows do: Signal
+ * Blue is the logo and keyboard focus only. */
 ::selection {
-  background-color: var(--accent-blue-soft);
+  background-color: var(--color-fill-selected);
+  color: var(--color-text-on-selected);
 }
 
-/* Legibility floor — 11px minimum for tiny utility text on EVERY shell.
-   Previously this only applied inside mobile shells, which left desktop
-   (and iPad-as-desktop) rendering 9–10.5px metadata that fails comfortable-
-   reading guidance and made the same screen differ between platforms. An
-   11px floor keeps desktop dense while guaranteeing a readable minimum. */
-.text-\[8px\],
-.text-\[9px\],
-.text-\[10px\],
-.text-\[10\.5px\] {
-  font-size: 11px;
+/* An autofilled field keeps the field's own fill and ink, not the engine's tint. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset;
+  -webkit-text-fill-color: var(--color-text);
+  caret-color: var(--color-text);
 }
 
-/* Responsive variants compile to their own selectors inside a media query,
-   so ``text-xs md:text-[10px]`` escaped the floor above and rendered 10px on
-   desktop. Same floor, same breakpoint (Tailwind's md). */
-@media (width >= 48rem) {
-  .md\:text-\[8px\],
-  .md\:text-\[9px\],
-  .md\:text-\[10px\],
-  .md\:text-\[10\.5px\] {
-    font-size: 11px;
+/* Menus and listboxes (ui/menu-styles.ts): the row under the pointer or the
+ * keyboard takes the highlight wash (a step softer than a chosen segment's
+ * fill) and every word in it takes the wash's text tone, the way an OS menu
+ * highlights. Unlayered, so it wins over a row's own hover wash and
+ * muted text. A pointer hover counts only where hover exists, so a tap on a
+ * phone does not leave a row lit. A keyed list (``oa-menu-item-keyed``, the
+ * command palette) lights only the row it marks active, so a parked pointer
+ * never lights a second one. */
+.oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
+  background-color: var(--color-fill-highlight);
+  color: var(--color-text-on-highlight);
+}
+@media (hover: hover) {
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
+    background-color: var(--color-fill-highlight);
+    color: var(--color-text-on-highlight);
   }
+  .oa-menu-item.oa-menu-item-danger:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) {
+    background-color: var(--color-fill-danger);
+    color: var(--color-text-on-danger);
+  }
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) * {
+    color: inherit;
+  }
+  .oa-menu-item:hover:not(:disabled, [aria-disabled="true"], .oa-menu-item-keyed) :is(kbd, [data-slot="chip"]) {
+    background-color: color-mix(in srgb, currentColor 16%, transparent);
+    border-color: transparent;
+  }
+}
+.oa-menu-item.oa-menu-item-danger:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) {
+  background-color: var(--color-fill-danger);
+  color: var(--color-text-on-danger);
+}
+.oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) * {
+  color: inherit;
+}
+.oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) :is(kbd, [data-slot="chip"]) {
+  background-color: color-mix(in srgb, currentColor 16%, transparent);
+  border-color: transparent;
 }
 
 .mobile-safe-shell {
@@ -264,6 +324,14 @@ html[data-shell="desktop"][data-window-inactive] [aria-current]:not([aria-curren
 @media (max-width: 767px) {
   :root {
     --spacing-app-header: 2.5rem;
+  }
+}
+
+/* Touch tablets: 44px, so the 36px touch buttons sit inside the header
+   rather than filling it edge to edge as they did at the desktop 36px. */
+@media (pointer: coarse) and (min-width: 768px) {
+  :root {
+    --spacing-app-header: 2.75rem;
   }
 }
 
@@ -287,31 +355,68 @@ html[data-mobile-shell] .mobile-safe-header {
   padding-left: env(safe-area-inset-left, 0px);
 }
 
-.mobile-safe-floating {
-  right: max(1rem, env(safe-area-inset-right, 0px));
-  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
-  left: max(1rem, env(safe-area-inset-left, 0px));
+/* Windows app: the page draws the caption buttons (WindowCaptionButtons) and
+   keeps them above every layer, as a title bar is. A surface that would reach
+   the window's top edge starts under the header instead, so none of its own
+   controls (a viewer's Close above all) sits beneath the window's Close.
+   Desktop-width modal cards already start below the header. */
+html[data-window-caption] .below-window-caption {
+  top: var(--spacing-app-header);
 }
 
-/* Desktop: floating cards sit above the status bar instead of on it. */
-@media (width >= 48rem) {
-  .mobile-safe-floating {
-    bottom: calc(var(--spacing-status-bar) + 0.75rem);
+@media (max-width: 767px) {
+  html[data-window-caption] .settings-modal-shell {
+    top: calc(var(--spacing-app-header) + 0.5rem);
+    height: auto;
   }
 }
 
-/* Phones: toasts land under the app header, so they never cover (or catch
-   taps meant for) its buttons. Desktop puts the stack in the status bar. */
-.mobile-safe-toast {
+/* The notice column (toasts, update card, tools prompt) hangs from the top
+   right, under the app header, so it never covers (or catches taps meant
+   for) the header's buttons, and the composer and its run deck keep the
+   bottom. Phones get the full width between the safe-area insets; wider
+   screens keep the cards at the right edge (the column is click-through). */
+.mobile-safe-floating {
   top: calc(env(safe-area-inset-top, 0px) + var(--spacing-app-header) + 0.5rem);
   right: max(1rem, env(safe-area-inset-right, 0px));
   left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+/* Android dialogs end in text buttons (Material): the footer's buttons drop
+   their fill and take the ink of the action, accent for the rest and error
+   for a destructive one. The press wash stays so a tap still shows. */
+[data-slot="dialog-footer"][data-button-style="text"] > [data-slot="button"] {
+  background-color: transparent;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+[data-slot="dialog-footer"][data-button-style="text"] > [data-slot="button"]:active {
+  background-color: color-mix(in srgb, var(--bg-key) 70%, transparent);
+}
+[data-slot="dialog-footer"][data-button-style="text"] > [data-slot="button"]:is([data-variant="danger"], [data-variant="danger-subtle"]) {
+  color: var(--color-error);
 }
 
 /* Settings is an app-level overlay, so its bounds must respect both mobile
    cutouts/home indicators and the desktop shell header / macOS traffic-light
    region. Keep this geometry in CSS instead of Tailwind arbitrary classes so
    every platform gets the same safe-area contract. */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Header caps (AgentChatHeader, desktop): the header splits where the columns
+ * below it do, so the sidebar and the Review panel read as columns from the
+ * top of the window. Their widths arrive as --oa-sidebar-w / --oa-dock-w
+ * (ResizableAside publishWidthAs; unset while a panel is hidden, a drawer or
+ * an overlay), so a cap follows a drag and a slide. The caps draw no edge of
+ * their own: the column lines start under the header, whose bottom line runs
+ * the full width, over the sidebar too, so it reads as one bar.
+ * ───────────────────────────────────────────────────────────────────────────── */
+.oa-header-cap-sidebar {
+  min-width: var(--oa-sidebar-w, 0px);
+}
+.oa-header-cap-dock {
+  min-width: var(--oa-dock-w, 0px);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * AppOverlay — shared geometry for ALL app overlays except the full-width
@@ -488,27 +593,41 @@ html[data-mobile-shell][data-keyboard-open] [data-dialog-content] {
   }
 }
 
-html[data-mobile-shell] .settings-modal-shell {
-  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
-  transform: translateY(var(--app-vt, 0px));
-}
+/* Phones fill the visible region. Touch tablets also carry data-mobile-shell
+ * (use-mobile-viewport) but keep the centred card below, so these stay at
+ * phone widths: their height would outrank the card's and push its bottom
+ * off screen. */
+@media (max-width: 767px) {
+  html[data-mobile-shell] .settings-modal-shell {
+    height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+    transform: translateY(var(--app-vt, 0px));
+  }
 
-/* The home indicator is behind the keyboard: drop its inset so the Save bar
- * sits on the keyboard instead of above a dead strip. */
-html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
-  bottom: 0.5rem;
-  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
+  /* The home indicator is behind the keyboard: drop its inset so the Save bar
+   * sits on the keyboard instead of above a dead strip. */
+  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+    bottom: 0.5rem;
+    height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
+  }
 }
 
 @media (min-width: 768px) {
+  /* The same gap below the header and above the status bar. */
   .settings-modal-shell {
     top: calc(var(--spacing-app-header) + 4vh);
     right: max(2.5vw, calc((100vw - 76rem) / 2));
-    bottom: 4vh;
+    bottom: calc(var(--spacing-status-bar) + 4vh);
     left: max(2.5vw, calc((100vw - 76rem) / 2));
     height: auto;
-    max-height: calc(100vh - var(--spacing-app-header) - 8vh);
+    max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh);
     transform: none;
+  }
+
+  /* A tablet's soft keyboard covers the card's lower part: end it above the
+   * keyboard so the Save bar stays reachable. */
+  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+    bottom: auto;
+    max-height: calc(var(--app-vh, 100svh) - var(--spacing-app-header) - 4vh - 0.5rem);
   }
 }
 
@@ -563,33 +682,36 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   /* Scrollbars are invisible at rest and only fade in while the element
    * carrying them is hovered/focused (or, on WebKit, while it is actively
    * being scrolled). This keeps the UI free of always-on scrollbar chrome
-   * without removing scroll affordance when it's actually needed. */
-  * {
+   * without removing scroll affordance when it's actually needed.
+   * The macOS app keeps the system's overlay scroll bars, which follow
+   * System Settings → "Show scroll bars": any ::-webkit-scrollbar style
+   * would replace them, so none of these rules reach it. */
+  :where(html:not([data-platform="mac-overlay"])) * {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
   }
-  *:hover,
-  *:focus-within {
+  :where(html:not([data-platform="mac-overlay"])) *:hover,
+  :where(html:not([data-platform="mac-overlay"])) *:focus-within {
     scrollbar-color: var(--color-border) transparent;
   }
 
-  ::-webkit-scrollbar {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
   }
-  ::-webkit-scrollbar-track {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar-track {
     background: transparent;
   }
-  ::-webkit-scrollbar-thumb {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: var(--radius-xs);
     transition: background-color var(--motion-fast) var(--ease-in-out);
   }
-  :hover::-webkit-scrollbar-thumb,
-  :focus-within::-webkit-scrollbar-thumb {
+  :where(html:not([data-platform="mac-overlay"])) :hover::-webkit-scrollbar-thumb,
+  :where(html:not([data-platform="mac-overlay"])) :focus-within::-webkit-scrollbar-thumb {
     background: var(--color-border);
   }
-  ::-webkit-scrollbar-thumb:hover {
+  :where(html:not([data-platform="mac-overlay"])) ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
   /* Let internal scrollers chain to their parent when they hit a
@@ -624,7 +746,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * the only uppercase style. Type only — callers pick the colour
  * (text-muted on card headers, text-subtle on nav/group labels). */
 @utility label-caps {
-  font-size: 11px;
+  font-size: calc(0.6875rem * var(--oa-text-scale));
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -746,6 +868,16 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   .oa-seal-pulse { animation: none; }
 }
 
+/* Page loading (Preview): a short bar sweeps along the address field's
+   bottom edge until the page loads. Transform only. */
+@keyframes oa-loading-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
+}
+.oa-loading-bar {
+  animation: oa-loading-sweep 1.2s var(--ease-in-out) infinite;
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Font-weight on hover/press — signature interaction.
  * Apply to buttons, nav items, tabs, menu items. Not prose.
@@ -762,6 +894,10 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * prefers-reduced-motion — honor system-wide.
  * Progress bars keep animating (time is literal); spinners keep turning,
  * slowly, since a frozen one reads as a hang; everything else snaps.
+ * Transitions are off (0s), not shortened: an element that declares none has
+ * `transition-property: all`, so any duration made every change a
+ * transition, inherited visibility included, and a popover shown and then
+ * focused still read as hidden (WebKit dropped the focus).
  * ───────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -769,11 +905,15 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
     scroll-behavior: auto !important;
   }
   .animate-spin {
     animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .oa-loading-bar {
+    animation-duration: 2.4s !important;
     animation-iteration-count: infinite !important;
   }
 }
@@ -816,7 +956,7 @@ html[data-app-hidden="true"] *::after {
   --pele-surface: var(--bg-key);
   --pele-surface-alt: var(--bg-page);
   --pele-border: var(--color-border-strong);
-  --pele-accent: var(--accent-blue);
+  --pele-accent: var(--color-accent);
   --pele-critical: var(--color-error);
   --pele-error: var(--color-error);
   --pele-font: var(--font-sans);
@@ -859,7 +999,7 @@ html[data-app-hidden="true"] *::after {
   margin-left: 1px;
   vertical-align: -0.15em;
   border-radius: 1px;
-  background: var(--accent-blue);
+  background: var(--color-text-2);
   animation: oa-caret-blink var(--motion-glacial) steps(1) infinite;
 }
 @keyframes oa-caret-blink {
@@ -873,7 +1013,18 @@ html[data-app-hidden="true"] *::after {
 }
 .oa-prose h1 { font-size: 1.2em;  color: var(--color-text); }
 .oa-prose h2 { font-size: 1.08em; color: var(--color-text); }
-.oa-prose h3 { font-size: 1em;    color: var(--color-text-2); }
+.oa-prose h3 { font-size: 1em;    color: var(--color-text); }
+/* Preflight leaves h4–h6 as plain body text; models use them for small
+ * section labels, so they stay semibold at body size, the last two muted. */
+.oa-prose h4, .oa-prose h5, .oa-prose h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.25em;
+  color: var(--color-text);
+}
+.oa-prose h5, .oa-prose h6 { font-size: 0.875em; }
+.oa-prose h6 { color: var(--color-text-2); }
 .oa-prose ul, .oa-prose ol {
   padding-left: 1.5em;
   margin-bottom: 0.75em;
@@ -885,6 +1036,17 @@ html[data-app-hidden="true"] *::after {
   list-style-type: disc;
 }
 .oa-prose li { margin-bottom: 0.25em; }
+/* GFM task lists: the checkbox is the marker, so the bullet goes and the box
+ * sits where it was (the text lines up with the other items'), in the
+ * theme's accent instead of the platform's blue. */
+.oa-prose li:has(> input[type="checkbox"]:first-child) {
+  list-style: none;
+}
+.oa-prose li > input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  margin: 0 0.4em 0 -1.35em;
+  vertical-align: -0.1em;
+}
 .oa-prose code {
   background: var(--bg-key);
   border: 1px solid var(--color-border);
@@ -1067,13 +1229,28 @@ html[data-app-hidden="true"] *::after {
   margin-inline: calc((100% - 100cqi) / 2);
 }
 
+/*
+ * Transcript: prose keeps its 768px column; code, diagrams, tables and an
+ * expanded tool's output widen to 960px when the chat has room, centred on
+ * the column. --oa-transcript-w is the scroller's width (AgentView); below
+ * 768px + gutters the band equals the column and nothing moves. User
+ * bubbles stay as they are.
+ */
+.oa-transcript-col {
+  --oa-breakout: min(960px, var(--oa-transcript-w, 0px) - 2rem);
+}
+.oa-transcript-col :is(.oa-prose > [data-slot='code-block'], .oa-prose > [data-slot='mermaid-block'], .oa-prose > .oa-table-container, [data-breakout]):not([data-user-bubble] *) {
+  width: max(100%, var(--oa-breakout));
+  margin-inline: min(0px, (100% - var(--oa-breakout)) / 2);
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Tool description — compact prose inside the settings panel.
  * Matches the old plain-text style exactly: xs/muted/relaxed.
  * Only markdown structure (lists, code, bold) gets rendered.
  * ───────────────────────────────────────────────────────────── */
 .tool-desc .oa-prose {
-  font-size: 0.75rem; /* text-xs */
+  font-size: calc(0.75rem * var(--oa-text-scale)); /* text-xs */
   line-height: 1.625; /* leading-relaxed */
   color: var(--color-text-muted);
 }
@@ -1084,7 +1261,7 @@ html[data-app-hidden="true"] *::after {
 .tool-desc .oa-prose li                   { margin-bottom: 0.1em; }
 .tool-desc .oa-prose h1,
 .tool-desc .oa-prose h2,
-.tool-desc .oa-prose h3                   { font-size: 0.75rem; font-weight: 600; margin-top: 0.6em; margin-bottom: 0.2em; color: var(--color-text-muted); }
+.tool-desc .oa-prose h3                   { font-size: calc(0.75rem * var(--oa-text-scale)); font-weight: 600; margin-top: 0.6em; margin-bottom: 0.2em; color: var(--color-text-muted); }
 .tool-desc .oa-prose strong               { color: var(--color-text-muted); }
 .tool-desc .oa-prose em                   { color: var(--color-text-muted); }
 .tool-desc .oa-prose code                 { font-size: 0.85em; color: var(--color-text-muted); background: var(--bg-key); }
@@ -1152,6 +1329,14 @@ html[data-app-hidden="true"] *::after {
     min-width: 40px;
   }
 }
+/* Phones: the primary button of a card, sheet or dialog (Approve, Send an
+   answer, Save) is a 44px target, as on iOS and Android; the rest keep the
+   36px floor so a small phone still shows content. */
+@media (pointer: coarse) and (max-width: 767px) {
+  [data-slot="button"][data-variant="primary"] {
+    min-height: 44px;
+  }
+}
 
 /* Touch density (DESIGN.md): one compact touch size, 36px, for list rows
    and every other control, so small phones (iPhone mini) still show a
@@ -1164,7 +1349,7 @@ html[data-app-hidden="true"] *::after {
   :root {
     --spacing-list-row: 2.25rem;
     --leading-relaxed: 1.5;
-    --spacing-tab-bar: 2.4375rem; /* 36px tab plus its 2px top and 1px bottom edge */
+    --spacing-tab-bar: 2.8125rem; /* 36px tab pills, 4px around, 1px hairline */
   }
   .oa-prose {
     line-height: 1.6;
@@ -1205,4 +1390,19 @@ html[data-app-hidden="true"] *::after {
 }
 ::highlight(plan-comment-active) {
   background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+}
+
+/* Find in session (TranscriptFind): every match on the same soft orange as
+ * plan comments, the current one deeper. */
+::highlight(oa-find) {
+  background-color: var(--accent-orange-soft);
+}
+::highlight(oa-find-current) {
+  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+}
+
+/* The docked composer's height (set by Composer); a narrow window's Review
+ * panel overlay stops there. Zero while no composer is docked. */
+[data-workbench-center] {
+  --composer-h: 0px;
 }

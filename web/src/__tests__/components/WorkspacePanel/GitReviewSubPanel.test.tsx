@@ -6,7 +6,7 @@
  * the whole diff after each agent write.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { WorkspaceChangesResponse } from '@/api/types'
@@ -41,7 +41,9 @@ function changesOf(paths: string[], total = paths.length): WorkspaceChangesRespo
   }
 }
 
-async function renderList(changes: WorkspaceChangesResponse, expanded: string[] = []) {
+type PanelProps = Partial<React.ComponentProps<typeof GitReviewSubPanel>>
+
+async function renderList(changes: WorkspaceChangesResponse, expanded: string[] = [], overrides: PanelProps = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
@@ -54,10 +56,10 @@ async function renderList(changes: WorkspaceChangesResponse, expanded: string[] 
           selectedFilePath={null}
           expandedDiffs={new Set(expanded)}
           toggleDiffExpanded={() => {}}
-          openChangedFile={() => {}}
           openDiffTab={() => {}}
           setMobileFileActions={() => {}}
           setDesktopFileActions={() => {}}
+          {...overrides}
         />
       </QueryClientProvider>,
     )
@@ -75,6 +77,19 @@ describe('Changes list', () => {
     expect(screen.queryByText(/incomplete|Showing/)).toBeNull()
   })
 
+  it('leads each row with the file name, its folder after it', async () => {
+    // A path cut at the end ("web/src/__tests__/components/In…") hid the
+    // one part that tells files apart.
+    await renderList(changesOf(['web/src/components/InputComposer.tsx', 'README.md']))
+
+    const row = screen.getByRole('button', { name: 'Open diff tab for web/src/components/InputComposer.tsx' })
+    const name = within(row).getByText('InputComposer.tsx')
+    const folder = within(row).getByText('web/src/components')
+    expect(name.compareDocumentPosition(folder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(folder.className).toContain('text-(--color-text-muted)')
+    expect(within(screen.getByRole('button', { name: 'Open diff tab for README.md' })).getByText('README.md')).toBeTruthy()
+  })
+
   it('says how many files a capped list leaves out', async () => {
     await renderList(changesOf(['a.ts', 'b.ts', 'c.ts'], 12_345))
 
@@ -82,15 +97,17 @@ describe('Changes list', () => {
   })
 
   it('renders 200 rows at a time', async () => {
-    const user = userEvent.setup()
     await renderList(changesOf(Array.from({ length: 450 }, (_, i) => `f${String(i).padStart(3, '0')}.ts`)))
+    // Hundreds of rows make role queries slow, so this counts list items directly.
+    const list = screen.getByRole('list', { name: 'Changed files' })
+    const count = () => list.querySelectorAll(':scope > li').length
 
-    expect(rows()).toHaveLength(200)
-    await user.click(screen.getByRole('button', { name: 'Show 200 more (250 not shown)' }))
-    expect(rows()).toHaveLength(400)
-    await user.click(screen.getByRole('button', { name: 'Show 50 more (50 not shown)' }))
-    expect(rows()).toHaveLength(450)
-    expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull()
+    expect(count()).toBe(200)
+    act(() => { fireEvent.click(screen.getByText('Show 200 more (250 not shown)')) })
+    expect(count()).toBe(400)
+    act(() => { fireEvent.click(screen.getByText('Show 50 more (50 not shown)')) })
+    expect(count()).toBe(450)
+    expect(screen.queryByText(/^Show \d+ more/)).toBeNull()
   })
 
   it('loads no diff body for a collapsed row', async () => {
@@ -111,7 +128,149 @@ describe('Changes list', () => {
     bodyTruncated = true
     await renderList(changesOf(['a.ts']), ['a.ts'])
 
-    expect(await screen.findByText('This diff is too large to show in full.')).toBeTruthy()
+    const notice = await screen.findByText('This diff is too large to show in full.')
+    // Dark orange on the warning wash, not the 2:1 solid warning hue.
+    expect(notice.className).toContain('text-(--accent-orange-text)')
+    expect(notice.className).toContain('bg-(--color-warning-subtle)')
+    expect(notice.className).not.toContain('text-(--color-warning)')
     expect(screen.getByText('new line')).toBeTruthy()
+  })
+})
+
+describe('Changes list rows', () => {
+  it('opens the diff tab from a click on the row, without peeking', async () => {
+    const user = userEvent.setup()
+    const openDiffTab = mock((_file: unknown) => {})
+    const toggleDiffExpanded = mock((_path: unknown) => {})
+    await renderList(changesOf(['a.ts', 'b.ts']), [], { openDiffTab, toggleDiffExpanded })
+
+    await user.click(screen.getByRole('button', { name: 'Open diff tab for b.ts' }))
+
+    expect(openDiffTab).toHaveBeenCalledTimes(1)
+    expect(openDiffTab.mock.calls[0][0]).toMatchObject({ path: 'b.ts', status: 'M' })
+    expect(toggleDiffExpanded).not.toHaveBeenCalled()
+    expect(bodyRequests()).toHaveLength(0)
+  })
+
+  it('peeks only from the chevron, which says whether the diff is open', async () => {
+    const user = userEvent.setup()
+    const openDiffTab = mock((_file: unknown) => {})
+    const toggleDiffExpanded = mock((_path: unknown) => {})
+    await renderList(changesOf(['a.ts']), ['a.ts'], { openDiffTab, toggleDiffExpanded })
+
+    const chevron = screen.getByRole('button', { name: 'Collapse diff for a.ts' })
+    expect(chevron.getAttribute('aria-expanded')).toBe('true')
+    await user.click(chevron)
+
+    expect(toggleDiffExpanded).toHaveBeenCalledWith('a.ts')
+    expect(openDiffTab).not.toHaveBeenCalled()
+  })
+
+  it('has no hover- or focus-only controls: ⋯ is always there, and the old reveals are gone', async () => {
+    await renderList(changesOf(['a.ts']))
+
+    const more = screen.getByRole('button', { name: 'More actions for a.ts' })
+    expect(more.className).toContain('size-6')
+    expect(more.className).toContain('pointer-coarse:size-9')
+    expect(more.closest('[class*="hidden"]')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open a.ts' })).toBeNull()
+    expect(screen.queryByTitle('Open diff in tab')).toBeNull()
+    expect(screen.queryByTitle('Open file')).toBeNull()
+    // The counts stay put: nothing swaps them out on hover.
+    const row = screen.getByRole('button', { name: 'Open diff tab for a.ts' })
+    expect(row.innerHTML).not.toContain('group-hover')
+  })
+
+  it('opens the file’s actions menu from ⋯ under the button on desktop', async () => {
+    const user = userEvent.setup()
+    const setDesktopFileActions = mock((_value: unknown) => {})
+    const setMobileFileActions = mock((_value: unknown) => {})
+    await renderList(changesOf(['a.ts']), [], { setDesktopFileActions, setMobileFileActions })
+
+    await user.click(screen.getByRole('button', { name: 'More actions for a.ts' }))
+
+    expect(setMobileFileActions).not.toHaveBeenCalled()
+    expect(setDesktopFileActions).toHaveBeenCalledTimes(1)
+    expect(setDesktopFileActions.mock.calls[0][0]).toMatchObject({ file: { path: 'a.ts' }, x: expect.any(Number), y: expect.any(Number) })
+  })
+
+  it('opens the same actions as a sheet from ⋯ on a phone', async () => {
+    const user = userEvent.setup()
+    const setDesktopFileActions = mock((_value: unknown) => {})
+    const setMobileFileActions = mock((_value: unknown) => {})
+    await renderList(changesOf(['a.ts']), [], { mobile: true, setDesktopFileActions, setMobileFileActions })
+
+    await user.click(screen.getByRole('button', { name: 'More actions for a.ts' }))
+
+    expect(setDesktopFileActions).not.toHaveBeenCalled()
+    expect(setMobileFileActions.mock.calls[0][0]).toMatchObject({ path: 'a.ts' })
+  })
+})
+
+describe('Changes list footer', () => {
+  it('has no commit button and no totals bar under the list', async () => {
+    await renderList(changesOf(['a.ts', 'b.ts']))
+
+    expect(screen.queryByRole('button', { name: /commit/i })).toBeNull()
+    expect(screen.queryByText('2 files · +2 · −2')).toBeNull()
+    // The list is the last thing in the view.
+    expect(screen.getByRole('list', { name: 'Changed files' }).nextElementSibling).toBeNull()
+  })
+
+  it('says "No changes" once when nothing is changed', async () => {
+    await renderList(changesOf([]))
+
+    expect(screen.getAllByText('No changes')).toHaveLength(1)
+    expect(screen.queryByText('No changed files')).toBeNull()
+    expect(screen.queryByRole('button', { name: /commit/i })).toBeNull()
+  })
+})
+
+describe('Changes load errors', () => {
+  it('names the failure and offers Retry, which reloads the list', async () => {
+    const user = userEvent.setup()
+    const refetch = mock(async () => {})
+    const queryClient = new QueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GitReviewSubPanel
+          workspace={WORKSPACE}
+          changedFiles={[]}
+          changes={{ isLoading: false, isError: true, refetch }}
+          files={{ isLoading: false, data: { files: [] } }}
+          selectedFilePath={null}
+          expandedDiffs={new Set()}
+          toggleDiffExpanded={() => {}}
+          openDiffTab={() => {}}
+          setMobileFileActions={() => {}}
+          setDesktopFileActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('alert').textContent).toBe('Failed to load changed files.')
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables Retry while the retry runs', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GitReviewSubPanel
+          workspace={WORKSPACE}
+          changedFiles={[]}
+          changes={{ isLoading: false, isError: true, isFetching: true, refetch: async () => {} }}
+          files={{ isLoading: false, data: { files: [] } }}
+          selectedFilePath={null}
+          expandedDiffs={new Set()}
+          toggleDiffExpanded={() => {}}
+          openDiffTab={() => {}}
+          setMobileFileActions={() => {}}
+          setDesktopFileActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

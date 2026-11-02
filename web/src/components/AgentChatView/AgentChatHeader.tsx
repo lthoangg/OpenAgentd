@@ -1,18 +1,20 @@
-import { memo, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
+import { ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
-import { TokenMeter } from '@/components/ui/token-meter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { usePlatform } from '@/hooks/use-platform'
+import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { createAltTapDetector, hasAppMenuButton, showAppMenu } from '@/lib/native-menu'
+import { useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
-import { CommandCenterButton } from './CommandCenterButton'
+import { HeaderSessionTitle } from './HeaderSessionTitle'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import type { GoalHeaderState } from '@/lib/work'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
@@ -27,7 +29,14 @@ interface AgentChatHeaderProps {
   /** Chat entry from the workspace tree — labels the chat root as "Chat". */
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
+  /**
+   * Whether the desktop title renames on double-click / F2. False for a
+   * subagent's session, which the sidebar does not rename either; phones
+   * rename from the drawer and never show the field.
+   */
+  canRenameSession?: boolean
   onSidebarToggle: () => void
+  /** Context use for the phone's More sheet; the run deck's ring shows it everywhere else. */
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
   todos: TodoItem[]
@@ -39,18 +48,71 @@ interface AgentChatHeaderProps {
   goalState?: GoalHeaderState | null
   workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
-  agentCapabilitiesOpen: boolean
-  onToggleAgentCapabilities: () => void
+  /** Opens the run picker (model, thinking, account) from the phone's More sheet. */
+  onToggleRunPicker: () => void
   showMobileActions: boolean
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
   mobileActionsDragOffset?: number | null
   onToggleScheduler: () => void
   onOpenTerminal?: () => void
   onCloseMobileActionsMenu: () => void
-  /** Desktop command center and the mobile drawer's palette row; hidden or disabled when omitted. */
+  /** The phone More sheet's palette row; hidden when omitted (desktop opens it from the keyboard and menus). */
   onOpenPalette?: () => void
   /** Mobile drawer's file search; disabled when omitted (no workspace). */
   onQuickOpen?: () => void
+}
+
+/**
+ * ☰: the application menu where the OS menu bar is hidden (Windows, Linux),
+ * opened at the button's bottom-left. A bare Alt tap opens it there too, the
+ * way those platforms open a menu bar. A narrow window uses the phone layout,
+ * whose ☰ is the sidebar drawer, so the button hides and Alt still works.
+ */
+function AppMenuButton({ hidden }: { hidden: boolean }) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const opening = useRef(false)
+  const open = useCallback(() => {
+    if (opening.current) return
+    opening.current = true
+    const rect = buttonRef.current?.getBoundingClientRect()
+    void showAppMenu({ x: rect?.left ?? 8, y: rect?.bottom ?? 36 }).finally(() => {
+      opening.current = false
+    })
+  }, [])
+  useEffect(() => {
+    const alt = createAltTapDetector(open)
+    // Capture: a handler further in that stops the event must not hide the key.
+    window.addEventListener('keydown', alt.onKeyDown, true)
+    window.addEventListener('keyup', alt.onKeyUp, true)
+    window.addEventListener('pointerdown', alt.onPointerDown, true)
+    window.addEventListener('blur', alt.onBlur)
+    return () => {
+      window.removeEventListener('keydown', alt.onKeyDown, true)
+      window.removeEventListener('keyup', alt.onKeyUp, true)
+      window.removeEventListener('pointerdown', alt.onPointerDown, true)
+      window.removeEventListener('blur', alt.onBlur)
+    }
+  }, [open])
+  if (hidden) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={open}
+            aria-label="Application menu"
+            aria-haspopup="menu"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
+          >
+            <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>Application menu (Alt)</TooltipContent>
+    </Tooltip>
+  )
 }
 
 export const AgentChatHeader = memo(function AgentChatHeader({
@@ -60,6 +122,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   workspace,
   chatWorkspace = null,
   sessionTitle,
+  canRenameSession = true,
   onSidebarToggle,
   headerTokens,
   sessionId,
@@ -69,8 +132,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   goalState = null,
   workspacePanel,
   onWorkspaceFiles,
-  agentCapabilitiesOpen,
-  onToggleAgentCapabilities,
+  onToggleRunPicker,
   showMobileActions,
   setShowMobileActions,
   mobileActionsDragOffset = null,
@@ -80,7 +142,20 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onOpenPalette,
   onQuickOpen,
 }: AgentChatHeaderProps) {
-  const { os } = usePlatform()
+  const platform = usePlatform()
+  const { os } = platform
+  // Windows: this header is the title bar, and the page's caption buttons
+  // (WindowCaptionButtons, fixed at the top right) take its last 3 × 46px.
+  const captionInset = hasWindowCaption(platform)
+  // The sidebar's mutation, so a rename here shows in both at once.
+  const { mutate: mutateSessionTitle } = useUpdateSessionTitleMutation()
+  const pushToast = useToastStore((s) => s.push)
+  const renameSession = useCallback(
+    (id: string, title: string) => {
+      mutateSessionTitle({ id, title }, { onError: () => pushToast({ tone: 'error', title: 'Could not rename session' }) })
+    },
+    [mutateSessionTitle, pushToast],
+  )
   // Published by the mounted transcript; a new chat has no prompts to step.
   const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
   const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
@@ -98,16 +173,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.sidebar, os)
   const dockShortcut = shortcutLabel(APP_SHORTCUTS.workspaceFiles, os)
 
-  return (
-    <header
-      {...dragHandlers}
-      // Desktop zoning (dark only): the header joins the sidebar and status
-      // bar on the recessed rail tone; light mode keeps one page tone.
-      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar) ${
-        isMacOverlay ? 'select-none pl-[70px]' : ''
-      }`}
-    >
-        <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+  const leadButtons = (
+    <>
+          {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}
           {/* Toggles the desktop sidebar, or the drawer on mobile. */}
           <Tooltip>
             <TooltipTrigger
@@ -118,40 +186,126 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     onSidebarToggle()
                   }}
                   aria-label="Toggle sidebar"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 max-md:pointer-coarse:size-9"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
                 >
-                  <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                  {/* Phones open a drawer (menu); desktop folds a rail (panel). */}
+                  {isMobile ? (
+                    <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
+                  ) : (
+                    <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                  )}
                 </button>
               }
             />
             <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
           </Tooltip>
-          {/* Read-only: sessions are renamed from their sidebar row. */}
-          {workspace && !isMobile ? (
-            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
-              <TooltipTrigger
-                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
-                render={
-                  <span className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
-                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
-                    {sessionTitle && (
-                      <>
-                        <TitleSeparator sessionId={sessionId} title={sessionTitle} />
-                        <AnimatedTitle text={sessionTitle} sessionId={sessionId} className="text-(--color-text-muted)" />
-                      </>
-                    )}
-                  </span>
-                }
-              />
-              <TooltipContent>{sessionTitle ? `${workspaceName}: ${sessionTitle}` : workspaceTooltip}</TooltipContent>
-            </Tooltip>
-          ) : null}
+    </>
+  )
+
+  if (!isMobile) {
+    return (
+      // Desktop: the header splits where the columns below it do (caps as
+      // wide as the sidebar and the Review panel; geometry in index.css →
+      // Header caps), so both read as columns from the top of the window.
+      <header
+        {...dragHandlers}
+        // Zoning (dark only): the header joins the sidebar and status bar on
+        // the recessed rail tone; light mode keeps one page tone. Its bottom
+        // line runs the full width, over the sidebar too: one bar.
+        className={cn(
+          'mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-stretch overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+          (isMacOverlay || captionInset) && 'select-none',
+        )}
+      >
+        <div
+          data-header-cap="sidebar"
+          // The traffic lights sit over the sidebar, as in a native app; the
+          // toggle keeps a native gap from them (they end near 66px).
+          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
+        >
+          {leadButtons}
+        </div>
+        {/* The title over the chat, then the Review panel's cap. The command
+            palette has no button: ⌘K and the View menu open it. */}
+        <div data-header-main="" className="flex min-w-0 flex-1 items-stretch">
+          {/* Workspace · session. Double-click the session (or F2 on it) to
+              rename it here too; phones rename from the drawer. */}
+          <div className="flex min-w-0 flex-1 items-center pr-2 pl-3">
+            {workspace ? (
+              <div className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
+                <Tooltip className="shrink-0">
+                  <TooltipTrigger render={<span className="font-semibold text-(--color-text)">{workspaceName}</span>} />
+                  <TooltipContent>{workspaceTooltip}</TooltipContent>
+                </Tooltip>
+                {sessionTitle && (
+                  <>
+                    <TitleSeparator sessionId={sessionId} title={sessionTitle} />
+                    <HeaderSessionTitle
+                      // A new session starts closed: no field carries over.
+                      key={sessionId ?? 'new'}
+                      sessionId={sessionId}
+                      title={sessionTitle}
+                      onRename={canRenameSession && sessionId ? (title) => renameSession(sessionId, title) : undefined}
+                    />
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <div
+            data-header-cap="dock"
+            // Windows: this header is the title bar, and the page's caption
+            // buttons (fixed at the top right) take its last 3 × 46px.
+            className={cn('oa-header-cap-dock flex shrink-0 items-center justify-end gap-0.5 pl-1', captionInset ? 'pr-[138px]' : 'pr-1')}
+          >
+            <AgentTopbar
+              isMobile={false}
+              todosAction={{
+                Icon: ListTodo,
+                onClick: onToggleTasks,
+                disabled: !sessionId,
+                title: sessionId
+                  ? `${goalState ? `${goalState.text} · ` : ''}Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
+                  : 'No active session',
+                ariaLabel: 'Task list',
+                badge: todoSummary.progressLabel,
+                indicator: todoSummary.hasInProgress,
+                goalTone: goalState?.tone,
+                indicatorClassName: 'bg-(--color-text-2)',
+                pressed: tasksViewActive,
+                className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
+              }}
+              filesAction={workspace ? {
+                    Icon: PanelRight,
+                    onClick: onWorkspaceFiles,
+                    title: `${dockOpen ? 'Hide' : 'Show'} Review panel (${dockShortcut})`,
+                    ariaLabel: 'Review panel',
+                    pressed: dockOpen,
+                    className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
+                  } : undefined}
+            />
+          </div>
+        </div>
+      </header>
+    )
+  }
+
+  return (
+    <header
+      {...dragHandlers}
+      // Phones: one bar, the middle given to the title.
+      className={cn(
+        'mobile-safe-header grid h-(--spacing-app-header) shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+        isMacOverlay && 'select-none pl-[70px]',
+        captionInset && 'select-none pr-[138px]',
+      )}
+    >
+        <div className={`mr-1 flex h-full min-w-0 items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+          {leadButtons}
         </div>
 
-        {/* Center: mobile title, or the desktop command-center search. */}
-        <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1 md:justify-center">
-          {isMobile ? (
-            // Phones: the session first, its workspace under it.
+        {/* Center: the session first, its workspace under it. */}
+        <div className="flex min-w-0 justify-start overflow-hidden px-1">
             <div className="flex min-w-0 flex-col justify-center leading-tight">
               {!workspace ? (
                 <span className="truncate text-sm font-semibold text-(--color-text)">Choose a workspace</span>
@@ -160,39 +314,15 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                   <span className="truncate text-sm font-semibold text-(--color-text)">
                     {sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'}
                   </span>
-                  <span className="truncate text-[11px] text-(--color-text-muted)">{workspaceName}</span>
+                  <span className="truncate text-meta text-(--color-text-muted)">{workspaceName}</span>
                 </>
               )}
             </div>
-          ) : onOpenPalette ? (
-            <CommandCenterButton onClick={onOpenPalette} />
-          ) : null}
         </div>
 
-        {/* Right cluster — desktop gets the full action row. Mobile keeps
-            frequent actions visible and leaves secondary panels in More. */}
-        <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
-        {isMobile ? (
-          <>
-            {/* Context at a glance; the ring's popover has the numbers. A new
-                chat has no context yet, so it keeps the header for the title. */}
-            {headerTokens && sessionId && (
-              <TokenMeter
-                input={headerTokens.input}
-                output={headerTokens.output}
-                cached={headerTokens.cached}
-                cachedPercent={headerTokens.cachedPercent}
-                sessionCostUsd={headerTokens.sessionCostUsd}
-                trigger={headerTokens.trigger}
-              />
-            )}
-            {/* One tap to the model and thinking level (desktop has the status bar). */}
-            <MobileHeaderAction
-              Icon={SlidersHorizontal}
-              label="Session settings"
-              onClick={onToggleAgentCapabilities}
-              active={agentCapabilitiesOpen}
-            />
+        {/* Right cluster: frequent actions stay visible, secondary panels
+            live in More. */}
+        <div className="flex min-w-0 items-center justify-self-end gap-0.5 md:pr-1">
             <MobileHeaderAction
               Icon={PanelRight}
               label="Review panel"
@@ -210,7 +340,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               openTasks={activeTodoCount}
               goalTone={goalState?.tone}
               goalText={goalState?.text ?? null}
-              onSessionSettings={() => { onCloseMobileActionsMenu(); if (!agentCapabilitiesOpen) onToggleAgentCapabilities() }}
+              onModelSettings={() => { onCloseMobileActionsMenu(); onToggleRunPicker() }}
               tokens={headerTokens}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
@@ -219,36 +349,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               onQuickOpen={onQuickOpen ? () => { onQuickOpen(); onCloseMobileActionsMenu() } : undefined}
               onCommandPalette={onOpenPalette ? () => { onOpenPalette(); onCloseMobileActionsMenu() } : undefined}
             />
-          </>
-        ) : (
-          <AgentTopbar
-            isMobile={false}
-            tokens={headerTokens}
-            todosAction={{
-              Icon: ListTodo,
-              onClick: onToggleTasks,
-              disabled: !sessionId,
-              title: sessionId
-                ? `${goalState ? `${goalState.text} · ` : ''}Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
-                : 'No active session',
-              ariaLabel: 'Task list',
-              badge: todoSummary.progressLabel,
-              indicator: todoSummary.hasInProgress,
-              goalTone: goalState?.tone,
-              indicatorClassName: 'bg-(--color-info)',
-              pressed: tasksViewActive,
-              className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
-            }}
-            filesAction={workspace ? {
-                  Icon: PanelRight,
-                  onClick: onWorkspaceFiles,
-                  title: `${dockOpen ? 'Close' : 'Open'} review dock (${dockShortcut})`,
-                  ariaLabel: 'Changed files and workspace files',
-                  pressed: dockOpen,
-                  className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
-                } : undefined}
-          />
-        )}
         </div>
     </header>
   )

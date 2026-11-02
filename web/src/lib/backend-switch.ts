@@ -70,7 +70,7 @@ export function reloadForBackendSwitch(): void {
 
 /** What the switching screen calls the builtin sidecar. */
 export const BUILTIN_SWITCH_TARGET: BackendSwitchTarget = {
-  name: 'the builtin server',
+  name: 'the built-in server',
   detail: "Running sessions continue once it's up.",
 }
 

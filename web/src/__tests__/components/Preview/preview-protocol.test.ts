@@ -17,6 +17,11 @@ describe('parsePageMessage', () => {
     expect(parsePageMessage(event(msg({ type: 'mode', mode: 'browse' })), ORIGIN, frame)).toEqual({ type: 'mode', mode: 'browse' })
   })
 
+  it("reads the page's document id on ready, and the page starting to leave", () => {
+    expect(parsePageMessage(event(msg({ type: 'ready', path: '/', title: '', status: 'ok', doc: 'd1' })), ORIGIN, frame)).toEqual({ type: 'ready', path: '/', title: '', status: 'ok', doc: 'd1' })
+    expect(parsePageMessage(event(msg({ type: 'leaving' })), ORIGIN, frame)).toEqual({ type: 'leaving' })
+  })
+
   it('ignores other origins, other windows, and foreign payloads', () => {
     const ready = msg({ type: 'ready', path: '/' })
     expect(parsePageMessage(event(ready, { origin: 'http://evil.example' }), ORIGIN, frame)).toBeNull()

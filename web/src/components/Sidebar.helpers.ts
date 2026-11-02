@@ -187,7 +187,7 @@ export function groupSessionsByDate(
 }
 
 /**
- * Needs you · Working · Recent. ``active`` is every session running or
+ * Needs you · Running · Recent. ``active`` is every session running or
  * waiting (one page, any age); ``recent`` the paged list, which may repeat
  * them. Keeps each input's order and drops empty groups.
  */
@@ -200,7 +200,7 @@ export function groupSessionsByStatus(
   const activeIds = new Set([...needsYou, ...working].map((session) => session.id))
   const groups: SessionGroup[] = [
     { id: 'needs_input', label: 'Needs you', sessions: needsYou },
-    { id: 'running', label: 'Working', sessions: working },
+    { id: 'running', label: 'Running', sessions: working },
     { id: 'recent', label: 'Recent', sessions: recent.filter((session) => !activeIds.has(session.id)) },
   ]
   return groups.filter((group) => group.sessions.length > 0)

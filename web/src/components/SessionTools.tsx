@@ -1,12 +1,11 @@
 /**
- * SessionTools — what this session can actually do, grouped by origin.
+ * SessionTools — what an agent can actually do right now, grouped by origin.
  *
- * Open by default in session settings. The inventory is reference material you consult
- * occasionally, while the model picker and the MCP switches above it are used
- * every session. Users can toggle it closed if needed.
+ * Shown under the agent's form in Settings → Agents: reference material you
+ * consult occasionally, so it starts closed there.
  *
- * Enable/disable for MCP servers deliberately lives in `SessionMcpServers`, not
- * here. This section only reads.
+ * Enable/disable for MCP servers deliberately lives in `SessionMcpServers` (the
+ * composer's "+" menu), not here. This section only reads.
  */
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -56,7 +55,7 @@ function groupTools(tools: AgentInfo['tools'], mcpServers: string[]): ToolGroup[
 
 function CountBadge({ count }: { count: number }) {
   return (
-    <span className="text-[11px] font-normal tabular-nums text-(--color-text-subtle)">
+    <span className="text-meta font-normal tabular-nums text-(--color-text-subtle)">
       · {count}
     </span>
   )
@@ -189,7 +188,7 @@ export function SessionTools({
       </h2>
 
       {open && (
-        <div className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+        <div className="overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)">
           {showSearch && (
             <div className="border-b border-(--color-border-subtle) px-4 py-3">
               <SearchBar

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useFakeTimers } from '../fake-timers'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
@@ -9,9 +10,10 @@ import { loadLastWorkspace, loadWorkspaces, saveLastWorkspace } from '@/utils/wo
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
-import { useUIStore } from '@/stores/useUIStore'
+import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import {
   addExpandedPaths,
@@ -57,7 +59,6 @@ import {
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
 } from '@/components/Sidebar.worktrees'
-import { DURATIONS_S } from '@/lib/motion'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -165,17 +166,25 @@ mock.module('@/hooks/use-mobile', () => ({
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useReducedMotion: () => false,
+  // The phone's session-actions bottom sheet drags to close.
+  useDragControls: () => ({ start: () => {} }),
   motion: {
     aside: ({ children, animate, initial, exit, transition, ...props }: React.ComponentProps<'aside'> & { animate?: unknown; initial?: unknown; exit?: unknown; transition?: unknown }) => {
       void initial
       void exit
       return <aside data-animate={JSON.stringify(animate)} data-transition={JSON.stringify(transition)} {...props}>{children}</aside>
     },
-    div: ({ children, initial, animate, exit, transition, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown }) => {
+    div: ({ children, initial, animate, exit, transition, drag, dragConstraints, dragElastic, dragControls, dragListener, onDragEnd, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown; drag?: unknown; dragConstraints?: unknown; dragElastic?: unknown; dragControls?: unknown; dragListener?: unknown; onDragEnd?: unknown }) => {
       void initial
       void animate
       void exit
       void transition
+      void drag
+      void dragConstraints
+      void dragElastic
+      void dragControls
+      void dragListener
+      void onDragEnd
       return <div {...props}>{children}</div>
     },
   },
@@ -196,6 +205,7 @@ mock.module('@/lib/app-backend', () => ({
 const Icon = () => null
 mock.module('lucide-react', () => ({
   SlidersHorizontal: Icon, Activity: Icon,
+  AppWindow: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
@@ -213,6 +223,7 @@ mock.module('lucide-react', () => ({
   Globe: Icon,
   HelpCircle: Icon,
   Home: Icon,
+  Link: Icon,
   ListFilter: Icon,
   Loader2: Icon,
   MessageCircle: Icon,
@@ -221,6 +232,7 @@ mock.module('lucide-react', () => ({
   PinOff: Icon,
   Plus: Icon,
   Search: Icon,
+  Share: Icon,
   SquarePen: Icon,
   Settings: Icon,
   Settings2: Icon,
@@ -562,7 +574,7 @@ describe('Sidebar helpers', () => {
     })
     expect(draftNavigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false })
 
-    // Open folder on a folder the sidebar does not list registers it first.
+    // Open workspace on a folder the sidebar does not list registers it first.
     const setVisibility = mock(async (..._args: unknown[]) => ({ workspace: '/repo/new', hidden: false, updated: 0 }))
     let refreshCount = 0
     const folderNavigate = mock((..._args: unknown[]) => {})
@@ -947,7 +959,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(dialogOpen).toHaveBeenCalledWith({
       directory: true,
       multiple: false,
-      title: 'Open folder',
+      title: 'Open workspace',
     })
 
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
@@ -979,17 +991,48 @@ describe('Sidebar workspace trust flow', () => {
     expect(dialogOpen).toHaveBeenCalledWith({
       directory: true,
       multiple: false,
-      title: 'Open folder',
+      title: 'Open workspace',
     })
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
   })
 
-  it('animates desktop collapse width', async () => {
-    const view = await renderSidebarWithProps({ desktopCollapsed: true })
-    const sidebar = view.container.querySelector('aside')
+  it('slides shut on desktop: a short width tween, its rows held at their width and riding the edge', async () => {
+    const { Sidebar } = await import('@/components/Sidebar')
+    const queryClient = new QueryClient()
+    const tree = (collapsed: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <Sidebar desktopCollapsed={collapsed} />
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(tree(false)) })
+    const sidebar = view!.container.querySelector('aside') as HTMLElement
+    const region = sidebar.querySelector('[data-focus-region="sidebar"]') as HTMLElement
+    // At rest nothing tweens, so a window resize moves the edge at once.
+    expect(sidebar.style.transition).toBe('')
+    expect(region.style.width).toBe('')
+    const open = sidebar.style.width
 
-    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: DURATIONS_S.base })
+    await act(async () => { view!.rerender(tree(true)) })
+    expect(sidebar.style.width).toBe('0px')
+    expect(sidebar.style.transition).toContain('width')
+    // The rows keep the open width and sit at the moving edge, so they
+    // slide out with it instead of rewrapping every frame.
+    expect(region.style.width).toBe(open)
+    expect(region.className).toContain('self-end')
+    // The hairline and the drawer stay until the slide is over.
+    expect(sidebar.className.split(' ')).not.toContain('border-r-0')
+  })
+
+  it('covers the content as a drawer in a narrow window, closing on a click outside', async () => {
+    const onCollapse = mock(() => {})
+    const view = await renderSidebarWithProps({ desktopCollapsed: false, drawer: true, onCollapse })
+    const sidebar = view.container.querySelector('aside') as HTMLElement
+    expect(sidebar.className).toContain('absolute')
+    expect(sidebar.className).toContain('shadow-(--shadow-depth)')
+    fireEvent.pointerDown(view.container.querySelector('[data-sidebar-drawer-backdrop]') as HTMLElement)
+    expect(onCollapse).toHaveBeenCalledTimes(1)
   })
 
   it('keeps a collapsed sidebar out of Tab order', async () => {
@@ -1000,21 +1043,38 @@ describe('Sidebar workspace trust flow', () => {
     expect(open.container.querySelector('aside')?.hasAttribute('inert')).toBe(false)
   })
 
+  it('leaves no 1px edge down the window side once collapsed', async () => {
+    // Collapsed to 0 wide, its right border still drew a hairline at x=0.
+    const collapsed = await renderSidebarWithProps({ desktopCollapsed: true })
+    expect(collapsed.container.querySelector('aside')?.className.split(' ')).toContain('border-r-0')
+    collapsed.unmount()
+    const open = await renderSidebarWithProps({ desktopCollapsed: false })
+    expect(open.container.querySelector('aside')?.className.split(' ')).not.toContain('border-r-0')
+  })
+
   it('re-clamps the resize bounds when the window shrinks, not only on the next unrelated render', async () => {
     const originalWidth = window.innerWidth
     try {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 })
-      await renderSidebarWithProps({ desktopCollapsed: false })
+      await renderSidebarWithProps({ desktopCollapsed: false, dockOpen: true })
       const separator = screen.getByRole('separator', { name: 'Resize sidebar' })
       expect(separator.getAttribute('aria-valuemax')).toBe('440')
 
-      // 1000 - 400 (chat) - 340 (dock) leaves 260px for the sidebar.
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+      // 1100 - 400 (chat) - 340 (open Review panel) leaves 360px for the sidebar.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 })
       act(() => {
         window.dispatchEvent(new Event('resize'))
       })
-      expect(separator.getAttribute('aria-valuemax')).toBe('260')
-      expect(separator.getAttribute('aria-valuenow')).toBe('260')
+      expect(separator.getAttribute('aria-valuemax')).toBe('360')
+      expect(separator.getAttribute('aria-valuenow')).toBe('264')
+
+      // 960 leaves the minimum for the chat and the panel: 220px.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 960 })
+      act(() => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      expect(separator.getAttribute('aria-valuemax')).toBe('220')
+      expect(separator.getAttribute('aria-valuenow')).toBe('220')
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
     }
@@ -1084,7 +1144,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(await screen.findByText('Trust this workspace?')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /^back$/i }))
 
-    expect(screen.getByText('Open folder')).toBeTruthy()
+    expect(screen.getByText('Open workspace')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
     expect(loadLastWorkspace()).toBeNull()
   })
@@ -1229,6 +1289,38 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Expand workspace project')).toBeTruthy()
     expect(screen.getByText('Background running session')).toBeTruthy()
     expect(screen.getByLabelText('Session running')).toBeTruthy()
+  })
+
+  it('folds a workspace shut with the height motion, its rows staying until the fold ends', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderSidebarForSessions(undefined)
+    const timers = useFakeTimers()
+    try {
+      act(() => { fireEvent.click(screen.getByLabelText('Collapse workspace project')) })
+
+      // Folding, not cut: the rows ride the closing fold out of sight.
+      const row = screen.getByText('Idle session')
+      expect(row.closest('[data-slot="collapsible"]')?.getAttribute('data-state')).toBe('closed')
+      act(() => timers.tick(300))
+      expect(screen.queryByText('Idle session')).toBeNull()
+    } finally {
+      timers.restore()
+    }
+
+    act(() => { fireEvent.click(screen.getByLabelText('Expand workspace project')) })
+    expect(screen.getByText('Idle session').closest('[data-slot="collapsible"]')?.getAttribute('data-state')).toBe('open')
   })
 
   it('hides a main repository from the sidebar without deleting it', async () => {
@@ -1530,17 +1622,17 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
   })
 
-  it('opens session search on the searchSessions event and closes it on Escape', async () => {
+  it('opens session search from its button and gives focus back on Escape', async () => {
     const user = userEvent.setup()
     await renderSidebarForSessions(undefined)
 
-    act(() => { window.dispatchEvent(new Event(APP_EVENTS.searchSessions)) })
+    await user.click(screen.getByRole('button', { name: 'Search sessions' }))
     const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
     await waitFor(() => expect(document.activeElement).toBe(input))
 
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('searchbox')).toBeNull()
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' })))
   })
 
   it('lists upcoming scheduled tasks soonest first and opens the scheduler on one', async () => {
@@ -1581,6 +1673,148 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(useUIStore.getState().scheduledTaskFocus).toBe('soon')
     expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Scheduled when nothing is scheduled, with a + that opens a new task', async () => {
+    const user = userEvent.setup()
+    const baseFetch = globalThis.fetch
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      if (String(input).includes('/api/scheduler/tasks')) return new Response(JSON.stringify({ tasks: [] }))
+      return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+    }) as typeof fetch
+    const opened = mock(() => {})
+    window.addEventListener(APP_EVENTS.openScheduler, opened)
+
+    await renderSidebarForSessions(undefined)
+    const section = await screen.findByRole('region', { name: 'Scheduled' })
+    await waitFor(() => expect(section.textContent).toContain('No scheduled tasks'))
+
+    await user.click(within(section).getByRole('button', { name: 'New scheduled task' }))
+    window.removeEventListener(APP_EVENTS.openScheduler, opened)
+    expect(useUIStore.getState().scheduledTaskFocus).toBe(NEW_SCHEDULED_TASK)
+    expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  describe('getting around', () => {
+    const twoWorkspaces = () => {
+      sessionsData = [
+        { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+        { id: 'session-2', title: 'Other work', agent_name: 'lead', created_at: '2026-05-12T00:00:00Z', updated_at: '2026-05-12T00:00:00Z', mode: 'coding', workspace: '/repo/other' },
+      ]
+      workspaceSessionsData = sessionsData
+    }
+
+    it('starts a new session from the New session row the way ⌘N does', async () => {
+      twoWorkspaces()
+      const onNewSession = mock(() => {})
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', onNewSession })
+
+      const row = screen.getByRole('button', { name: 'New session' })
+      expect(row.getAttribute('aria-keyshortcuts')).toBe('Meta+N')
+      fireEvent.click(row)
+      expect(onNewSession).toHaveBeenCalledTimes(1)
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('opens a draft in the current workspace when the chat has no handler', async () => {
+      twoWorkspaces()
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+      expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false })
+    })
+
+    it('opens a workspace’s latest session from its name, and folds only from the chevron', async () => {
+      twoWorkspaces()
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open workspace other' }))
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-2' } }))
+
+      // The workspace on screen has nothing to open: its name never folds it.
+      navigate.mockClear()
+      fireEvent.click(screen.getByRole('button', { name: 'Open workspace project' }))
+      expect(navigate).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Collapse workspace project' })).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse workspace project' }))
+      expect(screen.getByRole('button', { name: 'Expand workspace project' }).getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('opens a draft from a workspace name when the workspace has no sessions', async () => {
+      twoWorkspaces()
+      worktreesByRepo = {}
+      // Only the tree knows /repo/empty; no list has a session there.
+      const baseFetch = globalThis.fetch
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        const url = String(input)
+        if (url.includes('/api/agent/workspace/tree')) {
+          const tree = workspaceTreeResponse()
+          return new Response(JSON.stringify({ ...tree, repositories: [...tree.repositories, { path: '/repo/empty', name: 'empty', worktrees: [], group_ids: [] }] }))
+        }
+        if (url.includes('/api/agent/sessions?')) return new Response(JSON.stringify({ data: [], has_more: false, next_cursor: null }))
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Open workspace empty' }))
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false }))
+    })
+
+    it('shows placeholders while the tree loads and Retry when it fails, never "No workspaces yet"', async () => {
+      let treeRequests = 0
+      let failTree = true
+      const baseFetch = globalThis.fetch
+      let releaseTree: () => void = () => {}
+      const treeGate = new Promise<void>((resolve) => { releaseTree = resolve })
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        if (String(input).includes('/api/agent/workspace/tree')) {
+          treeRequests += 1
+          await treeGate
+          if (failTree) return new Response(JSON.stringify({ detail: 'boom' }), { status: 500 })
+          return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [], group_ids: [] }], chat: null, groups: [] }))
+        }
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
+      const { Sidebar } = await import('@/components/Sidebar')
+      // No automatic retries, so the failure shows at once.
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <Sidebar workspace={null} />
+        </QueryClientProvider>,
+      )
+
+      expect(screen.getByRole('status', { name: 'Loading workspaces' })).toBeTruthy()
+      expect(screen.queryByText('No workspaces yet.')).toBeNull()
+
+      await act(async () => { releaseTree() })
+      const retry = await screen.findByRole('button', { name: 'Retry' })
+      expect(screen.getByText('Couldn’t load workspaces.')).toBeTruthy()
+      expect(screen.queryByText('No workspaces yet.')).toBeNull()
+
+      failTree = false
+      fireEvent.click(retry)
+      expect(await screen.findByRole('button', { name: 'Open workspace project' })).toBeTruthy()
+      expect(treeRequests).toBe(2)
+    })
+
+    it('lists every section in one scroller under an always-visible New session row', async () => {
+      twoWorkspaces()
+      pinnedSessionsData = [{ id: 'pinned-1', title: 'Pinned review', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', pinned_at: '2026-05-14T00:00:00Z' }]
+      const view = await renderSidebarForSessions('session-1')
+
+      const scroller = view!.container.querySelector('[data-sidebar-scroller]') as HTMLElement
+      expect(scroller.className).toContain('overflow-y-auto')
+      expect(scroller.contains(screen.getByRole('region', { name: 'Pinned' }))).toBe(true)
+      expect(scroller.contains(screen.getByRole('region', { name: 'Scheduled' }))).toBe(true)
+      expect(scroller.contains(screen.getByRole('button', { name: 'New session' }))).toBe(false)
+      // No section scrolls on its own.
+      expect(Array.from(view!.container.querySelectorAll('.overflow-y-auto'))).toEqual([scroller])
+      // Touch keeps the pin mark, though it drops the rest of the row meta for ⋯.
+      const pinMark = view!.container.querySelector('[data-pin-mark]') as HTMLElement
+      expect(pinMark.className).not.toContain('pointer-coarse:hidden')
+    })
   })
 
   it('keeps the sidebar on the page tone in light mode and the rail in dark', async () => {
@@ -1802,9 +2036,14 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarWithProps({ workspace: '/repo/project' })
 
-    const repoRow = await waitFor(() => screen.getByLabelText(/(Expand|Collapse) workspace project/))
+    const repoRow = await waitFor(() => screen.getByLabelText('Open workspace project'))
     // Desktop says "folder not found"; phones show the shorter "missing".
     expect(repoRow.querySelector('[data-sidebar-missing]')?.textContent).toBe('folder not foundmissing')
+    // So do touch tablets, whose row actions always show: the long label
+    // left one letter of the name in a 264px drawer.
+    const [long, short] = Array.from(repoRow.querySelectorAll('[data-sidebar-missing] [class*="md:"]'))
+    expect(long.className).toContain('pointer-coarse:hidden')
+    expect(short.className).toContain('pointer-coarse:inline')
     // Neither the subfolder nor the outside worktree is a repository row.
     expect(screen.queryByLabelText(/(Expand|Collapse) repository (web|project-fix)/)).toBeNull()
     await user.click(screen.getByLabelText(/^Worktrees for project/))
@@ -1858,11 +2097,15 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
     // The filter chip grows on touch like the row actions (DESIGN.md touch parity).
     expect(chip.className).toContain('pointer-coarse:h-9')
+    // ...and, like a phone's, holds only the count (and the branch mark), so
+    // the always-shown touch actions leave the name its room.
+    expect(within(chip).getByText(/worktree/).className).toContain('pointer-coarse:hidden')
 
     await user.click(chip)
     const menu = screen.getByRole('menu', { name: 'Worktrees for project' })
-    expect(within(menu).getByRole('menuitemradio', { name: 'All checkouts' }).getAttribute('aria-checked')).toBe('true')
-    expect(within(menu).getByRole('menuitemradio', { name: 'Main worktree' }).getAttribute('aria-checked')).toBe('false')
+    expect(within(menu).getByRole('menuitemradio', { name: 'Workspace and worktrees' }).getAttribute('aria-checked')).toBe('true')
+    expect(within(menu).getByRole('menuitemradio', { name: 'Workspace' }).getAttribute('aria-checked')).toBe('false')
+    expect(menu.textContent).not.toMatch(/checkout|main worktree/i)
     await user.click(within(menu).getByRole('menuitemradio', { name: 'task-a' }))
 
     expect(screen.queryByRole('menu')).toBeNull()
@@ -1886,7 +2129,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(resolveCalled).toBe(false)
 
     // The list names its filter and clears it in one step.
-    await user.click(screen.getByRole('button', { name: 'Show all checkouts in project' }))
+    await user.click(screen.getByRole('button', { name: 'Show all worktrees in project' }))
     expect(screen.getByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ })).toBeTruthy()
     expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
@@ -2130,11 +2373,13 @@ describe('Sidebar workspace trust flow', () => {
       for (const el of [
         row('First'),
         row('Second'),
-        screen.getByLabelText('Collapse workspace project'),
+        screen.getByLabelText('Open workspace project'),
         screen.getByLabelText('Pin session First'),
         screen.getByLabelText('More actions for First'),
         screen.getByLabelText('Actions for project'),
       ]) expect(el.tabIndex).toBe(0)
+      // The chevron is a pointer target; ←/→ on the name fold from the keyboard.
+      expect(screen.getByLabelText('Collapse workspace project').tabIndex).toBe(-1)
     })
 
     it('climbs and folds the workspace with Left/Right', async () => {
@@ -2143,12 +2388,15 @@ describe('Sidebar workspace trust flow', () => {
       await renderSidebarForSessions('session-1')
       row('Second').focus()
       await user.keyboard('{ArrowLeft}')
-      const header = screen.getByLabelText('Collapse workspace project')
+      const header = screen.getByLabelText('Open workspace project')
       expect(document.activeElement).toBe(header)
+      expect(header.getAttribute('aria-description')).toBe('Expanded')
       await user.keyboard('{ArrowLeft}')
-      expect(screen.getByLabelText('Expand workspace project')).toBe(header)
+      expect(header.getAttribute('aria-description')).toBe('Collapsed')
+      expect(screen.getByLabelText('Expand workspace project').getAttribute('aria-expanded')).toBe('false')
       await user.keyboard('{ArrowRight}')
-      expect(screen.getByLabelText('Collapse workspace project')).toBe(header)
+      expect(header.getAttribute('aria-description')).toBe('Expanded')
+      expect(document.activeElement).toBe(header)
     })
 
     it('renames with F2, deletes with Delete and opens the row menu with Shift+F10', async () => {
@@ -2172,7 +2420,7 @@ describe('Sidebar workspace trust flow', () => {
       const user = userEvent.setup()
       twoSessions()
       await renderSidebarForSessions('session-1')
-      const header = screen.getByLabelText('Collapse workspace project')
+      const header = screen.getByLabelText('Open workspace project')
       header.focus()
 
       await user.keyboard('{ArrowDown}')
@@ -2192,7 +2440,7 @@ describe('Sidebar workspace trust flow', () => {
       const user = userEvent.setup()
       twoSessions()
       await renderSidebarForSessions('session-1')
-      const header = screen.getByLabelText('Collapse workspace project')
+      const header = screen.getByLabelText('Open workspace project')
       header.focus()
       await user.keyboard('{ArrowLeft}')
 
@@ -2299,13 +2547,40 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Delete session…' }))
     await user.click(screen.getByRole('button', { name: 'Delete session' }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
+    expect(deleteSessionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'session-1', holdMs: 5000 }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
     expect(navigate).toHaveBeenCalledWith({
       to: '/$sessionId',
       params: { sessionId: 'session-2' },
       replace: true,
     })
     expect(loadLastWorkspace()?.path).toBe('/repo/project')
+  })
+
+  it('offers Undo after a delete, which cancels it and reopens the session', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+    ]
+    workspaceSessionsData = sessionsData
+    useToastStore.setState({ toasts: [] })
+
+    await renderSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('More actions for Delete me'))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session…' }))
+    await user.click(screen.getByRole('button', { name: 'Delete session' }))
+
+    const toast = useToastStore.getState().toasts.find((t) => t.title === 'Session deleted')
+    expect(toast?.action?.label).toBe('Undo')
+    const [target] = deleteSessionMutate.mock.calls.at(-1) as unknown as [{ undo: AbortSignal }]
+    expect(target.undo.aborted).toBe(false)
+
+    navigate.mockClear()
+    toast?.action?.onAction()
+    expect(target.undo.aborted).toBe(true)
+    expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-1' }, replace: true })
   })
 
   it('requires confirmation before deleting a coding session', async () => {
@@ -2333,7 +2608,10 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete session' }))
 
-    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1', expect.objectContaining({ onError: expect.any(Function) }))
+    expect(deleteSessionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'session-1', holdMs: 5000 }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
@@ -2378,15 +2656,15 @@ describe('Sidebar workspace trust flow', () => {
     await renderSidebarForSessions('session-1')
 
     expect(screen.getByRole('img', { name: 'Groups: acme' })).toBeTruthy()
-    expect(screen.getByLabelText(/workspace other/)).toBeTruthy()
+    expect(screen.getByLabelText('Open workspace other')).toBeTruthy()
 
     await act(async () => { useSidebarViewStore.getState().setGroupFilter('g-acme') })
-    expect(screen.queryByLabelText(/workspace other/)).toBeNull()
-    expect(screen.getByLabelText(/workspace project/)).toBeTruthy()
+    expect(screen.queryByLabelText('Open workspace other')).toBeNull()
+    expect(screen.getByLabelText('Open workspace project')).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Show all workspaces' }))
     expect(useSidebarViewStore.getState().groupFilter).toBeNull()
-    expect(screen.getByLabelText(/workspace other/)).toBeTruthy()
+    expect(screen.getByLabelText('Open workspace other')).toBeTruthy()
   })
 
   it('toggles a repository\'s groups from its actions menu and links to group settings', async () => {
@@ -2475,11 +2753,16 @@ describe('Sidebar workspace trust flow', () => {
       mobileOpen: true,
     })
 
-    const chatRow = screen.getByRole('button', { name: /workspace Chat$/ })
+    const chatRow = screen.getByRole('button', { name: 'Open workspace Chat' })
     fireEvent.pointerDown(chatRow, { pointerType: 'touch', clientX: 20, clientY: 20 })
 
     const newSession = await waitFor(
-      () => screen.getByRole('button', { name: 'New session' }),
+      () => {
+        // Not the sidebar's own New session row: the one in the action sheet.
+        const inSheet = screen.getAllByRole('button', { name: 'New session' }).find((el) => !el.hasAttribute('data-sidebar-new-session'))
+        if (!inSheet) throw new Error('no action sheet yet')
+        return inSheet
+      },
       { timeout: 1500 },
     )
 
@@ -2487,6 +2770,8 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.queryByRole('button', { name: /^copy path$/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /create worktree/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /hide from sidebar/i })).toBeNull()
+    // The phone's long-press menu is a bottom sheet.
+    expect(newSession.closest('[data-bottom-sheet]')).not.toBeNull()
 
     fireEvent.click(newSession)
 
@@ -2536,12 +2821,13 @@ describe('Sidebar workspace trust flow', () => {
       useSidebarViewStore.setState({ groupBy: 'project', showDetails: true, pinnedCollapsed: false, collapsedGroups: [] })
     })
 
-    it('has no header New session in Project mode, and keeps Collapse all in View options', async () => {
+    it('has New session only atop the sidebar in Project mode, and keeps Collapse all in View options', async () => {
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
       await renderSidebarForSessions('session-1')
 
-      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+      // One entry per place: the row atop the sidebar, not the section header.
+      expect(screen.getAllByRole('button', { name: 'New session' }).map((el) => el.hasAttribute('data-sidebar-new-session'))).toEqual([true])
       fireEvent.click(screen.getByRole('button', { name: 'View options' }))
       expect(screen.getByRole('menuitem', { name: 'Collapse all workspaces' })).toBeTruthy()
       expect(allSessionsQueryArgs).toEqual([])
@@ -2570,7 +2856,7 @@ describe('Sidebar workspace trust flow', () => {
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 
-      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'New session' }).map((el) => el.hasAttribute('data-sidebar-new-session'))).toEqual([true])
       for (const name of ['Settings', 'Usage', /^Theme:/]) {
         const button = screen.getByRole('button', { name })
         expect(button.textContent).toBe('')
@@ -2590,6 +2876,48 @@ describe('Sidebar workspace trust flow', () => {
       expect(screen.getByText('Choose a session action.')).toBeTruthy()
       expect(screen.getAllByText('A session title far too long for a phone row').length).toBeGreaterThan(1)
       expect(screen.queryByRole('menu')).toBeNull()
+      // A bottom sheet, as the phone's own long-press menus are, not a
+      // centred dialog whose footer lays the actions out as a button row.
+      const sheet = screen.getByRole('dialog', { name: 'A session title far too long for a phone row' })
+      expect(sheet.hasAttribute('data-bottom-sheet')).toBe(true)
+      // Delete reads as destructive at rest, as the desktop menu's does.
+      expect(within(sheet).getByRole('button', { name: 'Delete session…' }).className).toContain('text-(--color-error)')
+    })
+
+    it("opens a session's actions as a bottom sheet in the Android app", async () => {
+      isMobile = true
+      isTauri = true
+      platformOs = 'android'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
+
+      const sheet = screen.getByRole('dialog', { name: 'Feature' })
+      expect(sheet.hasAttribute('data-bottom-sheet')).toBe(true)
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Rename' }))
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Session title' })).toBeTruthy())
+      const calls = invokeMock.mock.calls as unknown as Array<[string]>
+      expect(calls.some(([command]) => command === 'pick_one')).toBe(false)
+    })
+
+    it("opens a session's actions as the app's own bottom sheet in the iPhone app too", async () => {
+      isMobile = true
+      isTauri = true
+      platformOs = 'ios'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
+
+      const sheet = screen.getByRole('dialog', { name: 'Feature' })
+      expect(sheet.hasAttribute('data-bottom-sheet')).toBe(true)
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Rename' }))
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Session title' })).toBeTruthy())
+      const calls = invokeMock.mock.calls as unknown as Array<[string]>
+      expect(calls.some(([command]) => command === 'pick_one')).toBe(false)
     })
 
     it('lists pinned sessions above the tree and unpins from the row menu', async () => {
@@ -2609,7 +2937,9 @@ describe('Sidebar workspace trust flow', () => {
       )
     })
 
-    it('pins a session from its context menu', async () => {
+    it('lists the session actions in one order and pins from the context menu', async () => {
+      isTauri = true
+      platformOs = 'macos'
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
 
@@ -2617,13 +2947,49 @@ describe('Sidebar workspace trust flow', () => {
 
       fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
       const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
-      // Pin leads the menu.
-      expect(items[0].textContent).toContain('Pin')
-      fireEvent.click(items[0])
+      // The macOS app has its own share sheet, so Share… is there.
+      expect(items.map((item) => item.textContent)).toEqual([
+        'Open in new window',
+        'Rename',
+        'Pin',
+        'Copy link',
+        'Share…',
+        'Delete session…',
+      ])
+      fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
       expect(setSessionPinnedMutate).toHaveBeenCalledWith(
         { id: 'session-1', pinned: true },
         expect.anything(),
       )
+    })
+
+    it('copies a browser link to the session, with no new-window entry outside the app', async () => {
+      isTauri = false
+      const writeText = mock(async (_text: unknown) => {})
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
+      expect(screen.queryByRole('menuitem', { name: 'Open in new window' })).toBeNull()
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy link' }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+      expect(writeText.mock.calls[0][0]).toBe(`${window.location.origin}/session-1`)
+    })
+
+    it('has no Share… in the Linux app, which has no share sheet', async () => {
+      isTauri = true
+      platformOs = 'linux'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
+      expect(await screen.findByRole('menuitem', { name: 'Copy link' })).toBeTruthy()
+      expect(screen.queryByRole('menuitem', { name: 'Share…' })).toBeNull()
     })
 
     it('pins from the row action left of More', async () => {

@@ -1,5 +1,5 @@
 /**
- * Sidebar and dock list rows (DESIGN.md → list-row): 28px (44px on touch,
+ * Sidebar and dock list rows (DESIGN.md → list-row): 28px (36px on touch,
  * via ``--spacing-list-row``) ``rounded-sm`` rows in ``text-xs``, a keycap
  * wash on hover and a deeper one on the current row. Touch has no hover, so
  * a finger press shows the current-row wash right away instead; a mouse
@@ -27,7 +27,7 @@ export function listRowClass({ current = false }: { current?: boolean } = {}): s
 
 /**
  * An icon action inside a list row (DESIGN.md → Sidebar sections): 24px,
- * borderless, keycap wash on hover, 44px on touch so it fills the row. Not
+ * borderless, keycap wash on hover, 36px on touch so it fills the row. Not
  * `Button`, whose padding and radius suit a toolbar rather than a row. The
  * focus ring is the global `:focus-visible` one.
  */
@@ -36,15 +36,15 @@ export const ROW_ACTION =
 
 /** A text action inside a list row (e.g. "Show all"), sized like `ROW_ACTION`. */
 export const ROW_TEXT_ACTION =
-  'inline-flex h-6 shrink-0 items-center rounded-xs px-2 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5'
+  'inline-flex h-6 shrink-0 items-center rounded-xs px-2 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5'
 
 /**
  * A count chip in a row (subagents, worktrees): a 20px mono pill on a soft
  * keycap wash; `active` (expanded with work, or a filter applied) inks it.
  */
 export function rowChipClass(active = false): string {
-  return `inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full px-1.5 font-mono text-[11px] leading-4 transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center pointer-coarse:rounded-md pointer-coarse:px-2.5 ${
-    active ? 'bg-(--bg-key) text-(--color-text)' : 'bg-(--bg-key)/60 text-(--color-text-subtle)'
+  return `inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full px-1.5 font-mono text-meta leading-4 transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center pointer-coarse:rounded-md pointer-coarse:px-2.5 ${
+    active ? 'bg-(--bg-key) text-(--color-text)' : 'bg-(--bg-key)/60 text-(--color-text-muted)'
   }`
 }
 

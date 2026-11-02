@@ -215,18 +215,50 @@ export function useUpdateSessionTitleMutation() {
   })
 }
 
+export type DeleteSessionTarget =
+  | string
+  | { id: string; parent_session_id?: string | null; holdMs?: number; undo?: AbortSignal }
+
+class DeleteUndone extends Error {}
+
+/** Waits `ms`, ending early (and still deleting) when the page goes away;
+ * rejects when `undo` aborts. */
+function holdForUndo(ms: number, undo: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (undo?.aborted) { reject(new DeleteUndone()); return }
+    const finish = () => {
+      clearTimeout(timer)
+      undo?.removeEventListener('abort', cancel)
+      if (typeof window !== 'undefined') window.removeEventListener('pagehide', finish)
+      resolve()
+    }
+    const cancel = () => {
+      clearTimeout(timer)
+      if (typeof window !== 'undefined') window.removeEventListener('pagehide', finish)
+      reject(new DeleteUndone())
+    }
+    const timer = setTimeout(finish, ms)
+    undo?.addEventListener('abort', cancel, { once: true })
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', finish, { once: true })
+  })
+}
+
 /**
  * Delete a session. The row leaves every cached list at once; a refusal
  * restores the lists. Success leaves them as they are (already right) and
  * only marks them stale, rather than re-reading every loaded page of every
  * list in sequence.
+ *
+ * With `holdMs` and an `undo` signal, the DELETE waits out an undo window
+ * first: aborting the signal puts the row back and never calls the server.
  */
 export function useDeleteSessionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (target: string | { id: string; parent_session_id?: string | null }) => {
+    mutationFn: async (target: DeleteSessionTarget) => {
       const id = typeof target === 'string' ? target : target.id
       const parentId = typeof target === 'string' ? null : target.parent_session_id
+      if (typeof target !== 'string' && target.holdMs) await holdForUndo(target.holdMs, target.undo)
       await deleteSession(id)
       return { id, parentId }
     },

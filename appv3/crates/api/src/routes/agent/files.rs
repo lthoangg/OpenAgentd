@@ -864,47 +864,31 @@ async fn workspace_status(q: Qs) -> ApiResult<Response> {
     })))
 }
 
+/// The current branch's commits, newest first, `limit` at a time; `cursor` is
+/// the last SHA of the previous page. (Before v3.40.0 this also returned a
+/// `git log --graph` and took `all` for every branch; an older client's `all`
+/// is now ignored.)
 async fn git_history(q: Qs) -> ApiResult<Response> {
     let workspace = q.req("workspace")?;
     let limit = q.int("limit", 50, Some(1), Some(500))?;
     let cursor = q.opt("cursor");
-    let all = q.bool("all", false)?;
     let resolved = validated(&workspace)?;
-    static OFF_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^all:([0-9]{1,9})$").unwrap());
-    let off = cursor.as_deref().and_then(|c| OFF_RE.captures(c)).map(|c| c[1].parse::<i64>().unwrap_or(0));
-    let offset = off.unwrap_or(0);
     if let Some(c) = cursor.as_deref().filter(|c| !c.is_empty()) {
-        if !(SHA_RE.is_match(c) || all && off.is_some()) {
+        if !SHA_RE.is_match(c) {
             return Err(ApiError::unprocessable("Invalid cursor SHA format."));
         }
     }
     if !Path::new(&resolved).join(".git").exists() {
-        return Ok(json(json!({"workspace": resolved, "is_git_repo": false, "commits": [], "next_cursor": null, "graph": ""})));
+        return Ok(json(json!({"workspace": resolved, "is_git_repo": false, "commits": [], "next_cursor": null})));
     }
     let cur = cursor.clone().filter(|c| !c.is_empty());
     let mut log_args: Vec<String> = vec!["log".into()];
-    if off.is_some() {
-        log_args.push(format!("--skip={offset}"));
-    } else if let Some(c) = &cur {
+    if let Some(c) = &cur {
         log_args.extend([c.clone(), "--skip=1".into()]);
     }
     log_args.extend(["-n".into(), (limit + 1).to_string(), "--pretty=format:%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%b%x00%d%x1e".into()]);
-    if all {
-        log_args.extend(["--exclude=refs/stash".into(), "--all".into()]);
-    }
-    let mut g: Vec<String> = ["log", "--graph", "--oneline", "--decorate", "--color=never", "-n"].map(String::from).to_vec();
-    g.push(limit.to_string());
-    if off.is_some() {
-        g.push(format!("--skip={offset}"));
-    } else if let Some(c) = &cur {
-        g.extend([c.clone(), "--skip=1".into()]);
-    }
-    if all {
-        g.extend(["--exclude=refs/stash".into(), "--all".into()]);
-    }
     let la: Vec<&str> = log_args.iter().map(String::as_str).collect();
-    let ga: Vec<&str> = g.iter().map(String::as_str).collect();
-    let (log, graph) = tokio::join!(git(&resolved, &la), git(&resolved, &ga));
+    let log = git(&resolved, &la).await;
     let mut commits: Vec<Value> = vec![];
     let mut shas: Vec<String> = vec![];
     if let Some(out) = log.filter(|o| !o.is_empty()) {
@@ -926,11 +910,10 @@ async fn git_history(q: Qs) -> ApiResult<Response> {
     }
     let mut next = Value::Null;
     if commits.len() as i64 > limit {
-        next = if all { json!(format!("all:{}", offset + limit)) } else { json!(shas[(limit - 1) as usize]) };
+        next = json!(shas[(limit - 1) as usize]);
         commits.truncate(limit as usize);
     }
-    let graph = graph.unwrap_or_default();
-    Ok(json(json!({"workspace": resolved, "is_git_repo": true, "commits": commits, "next_cursor": next, "graph": graph})))
+    Ok(json(json!({"workspace": resolved, "is_git_repo": true, "commits": commits, "next_cursor": next})))
 }
 
 fn req_fields(raw: &[u8], names: &[&str]) -> ApiResult<Vec<String>> {
@@ -1186,26 +1169,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn history_pages_commits_with_a_graph() {
+    async fn history_pages_the_current_branch_with_no_graph() {
         let d = repo_on_main();
         commit(d.path(), "b.txt");
         commit(d.path(), "c.txt");
-        let v = body_of(git_history(ws_query(d.path(), "&limit=2")).await.unwrap()).await;
+        // Another branch's commit never shows, even to an older client that
+        // still sends the removed `all=true`.
+        git_ok(d.path(), &["checkout", "-q", "-b", "side"]);
+        commit(d.path(), "side.txt");
+        git_ok(d.path(), &["checkout", "-q", "main"]);
+        let v = body_of(git_history(ws_query(d.path(), "&limit=2&all=true")).await.unwrap()).await;
         let subjects: Vec<&str> = v["commits"].as_array().unwrap().iter().map(|c| c["subject"].as_str().unwrap()).collect();
         assert_eq!(subjects, ["c.txt", "b.txt"]);
         assert_eq!(v["commits"][0]["refs"], "HEAD -> main");
         assert_eq!(v["next_cursor"], v["commits"][1]["sha"]);
-        let graph = v["graph"].as_str().unwrap();
-        assert_eq!(graph.lines().count(), 2);
-        assert!(graph.starts_with("* ") && graph.contains("c.txt"), "{graph}");
+        assert!(v.get("graph").is_none(), "{v}");
         let cursor = v["next_cursor"].as_str().unwrap().to_string();
         let next = body_of(git_history(ws_query(d.path(), &format!("&limit=2&cursor={cursor}"))).await.unwrap()).await;
         assert_eq!(next["commits"].as_array().unwrap().len(), 1);
         assert_eq!(next["commits"][0]["subject"], "init");
         assert_eq!(next["next_cursor"], Value::Null);
-        assert!(next["graph"].as_str().unwrap().contains("init"));
-        let all = body_of(git_history(ws_query(d.path(), "&limit=1&all=true")).await.unwrap()).await;
-        assert_eq!(all["next_cursor"], "all:1");
+        let plain = tempfile::tempdir().unwrap();
+        let none = body_of(git_history(ws_query(plain.path(), "")).await.unwrap()).await;
+        assert_eq!(none["is_git_repo"], false);
+        assert!(none.get("graph").is_none(), "{none}");
     }
 
     #[tokio::test]

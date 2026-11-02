@@ -24,7 +24,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { TEXT_FILE_EXTENSIONS } from '@/utils/file-extensions'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
-import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from './FileLightbox'
+import type { FileLightboxItem, FileLightboxItemType } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 import { PdfThumbnail } from './PdfThumbnail'
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -89,7 +90,7 @@ function RemoveButton({ onRemove, label = 'Remove file' }: { onRemove: () => voi
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
             aria-label={label}
           >
             <X size={12} className="md:h-2.5 md:w-2.5" />
@@ -274,7 +275,7 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
             <TooltipContent>{file.name}</TooltipContent>
           </Tooltip>
         </div>
-        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-[11px] leading-relaxed text-(--color-text-muted) select-none">
+        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-meta leading-relaxed text-(--color-text-muted) select-none">
           {snippet ?? ''}
         </pre>
       </button>

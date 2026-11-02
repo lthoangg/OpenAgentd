@@ -236,7 +236,7 @@ export function InputComposerSuggestions({
 
   const categoryBadge = (category?: string) =>
     category ? (
-      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-meta text-(--color-text-muted)">
         {category}
       </span>
     ) : null

@@ -15,6 +15,10 @@
  *    chord is swallowed, so ⌘W never reaches the desktop window's native
  *    Close Window behind a dialog.
  *
+ * An app shortcut that runs closes the menus and popovers open, as a key
+ * equivalent closes a native menu, and so does focus going into a frame (a
+ * click in a preview page or an MCP app, which this document never sees).
+ *
  * Within a tier the latest registration wins; a handler that returns
  * ``false`` passes the key on.
  */
@@ -23,7 +27,7 @@ import { APP_SHORTCUT_CHORDS } from '@/lib/app-shortcuts'
 import { isEditableTarget } from '@/lib/is-editable-target'
 
 import { isImeComposing, matchChord, type KeyChord } from './chord'
-import { _resetLayersForTests, layerStack, type KeyLayer } from './layers'
+import { _resetLayersForTests, closeTransientLayers, layerStack, type KeyLayer } from './layers'
 
 export interface ShortcutOptions {
   enabled?: boolean
@@ -59,6 +63,17 @@ export function installKeyboard(): void {
   if (installed || typeof window === 'undefined') return
   installed = true
   window.addEventListener('keydown', dispatchKey)
+  window.addEventListener('blur', closeMenusForFrame)
+}
+
+let frameTimer: ReturnType<typeof setTimeout> | undefined
+/** The window lost focus: if a frame of ours took it, that was a click outside the menus. */
+function closeMenusForFrame(): void {
+  clearTimeout(frameTimer)
+  // After the blur: by then the frame is the active element in every engine.
+  frameTimer = setTimeout(() => {
+    if (document.activeElement instanceof HTMLIFrameElement) closeTransientLayers()
+  }, 0)
 }
 
 export function registerShortcut(
@@ -148,7 +163,9 @@ export function dispatchKey(event: KeyboardEvent): void {
 
   const app = free.filter((binding) => !binding.options().within)
   if (!blocking) {
-    run(app, event)
+    // The menus open before the key: a toggle that just closed one is no matter.
+    const open = stack.filter((layer) => layer.kind === 'transient')
+    if (run(app, event)) for (const layer of open) layer.close()
     return
   }
 

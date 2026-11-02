@@ -7,6 +7,7 @@ import {
   SLEEP_AFTER_MS,
   TOP_ROOM,
   badgeCount,
+  badgeLabel,
   bubbleBelow,
   bubbleLeft,
   bubbleReducer,
@@ -18,6 +19,7 @@ import {
   petPose,
   reactionFor,
   readOnDismiss,
+  shownQuestion,
   sitPause,
   startX,
   startY,
@@ -221,18 +223,79 @@ describe('bubbleReducer', () => {
     expect(state.listOpen).toBe(false)
     state = bubbleReducer(state, { type: 'fade', id: 'a' })
     state = bubbleReducer(state, { type: 'toggleList' })
-    expect(visibleBubble(state)).toEqual({ type: 'list', items: [bubble('a', 'done')] })
+    expect(visibleBubble(state)).toEqual({ type: 'list', questions: [], unread: [bubble('a', 'done')] })
     state = bubbleReducer(state, { type: 'dismiss', id: 'a' })
     expect(state.listOpen).toBe(false)
     expect(visibleBubble(state)).toBeNull()
   })
 
-  it('dismisses a bubble wherever it is', () => {
+  it('dismisses a finished bubble wherever it is', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('a', 'done'))
+    state = notify(state, bubble('b', 'failed'))
+    state = bubbleReducer(state, { type: 'dismiss', id: 'b' })
+    state = bubbleReducer(state, { type: 'dismiss', id: 'a' })
+    expect(state).toEqual(EMPTY_BUBBLES)
+  })
+
+  // × on a question used to delete it: the pet still said "!", with nothing to open.
+  it('never loses a question to a dismiss: Later folds it behind the badge until it is answered', () => {
     let state = notify(EMPTY_BUBBLES, bubble('q', 'input'))
     state = notify(state, bubble('a', 'done'))
     state = bubbleReducer(state, { type: 'dismiss', id: 'q' })
-    state = bubbleReducer(state, { type: 'dismiss', id: 'a' })
-    expect(state).toEqual(EMPTY_BUBBLES)
+    expect(state.questions.map((q) => q.id)).toEqual(['q'])
+    expect(state.later).toEqual(['q'])
+    expect(shownQuestion(state)).toBeNull()
+    expect(visibleBubble(state)).toBeNull()
+    expect(badgeCount(state)).toBe(2)
+    expect(bubbleReducer(state, { type: 'dismiss', id: 'q' })).toBe(state)
+
+    // Only the answer (or nothing waiting any more) removes it.
+    expect(bubbleReducer(state, { type: 'status', status: { running: 1, needsInput: 0 } })).toMatchObject({ questions: [], later: [] })
+  })
+
+  it('brings a folded question back to the stage from the list', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('q1', 'input', 's1'))
+    state = notify(state, bubble('q2', 'input', 's2'))
+    state = bubbleReducer(state, { type: 'dismiss', id: 'q1' })
+    expect(shownQuestion(state)?.id).toBe('q2')
+    state = bubbleReducer(state, { type: 'toggleList' })
+    expect(visibleBubble(state)).toMatchObject({ type: 'list', questions: [{ id: 'q1' }, { id: 'q2' }] })
+    state = bubbleReducer(state, { type: 'showQuestion', id: 'q1' })
+    expect(state.listOpen).toBe(false)
+    expect(visibleBubble(state)).toMatchObject({ type: 'bubble', bubble: { id: 'q1' } })
+    expect(state.later).toEqual([])
+    expect(bubbleReducer(state, { type: 'showQuestion', id: 'nope' })).toBe(state)
+  })
+
+  it('shows a newer question for a session even if the older one was put off', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('q1', 'input', 's1'))
+    state = bubbleReducer(state, { type: 'dismiss', id: 'q1' })
+    state = notify(state, bubble('q2', 'input', 's1'))
+    expect(visibleBubble(state)).toMatchObject({ bubble: { id: 'q2' } })
+    expect(state.later).toEqual([])
+  })
+
+  it('removes a question answered anywhere, by its session, in either id form', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('q1', 'input', 'AA-bb'))
+    state = notify(state, bubble('q2', 'input', 'cc'))
+    state = bubbleReducer(state, { type: 'dismiss', id: 'q1' })
+    state = bubbleReducer(state, { type: 'answered', key: 'aabb' })
+    expect(state.questions.map((q) => q.id)).toEqual(['q2'])
+    expect(state.later).toEqual([])
+    expect(bubbleReducer(state, { type: 'answered', key: 'zz' })).toBe(state)
+  })
+
+  it('says in words what waits behind the badge', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('a', 'done'))
+    state = bubbleReducer(state, { type: 'fade', id: 'a' })
+    expect(badgeLabel(state)).toBe('1 unread')
+    state = notify(state, bubble('q', 'input'))
+    state = bubbleReducer(state, { type: 'dismiss', id: 'q' })
+    expect(badgeLabel(state)).toBe('1 needs you, 1 unread')
+    state = notify(state, bubble('p', 'input', 's-other'))
+    state = bubbleReducer(state, { type: 'dismiss', id: 'p' })
+    expect(badgeLabel(state)).toBe('2 need you, 1 unread')
+    expect(badgeLabel(EMPTY_BUBBLES)).toBe('')
   })
 
   it('clears everything when the pet is turned off', () => {
@@ -260,7 +323,9 @@ describe('bubbleReducer', () => {
     expect(state.questions.map((q) => q.id)).toEqual(['q'])
     expect(state.listOpen).toBe(true)
     state = bubbleReducer(state, { type: 'readSession', key: 'cc' })
-    expect(state.listOpen).toBe(false)
+    expect(state.listOpen).toBe(true)
+    // The question is still listed, so the list stays; answering it empties it.
+    expect(bubbleReducer(state, { type: 'answered', key: 'aabb' }).listOpen).toBe(false)
     expect(bubbleReducer(state, { type: 'readSession', key: 'zz' })).toBe(state)
   })
 

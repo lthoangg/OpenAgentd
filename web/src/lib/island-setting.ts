@@ -5,6 +5,7 @@
  */
 import { useEffect } from 'react'
 import { getPlatform } from '@/hooks/use-platform'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import type { IslandSettings } from '@/island/status'
 
 export type { IslandSettings }
@@ -36,13 +37,17 @@ export async function updateIslandSettings(patch: Partial<IslandSettings>): Prom
 }
 
 /**
- * Tell the shell which session this window shows. The island keeps a
- * finished session as unread until it is on screen in the focused window;
- * the shell knows which window has focus, so this only reports changes.
+ * Tell the shell which session this window shows. Two things depend on it:
+ * the island keeps a finished session as unread until it is on screen in the
+ * focused window, and the session → window router (island, pet, tray,
+ * notifications, "Open in new window") brings forward the window that
+ * already shows a session instead of opening it twice. So every desktop
+ * app window reports, whether or not the notch is there (it is macOS-only).
+ * The shell knows which window has focus, so this only reports changes.
  */
 export function useReportShownSession(sessionId: string | null | undefined): void {
   useEffect(() => {
-    if (!supportsIsland()) return
+    if (!isDesktopShell()) return
     void import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke('island_viewing', { sessionId: sessionId ?? null }))
       .catch(() => {})

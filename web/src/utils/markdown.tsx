@@ -22,6 +22,7 @@ import { CodeBlock } from '@/components/CodeBlock'
 import { FileRefCode, MarkdownLink } from '@/components/FileRefLink'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { MermaidBlock } from '@/utils/MermaidBlock'
+import { type SafeHtmlOptions, renderSafeHtml, renderSafeWrapper, safeHtmlMarkdownExtension } from '@/utils/readme-html'
 import { isVideoSrc } from '@/utils/workspace'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
 import { createMarkdownChunker } from '@/utils/markdown-chunks'
@@ -584,18 +585,18 @@ export const MarkdownTable = memo(function MarkdownTable(
 
   return (
     <div className="oa-table-container group relative">
-      <div className="pointer-events-none absolute top-1 right-1 z-10 opacity-0 transition-opacity duration-(--motion-fast) group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+      <div className="absolute top-1 right-1 z-10 opacity-60 transition-opacity duration-(--motion-fast) group-hover:opacity-100 focus-within:opacity-100">
         <Tooltip>
           <TooltipTrigger
             render={
               <button
                 type="button"
                 onClick={handleCopy}
-                className="flex h-5 w-5 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                className="touch-hit relative flex size-6 items-center justify-center rounded-xs bg-(--bg-key) text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
                 aria-label={copied ? 'Copied' : 'Copy table'}
               >
                 {copied ? (
-                  <Check size={11} className="text-(--color-success)" />
+                  <Check size={11} className="text-(--accent-green-text)" />
                 ) : (
                   <Copy size={11} />
                 )}
@@ -635,6 +636,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   sessionId,
   isStreaming = false,
   resolveMediaSrc,
+  allowHtml = false,
 }: {
   content: string
   sessionId?: string
@@ -646,6 +648,12 @@ export const MarkdownBlock = memo(function MarkdownBlock({
    * the session workspace (``resolveImageSrc``).
    */
   resolveMediaSrc?: (src: string) => string
+  /**
+   * Render raw HTML (a workspace README's logo, badges, ``<details>``)
+   * through the allowlist in ``readme-html``. Off for agent replies, where
+   * tags are text the model is talking about.
+   */
+  allowHtml?: boolean
 }) {
   const smoothedContent = useSmoothStream(content, isStreaming)
   const displayContent = isStreaming ? smoothedContent : content
@@ -679,7 +687,8 @@ export const MarkdownBlock = memo(function MarkdownBlock({
               ))
             ) : (
               <Markdown
-                extensions={_EXTENSIONS}
+                extensions={allowHtml ? _HTML_EXTENSIONS : _EXTENSIONS}
+                allowHtml={allowHtml}
                 frontmatter={false}
                 headingIds={false}
                 components={MARKDOWN_COMPONENTS}
@@ -789,6 +798,39 @@ function MarkdownProposedPlan({ children }: { children?: React.ReactNode }) {
   return <ProposedPlanCard>{children}</ProposedPlanCard>
 }
 
+// Raw HTML from a workspace Markdown file (``allowHtml``): the parser's HTML
+// nodes arrive here as components (``safeHtmlMarkdownExtension``) and render
+// as React elements from the allowlist, never as markup.
+function useSafeHtmlOptions(): SafeHtmlOptions {
+  const sessionId = useContext(MarkdownSessionContext)
+  const resolveMedia = useContext(MarkdownMediaContext)
+  return {
+    resolveSrc: (src) => (resolveMedia ? resolveMedia(src) : resolveImageSrc(src, sessionId) ?? src),
+    link: MarkdownLink as SafeHtmlOptions['link'],
+  }
+}
+
+function MarkdownHtml(props: { 'data-html'?: string }) {
+  const options = useSafeHtmlOptions()
+  return <>{renderSafeHtml(props['data-html'] ?? '', options)}</>
+}
+
+function MarkdownHtmlWrap(props: { 'data-open'?: string; 'data-tag'?: string; children?: React.ReactNode }) {
+  const options = useSafeHtmlOptions()
+  return <>{renderSafeWrapper(props['data-open'] ?? '', props['data-tag'] ?? 'span', props.children, options)}</>
+}
+
+function MarkdownDetails(props: { 'data-summary'?: string; 'data-open'?: string; children?: React.ReactNode }) {
+  const options = useSafeHtmlOptions()
+  const summary = props['data-summary'] ? renderSafeHtml(props['data-summary'], options) : 'Details'
+  return (
+    <details open={props['data-open'] === 'true'}>
+      <summary>{summary}</summary>
+      {props.children}
+    </details>
+  )
+}
+
 const MARKDOWN_COMPONENTS = {
   pre: MarkdownPre,
   'math-block': MarkdownMathBlock,
@@ -799,6 +841,10 @@ const MARKDOWN_COMPONENTS = {
   a: MarkdownLink,
   img: MarkdownImg,
   'proposed-plan': MarkdownProposedPlan,
+  'oa-html': MarkdownHtml,
+  'oa-html-inline': MarkdownHtml,
+  'oa-html-wrap': MarkdownHtmlWrap,
+  'oa-details': MarkdownDetails,
 }
 
 // Me: module-level constant so every ``MarkdownBlock`` instance shares one
@@ -820,6 +866,8 @@ const MARKDOWN_COMPONENTS = {
 // which ends where the whole text ends, keeps it.
 const _SETTLED_EXTENSIONS = [mathMarkdownExtension(), planMarkdownExtension()]
 const _EXTENSIONS = [streamingMarkdownExtension(), ..._SETTLED_EXTENSIONS]
+// Workspace files only: HTML nodes become the safe components above.
+const _HTML_EXTENSIONS = [..._SETTLED_EXTENSIONS, safeHtmlMarkdownExtension()]
 
 /** Extensions for the live tail and for settled chunks. */
 // eslint-disable-next-line react-refresh/only-export-components

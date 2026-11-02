@@ -1,20 +1,32 @@
 /**
  * PlanReviewCard — the ``submit_plan`` card in the transcript.
  *
- * The review happens in the Plan tab; the card says how it ended. Like the
- * ``ask_user`` card it prefers the outcome recorded in the store, since the
- * persisted result keeps the placeholder until the post-turn reconcile, and
- * falls back to the persisted sentence on a cold load.
+ * The card says how the review ended and opens the plan; while its review is
+ * open it also decides it (Approve, Request changes with a comment typed right
+ * there). Like the ``ask_user`` card it prefers the outcome recorded in the
+ * store, since the persisted result keeps the placeholder until the post-turn
+ * reconcile, and falls back to the persisted sentence on a cold load.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { cleanup, fireEvent, render as renderUi, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { PlanReviewCard, planReviewFromResult } from '@/components/PlanReview/PlanReviewCard'
+import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
+import { clearPlanReviewDrafts, readPlanReviewDraft, writePlanReviewDraft } from '@/components/PlanReview/plan-comments'
+import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { APP_EVENTS } from '@/lib/app-events'
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion, SessionPlan } from '@/api/types'
+
+/** The decision bar reads the plan and the goal settings, so a card needs a query client. */
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  return renderUi(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+}
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 
@@ -27,8 +39,40 @@ const REVIEW: PendingQuestion = {
   questions: [{ question: 'Review plan revision 3.', header: 'Plan review', multiple: false, options: [] }],
 }
 
+const PLAN: SessionPlan = {
+  content: '# Ship it\n\n1. Write the migration',
+  updated_at: '2026-01-01T00:00:00Z',
+  revision: 3,
+  approved_revision: null,
+  path: '/repo/project/.agents/plans/ship-it-0000abcd.md',
+  workspace_path: '.agents/plans/ship-it-0000abcd.md',
+  done_when: 'The endpoint answers and its tests pass.',
+}
+
+let calls: { url: string; body: unknown }[] = []
+let goalSettings: Record<string, unknown> = {}
+let plan: SessionPlan = PLAN
+const markTurnResuming = mock(() => {})
+
 beforeEach(() => {
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {} })
+  calls = []
+  goalSettings = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: true, keep_going_default: false }
+  plan = { ...PLAN }
+  clearQuestionDrafts()
+  clearPlanReviewDrafts()
+  resetPlanDecisionChoice()
+  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {}, markTurnResuming })
+  globalThis.fetch = mock(async (input: unknown, rawInit?: unknown) => {
+    const init = rawInit as RequestInit | undefined
+    const url = String(input)
+    if (url.includes('/answer')) {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null })
+      return new Response(JSON.stringify({ status: 'answered', resumed: true }))
+    }
+    if (url.includes('/settings/goals')) return new Response(JSON.stringify(goalSettings))
+    if (url.includes('/goal')) return new Response(JSON.stringify({ goal: null }))
+    return new Response(JSON.stringify({ plan }))
+  }) as typeof fetch
 })
 
 afterEach(() => {
@@ -50,7 +94,7 @@ describe('PlanReviewCard', () => {
     expect(screen.getByText('rev 3')).toBeTruthy()
     expect(screen.getByText('Adds the plan tab')).toBeTruthy()
     expect(container.querySelector('[data-question-waiting]')).not.toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Review plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
     expect(opened).toHaveBeenCalledTimes(1)
     window.removeEventListener(APP_EVENTS.openPlan, opened)
   })
@@ -70,7 +114,7 @@ describe('PlanReviewCard', () => {
 
     expect(screen.getByText('Approved')).toBeTruthy()
     expect(screen.getByText('rev 3')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'View plan' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open plan' })).toBeTruthy()
     expect(container.querySelector('[data-question-waiting]')).toBeNull()
   })
 
@@ -197,6 +241,227 @@ describe('PlanReviewCard', () => {
     const { container } = render(<PlanReviewCard toolCallId="call-1" result="The user approved plan revision 1." done />)
     expect(screen.getByText('Approved')).toBeTruthy()
     expect(container.querySelector('[data-question-waiting]')).toBeNull()
+  })
+})
+
+describe('PlanReviewCard — deciding on the card', () => {
+  const answers = () => calls.filter((call) => call.url.includes('/question/q-1/answer'))
+
+  function renderOpen() {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    return render(<PlanReviewCard toolCallId="call-1" result={PLACEHOLDER} done />)
+  }
+
+  it('puts Approve, Request changes and Open plan on the open card', () => {
+    renderOpen()
+
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Request changes' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open plan' })).toBeTruthy()
+  })
+
+  it('approves from the card with the answer the Plan tab sends, and marks the turn as resuming', async () => {
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Approve']] })
+    await waitFor(() => expect(markTurnResuming).toHaveBeenCalledTimes(1))
+    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+  })
+
+  it('leaves a decided or unrelated card without decision buttons', () => {
+    useAgentStore.setState({ pendingQuestion: { ...REVIEW, toolCallId: 'call-2' } })
+    render(<PlanReviewCard toolCallId="call-1" result="The user approved plan revision 1." done />)
+
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull()
+  })
+
+  it('opens a text box on the card for Request changes: type, then Send', async () => {
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+
+    const box = screen.getByLabelText('What should change?')
+    expect(document.activeElement).toBe(box)
+    // One decision at a time: the approve action steps aside.
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    fireEvent.change(box, { target: { value: '  Split step 2.  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Split step 2.']] })
+  })
+
+  it('sends Request changes with no text as the bare option', async () => {
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Request changes']] })
+  })
+
+  it('sends from the box with Cmd or Ctrl+Enter, and closes it with Escape or Cancel', async () => {
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    fireEvent.keyDown(screen.getByLabelText('What should change?'), { key: 'Escape' })
+    expect(screen.queryByLabelText('What should change?')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('What should change?')).toBeNull()
+    expect(answers()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    const box = screen.getByLabelText('What should change?')
+    fireEvent.change(box, { target: { value: 'Add a rollback.' } })
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Add a rollback.']] })
+  })
+
+  it('keeps what is typed in the review draft the Plan tab shares', () => {
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    fireEvent.change(screen.getByLabelText('What should change?'), { target: { value: 'Needs tests.' } })
+
+    expect(readPlanReviewDraft('q-1').overall).toBe('Needs tests.')
+  })
+
+  it('sends the comments written in the Plan tab with Request changes, and holds Approve for them', async () => {
+    writePlanReviewDraft('q-1', { comments: [{ id: 'c1', quote: 'Write the migration', text: 'Make it reversible.' }], overall: '' })
+    renderOpen()
+
+    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('Your comments go with Request changes')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes (1)' }))
+    expect(screen.getByText('1 comment on the plan will be sent too')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('What should change?'), { target: { value: 'And split step 2.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({
+      answers: [['**Comment 1**\n> Write the migration\n\nMake it reversible.\n\n**Overall**\nAnd split step 2.']],
+    })
+  })
+
+  it('holds Send back when the review is too long to send', () => {
+    writePlanReviewDraft('q-1', { comments: [], overall: 'x'.repeat(8001) })
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+
+    expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('Too long to send — shorten your comments')).toBeTruthy()
+  })
+
+  it('shows a failed answer on the card and keeps it open', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/answer')) return new Response(JSON.stringify({ detail: 'The server is down.' }), { status: 500 })
+      if (url.includes('/settings/goals')) return new Response(JSON.stringify(goalSettings))
+      return new Response(JSON.stringify({ plan }))
+    }) as typeof fetch
+    renderOpen()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('The server is down.')
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+  })
+})
+
+describe('PlanReviewCard — Keep going', () => {
+  const answers = () => calls.filter((call) => call.url.includes('/question/q-1/answer'))
+
+  function renderOpen() {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    return render(<PlanReviewCard toolCallId="call-1" result={PLACEHOLDER} done />)
+  }
+
+  it('says what Approve will do: "Approve and keep going (N turns)" with the turns from Settings', async () => {
+    goalSettings = { ...goalSettings, keep_going_default: true, max_turns: 30 }
+    renderOpen()
+
+    const approve = await screen.findByRole('button', { name: 'Approve and keep going (30 turns)' })
+    fireEvent.click(approve)
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Approve']], keep_going: {} })
+  })
+
+  it('starts unticked by default, and plain Approve starts no goal', async () => {
+    renderOpen()
+
+    const keepGoing = (await screen.findByRole('checkbox', { name: 'Keep going until done' })) as HTMLInputElement
+    expect(keepGoing.checked).toBe(false)
+    expect(screen.queryByLabelText('Turns for this goal')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Approve']] })
+  })
+
+  it('changes the label and the turns sent when the reader ticks it and edits the turns', async () => {
+    renderOpen()
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Keep going until done' }))
+    expect(screen.getByRole('button', { name: 'Approve and keep going (50 turns)' })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '1' } })
+    expect(screen.getByRole('button', { name: 'Approve and keep going (1 turn)' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Approve and keep going (20 turns)' }))
+
+    await waitFor(() => expect(answers()).toHaveLength(1))
+    expect(answers()[0]?.body).toEqual({ answers: [['Approve']], keep_going: { max_turns: 20 } })
+  })
+
+  it('blocks Approve on turns out of range, with the reason on screen', async () => {
+    renderOpen()
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Keep going until done' }))
+    fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '0' } })
+
+    expect((screen.getByRole('button', { name: 'Approve and keep going' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('Turns: a whole number from 1 to 1000')).toBeTruthy()
+  })
+
+  it('offers no Keep going when the plan has no Done when', async () => {
+    plan = { ...PLAN, done_when: null }
+    renderOpen()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    expect(screen.queryByRole('checkbox', { name: 'Keep going until done' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+  })
+})
+
+describe('PlanReviewCard — look', () => {
+  const BORDER = /(?<![\w-:])border-[btlrxy](?![\w-])|(?<![\w-:])border(?![\w-])/
+
+  it('has no icon before the title and one thin frame with nothing bordered inside', () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    const { container } = render(<PlanReviewCard toolCallId="call-1" result={PLACEHOLDER} done />)
+
+    const frame = container.querySelector('[data-question-waiting]') as HTMLElement
+    expect(frame.className).toContain('border-(--color-border-subtle)')
+    expect(Array.from(frame.querySelectorAll('*')).filter((el) => BORDER.test(el.getAttribute('class') ?? '')).map((el) => el.tagName)).toEqual([])
+    const title = screen.getByText('Plan review')
+    expect(title.querySelector('svg')).toBeNull()
+    expect(title.previousElementSibling).toBeNull()
+  })
+
+  it('reads the requested changes, the state and the summary at 12px', () => {
+    const feedback = '**Comment 1**\n> Write the migration\n\nMake it reversible.\n\n**Overall**\nOtherwise fine.'
+    useAgentStore.setState({
+      resolvedQuestions: { 'call-1': { questions: REVIEW.questions, answers: [[feedback]], reason: null } },
+    })
+    render(<PlanReviewCard toolCallId="call-1" args='{"summary":"Adds the plan tab"}' result={PLACEHOLDER} done />)
+
+    for (const text of ['Write the migration', 'Make it reversible.', 'Otherwise fine.', 'Adds the plan tab']) {
+      expect(screen.getByText(text).className).toContain('text-xs')
+      expect(screen.getByText(text).className).not.toContain('text-meta')
+    }
+    expect(screen.getByText('Changes requested · 1 comment').className).toContain('text-xs')
   })
 })
 

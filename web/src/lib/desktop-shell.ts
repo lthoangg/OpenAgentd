@@ -14,12 +14,14 @@
  *   for Inspect Element.
  * - ``data-window-inactive`` is set while another app has focus, so the UI
  *   can mute keyboard focus and selections the way native windows do.
- * - ``data-input-modality`` is ``keyboard`` after a key press and ``pointer``
- *   after a pointer press (the start value): the focus ring follows the last
- *   input, never how focus moved, the way native editors draw it. WebKit
- *   draws ``:focus-visible`` for any script ``focus()`` (the composer
- *   claiming focus at launch, a fold handing focus back after a click), so
- *   index.css hides the ring until the keyboard is in use.
+ * - ``data-input-modality`` is ``keyboard`` once Tab or F6 moves focus and
+ *   ``pointer`` after a pointer press (the start value): the focus ring
+ *   follows keyboard navigation, never how focus moved, the way native apps
+ *   draw it. WebKit draws ``:focus-visible`` for any script ``focus()`` (the
+ *   composer claiming focus at launch, a menu closed with Escape handing
+ *   focus back to its button), so index.css hides the ring until then.
+ *   Typing, shortcuts (Cmd+B) and Escape are not navigation: a native app
+ *   draws no ring for them.
  *
  * The browser build keeps the browser's behaviour: none of this runs there.
  */
@@ -71,8 +73,9 @@ function onFocus(): void {
 
 type InputModality = 'keyboard' | 'pointer'
 
-/** Held alone, these start a shortcut or a modified click, not navigation. */
-const MODIFIER_KEYS = new Set(['Meta', 'Control', 'Alt', 'Shift', 'CapsLock', 'Fn', 'FnLock', 'Hyper', 'Super', 'OS', 'AltGraph'])
+/** The keys that move focus between controls. Arrows inside a list or a
+ *  menu move a highlight fill, which shows without the ring. */
+const NAVIGATION_KEYS = new Set(['Tab', 'F6'])
 
 function setModality(modality: InputModality): void {
   const root = document.documentElement
@@ -80,7 +83,7 @@ function setModality(modality: InputModality): void {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
-  if (!MODIFIER_KEYS.has(event.key)) setModality('keyboard')
+  if (NAVIGATION_KEYS.has(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey) setModality('keyboard')
 }
 
 function onPointerDown(): void {

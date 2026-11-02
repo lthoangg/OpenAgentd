@@ -14,7 +14,7 @@ type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error'
 
 const TONE: Record<Tone, string> = {
   neutral: 'border-(--color-border) bg-(--bg-card) text-(--color-text-muted)',
-  info: 'border-(--color-info)/30 bg-(--color-info-subtle) text-(--accent-blue-text)',
+  info: 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-2)',
   success: 'border-(--color-success)/30 bg-(--color-success-subtle) text-(--accent-green-text)',
   warning: 'border-(--color-warning)/30 bg-(--color-warning-subtle) text-(--accent-orange-text)',
   error: 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)',

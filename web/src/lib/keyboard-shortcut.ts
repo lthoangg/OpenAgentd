@@ -1,21 +1,21 @@
 /**
  * Cross-platform keyboard-shortcut helpers.
  *
- * Policy: the "primary" modifier is ``⌘`` (Meta) on macOS and ``Ctrl``
- * everywhere else — mirroring the OS-native convention already used for
+ * Policy: the "primary" modifier is ``⌘`` (Meta) on Apple platforms (macOS,
+ * and iPadOS / iOS with a hardware keyboard) and ``Ctrl`` everywhere else —
+ * mirroring the OS-native convention already used for
  * click-modifiers (see ``Sidebar.tsx``'s ``shouldOpenSessionInNewWindow``)
  * and for the native Tauri menu accelerators (``CmdOrCtrl+…`` in
  * ``menu.rs``). The *other* modifier is always required to be absent so a
  * stray ⌘+Ctrl combo (or the wrong OS's modifier) never double-fires.
  *
  * A handful of shortcuts also require Shift to dodge a real OS/webview
- * conflict (e.g. Session Settings uses ⌘⇧A on macOS because bare ⌘A is
- * "Select All").
+ * conflict (e.g. Maximize Review panel is ⌘⇧D beside the panel's ⌘D).
  */
 import type { OS } from '@/hooks/use-platform'
 
 export function isPrimaryModifierOS(os: OS): boolean {
-  return os === 'macos'
+  return os === 'macos' || os === 'ios'
 }
 
 /**
@@ -37,11 +37,13 @@ export function isPrimaryShortcut(
 const KEY_GLYPHS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }
 
 /** Human-readable label, e.g. ``formatShortcut('B', 'macos') === '⌘B'``. */
-export function formatShortcut(key: string, os: OS, opts: { shift?: boolean; alt?: boolean } = {}): string {
+export function formatShortcut(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; ctrl?: boolean } = {}): string {
   const shift = opts.shift ?? false
   const alt = opts.alt ?? false
   const glyph = KEY_GLYPHS[key] ?? key
   if (isPrimaryModifierOS(os)) {
+    // Control leads, as in macOS menus (⌃⌥→); Option leads ⌘ (⌥⌘↑).
+    if (opts.ctrl) return `⌃${alt ? '⌥' : ''}${shift ? '⇧' : ''}${glyph}`
     return `${alt ? '⌥' : ''}⌘${shift ? '⇧' : ''}${glyph}`
   }
   return `Ctrl+${alt ? 'Alt+' : ''}${shift ? 'Shift+' : ''}${glyph}`
@@ -69,8 +71,9 @@ export function findSelectContainer(el: Element | null): Element | null {
  * a palette item or native-menu command is activated in place of a real
  * key press.
  */
-export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; code?: string } = {}): void {
-  const mac = isPrimaryModifierOS(os)
+export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; code?: string; ctrl?: boolean } = {}): void {
+  // ``ctrl`` chords are the Control key on every OS, never ⌘.
+  const mac = isPrimaryModifierOS(os) && !opts.ctrl
   // Dispatch from the document rather than window. Consumers such as the
   // sidebar's `useHotkey` listener attach to `document`; an event dispatched
   // on window cannot bubble down to that listener, so toolbar buttons that

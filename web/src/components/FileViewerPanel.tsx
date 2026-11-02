@@ -5,11 +5,12 @@
  * the surrounding toolbar.
  */
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
-import { FileLightbox } from './FileLightbox'
+import { FileLightbox } from './LazyFileLightbox'
 import { Check, Copy, Download, ExternalLink, FileHeadphone, FileText, Loader2, Plus } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
@@ -119,7 +120,7 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
             aria-label={label}
             className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
           >
-            {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+            {copied ? <Check size={12} className="text-(--accent-green-text)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
           </button>
         }
       />
@@ -238,7 +239,7 @@ const FileLine = memo(function FileLine({
                   event.stopPropagation()
                   comment.onAdd(comment.start, comment.end)
                 }}
-                className="flex h-4 w-4 items-center justify-center rounded-xs border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="flex h-4 w-4 items-center justify-center rounded-xs bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) hover:bg-(--bg-key) hover:text-(--color-text)"
                 aria-label={comment.start === comment.end ? `Add comment for line ${comment.start}` : `Add comment for lines ${comment.start}-${comment.end}`}
               >
                 <Plus size={13} aria-hidden="true" />
@@ -478,7 +479,7 @@ function TextPreview({
             88ch measure in a maximized dock, so prose never spans the dock. */}
         <div className="oa-reading mx-auto max-w-3xl">
           {markdown.raw !== null && <FrontmatterTable fields={markdown.fields} raw={markdown.raw} />}
-          <MarkdownBlock content={markdown.body} resolveMediaSrc={resolveMediaSrc} />
+          <MarkdownBlock content={markdown.body} resolveMediaSrc={resolveMediaSrc} allowHtml />
         </div>
       </div>
     )
@@ -644,12 +645,12 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
         <p className="mt-0.5 text-xs text-(--color-text-subtle)">{file.mime} · {formatBytes(file.size)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)">
+        <a href={url} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <button type="button" onClick={() => void downloadWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
+        <Button type="button" size="sm" onClick={() => void downloadWorkspaceFile(workspace, file)}>
           <Download size={12} /> Download
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -791,7 +792,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           <div className="shrink-0 border-r border-(--color-border)/40 bg-inherit">
             <span className="block w-9 py-0.5" />
           </div>
-          <span className="min-w-0 px-3 py-0.5 text-xs md:text-[11px] italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
+          <span className="min-w-0 px-3 py-0.5 text-xs md:text-meta italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
             {p.text}
           </span>
         </div>,
@@ -813,7 +814,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           <div className="shrink-0 border-r border-(--color-border)/40 bg-inherit">
             <span className="block w-9 py-0.5" />
           </div>
-          <span className="min-w-0 px-3 py-0.5 text-xs md:text-[11px] italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
+          <span className="min-w-0 px-3 py-0.5 text-xs md:text-meta italic text-(--color-text-subtle) [overflow-wrap:anywhere]">
             {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
           </span>
         </div>,
@@ -833,7 +834,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
         )}
       >
-        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[11px] text-(--color-text-subtle)">
+        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta text-(--color-text-subtle)">
           <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
         </div>
         <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
@@ -842,7 +843,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
   })
 
   return (
-    <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">
+    <div className="bg-(--bg-card) font-mono text-meta leading-relaxed">
       <div className="min-w-0">
         {blockStarts(rows.length).map((start) => (
           // 11px text at leading-relaxed plus the row's 4px padding.

@@ -11,10 +11,11 @@ import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
-import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
+import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
@@ -72,7 +73,8 @@ function SessionRowView({
   onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
-  const status = sessionStatus(session, unread)
+  const failed = useUnreadStore((state) => state.failed.includes(session.id))
+  const status = sessionStatus(session, unread, failed)
   const sessionTitle = session.title || 'Untitled'
   const rowRef = useRef<HTMLDivElement>(null)
   useTitleWash(rowRef, session.id, sessionTitle)
@@ -87,6 +89,13 @@ function SessionRowView({
   const metaVisibility = mobileLongPressActions
     ? ''
     : 'group-hover/row:hidden group-focus-within/row:hidden pointer-coarse:hidden'
+  // Touch shows ⋯ at all times and drops the meta for it, but the pin mark
+  // is small and says why the row is where it is, so it stays.
+  const pinMarkVisibility = mobileLongPressActions ? '' : 'group-hover/row:hidden group-focus-within/row:hidden'
+  // The state word is the row's state in words, so "Show details" off does
+  // not hide it. It gives way to the actions like the pin mark does, and
+  // stays on touch, where the title truncates before it does.
+  const stateWord = sessionStateWord(status)
   // "Show details" off hides the at-rest meta; the tooltip still carries it.
   const ageVisibility = showDetails ? metaVisibility : 'hidden'
 
@@ -214,7 +223,7 @@ function SessionRowView({
               </LongPressButton>
             }
           />
-          <TooltipContent>{[sessionTitle, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}</TooltipContent>
+          <TooltipContent>{[sessionTitle, stateWord, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}</TooltipContent>
         </Tooltip>
         )}
         </div>
@@ -253,7 +262,7 @@ function SessionRowView({
             minimum, so it shrinks (faster than the title) instead of
             holding its full width. */}
         {checkoutName && !isEditing && (
-          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-[11px] text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-meta text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
             <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
             <span data-checkout-tag className="truncate">{checkoutName}</span>
           </span>
@@ -261,32 +270,34 @@ function SessionRowView({
         {contextLabel && !isEditing && (
           <span
             data-context-label
-            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-[11px] text-(--color-text-subtle) ${ageVisibility}`}
+            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-meta text-(--color-text-subtle) ${ageVisibility}`}
             aria-hidden="true"
           >
             {contextLabel}
           </span>
         )}
         {pinned && !isEditing && (
-          <span className={`ml-1 flex shrink-0 items-center text-(--color-text-subtle) ${metaVisibility}`} aria-hidden="true">
+          <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-subtle) ${pinMarkVisibility}`} aria-hidden="true">
             <Pin size={11} />
           </span>
         )}
         {session.goal_status && !isEditing && (
           <span
             data-goal-status={session.goal_status}
-            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--accent-blue-text)' : 'text-(--color-text-subtle)'} ${metaVisibility}`}
+            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--color-text-2)' : 'text-(--color-text-subtle)'} ${metaVisibility}`}
             title={session.goal_status === 'active' ? 'Working toward a goal' : 'Goal paused'}
             aria-hidden="true"
           >
             <Target size={11} />
           </span>
         )}
-        {sessionAge && !isEditing && (
-          <span className={`shrink-0 pl-1 pr-1 text-[11px] tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
-            {sessionAge}
-          </span>
-        )}
+        {!isEditing && (stateWord
+          ? <SessionStateWord status={status} className={pinMarkVisibility} />
+          : sessionAge && (
+            <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+              {sessionAge}
+            </span>
+          ))}
         <div className={`shrink-0 items-center ${isEditing ? 'hidden' : actionsVisibility}`}>
           {canPin && (
             <button
@@ -319,8 +330,9 @@ function SessionRowView({
         </div>
       </div>
 
-      {hasSubagents && isExpanded && (
-        // Flat, no guide: subagent marks line up under the lead's title.
+      {/* Flat, no guide: subagent marks line up under the lead's title. The
+          rows fold open and shut (height motion). */}
+      <Collapsible open={hasSubagents && isExpanded}>
         <div className="space-y-px py-0.5 pl-[18px]">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
@@ -379,10 +391,10 @@ function SessionRowView({
                         label={isSubWaiting ? 'Subagent waiting for the main agent' : 'Subagent working'}
                       />
                       {/* Capped: a handle can fall back to the session id. */}
-                      <span className="max-w-[45%] shrink-0 truncate font-mono text-[11px] font-semibold text-(--color-text)">
+                      <span className="max-w-[45%] shrink-0 truncate font-mono text-meta font-semibold text-(--color-text)">
                         {sub.member_id}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[11px] text-(--color-text-muted)">
+                      <span className="min-w-0 flex-1 truncate text-meta text-(--color-text-muted)">
                         {subTitle}
                       </span>
                     </button>
@@ -408,7 +420,7 @@ function SessionRowView({
             )
           })}
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }
@@ -458,7 +470,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       type="button"
       onClick={() => { if (!loading) onLoadMore() }}
       disabled={loading}
-      className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-(--spacing-list-row)"
+      className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-(--spacing-list-row)"
       aria-busy={loading || undefined}
     >
       {/* The status-mark slot, so the label lines up with the titles. */}
@@ -506,7 +518,7 @@ export function DraftSessionRow({ label = null }: { label?: string | null }) {
         <SquarePen size={11} />
       </span>
       <span className="min-w-0 flex-1 truncate font-semibold italic">New session</span>
-      {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-[11px] text-(--color-text-subtle)">{label}</span>}
+      {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-meta text-(--color-text-subtle)">{label}</span>}
     </div>
   )
 }

@@ -14,7 +14,7 @@ describe('useDisplayPrefsStore — transcript style', () => {
     useDisplayPrefsStore.getState().setTranscriptStyle('reader')
 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader', textSize: 'default', previewOpen: 'panel' })
   })
 
   it('falls back to detailed for a stored style it does not know', async () => {
@@ -36,6 +36,18 @@ describe('useDisplayPrefsStore — removed new session composer setting', () => 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
 
     useDisplayPrefsStore.getState().setTranscriptStyle('detailed')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed', textSize: 'default', previewOpen: 'panel' })
+  })
+})
+
+describe('useDisplayPrefsStore — where previews open', () => {
+  it('opens in the Review panel by default, remembers On click, and reads an unknown value as the default', async () => {
+    expect(useDisplayPrefsStore.getState().previewOpen).toBe('panel')
+    useDisplayPrefsStore.getState().setPreviewOpen('click')
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state.previewOpen).toBe('click')
+
+    localStorage.setItem(DISPLAY_PREFS_STORAGE_KEY, JSON.stringify({ state: { previewOpen: 'tab' }, version: 0 }))
+    await useDisplayPrefsStore.persist.rehydrate()
+    expect(useDisplayPrefsStore.getState().previewOpen).toBe('panel')
   })
 })

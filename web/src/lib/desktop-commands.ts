@@ -8,20 +8,51 @@
  */
 import { useEffect } from 'react'
 import { useRouter, type AnyRouter } from '@tanstack/react-router'
+import type { InfiniteData } from '@tanstack/react-query'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useDisplayPrefsStore, type TextSize } from '@/stores/useDisplayPrefsStore'
 import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, dispatchAppShortcut } from '@/lib/app-shortcuts'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
+import { needsYouSessions } from '@/lib/active-sessions'
 import { listenForNotificationTaps } from '@/lib/desktop-notifications'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { desktopWindowId } from '@/lib/desktop-window-identity'
+import { queryClient } from '@/lib/query-client'
+import { queryKeys } from '@/queries/keys'
+import type { SessionPageResponse } from '@/api/types'
 
 interface NotificationClickPayload {
   sessionId?: unknown
   mode?: unknown
 }
 
-function runDesktopCommand(command: unknown): void {
+/** View → Text Size items, as the shell names them. */
+const TEXT_SIZE_COMMANDS: Record<string, TextSize> = {
+  text_size_compact: 'compact',
+  text_size_default: 'default',
+  text_size_large: 'large',
+}
+
+/**
+ * The session the Next Session That Needs You shortcut opens: the first one
+ * waiting on the user, but not the one already on screen, so pressing it
+ * again moves on. With only that one waiting it stays put.
+ */
+export function nextNeedsYouSessionId(waiting: readonly { id: string }[], currentId: string | null): string | null {
+  return (waiting.find((session) => session.id !== currentId) ?? waiting[0])?.id ?? null
+}
+
+function openNextNeedsYou(router: AnyRouter): void {
+  const data = queryClient.getQueryData<InfiniteData<SessionPageResponse>>(queryKeys.session.sessions.active())
+  const path = router.state?.location?.pathname ?? ''
+  const current = path.split('/')[1] ?? ''
+  const sessionId = nextNeedsYouSessionId(needsYouSessions(data), current ? decodeURIComponent(current) : null)
+  if (sessionId) openNotificationSession({ sessionId }, router)
+}
+
+function runDesktopCommand(command: unknown, router: AnyRouter): void {
   switch (command) {
     case 'new_session':
       dispatchAppShortcut(APP_SHORTCUTS.newSession, getPlatform().os)
@@ -31,6 +62,32 @@ function runDesktopCommand(command: unknown): void {
       break
     case 'toggle_sidebar':
       dispatchAppShortcut(APP_SHORTCUTS.sidebar, getPlatform().os)
+      break
+    case 'review_panel':
+      dispatchAppShortcut(APP_SHORTCUTS.workspaceFiles, getPlatform().os)
+      break
+    case 'split_review_panel':
+      dispatchAppEvent(APP_EVENTS.splitReviewPanel)
+      break
+    case 'split_review_panel_down':
+      dispatchAppEvent(APP_EVENTS.splitReviewPanelDown)
+      break
+    case 'maximize_review_panel':
+      dispatchAppShortcut(APP_SHORTCUTS.maximizeDock, getPlatform().os)
+      break
+    case 'focus_mode':
+      dispatchAppEvent(APP_EVENTS.toggleFocusMode)
+      break
+    case 'reset_layout':
+      dispatchAppEvent(APP_EVENTS.resetLayout)
+      break
+    case 'text_size_compact':
+    case 'text_size_default':
+    case 'text_size_large':
+      useDisplayPrefsStore.getState().setTextSize(TEXT_SIZE_COMMANDS[command])
+      break
+    case 'next_needs_you':
+      openNextNeedsYou(router)
       break
     case 'terminal':
       dispatchAppEvent(APP_EVENTS.openTerminal)
@@ -52,7 +109,7 @@ function runDesktopCommand(command: unknown): void {
       dispatchAppEvent(APP_EVENTS.toggleScheduler)
       break
     case 'agent_capabilities':
-      useUIStore.getState().toggleAgentCapabilities()
+      useUIStore.getState().toggleRunPicker()
       break
     case 'settings':
       useSettingsStore.getState().openSettings()
@@ -111,7 +168,7 @@ export function useDesktopCommands(): void {
         const windowId = desktopWindowId()
         const unlisten = await listen<unknown>('desktop-command', (event) => {
           const command = acceptCommand(event.payload)
-          if (command !== null) runDesktopCommand(command)
+          if (command !== null) runDesktopCommand(command, router)
         }, windowId ? { target: windowId } : undefined)
         // The shell sends a click to the one window it brings forward.
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
@@ -142,4 +199,26 @@ export function useDesktopCommands(): void {
       cleanup?.()
     }
   }, [router])
+
+  // The View → Text Size items show the page's size, so tell the shell the
+  // current one now, whenever it changes, and when this window takes focus
+  // (the menu is shared by every window).
+  useEffect(() => {
+    if (!isDesktopShell()) return
+    const report = () => {
+      const size = useDisplayPrefsStore.getState().textSize
+      void import('@tauri-apps/api/core')
+        .then(({ invoke }) => invoke('set_menu_text_size', { size }))
+        .catch(() => {})
+    }
+    report()
+    const unsubscribe = useDisplayPrefsStore.subscribe((state, prev) => {
+      if (state.textSize !== prev.textSize) report()
+    })
+    window.addEventListener('focus', report)
+    return () => {
+      unsubscribe()
+      window.removeEventListener('focus', report)
+    }
+  }, [])
 }

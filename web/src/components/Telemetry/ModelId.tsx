@@ -1,11 +1,8 @@
 /**
- * A model as Usage shows it: the short ID in mono, then the provider as a
- * small outline tag (`claude-sonnet-4-6` `agy`). The full `provider:model`
- * string is the title, so it can be matched against logs and config.
+ * A model as Usage shows it: `provider:model` in mono, like everywhere else
+ * (see ui/model-name), so it can be matched against logs and config.
  */
-import { Chip } from '@/components/ui/chip'
-import { cn } from '@/lib/utils'
-import { modelName } from './model'
+import { ModelName } from '@/components/ui/model-name'
 
 export function providerOf(providerModel: string): string | null {
   const index = providerModel.indexOf(':')
@@ -13,13 +10,7 @@ export function providerOf(providerModel: string): string | null {
 }
 
 export function ModelId({ id, className }: { id: string; className?: string }) {
-  const provider = providerOf(id)
-  return (
-    <span className={cn('inline-flex min-w-0 max-w-full items-center gap-1.5', className)} title={id}>
-      <span className="min-w-0 truncate font-mono">{modelName(id)}</span>
-      {provider && <Chip mono variant="outline">{provider}</Chip>}
-    </span>
-  )
+  return <ModelName id={id} className={className} />
 }
 
 const SHORT_DATE_TIME = new Intl.DateTimeFormat('en-US', {

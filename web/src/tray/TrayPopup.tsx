@@ -5,13 +5,20 @@ import { Plug, RefreshCw, WifiOff } from 'lucide-react'
 import { Wordmark } from '@/components/brand/Logo'
 import { ProviderCard, ProviderSkeleton } from './ProviderCard'
 import { ServerPicker } from './ServerPicker'
-import { TRAY_STATUS_LABEL, providerView, trayStatus } from './providerView'
+import { SessionList } from './SessionList'
+import { TRAY_STATUS_LABEL, failureReason, providerView, trayStatus } from './providerView'
+import { type TraySessions, needsYouText, parseSessions } from './sessions'
+import { shortcutLabel } from './shortcuts'
 import { type TrayServerOption, type TrayUsageResult, formatCheckedAt } from './usage'
 
 const USAGE_COMMAND = 'get_tray_usage_summary'
+const SESSIONS_COMMAND = 'tray_sessions'
+const OPEN_SESSION_COMMAND = 'tray_open_session'
 const ACTION_COMMAND = 'tray_action'
 const FIT_COMMAND = 'tray_fit'
 const TRAY_REFRESH_EVENT = 'tray-popup-refresh'
+/** The sessions that need you or run changed while the popup is up. */
+const TRAY_SESSIONS_EVENT = 'tray-sessions'
 const PET_SETTINGS_COMMAND = 'pet_settings'
 const PET_SETTINGS_EVENT = 'pet-settings-changed'
 /** "Checked 2m ago" is re-read this often while the popup is up. */
@@ -22,10 +29,11 @@ const NO_SERVERS: TrayServerOption[] = []
 /** Native menu commands (desktop/src-tauri/src/menu.rs), plus the popup's own ``hide``. */
 type TrayAction = 'show' | 'settings' | 'quit' | 'usage_manage' | 'toggle_pet' | 'hide'
 
-const ACTIONS: Array<{ action: TrayAction; label: string; keys?: string; key?: string }> = [
+/** The hint under each action is written for the platform: ⌘ on macOS, Ctrl elsewhere. */
+const ACTIONS: Array<{ action: TrayAction; label: string; key?: string }> = [
   { action: 'show', label: 'Open OpenAgentd' },
-  { action: 'settings', label: 'Settings', keys: '⌘,', key: ',' },
-  { action: 'quit', label: 'Quit OpenAgentd', keys: '⌘Q', key: 'q' },
+  { action: 'settings', label: 'Settings', key: ',' },
+  { action: 'quit', label: 'Quit OpenAgentd', key: 'q' },
 ]
 
 function runAction(action: TrayAction) {
@@ -34,6 +42,23 @@ function runAction(action: TrayAction) {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
+function useShellEvent(event: string, onEvent: () => void) {
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+    void (async () => {
+      const stop = await listen(event, onEvent)
+      if (cancelled) stop()
+      else unlisten = stop
+    })()
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [event, onEvent])
 }
 
 /** Whether the desktop pet is on, as the shell says; null until known. */
@@ -63,6 +88,7 @@ function usePetEnabled(): boolean | null {
 
 export function TrayPopup() {
   const [result, setResult] = useState<TrayUsageResult | null>(null)
+  const [sessions, setSessions] = useState<TraySessions | null>(null)
   /** The IPC call itself failed (the command answers server errors in ``result.error``). */
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedServer, setSelectedServer] = useState('auto')
@@ -72,6 +98,16 @@ export function TrayPopup() {
   const [, setClock] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const petEnabled = usePetEnabled()
+
+  /** What needs you and what runs; `retry` also asks the feed to try its servers again now. */
+  const loadSessions = useCallback(async (retry = false) => {
+    try {
+      const next = parseSessions(await invoke<unknown>(SESSIONS_COMMAND, retry ? { retry: true } : undefined))
+      if (next) setSessions(next)
+    } catch {
+      // The lists are a bonus over the limits: a failed read leaves the last ones.
+    }
+  }, [])
 
   const load = useCallback(async (force = false, targetServer?: string) => {
     try {
@@ -85,21 +121,23 @@ export function TrayPopup() {
 
   useEffect(() => {
     void load()
-    // `listen` resolves after an IPC round trip; a cleanup that runs first
-    // (unmount, or a server switch changing `load`) must still remove it, or
-    // stale listeners keep reloading for the previous server.
-    let cancelled = false
-    let unlisten: (() => void) | undefined
-    void (async () => {
-      const stop = await listen(TRAY_REFRESH_EVENT, () => void load())
-      if (cancelled) stop()
-      else unlisten = stop
-    })()
-    return () => {
-      cancelled = true
-      unlisten?.()
-    }
   }, [load])
+  // `listen` resolves after an IPC round trip; a cleanup that runs first
+  // (unmount, or a server switch changing `load`) must still remove it, or
+  // stale listeners keep reloading for the previous server.
+  const reload = useCallback(() => void load(), [load])
+  useShellEvent(TRAY_REFRESH_EVENT, reload)
+
+  const reloadSessions = useCallback(() => void loadSessions(), [loadSessions])
+  useEffect(() => {
+    void loadSessions()
+  }, [loadSessions])
+  useShellEvent(TRAY_REFRESH_EVENT, reloadSessions)
+  useShellEvent(TRAY_SESSIONS_EVENT, reloadSessions)
+
+  const openSession = useCallback((sessionId: string) => {
+    void invoke(OPEN_SESSION_COMMAND, { sessionId }).catch(() => {})
+  }, [])
 
   const refresh = useCallback(() => {
     if (refreshing) return
@@ -220,9 +258,11 @@ export function TrayPopup() {
   const summary = result?.summary ?? null
   const failed = result?.error ?? loadError
   const status = trayStatus(result, loadError)
+  const noServer = status === 'no-server'
   const serverName = result?.server_name ?? 'the server'
   const views = summary?.items.map((item) => providerView(item)) ?? []
   const manage = () => runAction('usage_manage')
+  const waiting = sessions?.needsYou.length ?? 0
 
   return (
     <div ref={rootRef} className="tray" data-entering="">
@@ -230,68 +270,85 @@ export function TrayPopup() {
         <span className="brand">
           <Wordmark height={14} title="OpenAgentd" />
         </span>
-        <span className="status" data-tone={status}>{TRAY_STATUS_LABEL[status]}</span>
+        {!noServer && result && <span className="head-server">{result.server_name}</span>}
+        {waiting > 0 && <span className="head-chip" role="status">{needsYouText(waiting)}</span>}
       </header>
 
-      <div className="toolbar">
-        <span className="toolbar-label">Usage</span>
-        <span className="toolbar-controls">
-          <ServerPicker
-            servers={servers}
-            selected={selectedServer}
-            label={result?.server_name ?? '…'}
-            open={menuOpen}
-            active={activeOption}
-            onOpenChange={openMenu}
-            onActiveChange={setActiveOption}
-            onChoose={chooseServer}
-          />
-          <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh usage" title="Refresh (⌘R)">
-            <RefreshCw size={13} strokeWidth={2} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
-          </button>
-        </span>
-      </div>
-
-      {status === 'loading' ? (
-        <ProviderSkeleton />
-      ) : status === 'offline' ? (
+      {noServer ? (
         <div className="blank">
           <WifiOff size={20} strokeWidth={1.8} aria-hidden="true" />
-          <p className="blank-title">Can't reach {serverName}</p>
-          <p className="blank-text" title={failed ?? undefined}>The server didn't answer. It may be stopped or asleep.</p>
-          <button type="button" className="small-btn" onClick={refresh} disabled={refreshing}>Retry</button>
-        </div>
-      ) : views.length === 0 ? (
-        <div className="blank">
-          <Plug size={20} strokeWidth={1.8} aria-hidden="true" />
-          <p className="blank-title">No providers connected</p>
-          <p className="blank-text">Connect a provider to see its limits here.</p>
-          <button type="button" className="small-btn" onClick={manage}>Open Providers</button>
+          <p className="blank-title">{TRAY_STATUS_LABEL['no-server']}</p>
+          <p className="blank-text">Open OpenAgentd to start the built-in server or connect to one.</p>
+          <span className="blank-actions">
+            <button type="button" className="small-btn" data-primary="" onClick={() => runAction('show')}>Open OpenAgentd</button>
+            <button type="button" className="small-btn" onClick={() => runAction('settings')}>Settings</button>
+          </span>
         </div>
       ) : (
-        <div className="list">
-          {views.map((view) => <ProviderCard key={view.key} view={view} onManage={manage} />)}
-        </div>
-      )}
+        <>
+          {sessions && <SessionList sessions={sessions} onOpen={openSession} onRetry={() => void loadSessions(true)} />}
 
-      {summary && (
-        <p className="foot">
-          {failed ? (
-            <>
-              <span title={failed}>Couldn't refresh</span>
-              <button type="button" className="link-btn" onClick={refresh} disabled={refreshing}>Retry</button>
-            </>
+          <div className="toolbar">
+            <span className="toolbar-label">Provider limits</span>
+            <span className="status" data-tone={status}>{TRAY_STATUS_LABEL[status]}</span>
+            <span className="toolbar-controls">
+              <ServerPicker
+                servers={servers}
+                selected={selectedServer}
+                label={result?.server_name ?? '…'}
+                open={menuOpen}
+                active={activeOption}
+                onOpenChange={openMenu}
+                onActiveChange={setActiveOption}
+                onChoose={chooseServer}
+              />
+              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh provider limits" aria-keyshortcuts="Meta+R Control+R">
+                <RefreshCw size={14} strokeWidth={2} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
+              </button>
+            </span>
+          </div>
+
+          {status === 'loading' ? (
+            <ProviderSkeleton />
+          ) : status === 'offline' ? (
+            <div className="blank">
+              <WifiOff size={20} strokeWidth={1.8} aria-hidden="true" />
+              <p className="blank-title">Can't reach {serverName}</p>
+              <p className="blank-text">{failureReason(failed)}</p>
+              <button type="button" className="small-btn" onClick={refresh} disabled={refreshing}>Retry</button>
+            </div>
+          ) : views.length === 0 ? (
+            <div className="blank">
+              <Plug size={20} strokeWidth={1.8} aria-hidden="true" />
+              <p className="blank-title">No providers connected</p>
+              <p className="blank-text">Connect a provider to see its limits here.</p>
+              <button type="button" className="small-btn" onClick={manage}>Open Providers</button>
+            </div>
           ) : (
-            <span>{formatCheckedAt(summary.checked_at) ?? 'Not checked yet'}</span>
+            <div className="list">
+              {views.map((view) => <ProviderCard key={view.key} view={view} onManage={manage} />)}
+            </div>
           )}
-        </p>
+
+          {summary && (failed ? (
+            <div className="callout" role="alert">
+              <span className="callout-text">
+                <strong>Couldn't refresh</strong>
+                <span>{failureReason(failed)}</span>
+              </span>
+              <button type="button" className="small-btn" onClick={refresh} disabled={refreshing}>Retry</button>
+            </div>
+          ) : (
+            <p className="foot">{formatCheckedAt(summary.checked_at) ?? 'Not checked yet'}</p>
+          ))}
+        </>
       )}
 
       <nav className="actions" aria-label="OpenAgentd">
         {ACTIONS.map((item) => (
           <button key={item.action} type="button" className="action" data-primary={item.action === 'show' ? '' : undefined} onClick={() => runAction(item.action)}>
             {item.label}
-            {item.keys && <span className="action-keys">{item.keys}</span>}
+            {item.key && <span className="action-keys">{shortcutLabel(item.key)}</span>}
           </button>
         )).flatMap((button, i) => (i === 0 && petEnabled !== null
           ? [button, (

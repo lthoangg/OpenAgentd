@@ -108,18 +108,69 @@ describe('Review dock preview tabs', () => {
     const { rerender } = await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
     await waitFor(() => expect(document.querySelector('iframe')).toBeTruthy())
     const frame = document.querySelector('iframe')
+    const layer = frame?.closest('[data-dock-preview]')?.getAttribute('data-dock-preview')
     await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
     await screen.findByRole('button', { name: 'Preview a.html' })
-    expect(document.querySelector('iframe')).toBe(frame)
+    // Pages sit in one layer in a fixed order: the same node, never re-created.
+    expect(document.querySelectorAll('iframe')).toHaveLength(2)
+    expect(document.querySelector(`[data-dock-preview="${layer}"] iframe`)).toBe(frame)
     expect(frame?.closest('.hidden')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Preview localhost:5173' }))
     expect(frame?.closest('.hidden')).toBeNull()
   })
 
+  it('keeps the page when its tab moves to another pane', async () => {
+    const { rerender } = await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
+    await waitFor(() => expect(document.querySelector('iframe')).toBeTruthy())
+    const frame = document.querySelector('iframe')
+    await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
+    await screen.findByRole('button', { name: 'Preview a.html' })
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Preview localhost:5173' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Split Right' }))
+
+    const moved = screen.getByRole('button', { name: 'Preview localhost:5173' })
+    expect(moved.closest('[data-dock-pane]')?.getAttribute('aria-label')).toBe('Pane 2')
+    // The same page, on show beside the other one.
+    expect(frame?.isConnected).toBe(true)
+    expect(frame?.closest('.hidden')).toBeNull()
+    expect(document.querySelectorAll('iframe')).toHaveLength(2)
+    for (const page of document.querySelectorAll('iframe')) expect(page.closest('.hidden')).toBeNull()
+  })
+
+  // A click in a page lands in its frame, not in this document: no pointer
+  // event reaches the pane, only the window's blur says focus went there.
+  it('focuses the pane of a page the user clicks into', async () => {
+    const { rerender } = await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
+    await waitFor(() => expect(document.querySelector('iframe')).toBeTruthy())
+    const frame = document.querySelector('iframe')!
+    await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
+    await screen.findByRole('button', { name: 'Preview a.html' })
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Preview a.html' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Split Right' }))
+    const paneOf = (name: string) => screen.getByRole('button', { name }).closest('[data-dock-pane]')!
+    // The new pane has focus; the first page's pane steps back.
+    expect(paneOf('Preview localhost:5173').hasAttribute('data-pane-unfocused')).toBe(true)
+
+    Object.defineProperty(document, 'activeElement', { configurable: true, get: () => frame })
+    try {
+      await act(async () => {
+        window.dispatchEvent(new Event('blur'))
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+    } finally {
+      // The page's own getter comes back from its prototype.
+      delete (document as { activeElement?: unknown }).activeElement
+    }
+
+    expect(paneOf('Preview localhost:5173').hasAttribute('data-pane-unfocused')).toBe(false)
+    expect(paneOf('Preview a.html').hasAttribute('data-pane-unfocused')).toBe(true)
+  })
+
   it('opens the last dev server from Open… → Preview and closes its listener with the tab', async () => {
     localStorage.setItem(`oa-preview-last-url:${WORKSPACE}`, 'http://localhost:3000/app')
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Open in the review panel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Review panel' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }))
     await screen.findByRole('button', { name: 'Preview localhost:3000' })
     await waitFor(() => expect(posts()[0]?.body).toEqual({ workspace: WORKSPACE, url: 'http://localhost:3000/app' }))

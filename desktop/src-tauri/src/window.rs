@@ -24,6 +24,72 @@ pub const ZOOM_MAX: f64 = 3.0;
 pub const ZOOM_STEP: f64 = 1.2;
 pub const ZOOM_DEFAULT: f64 = 1.0;
 
+/// The zoom a new window opens at: the window it was opened from, else the
+/// one last chosen in any window (`shell_prefs`), kept within bounds.
+pub fn initial_zoom(opener: Option<f64>, saved: f64) -> f64 {
+    crate::shell_prefs::clamp_zoom(opener.unwrap_or(saved))
+}
+
+/// The zoom of the window a new one is opened from. Read before the new
+/// window exists: afterwards `target_webview_window` can return the new one.
+fn opener_zoom(app: &AppHandle) -> Option<f64> {
+    let window = target_webview_window(app)?;
+    let state: tauri::State<'_, AppState> = app.state();
+    let zoom = state.window_zoom_factors.lock().unwrap().get(window.label()).copied();
+    zoom
+}
+
+/// The explicit theme pick of the window a new one is opened from (`None`
+/// when it follows the system). Read before the new window exists, like
+/// [`opener_zoom`].
+fn opener_theme(app: &AppHandle) -> Option<tauri::Theme> {
+    let window = target_webview_window(app)?;
+    crate::config::saved_window_theme(app, window.label())
+}
+
+/// Hands the opener's theme pick to a new window's page
+/// (`__OAD_OPENER_THEME__`): the page uses it until the window has a pick of
+/// its own (`web/public/theme-init.js`, `web/src/lib/theme.ts`).
+pub fn opener_theme_init_script(theme: Option<tauri::Theme>) -> String {
+    let name = match theme {
+        Some(tauri::Theme::Dark) => "dark",
+        Some(_) => "light",
+        None => return String::new(),
+    };
+    format!("Object.defineProperty(window, '__OAD_OPENER_THEME__', {{ value: '{name}', writable: true, configurable: true }});")
+}
+
+/// The desktop's interface font family, read on the main thread at launch
+/// ([`remember_desktop_font`]; Linux only, unset elsewhere).
+static DESKTOP_FONT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Linux: remember GTK's interface font ("Cantarell 11" → "Cantarell").
+/// WebKitGTK does not resolve `system-ui` to it, so every window's page is
+/// handed the family ([`desktop_font_init_script`]). GTK is read on the
+/// main thread only, so `setup` calls this.
+#[cfg(target_os = "linux")]
+pub fn remember_desktop_font() {
+    use gtk::prelude::*;
+    let family = gtk::Settings::default()
+        .and_then(|settings| settings.gtk_font_name())
+        .and_then(|name| gtk::pango::FontDescription::from_string(&name).family())
+        .map(|family| family.to_string());
+    let _ = DESKTOP_FONT.set(family);
+}
+
+/// Hands the desktop's font family to the page (`__OAD_DESKTOP_FONT__`),
+/// which puts it first in its interface font stack
+/// (`web/public/theme-init.js`).
+pub fn desktop_font_init_script(family: Option<&str>) -> String {
+    let Some(family) = family.filter(|family| !family.trim().is_empty()) else {
+        return String::new();
+    };
+    format!(
+        "Object.defineProperty(window, '__OAD_DESKTOP_FONT__', {{ value: {}, writable: true, configurable: true }});",
+        serde_json::to_string(family).unwrap_or_else(|_| "\"\"".into()),
+    )
+}
+
 pub const THROTTLE_RESUME_SCRIPT: &str = r#"
 try {
     document.documentElement.removeAttribute('data-app-hidden');
@@ -323,6 +389,37 @@ pub fn window_background(theme: tauri::Theme) -> tauri::window::Color {
     }
 }
 
+/// Two-finger swipes go back and forward through the window's history (the
+/// sessions opened in it), as in Safari and other Mac apps. Tauri has no
+/// setting for WKWebView's switch, so it is flipped on the platform view.
+/// WebKit only starts the gesture once a horizontal scroller (a diff, a code
+/// block) has reached its edge.
+#[cfg(target_os = "macos")]
+fn enable_history_swipe(win: &tauri::WebviewWindow) {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{msg_send, sel};
+
+    let shown = win.with_webview(|webview| {
+        let view = webview.inner().cast::<AnyObject>();
+        if view.is_null() {
+            return;
+        }
+        // SAFETY: on macOS `inner()` is the window's live WKWebView, and
+        // `with_webview` runs this on the main thread, where AppKit and
+        // WebKit objects may be used.
+        let view = unsafe { &*view };
+        let set = sel!(setAllowsBackForwardNavigationGestures:);
+        // SAFETY: WKWebView answers this selector (checked first); it takes one BOOL.
+        let responds: bool = unsafe { msg_send![view, respondsToSelector: set] };
+        if responds {
+            let _: () = unsafe { msg_send![view, setAllowsBackForwardNavigationGestures: Bool::YES] };
+        }
+    });
+    if let Err(e) = shown {
+        log::warn!("could not turn on history swipes: {e}");
+    }
+}
+
 pub async fn build_app_window(
     app: &AppHandle,
     label: String,
@@ -339,11 +436,15 @@ async fn build_app_window_sized(
     saved_size: Option<SavedWindowState>,
 ) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url(app, &label)?;
+    let opener_zoom = opener_zoom(app);
+    let opener_theme = opener_theme(app);
     // Re-applied on every document load by the webview, so the frontend keeps
     // its window identity across reloads even when `window.location` no longer
     // carries the `oa-app-id` / `oa-window-id` query params.
     let identity_script = window_identity_init_script(&app.config().identifier, &label);
-    let init_script = format!("{identity_script}{init_script}");
+    let theme_script = opener_theme_init_script(opener_theme);
+    let font_script = desktop_font_init_script(DESKTOP_FONT.get().and_then(|family| family.as_deref()));
+    let init_script = format!("{identity_script}{theme_script}{font_script}{init_script}");
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
         height: 820,
@@ -357,6 +458,14 @@ async fn build_app_window_sized(
     config.url = url;
     config.drag_drop_enabled = false;
     config.visible = false;
+    // Windows: the page's header is the title bar, with its own caption
+    // buttons and Snap Layouts (src/caption.rs). The window keeps its drop
+    // shadow and resize edges without the system frame.
+    #[cfg(target_os = "windows")]
+    {
+        config.decorations = false;
+        config.shadow = true;
+    }
     if let Some(size) = saved_size {
         config.width = f64::from(size.width);
         config.height = f64::from(size.height);
@@ -376,40 +485,42 @@ async fn build_app_window_sized(
         });
     let builder = configure_window_chrome(builder);
     let win = builder.build().context("build webview window")?;
+    #[cfg(target_os = "macos")]
+    enable_history_swipe(&win);
     if let Some(size) = saved_size {
         win.set_size(PhysicalSize::new(size.width, size.height))
             .ok();
-        let screens: Vec<ScreenArea> = win
-            .available_monitors()
-            .unwrap_or_default()
-            .iter()
-            .map(|m| ScreenArea {
-                x: m.position().x,
-                y: m.position().y,
-                width: m.size().width,
-                height: m.size().height,
-            })
-            .collect();
-        if let Some((x, y)) = restorable_position(&size, &screens) {
+        if let Some((x, y)) = restorable_position(&size, &screen_areas(&win)) {
             win.set_position(PhysicalPosition::new(x, y)).ok();
         }
     }
     let state: tauri::State<'_, AppState> = app.state();
-    let zoom = state
+    let zoom = initial_zoom(opener_zoom, crate::shell_prefs::load(app).zoom);
+    // Recorded so ⌘+/⌘- steps from here, and a window opened from this one
+    // inherits it.
+    state
         .window_zoom_factors
         .lock()
         .unwrap()
-        .get(win.label())
-        .copied()
-        .unwrap_or(ZOOM_DEFAULT);
+        .insert(win.label().to_string(), zoom);
     win.set_zoom(zoom).ok();
-    // Windows keeps the app menu for keyboard accelerators, but the native
-    // OpenAgentd/File/Edit/View/Window bar duplicates the in-app chrome.
+    // Windows and Linux keep the app menu for keyboard accelerators, but the
+    // native OpenAgentd/File/Edit/View/Window bar duplicates the in-app
+    // chrome. The menu opens from the header's ☰ button (`show_app_menu`).
     #[cfg(target_os = "windows")]
-    win.hide_menu().context("hide Windows application menu")?;
-    // The page paints its saved theme pick, or the system theme without
-    // one, so match it before the page has painted.
-    let theme = crate::config::saved_window_theme(app, win.label()).or_else(|| win.theme().ok());
+    if let Err(e) = win.hide_menu() {
+        log::warn!("could not hide the application menu bar on {}: {e}", win.label());
+    }
+    #[cfg(target_os = "linux")]
+    keep_menu_bar_hidden(&win);
+    // A Windows taskbar overlay belongs to one window: this one starts with
+    // the count the others show.
+    crate::badge::apply_to_window(&win);
+    // The page paints its saved theme pick, else the opener's, else the
+    // system theme, so match it before the page has painted.
+    let theme = crate::config::saved_window_theme(app, win.label())
+        .or(opener_theme)
+        .or_else(|| win.theme().ok());
     if let Some(theme) = theme {
         win.set_background_color(Some(window_background(theme))).ok();
     }
@@ -417,6 +528,83 @@ async fn build_app_window_sized(
     win.set_focus().ok();
     log::info!("startup: window shown window={} theme={theme:?} at_ms={}", win.label(), crate::launch_ms());
     Ok(win)
+}
+
+/// Linux: hide the window's GTK menu bar for good. `hide_menu` does not
+/// last there: showing a window is GTK's `show_all`, which shows the bar
+/// again, at startup when the show request runs after the hide, and each
+/// time the window comes back (tray, a second launch). `no_show_all`
+/// exempts the bar from that.
+///
+/// GTK also fires a menu item's shortcut only while the item is on screen,
+/// so with the bar hidden Ctrl+Q, Ctrl+= and the rest did nothing. Each
+/// item now answers `can-activate-accel` itself: its shortcut works while
+/// it is enabled, as it did with the bar showing.
+#[cfg(target_os = "linux")]
+fn keep_menu_bar_hidden(win: &tauri::WebviewWindow) {
+    let window = win.clone();
+    let queued = win.run_on_main_thread(move || {
+        use gtk::prelude::*;
+        let Ok(vbox) = window.default_vbox() else {
+            return;
+        };
+        // Tauri packs the app menu's bar at the top of this box.
+        for bar in vbox.children().into_iter().filter_map(|child| child.downcast::<gtk::MenuBar>().ok()) {
+            bar.set_no_show_all(true);
+            bar.hide();
+            allow_shortcuts_while_hidden(bar.upcast_ref());
+        }
+    });
+    if let Err(e) = queued {
+        log::warn!("could not hide the application menu bar on {}: {e}", win.label());
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn allow_shortcuts_while_hidden(shell: &gtk::MenuShell) {
+    use gtk::prelude::*;
+    for item in shell.children().into_iter().filter_map(|child| child.downcast::<gtk::MenuItem>().ok()) {
+        item.connect_can_activate_accel(|item, _signal| item.is_sensitive());
+        if let Some(menu) = item.submenu().and_then(|menu| menu.downcast::<gtk::MenuShell>().ok()) {
+            allow_shortcuts_while_hidden(&menu);
+        }
+    }
+}
+
+/// Every screen, in physical pixels.
+fn screen_areas(win: &tauri::WebviewWindow) -> Vec<ScreenArea> {
+    win.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| ScreenArea {
+            x: m.position().x,
+            y: m.position().y,
+            width: m.size().width,
+            height: m.size().height,
+        })
+        .collect()
+}
+
+/// How far each new window steps down and right of its opener on macOS, in
+/// points (about a title bar, as AppKit cascades).
+#[cfg(target_os = "macos")]
+const CASCADE_STEP_POINTS: f64 = 22.0;
+
+/// The size (and, on macOS, the place) of a window opened from `opener`.
+/// Windows and Linux place a new window themselves; tao on macOS would put
+/// it in the top-left corner over its opener's, so it cascades from it.
+fn opened_from(opener: &tauri::WebviewWindow, state: SavedWindowState) -> SavedWindowState {
+    #[cfg(target_os = "macos")]
+    {
+        let scale = opener.scale_factor().unwrap_or(1.0);
+        let step = (CASCADE_STEP_POINTS * scale).round() as i32;
+        crate::config::cascaded_from(&state, &screen_areas(opener), step)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = opener;
+        state.size_only()
+    }
 }
 
 pub async fn create_app_window(
@@ -497,13 +685,14 @@ async fn create_app_window_with(
     } else {
         None
     };
-    // Open at the size of the window you are in, like a browser does, and
-    // let the OS place it. With no window open, reopen at the size and place
-    // saved on the last close/quit.
+    // Open at the size of the window you are in, like a browser does, placed
+    // the platform's way (`opened_from`). With no window open, reopen at the
+    // size and place saved on the last close/quit.
     let size = match target_webview_window(app) {
-        Some(window) => window_size(&window)
-            .or_else(|| load_window_state(app).ok().flatten())
-            .map(SavedWindowState::size_only),
+        Some(window) => match window_size(&window) {
+            Some(state) => Some(opened_from(&window, state)),
+            None => load_window_state(app).ok().flatten().map(SavedWindowState::size_only),
+        },
         None => load_window_state(app).ok().flatten(),
     };
     let built = build_app_window_sized(app, window_label.clone(), init_script, size).await;
@@ -551,6 +740,10 @@ pub fn set_window_zoom(app: &AppHandle, label: &str, update: impl FnOnce(f64) ->
         next
     };
     apply_zoom_to_window(app, label, next);
+    // The next window opens at the zoom last chosen, here or in any window.
+    if let Err(e) = crate::shell_prefs::update(app, |prefs| prefs.zoom = next) {
+        log::warn!("could not save the zoom factor: {e:#}");
+    }
 }
 
 pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
@@ -564,6 +757,21 @@ pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_window_takes_the_zoom_of_its_opener_else_the_saved_one() {
+        assert_eq!(initial_zoom(Some(1.44), 1.0), 1.44);
+        assert_eq!(initial_zoom(None, 1.2), 1.2);
+        // An opener at actual size still wins over a saved zoom.
+        assert_eq!(initial_zoom(Some(1.0), 1.7), 1.0);
+    }
+
+    #[test]
+    fn a_new_windows_zoom_stays_within_bounds() {
+        assert_eq!(initial_zoom(Some(9.0), 1.0), ZOOM_MAX);
+        assert_eq!(initial_zoom(None, 0.1), ZOOM_MIN);
+        assert_eq!(initial_zoom(Some(f64::NAN), 1.5), ZOOM_DEFAULT);
+    }
 
     fn external_on(label: &str, base: &str) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::from([(label.to_string(), base.to_string())])
@@ -671,6 +879,25 @@ mod tests {
 
     // The page paints ~150 ms after the window shows; until then the window
     // shows its own background, so it must be the boot page's in each theme.
+    #[test]
+    fn a_new_window_is_handed_the_openers_theme_pick() {
+        assert!(opener_theme_init_script(Some(tauri::Theme::Dark)).contains("__OAD_OPENER_THEME__', { value: 'dark'"));
+        assert!(opener_theme_init_script(Some(tauri::Theme::Light)).contains("value: 'light'"));
+        // An opener that follows the system hands nothing: the new one follows it too.
+        assert_eq!(opener_theme_init_script(None), "");
+    }
+
+    // Linux: WebKitGTK does not give system-ui the desktop's font, so the
+    // page gets GTK's (web/public/theme-init.js puts it first).
+    #[test]
+    fn the_desktop_font_reaches_the_page_as_a_js_string() {
+        assert!(desktop_font_init_script(Some("Adwaita Sans"))
+            .contains("'__OAD_DESKTOP_FONT__', { value: \"Adwaita Sans\","));
+        assert!(desktop_font_init_script(Some("Odd\"; alert(1); //")).contains(r#""Odd\"; alert(1); //""#));
+        assert_eq!(desktop_font_init_script(None), "");
+        assert_eq!(desktop_font_init_script(Some("  ")), "");
+    }
+
     #[test]
     fn window_background_matches_the_boot_page_in_both_themes() {
         let html = include_str!("../../../web/index.html").to_ascii_lowercase();

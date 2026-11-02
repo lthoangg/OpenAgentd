@@ -211,7 +211,7 @@ function ListRow({ row }: { row: ListViewRow }) {
     >
       {row.icon && (
         <span
-          className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
+          className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-muted)"
           aria-hidden="true"
         >
           {row.icon}
@@ -232,10 +232,10 @@ function ListRow({ row }: { row: ListViewRow }) {
           <span className={cn('mt-0.5', row.descriptionLines === 2 ? 'line-clamp-2' : 'line-clamp-1', TEXT.hint)}>{row.description}</span>
         )}
         {row.meta && (
-          <span className="mt-0.5 block truncate font-mono text-[11px] text-(--color-text-subtle)">{row.meta}</span>
+          <span className="mt-0.5 block truncate font-mono text-meta text-(--color-text-subtle)">{row.meta}</span>
         )}
         {row.metaChip && (
-          <span className="mt-1 flex"><Chip variant="outline">{row.metaChip}</Chip></span>
+          <span className="mt-1 flex"><Chip>{row.metaChip}</Chip></span>
         )}
       </span>
 

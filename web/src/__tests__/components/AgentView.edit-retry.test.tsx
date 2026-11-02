@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -39,10 +40,38 @@ describe('AgentView — edit any prompt', () => {
     expect(revertToMessage).toHaveBeenCalledWith('m1')
   })
 
-  it('offers no Edit while a turn is open', () => {
+  it('shows Edit disabled while a turn is open, with the reason on its tooltip', async () => {
+    const user = userEvent.setup()
     render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} isTurnOpen />)
 
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull()
+    const edits = screen.getAllByRole('button', { name: /Edit message, available when this turn ends/ })
+    expect(edits).toHaveLength(2)
+    expect(edits[0].getAttribute('aria-disabled')).toBe('true')
+    // The app tooltip, not a native title.
+    expect(edits[0].getAttribute('title')).toBeNull()
+    fireEvent.click(edits[0])
+    expect(revertToMessage).not.toHaveBeenCalled()
+
+    await user.hover(edits[0])
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Available when this turn ends')
+  })
+
+  it('keeps Edit and Copy at rest on the latest prompt, and reveals them on hover and focus for earlier ones', () => {
+    render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+
+    const rowOf = (button: HTMLElement) => button.closest('div') as HTMLElement
+    const [firstEdit, lastEdit] = screen.getAllByRole('button', { name: 'Edit message' })
+    const [firstCopy, lastCopy] = screen.getAllByRole('button', { name: 'Copy message' })
+    expect(rowOf(lastEdit).className).toContain('opacity-100')
+    expect(rowOf(lastEdit).className).not.toContain('opacity-0')
+    expect(rowOf(lastCopy)).toBe(rowOf(lastEdit))
+
+    // An earlier prompt: hidden until hover, but shown for keyboard focus and on touch.
+    expect(rowOf(firstEdit).className).toContain('opacity-0')
+    expect(rowOf(firstEdit).className).toContain('focus-within:opacity-100')
+    expect(rowOf(firstEdit).className).toContain('pointer-coarse:opacity-100')
+    expect(rowOf(firstCopy)).toBe(rowOf(firstEdit))
   })
 })
 

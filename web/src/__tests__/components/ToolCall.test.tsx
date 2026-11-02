@@ -915,18 +915,19 @@ describe("ToolCall — plan display", () => {
     expect(screen.queryByRole("button", { name: /plan$/ })).toBeNull()
 
     rerender(<ToolCall name="plan" args='{"action":"write","content":"# Ship"}' done result="Plan saved as revision 1 (1 lines) at plan.md." />)
-    fireEvent.click(screen.getByRole("button", { name: "View plan" }))
+    fireEvent.click(screen.getByRole("button", { name: "Open plan" }))
     expect(opened).toHaveLength(1)
     window.removeEventListener(APP_EVENTS.openPlan, onOpen)
   })
 
-  it("offers View plan once saved, and nothing when the call failed", () => {
+  it("offers Open plan once saved, and nothing when the call failed", () => {
     const args = JSON.stringify({ action: "write", content: "# Ship it" })
     const { rerender } = render(<ToolCall name="plan" args={args} done result="Plan saved as revision 1 (1 lines) at plan.md." />)
-    expect(screen.getByRole("button", { name: "View plan" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Open plan" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "View plan" })).toBeNull()
 
     rerender(<ToolCall name="plan" args={args} done result="Error: The plan is empty." />)
-    expect(screen.queryByRole("button", { name: "View plan" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Open plan" })).toBeNull()
   })
 
   it("shows a plan call with submit as the review card, like the former submit_plan", () => {
@@ -1322,7 +1323,7 @@ describe("ToolCall — shell terminal label and formatting", () => {
         />,
       )
       await user.click(screen.getByRole("button"))
-      const copyBtn = screen.getByLabelText("Copy arguments")
+      const copyBtn = screen.getByLabelText("Copy command and output")
       await user.click(copyBtn)
       expect(copiedText).toBe("npm test\nall tests passed\n")
       expect(copiedText).not.toContain("command")
@@ -1621,7 +1622,7 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
       const args = JSON.stringify({ command: "echo hello", description: "Print hello" })
       render(<ToolCall name="shell" args={args} done={false} />)
       await user.click(screen.getByRole("button"))
-      const copyBtn = screen.getByLabelText("Copy arguments")
+      const copyBtn = screen.getByLabelText("Copy command")
       await user.click(copyBtn)
       // If getToolDisplay was called before copy handler, formattedArgs is in scope
       expect(copiedText).toBe("echo hello")

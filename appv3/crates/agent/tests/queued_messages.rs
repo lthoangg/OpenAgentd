@@ -198,3 +198,38 @@ async fn a_steer_read_mid_turn_brings_its_mention_context() {
     let roles = h.stored_roles().await;
     assert!(tool_results_follow_their_calls(roles.iter().map(String::as_str)), "a stored user row split a tool call from its result: {roles:?}");
 }
+
+/// A sender queues behind a turn it sees running, under the session's
+/// `user_message_lock`, and leaves the row for that turn. A turn finishing at
+/// that moment has already made its last check of the queue, so it may only
+/// read as idle under the same lock, after looking again: otherwise the row
+/// waits for the next message (a subagent's report delivered as its lead's
+/// turn closed sat queued for good).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_row_queued_as_the_turn_finishes_still_runs() {
+    let h = harness("queued_at_turn_end").await;
+    let sender = h.session.user_message_lock.lock().await;
+    h.session.handle_user_message(UserMessage { content: "first".into(), session_id: h.sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while h.mock.calls.lock().unwrap().is_empty() {
+        assert!(std::time::Instant::now() < deadline, "the first turn never called the model");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // Well past the turn's own last look at the queue.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert!(h.session.has_active_user_turn(), "the turn read as idle while a sender held the lock");
+    appv3_db::save_queued_user_message(&h.pool, &h.sid, "late", None).await.unwrap();
+    drop(sender);
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while h.mock.calls.lock().unwrap().len() < 2 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the late row started a turn");
+    tokio::time::timeout(Duration::from_secs(10), h.session.wait_turn_finished()).await.expect("turn finishes");
+    assert!(h.user_texts(1).iter().any(|t| t.contains("late")), "{:?}", h.user_texts(1));
+    assert!(!appv3_db::has_queued_user_messages(&h.pool, &h.sid).await.unwrap(), "a row was left queued");
+}

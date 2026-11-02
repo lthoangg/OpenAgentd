@@ -1,14 +1,14 @@
 import { useId } from 'react'
 import { usePinnedSessionsQuery } from '@/queries/useSessionsQuery'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
-import { SessionGroupHeader } from './SessionGroupHeader'
+import { SidebarHeading } from './SidebarHeading'
 import { Collapsible } from '@/components/ui/collapsible'
 import { SessionRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
 
 /**
  * Pinned sessions from every workspace, above Needs you and the session
  * list, each with the name of the workspace it lives in. Hidden when
- * nothing is pinned.
+ * nothing is pinned. Part of the sidebar's one scroller.
  */
 export function PinnedSection({
   currentSessionId,
@@ -33,17 +33,16 @@ export function PinnedSection({
   if (sessions.length === 0) return null
 
   return (
-    <section aria-label="Pinned" className="shrink-0 border-b border-(--color-border-subtle) pb-1.5">
-      <SessionGroupHeader
+    <section aria-label="Pinned" className="shrink-0 pb-1.5">
+      <SidebarHeading
         label="Pinned"
         count={sessions.length}
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
         controls={listId}
-        tall
       />
       <Collapsible open={!collapsed}>
-        <div id={listId} className="max-h-48 space-y-px overflow-y-auto px-1.5">
+        <div id={listId} className="space-y-px px-1.5">
           {sessions.map((session) => (
             <SessionRow
               key={session.id}

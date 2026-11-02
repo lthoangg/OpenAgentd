@@ -158,7 +158,7 @@ export function McpServerForm({
                   rows={4}
                   spellCheck={false}
                   placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"
-                  className="min-h-32 font-mono text-[13px] leading-relaxed"
+                  className="min-h-32 font-mono text-code leading-relaxed"
                 />
               </Field>
 
@@ -366,7 +366,7 @@ function PairListField({
       </div>
 
       {pairs.length === 0 ? (
-        <p className="text-[11px] text-(--color-text-muted)">None.</p>
+        <p className="text-meta text-(--color-text-muted)">None.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {pairs.map((pair, idx) => (
@@ -404,7 +404,7 @@ function PairListField({
         </div>
       )}
 
-      {error && <p id={errorId} className="text-[11px] text-(--color-error)">{error}</p>}
+      {error && <p id={errorId} className="text-meta text-(--color-error)">{error}</p>}
     </div>
   )
 }

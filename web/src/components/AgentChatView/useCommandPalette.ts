@@ -1,9 +1,9 @@
 /**
- * useCommandPalette — Command Palette assembly, workspace file search,
+ * useCommandPalette — Command palette assembly, workspace file search,
  * view-mode cycling, and the window-level keyboard shortcut map.
  *
  * These are grouped together because most of the shortcut handlers (view
- * cycling, palette toggle, workspace files, sidebar/terminal toggles) are
+ * cycling, palette toggle, workspace files, sidebar toggle, terminal) are
  * *also* the actions the palette lists as commands — keeping them in one
  * hook avoids threading the same dozen callbacks through two separate
  * places in the shell.
@@ -30,6 +30,9 @@ import { switchPagePath } from './paletteSwitchCommands'
 
 export interface UseCommandPaletteArgs {
   workspace: string | null
+  /** ⌘K palette open: its Files group needs the workspace listing. */
+  paletteOpen: boolean
+  /** ⌘P (Find file) open. */
   quickOpenOpen: boolean
   sessionIdState: string | null
   /** True while the review dock is mounted (``workspacePanel !== null``). */
@@ -40,13 +43,22 @@ export interface UseCommandPaletteArgs {
   /** Project workspaces only: opens or shows the dock's Git tab. */
   handleOpenGit?: () => void
   handleSidebarToggle: () => void
-  handleToggleAgentCapabilities: () => void
+  handleToggleRunPicker: () => void
   /** Desktop + workspace: the dock's Tasks tab; otherwise the popover. */
   handleToggleTasks: () => void
   handleTogglePalette: () => void
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
+  /** Open Terminal — the last terminal, or a new shell, in the Review panel. */
   handleOpenTerminal: () => void
+  /** ⌘\ / ⌘⇧\ — split the Review panel's focused pane right / down (desktop + workspace). */
+  handleSplitDock: () => void
+  handleSplitDockDown: () => void
+  /** ⇧⌘F — focus mode (desktop). */
+  handleToggleFocusMode: () => void
+  focusMode: boolean
+  /** ⌘F — find in the session; omitted where there is no transcript to search. */
+  handleFindInSession?: () => void
   /** Only while the session has a plan; lists Open Plan. */
   handleOpenPlan?: () => void
   planAwaitingReview?: boolean
@@ -65,14 +77,17 @@ export interface UseCommandPaletteArgs {
 export interface UseCommandPaletteResult {
   paletteCommands: Command[]
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
-  /** The backend listing hit its file cap — surfaced in the Quick Open footer. */
+  /** The backend listing hit its file cap — surfaced in the palette footer. */
   quickOpenFilesTruncated: boolean
+  /** The listing is being fetched for the first time: the palette shows "Loading…". */
+  quickOpenFilesLoading: boolean
   /** Opens the pick in the dock, at the lines the query named. */
   handleQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
 }
 
 export function useCommandPalette({
   workspace,
+  paletteOpen,
   quickOpenOpen,
   sessionIdState,
   workspacePanelOpen,
@@ -80,12 +95,17 @@ export function useCommandPalette({
   handleWorkspaceFiles,
   handleOpenGit,
   handleSidebarToggle,
-  handleToggleAgentCapabilities,
+  handleToggleRunPicker,
   handleToggleTasks,
   handleTogglePalette,
   handleToggleQuickOpen,
   handleToggleScheduler,
   handleOpenTerminal,
+  handleSplitDock,
+  handleSplitDockDown,
+  handleToggleFocusMode,
+  focusMode,
+  handleFindInSession,
   handleOpenPlan,
   planAwaitingReview,
   handleOpenPreview,
@@ -116,7 +136,7 @@ export function useCommandPalette({
   )
 
   const agentCommands = useAgentCommands({
-    toggleAgentCapabilities: handleToggleAgentCapabilities,
+    toggleRunPicker: handleToggleRunPicker,
     toggleTasks: handleToggleTasks,
     toggleScheduler: handleToggleScheduler,
     handleWorkspaceFiles,
@@ -125,6 +145,11 @@ export function useCommandPalette({
     handleNewSession,
     handleOpenTerminal,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
+    handleSplitDock: workspace && !isMobile ? handleSplitDock : undefined,
+    handleSplitDockDown: workspace && !isMobile ? handleSplitDockDown : undefined,
+    handleToggleFocusMode: isMobile ? undefined : handleToggleFocusMode,
+    focusMode,
+    handleFindInSession: isMobile ? undefined : handleFindInSession,
     handleOpenPlan,
     planAwaitingReview,
     handleOpenPreview,
@@ -138,14 +163,15 @@ export function useCommandPalette({
     [agentCommands, switchCommands, serverCommands],
   )
 
-  // ── Quick Open workspace file search ───────────────────────────────────────
+  // ── Workspace file search (the palette's Files group, ⌘P's Find file) ──────
   //
-  // Fetch the active workspace file listing when Quick Open is open. We reuse
-  // the same query key as the @-mention picker so the two
-  // share a cache entry — no extra network request when both are warm.
+  // Fetch the active workspace file listing while either palette is open. We
+  // reuse the same query key as the @-mention picker so the two share a cache
+  // entry — no extra network request when both are warm.
   const hasQuickOpenWorkspace = Boolean(workspace)
+  const filesWanted = (paletteOpen || quickOpenOpen) && hasQuickOpenWorkspace
   const quickOpenQueryOptions = workspaceFileListQueryOptions(workspace ?? '')
-  const { data: paletteFilesData } = useQuery<
+  const { data: paletteFilesData, isLoading: paletteFilesLoading } = useQuery<
     { files: WorkspaceFileInfo[]; truncated?: boolean },
     Error,
     { files: WorkspaceFileInfo[]; truncated?: boolean },
@@ -154,12 +180,13 @@ export function useCommandPalette({
     // Must cache the *full* response, not a narrowed { files } object — the
     // workspace file tree reads the same entry. See ``workspace-files.ts``.
     ...quickOpenQueryOptions,
-    enabled: quickOpenOpen && hasQuickOpenWorkspace,
+    enabled: filesWanted,
     staleTime: WORKSPACE_FILES_STALE_MS,
   })
 
-  const quickOpenWorkspaceFiles = quickOpenOpen ? (paletteFilesData?.files ?? []) : []
-  const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
+  const quickOpenWorkspaceFiles = filesWanted ? (paletteFilesData?.files ?? []) : []
+  const quickOpenFilesTruncated = filesWanted && Boolean(paletteFilesData?.truncated)
+  const quickOpenFilesLoading = filesWanted && paletteFilesLoading
 
   const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo, line?: number, endLine?: number) => {
     setFileViewer(file)
@@ -172,7 +199,7 @@ export function useCommandPalette({
   // these (switchers aside), so none of them act on the app underneath.
   useShortcuts([
     appShortcut('newSession', () => { handleNewSession() }),
-    appShortcut('sessionSettings', () => { handleToggleAgentCapabilities() }),
+    appShortcut('sessionSettings', () => { handleToggleRunPicker() }),
     appShortcut('workspaceFiles', () => { handleWorkspaceFiles() }),
     appShortcut('maximizeDock', () => { handleToggleDockMaximized() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('tasks', () => { handleToggleTasks() }, { enabled: Boolean(sessionIdState) }),
@@ -186,7 +213,15 @@ export function useCommandPalette({
       useLayoutStore.getState().setDockMaximized(false)
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     }),
-    appShortcut('terminal', () => { handleOpenTerminal() }),
+    appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
+    appShortcut('splitDockDown', () => { handleSplitDockDown() }, { enabled: !isMobile && Boolean(workspace) }),
+    appShortcut('focusMode', () => { handleToggleFocusMode() }, { enabled: !isMobile }),
+    // Only from the chat: in a file or a terminal ⌘F stays theirs (and the
+    // browser's own Find elsewhere).
+    appShortcut('findInSession', () => { handleFindInSession?.() }, {
+      enabled: !isMobile && handleFindInSession !== undefined,
+      within: () => document.getElementById('main'),
+    }),
     appShortcut('openGit', () => { handleOpenGit?.() }, { enabled: handleOpenGit !== undefined }),
   ])
 
@@ -194,6 +229,7 @@ export function useCommandPalette({
     paletteCommands,
     quickOpenWorkspaceFiles,
     quickOpenFilesTruncated,
+    quickOpenFilesLoading,
     handleQuickOpenFileOpen,
   }
 }

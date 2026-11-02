@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { Profiler } from 'react'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
+
+mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
+const { Composer } = await import('@/components/composer/Composer')
 
 const realFetch = globalThis.fetch
 /** The cancel endpoint answers with ``status`` (204 cancelled, 404 already read). */
@@ -274,7 +277,133 @@ describe('PendingMessageQueue', () => {
     expect(icon?.getAttribute('class')).toContain('lucide-pencil')
   })
 
-  it('keeps the queued bubble flat: it sits in the transcript, it does not float', () => {
+  describe('Remove', () => {
+    it('removes a queued steer without handing its text back to the composer', async () => {
+      const user = userEvent.setup()
+      const restoreListener = mock(() => {})
+      window.addEventListener('queue:restore-draft', restoreListener)
+      answerCancel(204)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Never mind this' }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useAgentStore.getState()._pendingMessages).toEqual([])
+      expect(restoreListener).not.toHaveBeenCalled()
+      window.removeEventListener('queue:restore-draft', restoreListener)
+    })
+
+    it('offers Undo after a removal, which puts the text and files back in the composer', async () => {
+      const user = userEvent.setup()
+      let restored: { content?: string; files?: File[] } | undefined
+      const restoreListener = mock((e: unknown) => {
+        restored = (e as CustomEvent<{ content?: string; files?: File[] }>).detail
+      })
+      window.addEventListener('queue:restore-draft', restoreListener)
+      answerCancel(204)
+      const file = new File(['data'], 'doc.txt', { type: 'text/plain' })
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Oops', files: [file] }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      const toast = useToastStore.getState().toasts[0]
+      expect(toast?.title).toBe('Queued message removed')
+      expect(toast?.action?.label).toBe('Undo')
+      expect(restoreListener).not.toHaveBeenCalled()
+      toast?.action?.onAction()
+      expect(restored).toEqual({ content: 'Oops', files: [file] })
+      window.removeEventListener('queue:restore-draft', restoreListener)
+    })
+
+    it('says so when the agent read the steer before it could be removed', async () => {
+      const user = userEvent.setup()
+      answerCancel(404)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Too late' }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useToastStore.getState().toasts.map((t) => t.title)).toEqual(['Already sent to the agent'])
+      expect(useToastStore.getState().toasts[0]?.description).toContain('removed')
+      expect(useAgentStore.getState()._pendingMessages).toEqual([])
+    })
+
+    it('keeps a steer queued when the cancel fails', async () => {
+      const user = userEvent.setup()
+      answerCancel(500)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        error: null,
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Still queued' }],
+      })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useAgentStore.getState()._pendingMessages.map((m) => m.id)).toEqual(['pending-1'])
+      expect(useAgentStore.getState().error).toBeTruthy()
+      // The failure is the store's to report; nothing claims the message was removed.
+      expect(useToastStore.getState().toasts.map((t) => t.title)).not.toContain('Queued message removed')
+    })
+
+    it('removes a message held for the end of the turn, with Undo', async () => {
+      const user = userEvent.setup()
+      useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn' })
+
+      render(<PendingMessageQueue />)
+      await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
+
+      expect(useHeldMessagesStore.getState().messages).toEqual([])
+      expect(screen.queryByText('After the turn')).toBeNull()
+      expect(useToastStore.getState().toasts[0]?.action?.label).toBe('Undo')
+    })
+
+    it('sits beside Edit on every queued message, drawn as a cross, 24px and 36px on touch', () => {
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [
+          { id: 'pending-1', sessionId: 'session-1', content: 'One' },
+          { id: 'pending-2', sessionId: 'session-1', content: 'Two' },
+        ],
+      })
+
+      render(<PendingMessageQueue />)
+
+      const removes = screen.getAllByRole('button', { name: 'Remove queued message' })
+      expect(removes).toHaveLength(2)
+      expect(screen.getAllByRole('button', { name: 'Edit queued message' })).toHaveLength(2)
+      expect(removes[0]?.querySelector('svg')?.getAttribute('class')).toContain('lucide-x')
+      expect(removes[0]?.className).toContain('md:h-6 md:w-6')
+      expect(removes[0]?.className).toContain('pointer-coarse:size-9')
+    })
+
+    it('names itself in a tooltip, not a native title', async () => {
+      const user = userEvent.setup()
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Queued' }],
+      })
+
+      render(<PendingMessageQueue />)
+      const remove = screen.getByRole('button', { name: 'Remove queued message' })
+      expect(remove.hasAttribute('title')).toBe(false)
+      await user.hover(remove)
+
+      expect((await screen.findByRole('tooltip')).textContent).toBe('Remove queued message')
+    })
+  })
+
+  it('keeps the queued bubble flat: in the tray or the transcript, it does not float', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Queued' }],
@@ -454,5 +583,104 @@ describe('PendingMessageQueue', () => {
     const collapseBtn = screen.getByRole('button', { name: 'Collapse' })
     await user.click(collapseBtn)
     expect(screen.queryByText(/queued-line-11/)).toBeNull()
+  })
+})
+
+/**
+ * A main session has a composer, and the queue lives in its tray, right above
+ * the box (the transcript keeps it only where there is no composer; see
+ * ``AgentView.footer.test.tsx``).
+ */
+describe('PendingMessageQueue in the composer tray', () => {
+  const realResizeObserver = globalThis.ResizeObserver
+  afterEach(() => {
+    globalThis.ResizeObserver = realResizeObserver
+  })
+
+  function queueOne(content = 'Steer this way') {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content }],
+    })
+  }
+  const docked = () => render(<Composer onSubmit={() => {}} queue={<PendingMessageQueue />} />)
+
+  it('renders inside the docked composer, above the message box', () => {
+    queueOne()
+    docked()
+
+    const tray = screen.getByTestId('docked-composer')
+    const queued = within(tray).getByText('Steer this way')
+    const box = within(tray).getByLabelText('Message input')
+    expect(queued.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(tray).getByRole('button', { name: 'Edit queued message' })).toBeTruthy()
+  })
+
+  it('sits inside the element whose height the composer publishes as --composer-h', () => {
+    const observed: Element[] = []
+    globalThis.ResizeObserver = class {
+      observe(target: Element) { observed.push(target) }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+    queueOne()
+    render(
+      <div data-workbench-center="">
+        <Composer onSubmit={() => {}} queue={<PendingMessageQueue />} />
+      </div>,
+    )
+
+    // The measured element is the docked composer; a queue that grows the
+    // tray grows it too, and the transcript above simply ends sooner.
+    expect(observed).toEqual([screen.getByTestId('docked-composer')])
+    expect(observed[0].contains(screen.getByText('Steer this way'))).toBe(true)
+  })
+
+  it('takes no room while nothing is queued', () => {
+    docked()
+
+    const slot = document.querySelector('[data-composer-queue]') as HTMLElement
+    expect(slot.childElementCount).toBe(0)
+    // An empty slot is hidden, margin included.
+    expect(slot.className).toContain('empty:hidden')
+  })
+
+  it('scrolls within a capped height, so a long queue cannot push the box off screen', () => {
+    queueOne()
+    docked()
+
+    const slot = document.querySelector('[data-composer-queue]') as HTMLElement
+    expect(slot.className).toContain('max-h-[30dvh]')
+    expect(slot.className).toContain('overflow-y-auto')
+  })
+
+  it('is not drawn by the new-session composer, which has no queue', () => {
+    queueOne()
+    render(<Composer onSubmit={() => {}} placement="inline" queue={<PendingMessageQueue />} />)
+
+    expect(screen.queryByText('Steer this way')).toBeNull()
+  })
+
+  it('keeps Remove, with Undo to put the text back in the composer', async () => {
+    const user = userEvent.setup()
+    let restored: { content?: string } | undefined
+    const restoreListener = mock((e: unknown) => {
+      restored = (e as CustomEvent<{ content?: string }>).detail
+    })
+    window.addEventListener('queue:restore-draft', restoreListener)
+    answerCancel(204)
+    queueOne('Oops, not this')
+    docked()
+
+    await user.click(within(screen.getByTestId('docked-composer')).getByRole('button', { name: 'Remove queued message' }))
+
+    expect(useAgentStore.getState()._pendingMessages).toEqual([])
+    expect(screen.queryByText('Oops, not this')).toBeNull()
+    const toast = useToastStore.getState().toasts[0]
+    expect(toast?.title).toBe('Queued message removed')
+    expect(toast?.action?.label).toBe('Undo')
+    toast?.action?.onAction()
+    expect(restored).toEqual({ content: 'Oops, not this', files: undefined })
+    window.removeEventListener('queue:restore-draft', restoreListener)
   })
 })

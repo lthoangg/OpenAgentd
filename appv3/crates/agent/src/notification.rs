@@ -7,8 +7,14 @@ use std::path::Path;
 /// Longest body, in characters, before it is cut with an ellipsis.
 const MAX_BODY_CHARS: usize = 100;
 
-/// `"<status> · <workspace dir name>"`, or just the status without a workspace.
+/// `"<status> · <workspace name>"`, or just the status without a workspace.
+/// The name is the one the workspace list uses: "Chat" for the Chat
+/// workspace (its folder is the home directory, named after the login),
+/// else the folder's name.
 pub fn title(status: &str, workspace: Option<&str>) -> String {
+    if workspace.is_some_and(|w| appv3_core::settings::settings().is_chat_workspace(Some(Path::new(w)))) {
+        return format!("{status} · Chat");
+    }
     let name = workspace.and_then(|w| Path::new(w).file_name()).map(|n| n.to_string_lossy()).filter(|n| !n.trim().is_empty());
     match name {
         Some(n) => format!("{status} · {n}"),
@@ -78,6 +84,14 @@ mod tests {
         assert_eq!(title("Needs input", None), "Needs input");
         assert_eq!(title("Needs input", Some("")), "Needs input");
         assert_eq!(title("Needs input", Some("/")), "Needs input");
+    }
+
+    // The Chat workspace's folder is the home directory: its name (the
+    // user's login) is not what any other surface calls it.
+    #[test]
+    fn title_names_the_chat_workspace_chat() {
+        let chat = appv3_core::settings::settings().chat_workspace_root().display().to_string();
+        assert_eq!(title("Needs you", Some(&chat)), "Needs you · Chat");
     }
 
     #[test]

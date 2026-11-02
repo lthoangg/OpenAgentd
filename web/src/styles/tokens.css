@@ -27,6 +27,17 @@
     /* iOS sheet curve: surfaces that move with the soft keyboard or a drag. */
     --ease-sheet:         cubic-bezier(0.32, 0.72, 0, 1);
     --ease-linear:        linear;
+
+    /* Interface type (DESIGN.md → Typography): the host OS's own UI font,
+     * like every native app beside it — SF Pro on Apple platforms, Segoe UI
+     * Variable on Windows, Roboto on Android, the desktop's font on Linux.
+     * WebKitGTK does not resolve system-ui to the desktop's font, so the
+     * Linux app hands GTK's over as --font-desktop (public/theme-init.js),
+     * first in the stack. system-ui sits before Roboto: in Linux browsers it
+     * is the desktop's own face, which an installed Roboto would otherwise
+     * take over; on Android it is Roboto or the maker's font. Code stays in
+     * JetBrains Mono (index.css --font-mono). */
+    --font-ui: var(--font-desktop, -apple-system), BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -69,6 +80,26 @@
     --color-accent:  #F5EBD8;
     --color-overlay: #00000099;
 
+    /* Selection fills: a chosen segment or tab, the highlighted menu row, a
+     * tooltip. Quiet: a warm tone a step above the track and the menu, the
+     * text colour on it, like a native dark segmented control. Not the
+     * near-white accent (a cream block glows brighter than the words around
+     * it), and not a bright brown either. */
+    --color-fill-selected:   #4A3B2D;
+    --color-text-on-selected: #F5EBD8;
+    /* The menu row under the pointer or keyboard: a wash a step softer than
+     * a chosen segment, since it only follows the pointer. */
+    --color-fill-highlight:   #372D22;
+    --color-text-on-highlight: #F5EBD8;
+    /* A control resting on the keycap wash, hovered: half way to a chosen
+     * fill, so a hovered option never reads as the picked one. */
+    --color-fill-key-hover:   #332A20;
+    --color-fill-danger:     #6B2724;
+    --color-text-on-danger:  #F5EBD8;
+    --bg-tooltip:            #2E251C;
+    --color-tooltip-text:    #F5EBD8;
+    --color-tooltip-border:  #4D3E2D;
+
     /* Agent chips */
     --accent-blue:        #7CC2F0;
     --accent-blue-soft:   #1E3A52;
@@ -90,6 +121,10 @@
 
     --accent-red:         #F87171;
 
+    /* A switch that is on: the warm accent, like a checked box; its thumb
+     * takes the ink that sits on the accent (components/ui/switch.tsx). */
+    --switch-on:          var(--color-accent);
+
     /* Markers (charts) */
     --color-marker-blue:   #38BDF8;
     --color-marker-mint:   #4ADE80;
@@ -108,8 +143,10 @@
     --color-warning-subtle: var(--accent-orange-soft);
     --color-error:          #F87171;
     --color-error-subtle:   rgba(248, 113, 113, 0.12);
-    --color-info:           var(--accent-blue);
-    --color-info-subtle:    var(--accent-blue-soft);
+    /* Info is quiet: ink on the keycap wash. Signal Blue is the logo and
+     * keyboard focus only. */
+    --color-info:           var(--color-text-2);
+    --color-info-subtle:    var(--bg-key);
     --color-diff-add-bg:    rgba(16, 185, 129, 0.10);
     --color-diff-add-text:  #86EFAC;
     --color-diff-del-bg:    rgba(239, 68, 68, 0.10);
@@ -171,6 +208,24 @@
     --color-accent:  #3F3429;
     --color-overlay: rgba(26, 23, 20, 0.40);
 
+    /* Selection fills (see the dark theme): a light sand a step darker than
+     * the track and the menu, with the ink on it. Paper stays light: no Bark
+     * blocks behind a chosen segment, a menu row or a tooltip. */
+    --color-fill-selected:   #E3D6BA;
+    --color-text-on-selected: #1A1714;
+    /* The menu row under the pointer or keyboard: a light wash, as a native
+     * list's hover, so a moving pointer does not darken every row it crosses. */
+    --color-fill-highlight:   #EFE7D3;
+    --color-text-on-highlight: #1A1714;
+    /* A control resting on the keycap wash, hovered: half way to the chosen
+     * sand, not the border sand, which is as dark as a picked option. */
+    --color-fill-key-hover:   #E9E0C8;
+    --color-fill-danger:     #F7DCD6;
+    --color-text-on-danger:  #991B1B;
+    --bg-tooltip:            #FFFDF7;
+    --color-tooltip-text:    #1A1714;
+    --color-tooltip-border:  #D9CFA9;
+
     /* Agent chips */
     --accent-blue:        #5AA8E2;
     --accent-blue-soft:   #DCEEFB;
@@ -192,6 +247,8 @@
 
     --accent-red:         #A71C24;
 
+    --switch-on:          var(--color-accent);
+
     /* Markers (charts) */
     --color-marker-blue:   #0284C7;
     --color-marker-mint:   #16A34A;
@@ -210,8 +267,10 @@
     --color-warning-subtle: var(--accent-orange-soft);
     --color-error:          #B91C1C;
     --color-error-subtle:   rgba(185, 28, 28, 0.08);
-    --color-info:           var(--accent-blue);
-    --color-info-subtle:    var(--accent-blue-soft);
+    /* Info is quiet: ink on the keycap wash. Signal Blue is the logo and
+     * keyboard focus only. */
+    --color-info:           var(--color-text-2);
+    --color-info-subtle:    var(--bg-key);
     --color-diff-add-bg:    rgba(22, 163, 74, 0.16);
     --color-diff-add-text:  #166534;
     --color-diff-del-bg:    rgba(185, 28, 28, 0.14);
@@ -249,6 +308,14 @@
         --color-border-subtle: #B8A47E;
         --color-border:        #8C7A5B;
         --color-border-strong: #6E604F;
+        /* The chosen segment and highlighted row at 3:1 on the track: Bark. */
+        --color-fill-selected:    #3F3429;
+        --color-text-on-selected: #FFFDF7;
+        --color-fill-highlight:   #3F3429;
+        --color-text-on-highlight: #FFFDF7;
+        --color-fill-key-hover:   #E3D6BA;
+        --color-fill-danger:      #B91C1C;
+        --color-text-on-danger:   #FFFDF7;
     }
 
     :root.dark {
@@ -257,5 +324,13 @@
         --color-border-subtle: #5C4B36;
         --color-border:        #7A6A54;
         --color-border-strong: #9C8A72;
+        /* The chosen segment and highlighted row at 3:1 on the track. */
+        --color-fill-selected:    #C5B59A;
+        --color-text-on-selected: #15110D;
+        --color-fill-highlight:   #C5B59A;
+        --color-text-on-highlight: #15110D;
+        --color-fill-key-hover:   #4A3B2D;
+        --color-fill-danger:      #F87171;
+        --color-text-on-danger:   #15110D;
     }
 }

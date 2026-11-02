@@ -35,7 +35,7 @@ function installFetch() {
   }) as unknown as typeof fetch
 }
 
-function renderPanel(countEnabled = true, extra: { chipOnly?: boolean; onReopen?: () => void; compact?: boolean } = {}) {
+function renderPanel(countEnabled = true, extra: { chipOnly?: boolean; onReopen?: () => void } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
@@ -72,16 +72,25 @@ describe('BtwPanel', () => {
     expect(screen.queryByRole('button', { name: /Show side questions/ })).toBeNull()
   })
 
-  it('compact chip (composer minimized) reads "btw" but keeps its accessible name', async () => {
-    renderPanel(true, { compact: true })
-    const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
-    expect(chip.textContent).toBe('btw2')
-  })
-
-  it('full chip reads "Side questions"', async () => {
+  it('the chip always reads "Side questions" (one name), and truncates it rather than shorten it', async () => {
     renderPanel()
     const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
     expect(chip.textContent).toBe('Side questions2')
+    expect(screen.getByText('Side questions').className).toContain('truncate')
+    expect(chip.textContent).not.toMatch(/btw/i)
+  })
+
+  it('names the chip in a tooltip, not a native title', async () => {
+    renderPanel()
+    const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
+    expect(chip.hasAttribute('title')).toBe(false)
+  })
+
+  it('draws the chip as a filled pill with no border', async () => {
+    renderPanel()
+    const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
+    expect(chip.className).toContain('bg-(--bg-key)')
+    expect(chip.className).not.toMatch(/(?<![\w-:])border(?![\w-])/)
   })
 
   it('renders nothing while closed without side questions or a count', () => {
@@ -154,15 +163,57 @@ describe('BtwPanel', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
   })
 
-  it('Clear deletes only on the confirming second press', async () => {
+  it('Clear asks in a dialog first, and deletes only when confirmed', async () => {
     renderPanel(false)
     open()
     await screen.findByText('second answer')
     fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+
+    expect(await screen.findByText('Delete all side questions?')).toBeTruthy()
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm: delete all side questions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete all' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url === BASE)).toBe(true))
     expect(await screen.findByText(/No side questions yet/)).toBeTruthy()
+  })
+
+  it('keeps every side question when the dialog is cancelled, however long it stays open', async () => {
+    renderPanel(false)
+    open()
+    await screen.findByText('second answer')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+    await screen.findByText('Delete all side questions?')
+    // The old two-press Clear gave up after 3 seconds; a dialog waits for an answer.
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(screen.getByText('Delete all side questions?')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    // The dialog plays its exit animation before it leaves.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })
+    expect(screen.queryByText('Delete all side questions?')).toBeNull()
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+    expect(screen.getByText('second answer')).toBeTruthy()
+  })
+
+  it('Escape in the dialog closes the dialog, not the panel', async () => {
+    renderPanel(false)
+    open()
+    await screen.findByText('second answer')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+    await screen.findByText('Delete all side questions?')
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    expect(state().open).toBe(true)
+  })
+
+  it('has no native title on any of its controls', async () => {
+    renderPanel(false)
+    open()
+    await screen.findByText('second answer')
+
+    for (const button of screen.getAllByRole('button')) expect(button.hasAttribute('title')).toBe(false)
   })
 
   it('Copy writes the raw answer to the clipboard', async () => {

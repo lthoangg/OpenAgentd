@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-retry"
+description = "Enables the island_retry command without any pre-configured scope."
+commands.allow = ["island_retry"]
+
+[[permission]]
+identifier = "deny-island-retry"
+description = "Denies the island_retry command without any pre-configured scope."
+commands.deny = ["island_retry"]

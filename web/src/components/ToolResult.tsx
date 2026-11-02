@@ -12,7 +12,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
+import { ArrowUpRight, Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useContext, type ReactNode } from 'react'
 import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
@@ -20,7 +20,12 @@ import type { FileRef } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
 import { canonicalToolName } from '@/utils/tool-names'
+import { Button } from '@/components/ui/button'
 import { Chip, type ChipTone } from '@/components/ui/chip'
+import type { LiveSubagent } from '@/api/types'
+import { SubagentRow, openSubagentSession, type SubagentRowProps } from './ToolCall/SubagentRow'
+import { parseStartedAt, subagentStatusView } from './ToolCall/subagentStatus'
+import { useSubagentRoster } from './ToolCall/useSubagentRoster'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,13 +94,13 @@ function WebSearchResult({ result }: { result: string }) {
           <li key={i} className="group flex flex-col gap-0.5">
             {/* Title + link */}
             <div className="flex items-start gap-1.5">
-              <Globe size={11} className="mt-0.5 shrink-0 text-(--color-info)" />
+              <Globe size={11} className="mt-0.5 shrink-0 text-(--color-text-muted)" />
               {link ? (
                 <a
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="touch-hit relative min-w-0 flex-1 text-xs font-medium leading-snug break-words text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                  className="touch-hit relative min-w-0 flex-1 text-xs font-medium leading-snug break-words text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
                 >
                   {title}
                 </a>
@@ -110,7 +115,7 @@ function WebSearchResult({ result }: { result: string }) {
             {link && (
               <div className="flex items-center gap-1 pl-5">
                 <ExternalLink size={11} className="text-(--color-text-muted)" />
-                <span className="font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+                <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
                   {hostname(link)}
                 </span>
               </div>
@@ -150,8 +155,8 @@ function ShellResult({ result }: { result: string }) {
     <div className="flex flex-col gap-1">
       {/* Status line — plain text, coloured by outcome */}
       <span
-        className={`font-mono text-[11px] font-medium ${
-          success ? 'text-(--color-success)' : 'text-(--color-error)'
+        className={`font-mono text-meta font-medium ${
+          success ? 'text-(--accent-green-text)' : 'text-(--color-error)'
         }`}
       >
         {statusLine}
@@ -159,7 +164,7 @@ function ShellResult({ result }: { result: string }) {
 
       {/* stdout / stderr output */}
       {body && (
-        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)">
           <LinkifiedText text={body} />
         </pre>
       )}
@@ -183,14 +188,14 @@ function FileListResult({ result }: { result: string }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+      <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
       </span>
       <ul className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
         {entries.map((e, i) => (
           <li
             key={i}
-            className="font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
+            className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
           >
             <LinkifiedText text={e} />
           </li>
@@ -217,7 +222,7 @@ function FileReadResult({ result }: { result: string }) {
           {rangeLabel}
         </span>
       </div>
-      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
+      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
         {body}
       </pre>
     </div>
@@ -270,13 +275,13 @@ function BackgroundOutputBlock({
 }) {
   return (
     <div className="min-w-0 overflow-hidden">
-      <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+      <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
         <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
           <BgStatus pid={pid} status={status} detail={[outputLabel && !status ? 'output' : null, detail].filter(Boolean).join(' · ') || undefined} />
         </button>
         {headerAction}
       </div>
-      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2) sm:max-h-64">
+      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text-2) sm:max-h-64">
         <LinkifiedText text={truncateForDisplay(body)} />
       </pre>
     </div>
@@ -287,7 +292,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   if (result === 'No background processes running.') {
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta text-(--color-text-muted)">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
             <span className="font-sans">No background processes</span>
           </button>
@@ -307,7 +312,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   if (result.startsWith('PID     | Status') && listRows.length > 0) {
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta text-(--color-text-muted)">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
             <span className="font-sans">{listRows.length} background {listRows.length === 1 ? 'process' : 'processes'}</span>
           </button>
@@ -315,7 +320,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
         </div>
         <ul className="max-h-40 overflow-y-auto sm:max-h-64">
           {listRows.map((process) => (
-            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-[11px] last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
+            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-xs last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
               <span className="text-(--color-text)">pid {process.pid}</span>
               <span><Chip tone={statusTone(process.status)} dot={statusTone(process.status) === 'info'}>{process.status}</Chip></span>
               <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
@@ -341,14 +346,14 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     const [, pid, status, command, bufferedLines] = statusMatch
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={status} detail={bufferedLines ? `${bufferedLines} new ${bufferedLines === '1' ? 'line' : 'lines'}` : undefined} />
           </button>
           {headerAction}
         </div>
         {command && (
-          <code className="block break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+          <code className="block break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text-2)">
             {command}
           </code>
         )}
@@ -366,14 +371,14 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
 
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={status} detail={detail} />
           </button>
           {headerAction}
         </div>
         {body && (
-          <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+          <p className="px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text-2)">
             {body}
           </p>
         )}
@@ -391,13 +396,13 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
 
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-[11px]">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key) py-0 pr-2 pl-3 font-mono text-xs md:text-meta">
           <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 pointer-coarse:min-h-9 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <BgStatus pid={pid} status={pid ? 'not found' : 'error'} detail={known} />
           </button>
           {headerAction}
         </div>
-        <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-error)">
+        <p className="px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-error)">
           {body}
         </p>
       </div>
@@ -413,7 +418,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   return (
     <div className="relative">
       {headerAction && <div className="absolute top-0 right-1.5">{headerAction}</div>}
-      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-xs leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
         <LinkifiedText text={truncateForDisplay(result)} />
       </pre>
     </div>
@@ -469,7 +474,7 @@ function ScheduleTaskListResult({ result }: { result: string }) {
 
   return (
     <div className="oa-table-wrap">
-      <table className="w-full min-w-max font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+      <table className="w-full min-w-max font-mono text-xs leading-relaxed text-(--color-text-2)">
         <thead className="border-b border-(--color-border) bg-(--bg-key) text-left label-caps text-(--color-text-muted)">
           <tr>
             <th className="px-3 py-1.5 font-semibold">Task</th>
@@ -484,7 +489,7 @@ function ScheduleTaskListResult({ result }: { result: string }) {
             <tr key={task.slug || task.name} className="border-b border-(--color-border) last:border-b-0">
               <td className="px-3 py-2 align-top text-(--color-text)">
                 <div>{task.name}</div>
-                {task.slug && <div className="text-xs md:text-[11px] text-(--color-text-muted)">{task.slug}</div>}
+                {task.slug && <div className="text-xs md:text-meta text-(--color-text-muted)">{task.slug}</div>}
               </td>
               <td className="px-3 py-2 align-top">{task.schedule}</td>
               <td className="px-3 py-2 align-top">{task.status}</td>
@@ -522,9 +527,9 @@ const TODO_STATUS_ICON: Record<string, LucideIcon> = {
 }
 
 const TODO_STATUS_COLOR: Record<string, string> = {
-  completed: 'text-(--color-success)',
+  completed: 'text-(--accent-green-text)',
   cancelled: 'text-(--color-text-subtle)',
-  in_progress: 'text-(--color-info)',
+  in_progress: 'text-(--color-text)',
   pending: 'text-(--color-text-muted)',
 }
 
@@ -607,7 +612,7 @@ function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
-    return <div className="text-[11px] text-(--color-text-muted)">No todos.</div>
+    return <div className="text-xs text-(--color-text-muted)">No todos.</div>
   }
   const parsed = parseTodoList(result)
   if (!parsed) return <GenericResult result={result} />
@@ -623,8 +628,8 @@ function TodoListResult({ result }: { result: string }) {
             return (
               <div
                 key={idx}
-                className={`font-mono text-[11px] leading-relaxed ${
-                  isError ? 'text-(--color-warning)' : 'text-(--color-text-muted)'
+                className={`font-mono text-xs leading-relaxed ${
+                  isError ? 'text-(--accent-orange-text)' : 'text-(--color-text-muted)'
                 }`}
               >
                 {describeTodoOutcome(outcome, tasks)}
@@ -658,7 +663,7 @@ function TodoListResult({ result }: { result: string }) {
                     {task.content}
                   </div>
                   {/* What the task is reads first; its ID trails, muted. */}
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs md:text-meta text-(--color-text-muted)">
                     <span>{task.status}</span>
                     {task.priority && <span>{task.priority}</span>}
                     {agent && <span>{agent}</span>}
@@ -666,12 +671,12 @@ function TodoListResult({ result }: { result: string }) {
                     <span className="text-(--color-text-subtle)">{task.taskId}</span>
                   </div>
                   {task.instructions && (
-                    <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
+                    <div className="mt-1 text-xs leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
                       <span className="font-semibold">instructions:</span> {task.instructions}
                     </div>
                   )}
                   {task.result && (
-                    <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
+                    <div className="mt-1 text-xs leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
                       <span className="font-semibold">result:</span> {task.result}
                     </div>
                   )}
@@ -765,7 +770,7 @@ function LspNavigationResult({
   const opener = useContext(FileRefContext)
   if (result.trim() === 'No results.') {
     return (
-      <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">
+      <p className="font-mono text-xs leading-relaxed text-(--color-text-muted)">
         {lspEmptyLabel(operation)}
       </p>
     )
@@ -776,14 +781,14 @@ function LspNavigationResult({
 
   return (
     <div className="min-w-0">
-      <p className="mb-1 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
+      <p className="mb-1 font-mono text-xs md:text-meta text-(--color-text-muted)">
         {lspCountLabel(operation, locations.length)}
       </p>
       <ul className="max-h-[calc(8*1.55em)] min-w-0 space-y-1 overflow-y-auto pr-1 sm:max-h-[calc(10*1.55em)]">
         {locations.map((location, index) => (
           <li
             key={`${location.path}:${location.position}:${location.name ?? ''}:${index}`}
-            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-[11px] leading-relaxed"
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-xs leading-relaxed"
           >
             <span className="min-w-0 break-words text-(--color-text-2)">
               {location.name && (
@@ -801,7 +806,7 @@ function LspNavigationResult({
               {location.position}
             </span>
             {location.code && (
-              <span className="col-span-2 min-w-0 truncate text-xs md:text-[11px] text-(--color-text-muted)">
+              <span className="col-span-2 min-w-0 truncate text-xs text-(--color-text-muted)">
                 {location.code}
               </span>
             )}
@@ -809,7 +814,7 @@ function LspNavigationResult({
         ))}
       </ul>
       {note && (
-        <p className="mt-1 font-mono text-xs md:text-[11px] text-(--color-text-muted) italic">
+        <p className="mt-1 font-mono text-xs md:text-meta text-(--color-text-muted) italic">
           {note}
         </p>
       )}
@@ -831,7 +836,7 @@ function GenericResult({ result }: { result: string }) {
   const clipped = truncateForDisplay(display)
 
   return (
-    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)">
       <LinkifiedText text={clipped} />
     </pre>
   )
@@ -849,20 +854,29 @@ const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 const SCHEDULE_TOOLS = new Set(['schedule'])
 const TEAM_TOOLS = new Set(['team', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
 
-/** Subagent states as chips: blue while it runs, orange when it waits on you, green once done. */
-const TEAM_STATUS_TONE: Record<string, ChipTone> = {
-  completed: 'success',
-  done: 'success',
-  spawned: 'info',
-  running: 'info',
-  waiting_lead: 'warning',
-  stopped: 'neutral',
-  idle: 'neutral',
+/** A non-empty string field, or ``null``. */
+function str(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null
 }
-const TEAM_STATUS_LABEL: Record<string, string> = {
-  completed: 'completed',
-  spawned: 'running',
-  waiting_lead: 'waiting for main agent',
+
+/**
+ * What a subagent row shows for ``handle``: the live roster first (it knows
+ * where the member is now: its session, its state, when it started), the
+ * call's own snapshot behind it for a result read with no roster.
+ */
+function memberRow(
+  handle: string,
+  snapshot: Record<string, unknown> | null,
+  roster: Map<string, LiveSubagent> | null,
+): SubagentRowProps {
+  const live = roster?.get(handle)
+  return {
+    handle,
+    status: live?.status ?? str(snapshot?.status),
+    sessionId: live?.session_id || str(snapshot?.session_id),
+    startedAt: parseStartedAt(live?.created_at ?? snapshot?.created_at),
+    hasPendingQuestion: live ? live.has_pending_question : snapshot?.has_pending_question === true,
+  }
 }
 
 function TeamToolResult({ result }: { result: string }) {
@@ -870,8 +884,10 @@ function TeamToolResult({ result }: { result: string }) {
   if (!parsed || typeof parsed !== 'object') {
     return <GenericResult result={result} />
   }
+  return <TeamResult obj={parsed as Record<string, unknown>} />
+}
 
-  const obj = parsed as Record<string, unknown>
+function TeamResult({ obj }: { obj: Record<string, unknown> }) {
   const status = typeof obj.status === 'string' ? obj.status : null
   const memberId = typeof obj.member_id === 'string' ? obj.member_id : null
   const output = typeof obj.output === 'string' ? obj.output : typeof obj.result === 'string' ? obj.result : null
@@ -884,29 +900,54 @@ function TeamToolResult({ result }: { result: string }) {
     ? (obj.live_members as Record<string, unknown>[])
     : (Array.isArray(obj.subagents) ? (obj.subagents as Record<string, unknown>[]) : null)
 
+  const roster = useSubagentRoster(Boolean(memberId || results || liveMembers))
+  const header = memberId ? memberRow(memberId, obj, roster) : null
+  const headerView = subagentStatusView(status)
+  // Its question is open until the roster says the member moved on; with no
+  // roster to say so, it is shown as asked.
+  const live = memberId ? roster?.get(memberId) : undefined
+  const stillAsking = !live || live.has_pending_question || live.status === 'waiting_lead'
+
   return (
-    <div className="flex flex-col gap-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
-      <div className="flex flex-wrap items-center gap-1.5 font-sans">
-        {memberId && <Chip mono variant="outline">{memberId}</Chip>}
-        {status && (
-          <Chip tone={TEAM_STATUS_TONE[status] ?? 'error'} dot={status === 'spawned' || status === 'waiting_lead'} data-team-status={status}>
-            {TEAM_STATUS_LABEL[status] ?? status}
-          </Chip>
-        )}
-      </div>
+    <div className="flex flex-col gap-2 font-mono text-xs leading-relaxed text-(--color-text-2)">
+      {header ? (
+        <SubagentRow {...header} status={header.status ?? status} />
+      ) : (
+        headerView && (
+          <div className="flex flex-wrap items-center gap-1.5 font-sans">
+            <Chip tone={headerView.tone} dot={headerView.running || headerView.waiting} data-team-status={status}>
+              {headerView.label}
+            </Chip>
+          </div>
+        )
+      )}
 
       {pendingQuestion?.question && (
         <div className="rounded-sm border border-(--color-warning)/30 bg-(--color-warning-subtle)/50 p-2.5 font-sans text-xs text-(--color-text)">
           <div className="mb-1 font-medium text-(--accent-orange-text)">Question for the main agent</div>
           <div className="text-(--color-text) mb-1.5">{pendingQuestion.question}</div>
+          {/* A subagent's session has no composer: the main agent answers, through
+              its team tool. The choices are a plain list for the reader (nothing
+              here to press), and the one control opens the subagent's session. */}
           {pendingQuestion.options && pendingQuestion.options.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
+            <ul aria-label="Options" className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-(--color-text-2)">
               {pendingQuestion.options.map((opt, i) => (
-                <span key={i} className="rounded-xs border border-(--color-warning)/30 bg-(--bg-card) px-2 py-0.5 text-[11px] font-medium text-(--color-text)">
-                  {opt}
-                </span>
+                <li key={i}>{opt}</li>
               ))}
-            </div>
+            </ul>
+          )}
+          <p className="mt-1.5 text-xs text-(--color-text-muted)">The main agent answers subagent questions.</p>
+          {header?.sessionId && stillAsking && (
+            <Button
+              type="button"
+              variant="subtle"
+              size="xs"
+              className="mt-2"
+              onClick={() => openSubagentSession(header.sessionId!)}
+            >
+              Open subagent session
+              <ArrowUpRight size={12} aria-hidden="true" />
+            </Button>
           )}
         </div>
       )}
@@ -928,12 +969,10 @@ function TeamToolResult({ result }: { result: string }) {
           {Object.entries(results).map(([handle, resObj]) => {
             const resStatus = typeof resObj.status === 'string' ? resObj.status : 'done'
             const resOutput = typeof resObj.output === 'string' ? resObj.output : typeof resObj.result === 'string' ? resObj.result : null
+            const row = memberRow(handle, resObj, roster)
             return (
               <div key={handle} className="rounded-xs border border-(--color-border-subtle) bg-(--bg-card)/40 p-2 font-sans">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="font-mono text-[11px] font-semibold text-(--color-text)">{handle}</span>
-                  <Chip tone={TEAM_STATUS_TONE[resStatus] ?? 'neutral'}>{TEAM_STATUS_LABEL[resStatus] ?? resStatus}</Chip>
-                </div>
+                <SubagentRow {...row} status={row.status ?? resStatus} className="mb-1.5" />
                 {resOutput && (
                   // Phones: no scroller per member inside the transcript scroll.
                   <div data-team-member-output="" className="text-xs md:max-h-48 md:overflow-y-auto">
@@ -949,13 +988,11 @@ function TeamToolResult({ result }: { result: string }) {
       {liveMembers && liveMembers.length > 0 && (
         <div className="space-y-1 font-sans">
           <div className="label-caps text-(--color-text-muted)">Subagents</div>
-          <div className="grid gap-1">
-            {liveMembers.map((m, idx) => (
-              <div key={idx} className="flex items-center justify-between rounded-xs bg-(--bg-key)/30 px-2 py-1 text-xs">
-                <span className="font-mono font-medium text-(--color-text)">{String(m.member_id || m.profile)}</span>
-                <Chip tone={TEAM_STATUS_TONE[String(m.status)] ?? 'neutral'}>{TEAM_STATUS_LABEL[String(m.status)] ?? String(m.status)}</Chip>
-              </div>
-            ))}
+          <div className="grid gap-0.5">
+            {liveMembers.map((m, idx) => {
+              const handle = String(m.member_id || m.profile)
+              return <SubagentRow key={`${handle}:${idx}`} {...memberRow(handle, m, roster)} />
+            })}
           </div>
         </div>
       )}
@@ -1037,7 +1074,7 @@ export function LspDiagnosticsView({
         const locationColor = 'text-(--color-text-muted)'
 
         return (
-          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs md:text-[11px] leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
+          <div key={i} className={`flex items-baseline gap-1.5 px-2.5 font-mono text-xs leading-tight ${isError ? 'bg-(--color-error-subtle)' : ''}`}>
             <span className={`${labelColor} shrink-0 font-sans font-medium`}>
               {label}
             </span>
@@ -1051,7 +1088,7 @@ export function LspDiagnosticsView({
         )
       })}
       {overflowCount > 0 && (
-        <div className="font-mono text-xs md:text-[11px] leading-tight text-(--color-text-muted) italic">
+        <div className="font-mono text-xs md:text-meta leading-tight text-(--color-text-muted) italic">
           +{overflowCount} more
         </div>
       )}

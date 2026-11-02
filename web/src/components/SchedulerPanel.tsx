@@ -5,7 +5,7 @@ import {
   useScheduledTasksQuery,
 } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useUIStore } from '@/stores/useUIStore'
+import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
@@ -60,8 +60,14 @@ export function SchedulerPanel({
   const focusTaskId = useUIStore((s) => s.scheduledTaskFocus)
   useEffect(() => {
     if (!open || !focusTaskId) return
-    setSelectedTaskId(focusTaskId)
-    if (isMobile) setMobilePane('detail')
+    if (focusTaskId === NEW_SCHEDULED_TASK) {
+      setCreating(true)
+      setSelectedTaskId(null)
+      if (isMobile) setMobilePane('create')
+    } else {
+      setSelectedTaskId(focusTaskId)
+      if (isMobile) setMobilePane('detail')
+    }
     useUIStore.getState().focusScheduledTask(null)
   }, [focusTaskId, isMobile, open])
 

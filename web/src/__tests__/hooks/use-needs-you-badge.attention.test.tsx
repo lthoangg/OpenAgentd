@@ -9,12 +9,14 @@ import React from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
+const invoke = mock(async (..._args: unknown[]) => {})
 const setBadgeCount = mock(async (..._args: unknown[]) => {})
 const requestUserAttention = mock(async (..._args: unknown[]) => {})
 let platform = { isTauri: true, os: 'windows' }
 mock.module('@/hooks/use-platform', () => ({ getPlatform: () => platform }))
+mock.module('@tauri-apps/api/core', () => ({ invoke }))
 mock.module('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({ setBadgeCount, requestUserAttention }),
+  getCurrentWindow: () => ({ setBadgeCount, requestUserAttention, setTitle: async () => {} }),
   UserAttentionType: { Critical: 1, Informational: 2 },
 }))
 
@@ -31,6 +33,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   document.hasFocus = originalHasFocus
+  invoke.mockClear()
   setBadgeCount.mockClear()
   requestUserAttention.mockClear()
 })
@@ -96,6 +99,7 @@ describe('useNeedsYouBadge attention', () => {
   it('still badges the icon with the count', async () => {
     const set = await mount([])
     await set(['a'])
-    expect(setBadgeCount.mock.calls.at(-1)).toEqual([1])
+    expect(invoke.mock.calls.at(-1)).toEqual(['set_attention_badge', { count: 1 }])
+    expect(setBadgeCount).not.toHaveBeenCalled()
   })
 })

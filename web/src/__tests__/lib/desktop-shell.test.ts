@@ -101,4 +101,27 @@ describe('desktop shell', () => {
     uninstall()
     expect(root.hasAttribute('data-input-modality')).toBe(false)
   })
+
+  it('draws no ring for typing, shortcuts or Escape, only for moving focus with the keyboard', () => {
+    // Escape closing a menu opened with the mouse hands focus back to its
+    // button; a native app draws no ring there, nor after Cmd+B or typing.
+    setPlatform('MacIntel', true)
+    uninstall = installDesktopShell()
+    const root = document.documentElement
+    const field = document.getElementById('field')!
+    const chrome = document.getElementById('chrome')!
+    const press = (target: Element, init: KeyboardEventInit) => target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }))
+
+    for (const key of ['h', 'Enter', 'Backspace', 'ArrowLeft', ' ']) press(field, { key })
+    press(chrome, { key: 'Escape' })
+    press(chrome, { key: 'b', metaKey: true })
+    press(chrome, { key: 'k', ctrlKey: true })
+    expect(root.getAttribute('data-input-modality')).toBe('pointer')
+
+    press(chrome, { key: 'F6' })
+    expect(root.getAttribute('data-input-modality')).toBe('keyboard')
+    chrome.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    press(field, { key: 'Tab', shiftKey: true })
+    expect(root.getAttribute('data-input-modality')).toBe('keyboard')
+  })
 })

@@ -56,3 +56,20 @@ describe('routeTerminalKey — Windows/Linux', () => {
 it('ignores keyup and keypress', () => {
   expect(routeTerminalKey(new KeyboardEvent('keyup', { key: 'k', ctrlKey: true }), 'linux')).toBe(true)
 })
+
+describe('routeTerminalKey — layout keys on every OS', () => {
+  for (const os of ['macos', 'linux', 'windows'] as const) {
+    it(`keeps Control+backquote in the shell on ${os}: the app has no terminal key`, () => {
+      expect(routeTerminalKey(keydown('`', { ctrlKey: true, code: 'Backquote' }), os)).toBe(true)
+    })
+
+    it(`gives Control+Alt+arrows (send the tab to a side) to the app on ${os}`, () => {
+      for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+        expect(routeTerminalKey(keydown(key, { ctrlKey: true, altKey: true }), os)).toBe(false)
+      }
+      // Alt+arrow and Ctrl+arrow stay with the shell (word moves).
+      expect(routeTerminalKey(keydown('ArrowLeft', { altKey: true }), os)).toBe(true)
+      expect(routeTerminalKey(keydown('ArrowLeft', { ctrlKey: true }), os)).toBe(true)
+    })
+  }
+})

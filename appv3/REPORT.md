@@ -178,6 +178,84 @@ idle memory unchanged: 20 ms handshake, 18.8 MB idle RSS.
 
 ## 3. Remaining differences from v2
 
+### Session-pinned credentials and run settings
+
+Migration 00000030 adds `chat_sessions.credential_id` (nullable; NULL is
+Auto). `SessionResponse` gains `credential_id`, omitted on Auto, so v2
+response shapes are unchanged. The session list, detail, history, resolve
+and PATCH responses also carry `credential_label`, the pinned credential's
+name, omitted on Auto or once the credential is gone (the desktop tray shows
+it without reading credentials).
+
+`PATCH /api/agent/sessions/{id}` additionally accepts `model`,
+`thinking_level` and `credential_id`: a present key sets the field, `null`
+clears it (the agent's model or level, or Auto). The model must be in the
+registry; the credential must exist, be enabled, belong to the session
+model's provider, and that provider must pool its credentials without an
+exported key overriding them (422 otherwise). Changing the model to another
+provider returns the session to Auto. The body error for an empty PATCH now
+names all six fields. `POST /api/agent/chat` (form field) and
+`POST /api/agent/sessions/resolve` (new sessions only) accept
+`credential_id`, saved before the first turn starts.
+
+A pinned session's requests go to that credential only: the pool never
+rotates past it and never moves the provider's shared "in use" choice, and
+its members (subagents) follow the lead's pin, as do goal checks, side
+questions and titles generated on the session's provider (also by a
+configured title model on that provider). Cooldowns stay
+shared. While the pin cools down the turn waits instead of calling the
+provider: `provider_status` reports the new status value
+`waiting_credential` (same fields as `waiting_quota`; no new event name).
+A rejected or spend-capped pin fails the turn with a message offering Auto.
+A pin whose credential was removed or turned off is cleared at the next
+turn, with a `provider_status` `pin_released` note.
+
+Assistant rows' `extra` gains `credential_id` and `credential_label`, the
+stored credential that answered (pooled providers only). `GET
+/api/settings/providers/{id}/credentials` adds `pinned_sessions` per
+credential. Each `GET /api/settings/providers/usage-summary` item adds
+`account`, the label of the credential its limits belong to (the one the
+provider's next request uses) when the provider pools two or more enabled
+credentials, else `null`.
+
+### Account-scoped provider usage and throttling
+
+Provider metadata adds `supports_usage` alongside `supports_credential_usage`.
+Successful `GET /api/settings/providers/{id}/usage` responses keep `provider`
+and `limits` and add `updated_at` (Unix seconds when fetched successfully).
+The endpoint accepts `force_refresh=true`; it bypasses the measurement TTL,
+not an active Retry-After cooldown or an in-flight request.
+
+An upstream usage HTTP 429 now returns HTTP 429 (previously generic 502), a
+`Retry-After` header and an object `detail` containing `code:
+"usage_rate_limited"`, a safe message, `retry_after` seconds, `retry_at` Unix
+seconds, and nullable `last_good`. The last-good value is a normal usage
+response with its original `updated_at` and `stale: true`, retained for at
+most 30 minutes. Other usage errors have stable codes `usage_unsupported`
+(404), `usage_credentials` (404), `usage_rejected` (422) and
+`usage_unavailable` (502); transient failures may also include `last_good`.
+Raw upstream bodies, secrets and arbitrary headers are not forwarded.
+
+The summary keeps its envelope and adds item status `rate_limited` plus
+optional `retry_after`/`retry_at`. Stale readings retain an explicit failure
+status rather than masquerading as fresh success. Its `checked_at` describes
+the summary check; nested `usage.updated_at` describes the measurement.
+The summary envelope is assembled per call (`cached: false`); measurements
+share the same 60-second, per-resolved-account cache as the detail endpoint.
+This replaces the provider-only summary cache and prevents mixing readings
+when the active account changes. In-flight requests are joined per account,
+and requests across accounts have bounded concurrency. A valid Retry-After
+is honored without shortening; missing/invalid values use bounded backoff.
+Cache and usage cooldown live only in memory and never affect chat-pool
+cooldowns. Reconnect, credential replacement and removal invalidate account
+state; ordinary token refresh and quota redemption do not bypass cooldown.
+
+The existing plugin `HttpError` headers option is used to carry Retry-After;
+there is no new plugin API. Old plugins without headers use default backoff.
+Spend payloads may include optional `currency` for client formatting; unknown
+units remain numeric instead of being assumed to be money. No on-disk
+credential or database format changes.
+
 No v2 feature is left unported. Each item below is a deliberate, documented
 deviation. The harnesses in §1 either did not reach it or normalised it
 explicitly.

@@ -32,7 +32,7 @@ export const FileRefContext = createContext<FileRefOpener | null>(null)
 
 // Dotted and inheriting its colour: a reference reads as part of the text
 // until hovered, since output can hold dozens of them.
-const REF_CLASS = 'cursor-pointer rounded-xs underline decoration-dotted decoration-(--color-text-muted) underline-offset-2 hover:text-(--accent-blue-text) hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+const REF_CLASS = 'cursor-pointer rounded-xs underline decoration-dotted decoration-(--color-text-muted) underline-offset-2 hover:text-(--color-text) hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
 
 function refTitle(ref: FileRef): string {
   if (!ref.line) return `Open ${ref.path}`

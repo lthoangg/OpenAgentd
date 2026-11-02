@@ -19,6 +19,8 @@
   --pet-bubble-shadow: 0 8px 22px rgba(26, 23, 20, 0.24), 0 1px 3px rgba(26, 23, 20, 0.16);
   --pet-snooze-ink: rgba(255, 255, 255, 0.92);
   --pet-snooze-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  /* The "z z" is white: on a light wallpaper it needs a chip behind it. */
+  --pet-snooze-chip: rgba(26, 23, 20, 0.62);
 }
 /* ── End pet-only values ──────────────────────────────────────────────── */
 
@@ -36,7 +38,7 @@ body {
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.4;
   color: var(--color-text);
@@ -222,7 +224,7 @@ button:focus-visible {
   margin-left: -9px;
   border-radius: 50%;
   color: var(--color-text-on-accent);
-  font: 700 12px/18px "Inter Variable", sans-serif;
+  font: 700 12px/18px var(--font-ui);
   text-align: center;
   animation: pet-bob var(--pet-bob) var(--ease-in-out) infinite;
 }
@@ -246,6 +248,9 @@ button:focus-visible {
   position: absolute;
   right: -6px;
   top: -16px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--pet-snooze-chip);
   font: 700 12px "JetBrains Mono Variable", ui-monospace, monospace;
   color: var(--pet-snooze-ink);
   text-shadow: var(--pet-snooze-shadow);
@@ -256,25 +261,46 @@ button:focus-visible {
   50% { transform: translateY(-3px); }
 }
 
+/* For screen readers only: the pet's state, apart from its buttons. */
+.pet-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .pet-badge {
   position: absolute;
-  left: -6px;
-  top: -8px;
+  left: -10px;
+  top: -12px;
   z-index: 1;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
   background: var(--bg-send);
   color: var(--color-text-on-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 24px;
   text-align: center;
 }
 
 :root.dark .pet-badge {
   background: var(--color-text);
+  color: var(--bg-page);
+}
+
+/* A question put off for later: the badge says so in orange as well as in its label. */
+.pet-badge[data-needs-you] {
+  background: var(--accent-orange-text);
+  color: var(--color-text-on-accent);
+}
+
+:root.dark .pet-badge[data-needs-you] {
+  background: var(--accent-orange);
   color: var(--bg-page);
 }
 
@@ -291,7 +317,7 @@ button:focus-visible {
   border-radius: 8px;
   background: var(--bg-card);
   box-shadow: var(--pet-bubble-shadow);
-  font-size: 11.5px;
+  font-size: 12px;
   pointer-events: none;
   animation: pet-pop var(--motion-base) var(--ease-spring-snappy);
 }
@@ -594,16 +620,17 @@ button:focus-visible {
 
 .pet-bubble-close {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   color: var(--color-text-muted);
 }
 
+.pet-bubble-close:hover,
 .pet-bubble-close:active {
   background: var(--bg-key);
 }
@@ -614,7 +641,7 @@ button:focus-visible {
   gap: 5px;
   padding: 1px 7px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -648,7 +675,7 @@ button:focus-visible {
 }
 
 .pet-bubble-title {
-  margin: 6px 20px 2px 0;
+  margin: 6px 28px 2px 0;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -657,6 +684,10 @@ button:focus-visible {
 
 .pet-bubble-title--list {
   margin-top: 0;
+}
+
+.pet-bubble-title--next {
+  margin-top: 8px;
 }
 
 .pet-bubble-body {
@@ -669,16 +700,23 @@ button:focus-visible {
 
 .pet-bubble-actions {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   margin-top: 8px;
 }
 
 .pet-button {
-  padding: 3px 12px;
-  border-radius: 6px;
+  height: 28px;
+  max-width: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  border-radius: 7px;
   background: var(--bg-send);
   color: var(--color-text-on-accent);
   font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 :root.dark .pet-button {
@@ -686,21 +724,40 @@ button:focus-visible {
   color: var(--bg-page);
 }
 
+/* The other answers, and the way into the app: filled with the key colour. */
+.pet-button--quiet,
+:root.dark .pet-button--quiet {
+  background: var(--bg-key);
+  color: var(--color-text);
+}
+
+.pet-button:disabled {
+  opacity: 0.5;
+}
+
+.pet-bubble-note {
+  font-size: 12px;
+  color: var(--color-error);
+}
+
 .pet-list-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 0;
+  min-height: 32px;
+  padding: 2px 0;
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.pet-list-row:first-of-type {
+.pet-list-row:first-child,
+.pet-bubble-title + .pet-list-row {
   border-top: 0;
 }
 
 .pet-list-open {
   flex: 1;
   min-width: 0;
+  min-height: 28px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -710,8 +767,9 @@ button:focus-visible {
   flex: none;
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   color: var(--color-text-muted);
 }
 

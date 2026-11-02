@@ -52,8 +52,11 @@ export interface PreviewConsoleEntry {
 export type InspectMode = 'browse' | 'inspect'
 
 export type PageMessage =
-  | { type: 'ready'; path: string; title: string; status: 'ok' | 'down' }
+  /** ``doc`` names the document, the same on every ready it sends (absent from older inspectors). */
+  | { type: 'ready'; path: string; title: string; status: 'ok' | 'down'; doc?: string }
   | { type: 'location'; path: string; title: string }
+  /** The page started to navigate away (``beforeunload``). */
+  | { type: 'leaving' }
   | { type: 'select'; element: ElementDescriptor }
   | { type: 'console'; entries: PreviewConsoleEntry[] }
   | { type: 'mode'; mode: InspectMode }
@@ -126,10 +129,15 @@ export function parsePageMessage(event: Pick<MessageEvent, 'origin' | 'source' |
   const data: unknown = event.data
   if (!isRecord(data) || data.ns !== PREVIEW_NS || data.v !== PREVIEW_VERSION) return null
   switch (data.type) {
-    case 'ready':
-      return { type: 'ready', path: str(data.path, '/'), title: str(data.title), status: data.status === 'down' ? 'down' : 'ok' }
+    case 'ready': {
+      const ready: Extract<PageMessage, { type: 'ready' }> = { type: 'ready', path: str(data.path, '/'), title: str(data.title), status: data.status === 'down' ? 'down' : 'ok' }
+      if (typeof data.doc === 'string' && data.doc) ready.doc = data.doc.slice(0, 64)
+      return ready
+    }
     case 'location':
       return { type: 'location', path: str(data.path, '/'), title: str(data.title) }
+    case 'leaving':
+      return { type: 'leaving' }
     case 'select': {
       const element = parseElement(data.element)
       return element ? { type: 'select', element } : null

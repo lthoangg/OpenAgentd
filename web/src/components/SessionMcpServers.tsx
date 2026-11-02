@@ -105,7 +105,7 @@ function ServerRow({
         title="On or off for every session"
       />
       {server.error && server.state !== 'auth_required' && (
-        <p className="w-full text-[11px] leading-relaxed text-(--color-error)">{server.error}</p>
+        <p className="w-full text-meta leading-relaxed text-(--color-error)">{server.error}</p>
       )}
     </li>
   )
@@ -117,9 +117,14 @@ export interface SessionMcpServersProps {
   /** Called after a server's tool set may have changed, so the caller can
    *  refresh the agent payload that the tool names are derived from. */
   onServersChanged?: () => void
+  /**
+   * ``menu`` sits inside the composer's "+" menu: a plain heading and rows,
+   * no card around them (a card inside a popover would be a second frame).
+   */
+  variant?: 'section' | 'menu'
 }
 
-export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcpServersProps) {
+export function SessionMcpServers({ agentServers, onServersChanged, variant = 'section' }: SessionMcpServersProps) {
   const openSettings = useSettingsStore((s) => s.openSettings)
   // Poll here (and only here) so a server enabled from this panel visibly
   // moves starting → ready without a reopen.
@@ -151,18 +156,16 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
 
   const hasServers = agentServers.length > 0
 
-  return (
-    <PanelSection
-      title="MCP servers"
-      flush
-      actions={
-        <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('mcp')}>
-          Manage
-        </Button>
-      }
-    >
+  const manage = (
+    <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('mcp')}>
+      Manage
+    </Button>
+  )
+
+  const body = (
+    <>
       {!hasServers ? (
-        <p className={cn('px-4 py-4', TEXT.body)}>
+        <p className={cn(variant === 'menu' ? 'px-2 py-2' : 'px-4 py-4', TEXT.body)}>
           No MCP servers for this agent. Add one under Manage, then list it in the
           agent's config.
         </p>
@@ -192,7 +195,7 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
           </Callout>
         </div>
       ) : (
-        <ul className="divide-y divide-(--color-border-subtle)">
+        <ul className={variant === 'menu' ? '' : 'divide-y divide-(--color-border-subtle)'}>
           {agentServers.map((name) => (
             <ServerRow
               key={name}
@@ -205,6 +208,24 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
           ))}
         </ul>
       )}
+    </>
+  )
+
+  if (variant === 'menu') {
+    return (
+      <section aria-label="MCP servers" data-mcp-servers="">
+        <div className="flex items-center justify-between gap-2 pl-2">
+          <h3 className="text-meta font-medium text-(--color-text-muted)">MCP servers</h3>
+          {manage}
+        </div>
+        {body}
+      </section>
+    )
+  }
+
+  return (
+    <PanelSection title="MCP servers" flush actions={manage}>
+      {body}
     </PanelSection>
   )
 }

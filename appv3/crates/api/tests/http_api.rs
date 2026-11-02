@@ -593,7 +593,7 @@ async fn http_api_end_to_end() {
     preview_routes(&c, root.path()).await;
     preview_tunnel(&c, &pool, root.path()).await;
     first_chat_mode_flow(&c, root.path()).await;
-    provider_credentials_flow(&c, root.path()).await;
+    provider_credentials_flow(&c, &pool, root.path()).await;
     goal_flow(&c, &pool, root.path()).await;
 
     appv3_api::startup::shutdown().await;
@@ -601,7 +601,7 @@ async fn http_api_end_to_end() {
 
 /// Several keys per provider: add, list (no secret values), reorder,
 /// disable, remove. Stored in `credentials.yaml`, never the process env.
-async fn provider_credentials_flow(c: &Client, root: &std::path::Path) {
+async fn provider_credentials_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
     std::env::remove_var("OPENROUTER_API_KEY");
     let base = "/api/settings/providers/openrouter/credentials";
     let (personal_key, work_key) = ("sk-or-test-personal-1111", "sk-or-test-work-2222");
@@ -643,6 +643,8 @@ async fn provider_credentials_flow(c: &Client, root: &std::path::Path) {
     assert_eq!(v["credentials"][0]["in_use"], json!(true), "reordering switches to the new first credential: {v}");
     assert_eq!(v["credentials"][1]["in_use"], json!(false), "{v}");
 
+    session_pin_flow(c, pool, root, base, &a, &b).await;
+
     let (st, v) = c.json("PATCH", &format!("{base}/{b}"), Some(json!({"label": "Team", "disabled": true}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");
     assert_eq!((v["label"].clone(), v["status"].clone()), (json!("Team"), json!("disabled")));
@@ -662,6 +664,55 @@ async fn provider_credentials_flow(c: &Client, root: &std::path::Path) {
     assert_eq!(st, StatusCode::NOT_FOUND);
     let (st, _) = c.json("DELETE", &format!("{base}/{a}"), None).await;
     assert_eq!(st, StatusCode::OK);
+}
+
+/// A session pinned to one of the provider's credentials (v3 addition):
+/// PATCH sets and clears it, it survives a reload, the credential list
+/// counts the sessions pinned to each credential, and a pin is refused for
+/// a credential that is not the session model's provider's or not enabled.
+async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path, base: &str, personal: &str, work: &str) {
+    let new = appv3_db::NewSession { workspace: root.display().to_string(), model: Some("openrouter:test/model".into()), ..Default::default() };
+    let s = appv3_db::create_session(pool, new).await.unwrap();
+    let uri = format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(&s.id));
+    let (_, v) = c.json("GET", &uri, None).await;
+    assert!(v.get("credential_id").is_none(), "a new session is on Auto: {v}");
+
+    let (st, v) = c.json("PATCH", &uri, Some(json!({"credential_id": work}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["credential_id"], json!(work));
+    let (_, v) = c.json("GET", &uri, None).await;
+    assert_eq!(v["credential_id"], json!(work), "the pin is stored: {v}");
+    assert_eq!(v["credential_label"], json!("Work"), "the pinned account is named: {v}");
+    let (_, list) = c.json("GET", "/api/agent/sessions?limit=100", None).await;
+    let row = list["data"].as_array().unwrap().iter().find(|r| r["id"] == json!(appv3_db::codec::api_uuid(&s.id))).cloned().unwrap();
+    assert_eq!(row["credential_label"], json!("Work"), "lists name it too, for the desktop tray: {row}");
+    let (_, v) = c.json("GET", base, None).await;
+    let pinned: Vec<i64> = v["credentials"].as_array().unwrap().iter().map(|c| c["pinned_sessions"].as_i64().unwrap()).collect();
+    let work_index = v["credentials"].as_array().unwrap().iter().position(|c| c["id"] == json!(work)).unwrap();
+    assert_eq!(pinned[work_index], 1, "{v}");
+    assert_eq!(pinned.iter().sum::<i64>(), 1, "{v}");
+
+    // Thinking level and model are stored the same way.
+    let (st, v) = c.json("PATCH", &uri, Some(json!({"thinking_level": "high"}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!((v["thinking_level"].clone(), v["credential_id"].clone()), (json!("high"), json!(work)));
+
+    let (st, v) = c.json("PATCH", &uri, Some(json!({"credential_id": "cred_missing"}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "an unknown credential is refused: {v}");
+    let other = appv3_db::NewSession { workspace: root.display().to_string(), model: Some("anthropic:claude-x".into()), ..Default::default() };
+    let other = appv3_db::create_session(pool, other).await.unwrap();
+    let other_uri = format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(&other.id));
+    let (st, v) = c.json("PATCH", &other_uri, Some(json!({"credential_id": personal}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "another provider's credential is refused: {v}");
+
+    let (st, v) = c.json("PATCH", &uri, Some(json!({"credential_id": null}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v.get("credential_id").is_none(), "null returns the session to Auto: {v}");
+    assert!(v.get("credential_label").is_none(), "Auto names no account: {v}");
+    for id in [&s.id, &other.id] {
+        let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(id)), None).await;
+        assert_eq!(st, StatusCode::NO_CONTENT);
+    }
 }
 
 /// Poll a session's goal until `done` holds for it.

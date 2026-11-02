@@ -1,16 +1,23 @@
 import { afterEach, describe, expect, it } from 'bun:test'
+import { createElement, Fragment } from 'react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import {
   clearPlanReviewDrafts,
   findTextRange,
   formatPlanReview,
   overlayLeft,
   parsePlanReview,
+  planReviewAnswer,
   quoteExcerpt,
   readPlanReviewDraft,
+  snapshotPlanReviewDraft,
+  usePlanReviewDraft,
   writePlanReviewDraft,
+  forgetPlanReviewDraft,
 } from '@/components/PlanReview/plan-comments'
 
 afterEach(() => {
+  cleanup()
   document.body.innerHTML = ''
   clearPlanReviewDrafts()
 })
@@ -101,5 +108,63 @@ describe('review drafts', () => {
     expect(readPlanReviewDraft('q-2')).toEqual({ comments: [], overall: '' })
     writePlanReviewDraft('q-1', { comments: [], overall: '' })
     expect(readPlanReviewDraft('q-1')).toEqual({ comments: [], overall: '' })
+  })
+
+  it('hands the same empty draft to every review with nothing written, so a subscriber never loops', () => {
+    expect(snapshotPlanReviewDraft('q-1')).toBe(snapshotPlanReviewDraft('q-2'))
+    expect(snapshotPlanReviewDraft(null)).toBe(snapshotPlanReviewDraft('q-1'))
+    const draft = { comments: [{ id: 'c1', quote: 'A', text: 'B' }], overall: '' }
+    writePlanReviewDraft('q-1', draft)
+    expect(snapshotPlanReviewDraft('q-1')).toBe(draft)
+    expect(snapshotPlanReviewDraft('q-1')).toBe(snapshotPlanReviewDraft('q-1'))
+  })
+
+  it('tells every reader of a review when its draft changes: the Plan tab and the card share one', () => {
+    function Reader({ label }: { label: string }) {
+      const draft = usePlanReviewDraft('q-1')
+      return createElement('p', { 'aria-label': label }, `${draft.comments.length}|${draft.overall}`)
+    }
+    render(createElement(Fragment, null, createElement(Reader, { label: 'tab' }), createElement(Reader, { label: 'card' })))
+    expect(screen.getByLabelText('tab').textContent).toBe('0|')
+
+    act(() => {
+      writePlanReviewDraft('q-1', { comments: [{ id: 'c1', quote: 'A', text: 'B' }], overall: 'Overall.' })
+    })
+    expect(screen.getByLabelText('tab').textContent).toBe('1|Overall.')
+    expect(screen.getByLabelText('card').textContent).toBe('1|Overall.')
+
+    act(() => forgetPlanReviewDraft('q-1'))
+    expect(screen.getByLabelText('card').textContent).toBe('0|')
+  })
+
+  it('does not wake readers of another review', () => {
+    function Reader() {
+      const draft = usePlanReviewDraft('q-2')
+      return createElement('p', { 'aria-label': 'other' }, draft.overall)
+    }
+    render(createElement(Reader))
+
+    act(() => {
+      writePlanReviewDraft('q-1', { comments: [], overall: 'Not yours.' })
+    })
+
+    expect(screen.getByLabelText('other').textContent).toBe('')
+  })
+})
+
+describe('planReviewAnswer', () => {
+  it('formats comments, a half-written comment and the overall feedback as one answer', () => {
+    expect(
+      planReviewAnswer({
+        comments: [{ id: 'c1', quote: 'Step A', text: 'Split this.' }],
+        overall: 'Otherwise fine.',
+        composer: { quote: 'Step B', text: 'Add a test.' },
+      }),
+    ).toBe('**Comment 1**\n> Step A\n\nSplit this.\n\n**Comment 2**\n> Step B\n\nAdd a test.\n\n**Overall**\nOtherwise fine.')
+  })
+
+  it('leaves out a comment box nothing was typed in, and is empty for an empty draft', () => {
+    expect(planReviewAnswer({ comments: [], overall: '', composer: { quote: 'Step B', text: '  ' } })).toBe('')
+    expect(planReviewAnswer(snapshotPlanReviewDraft('q-9'))).toBe('')
   })
 })

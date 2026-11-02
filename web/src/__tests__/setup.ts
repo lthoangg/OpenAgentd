@@ -105,4 +105,8 @@ afterEach(() => {
   if (typeof document !== "undefined" && document.body) {
     document.body.innerHTML = "";
   }
+  // The Review panel remembers its tabs per session in localStorage; a test
+  // that renders it for the same session id would otherwise start with the
+  // previous test's tabs.
+  if (typeof localStorage !== "undefined") localStorage.removeItem("oa.dockTabs.v1");
 });

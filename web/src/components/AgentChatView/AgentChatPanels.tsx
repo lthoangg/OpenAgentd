@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { lazySurface } from '@/lib/lazy-surface'
-import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
 import type { SessionGoal, SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerPanel = lazySurface(() => import('../SchedulerPanel'), 'SchedulerPanel')
+const PaletteHost = lazySurface(() => import('./PaletteHost'), 'PaletteHost')
 
 /** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
 function useOpenedOnce(open: boolean): boolean {
@@ -17,12 +16,6 @@ function useOpenedOnce(open: boolean): boolean {
 }
 
 interface AgentChatPanelsProps {
-  agentCapabilitiesOpen: boolean
-  agentWorkspace: string | null
-  sessionModel: string | null
-  sessionThinkingLevel: string | null
-  onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null) => void
-  onCloseAgentCapabilities: () => void
   /** Popover fallback: mobile, or desktop without a review dock. */
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
@@ -45,24 +38,24 @@ interface AgentChatPanelsProps {
   /** Remounts the palette when it is sent to another page while open. */
   paletteKey: number
   paletteCommands: Command[]
+  /** The open session; the palette's Sessions group leaves it out. */
+  sessionId?: string | null
+  /** The palette scoped to files (⌘P, "Find file"). */
   quickOpenOpen: boolean
-  /** Query Quick Open opens with; empty from its shortcut. */
+  /** Query the file scope opens with; empty from its shortcut. */
   quickOpenQuery: string
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
-  /** Backend hit its file cap — Quick Open says so instead of silently hiding. */
+  /** Backend hit its file cap — the palette says so instead of silently hiding. */
   quickOpenFilesTruncated?: boolean
-  onQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
+  /** The file listing has not arrived yet. */
+  quickOpenFilesLoading?: boolean
+  /** Unset without a workspace: the palette then has no files to offer. */
+  onQuickOpenFileOpen?: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   onClosePalette: () => void
   onCloseQuickOpen: () => void
 }
 
 export function AgentChatPanels({
-  agentCapabilitiesOpen,
-  agentWorkspace,
-  sessionModel,
-  sessionThinkingLevel,
-  onSessionModelSettingsChange,
-  onCloseAgentCapabilities,
   showTodos,
   onShowTodosChange,
   todos,
@@ -78,28 +71,26 @@ export function AgentChatPanels({
   palettePage,
   paletteKey,
   paletteCommands,
+  sessionId = null,
   quickOpenOpen,
   quickOpenQuery,
   quickOpenWorkspaceFiles,
   quickOpenFilesTruncated,
+  quickOpenFilesLoading,
   onQuickOpenFileOpen,
   onClosePalette,
   onCloseQuickOpen,
 }: AgentChatPanelsProps) {
-  const settingsOpened = useOpenedOnce(agentCapabilitiesOpen)
   const schedulerOpened = useOpenedOnce(schedulerOpen)
+  // ⌘K and ⌘P open the same overlay; only its scope differs.
+  const files = {
+    workspaceFiles: quickOpenWorkspaceFiles,
+    filesTruncated: quickOpenFilesTruncated,
+    filesLoading: quickOpenFilesLoading,
+    onFileOpen: onQuickOpenFileOpen,
+  }
   return (
     <>
-      {settingsOpened && (
-        <SessionSettingsPanel
-          open={agentCapabilitiesOpen}
-          workspace={agentWorkspace}
-          sessionModel={sessionModel}
-          sessionThinkingLevel={sessionThinkingLevel}
-          onSessionModelSettingsChange={onSessionModelSettingsChange}
-          onClose={onCloseAgentCapabilities}
-        />
-      )}
       <TodosPopover
         open={showTodos}
         onOpenChange={onShowTodosChange}
@@ -118,10 +109,10 @@ export function AgentChatPanels({
         />
       )}
       {showPalette && (
-        <CommandPalette key={paletteKey} commands={paletteCommands} onClose={onClosePalette} initialPagePath={palettePage} />
+        <PaletteHost key={paletteKey} sessionId={sessionId} commands={paletteCommands} onClose={onClosePalette} initialPagePath={palettePage} {...files} />
       )}
       {quickOpenOpen && (
-        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} />
+        <PaletteHost scope="files" sessionId={sessionId} commands={paletteCommands} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} {...files} />
       )}
     </>
   )

@@ -15,34 +15,57 @@
  * caller's ``onDismiss`` runs when the fade ends. Dismissed from the keyboard
  * (Escape, Tab) it closes at once, so the next key lands where it should; an
  * item that closes the menu itself unmounts it straight away too.
+ *
+ * The app draws it in every shell, desktop and iOS included: native is the
+ * feel (it opens at the pointer, keys move through it), not the operating
+ * system's widget, so it looks like every other menu in the app.
+ *
+ * It renders into ``document.body`` on the menu layer (``z-70``: above the
+ * notices in the corner, below tooltips), as Dropdown and Popover do. Drawn
+ * where it was opened, a menu was caught by that component's stacking
+ * context (the dock's z-index, a transform, container queries) and could
+ * open under its neighbours. React events still bubble to the opener.
+ *
+ * It is a transient layer (``lib/keyboard/layers``): opening it closes the
+ * other menus and popovers, and Settings, a dialog or an app shortcut
+ * opening over it closes it, so two menus are never open at once.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
-import { MENU_ITEM_CLASS, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
+import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 
 /** Gap kept between the menu and the viewport edge. */
 const VIEWPORT_MARGIN = 8
 const EXIT_MS = DURATIONS_S.fast * 1000
 
-const MENU_CLASS = `fixed z-50 text-xs text-(--color-text) ease-(--ease-out) ${MENU_PANEL_CLASS}`
+/** Menus, dropdowns and popovers: above the notices (z-60), below tooltips. */
+export const MENU_LAYER_CLASS = 'z-70'
+
+const MENU_CLASS = `fixed text-xs text-(--color-text) ease-(--ease-out) ${MENU_PANEL_CLASS}`
 
 export const CONTEXT_MENU_ITEM_CLASS =
-  `${MENU_ITEM_CLASS} text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:bg-(--bg-key) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
+  `${MENU_ITEM_CLASS} text-(--color-text) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
 export const CONTEXT_MENU_ITEM_DANGER_CLASS =
-  `${MENU_ITEM_CLASS} text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
+  `${MENU_ITEM_CLASS} ${MENU_ITEM_DANGER} text-(--color-error) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
 
 export function ContextMenuSeparator() {
   return <div role="separator" className={MENU_SEPARATOR_CLASS} />
 }
 
+const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]'
+
+function isDisabled(item: HTMLElement): boolean {
+  return item.hasAttribute('disabled') || item.getAttribute('aria-disabled') === 'true'
+}
+
 function enabledItems(menu: HTMLElement | null): HTMLElement[] {
   if (!menu) return []
-  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]')).filter(
-    (item) => !item.hasAttribute('disabled') && item.getAttribute('aria-disabled') !== 'true',
-  )
+  return Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)).filter((item) => !isDisabled(item))
 }
 
 interface ContextMenuProps {
@@ -52,12 +75,10 @@ interface ContextMenuProps {
   onDismiss: () => void
   /** Width and other overrides; defaults to ``min-w-40``. */
   className?: string
-  /** Stacking layer for the backdrop; raise it inside overlays above ``z-50``. */
-  layerClassName?: string
   children: ReactNode
 }
 
-export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', layerClassName = 'z-50', children }: ContextMenuProps) {
+export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', children }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const reduced = useReducedMotion() ?? false
@@ -124,6 +145,10 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
     }, EXIT_MS)
   }, [reduced])
 
+  // One menu at a time: something else opening over the app closes it, at
+  // once (the key or click that did it belongs to that, not to this menu).
+  const layer = useKeyLayer(true, { kind: 'transient', onClose: () => dismiss(false) })
+
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const items = enabledItems(menuRef.current)
     const index = items.indexOf(document.activeElement as HTMLElement)
@@ -155,10 +180,10 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
     }
   }
 
-  return (
+  return createPortal(
     <div
       role="presentation"
-      className={cn('fixed inset-0 bg-transparent', closing && 'pointer-events-none', layerClassName)}
+      className={cn('fixed inset-0 bg-transparent', MENU_LAYER_CLASS, closing && 'pointer-events-none')}
       onClick={() => dismiss(true)}
       onContextMenu={(event) => {
         event.preventDefault()
@@ -183,8 +208,9 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', laye
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        {children}
+        <KeyLayerScope layer={layer}>{children}</KeyLayerScope>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

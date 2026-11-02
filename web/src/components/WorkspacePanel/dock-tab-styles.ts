@@ -1,29 +1,46 @@
 /**
  * Shared class strings for the review dock's editor-tab strip.
  *
- * The strip sits on the recessed ``bg-sidebar`` rail; the active tab lifts
- * to ``bg-page`` with a 2px Bark top edge so it reads as the open sheet the
- * content below belongs to. The bar draws no bottom border of its own: each
- * inactive tab, the trailing filler, and the action cluster draw theirs, so
- * the active tab can open onto the content (an ``-mb-px`` overlap would be
- * clipped by the strip's horizontal scroller).
+ * Fewer borders (DESIGN.md → Editor tabs): tabs are borderless pills on the
+ * chrome tone the sidebar, header and status bar share (the page in light,
+ * the recessed rail in dark). The open tab is marked the way the sidebar
+ * marks the open session (``listRowSurface``): a keycap wash, medium weight,
+ * the main text colour, no coloured edge. The strip draws the one hairline
+ * between it and the content. With several panes, the open tab of a pane
+ * that does not have focus steps back (a lighter wash, the secondary text
+ * colour) and everything on that pane's strip fades to half, as an inactive
+ * window's title bar does on macOS, so the focused pane (the one ⌘W, ⌘1–9
+ * and new files act on) reads at a glance.
  */
+import { listRowSurface } from '@/components/ui/list-row'
+
+/** The strip: one tab-bar row on the chrome tone. */
+export const DOCK_TAB_STRIP_CLASS =
+  'flex h-(--spacing-tab-bar) min-w-0 shrink-0 border-b border-(--color-border-subtle) bg-(--bg-page) dark:bg-(--bg-sidebar)'
+
+/**
+ * The strip's two parts (tabs, buttons): faded in a pane without focus. The
+ * strip's tone stays, so the faded parts sit on the same chrome.
+ */
+export const DOCK_STRIP_PART_CLASS =
+  'transition-opacity duration-(--motion-fast) [[data-pane-unfocused]_&]:opacity-50'
 
 /** Tab wrapper. Holds the activate button and, when closable, a close button. */
 export function dockTabClass(active: boolean): string {
   return [
-    'group/tab relative flex h-full max-w-48 shrink-0 items-center border-t-2 border-r border-b border-r-(--color-border-subtle) text-xs transition-colors duration-(--motion-instant)',
+    'group/tab relative flex h-full max-w-48 shrink-0 items-center rounded-sm text-xs transition-colors duration-(--motion-instant)',
+    listRowSurface(active),
     active
-      ? 'border-t-(--color-accent) border-b-transparent bg-(--bg-page) text-(--color-text)'
-      : 'border-t-transparent border-b-(--color-border) text-(--color-text-muted) hover:bg-(--bg-key)/50 hover:text-(--color-text-2)',
+      ? 'font-medium text-(--color-text) [[data-pane-unfocused]_&]:bg-(--bg-key)/35 [[data-pane-unfocused]_&]:text-(--color-text-2)'
+      : 'text-(--color-text-muted) hover:text-(--color-text-2)',
   ].join(' ')
 }
 
 /** Activate button filling the tab. ``closable`` tabs leave room for the ×. */
 export function dockTabButtonClass(closable: boolean): string {
   return [
-    'flex h-full min-w-0 items-center gap-1.5 outline-none focus-key:bg-(--bg-key)/60',
-    closable ? 'pl-3 pr-1' : 'px-3',
+    'flex h-full min-w-0 items-center gap-1.5 rounded-sm outline-none focus-key:bg-(--bg-key)/60',
+    closable ? 'pl-2.5 pr-1' : 'px-2.5',
   ].join(' ')
 }
 
@@ -33,11 +50,26 @@ export function dockTabButtonClass(closable: boolean): string {
  */
 export const DOCK_TAB_LIFTED_CLASS = 'shadow-(--shadow-depth) bg-(--bg-card) text-(--color-text) cursor-grabbing'
 
-/** Inline close control; always shown on the active tab and on touch. */
+/** A tab carried out of its strip: a floating copy under the pointer (placed inline). */
+export const DOCK_TAB_GHOST_CLASS = 'rounded-sm opacity-95 shadow-(--shadow-depth) bg-(--bg-card) text-(--color-text)'
+
+/**
+ * Where a carried tab would land: a tint over the pane (its
+ * middle), over the half a split would take (an edge), or a caret between
+ * two tabs of a strip.
+ */
+export const DOCK_DROP_ZONE_CLASS = 'pointer-events-none fixed z-9998 rounded-sm border border-(--color-border-strong) bg-(--color-text-muted)/15'
+export const DOCK_DROP_CARET_CLASS = 'pointer-events-none fixed z-9998 w-0.5 rounded-full bg-(--color-text-2)'
+
+/**
+ * Inline close control, always shown: full strength on the open tab, 60% on
+ * the others until hover or focus (never hidden, so a touch screen and a
+ * keyboard find it). 24px, 36px on touch.
+ */
 export function dockTabCloseClass(active: boolean): string {
   return [
-    'mr-1.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:mr-0 pointer-coarse:size-9',
-    active ? 'opacity-100' : 'opacity-70 md:opacity-0 md:group-hover/tab:opacity-100 md:group-focus-within/tab:opacity-100',
+    'mr-1 flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:mr-0 pointer-coarse:size-9',
+    active ? 'opacity-100' : 'opacity-60 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100',
   ].join(' ')
 }
 

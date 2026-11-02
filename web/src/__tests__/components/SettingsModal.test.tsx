@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import React from 'react'
-import { act, fireEvent, render, screen, cleanup } from '@testing-library/react'
+import { act, fireEvent, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 
@@ -50,7 +50,9 @@ mock.module('framer-motion', () => ({
 }))
 
 mock.module('@/components/settings/pages/settings.index', () => ({ AboutSettingsPage: () => <div>hub</div> }))
-mock.module('@/components/settings/pages/settings.general', () => ({ GeneralSettingsPage: () => <div>general</div> }))
+mock.module('@/components/settings/pages/settings.general', () => ({
+  GeneralSettingsPage: () => <div>general<span>Text size</span><button role="radio" aria-checked="false">Compact</button></div>,
+}))
 mock.module('@/components/settings/pages/settings.connection', () => ({ ConnectionSettingsPage: () => <div>connection</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
 mock.module('@/components/settings/pages/settings.agents.$name', () => ({ AgentEditorPage: () => <div>agent-edit</div> }))
@@ -204,24 +206,135 @@ describe('SettingsModal — nav search and groups', () => {
     expect(screen.getByRole('button', { name: 'Denied paths' })).toBeTruthy()
   })
 
+  /** The sidebar's own search: the phone section list has one too, hidden by CSS from 768px up. */
+  const sidebar = () => within(screen.getByRole('navigation', { name: 'Settings categories' }))
+  // The modal focuses its start field on the next animation frame.
+  const frame = () => act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+
   it('filters sections by name or description, and Enter opens the first match', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
-    const search = screen.getByRole('searchbox', { name: 'Search settings' })
+    const search = sidebar().getByRole('searchbox', { name: 'Search settings' })
     act(() => { fireEvent.change(search, { target: { value: 'api keys' } }) })
-    expect(screen.getByRole('button', { name: 'Providers' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Memory' })).toBeNull()
+    // The results list stands in for the section list while there is a query.
+    const results = within(sidebar().getByRole('list', { name: 'Search results' }))
+    expect(results.getByRole('button', { name: 'Providers' })).toBeTruthy()
+    expect(results.queryByRole('button', { name: 'Memory' })).toBeNull()
 
     act(() => { fireEvent.keyDown(search, { key: 'Enter' }) })
     expect(useSettingsStore.getState().section).toBe('providers')
+  })
+
+  it('finds a single setting, not only a section, and opens the section that holds it', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    act(() => { fireEvent.change(sidebar().getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'fallback order' } }) })
+    const result = sidebar().getByRole('button', { name: 'Accounts and fallback order, in Providers' })
+    act(() => { fireEvent.click(result) })
+    expect(useSettingsStore.getState().section).toBe('providers')
+  })
+
+  it('scrolls to the setting it opened and focuses its control', async () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    act(() => { fireEvent.change(sidebar().getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'text size' } }) })
+    act(() => { fireEvent.click(sidebar().getByRole('button', { name: 'Text size, in Appearance' })) })
+    expect(useSettingsStore.getState().section).toBe('general')
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Compact'))
+  })
+
+  it('opens with focus in its search field, as a Settings window does, not on Close', async () => {
+    // Focus on Close drew its ring and opened its tooltip the moment ⌘,
+    // opened Settings.
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    await frame()
+    expect(document.activeElement).toBe(sidebar().getByRole('searchbox', { name: 'Search settings' }))
+  })
+
+  it('opens with focus in the page where the icon rail hides the search field', async () => {
+    const original = HTMLInputElement.prototype.getClientRects
+    // Hidden below 900px: no boxes.
+    HTMLInputElement.prototype.getClientRects = function () { return this.type === 'search' ? ([] as unknown as DOMRectList) : original.call(this) }
+    try {
+      useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+      renderModal()
+      await frame()
+      expect(document.activeElement?.tagName).toBe('MAIN')
+    } finally {
+      HTMLInputElement.prototype.getClientRects = original
+    }
   })
 
   it('says when nothing matches', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
-    act(() => { fireEvent.change(screen.getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'zzz' } }) })
-    expect(screen.getByText('No settings match “zzz”.')).toBeTruthy()
+    act(() => { fireEvent.change(sidebar().getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'zzz' } }) })
+    expect(sidebar().getByText('No settings match “zzz”.')).toBeTruthy()
+  })
+})
+
+describe('SettingsModal — icon rail below 900px', () => {
+  const sidebar = () => screen.getByRole('navigation', { name: 'Settings categories' })
+
+  it('collapses the sidebar to icons below 900px and keeps each name for screen readers', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    expect(sidebar().className).toContain('w-12')
+    expect(sidebar().className).toContain('min-[900px]:w-60')
+    const providers = within(sidebar()).getByRole('button', { name: 'Providers' })
+    expect(providers.querySelector('span.max-\\[899px\\]\\:sr-only')?.textContent).toBe('Providers')
+    // Group headings go with the labels; the groups stay named for assistive tech.
+    expect(within(sidebar()).getAllByRole('group').length).toBeGreaterThan(3)
+  })
+
+  it('names a section in an app tooltip, with what it holds', async () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const row = within(sidebar()).getByRole('button', { name: 'Providers' })
+    expect(row.getAttribute('title')).toBeNull()
+    fireEvent.mouseEnter(row.parentElement as HTMLElement)
+    // The close button's own hint may be open too (it holds focus first).
+    await waitFor(() => {
+      const tips = [...document.querySelectorAll('[role="tooltip"]')].map((t) => t.textContent ?? '')
+      expect(tips.some((t) => t.includes('Providers') && t.includes('API keys and model accounts'))).toBe(true)
+    }, { timeout: 1500 })
+  })
+
+  it('keeps search reachable on the rail: an icon that opens it in a dialog', async () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    act(() => { fireEvent.click(within(sidebar()).getByRole('button', { name: 'Search settings' })) })
+    const dialog = await screen.findByRole('dialog', { name: 'Search settings' })
+    act(() => { fireEvent.change(within(dialog).getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'dark' } }) })
+    act(() => { fireEvent.click(within(dialog).getByRole('button', { name: 'Theme, in Appearance' })) })
+    expect(useSettingsStore.getState().section).toBe('general')
+    // A boolean, not the element: a failing `toBeNull` pretty-prints the whole DOM node.
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]') === null).toBe(true))
+  })
+})
+
+describe('SettingsModal — one name for the server section', () => {
+  it('calls Settings → Server by that name in the sidebar', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).getByRole('button', { name: 'Server' })).toBeTruthy()
+    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).queryByRole('button', { name: 'Connection' })).toBeNull()
+  })
+
+  it('calls the retention section Retention, not Data retention', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+    const nav = within(screen.getByRole('navigation', { name: 'Settings categories' }))
+    expect(nav.getByRole('button', { name: 'Retention' })).toBeTruthy()
+    expect(nav.queryByRole('button', { name: 'Data retention' })).toBeNull()
   })
 })

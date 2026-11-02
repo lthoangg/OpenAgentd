@@ -64,6 +64,8 @@ export async function postAgentChat(
   interactionMode?: SessionInteractionMode,
   /** With ``interrupt``: leave the session's active goal active (Stop & send). */
   keepGoal = false,
+  /** The account a new session's draft was pinned to (v3); ignored when null. */
+  credentialId: string | null = null,
 ): Promise<AgentChatResponse> {
   const formData = new FormData()
   if (message) {
@@ -93,6 +95,9 @@ export async function postAgentChat(
   }
   if (interactionMode) {
     formData.append('interaction_mode', interactionMode)
+  }
+  if (credentialId) {
+    formData.append('credential_id', credentialId)
   }
   if (files && files.length > 0) {
     for (const file of files) {
@@ -408,10 +413,9 @@ export async function getCodingWorkspaceGitHistory(
   workspace: string,
   limit = 50,
   cursor?: string | null,
-  all = false,
   signal?: AbortSignal,
 ): Promise<WorkspaceGitHistoryResponse> {
-  const params = new URLSearchParams({ workspace, limit: String(limit), all: String(all) })
+  const params = new URLSearchParams({ workspace, limit: String(limit) })
   if (cursor) {
     params.set('cursor', cursor)
   }
@@ -561,6 +565,23 @@ export async function updateSessionInteractionMode(
     body: JSON.stringify({ interaction_mode: interactionMode }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'updateSessionInteractionMode')
+  return res.json()
+}
+
+/**
+ * Save how the session's next message runs (v3): a present key sets it,
+ * ``null`` clears it (the agent's model or level, or Auto for the account).
+ */
+export async function updateSessionRunSettings(
+  id: string,
+  settings: { model?: string | null; thinking_level?: string | null; credential_id?: string | null },
+): Promise<SessionResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'updateSessionRunSettings')
   return res.json()
 }
 

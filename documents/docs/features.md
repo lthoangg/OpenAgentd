@@ -1022,8 +1022,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Dynamic Type does on iOS.
   - In the phone apps, long-press menus (sessions, tabs, tool rows,
     messages) open as the app's bottom sheet. Bottom sheets close with a
-    downward drag, and a swipe from the left edge brings back the session
-    list.
+    downward drag from anywhere on them once their content is scrolled to
+    the top (the run picker's accounts included), not only the handle, and
+    a swipe from the left edge brings back the session list.
 - **Needs you everywhere, answered in place** `[v3.40.0]`:
   - The notch status, the pet, the tray and system notifications share one
     feed and one set of words: **Needs you**, **Running**, **Done**,

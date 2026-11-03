@@ -1217,6 +1217,8 @@ the text sits the run deck, which says how the next message runs:
 
 Bottom sheets (`ui/bottom-sheet.tsx`) are the phone form of any picker or
 menu: a grab handle, drag or Esc to dismiss, safe-area padding, 44px rows.
+As on iOS, a pull down anywhere on the content drags the sheet once nothing
+under the finger is scrolled down; until then the pull scrolls back up.
 
 **New-session hero** (the draft screen): a `text-lg` semibold question with
 the folder in mono, a 24px `rounded-full` folder chip opening a filterable

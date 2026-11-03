@@ -124,12 +124,28 @@ pub fn is_port_reachable(host: &str, port: u16) -> bool {
 
 /// `GET path` → `(status, body)`; `None` on connection or protocol errors.
 pub fn http_get(host: &str, port: u16, path: &str, timeout: Duration) -> Option<(u16, Vec<u8>)> {
+    http_get_with_headers(host, port, path, &[], timeout)
+}
+
+/// [`http_get`] that also sends `headers` as `(name, value)` pairs, e.g. an
+/// `Authorization` bearer key. `None`, before connecting, when a header holds
+/// a line break: a value must not add headers or a second request.
+pub fn http_get_with_headers(host: &str, port: u16, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Option<(u16, Vec<u8>)> {
+    http_request("GET", host, port, path, headers, timeout)
+}
+
+fn http_request(method: &str, host: &str, port: u16, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Option<(u16, Vec<u8>)> {
     use std::io::{Read, Write};
+    if path.contains(['\r', '\n', ' ']) || headers.iter().any(|(name, value)| name.contains(['\r', '\n']) || value.contains(['\r', '\n'])) {
+        return None;
+    }
     let mut s = connect(host, port, timeout)?;
     s.set_read_timeout(Some(timeout)).ok()?;
     s.set_write_timeout(Some(timeout)).ok()?;
     let ua = format!("openagentd/{}", appv3_core::VERSION);
-    let req = format!("GET {path} HTTP/1.1\r\nAccept-Encoding: identity\r\nHost: {host}:{port}\r\nUser-Agent: {ua}\r\nConnection: close\r\n\r\n");
+    let extra: String = headers.iter().map(|(name, value)| format!("{name}: {value}\r\n")).collect();
+    let length = if method == "POST" { "Content-Length: 0\r\n" } else { "" };
+    let req = format!("{method} {path} HTTP/1.1\r\nAccept-Encoding: identity\r\nHost: {host}:{port}\r\nUser-Agent: {ua}\r\n{extra}{length}Connection: close\r\n\r\n");
     s.write_all(req.as_bytes()).ok()?;
     let mut buf = vec![];
     s.read_to_end(&mut buf).ok()?;
@@ -158,4 +174,73 @@ pub fn http_get(host: &str, port: u16, path: &str, timeout: Duration) -> Option<
         body = out;
     }
     Some((status, body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    const WAIT: Duration = Duration::from_secs(5);
+
+    /// A one-request server: answers with `reply`, then hands back the
+    /// request head it saw.
+    fn serve_once(reply: &'static str) -> (u16, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut head = vec![];
+            let mut byte = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") && s.read(&mut byte).unwrap() == 1 {
+                head.push(byte[0]);
+            }
+            s.write_all(reply.as_bytes()).unwrap();
+            String::from_utf8(head).unwrap()
+        });
+        (port, seen)
+    }
+
+    #[test]
+    fn http_get_with_headers_sends_each_header() {
+        let (port, seen) = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nhi");
+        let got = http_get_with_headers("127.0.0.1", port, "/api/modules", &[("Authorization", "Bearer k-1"), ("X-Probe", "1")], WAIT);
+        assert_eq!(got, Some((200, b"hi".to_vec())));
+        let head = seen.join().unwrap();
+        assert!(head.starts_with("GET /api/modules HTTP/1.1\r\n"), "{head}");
+        assert!(head.contains("\r\nAuthorization: Bearer k-1\r\nX-Probe: 1\r\nConnection: close\r\n\r\n"), "{head}");
+    }
+
+    #[test]
+    fn http_get_sends_no_extra_headers_and_decodes_chunked_bodies() {
+        let (port, seen) = serve_once("HTTP/1.1 404 Not Found\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\nhi\r\n4\r\n you\r\n0\r\n\r\n");
+        assert_eq!(http_get("127.0.0.1", port, "/x", WAIT), Some((404, b"hi you".to_vec())));
+        let head = seen.join().unwrap();
+        assert!(head.contains(&format!("\r\nUser-Agent: openagentd/{}\r\nConnection: close\r\n\r\n", appv3_core::VERSION)), "{head}");
+        assert!(!head.to_ascii_lowercase().contains("authorization"), "{head}");
+    }
+
+    #[test]
+    fn http_get_with_headers_refuses_a_line_break_before_connecting() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        for bad in [("X-A", "b\r\nX-Evil: 1"), ("X-A\n", "b"), ("X-A", "b\n")] {
+            assert_eq!(http_get_with_headers("127.0.0.1", port, "/", &[bad], WAIT), None);
+        }
+        // The request line is protected the same way.
+        for path in ["/a b", "/a\r\nX-Evil: 1", "/a\n"] {
+            assert_eq!(http_get_with_headers("127.0.0.1", port, path, &[], WAIT), None, "{path:?}");
+        }
+        // A connection would be waiting in the backlog by now.
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock, "nothing may connect");
+    }
+
+    #[test]
+    fn http_get_never_sends_a_content_length() {
+        let (port, seen) = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        assert_eq!(http_get("127.0.0.1", port, "/x", WAIT), Some((200, vec![])));
+        assert!(!seen.join().unwrap().to_ascii_lowercase().contains("content-length"));
+    }
 }

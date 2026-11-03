@@ -73,11 +73,11 @@ pub fn current_server(
     }
 }
 
-/// The servers the island follows: every app window's, plus every saved
-/// server marked enabled, each once (the builtin only while it runs). With
-/// no window open, the builtin while it runs: that is where a click would
-/// open a window. A disabled saved server is followed only while a window
-/// is on it.
+/// The servers the island follows: the builtin whenever it runs, every app
+/// window's server, and every saved server marked enabled, each once. The
+/// builtin is local and always reachable, so its sessions show whatever
+/// windows are open (none, or only windows on an external server). A
+/// disabled saved server is followed only while a window is on it.
 pub fn followed_servers(
     app_windows: &[String],
     external: &HashMap<String, String>,
@@ -87,9 +87,9 @@ pub fn followed_servers(
     let mut servers: Vec<ServerId> = app_windows
         .iter()
         .map(|label| window_server(label, external))
-        .filter(|server| *server != ServerId::Bundled || bundled_running)
+        .filter(|server| *server != ServerId::Bundled)
         .collect();
-    if app_windows.is_empty() && bundled_running {
+    if bundled_running {
         servers.push(ServerId::Bundled);
     }
     servers.extend(enabled.iter().filter(|server| **server != ServerId::Bundled).cloned());
@@ -293,6 +293,17 @@ mod tests {
         assert_eq!(followed, [ServerId::External(REMOTE.into())]);
         assert!(followed_servers(&[], &map, false, &[]).is_empty(), "no window, no builtin: nothing");
         assert_eq!(followed_servers(&[], &map, true, &[]), [ServerId::Bundled]);
+    }
+
+    #[test]
+    fn the_builtin_is_followed_while_it_runs_with_only_external_windows_open() {
+        let map = external(&[("main-2", REMOTE)]);
+        let remote = ServerId::External(REMOTE.into());
+        let followed = followed_servers(&labels(&["main-2"]), &map, true, &[]);
+        assert_eq!(followed, [ServerId::Bundled, remote.clone()]);
+        let enabled = std::slice::from_ref(&remote);
+        assert_eq!(followed_servers(&labels(&["main-2"]), &map, true, enabled), [ServerId::Bundled, remote.clone()]);
+        assert_eq!(followed_servers(&labels(&["main-2"]), &map, false, enabled), [remote]);
     }
 
     #[test]

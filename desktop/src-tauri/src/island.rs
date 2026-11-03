@@ -5,9 +5,10 @@
 //! whether any session is running or waiting on the user, and the sessions
 //! that finished since you last looked at them (unread).
 //!
-//! It covers every server an app window is on (`servers::followed_servers`):
-//! windows can each be on a different server, and a session waiting on you
-//! matters whichever window it is in. A saved server no window is on is
+//! It covers the builtin while it runs and every server an app window is on
+//! (`servers::followed_servers`): windows can each be on a different server,
+//! and a session waiting on you matters whichever window it is in. A saved
+//! server no window is on is
 //! followed only when the user enabled it (Settings → Connection), so its
 //! sessions show with no window open, and a click opens a window on it.
 //! With more than one server, each row names its server.

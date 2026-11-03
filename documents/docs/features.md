@@ -1172,6 +1172,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - In the Git panel's **Changes**, a click on a file shows or hides its
     diff right under the row; **Open diff in tab** stays in the row's ⋯,
     right-click and long-press menus.
+- **Pet, notch, header and transcript fixes** `[v3.43.0]`:
+  - The notch, the tray's "Needs you" list and Settings → Connection follow
+    the builtin server whenever it runs, so its sessions stay listed with
+    only windows on an external server open, or none.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1395,6 +1399,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Disabled), a server that is off is retried every 30 s at most (60 s
     after a rejected key) instead of every 15 s, and rows carry a server
     name only when two or more servers are connected.
+    Since `[v3.43.0]` the builtin is followed whenever it runs, whatever
+    windows are open: before, a window on an external server (and none on
+    the builtin) dropped the builtin's sessions.
     Also since `[v3.33.0]` the resting pill no longer covers menu bar items:
     on a notch it grows only a narrow wing left of the notch (the state
     mark, and a count for several sessions), leaving the status icons right

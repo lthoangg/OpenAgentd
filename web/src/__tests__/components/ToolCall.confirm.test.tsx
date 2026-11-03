@@ -10,9 +10,8 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const answerQuestion = mock(async () => ({ status: 'ok', resumed: true }))
-const dismissQuestion = mock(async () => ({ status: 'ok', resumed: false }))
 const agentStream = mock(() => {})
-mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion, agentStream }))
+mock.module('@/api/client', () => ({ answerQuestion, agentStream }))
 
 import { ToolCall } from '@/components/ToolCall'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'

@@ -20,7 +20,6 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/{session_id}/question", get(get_question))
         .route("/{session_id}/question/{question_id}/answer", post(answer))
-        .route("/{session_id}/question/{question_id}/dismiss", post(dismiss))
         .route("/sessions/{session_id}/todos", get(todos))
         .route("/sessions/{session_id}/plan", get(get_plan).put(put_plan).delete(delete_plan))
         .route("/{session_id}/permissions", get(list_permissions))
@@ -266,25 +265,6 @@ async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::Pendi
     }
     tracing::info!("plan_review_answered session_id={} question_id={} approved={} keep_going={} resumed={}", sid, qid, outcome.approved, goal.is_some(), resumed);
     Ok(json(json!({"status": "ok", "resumed": resumed})))
-}
-
-async fn dismiss(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(String, String)>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &sid_raw)?;
-    let qid = path_uuid("question_id", &qid_raw)?;
-    open_question(&st.pool, &sid, &qid).await?;
-    if db::resolve_pending_question(&st.pool, &qid, "dismissed", None).await?.is_none() {
-        return Err(ApiError::conflict("Question already resolved."));
-    }
-    store().push_event(&sid, &events::question_dismissed(&qid, &sid, "dismissed"), true);
-    let handled = match manager::find_live_session_serving_session(&sid) {
-        Some(a) => a.end_turn_after_question_dismissed(&sid).await,
-        None => false,
-    };
-    if !handled {
-        end_turn(&sid);
-    }
-    tracing::info!("question_dismissed_by_user session_id={} question_id={}", sid, qid);
-    Ok(json(json!({"status": "ok", "resumed": false})))
 }
 
 async fn todos(AxPath(sid): AxPath<String>) -> ApiResult<Response> {

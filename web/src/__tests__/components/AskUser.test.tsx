@@ -18,10 +18,9 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 const answerQuestion = mock(async () => ({ status: 'answered', resumed: true }))
-const dismissQuestion = mock(async () => ({ status: 'dismissed', resumed: false }))
 // `markTurnResuming` may reopen the session stream after an answer.
 const agentStream = mock(() => {})
-mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion, agentStream }))
+mock.module('@/api/client', () => ({ answerQuestion, agentStream }))
 
 const pushToast = mock(() => {})
 mock.module('@/stores/useToastStore', () => ({
@@ -55,10 +54,8 @@ const QUESTION: PendingQuestion = {
 
 beforeEach(() => {
   answerQuestion.mockClear()
-  dismissQuestion.mockClear()
   pushToast.mockClear()
   answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: true }))
-  dismissQuestion.mockImplementation(async () => ({ status: 'dismissed', resumed: false }))
   clearQuestionDrafts()
   useAgentStore.setState({
     sessionId: 's-1',

@@ -1183,6 +1183,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     new blocks: the turns are folded, so the count said nothing.
   - The header's workspace and title stay right after the sidebar toggle
     whether the sidebar is open or not.
+  - A question with several answers allowed shows checkboxes without the
+    1–9 digit beside each; the digit keys still pick options.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

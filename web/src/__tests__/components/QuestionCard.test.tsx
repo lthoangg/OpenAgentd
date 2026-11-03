@@ -702,6 +702,20 @@ describe('QuestionCard', () => {
       expect(screen.getByRole('radio', { name: /^pnpm Recommended/ })).toBeInTheDocument()
       expect(screen.getByRole('radio', { name: /pnpm/ }).getAttribute('aria-keyshortcuts')).toBe('1')
     })
+
+    it('shows no keycap on multi-choice rows (the checkbox is the affordance), yet the digit keys still pick them', () => {
+      renderCard({ question: TWO_QUESTIONS })
+      fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
+
+      expect(document.querySelectorAll('kbd')).toHaveLength(0)
+      const test = screen.getByRole('checkbox', { name: /test/ })
+      expect(test.getAttribute('aria-keyshortcuts')).toBe('2')
+      expect(test).not.toBeChecked()
+
+      fireEvent.keyDown(test, { key: '2' })
+      expect(test).toBeChecked()
+      expect(screen.getByRole('checkbox', { name: /lint/ })).not.toBeChecked()
+    })
   })
 
   describe('look', () => {

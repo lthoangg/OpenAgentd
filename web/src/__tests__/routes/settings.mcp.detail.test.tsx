@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
 import type { ReactNode } from 'react'
 
 import { ToastStack } from '@/components/ToastStack'
 import { useToastStore } from '@/stores/useToastStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 mock.module('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => children,
@@ -38,7 +39,7 @@ afterEach(() => {
   server.close()
 })
 
-function renderPage() {
+function renderPage(name = 'filesystem') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -48,7 +49,7 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <McpServerDetailPage name="filesystem" onBack={() => {}} />
+      <McpServerDetailPage name={name} onBack={() => {}} />
       <ToastStack />
     </QueryClientProvider>,
   )
@@ -121,5 +122,143 @@ describe('McpServerDetailPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
     expect(((await screen.findByPlaceholderText('npx')) as HTMLInputElement).value).toBe('npx')
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull()
+  })
+})
+
+describe('McpServerDetailPage — a server from a plugin', () => {
+  const PLUGIN_SERVER = {
+    name: 'changelog-tools/github',
+    transport: 'stdio',
+    enabled: true,
+    state: 'ready',
+    error: null,
+    tool_names: ['create_issue'],
+    started_at: null,
+    plugin: 'changelog-tools',
+    config: { transport: 'stdio', command: 'npx', args: ['-y', '@example/github-mcp'], env: {}, enabled: true },
+  }
+  let requests: { method: string; path: string }[] = []
+
+  /** Answers every server request with `body`, and records the paths asked for. */
+  function serveServer(body: Record<string, unknown> = PLUGIN_SERVER) {
+    requests = []
+    server.use(
+      http.get('http://localhost/api/mcp/servers/:name', ({ request }) => {
+        requests.push({ method: 'GET', path: new URL(request.url).pathname })
+        return HttpResponse.json(body)
+      }),
+      http.post('http://localhost/api/mcp/servers/:name/restart', ({ request }) => {
+        requests.push({ method: 'POST', path: new URL(request.url).pathname })
+        return HttpResponse.json(body)
+      }),
+    )
+  }
+
+  afterEach(() => {
+    useSettingsStore.setState({ section: 'general', selectedName: null })
+  })
+
+  it('asks for the server by its URL-encoded name, since the name holds a slash', async () => {
+    serveServer()
+    renderPage('changelog-tools/github')
+
+    expect(await screen.findByText('from changelog-tools')).toBeTruthy()
+    expect(requests[0]).toEqual({ method: 'GET', path: '/api/mcp/servers/changelog-tools%2Fgithub' })
+  })
+
+  it('says which plugin the server comes from, in the status card', async () => {
+    serveServer()
+    renderPage('changelog-tools/github')
+
+    const label = await screen.findByText('from changelog-tools')
+    expect(label.closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(screen.getByText('Source')).toBeTruthy()
+  })
+
+  it('has no form to edit, no Save and no Delete', async () => {
+    serveServer()
+    renderPage('changelog-tools/github')
+    await screen.findByText('from changelog-tools')
+
+    expect(screen.queryByRole('radiogroup', { name: /server status/i })).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: /mcp transport/i })).toBeNull()
+    expect(screen.queryByPlaceholderText('npx')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /delete server/i })).toBeNull()
+    expect(screen.queryByText('Delete server')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull()
+    // The header does not name mcp.json as the file: the plugin owns the server.
+    expect(screen.queryByText('.openagentd/config/mcp.json')).toBeNull()
+  })
+
+  it('shows what it runs, and says the plugin owns it', async () => {
+    serveServer()
+    renderPage('changelog-tools/github')
+
+    const command = await screen.findByText('npx -y @example/github-mcp')
+    expect(command.tagName).toBe('CODE')
+    expect(screen.getByText("Defined by the plugin changelog-tools. It can't be edited here.")).toBeTruthy()
+  })
+
+  it('shows an HTTP server\'s URL', async () => {
+    serveServer({
+      ...PLUGIN_SERVER,
+      transport: 'http',
+      config: { transport: 'http', url: 'https://mcp.example.com/v1', headers: {}, enabled: true },
+    })
+    renderPage('changelog-tools/github')
+
+    expect((await screen.findByText('https://mcp.example.com/v1')).tagName).toBe('CODE')
+    expect(screen.getByText('URL')).toBeTruthy()
+  })
+
+  it('copes with a server whose config the server did not send', async () => {
+    serveServer({ ...PLUGIN_SERVER, config: null })
+    renderPage('changelog-tools/github')
+
+    expect(await screen.findByText("Defined by the plugin changelog-tools. It can't be edited here.")).toBeTruthy()
+    expect(screen.queryByText('Command')).toBeNull()
+    expect(screen.getByRole('button', { name: /restart server/i })).toBeTruthy()
+  })
+
+  it('keeps Restart, which goes through the encoded path too', async () => {
+    serveServer()
+    renderPage('changelog-tools/github')
+
+    fireEvent.click(await screen.findByRole('button', { name: /restart server/i }))
+
+    await waitFor(() => expect(requests.some((r) => r.method === 'POST')).toBe(true))
+    expect(requests.find((r) => r.method === 'POST')?.path).toBe('/api/mcp/servers/changelog-tools%2Fgithub/restart')
+    expect(await screen.findByText('Restarted "changelog-tools/github"')).toBeTruthy()
+  })
+
+  it('sends you to Plugins to turn it on or off', async () => {
+    serveServer()
+    renderPage('changelog-tools/github')
+    useSettingsStore.setState({ section: 'mcp-edit', selectedName: 'changelog-tools/github' })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Plugins' }))
+
+    expect(useSettingsStore.getState().section).toBe('plugins')
+  })
+
+  it('points to Plugins, not to Save, when an off server needs sign-in', async () => {
+    serveServer({ ...PLUGIN_SERVER, enabled: false, state: 'auth_required' })
+    renderPage('changelog-tools/github')
+
+    expect(await screen.findByText('Turn the plugin on in Plugins before you sign in.')).toBeTruthy()
+    expect(screen.getByText('Turn the plugin on in Plugins first.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: /restart server/i }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('still shows the form and Delete for a server saved in mcp.json', async () => {
+    serveServer({ ...PLUGIN_SERVER, name: 'filesystem', plugin: null })
+    renderPage('filesystem')
+
+    expect(await screen.findByPlaceholderText('npx')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /delete server/i })).toBeTruthy()
+    expect(screen.queryByText('Source')).toBeNull()
+    expect(screen.getByText('.openagentd/config/mcp.json')).toBeTruthy()
   })
 })

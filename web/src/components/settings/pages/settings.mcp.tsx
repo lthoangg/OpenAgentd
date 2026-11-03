@@ -23,6 +23,8 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
         active: selectedName === srv.name,
         title: srv.name,
         titleMono: true,
+        // A server a plugin bundle brings: its detail page is read-only.
+        badge: srv.plugin ? `from ${srv.plugin}` : undefined,
         description: srv.transport === 'stdio' ? 'Runs a local process' : 'Connects to a URL',
         onClick: () => onSelect(srv.name),
         trailing: (

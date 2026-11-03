@@ -323,6 +323,32 @@ describe('SessionMcpServers', () => {
     expect((within(github).getByRole('switch') as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('leaves a plugin\'s server to its plugin: the switch is off limits, and says where to go', async () => {
+    mockServerList([makeServer({ name: 'changelog-tools/github', plugin: 'changelog-tools' })])
+
+    renderSection({ agentServers: ['changelog-tools/github'] })
+
+    const row = await waitFor(() => screen.getByRole('listitem', { name: 'changelog-tools/github' }))
+    const toggle = within(row).getByRole('switch') as HTMLButtonElement
+    expect(toggle.disabled).toBe(true)
+    expect(toggle.getAttribute('title')).toBe('From the plugin changelog-tools. Turn it on or off in Plugins.')
+    // It still shows how the server is doing.
+    expect(within(row).getByText('Ready')).toBeTruthy()
+  })
+
+  it('keeps the usual switch for a server saved in mcp.json, even beside a plugin\'s', async () => {
+    mockServerList([
+      makeServer({ name: 'github' }),
+      makeServer({ name: 'changelog-tools/github', plugin: 'changelog-tools' }),
+    ])
+
+    renderSection({ agentServers: ['github', 'changelog-tools/github'] })
+
+    const github = await waitFor(() => row('^github$'))
+    expect((within(github).getByRole('switch') as HTMLButtonElement).disabled).toBe(false)
+    expect(within(github).getByRole('switch').getAttribute('title')).toBe('On or off for every session')
+  })
+
   it('flags a server the agent declares but mcp.json does not define', async () => {
     mockServerList([])
 

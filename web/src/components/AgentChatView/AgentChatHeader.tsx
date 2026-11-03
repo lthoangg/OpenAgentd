@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
+import { usePanelWidthSink } from '@/components/ResizableAside'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -144,6 +145,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   // Windows: this header is the title bar, and the page's caption buttons
   // (WindowCaptionButtons, fixed at the top right) take its last 3 × 46px.
   const captionInset = hasWindowCaption(platform)
+  // The caps take the live widths of the sidebar and the Review panel (index.css → Header caps).
+  const sidebarCapRef = usePanelWidthSink('--oa-sidebar-w')
+  const dockCapRef = usePanelWidthSink('--oa-dock-w')
   // The sidebar's mutation, so a rename here shows in both at once.
   const { mutate: mutateSessionTitle } = useUpdateSessionTitleMutation()
   const pushToast = useToastStore((s) => s.push)
@@ -215,6 +219,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         )}
       >
         <div
+          ref={sidebarCapRef}
           data-header-cap="sidebar"
           // The traffic lights sit over the sidebar, as in a native app; the
           // toggle keeps a native gap from them (they end near 66px).
@@ -250,6 +255,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             ) : null}
           </div>
           <div
+            ref={dockCapRef}
             data-header-cap="dock"
             // Windows: this header is the title bar, and the page's caption
             // buttons (fixed at the top right) take its last 3 × 46px.

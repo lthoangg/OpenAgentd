@@ -182,7 +182,12 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     const node = dockedRef.current
     const center = node?.closest<HTMLElement>('[data-workbench-center]')
     if (!node || !center || !docked) return
-    const publish = () => center.style.setProperty('--composer-h', `${Math.round(node.getBoundingClientRect().height)}px`)
+    // Only on a real change: every element in the center (the transcript)
+    // inherits it, and a width-only resize (a panel sliding) changes nothing.
+    const publish = () => {
+      const height = `${Math.round(node.getBoundingClientRect().height)}px`
+      if (center.style.getPropertyValue('--composer-h') !== height) center.style.setProperty('--composer-h', height)
+    }
     publish()
     if (typeof ResizeObserver === 'undefined') return () => center.style.removeProperty('--composer-h')
     const observer = new ResizeObserver(publish)

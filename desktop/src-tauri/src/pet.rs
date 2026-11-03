@@ -12,8 +12,12 @@
 //! asks for the frame it needs in `pet_fit`; this module clamps it to the
 //! work area and moves the window ([`window_frame`]), then tells the page
 //! the frame it got (`pet-frame`), so the page can draw at the right offset.
-//! The lane never moves sideways, and the page hides the pet for a moment
-//! while the lane's top edge moves, so no frame shows it displaced.
+//! The lane never moves sideways. On macOS the page does not move with it:
+//! the webview stays the size of the work area, fixed on screen, and the
+//! window is only a viewport over it ([`viewport`]), so a lane whose top
+//! edge moves shows no stale picture and the pet never has to hide. Where
+//! that is not possible (Windows: WebView2 always fills its window), the
+//! page hides the pet for a moment while the lane's top edge moves.
 //!
 //! Hit areas, the pointer, other windows' ledges and the saved position are
 //! all in area pixels, whatever the window's frame is. Clicks pass through
@@ -439,11 +443,60 @@ pub fn initial_request(position: Option<&PetPosition>, size: PetSize, work: &Are
 }
 
 /// Move and resize the pet window to `frame` (physical px). Main thread only.
-/// Size first: it keeps the window's top-left, and the page hides the pet
-/// while the frame changes, so no half-way frame is seen.
-fn set_window_frame(window: &WebviewWindow, frame: Area) {
+/// On macOS the window becomes a viewport over a page fixed on screen
+/// (`work`, the work area), in one step; true when it did. Otherwise: size
+/// first (it keeps the window's top-left), and the page hides the pet while
+/// the frame changes, so no half-way frame is seen.
+fn set_window_frame(window: &WebviewWindow, frame: Area, work: Area) -> bool {
+    if native::set_viewport(window, frame, work) {
+        return true;
+    }
     let _ = window.set_size(tauri::PhysicalSize::new(frame.width, frame.height));
     let _ = window.set_position(tauri::PhysicalPosition::new(frame.x, frame.y));
+    false
+}
+
+/// A rectangle in AppKit points, origin at the bottom left.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// The window's frame on screen and the page's frame inside the window,
+/// for a viewport over a page fixed on the work area.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Viewport {
+    /// The window, in screen points (AppKit: from the primary display's bottom left).
+    pub window: PointRect,
+    /// The page in the window's content view (from its bottom left): the
+    /// whole work area, wherever the window is over it.
+    pub page: PointRect,
+}
+
+/// [`Viewport`] for the window at `frame` over `work` (both physical px,
+/// top-left origin, as Tauri gives them), with the primary display
+/// `primary_height` points tall. Tauri's physical pixels are the display's
+/// points times its scale, and its top-left origin is the primary display's
+/// top left; AppKit counts up from that display's bottom.
+pub fn viewport(frame: &Area, work: &Area, primary_height: f64) -> Viewport {
+    let scale = pet_frame(*work).scale;
+    let pt = |v: f64| v / scale;
+    let (top, height) = (pt(f64::from(frame.y)), pt(f64::from(frame.height)));
+    let window = PointRect { x: pt(f64::from(frame.x)), y: primary_height - top - height, width: pt(f64::from(frame.width)), height };
+    // The page's bottom sits on the work area's bottom, below the window's
+    // bottom edge (or on it); its left on the work area's left.
+    let work_bottom = f64::from(work.y) + f64::from(work.height);
+    let frame_bottom = f64::from(frame.y) + f64::from(frame.height);
+    let page = PointRect {
+        x: pt(f64::from(work.x - frame.x)),
+        y: -pt(work_bottom - frame_bottom),
+        width: pt(f64::from(work.width)),
+        height: pt(f64::from(work.height)),
+    };
+    Viewport { window, page }
 }
 
 /// What the page is told about its window: the world (the work area) and
@@ -452,12 +505,15 @@ fn set_window_frame(window: &WebviewWindow, frame: Area) {
 pub struct FrameView {
     pub area: PageSize,
     pub frame: PageFrame,
+    /// The page is fixed on screen and the window is a viewport over it:
+    /// draw in area pixels with no offset, and never hide for a move.
+    pub fixed: bool,
 }
 
 fn frame_view() -> Option<FrameView> {
     let s = shared().lock().unwrap();
     let (work, window) = (s.strip?, s.window?);
-    Some(FrameView { area: page_size(&work), frame: page_frame(&window, &work) })
+    Some(FrameView { area: page_size(&work), frame: page_frame(&window, &work), fixed: s.fixed })
 }
 
 /// The window moved or was resized: tell the page where it is now.
@@ -658,6 +714,9 @@ struct Shared {
     strip: Option<Area>,
     /// The window's frame on screen (physical px): a lane of `strip`.
     window: Option<Area>,
+    /// The window is a viewport over a page fixed on screen ([`viewport`]):
+    /// the page draws with no offset and never hides for a move.
+    fixed: bool,
     hits: Vec<HitRect>,
     /// A drag is under way: keep taking clicks wherever the pointer is.
     capture: bool,
@@ -683,6 +742,7 @@ fn shared() -> &'static Mutex<Shared> {
             shown: false,
             strip: None,
             window: None,
+            fixed: false,
             hits: Vec::new(),
             capture: false,
             taking_clicks: false,
@@ -848,7 +908,8 @@ fn apply(app: &AppHandle) {
         (moved, s.shown)
     };
     if moved {
-        set_window_frame(&window, lane);
+        let fixed = set_window_frame(&window, lane, frame);
+        shared().lock().unwrap().fixed = fixed;
     }
     if !was_shown {
         native::show(&window);
@@ -995,12 +1056,21 @@ pub struct PetView {
     /// it, in CSS px; absent until the window is placed.
     area: Option<PageSize>,
     frame: Option<PageFrame>,
+    /// See [`FrameView::fixed`].
+    fixed: bool,
 }
 
 fn view() -> PetView {
     let s = shared().lock().unwrap();
     let frames = s.strip.zip(s.window).map(|(work, window)| (page_size(&work), page_frame(&window, &work)));
-    PetView { settings: s.settings.clone(), status: s.status, shown: s.shown, area: frames.map(|f| f.0), frame: frames.map(|f| f.1) }
+    PetView {
+        settings: s.settings.clone(),
+        status: s.status,
+        shown: s.shown,
+        area: frames.map(|f| f.0),
+        frame: frames.map(|f| f.1),
+        fixed: s.fixed,
+    }
 }
 
 fn emit_state(app: &AppHandle) {
@@ -1159,13 +1229,15 @@ pub fn pet_fit(app: AppHandle, window: WebviewWindow, rects: Vec<HitRect>, captu
         s.hits = rects.into_iter().filter(HitRect::is_valid).take(16).collect();
         s.capture = capture;
         let next = s.strip.filter(|_| frame.is_some()).map(|work| window_frame(frame.as_ref(), &work, capture));
-        next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next))
+        let next = next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next));
+        next.zip(s.strip)
     };
-    if let Some(next) = next {
+    if let Some((next, work)) = next {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
             if let Some(window) = handle.get_webview_window(PET_WINDOW) {
-                set_window_frame(&window, next);
+                let fixed = set_window_frame(&window, next, work);
+                shared().lock().unwrap().fixed = fixed;
             }
             emit_frame(&handle);
         });
@@ -1595,6 +1667,61 @@ mod native {
         with_ns_window(window, |ns| ns.orderFrontRegardless());
     }
 
+    /// Make the window a viewport over a page fixed on screen: move the
+    /// window to `frame` and the webview inside it so the page stays on the
+    /// work area (`work`), both in one Core Animation transaction, so no
+    /// frame shows the page at its old offset. A webview that is resized
+    /// keeps showing its old picture, anchored at the old top-left, until it
+    /// has redrawn; this one never changes size or place on screen. False
+    /// (and nothing changed) when the webview is not where wry puts it: a
+    /// WKWebView inside the window's content view.
+    pub fn set_viewport(window: &tauri::WebviewWindow, frame: super::Area, work: super::Area) -> bool {
+        use objc2::runtime::AnyClass;
+        use objc2_app_kit::{NSAutoresizingMaskOptions, NSScreen};
+        use objc2_foundation::{NSPoint, NSRect, NSSize};
+        use objc2_quartz_core::CATransaction;
+
+        let Some(mtm) = MainThreadMarker::new() else {
+            return false;
+        };
+        let Some(class) = AnyClass::get(c"WKWebView") else {
+            return false;
+        };
+        let rect = |r: super::PointRect| NSRect::new(NSPoint::new(r.x, r.y), NSSize::new(r.width, r.height));
+        with_ns_window(window, |ns| {
+            // The primary display (the one with the menu bar) is AppKit's origin.
+            let Some(primary) = NSScreen::screens(mtm).firstObject() else {
+                return false;
+            };
+            let Some(content) = ns.contentView() else {
+                return false;
+            };
+            let Some(webview) = content.subviews().iter().find(|view| view.isKindOfClass(class)) else {
+                warn_once();
+                return false;
+            };
+            let target = super::viewport(&frame, &work, primary.frame().size.height);
+            CATransaction::begin();
+            CATransaction::setDisableActions(true);
+            // wry stretches the webview with its window; here its frame is ours.
+            if !webview.autoresizingMask().is_empty() {
+                webview.setAutoresizingMask(NSAutoresizingMaskOptions::empty());
+            }
+            ns.setFrame_display(rect(target.window), false);
+            webview.setFrame(rect(target.page));
+            CATransaction::commit();
+            true
+        })
+        .unwrap_or(false)
+    }
+
+    /// A newer wry laid the window out differently: the pet falls back to
+    /// hiding while its lane moves. Said once.
+    fn warn_once() {
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| log::warn!("pet: no WKWebView in the window's content view; the lane moves the page with it"));
+    }
+
     /// Other apps' ordinary windows on screen, front first, in physical
     /// pixels of a display at `scale`. Reads frames only (no titles), which
     /// needs no Screen Recording permission.
@@ -1695,6 +1822,12 @@ mod native {
 
     pub fn show(window: &tauri::WebviewWindow) {
         let _ = window.show();
+    }
+
+    /// WebView2 always fills its window (wry resets its bounds on every
+    /// resize), so the page moves with the window and hides for a move.
+    pub fn set_viewport(_window: &tauri::WebviewWindow, _frame: super::Area, _work: super::Area) -> bool {
+        false
     }
 
     pub fn on_screen(_window: &tauri::WebviewWindow) -> bool {
@@ -1801,6 +1934,10 @@ mod native {
 
     pub fn show(window: &tauri::WebviewWindow) {
         let _ = window.show();
+    }
+
+    pub fn set_viewport(_window: &tauri::WebviewWindow, _frame: super::Area, _work: super::Area) -> bool {
+        false
     }
 
     pub fn on_screen(_window: &tauri::WebviewWindow) -> bool {
@@ -1966,6 +2103,26 @@ mod tests {
     fn work() -> Area {
         // A 2x display whose work area starts below a menu bar: 1440 x 800 CSS px.
         Area { x: 0, y: 50, width: 2880, height: 1600, scale: 2.0 }
+    }
+
+    #[test]
+    fn a_viewport_keeps_the_page_on_the_work_area_wherever_the_lane_is() {
+        // A 2x display 1000 pt tall, its work area below a 25 pt menu bar and above a 25 pt Dock.
+        let work = Area { x: 0, y: 50, width: 3000, height: 1900, scale: 2.0 };
+        let page = PointRect { x: 0.0, y: 0.0, width: 1500.0, height: 950.0 };
+        // A lane at the bottom: the page's bottom is the window's.
+        let low = viewport(&Area { x: 0, y: 1700, width: 3000, height: 250, scale: 2.0 }, &work, 1000.0);
+        assert_eq!(low.window, PointRect { x: 0.0, y: 25.0, width: 1500.0, height: 125.0 });
+        assert_eq!(low.page, page);
+        // Higher up: the window moves, the page reaches below it by as much and stays put on screen.
+        let high = viewport(&Area { x: 0, y: 1000, width: 3000, height: 250, scale: 2.0 }, &work, 1000.0);
+        assert_eq!(high.window, PointRect { x: 0.0, y: 375.0, width: 1500.0, height: 125.0 });
+        assert_eq!(high.page, PointRect { y: -350.0, ..page });
+        for v in [low, high] {
+            // The page's bottom on screen is the work area's (25 pt up), its top the work area's top (975 pt).
+            assert_eq!(v.window.y + v.page.y, 25.0);
+            assert_eq!(v.window.y + v.page.y + v.page.height, 975.0);
+        }
     }
 
     #[test]

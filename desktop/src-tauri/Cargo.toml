@@ -73,6 +73,9 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 # frames only, no window titles, so no Screen Recording permission).
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGGeometry"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString", "CFCGTypes"] }
+# The pet moves its window and its page in one Core Animation transaction,
+# so the page never shows at a stale offset while the window's frame changes.
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CATransaction"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [

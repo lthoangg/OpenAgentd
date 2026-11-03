@@ -121,6 +121,19 @@ describe('RunPicker', () => {
       expect(parts[1]).toBe(state)
     })
 
+    // A Codex account whose credits ran out still runs on its plan's windows.
+    it('shows the room left in the windows, not Limit reached, when only the credits are spent', () => {
+      const row = renderAccounts({
+        work: [{ primary: { used_percent: 20 }, credits: { has_credits: false, unlimited: false, balance: null }, spend: { reached: true } }],
+        home: [],
+      })
+      expect(row('Work').textContent).toContain('80% left · no credits')
+      expect(screen.queryByText('Limit reached')).toBeNull()
+      const state = screen.getByText('80% left · no credits')
+      expect(state.className).toContain('text-(--accent-orange-text)')
+      expect(state.getAttribute('title')).toBe('80% left · no credits · Spend cap reached')
+    })
+
     it('keeps the balance in the tooltip when a percent window leads, and truncates a long one', () => {
       renderAccounts({
         work: [{ primary: { used_percent: 20 }, credits: { has_credits: true, unlimited: false, balance: '$84.50' } }],

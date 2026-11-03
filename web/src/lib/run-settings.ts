@@ -86,7 +86,7 @@ export type QuotaTone = 'muted' | 'warning' | 'error'
  * row's tooltip.
  */
 export type QuotaSummary =
-  | { kind: 'percent'; left: number; tone: QuotaTone; detail?: string }
+  | { kind: 'percent'; left: number; tone: QuotaTone; detail?: string; note?: string }
   | { kind: 'spend' | 'credits'; text: string; tone: QuotaTone; detail?: string }
 
 type Spend = NonNullable<ProviderUsageLimit['spend']>
@@ -136,10 +136,12 @@ function readCredits(credits: Credits): { text: string; tone: QuotaTone } {
 /**
  * The tightest thing known about an account's quota, or `null` when nothing is.
  *
- * A reached spend cap leads, then whichever of a spend cap and the percent
- * windows has less left, then credits. Empty credits lead only when there is
- * nothing else: plans without credits report none, beside windows that still
- * have room.
+ * A reached spend cap leads unless a percent window still has room: then the
+ * plan's windows still run the account and only its credits are spent, so the
+ * window leads with a "no credits" note. Next comes whichever of a spend cap
+ * and the percent windows has less left, then credits. Empty credits lead only
+ * when there is nothing else: plans without credits report none, beside
+ * windows that still have room.
  */
 export function quotaSummary(usage: ProviderUsageResponse | undefined): QuotaSummary | null {
   const limits = usage?.limits ?? []
@@ -169,8 +171,11 @@ export function quotaSummary(usage: ProviderUsageResponse | undefined): QuotaSum
     return text ? { detail: text } : {}
   }
 
-  if (reached) return { kind: 'spend', text: 'Limit reached', tone: 'error', ...detailOf(creditDetail) }
   const windowLeft = windowUsed === null ? null : 100 - windowUsed
+  if (reached && windowUsed !== null && windowUsed < 100) {
+    return { kind: 'percent', left: percentLeft(windowUsed), tone: 'warning', note: 'no credits', detail: 'Spend cap reached' }
+  }
+  if (reached) return { kind: 'spend', text: 'Limit reached', tone: 'error', ...detailOf(creditDetail) }
   if (spend && (windowLeft === null || (spend.leftPercent !== null && spend.leftPercent < windowLeft))) {
     return { kind: 'spend', text: spend.text, tone: spend.tone, ...detailOf(creditDetail) }
   }

@@ -1135,6 +1135,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     spend cap ("$12.00 of $50.00 left", or "Limit reached"), a credit
     balance ("$84.50 left"), **Unlimited** or **No credits left**. When a
     percent window leads, the balance or cap is in the row's tooltip.
+    Since v3.43.0 a reached spend cap says "Limit reached" only once the
+    percent windows are spent too.
 - **Back to the lead agent in one click** `[v3.42.0]`:
   - A subagent's session has an **Open the lead agent** button (↰) in its
     header, before the title, on desktop and phones, next to the existing
@@ -1156,6 +1158,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   were typing. A page action right after `open` waits up to 8 seconds for the
   page to load instead of failing at once. Phones still need the workspace's
   Preview sheet.
+- **Run picker and Git changes fixes** `[v3.43.0]`:
+  - An account whose credits are spent but whose usage windows still have
+    room reads "N% left · no credits" in the run picker, not "Limit reached":
+    the plan's windows still run it.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

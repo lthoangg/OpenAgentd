@@ -419,7 +419,7 @@ function AccountState({ account, providerId, usage }: { account: StoredCredentia
   if (account.status === 'needs_reconnect') return <Chip tone="error">Reconnect</Chip>
   const quota = quotaSummary(query.data)
   if (quota === null) return null
-  const text = quota.kind === 'percent' ? `${quota.left}% left` : quota.text
+  const text = quota.kind === 'percent' ? [`${quota.left}% left`, quota.note].filter(Boolean).join(' · ') : quota.text
   // `title` becomes the app's tooltip (TitleTooltipLayer): the balance or cap the row has no room for,
   // and the whole phrase when it is long enough to be cut off.
   const title = [text.length > 14 ? text : null, quota.detail].filter(Boolean).join(' · ') || undefined

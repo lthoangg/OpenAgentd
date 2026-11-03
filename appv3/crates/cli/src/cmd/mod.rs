@@ -2,6 +2,7 @@ pub mod auth;
 pub mod cleanup;
 pub mod doctor;
 pub mod lsp;
+pub mod plugin;
 pub mod run;
 pub mod self_update;
 pub mod serve;

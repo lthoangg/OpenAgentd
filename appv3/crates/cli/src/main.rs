@@ -36,6 +36,7 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
             TransferCmd::Import(a) => cmd::transfer::import(&a),
         }),
         Command::Lsp(l) => done(cmd::lsp::lsp(&l)),
+        Command::Plugin(p) => cmd::plugin::plugin(&p),
         Command::Upgrade => cmd::upgrade::upgrade(),
     }
 }

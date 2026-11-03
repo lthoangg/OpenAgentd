@@ -23,6 +23,8 @@ appv3-db.workspace = true
 appv3-api.workspace = true
 appv3-preview.workspace = true
 appv3-tools.workspace = true
+appv3-plugins.workspace = true
+appv3-jsplugin.workspace = true
 axum.workspace = true
 anyhow.workspace = true
 clap.workspace = true
@@ -42,12 +44,11 @@ libc = "0.2"
 reqwest.workspace = true
 sha2.workspace = true
 qrcode = { version = "0.14", default-features = false }
+# `agentd plugin`: staging folders next to the plugins, and scratch data for the sandboxed code check.
+tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Console", "Win32_System_SystemInformation"] }
-
-[dev-dependencies]
-tempfile = "3"

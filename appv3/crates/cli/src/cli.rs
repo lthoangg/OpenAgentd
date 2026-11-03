@@ -43,10 +43,21 @@ pub enum Command {
     /// Inspect or install managed language servers
     #[command(subcommand)]
     Lsp(LspCmd),
+    /// Install, remove, list, and check plugins
+    #[command(subcommand, after_help = PLUGIN_EXAMPLES)]
+    Plugin(PluginCmd),
     /// Update agentd to the latest release
     #[command(visible_alias = "update")]
     Upgrade,
 }
+
+const PLUGIN_EXAMPLES: &str = "\
+A plugin is a folder with a plugin.json that adds skills, MCP servers, and
+(in dev.openagentd/) code with tools to the server.
+
+Examples:
+  agentd plugin check ./my-plugin                     Validate a folder without installing it
+  agentd plugin list                                  List the installed plugins";
 
 #[derive(Debug, Subcommand)]
 pub enum ServerCmd {
@@ -274,6 +285,27 @@ pub enum LspCmd {
     Install(LspInstallArgs),
 }
 
+#[derive(Debug, Subcommand)]
+pub enum PluginCmd {
+    /// Show the installed plugins and their state
+    ///
+    /// Asks the local server when it is running, else reads the plugin folders.
+    List,
+    /// Check a plugin folder without installing it
+    ///
+    /// Validates the manifest, then loads the plugin's code with no
+    /// permissions to list its tools. Exits 1 when the manifest is rejected or
+    /// the code does not load.
+    #[command(verbatim_doc_comment)]
+    Check(PluginCheckArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct PluginCheckArgs {
+    /// The plugin folder
+    pub folder: PathBuf,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum LspComponent {
     Typescript,
@@ -434,6 +466,22 @@ mod tests {
         assert_eq!((a.older_than_days, a.apply, a.vacuum, a.limit), (14, false, false, 20));
         assert_eq!(kind(&["cleanup", "--vacuum"]), ErrorKind::MissingRequiredArgument);
         assert!(matches!(parse(&["cleanup", "--apply", "--vacuum", "--limit", "0"]).unwrap(), Some(Command::Cleanup(CleanupArgs { vacuum: true, limit: 0, .. }))));
+    }
+
+    fn plugin_cmd(args: &[&str]) -> PluginCmd {
+        match parse(args).unwrap() {
+            Some(Command::Plugin(p)) => p,
+            other => panic!("not plugin: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plugin_check_and_list_parse() {
+        let PluginCmd::Check(c) = plugin_cmd(&["plugin", "check", "./folder"]) else { panic!("not check") };
+        assert_eq!(c.folder, std::path::Path::new("./folder"));
+        assert!(matches!(plugin_cmd(&["plugin", "list"]), PluginCmd::List));
+        assert_eq!(kind(&["plugin", "check"]), ErrorKind::MissingRequiredArgument);
+        assert_eq!(kind(&["plugin"]), ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand);
     }
 
     #[test]

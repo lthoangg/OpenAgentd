@@ -1,4 +1,4 @@
-//! `glob` — port of `filesystem/glob.py`.
+//! The `glob` tool.
 
 use crate::args::Args;
 use crate::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, skipped_ignored_note, Ignores, NOISE_DIR_NAMES};

@@ -1,6 +1,6 @@
 //! Row → wire JSON, matching v2's Pydantic response models field-for-field
-//! (declaration order, `_ExcludeNoneModel` null-stripping, UUID/datetime
-//! rendering). Keep in sync with `app/api/schemas/*.py`.
+//! (declaration order, null-stripping, UUID/datetime
+//! rendering). Keep the wire shapes in sync with the web client's types.
 
 use crate::codec::{api_dt, api_uuid, parse_dt, py_isoformat};
 use crate::models::{kind, ChatSession, CodingWorkspace, PendingQuestion, ScheduledTask, SessionMessage};
@@ -81,7 +81,7 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
 const INTERNAL_ATTACHMENT_FIELDS: [&str; 3] = ["converted_text", "path", "workspace_path"];
 const DISPLAY_STRIPPED_EXTRA_FIELDS: [&str; 1] = ["parts"];
 
-/// `MessageResponse` via `_message_response` (strips `extra.parts`, internal
+/// The `MessageResponse` wire shape (strips `extra.parts`, internal
 /// attachment fields, and continuation reasoning).
 pub fn message_response(r: &SessionMessage) -> Map<String, Value> {
     match serde_json::to_value(MessageView(r)) {
@@ -221,8 +221,8 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
-/// `PendingQuestionResponse.from_row` (note: `created_at` is Python
-/// `isoformat()`, i.e. `+00:00`, not `Z`).
+/// The `PendingQuestionResponse` wire shape (note: `created_at` uses
+/// `isoformat()` form, i.e. `+00:00`, not `Z`).
 pub fn pending_question_response(q: &PendingQuestion) -> Value {
     let created = parse_dt(&q.created_at).map(|d| py_isoformat(&d)).unwrap_or_else(|| q.created_at.clone());
     let mut v = serde_json::json!({

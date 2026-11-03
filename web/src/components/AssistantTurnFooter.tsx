@@ -8,7 +8,7 @@
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
 import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, FileDiff, Pencil, Undo2, type LucideIcon } from 'lucide-react'
+import { Check, Copy, FileDiff, Pencil, type LucideIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -40,8 +40,6 @@ export interface AssistantTurnFooterProps {
   onEditPrompt?: () => void
   /** A turn is running, so the prompt cannot be edited yet: the action shows disabled, with the reason. */
   editLocked?: boolean
-  /** Undo this turn; offered under the last finished turn only. */
-  onUndo?: () => void
 }
 
 const NO_FILES: readonly ChangedFileInfo[] = []
@@ -98,7 +96,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   changedFiles = NO_FILES,
   onEditPrompt,
   editLocked = false,
-  onUndo,
 }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const filesFold = useStickyFold()
@@ -156,7 +153,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     openTelemetry(session ? { session } : {})
   }, [])
 
-  const hasActions = Boolean(textContent || onEditPrompt || onUndo || changedFiles.length > 0)
+  const hasActions = Boolean(textContent || onEditPrompt || changedFiles.length > 0)
   if (!hasActions && !timestamp && responseDurationMs === undefined && !model) return null
 
   // Phones keep the row tight: an iPhone mini has ~340px for it.
@@ -230,9 +227,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           ) : (
             <FooterAction icon={Pencil} label="Edit prompt" hint="Edit prompt: undo this turn and put the prompt back in the composer" onClick={onEditPrompt} />
           ))}
-          {onUndo && (
-            <FooterAction icon={Undo2} label="Undo" hint="Undo this turn. The prompt returns to the composer" onClick={onUndo} />
-          )}
           {changedFiles.length > 0 && (
             <button
               ref={filesFold.anchorRef}
@@ -351,8 +345,6 @@ export interface AssistantTurnProps {
   onEditPrompt?: (promptId: string) => void
   /** A turn is running, so a prompt cannot be edited yet. */
   editLocked?: boolean
-  /** Undo this turn; passed to the last finished turn only. */
-  onUndo?: () => void
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -370,7 +362,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   promptId,
   onEditPrompt,
   editLocked = false,
-  onUndo,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -445,7 +436,6 @@ export const AssistantTurn = memo(function AssistantTurn({
           changedFiles={changedFiles}
           onEditPrompt={promptId !== undefined && onEditPrompt ? editPrompt : undefined}
           editLocked={editLocked}
-          onUndo={onUndo}
         />
       )}
     </div>

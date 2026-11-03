@@ -98,7 +98,7 @@ export const MAX_QUICK_CHOICES = 4
 
 /**
  * The pill's one wing, left of the notch: the state mark, a short word for
- * the state ("Needs you", "Running", "Done") and, for several sessions, their
+ * the state ("Needs you", "Done"; a spinner alone while work runs) and, for several sessions, their
  * count: words, never a colour alone. Nothing grows right of the notch, where
  * the status icons start (macOS gives no way to read where they are), and the
  * wing stays as narrow as those words allow so the frontmost app's menus keep
@@ -209,7 +209,8 @@ export function goalLabel(session: IslandSession): string | null {
 
 /**
  * The short labels of the pill, in {@link compactMode}'s order. One
- * vocabulary on every surface: Needs you / Running / Done / Failed / Can't reach.
+ * vocabulary on every surface: Needs you / Done / Failed / Can't reach.
+ * Running work has no word (its spinner says it), only a goal's progress.
  */
 export function compactLabels(
   sessions: readonly IslandSession[],
@@ -226,9 +227,10 @@ export function compactLabels(
       detail: unread.length === 1 ? unread[0].title : `${unread.length} sessions`,
     }
   }
+  // Running work says no word: the spinner and the count say it.
   if (sessions.length > 0) {
-    if (sessions.length === 1) return { lead: goalLabel(sessions[0]) ?? 'Running', detail: sessions[0].title }
-    return { lead: 'Running', detail: `${sessions.length} sessions` }
+    if (sessions.length === 1) return { lead: goalLabel(sessions[0]) ?? '', detail: sessions[0].title }
+    return { lead: '', detail: `${sessions.length} sessions` }
   }
   if (unreachable.length > 0) {
     return { lead: "Can't reach", detail: unreachable.length === 1 ? unreachable[0].name : `${unreachable.length} servers` }
@@ -254,10 +256,9 @@ export function listOrder(sessions: readonly IslandSession[], unread: readonly I
   return [...waiting, ...unread, ...running]
 }
 
-/** The word on a row's state chip. */
-export const STATE_WORD: Record<SessionState, string> = {
+/** The word on a row's state chip; a running row shows its spinner instead. */
+export const STATE_WORD: Record<Exclude<SessionState, 'running'>, string> = {
   needs_input: 'Needs you',
-  running: 'Running',
   done: 'Done',
   failed: 'Failed',
 }

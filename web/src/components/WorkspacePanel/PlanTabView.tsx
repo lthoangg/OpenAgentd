@@ -7,9 +7,8 @@
  * Request changes. Selecting plan text offers Comment: each comment stays
  * anchored to its passage (highlighted in the plan, listed in the footer) and
  * Request changes sends them all, with any overall feedback, as one answer.
- * Every paragraph, list item and heading also has its own Comment action
- * (``PlanBlockComments``), so commenting on a block is one click. The transcript
- * card decides the same review with the same actions (``usePlanDecision``).
+ * The transcript card decides the same review with the same actions
+ * (``usePlanDecision``).
  * The user can also edit the plan here (or in any editor): the server notices
  * the change by content and tells the agent once.
  *
@@ -58,7 +57,6 @@ import { MarkdownBlock } from '@/utils/markdown'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { KeepGoingControl } from '../PlanReview/KeepGoingControl'
 import { CommentButton, CommentComposer, CommentList, showPassage, useCommentHighlights } from '../PlanReview/PlanComments'
-import { PlanBlockComments, usePlanBlockSlots } from '../PlanReview/PlanBlockComments'
 import { readAppendixOpen, splitPlanAppendix, writeAppendixOpen } from '../PlanReview/plan-appendix'
 import {
   findTextRange,
@@ -237,9 +235,6 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const rememberScroll = useScrollMemory(sessionId ? `plan:${sessionId}:${plan?.path ?? ''}` : null, scrollRef)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
   const { selection, clear: clearSelection } = usePlanSelection(bodyRef, Boolean(review) && !editing && !composer)
-  // Every paragraph, list item and heading gets its own Comment action while a
-  // review is open and no comment is being written.
-  const blockSlots = usePlanBlockSlots(bodyRef, Boolean(review) && Boolean(plan) && !editing && !composer)
   useCommentHighlights(bodyRef, editing ? [] : [...reviewDraft.comments.map((c) => c.quote), ...(composer ? [composer.quote] : [])])
 
   // Touch: hold the last selection briefly after it collapses, so the footer's
@@ -433,13 +428,6 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     decision.requestChanges(answerText)
   }
 
-  // The Comment action of a paragraph: the box opens right under it.
-  const commentOnBlock = (quote: string) => {
-    const body = bodyRef.current
-    const anchor = body ? passageAnchor(body, quote) : null
-    startComment(anchor ?? { text: quote, top: 0, left: 0, width: body?.clientWidth ?? 0 })
-  }
-
   const copy = () => {
     void navigator.clipboard?.writeText(content).then(() => setCopied(true), () => {})
   }
@@ -615,7 +603,6 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               )}
             </FileRefContext.Provider>
             {selection && review && !composer && !mobile && <CommentButton selection={selection} onComment={() => startComment()} />}
-            <PlanBlockComments slots={blockSlots} onComment={commentOnBlock} />
             {composer && review && !mobile && (
               <CommentComposer
                 anchor={composer.anchor}

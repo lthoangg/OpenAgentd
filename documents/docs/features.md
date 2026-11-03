@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.41.0 · November 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.41.0)
+**Latest release:** v3.42.0 · November 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.42.0)
 
 ---
 
@@ -231,18 +231,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   warnings, lint results, security caveats) share one callout style, used
   app-wide, and page copy is shorter. A saved link to the old Automation
   section opens Workspaces.
-- **Roomier Scheduled tasks, Session settings and Keyboard shortcuts**
-  `[v3.21.0]` (Session settings *(deprecated)* in v3.40.0: model, thinking and
-  account moved to the run picker, MCP servers to the composer's **+** menu,
-  and the tool list to Settings → Agents) — these panels now use the same layout as Settings: titled
+- **Roomier Scheduled tasks and Keyboard shortcuts**
+  `[v3.21.0]` — these panels now use the same layout as Settings: titled
   sections above their cards, label-left / control-right rows, more space
   between fields, one notice style, and sentence-case labels. A scheduled
   task's detail reads Status, then **Delivery**, **Schedule**, **Prompt** and
   **Runs** (a failed last run shows as a notice under Runs). The create and
   edit forms group their fields into Task, Schedule, Prompt and Delivery, and
-  save from a footer bar. The task list shows one row per task. Session
-  settings groups Model, MCP servers (with **Manage**) and the collapsible
-  Tools list. The same layout applies in the review dock's Schedule tab.
+  save from a footer bar. The task list shows one row per task. The same
+  layout applies in the review dock's Schedule tab.
   On phones the scheduler shows a single header, puts **Run now** and
   **Pause** in a bottom bar, uses full-width save buttons and a number pad
   for intervals and run limits, and shows long workspace paths and session
@@ -357,7 +354,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   (coding workspace name when available). Notification sounds are handled by
   the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
-  alerts are deprecated and no longer emitted by app clients.
   Mobile notifications send again after `[v1.113.4]` stopped them; tapping
   one opens its session, and the one for the session already on screen is
   skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
@@ -400,16 +396,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   field is 16px on touch phones so iOS does not zoom `[v3.40.0]`.
   A file query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
   opens the pick with those lines selected `[v3.0.0]`.
-  `⌘F`/`Ctrl+F` transcript find *(deprecated; removed in v3.14.0, along with
-  every `⌘F` binding)*;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
   session and is a no-op on an already empty idle session. The desktop status
   footer and mobile sidebar name the connected backend (`builtin` or the saved
   server name/host) instead of a hardcoded local label. Mobile chat actions
   expose terminal access without a hardware keyboard.
-  Empty coding sessions no longer show the Ask about this repo, Generate
-  AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
-  palette, and chat actions drawer cover them. Press and hold the
+  Press and hold the
   pinned Chat row in the mobile sidebar to start a new chat session, since the
   inline `+` is hidden on touch.
 - **Palette pages and switching** `[v3.0.0, updated v3.21.0, v3.27.0]` — the Command Palette gains
@@ -611,8 +603,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     mode; a switch that is off is a light track there. With the system's
     Increase contrast on, the fills step back up. Menus, cards and dialogs
     keep one thin frame, and nothing inside them adds another.
-  - A switch that is on is a deeper blue in dark mode, so its knob stands out.
-    *(Replaced in v3.40.0: switches are the warm accent, below.)*
   - **Blue is the logo and keyboard focus only** `[v3.40.0]`. Everything else
     that used Signal Blue takes the warm palette: switches, checkboxes and
     radios fill with the accent (Bark in light mode, cream in dark); file names
@@ -714,7 +704,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     More), and Send is a 44px target (36px since v3.41.0, like the
     controls beside it).
   - Messages queued while a turn runs sit in the tray above the text, with
-    the side question and the **Jump to latest** chip.
+    the side question and the **Jump to latest** chip *(queued messages
+    moved back to the transcript in v3.42.0; the tray keeps the other two)*.
   - On a touch tablet, in the app or a browser, the composer rides up on the
     soft keyboard as it does on phones, and Settings ends above the keyboard
     so its Save bar stays reachable. The header is 44px there, so its touch
@@ -827,7 +818,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
     each Review panel group and the status bar.
   - Code blocks, tables, diagrams and an expanded tool's output can widen to
-    960px when the chat has room; prose keeps its reading width.
+    960px when the chat has room; prose keeps its reading width *(deprecated;
+    removed in v3.42.0: they stay at the column width)*.
 - **Sidebar and header: fewer steps** `[v3.40.0]`:
   - **New session** sits at the top of the sidebar at all times (it does what
     `⌘N`/`Ctrl+N` does).
@@ -856,7 +848,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     and the phone's More sheet open it), and a hidden sidebar leaves no
     hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
-  - Under the last finished answer, **Copy · Edit prompt · Undo** show at
+  - Under the last finished answer, **Copy · Edit prompt · Undo** *(Undo
+    deprecated; removed in v3.42.0)* show at
     rest as icons, each named in its tooltip, then the files
     changed (a file icon, the count and `+added -removed`). While a turn
     runs, Edit prompt shows dimmed and says it is available when the turn
@@ -901,13 +894,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     1–9 pick an option (the next number is "Type your own answer"), Enter
     sends, and Back / Next page through several questions. Double-clicking
     an answer picks it and sends (or goes to the next question).
+    *(Send always showing, **Skip this question** and Dismiss deprecated;
+    replaced in v3.42.0 by Back / Next, with Send on the last question.)*
   - An open tool row's arguments and output show in full, widened past the
-    text column, no longer cut at its edges.
+    text column, no longer cut at its edges *(widening deprecated; removed
+    in v3.42.0)*.
   - A plan review is decided on its card: **Approve** (or **Approve and keep
     going (N turns)** when a goal would start, with the real count),
     **Request changes**, which opens a comment box straight away, and **Open
     plan**. In the Plan tab every paragraph, list item and heading has a
-    **Comment** action, and the tab and the card share one draft.
+    **Comment** action *(deprecated; removed in v3.42.0: select text and
+    comment)*, and the tab and the card share one draft.
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them
@@ -1045,7 +1042,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The tray popup lists the sessions that need you and the running ones,
     says **No server connected** when there is none, and its usage section
     is **Provider limits**. On Windows and Linux the tray menu starts with
-    the sessions that need you.
+    the sessions that need you *(both session lists deprecated; removed in
+    v3.42.0)*.
   - Opening a session from anywhere (notch, pet, tray, a notification, Open
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
@@ -1061,7 +1059,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Every thinking level fits the run picker: Extra high reads **XHigh**
     (on the run chip too), and the sheet puts the Thinking label above the
     levels.
-  - The footer under a message (Copy, Edit prompt, Undo, the files pill and
+  - The footer under a message (Copy, Edit prompt, Undo *(removed in
+    v3.42.0)*, the files pill and
     the details line) and a prompt's Edit and Copy are drawn smaller and
     closer together, with the same 36px touch targets.
   - A question card's caption ("Answer at least one question to send.")
@@ -1080,6 +1079,77 @@ run from the terminal (the native Rust binary since v3.0.0).
     server is marked **In use** in the list, the built-in server shows its
     address there, and a connected server that is not saved gets a row of
     its own.
+- **Fewer buttons, fewer menus, smoother panels** `[v3.42.0]`:
+  - The tray popup lists no sessions, only provider limits and actions; the
+    count mark on the tray icon is unchanged. The Windows and Linux tray
+    menu has no **Needs you** rows, and its **Status: …** row shows only
+    while the backend is not running normally (Starting, Error, Restarting,
+    Downloading or Installing an update…).
+  - The notch pill no longer says **Running**: while sessions run it shows
+    the spinner, the count and the title (or "N sessions"), and a goal still
+    shows "Goal N/M". In the expanded list a running row shows the spinner
+    in place of a **Running** chip. **Needs you**, **Done**, **Failed** and
+    **Can't reach** are unchanged.
+  - The turn footer has no **Undo**; **Edit prompt** already undoes the turn
+    and puts the prompt back (`/undo` remains).
+  - Messages (yours and the agent's) and code blocks have no app
+    right-click or long-press menu (**Copy response**, **Copy as Markdown**,
+    **Copy code**, and **Copy** / **Edit** on your messages are gone), on
+    desktop and on phones and tablets; they keep the system menu and native
+    text selection. In the desktop app, right-clicking message text or code
+    outside a link shows the system menu (Copy, Look Up). The footer's
+    **Copy**, a code block's **Copy code** button and your message's **Copy**
+    and **Edit** buttons remain, as do the link menu (Open / Copy link) and
+    the tool row menu.
+  - The Plan tab's per-block **Comment** action is gone; select text and use
+    the **Comment** button (on a phone, the footer), and the tab and the
+    card still share one draft.
+  - Code blocks, tables, diagrams and an expanded tool row's details stay at
+    the text column's width instead of widening to 960px; long lines scroll
+    inside their box.
+  - A question card has only **Back** and **Next**, and **Send** in Next's
+    place on the last (or only) question; there is no **Dismiss**, **Skip
+    this question** or **Skip and send**. Next leaves an unanswered question
+    to be sent as skipped, and Send is always available. The caption reads
+    "N of M answered · K will be skipped" or, for one question with nothing
+    picked, "Nothing picked: Send skips this question." Enter and
+    `⌘`/`Ctrl`+Enter take Next or Send once the current question has an
+    answer; keys 1–9 and double-click are unchanged.
+  - Sliding the sidebar or the Review panel open or closed no longer
+    restyles the whole page on every frame, so the slide is smoother with a
+    long transcript.
+  - Messages queued or steered while a turn runs sit at the bottom of the
+    transcript, under the running turn, faded, as before v3.40.0; they are
+    no longer in the composer's tray, which keeps the side question, the
+    undo notice and the **Jump to latest** chip.
+  - Typing a message that grows to several lines no longer scrolls the
+    transcript up under the composer, hiding the last answer's footer.
+  - The run picker's account rows (shown with two or more accounts) say what
+    is left of an Enterprise or team plan's quota, not only "N% left": a
+    spend cap ("$12.00 of $50.00 left", or "Limit reached"), a credit
+    balance ("$84.50 left"), **Unlimited** or **No credits left**. When a
+    percent window leads, the balance or cap is in the row's tooltip.
+- **Back to the lead agent in one click** `[v3.42.0]`:
+  - A subagent's session has an **Open the lead agent** button (↰) in its
+    header, before the title, on desktop and phones, next to the existing
+    **Return to main agent** banner.
+  - The lead's messages in a subagent's transcript (its task and follow-ups)
+    carry a **From lead** chip that opens the lead's session, and read
+    without the `[Lead]:` / `[Task from Lead]:` prefix. They have no
+    **Edit**, and the turn under them offers no **Edit prompt** or retry,
+    since those would rewind or resend inside the subagent.
+  - A message from another workspace's agent that is still queued shows a
+    clickable **From <workspace>** chip that opens the sending session, as
+    the delivered prompt's chip does.
+- **The agent can use a preview without the Preview tab open** `[v3.42.0]`:
+  while the app is open on desktop, a page the agent opened stays loaded out
+  of sight when no Preview tab shows it (the tab was closed, or **Previews**
+  waits for a click), so snapshot, click, fill and the console keep working. It is
+  dropped after 15 minutes without agent use, and opening the Preview tab
+  takes over from it. Focus the page takes (a fill) goes back to where you
+  were typing. A page action right after `open` waits up to 8 seconds for the
+  page to load instead of failing at once. Phones still need the workspace's
+  Preview sheet.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1144,11 +1214,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   page uses itself stay with it), so `⌘W` there closes the tab instead of the
   window. **Keyboard Shortcuts** (`⌘/`/`Ctrl+/`, or the palette) lists every
   shortcut by area.
-- **Keyboard areas, like a desktop app** `[v3.5.0]` *(deprecated — removed in
-  v3.6.0: Tab and Shift+Tab move through every control in page order again,
-  and arrow keys no longer walk between buttons)* — Tab and Shift+Tab moved
-  between areas (header, sidebar, chat, composer, dock, status bar) instead of
-  through every button; arrow keys, Home and End moved inside an area.
 - **Keyboard paths and focus continuity** `[v3.5.0, v3.6.0]`:
   - Row actions that only show on hover also appear on keyboard focus and keep keys:
     F2 renames, Delete (or `⌘⌫` / `Ctrl+Backspace`) deletes, Shift+F10 or
@@ -1167,7 +1232,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   out, and a window in the background dims its highlights. The webview's
   Reload / Back / Inspect menu is gone: right-click in the chat offers **Open
   link** / **Copy link**, **Copy code**, **Copy response** / **Copy as
-  Markdown** and, on your messages, **Copy** / **Edit**; text fields and
+  Markdown** *(the last three deprecated; removed in v3.42.0)* and, on your
+  messages, **Copy** / **Edit** *(also removed in v3.42.0)*; text fields and
   selected text keep the native menu. Shift+F10 opens the same menus in the
   browser too.
   - Tooltips wait half a second before appearing, then show at once while you
@@ -1177,7 +1243,6 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Type-to-focus composer** `[v1.40.0]` — in coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first.
-- **Developer-friendly word navigation in composer** `[v1.86.0]` *(deprecated — replaced by native browser word navigation; the custom interceptor that stopped at programming separators like `.`, `-`, `_` was removed so `Option + Arrow`/`Ctrl + Arrow` now follow each platform's standard word-jump semantics)*.
 - **Native menu/tray shortcuts** `[v1.39.0, v1.93.1]` — menubar shortcuts for Home,
   Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
@@ -1187,8 +1252,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   platform-aware shortcuts `[v1.93.1]`.
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
-    closes an open dock tab first). Edit added Find in Transcript (`⌘F`) *(deprecated; removed in v3.14.0)*; View
-    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick; *removed in v3.40.0*). A new Help menu
+    closes an open dock tab first). View
+    adds Toggle Sidebar (`⌘B`). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
     Hide/Hide Others/Show All. Reload and Force Reload no longer have
@@ -1247,6 +1312,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     alerts, so switching servers neither shows one server's numbers under
     another's name nor repeats a notification. When Auto's server is
     offline the selector still lists Auto, so you can pick another server.
+    Since `[v3.42.0]` it lists no sessions (no **Needs you**, **Running** or
+    **Can't reach** groups, no "N need(s) you" chip in the header): it shows
+    provider limits and actions only. The count mark on the tray icon is
+    unchanged.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",
@@ -1324,7 +1393,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     walks along the bottom of the screen by default, above the Dock or
     taskbar (leaving room for one that hides itself, so it never walks where
     it pops up), on top of other apps. Drag it anywhere on the screen and it
-    walks left and right at that height; near the top, its bubble opens
+    walks left and right at that height (with climbing on it first falls to
+    the surface below `[v3.42.0]`); near the top, its bubble opens
     below it. Its pose follows your agents: it wanders and sits when
     nothing runs (and sleeps after five quiet minutes), types on a tiny
     laptop while an agent works, and raises an orange "!" while one waits on
@@ -1358,6 +1428,40 @@ run from the terminal (the native Rust binary since v3.0.0).
     notifications use the bubble, whether it climbs on windows, and
     whether it shows while OpenAgentd is in front (it always
     steps aside for full-screen apps); the tray turns it on and off too.
+  - **Desktop pet: ladders, balloons and falls** `[v3.42.0]` — the pet now
+    changes height on its own, in three small animations (same pixel art for
+    the cat, duck and crab: the walking frames climb, the standing frame
+    floats and falls). A **ladder** grows from the pet's surface up to the top
+    edge of another window (or down from it to the ground), the pet climbs it
+    with its walking steps, and the ladder folds away; a jump is kept for
+    rises of up to twice the pet's height, a ladder takes anything taller. A
+    **balloon** (red) lifts it up to 360 px with a slight sideways drift and a
+    gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
+    3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
+    early (the balloon is part of the pet's clickable area; clicks elsewhere
+    still pass through). A **fall** has gravity (eases in, capped speed), a
+    squash on landing and a tiny dust puff; it is also how the pet comes down
+    when its window closes, and when you drop it in mid-air: with climbing on
+    it falls to the window edge or the ground below, and the saved spot is
+    the ground it stands on (with climbing off it stays at the height you
+    dropped it). They come after a sit, with the jump's decision: ladders
+    only when playful or chaotic and a window is in reach (12% / 25% of
+    sits), balloons 4% when calm (never climbing windows), 10% playful, 20%
+    chaotic. None starts when movement is stay put, with reduced motion,
+    while the pet is dragged or its menu is open, while a bubble is up or a
+    question waits (one under way is cut short), nor ladders and balloons
+    while an agent runs. Settings → General → Desktop pet → **Ladders and
+    balloons** (on by default) turns the first two off; falls stay.
+  - **Desktop pet: no sheet over the desktop (screen sharing)** `[v3.42.0]` —
+    the pet's window is no longer a transparent sheet over the whole work
+    area, which a meeting app's window picker (Zoom, Meet, the macOS share
+    picker) took for the window under the pointer, so nothing behind it could
+    be picked. It is now a full-width lane just tall enough for the pet and
+    what it is doing (its marks, a bubble, a ladder, a balloon, a fall), and
+    the whole area only while you drag it; it shrinks back a moment after the
+    pet is still. Everywhere else the desktop has no window of ours. The
+    window is also marked as not shareable (macOS) and as a tool window kept
+    out of captures (Windows), which pickers that honour them respect.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -1368,10 +1472,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     `GET /api/settings/providers/{provider}/usage`; period-only billing data
     renders as neutral availability rather than an invented percentage or
     unlimited allowance `[v1.112.0]`.
-- **Touch back/forward navigation** `[v1.53.1]` *(deprecated)* — desktop Tauri windows support
-  edge swipes on touch/pen devices: right from the left edge goes back, left
-  from the right edge goes forward, while editable fields and scroll-like
-  vertical gestures are ignored.
 - **Multiple desktop windows** `[v1.41.0]` — open additional coding windows from
   File → New Window, the tray menu, or `⌘⇧N`/`Ctrl+Shift+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
@@ -1434,14 +1534,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
-  - **`/plan` slash command** `[v1.96.0]` *(deprecated — superseded by Plan and Code interaction modes in v2.14.0)* — triggers
-    a research-then-approve workflow: the agent investigates the problem space and proposes a step-by-step
-    implementation plan, then waits for explicit approval before writing any code. Superseded by the first-class
-    Plan and Code interaction modes in the input composer.
-- **Bang shell commands** `[v1.39.0]` *(deprecated — removed in v2.0.0; use the coding
-  workspace terminal instead)* — start a message with `!` to run the
-  remainder directly through the shell tool without a model turn; history stored
-  the run as structured shell tool output.
 - **`shell` tool output handling** — Stop terminates active foreground
   shell process groups; background commands started with `background=true` return
   the spawned PID. Raw ANSI/CSI/OSC escape
@@ -2040,10 +2132,6 @@ executes tools, manages its task list, and inspects workspace repositories.
 - **Incremental session history hydration** `[v2.0.0]` — hydrates session histories
   incrementally and materializes SQLite query-planner statistics (`ANALYZE`) after
   migrations for sub-millisecond query planning.
-- **`/continue` resumes interrupted work** `[v1.5.0]` *(deprecated — removed)* — restores
-  the agent's pending plan and resumes streaming from the last turn. Available in the
-  command palette and assistant footer. Continuations use the session's model
-  and reasoning settings.
 - **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns
   an empty assistant response immediately after a tool result, the lead keeps
   the same session turn moving instead of silently ending after the tool call.
@@ -2148,8 +2236,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   readable reasoning summaries on supported models.
   Selections apply immediately (no Apply step); a half-typed or emptied model
   field is never committed `[v1.125.0]`. To fall back to the agent's default,
-  pick it from the model list like any other model — the dedicated
-  `Use agent default` reset button was removed `[v1.126.1]`.
+  pick it from the model list like any other model.
   Changing the agent's default model, thinking level, prompt or tools in
   Settings while a session runs no longer switches that run: member reports,
   queued steers and answered questions continue on the config the run started
@@ -2332,7 +2419,7 @@ agent against it.
   area and always leaves the chat at least 400px; on narrower windows it opens
   over the chat instead. Both dividers resize by drag or keyboard (arrow keys,
   Home/End, Enter to reset), and the layout is remembered.
-  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle *(deprecated — the graph and All Branches are removed in v3.40.0; History lists the current branch's commits)*. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
+  - **Git Commits in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see the current branch's recent git commits. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. **Workspace Git UI state (including the selected sub-tab, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
     - **Git Commit Actions (Undo & Revert)** `[v1.88.0]` — right-clicking a commit/file on desktop opens a native-feeling context menu at the cursor, while long-pressing on mobile opens a touch-friendly action sheet. Allows you to **Undo commit** (soft-resets the last commit, keeping all changes staged in your working copy) or **Revert commit** (creates a new commit that reverts the changes of the selected commit, with auto-abort protection if conflicts occur), and confirmation dialogs use responsive side-by-side buttons on desktop.
     - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
       sub-tab shows a 24-hour `HH:MM` alongside the date so same-day commits
@@ -2401,8 +2488,7 @@ agent against it.
   worktrees and **Open folder…**), a row of recent folders, and the folder's
   recent sessions. Text typed in a draft is kept per folder across reloads and
   carried along when the folder changes. On desktop the composer sits in the
-  middle of the screen; on phones it sits at the bottom. *(The v3.18.0 New
-  session composer setting was removed in v3.19.0.)* Sending the first message
+  middle of the screen; on phones it sits at the bottom. Sending the first message
   carries the screen into the chat: the centered composer glides to the bottom
   while the transcript fades in (instant with reduced motion), then collapses
   once it lands, as after any other send `[v3.22.0]`. Opening a folder registers it in the sidebar
@@ -2432,7 +2518,6 @@ agent against it.
 - **Session search** `[v3.0.0]` — the search button in the Workspaces header
   swaps the tree for a search field that matches session titles across every
   workspace, however old. Enter opens the first match and Escape returns to
-  the tree. Its `⌘F` / `Ctrl+F` shortcut is *(deprecated; removed in v3.14.0)*.
 - **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
   row has one status slot: `!` while it waits for your answer, a spinner while
   it runs, and an accent dot when a turn ended while you were in another
@@ -2594,11 +2679,11 @@ agent against it.
   The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
   multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v2.0.0]`.
-- **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
-  `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
-  xterm.js instance) attached to the coding workspace panel, alongside
+- **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (the Rust
+  backend's `portable-pty`, streamed over WebSocket to an xterm.js
+  instance) attached to the coding workspace panel, alongside
   Changes/Commits/file tabs. Coding-mode only — there is no separate general-chat mode
-  terminal. The session survives tab switches (detached PTYs idle-close
+  terminal. The session survives tab switches (a hidden terminal idle-closes
   after 15 minutes of no input; the backend reaper is the 30-minute
   backstop). A terminal with a command still running (a dev server, a
   build) is never idle-closed, by either reaper, on macOS and Linux `[v3.5.0]`.
@@ -2618,6 +2703,30 @@ agent against it.
   `⌘W` on a terminal whose shell is still running asks before closing it; the
   tab's close button still closes right away `[v3.3.0]`, unless a command is
   running in it, which asks first too `[v3.5.0]`.
+  - Shells survive a reload, a closed window and a dropped connection
+    `[v3.42.0]`: reopening the workspace brings its terminals back with their
+    recent output (the last 2 MB) and their names, a dropped connection
+    reconnects by itself, and a shell nobody reattaches to closes after 10
+    minutes. Closing the tab still ends the shell. Opening the same terminal
+    in a second window moves it there, and the first says "Opened in another
+    window". A flood of output (`yes`, a huge build log) no longer freezes the
+    app: the backend waits for the page to catch up. On Windows, where the
+    app cannot tell whether a command is running, terminals are no longer
+    idle-closed.
+  - **Find in terminal** `[v3.42.0]`: `⌘F` (macOS) or `Ctrl+Shift+F`
+    (Windows/Linux; plain `Ctrl+F` still reaches the shell) opens a find bar
+    with a match count and **Match case**; on phones it is in the long-press
+    sheet.
+  - **File paths open in the editor** `[v3.42.0]`: `⌘`/`Ctrl`+click on
+    `src/foo.ts:42`, `src/foo.ts:42:7` or `a/b.rs(10,3)` opens the file at that
+    line, resolved against the shell's directory when the shell reports it,
+    else the workspace; paths outside the workspace do not open.
+  - **Add to chat** `[v3.42.0]`: with text selected, the **Add to chat**
+    button or `⌘L` / `Ctrl+L` appends it to the composer as a `Terminal
+    output:` code block; on phones it is in the long-press sheet.
+  - On Windows and Linux `Ctrl+Shift+C` / `Ctrl+Shift+V` copy and paste
+    `[v3.42.0]`, and a terminal no longer takes focus from the composer when
+    it reconnects or its state changes.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace
@@ -2783,12 +2892,6 @@ agnostic by design.
   match, the newest tool-calling model is used. Models the user chose are
   never replaced. `POST /api/settings/default-model` also accepts
   `{"provider": "<id>"}` to apply the same choice.
-- **Keyless first-run model** `[v1.124.0]` *(deprecated — removed)* — previously
-  defaulted new installations to OpenCode Zen free models; removed because
-  OpenCode free models only open within OpenCode's own harness. OpenCode Zen
-  now requires `OPENCODE_ZEN_API_KEY`.
-- **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
-  plugins directory register new providers at startup.
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable
   providers no longer block startup; an unconfigured stub surfaces an
   actionable UI error on first use.
@@ -2846,7 +2949,7 @@ agnostic by design.
   usage signal once a cap is reached and Codex stops returning rate-limit windows — and
   a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`. The
   desktop tray's "Usage Limits" submenu renders the same cap `[v1.131.1]`.
-- **Priority / Fast mode** `[v1.90.0, v1.92.0]` *(deprecated)* — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The web Session Settings control was removed in `v1.125.0`; the session field, API parameter, and provider mapping still work, so sessions that set it elsewhere (TUI, API) are unaffected.
+- **Priority / Fast mode** `[v1.90.0, v1.92.0]` — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The status bar shows a **fast** pill while the session has it on; it is a status indicator, not a switch, so the mode is set through the API or another client, and the session field, API parameter, and provider mapping apply as before.
 - **Hide / show a provider** `[v1.92.0]` — Settings → Providers lets you
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
@@ -2962,7 +3065,8 @@ MCP.
   fails `[v3.5.0]`. Session settings list `preview` among the agent's tools
   in coding workspaces `[v3.5.0]`.
   Only loopback URLs are accepted, never the OpenAgentd API port. Everything
-  works only while the page is open in the Preview tab; there is no headless
+  works only while the page is open in the Preview tab *(since v3.42.0, or
+  loaded out of sight while the desktop app is open)*; there is no headless
   browser and no screenshots.
 - **Hints on wrong tool names and paths** `[v3.28.0]` — calling a tool by a
   name from another harness (such as `bash`) answers "Did you mean …?" and
@@ -2977,14 +3081,15 @@ MCP.
   answer. **Type your own answer** is on every question `[v3.4.0]`; the agent
   can no longer turn it off. Multi-question cards are stepped through one at a time —
   **Back** replaces **Dismiss** past the first question — and the whole set is
-  submitted together at the end. The card renders **inline in the transcript**, in place of
+  submitted together at the end *(Dismiss deprecated; removed in v3.42.0: the
+  card has only Back and Next / Send)*. The card renders **inline in the transcript**, in place of
   the tool call that raised it, with exactly two states: waiting (the questions
   and their suggested answers) and resolved (your answer, or the dismissal).
   The suspension is **durable, not in-memory**: the pending question and the
   interrupted tool call live in the database, so the turn survives an app
   reload, a daemon restart, and a switch to another device, then resumes from
-  exactly where it stopped. Answering, dismissing, or simply typing something
-  else are the only ways to move it — there is no timeout. Members keep working
+  exactly where it stopped. Answering, stopping the session, or simply typing
+  something else are the only ways to move it — there is no timeout. Members keep working
   throughout and are never interrupted by an answer. Turns support multiple
   questions across suspensions `[v2.10.0]`;
   in a turn a scheduled task started, the tool stays listed but refuses when
@@ -3031,12 +3136,6 @@ MCP.
 - **View an image the agent read** `[v3.24.0]` — a `read` of an image in the
   workspace gets a **View image** button on its transcript row, which opens the
   image in the side panel. It is hidden once the image is gone from the workspace.
-- **Symbol outline mode for `read` tool** `[v2.4.0]` *(deprecated; removed in v3.14.0:
-  agents read targeted slices or use the LSP tool's document symbols)* — `read` supported `outline=True`
-  to return high-level symbol outlines (classes, methods, functions, interfaces, types,
-  and markdown headers) with exact 1-based line numbers across Python, TypeScript/JavaScript,
-  Rust, Go, and Markdown files, enabling rapid codebase exploration before targeted pagination.
-
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
@@ -3304,15 +3403,6 @@ Four orthogonal ways to add capability.
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs
     queries are conceptual or paraphrased.
-- **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
-  Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
-  `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.
-  - **RTK shell rewriting** `[v1.118.0]` — optional `plugins/rtk_rewrite.py`
-    plugin routes foreground `shell` commands through an installed `rtk` CLI to
-    reduce tool-output token usage, with pass-through on missing or failed rewrites.
-  - **Secret scrubbing** `[v1.118.0]` — optional `plugins/secret_scrubber.py`
-    plugin redacts common credential formats and sensitive environment values from
-    tool results before they enter model context.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax
@@ -3457,11 +3547,6 @@ Everything stays local. No third-party telemetry SaaS.
   finishes. Chinese public holidays are priced as peak.
   The telemetry dashboard also reports cache-write tokens separately from cache
   reads in the totals, provider:model, and cache-by-step views `[v2.4.2]`.
-- **Prompt budget report** `[v1.102.0]` *(deprecated — removed with the v2
-  Python tooling)* — the `prompt-budget` Make target reported exact
-  `o200k_base` counts for the v2 assembled static system prompt, compact
-  tool-schema JSON, every first-party base prompt, each tool, and bundled skill
-  bodies; `prompt-budget-json` emitted a stable machine-readable baseline for CI.
 - **Fast JSONL-backed query API** `[v2.0.0]` — `/api/observability/*` queries
   local OpenTelemetry span logs directly using `orjson` parsing, delivering faster
   query execution and lower latency without DuckDB binary dependency weight.
@@ -3492,13 +3577,7 @@ Everything stays local. No third-party telemetry SaaS.
 
 ## 10. Voice
 
-Client-side speech recognition. OpenAgentd does not run backend microphone transcription.
-
-- **Mic button in composer** `[since v1.0]` *(deprecated — removed in v2.0.0)* — click to start listening, click to
-  stop. Transcript text is inserted into the chat input for review before sending.
-- **Browser / OS speech recognition** `[v1.34.0]` *(deprecated — removed in v2.0.0)* — uses the current browser or
-  app WebView speech recognizer when available. No `/api/speech/*` backend,
-  `speech.yaml`, or bundled `faster-whisper`.
+No voice features ship at present: OpenAgentd has no microphone input and runs no speech recognition.
 
 ---
 
@@ -3554,7 +3633,7 @@ Desktop is primary. CLI / server is the developer path.
 - **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
-  `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
+  The desktop sidecar never shows it.
 - **CLI renamed to `agentd`** `[v3.18.0]` — the command is now `agentd`
   (`agentd server start`, `agentd auth codex`, …), and the desktop app's
   bundled backend is `agentd` too. Releases still ship `openagentd`
@@ -3625,15 +3704,6 @@ Desktop is primary. CLI / server is the developer path.
   by the deleted rows return to disk; a lock held by a running server is
   reported rather than failing the pass. Since v3.1.0 the preview lists the
   largest candidates with their size and reason (`--limit N`, `0` for all).
-- **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
-  `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
-  no longer maintained. Use the CLI install paths above; revisit if there
-  is concrete self-hoster demand.
-- **Migration imports** `[since v1.0, v2.4.0]` *(removed in v3.17.0)* — `openagentd
-  transfer migrate openclaw|hermes` imported identity + context Markdown into one
-  agent. Removed from the CLI along with `MIGRATION.md` for lack of demand; this
-  is an explicit user-approved hard removal, so it did not follow the normal
-  feature deprecation period. Revisit if users ask for it.
 - **Server migration export/import** `[v1.97.0, v2.4.0]` — `agentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
   `.tar.gz` archive. `agentd transfer import <archive>` unpacks it on the target

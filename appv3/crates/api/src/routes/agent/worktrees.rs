@@ -1,4 +1,4 @@
-//! `app/api/routes/agent/worktrees.py`.
+//! Git worktree routes.
 
 use crate::error::{loc, verr, verr_ctx, ApiError, ApiResult};
 use crate::util::*;

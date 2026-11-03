@@ -1,4 +1,4 @@
-//! UTF-8-safe SSE line reader — port of `app/agent/providers/streaming.py`.
+//! UTF-8-safe SSE line reader.
 //!
 //! Bytes are buffered until a full `\n`-terminated line is available, so a
 //! multi-byte character split across network chunks is never corrupted.
@@ -88,7 +88,7 @@ pub fn lines_idle(resp: reqwest::Response, idle: Option<Duration>) -> impl Strea
     }
 }
 
-/// v2 `iter_sse_data`: parsed JSON for each `data: ` line; stops at sentinel.
+/// Parsed JSON for each `data: ` line; stops at sentinel.
 pub fn data_json(resp: reqwest::Response, sentinel: Option<&'static str>, require_sentinel: bool) -> impl Stream<Item = ProviderResult<Value>> + Send {
     data_json_idle(resp, sentinel, require_sentinel, Some(DEFAULT_TIMEOUT))
 }

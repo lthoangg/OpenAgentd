@@ -50,6 +50,13 @@ describe('searchSettings', () => {
     expect(hit).toMatchObject({ kind: 'setting', section: 'desktop', sectionLabel: 'Desktop' })
   })
 
+  it('finds the pet\'s ladders and balloons by what they do', () => {
+    for (const query of ['balloon', 'ladder']) {
+      const hit = searchSettings(query, SETTINGS_SECTIONS).find((h) => h.label === 'Ladders and balloons')
+      expect(hit).toMatchObject({ kind: 'setting', section: 'desktop' })
+    }
+  })
+
   it('skips settings of a section this app does not show', () => {
     const without = SETTINGS_SECTIONS.filter((s) => s.id !== 'desktop')
     expect(labelsFor('notch', without).some((l) => l.includes(':desktop:'))).toBe(false)

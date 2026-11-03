@@ -1,4 +1,4 @@
-//! Port of `app/agent/hooks/lsp.py` — append LSP diagnostics to `patch`
+//! Appends LSP diagnostics to `patch`
 //! results in coding workspaces.
 
 use super::{Hook, RunContext, SharedMeta, ToolCallScope};
@@ -14,7 +14,7 @@ fn py_strip(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
 }
 
-/// `_is_failed_result`.
+/// Whether a tool result reads as a failure.
 pub fn is_failed_result(result: &str) -> bool {
     if result.is_empty() {
         return true;

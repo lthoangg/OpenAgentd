@@ -1,6 +1,6 @@
 /**
- * App right-click menus in the transcript: links, code blocks, assistant and
- * user messages. The innermost surface wins, selected text keeps the native
+ * App right-click menus in the transcript: links only. Messages (yours and
+ * the agent's) and code blocks keep the system menu. The innermost surface wins, selected text keeps the native
  * menu, and Shift+F10 opens the app menu everywhere. The browser gets the
  * same menu as the desktop app (touch: ``ChatContextMenu.touch.test.tsx``).
  */
@@ -35,16 +35,10 @@ function renderAnswer(content: string) {
 const items = () => screen.getAllByRole('menuitem').map((item) => item.textContent)
 
 describe('chat right-click menus', () => {
-  it('offers Copy response and Copy as Markdown on an assistant message', async () => {
+  it('leaves an assistant message to the native menu: no app menu of its own', () => {
     renderAnswer('Some **bold** words')
     const paragraph = screen.getByText('bold').closest('p')!
-    const event = fireEvent.contextMenu(paragraph)
-    expect(event).toBe(false) // handled: no native menu
-    expect(screen.getByRole('menu', { name: 'Actions for response' })).toBeTruthy()
-    expect(items()).toEqual(['Copy response', 'Copy as Markdown'])
-
-    await act(async () => { screen.getByRole('menuitem', { name: 'Copy as Markdown' }).click() })
-    expect(writeText).toHaveBeenCalledWith('Some **bold** words')
+    fireEvent.contextMenu(paragraph)
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
@@ -69,30 +63,25 @@ describe('chat right-click menus', () => {
     }
   })
 
-  it('offers Copy code on a code block', async () => {
+  it('leaves a code block to the native menu; its header keeps Copy code', () => {
     renderAnswer('```ts\nconst a = 1\n```')
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Copy code' }).closest('[data-slot="code-block"]')!.querySelector('pre')!)
-    expect(items()).toEqual(['Copy code'])
-    await act(async () => { screen.getByRole('menuitem', { name: 'Copy code' }).click() })
-    expect(writeText).toHaveBeenCalledWith('const a = 1')
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  it('offers Copy and Edit on a user message', async () => {
+  it('leaves a user message to the native menu, and keeps its Copy and Edit buttons', () => {
     const onEdit = mock(() => {})
     render(<UserBubble content="Fix the build" onEdit={onEdit} />)
     fireEvent.contextMenu(screen.getByText('Fix the build'))
-    expect(items()).toEqual(['Copy', 'Edit'])
-    await act(async () => { screen.getByRole('menuitem', { name: 'Edit' }).click() })
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }))
     expect(onEdit).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: /Copy/ })).toBeTruthy()
   })
 
-  it('leaves selected text to the native menu', () => {
-    render(<UserBubble content="Fix the build" />)
-    const text = screen.getByText('Fix the build')
-    const range = document.createRange()
-    range.selectNodeContents(text)
-    window.getSelection()!.addRange(range)
-    expect(fireEvent.contextMenu(text)).toBe(true)
+  it('leaves a subagent report to the native menu', () => {
+    render(<UserBubble content="All done" fromAgent="explorer#1" />)
+    fireEvent.contextMenu(screen.getByText('All done'))
     expect(screen.queryByRole('menu')).toBeNull()
   })
 

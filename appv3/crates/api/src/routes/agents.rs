@@ -1,5 +1,4 @@
-//! `/api/agents` — port of `app/api/routes/agents.py` + `app/services/agent_fs.py`
-//! (agent half).
+//! `/api/agents` — agent definition files.
 
 use crate::error::{ApiError, ApiResult};
 use crate::providers::{self as prov, s};
@@ -210,7 +209,7 @@ fn check_escaping(content: &str) -> ApiResult<()> {
     }
 }
 
-/// `_parse_content`.
+/// Parse an agent file's frontmatter and body into an `AgentConfig`.
 fn parse_content(content: &str, expected_name: Option<&str>) -> Result<AgentConfig, String> {
     let Some((block, body, _)) = loader::split_frontmatter(content) else {
         return Err("Missing YAML frontmatter. Expected '---\\n<yaml>\\n---\\n<system prompt>'.".into());
@@ -309,7 +308,7 @@ fn read_detail(r: &Record, expected: Option<&str>) -> Value {
     }
 }
 
-/// `_validate_or_restore`.
+/// Validate the written agent file, restoring the rollback copy on failure.
 fn validate_or_restore(rollback_name: Option<&str>, rollback_content: Option<&str>) -> ApiResult<()> {
     let dir = match rollback_name {
         None => agents_dir(),
@@ -361,7 +360,7 @@ fn settings_err(e: impl std::fmt::Display) -> ApiError {
     ApiError::internal(e)
 }
 
-/// `_warm_provider_model_cache`.
+/// Warm the provider model cache.
 async fn warm_provider_model_cache() -> ApiResult<()> {
     let rt = rs::load_runtime_settings().map_err(settings_err)?;
     let mut candidates: Vec<&'static Value> = vec![];

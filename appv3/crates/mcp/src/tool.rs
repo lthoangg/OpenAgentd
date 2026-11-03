@@ -1,5 +1,4 @@
-//! MCP tool adapter — port of `app/agent/mcp/tools.py` and
-//! `app/agent/tools/schema.py::sanitize_tool_schema`.
+//! MCP tool adapter and tool-schema sanitisation (`sanitize_tool_schema`).
 
 use crate::client::McpClient;
 use appv3_providers::ContentBlock;
@@ -147,7 +146,7 @@ fn mime_of(v: &Value) -> Option<String> {
     v.get("mimeType").or_else(|| v.get("mime_type")).and_then(|m| m.as_str()).filter(|s| !s.is_empty()).map(String::from)
 }
 
-/// `_extract_text`.
+/// Text of an MCP tool result's content.
 pub fn extract_text(content: Option<&Value>) -> String {
     let Some(content) = content else { return String::new() };
     let Value::Array(blocks) = content else {
@@ -183,7 +182,7 @@ fn normalize_image_mime(mime: Option<&str>) -> String {
     clean
 }
 
-/// `_extract_parts`.
+/// Content blocks of an MCP tool result.
 pub fn extract_parts(content: Option<&Value>) -> Vec<ContentBlock> {
     let Some(content) = content.filter(|c| !c.is_null()) else { return vec![] };
     let Value::Array(blocks) = content else { return vec![ContentBlock::text(content.to_string())] };
@@ -222,7 +221,7 @@ pub fn extract_parts(content: Option<&Value>) -> Vec<ContentBlock> {
     parts
 }
 
-/// `_get_ui_meta`.
+/// UI metadata of an MCP tool.
 pub fn ui_meta(tool: &Value) -> Map<String, Value> {
     let Some(meta) = tool.get("_meta").and_then(|m| m.as_object()) else { return Map::new() };
     if let Some(ui) = meta.get("ui").and_then(|u| u.as_object()) {

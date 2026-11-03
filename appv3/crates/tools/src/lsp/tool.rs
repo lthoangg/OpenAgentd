@@ -1,4 +1,4 @@
-//! Port of `app/agent/tools/builtin/lsp.py` (`lsp` navigation tool).
+//! The `lsp` navigation tool.
 //!
 //! Like v2, this tool is not part of the default registry: `lsp` is a
 //! context-injected name that no current runtime attaches. It is kept for

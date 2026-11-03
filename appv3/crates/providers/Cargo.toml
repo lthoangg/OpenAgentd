@@ -15,7 +15,6 @@ serde_json.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 futures.workspace = true
-tokio-stream.workspace = true
 async-stream.workspace = true
 reqwest.workspace = true
 sha2.workspace = true

@@ -254,8 +254,7 @@ describe("AgentView — message windowing", () => {
 })
 
 describe("AgentView — AssistantFooter", () => {
-  // No composer in this view (a subagent's session), so the queue stays here.
-  it("renders queued messages below the streaming assistant turn when there is no composer", () => {
+  it("renders queued messages below the streaming assistant turn, faded", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
@@ -273,9 +272,10 @@ describe("AgentView — AssistantFooter", () => {
     const queued = screen.getByText("queued after response")
     expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
+    expect((queued.parentElement as HTMLElement).className).toContain("opacity-75")
   })
 
-  it("leaves the queue to the composer's tray when a composer is up", () => {
+  it("keeps the queue at the bottom of the transcript when a composer is up", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
@@ -290,9 +290,30 @@ describe("AgentView — AssistantFooter", () => {
       jumpToLatestInComposer: true,
     })
 
-    expect(screen.getByText("streaming response")).toBeTruthy()
-    expect(screen.queryByText("queued after response")).toBeNull()
-    expect(screen.queryByRole("button", { name: "Edit queued message" })).toBeNull()
+    const response = screen.getByText("streaming response")
+    const queued = screen.getByText("queued after response")
+    expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
+  })
+
+  it("puts the queue after the last turn and before the scroll anchor", () => {
+    useAgentStore.setState({
+      sessionId: "session-a",
+      _pendingMessages: [
+        { id: "q1", sessionId: "session-a", content: "queued after response" },
+      ],
+    })
+
+    const { container } = renderStream({
+      blocks: [makeUserBlock("u1", "start")],
+      currentBlocks: [makeTextBlock("a1", "streaming response")],
+      isWorking: true,
+    })
+
+    const anchor = container.querySelector("[data-chat-scroll-anchor]") as HTMLElement
+    const queued = screen.getByText("queued after response")
+    expect(queued.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText("start").compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it("collapses long queued messages", async () => {
@@ -889,5 +910,23 @@ describe("AgentView — footer model label", () => {
 
     const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
     expect(labels).toEqual(["openai:gpt-5 · high", "anthropic:claude-opus-4", "openai:gpt-5 · low"])
+  })
+
+  // The line had a native title (thinking level) around the model name's own
+  // tooltip, so hovering it drew two tooltips over each other.
+  it("shows one tooltip for a prompt's model and thinking level, with no native title", async () => {
+    const user = userEvent.setup()
+    const { container } = renderStream({
+      blocks: [{ ...makeUserBlock("u1", "one"), extra: { model: "openai:gpt-5", thinking_level: "high" } }],
+      currentBlocks: [],
+      isWorking: false,
+    })
+    const line = container.querySelector("[data-prompt-model]") as HTMLElement
+    expect(line.hasAttribute("title")).toBe(false)
+    expect(line.querySelector("[title]")).toBeNull()
+    await user.hover(line.querySelector("[data-model-name]") as HTMLElement)
+    const tips = await screen.findAllByRole("tooltip")
+    expect(tips).toHaveLength(1)
+    expect(tips[0]?.textContent).toBe("openai:gpt-5 · thinking high")
   })
 })

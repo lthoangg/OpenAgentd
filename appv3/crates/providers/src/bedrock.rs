@@ -1,4 +1,4 @@
-//! AWS Bedrock Mantle — port of `providers/bedrock/{bedrock,token}.py`.
+//! AWS Bedrock Mantle.
 //!
 //! Mantle exposes Bedrock models through Anthropic Messages or
 //! OpenAI-compatible surfaces. Bearer tokens are supplied directly or

@@ -6,6 +6,7 @@ import {
   PANEL_SLIDE_MS,
   PanelResizeHandle,
   ResizableAside,
+  usePanelWidthSink,
   onPanelSlideBeside,
   settledWidthBesidePanels,
   usePanelSlideBeside,
@@ -197,35 +198,53 @@ describe('ResizableAside', () => {
     })
     afterEach(() => {
       globalThis.ResizeObserver = realObserver
-      document.documentElement.style.removeProperty('--oa-test-w')
     })
 
-    const panel = (publish: boolean) => (
-      <ResizableAside
-        aria-label="Panel"
-        publishWidthAs={publish ? '--oa-test-w' : undefined}
-        resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
-        getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0 }, instantWidth: true })}
-      >
-        <p>content</p>
-      </ResizableAside>
+    /** A header cap: carries the property, as AgentChatHeader's caps do. */
+    function Sink() {
+      return <div data-testid="sink" ref={usePanelWidthSink('--oa-test-w')} />
+    }
+    const panel = (publish: boolean, sink = true) => (
+      <>
+        {sink && <Sink />}
+        <ResizableAside
+          aria-label="Panel"
+          publishWidthAs={publish ? '--oa-test-w' : undefined}
+          resize={{ width: 300, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize panel' }}
+          getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0 }, instantWidth: true })}
+        >
+          <p>content</p>
+        </ResizableAside>
+      </>
     )
-    const published = () => document.documentElement.style.getPropertyValue('--oa-test-w')
+    const published = () => screen.getByTestId('sink').style.getPropertyValue('--oa-test-w')
 
-    it('writes its border-box width to the root as it changes', () => {
+    it('writes its border-box width to its sinks as it changes, never to the root', () => {
       render(panel(true))
       const aside = screen.getByRole('complementary', { name: 'Panel' })
       aside.getBoundingClientRect = () => ({ width: 264.5 }) as DOMRect
       act(() => observers[0]?.callback([], {} as ResizeObserver))
 
       expect(published()).toBe('264.5px')
+      // On <html> every element would inherit it and restyle on each frame of a slide.
+      expect(document.documentElement.style.getPropertyValue('--oa-test-w')).toBe('')
       // The border box: a panel closed to 0 still draws its 1px edge until
       // the edge is dropped, and that change must be seen too.
       expect(observers[0]?.options).toEqual({ box: 'border-box' })
     })
 
+    it('gives a sink that mounts later the current width', () => {
+      const { rerender } = render(panel(true, false))
+      const aside = screen.getByRole('complementary', { name: 'Panel' })
+      aside.getBoundingClientRect = () => ({ width: 120 }) as DOMRect
+      act(() => observers[0]?.callback([], {} as ResizeObserver))
+
+      rerender(panel(true, true))
+      expect(published()).toBe('120px')
+    })
+
     it('clears the property when it stops publishing or unmounts', () => {
-      const { rerender, unmount } = render(panel(true))
+      const { rerender } = render(panel(true))
       expect(published()).toBe('0px')
       rerender(panel(false))
       expect(published()).toBe('')
@@ -233,8 +252,9 @@ describe('ResizableAside', () => {
 
       rerender(panel(true))
       expect(published()).toBe('0px')
-      unmount()
-      expect(published()).toBe('')
+      const sink = screen.getByTestId('sink')
+      rerender(<Sink />)
+      expect(sink.style.getPropertyValue('--oa-test-w')).toBe('')
     })
   })
 })

@@ -1,5 +1,4 @@
-//! Access-token policy — port of `app/core/desktop_auth.py`
-//! (the HTTP middleware lives in the api crate).
+//! Access-token policy (the HTTP middleware lives in the api crate).
 
 use crate::runtime_settings::load_server_settings;
 use std::sync::OnceLock;
@@ -64,7 +63,7 @@ pub fn constant_time_eq(a: &str, b: &str) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// `is_loopback_host` from `app/cli/net.py`.
+/// Whether `host` names a loopback address.
 pub fn is_loopback_host(host: &str) -> bool {
     let h = host.trim().trim_start_matches('[').trim_end_matches(']');
     if h.eq_ignore_ascii_case("localhost") {

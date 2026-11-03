@@ -1,5 +1,5 @@
-//! OpenAI Chat Completions + Responses — port of `providers/openai/*`,
-//! plus the thin compatible variants (deepseek, zai, xai, ollama, router9,
+//! OpenAI Chat Completions + Responses, plus the thin compatible variants
+//! (deepseek, zai, xai, ollama, router9,
 //! chat-completions-only gateways).
 
 use crate::sse;
@@ -33,9 +33,9 @@ pub enum CompletionsDialect {
 pub enum Flavor {
     #[default]
     Plain,
-    /// `_CopilotCompletionsHandler` / `_CopilotResponsesHandler`.
+    /// Copilot completions / responses handling.
     Copilot(CopilotModel),
-    /// `_CodexResponsesHandler`.
+    /// Codex responses handling.
     Codex(Arc<CodexTurn>),
     /// Grok Build: per-request conversation and request-id headers.
     Grok,
@@ -81,7 +81,7 @@ fn content_has_image(content: Option<&Value>) -> bool {
     content.and_then(|c| c.as_array()).map(|a| a.iter().any(|p| matches!(p.get("type").and_then(|t| t.as_str()), Some("image_url" | "input_image" | "image")))).unwrap_or(false)
 }
 
-/// v2 copilot `_is_agent_initiated` → `(is_agent, is_vision)`.
+/// Copilot initiator detection → `(is_agent, is_vision)`.
 pub fn copilot_initiator(items: &[Value], responses_api: bool) -> (bool, bool) {
     let Some(last) = items.last() else { return (false, false) };
     let is_vision = items.iter().filter(|i| i.is_object()).any(|i| {
@@ -115,7 +115,6 @@ pub fn set_header(h: &mut Vec<(String, String)>, k: &str, v: &str) {
 
 // ── sanitization ────────────────────────────────────────────────────────────
 
-/// v2 `sanitize_openai_tool_pairs`.
 /// Strip assistant tool calls without a full set of results and drop orphan
 /// tool rows. Borrows when nothing needs fixing (the normal case), so a
 /// healthy transcript is not copied on every model call.
@@ -236,7 +235,7 @@ pub fn convert_tools(tools: Option<&[ToolSpec]>) -> Option<Vec<Value>> {
     }
 }
 
-/// v2 `CompletionsHandler.convert_messages` (+ DeepSeek variant).
+/// Convert messages to the Chat Completions format (+ DeepSeek variant).
 pub fn convert_messages(messages: &[ChatMessage], dialect: CompletionsDialect) -> Vec<Value> {
     let deepseek = dialect == CompletionsDialect::DeepSeek;
     let mut out = Vec::with_capacity(messages.len());
@@ -1031,7 +1030,7 @@ impl ResponsesHandler {
     }
 }
 
-/// Stateful parser for `/responses` SSE events (v2 `_parse_stream`).
+/// Stateful parser for `/responses` SSE events.
 pub struct ResponsesStreamParser {
     model: String,
     response_id: String,
@@ -1347,7 +1346,7 @@ impl OpenAiProvider {
         Ok(Self::with_headers(model, base_url, headers, model_kwargs, dialect, responses_allowed))
     }
 
-    /// Construct with explicit headers (v2 `_build_headers` override).
+    /// Construct with explicit headers (overriding the default headers).
     pub fn with_headers(model: &str, base_url: &str, headers: Vec<(String, String)>, model_kwargs: Kwargs, dialect: CompletionsDialect, responses_allowed: bool) -> Self {
         let base_url = base_url.trim_end_matches('/').to_string();
         let use_responses = responses_allowed && should_use_responses(&model_kwargs);

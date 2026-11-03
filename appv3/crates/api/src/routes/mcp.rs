@@ -1,4 +1,4 @@
-//! `/api/mcp` — port of `app/api/routes/mcp.py`.
+//! `/api/mcp`.
 
 use crate::error::{verr, verr_ctx, ApiError, ApiResult};
 use crate::schema::Body;

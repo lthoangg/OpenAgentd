@@ -1,4 +1,4 @@
-//! Port of `app/core/logging_config.py` (loguru sinks) on top of `tracing`.
+//! File and stderr logging on top of `tracing`, shaped like v2's loguru sinks.
 //!
 //! - stderr: loguru's colourised `HH:mm:ss.SSS | LEVEL | name:function:line | message`
 //!   at `OPENAGENTD_LOG_LEVEL` (default INFO).

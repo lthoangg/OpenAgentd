@@ -1,8 +1,10 @@
 /**
- * App menus for chat content: links, code blocks, messages.
+ * App menus for chat content: links and tool rows.
  *
- * A transcript surface offers its own actions: Open / Copy link, Copy code,
- * Copy response, Copy / Edit a message. The same items open three ways:
+ * A link offers Open / Copy link, a tool row its own actions. Messages (yours
+ * and the agent's) and code blocks have none: they keep the system's menu and
+ * text selection, on desktop and on touch alike (their Copy and Edit buttons
+ * stay). The same items open three ways:
  *
  * - Right-click (the desktop app and the browser alike) opens a floating menu
  *   at the pointer; Shift+F10 or the ContextMenu key opens it at the item.

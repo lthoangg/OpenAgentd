@@ -18,10 +18,9 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 const answerQuestion = mock(async () => ({ status: 'answered', resumed: true }))
-const dismissQuestion = mock(async () => ({ status: 'dismissed', resumed: false }))
 // `markTurnResuming` may reopen the session stream after an answer.
 const agentStream = mock(() => {})
-mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion, agentStream }))
+mock.module('@/api/client', () => ({ answerQuestion, agentStream }))
 
 const pushToast = mock(() => {})
 mock.module('@/stores/useToastStore', () => ({
@@ -55,10 +54,8 @@ const QUESTION: PendingQuestion = {
 
 beforeEach(() => {
   answerQuestion.mockClear()
-  dismissQuestion.mockClear()
   pushToast.mockClear()
   answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: true }))
-  dismissQuestion.mockImplementation(async () => ({ status: 'dismissed', resumed: false }))
   clearQuestionDrafts()
   useAgentStore.setState({
     sessionId: 's-1',
@@ -78,11 +75,18 @@ describe('AskUser — waiting state', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
-    // Nothing picked yet: Send waits, and skipping is its own named action.
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Skip and send' })).toBeInTheDocument()
+    // Nothing picked yet: Send is still there and says it skips.
+    expect(screen.getByRole('button', { name: 'Send' })).not.toBeDisabled()
+    expect(screen.getByText('Nothing picked: Send skips this question.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     expect(screen.getByRole('button', { name: 'Send' })).not.toBeDisabled()
+    expect(screen.queryByText('Nothing picked: Send skips this question.')).toBeNull()
+  })
+
+  it('offers no Dismiss or Skip button on the open card', () => {
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    expect(screen.queryByRole('button', { name: /dismiss|skip/i })).toBeNull()
   })
 
   it('does not show the form on a different tool call', () => {
@@ -124,30 +128,20 @@ describe('AskUser — waiting state', () => {
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
   })
 
-  it('sends a skip only when asked to, as an empty answer', async () => {
+  it('sends an empty answer when Send is pressed with nothing picked', async () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(answerQuestion).toHaveBeenCalledTimes(1))
     expect(answerQuestion.mock.calls[0]).toEqual(['s-1', 'q-1', [[]]])
-  })
-
-  it('dismisses without sending an answer', async () => {
-    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-
-    await waitFor(() => expect(dismissQuestion).toHaveBeenCalledTimes(1))
-    expect(answerQuestion).not.toHaveBeenCalled()
-    expect(pushToast).not.toHaveBeenCalled()
   })
 
   it('warns when the answer saved but the turn did not restart', async () => {
     answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: false }))
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(pushToast).toHaveBeenCalledTimes(1))
   })
@@ -176,7 +170,7 @@ describe('AskUser — waiting state', () => {
     })
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
     expect(screen.queryByRole('alert')).toBeNull()
@@ -184,18 +178,6 @@ describe('AskUser — waiting state', () => {
     expect(screen.queryByText(/needs your input/i)).toBeNull()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
     expect(pushToast).not.toHaveBeenCalled()
-  })
-
-  it('closes the card when a dismissal finds the question already resolved', async () => {
-    dismissQuestion.mockImplementation(async () => {
-      throw Object.assign(new Error('Question is not open.'), { status: 409 })
-    })
-    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-
-    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
-    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
@@ -339,11 +321,8 @@ describe('AskUser — resolution ordering', () => {
     expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
   })
 
-  it('keeps the dismissal when the POST reply beats the broadcast', async () => {
+  it('shows a dismissal broadcast while the card is open, in place of the form', async () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
 
     useAgentStore.getState()._handleSSEEvent('question_dismissed', {
       question_id: 'q-1',
@@ -352,6 +331,8 @@ describe('AskUser — resolution ordering', () => {
     })
 
     await waitFor(() => expect(screen.getByText(/dismissed/i)).toBeInTheDocument())
+    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(screen.queryByRole('radio')).toBeNull()
     expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
   })
 

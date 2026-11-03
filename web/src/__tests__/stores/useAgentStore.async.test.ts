@@ -2426,6 +2426,8 @@ describe("loadSession", () => {
     const pending = useAgentStore.getState()._pendingMessages
     expect(pending.map((msg) => msg.id)).toEqual(["prompt", "held", "steer"])
     expect(pending[0].sentFromWorkspace).toBe("api")
+    expect(pending[0].sentFromSession).toEqual({ sessionId: "s-api", workspace: "/api" })
+    expect(pending[2].sentFromSession).toBeUndefined()
     expect(pending.map((msg) => msg.heldUntilTurnEnd)).toEqual([undefined, true, undefined])
   })
 

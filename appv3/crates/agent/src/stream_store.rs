@@ -1,4 +1,4 @@
-//! In-memory SSE stream store — port of `app/services/memory_stream_store.py`.
+//! In-memory SSE stream store.
 //!
 //! Per-session turn blob for reconnect replay plus live subscriber fan-out.
 //! Single-process only, like v2.

@@ -1,4 +1,4 @@
-//! Transport-neutral agent entry points — port of `app/services/agent_service.py`.
+//! Transport-neutral agent entry points.
 
 use crate::broadcaster;
 use crate::events::Envelope;
@@ -264,7 +264,7 @@ fn truncate_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-/// `_sanitize_upload_filename`.
+/// Sanitise an uploaded filename.
 pub fn sanitize_upload_filename(raw: &str, category: &str) -> String {
     let leaf = py_name(if raw.is_empty() { "upload" } else { raw });
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"[\x00-\x1f\x7f/\\]+").unwrap());
@@ -293,7 +293,7 @@ pub fn sanitize_upload_filename(raw: &str, category: &str) -> String {
     format!("{}{ext}", truncate_chars(&stem, allowed).trim_end())
 }
 
-/// `_dedupe_upload_filename`.
+/// Pick a filename not yet used in `dir`.
 pub fn dedupe_upload_filename(dir: &Path, filename: &str) -> String {
     let mut candidate = filename.to_string();
     let stem = {

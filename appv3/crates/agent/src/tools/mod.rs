@@ -1,4 +1,4 @@
-//! Session-bound tools (v2 `app/agent/tools/builtin/{question,team,member,skill,schedule}.py`).
+//! Session-bound tools: `ask_user`, `team`, the member tools, `skill` and `schedule`.
 
 pub mod ask_user;
 pub mod goal;
@@ -13,7 +13,7 @@ use appv3_db::DbPool;
 use appv3_tools::ToolError;
 use serde_json::json;
 
-/// v2 `Tool.arun` validation failure text.
+/// Tool argument-validation failure text.
 pub fn invalid_args(tool: &str, errors: &[String]) -> ToolError {
     ToolError::Argument(format!("Invalid arguments for tool '{tool}': {}", errors.join("; ")))
 }

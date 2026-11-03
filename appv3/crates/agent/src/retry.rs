@@ -1,5 +1,5 @@
-//! Retry policy for provider calls — port of `app/agent/agent_loop/retry.py`
-//! (parsing and classification; the retry loop itself lives in
+//! Retry policy for provider calls (parsing and classification; the retry
+//! loop itself lives in
 //! [`crate::streaming`]).
 
 use crate::errors::AgentError;
@@ -206,7 +206,7 @@ pub fn format_duration(seconds: f64) -> String {
     parts.join(" ")
 }
 
-/// `_backoff_delay` (equal jitter unless the server gave Retry-After).
+/// Backoff delay (equal jitter unless the server gave Retry-After).
 pub fn backoff_delay(attempt: i64, retry_after: i64) -> f64 {
     if retry_after > 0 {
         return (retry_after as f64).min(MAX_DELAY);
@@ -225,7 +225,7 @@ pub fn network_retry_delay() -> f64 {
     NETWORK_RETRY_MIN_DELAY + rand::random::<f64>() * (NETWORK_RETRY_MAX_DELAY - NETWORK_RETRY_MIN_DELAY)
 }
 
-/// `_is_retryable_http_error`.
+/// Whether an HTTP status/body is retryable.
 pub fn is_retryable_http(status: u16, body: &str) -> bool {
     if status == 408 || status == 429 {
         return true;
@@ -356,7 +356,7 @@ pub fn parse_retry_after(err: &ProviderError) -> i64 {
     parse_time_after(body).filter(|t| *t > 0).unwrap_or(0)
 }
 
-/// `_extract_provider_error_message`.
+/// The provider's error message from a response body.
 pub fn extract_provider_error_message(body: &str) -> Option<String> {
     let data: Value = serde_json::from_str(body).ok()?;
     let obj = data.as_object()?;

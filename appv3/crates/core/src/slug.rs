@@ -1,4 +1,4 @@
-//! `slugify` from `app/scheduler/utils.py` (byte-for-byte with the frontend).
+//! `slugify` (byte-for-byte with the frontend).
 
 /// `slugify`.
 pub fn slugify(text: &str) -> String {

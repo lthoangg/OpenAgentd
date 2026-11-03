@@ -1,5 +1,4 @@
-//! Multimodal generation tools — port of `app/agent/tools/multimodalities`
-//! (`generate_image`, `generate_video`) and their provider backends.
+//! Multimodal generation tools (`generate_image`, `generate_video`) and their provider backends.
 //!
 //! Config lives in `{CONFIG_DIR}/multimodal.yaml` and is read at call time.
 
@@ -16,7 +15,7 @@ pub use image::GenerateImageTool;
 pub use video::GenerateVideoTool;
 
 /// Span + metrics bookkeeping shared by `generate_image` / `generate_video`
-/// (v2 `_fail` / `_record_duration` / `_metrics.py`).
+/// (failure marking, duration recording and metrics).
 pub(crate) struct MediaObs {
     pub span: appv3_core::otel::Span,
     kind: &'static str,
@@ -78,7 +77,7 @@ impl MediaObs {
         );
     }
 
-    /// `_fail`: ERROR status + duration point; returns the framed text.
+    /// ERROR status + duration point; returns the framed text.
     pub fn fail(&self, error_type: &str, message: &str) -> crate::ToolResult {
         self.span.set_attr("error.type", error_type);
         self.span.set_attr("error.message", take_chars(message, 200));
@@ -152,7 +151,7 @@ fn py_truthy(v: &Value) -> bool {
     }
 }
 
-/// `_load_raw` — parse with an mtime-keyed cache; `None` when missing/invalid.
+/// Parse the config with an mtime-keyed cache; `None` when missing/invalid.
 fn load_raw() -> Option<Map<String, Value>> {
     let path = config_path();
     let Ok(meta) = std::fs::metadata(&path) else {
@@ -259,7 +258,7 @@ pub fn set_endpoints(e: Endpoints) {
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 
-/// `_SAFE_NAME_RE` sanitiser (`_sanitise_filename`).
+/// Filename sanitiser (keeps only safe-name characters).
 pub(crate) fn sanitise_filename(raw: Option<&str>, prefix: &str, ext: &str) -> String {
     let random = || format!("{prefix}-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
     let Some(raw) = raw.filter(|r| !r.is_empty()) else {

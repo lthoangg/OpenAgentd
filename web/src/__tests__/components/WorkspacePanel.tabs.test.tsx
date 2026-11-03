@@ -267,7 +267,8 @@ describe('Review dock commit tabs', () => {
 
     const commitTab = await screen.findByRole('button', { name: 'Commit aaaaaaa' })
     expect(commitTab.getAttribute('aria-current')).toBe('true')
-    expect(screen.getByText('docs: refresh readme')).toBeTruthy()
+    // The commit tab loads lazily (lazySurface), so its header renders a tick later.
+    expect(await screen.findByText('docs: refresh readme')).toBeTruthy()
     expect(screen.getByText('Mai Tran')).toBeTruthy()
     await waitFor(() => expect(screen.getByText('new readme line')).toBeTruthy())
     expect(screen.getByRole('button', { name: /README\.md/ }).getAttribute('aria-expanded')).toBe('true')

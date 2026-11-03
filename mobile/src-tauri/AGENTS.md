@@ -17,8 +17,8 @@ integration for the mobile shell.
   UIKit code runs on the main queue and answers over a channel, the Android
   half is `ShellPlugin.kt`'s `shareText`/`pickOne`. The web no longer calls
   `pick_one`: menus and pickers are the app's own on every platform. The web
-  side of `share_text` (`web/src/lib/mobile-share.ts`) falls back to its own
-  UI when the command fails, so keep errors as `Err`, never a silent success.
+  command `share_text` has no web caller yet; keep errors as `Err`, never a
+  silent success.
 - `../../native/shell-core/`: server config persistence, URL normalization,
   keyring access, and download limits shared with the desktop shell. Change
   those behaviours there, with their tests, not in `lib.rs`.

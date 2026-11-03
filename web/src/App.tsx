@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { Seal } from '@/components/brand/Logo'
 import { AppBackendDialog, type AppBackendPrefill } from '@/components/AppBackendDialog'
 import { BackendSwitchMessage, BackendSwitchScreen } from '@/components/BackendSwitchScreen'
+import { PreviewKeepAlive } from '@/components/Preview/PreviewKeepAlive'
 import { Button } from '@/components/ui/button'
 import { useConnectLink } from '@/hooks/useConnectLink'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
@@ -49,6 +50,8 @@ function App() {
         <RouterProvider router={router} />
       </Suspense>
       <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />
+      {/* Keeps pages the agent opened driveable while no Preview tab shows them. */}
+      <PreviewKeepAlive />
       <BackendSwitchScreen />
     </>
   )

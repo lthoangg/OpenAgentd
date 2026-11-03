@@ -69,4 +69,57 @@ describe('TerminalActionSheet', () => {
     )
     expect(screen.queryByRole('button', { name: 'Select All' })).toBeNull()
   })
+
+  it('offers Find and Add to chat when wired, and runs them', () => {
+    const onFind = mock(() => {})
+    const onAddToChat = mock(() => {})
+    render(
+      <TerminalActionSheet
+        open
+        onOpenChange={() => {}}
+        hasSelection
+        onSelectAll={() => {}}
+        onCopy={() => {}}
+        onPaste={() => {}}
+        onFind={onFind}
+        onAddToChat={onAddToChat}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    expect(onFind).toHaveBeenCalledTimes(1)
+    expect(onAddToChat).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables Add to chat without a selection', () => {
+    render(
+      <TerminalActionSheet
+        open
+        onOpenChange={() => {}}
+        hasSelection={false}
+        onSelectAll={() => {}}
+        onCopy={() => {}}
+        onPaste={() => {}}
+        onFind={() => {}}
+        onAddToChat={() => {}}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Find' })).not.toBeDisabled()
+  })
+
+  it('hides Find and Add to chat when they are not wired', () => {
+    render(
+      <TerminalActionSheet
+        open
+        onOpenChange={() => {}}
+        hasSelection
+        onSelectAll={() => {}}
+        onCopy={() => {}}
+        onPaste={() => {}}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Find' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
+  })
 })

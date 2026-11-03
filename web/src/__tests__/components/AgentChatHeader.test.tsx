@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 
@@ -136,6 +136,47 @@ describe('AgentChatHeader', () => {
   it('lets the title take the middle on phones', () => {
     const { container } = renderHeader({ isMobile: true })
     expect(container.querySelector('header')).toHaveClass('grid-cols-[auto_minmax(0,1fr)_auto]')
+  })
+
+  describe('the way back from a subagent to the lead', () => {
+    const LEAD = { name: 'Open the lead agent' }
+
+    for (const isMobile of [false, true]) {
+      const where = isMobile ? 'phone' : 'desktop'
+
+      it(`shows a lead button on the ${where} header only when given a way back, and it opens the lead`, async () => {
+        const { unmount } = renderHeader({ isMobile })
+        expect(screen.queryByRole('button', { name: LEAD.name })).toBeNull()
+        unmount()
+
+        const onOpenLead = mock(() => {})
+        renderHeader({ isMobile, onOpenLead })
+        const button = screen.getByRole('button', { name: LEAD.name })
+        // The same touch footing as every header control.
+        expect(button.className).toContain('pointer-coarse:size-9')
+        expect(button.tabIndex).toBe(0)
+        await userEvent.setup().click(button)
+        expect(onOpenLead).toHaveBeenCalledTimes(1)
+      })
+    }
+
+    it('puts it before the title on desktop, and with the sidebar button on phones', () => {
+      const onOpenLead = () => undefined
+      renderHeader({ isMobile: false, onOpenLead })
+      const main = document.querySelector('[data-header-main]') as HTMLElement
+      expect(main.contains(screen.getByRole('button', { name: LEAD.name }))).toBe(true)
+      cleanup()
+
+      const { container } = renderHeader({ isMobile: true, onOpenLead })
+      const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
+      expect(names).toEqual(['Toggle sidebar', 'Open the lead agent', 'Review panel', 'More actions'])
+    })
+
+    it('says what it does in a tooltip', async () => {
+      renderHeader({ isMobile: false, onOpenLead: () => undefined })
+      await userEvent.setup().hover(screen.getByRole('button', { name: LEAD.name }))
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Open the lead agent')
+    })
   })
 
   // The run chip under the composer opens the picker; the More sheet no longer repeats it.

@@ -1,4 +1,4 @@
-//! `coding_workspaces` — port of `coding_workspace_service.py`.
+//! `coding_workspaces` queries.
 
 use crate::codec::{new_id, now_db};
 use crate::models::CodingWorkspace;
@@ -41,7 +41,7 @@ pub async fn get_workspace_by_path(pool: &DbPool, path: &str) -> Result<Option<C
     Ok(sqlx::query_as::<_, CodingWorkspace>("SELECT * FROM coding_workspaces WHERE path = ?").bind(path).fetch_optional(pool).await?)
 }
 
-/// v2 `upsert_coding_workspace` (preserves an existing worktree row when a
+/// Upsert a coding workspace (preserves an existing worktree row when a
 /// plain repo upsert without source arrives).
 pub async fn upsert_coding_workspace(pool: &DbPool, path: &str, kind: &str, source_path: Option<&str>, name: Option<&str>, managed: bool, hidden: bool) -> Result<CodingWorkspace> {
     let resolved = resolve_path(path);

@@ -11,16 +11,16 @@
  * Every question offers "Type your own answer". The server sends ``custom`` for
  * older clients only; it no longer lets the model turn free text off.
  *
- * The primary action is always **Send**: it sends the answers given so far, and
- * any question left unanswered goes out as skipped (the caption says how many).
- * It waits, with the reason on screen, until at least one answer exists.
- * Skipping is its own secondary action and names what it does — "Skip this
- * question" moves on, and on the last question "Skip and send" sends with it
- * skipped. Back and Next page through a multi-question card.
+ * The card has only **Back** and **Next**, and **Send** in Next's place on
+ * the last question (a single question has Send alone). Next leaves a question
+ * unanswered if nothing was picked, and Send sends what was given: any
+ * question left unanswered goes out as skipped (the caption says how many).
+ * There is no Dismiss and no Skip button.
  *
  * Keys: 1–9 pick the Nth option of the current question (the last number is
- * "Type your own answer"), Enter sends, and Cmd/Ctrl+Enter sends from the
- * free-text box. They apply while focus is inside the card and not in a text
+ * "Type your own answer"). Enter takes the primary action (Next, or Send on
+ * the last question) once the current question has an answer, and
+ * Cmd/Ctrl+Enter does the same from the free-text box. They apply while focus is inside the card and not in a text
  * field. Each option carries its digit as a keycap (hidden on touch).
  * Double-clicking a single-answer option chooses it and goes on, as a list
  * dialog does: to the next question, or Send from the last.
@@ -57,7 +57,6 @@ interface QuestionCardProps {
   question: PendingQuestion
   /** Index-matched selected labels per question; empty entry = skipped. */
   onSubmit: (answers: string[][]) => void
-  onDismiss: () => void
   submitting: boolean
   error: string | null
   /** Rendered above the questions — the dock and the sheet frame it differently. */
@@ -80,7 +79,6 @@ function toAnswers(questions: QuestionItem[], draft: QuestionDraft): string[][] 
 export function QuestionCard({
   question,
   onSubmit,
-  onDismiss,
   submitting,
   error,
   className,
@@ -176,16 +174,9 @@ export function QuestionCard({
   const isFirstStep = step === 0
   const currentAnswered = (toAnswers(questions, draft)[step] ?? []).length > 0
 
-  // Send needs something to send; the caption says why it waits.
-  const canSend = !submitting && answeredCount > 0
-  const send = () => {
-    if (!canSend) return
-    onSubmit(toAnswers(questions, draft))
-  }
-
-  // Skipping the current question leaves it blank: it moves on, and from the
-  // last question it sends what the other questions got.
-  const skip = () => {
+  // Next on every question but the last, Send there; unanswered questions go
+  // out as skipped.
+  const advance = () => {
     if (submitting) return
     if (!isLastStep) {
       update({ step: step + 1 })
@@ -193,6 +184,9 @@ export function QuestionCard({
     }
     onSubmit(toAnswers(questions, draft))
   }
+  // Enter takes the primary action only once this question has an answer, so
+  // a stray key never skips it.
+  const canAdvanceByKey = !submitting && currentAnswered
 
   // A double-click on a single-answer option is that choice plus the default
   // action, as in a list dialog: the next question, or Send from the last.
@@ -212,21 +206,19 @@ export function QuestionCard({
   }
 
   const caption =
-    answeredCount === 0
-      ? questions.length > 1
-        ? 'Answer at least one question to send.'
-        : 'Pick an answer to send, or skip.'
-      : questions.length > 1
-        ? `${answeredCount} of ${questions.length} answered${unansweredCount > 0 ? ` · ${unansweredCount} will be skipped` : ''}`
+    questions.length > 1
+      ? `${answeredCount} of ${questions.length} answered${unansweredCount > 0 ? ` · ${unansweredCount} will be skipped` : ''}`
+      : answeredCount === 0
+        ? 'Nothing picked: Send skips this question.'
         : null
   const captionId = `${useId()}-caption`
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing) return
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      if (!canSend) return
+      if (!canAdvanceByKey) return
       event.preventDefault()
-      send()
+      advance()
       return
     }
     if (event.metaKey || event.ctrlKey || event.altKey || isTextEntry(event.target)) return
@@ -240,9 +232,9 @@ export function QuestionCard({
       return
     }
     // Enter on a button or link is that control's own click.
-    if (event.key === 'Enter' && canSend && !(event.target as HTMLElement).closest('button, a')) {
+    if (event.key === 'Enter' && canAdvanceByKey && !(event.target as HTMLElement).closest('button, a')) {
       event.preventDefault()
-      send()
+      advance()
     }
   }
 
@@ -351,33 +343,20 @@ export function QuestionCard({
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={onDismiss} disabled={submitting}>
-            Dismiss
-          </Button>
           {!isFirstStep && (
             <Button type="button" variant="ghost" size="sm" onClick={() => update({ step: step - 1 })} disabled={submitting}>
               Back
-            </Button>
-          )}
-          {!isLastStep && (
-            <Button type="button" variant="ghost" size="sm" onClick={() => update({ step: step + 1 })} disabled={submitting}>
-              Next
-            </Button>
-          )}
-          {!currentAnswered && (
-            <Button type="button" variant="default" size="sm" onClick={skip} disabled={submitting}>
-              {isLastStep ? 'Skip and send' : 'Skip this question'}
             </Button>
           )}
           <Button
             type="button"
             variant="primary"
             size="sm"
-            onClick={send}
-            disabled={!canSend}
-            aria-describedby={canSend ? undefined : captionId}
+            onClick={advance}
+            disabled={submitting}
+            aria-describedby={caption ? captionId : undefined}
           >
-            {submitting ? 'Sending…' : 'Send'}
+            {isLastStep ? (submitting ? 'Sending…' : 'Send') : 'Next'}
           </Button>
         </div>
       </div>

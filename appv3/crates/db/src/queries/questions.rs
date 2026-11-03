@@ -1,4 +1,4 @@
-//! `pending_questions` — port of `app/services/question_service.py`.
+//! `pending_questions` queries.
 
 use crate::codec::{db_id, json_db, new_id, now_db};
 use crate::models::{PendingQuestion, SessionMessage};
@@ -21,7 +21,7 @@ fn resolution_text(status: &str) -> &'static str {
     }
 }
 
-/// v2 `format_answers_for_model`.
+/// Format the user's answers as text for the model.
 pub fn format_answers_for_model(questions: &[Value], answers: Option<&Value>) -> String {
     let answers = answers.and_then(|a| a.as_array()).cloned().unwrap_or_default();
     let parts: Vec<String> = questions
@@ -36,7 +36,7 @@ pub fn format_answers_for_model(questions: &[Value], answers: Option<&Value>) ->
     format!("User has answered your questions: {}. Continue with the user's answers in mind.", parts.join(", "))
 }
 
-/// Record a suspension and its placeholder tool result (v2 `create_pending_question`).
+/// Record a suspension and its placeholder tool result.
 pub async fn create_pending_question(pool: &DbPool, session_id: &str, tool_call_id: &str, questions: &[Value]) -> Result<PendingQuestion> {
     let payload = serde_json::json!({ "questions": questions });
     create_pending_question_with(pool, session_id, tool_call_id, ASK_USER_TOOL, &payload).await

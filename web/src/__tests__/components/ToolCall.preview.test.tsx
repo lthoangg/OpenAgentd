@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -8,6 +8,7 @@ import { OPEN_PREVIEW_EVENT, isPreviewTarget, previewTargetFromArgs } from '@/co
 import { selectFinishedPreviewCalls, usePreviewToolAutoOpen } from '@/components/AgentChatView/usePreviewToolAutoOpen'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { KEEP_ALIVE_TTL_MS, previewListenerKey, usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import type { ContentBlock } from '@/api/types'
 
 afterEach(cleanup)
@@ -143,5 +144,66 @@ describe('usePreviewToolAutoOpen', () => {
     const calls = selectFinishedPreviewCalls({ agentStreams: { a: { currentBlocks: [previewBlock('x'), previewBlock('y', { toolDone: false }), previewBlock('z', { toolName: 'shell' })] } } })
     expect(calls.map((b) => b.id)).toEqual(['x'])
     expect(selectFinishedPreviewCalls({})).toEqual([])
+  })
+})
+
+describe('usePreviewToolAutoOpen keep-alive', () => {
+  const WS = '/Users/me/project'
+  const KEY = previewListenerKey(WS, { kind: 'url', url: 'http://localhost:5173/' })
+  const entry = () => usePreviewKeepAliveStore.getState().agent[KEY]
+
+  beforeEach(() => {
+    usePreviewKeepAliveStore.getState().reset()
+    useAgentStore.setState({ _workspace: WS })
+  })
+  afterEach(() => {
+    useDisplayPrefsStore.setState({ previewOpen: 'panel' })
+    useAgentStore.setState({ _workspace: null })
+    usePreviewKeepAliveStore.getState().reset()
+  })
+
+  it('registers a page the agent opened even when previews open on click', () => {
+    useDisplayPrefsStore.setState({ previewOpen: 'click' })
+    setBlocks([])
+    const onOpen = mock(() => {})
+    renderHook(() => usePreviewToolAutoOpen({ enabled: true, onOpen }))
+    act(() => setBlocks([previewBlock('live')]))
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(entry()).toMatchObject({ workspace: WS, target: { kind: 'url', url: 'http://localhost:5173/' } })
+  })
+
+  it('registers in panel mode too, and for a workspace passed in', () => {
+    setBlocks([])
+    const onOpen = mock(() => {})
+    renderHook(() => usePreviewToolAutoOpen({ enabled: true, onOpen, workspace: '/other' }))
+    act(() => setBlocks([previewBlock('live')]))
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(usePreviewKeepAliveStore.getState().agent[previewListenerKey('/other', { kind: 'url', url: 'http://localhost:5173/' })]).toBeTruthy()
+    expect(entry()).toBeUndefined()
+  })
+
+  it('registers nothing for history, failed opens, a disabled view (phone), or no workspace', () => {
+    setBlocks([], [previewBlock('old')])
+    const { rerender } = renderHook(({ enabled }) => usePreviewToolAutoOpen({ enabled, onOpen: () => {} }), { initialProps: { enabled: true } })
+    expect(entry()).toBeUndefined()
+    act(() => setBlocks([previewBlock('failed', { toolResult: 'Only local servers can be previewed.' })]))
+    expect(entry()).toBeUndefined()
+    rerender({ enabled: false })
+    act(() => setBlocks([previewBlock('phone')]))
+    expect(entry()).toBeUndefined()
+    rerender({ enabled: true })
+    useAgentStore.setState({ _workspace: null })
+    act(() => setBlocks([previewBlock('nowhere')]))
+    expect(entry()).toBeUndefined()
+  })
+
+  it('refreshes the last-use time when later page actions finish', () => {
+    usePreviewKeepAliveStore.getState().registerAgent(WS, { kind: 'url', url: 'http://localhost:5173/' }, Date.now() - KEEP_ALIVE_TTL_MS + 5000)
+    setBlocks([])
+    renderHook(() => usePreviewToolAutoOpen({ enabled: true, onOpen: () => {} }))
+    const before = entry()?.lastAgentUseAt ?? 0
+    act(() => setBlocks([previewBlock('click', { toolArgs: JSON.stringify({ action: 'click', ref: 'e3' }), toolResult: 'Clicked <button>.' })]))
+    expect(entry()?.lastAgentUseAt).toBeGreaterThan(before)
+    expect(Date.now() - (entry()?.lastAgentUseAt ?? 0)).toBeLessThan(1000)
   })
 })

@@ -99,10 +99,11 @@ describe('Island', () => {
     expect(lastFit()).toMatchObject({ visible: false })
   })
 
-  it('shows a running session with a word, then grows out of the notch to the left only', async () => {
+  it('shows a running session without a word, then grows out of the notch to the left only', async () => {
     await mount()
     push(status(2, [running('a', 'Refactor auth')]))
-    expect(screen.getByText('Running')).toBeInTheDocument()
+    expect(screen.queryByText('Running')).toBeNull()
+    expect(screen.getByText('Refactor auth')).toBeInTheDocument()
     // The canvas comes up with the pill still notch-sized…
     expect(lastFit()).toMatchObject({ visible: true, width: 188 + 16, shift: 0 })
     // …then the pill grows one wing left of the notch, wide enough for the
@@ -118,7 +119,7 @@ describe('Island', () => {
     push(status(2, [waiting('w', 'Plan review', 'Ship it?')]))
     expect(screen.getByText('Needs you')).toBeInTheDocument()
     push(status(3, [running('a', 'Docs')]))
-    expect(screen.getByText('Running')).toBeInTheDocument()
+    expect(screen.queryByText('Running')).toBeNull()
     push(status(4, [], [{ ...done('d', 'Docs'), state: 'failed' }]))
     expect(screen.getByText('Failed')).toBeInTheDocument()
     expect(screen.queryByText(/Needs input|Working|Finished/)).toBeNull()
@@ -260,11 +261,11 @@ describe('Island', () => {
     await mount({ expandOnHover: true })
     push(status(2, [running('a', 'Docs')]))
     point(true)
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Running Docs/ }), { clientX: 100, clientY: 60 })
+    fireEvent.contextMenu(within(list()).getByRole('button', { name: /^Docs/ }), { clientX: 100, clientY: 60 })
     push(status(3, []))
     point(false)
     expect(list()).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Running Docs/ })).toBeInTheDocument()
+    expect(within(list()).getByRole('button', { name: /^Docs/ })).toBeInTheDocument()
     await act(async () => closeMenu?.())
     expect(screen.queryByRole('list')).toBeNull()
     expect(pill().dataset.open).toBe('false')
@@ -295,13 +296,14 @@ describe('Island', () => {
     }
   })
 
-  it('lists what needs you, then unread sessions, then running ones, with a word on each row', async () => {
+  it('lists what needs you, then unread sessions, then running ones, with a word on each finished or waiting row', async () => {
     await mount()
     push(status(2, [running('a', 'Docs'), waiting('w', 'Plan', 'Ship it?')], [done('d', 'Fix tooltip slide')]))
     openList()
     expect(rowTitles()).toEqual(['Plan', 'Fix tooltip slide', 'Docs'])
     const chips = within(list()).getAllByRole('listitem').map((li) => li.querySelector('.island-chip')?.textContent)
-    expect(chips).toEqual(['Needs you', 'Done', 'Running'])
+    expect(chips).toEqual(['Needs you', 'Done', undefined])
+    expect(within(list()).queryByText('Running')).toBeNull()
   })
 
   // × used to read the session away: a question lost with it.
@@ -349,7 +351,8 @@ describe('Island', () => {
 
     fireEvent.click(choice)
     await waitFor(() => expect(answers()).toEqual([{ sessionId: 'w', questionId: 'q-w', answers: [['Use Auto']] }]))
-    await waitFor(() => expect(within(list()).getByText('Running')).toBeInTheDocument())
+    await waitFor(() => expect(within(list()).queryByText('Needs you')).toBeNull())
+    expect(within(list()).getByRole('listitem').querySelector('.island-spinner')).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Use Auto' })).toBeNull()
     expect(opened()).toEqual([])
   })

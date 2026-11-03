@@ -1,4 +1,4 @@
-//! MCP client integration — port of `app/agent/mcp` (config, manager, tools).
+//! MCP client integration (config, manager, tools).
 //! HTTP servers with an `oauth` block run the MCP SDK OAuth flow
 //! (`oauth.rs`), sharing `{CACHE_DIR}/mcp-oauth/<name>.json` with v2.
 
@@ -131,7 +131,7 @@ fn oauth_credentials_required_message(name: &str) -> String {
     format!("MCP server '{name}' requires OAuth app credentials. Add the OAuth app client ID/secret in Settings, then Connect OAuth.")
 }
 
-/// `_is_oauth_registration_failure`.
+/// Whether the error is an OAuth client-registration failure.
 fn is_oauth_registration_failure(e: &McpError) -> bool {
     let msg = e.to_string();
     e.type_name() == "OAuthRegistrationError" || msg.contains("Registration failed") || msg.contains("OAuthRegistrationError")
@@ -161,7 +161,7 @@ impl From<McpError> for RunError {
     }
 }
 
-/// `_get_user_path` — login-shell PATH, cached.
+/// Login-shell PATH, cached.
 async fn user_path(force: bool) -> String {
     static CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);

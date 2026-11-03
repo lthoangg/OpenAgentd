@@ -653,7 +653,7 @@ drawer and full-screen sheet.
 │ lights ⌘B   ├────────────────────────────────┼──────────────────────────────┤
 │ sidebar 264 │ chat · bg-page (≥ 400)         │ Review panel (≥ 340)         │
 │ page / rail │ transcript (prose ≤ 768,       │ pane: tab-bar 36 │ pane (⌘\) │
-│ 28px rows   │   code/tables/tools ≤ 960)     │ toolbar 32 · one │            │
+│ 28px rows   │   code/tables/tools = column)  │ toolbar 32 · one │            │
 │             │                                ├─ split bar ──────┴───────────┤
 │             │ composer + run deck (≤ 768)    │ pane (⌘⇧\)                   │
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
@@ -671,7 +671,9 @@ drawer and full-screen sheet.
   The widths come from the panels themselves (`ResizableAside`
   `publishWidthAs` → `--oa-sidebar-w`, `--oa-dock-w`), so a cap follows a
   drag and a slide; a hidden panel, a drawer or an overlay publishes none,
-  and the cap shrinks to its buttons. Phones keep one bar.
+  and the cap shrinks to its buttons. The widths are written on the two
+  header caps only, never on `<html>`: a custom property changed on the
+  root restyles every element each frame of a slide. Phones keep one bar.
 - **Zoning is tonal in dark mode.** There the header, sidebar and status bar
   sit on the recessed `bg-sidebar`; in light mode they share the chat's
   `bg-page`, so the app reads as one sheet of paper. The dock tab bar
@@ -977,7 +979,7 @@ hovered; `danger` is the soft error fill.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
 - Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
-- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header has four controls: sidebar, title, Review panel and More. Model, thinking, account and context live in the run deck under the composer on every screen, never in the header or status bar. The review panel's phone tab strip shows its actions as icons only (+, refresh).
+- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header has four controls: sidebar, title, Review panel and More (plus ↰ Open the lead agent in a subagent's session). Model, thinking, account and context live in the run deck under the composer on every screen, never in the header or status bar. The review panel's phone tab strip shows its actions as icons only (+, refresh).
 - Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers and in the 32px view toolbar (`.touch-hit` on a positioned element, 36×36 around it; `DOCK_ACTION_BUTTON_CLASS` is 28px on touch, 36px in the tab bar). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
@@ -1058,7 +1060,7 @@ Copy is a sibling, always visible, and says "Copied" for a moment.
 
 **Turn footer** (`AssistantTurnFooter.tsx`): under the last finished answer
 the actions show at rest as muted 24px icon buttons (13px lucide icons, the
-same size as the prompt's Edit and Copy): Copy · Edit prompt · Undo,
+same size as the prompt's Edit and Copy): Copy · Edit prompt,
 then the files pill (`FileDiff`, count, `+a -d`). Their words are the
 names and tooltips. On a phone the footer and the prompt's actions are drawn
 28px and close together, so the row fits an iPhone mini; `touch-hit` keeps
@@ -1071,18 +1073,21 @@ files the turn edited (both transcript styles), each opening its diff.
 **Cards in the transcript** (a question, a plan review, a goal claim, a
 waiting or stopped turn, the undo notice): one `border-subtle` frame, no
 icon before the title, nothing framed inside. The decision sits on the card:
-a question has a fixed **Send** (disabled with its reason until answered)
-and keys 1–9 for its options; a plan review has **Approve** (or **Approve
+a question has only **Back** and **Next**, with **Send** in Next's place on
+the last (or only) question (unanswered questions go out as skipped, the
+caption says how many) and keys 1–9 for its options; a plan review has **Approve** (or **Approve
 and keep going (N turns)** while a goal would start), **Request changes**,
 which opens a focused comment box at once, and **Open plan**. A waiting or
 stopped turn says why and since when, lists its ways forward and has
 **Copy details**. Content text in cards is at least 12px (`text-xs`);
 `text-meta` is for chips and meta lines.
 
-**Touch menus.** A long press on a message, a code block, a link or a tool
-row (Copy arguments, Copy result) opens the same items as right-click, as a
-bottom sheet with a light haptic; in the iOS app it is the system's action
-sheet, and so is a session row's menu.
+**Touch menus.** A long press on a link or a tool row (Copy arguments,
+Copy result) opens the same items as right-click, as a bottom sheet with a
+light haptic; in the iOS app it is the system's action sheet, and so is a
+session row's menu. Messages (yours and the agent's) and code blocks have no
+app menu, on desktop or touch: they keep the system menu and native text
+selection, and their Copy / Edit buttons.
 
 **Confirmations** (`ui/confirm-dialog.tsx`): every action that cannot be
 undone (stop a server, regenerate a key, delete, discard edits, revert a
@@ -1138,9 +1143,11 @@ title; the command palette pill in the middle ("Command palette" and its
 shortcut from `md:`, the icon alone below); Task list and Review panel on
 the right. The session title renames in place: double-click it, or press F2
 or Enter on it; a single click does nothing, so a stray click keeps the
-title. A subagent's title is read-only, like its sidebar row. Phones keep
-four controls: the menu (drawer), the title over its workspace, Review panel
-and More. Every header control is 36px on touch, tablets included.
+title. A subagent's title is read-only, like its sidebar row, and its header
+leads with ↰ **Open the lead agent** (before the title on desktop, after the
+menu on phones). Phones keep four controls (five in a subagent's session):
+the menu (drawer), the title over its workspace, Review panel and More.
+Every header control is 36px on touch, tablets included.
 
 **Notices** (toasts, the update card, the LSP prompt) stack at the top right
 under the header, newest first, so the run deck and Send stay clear. Phones
@@ -1215,9 +1222,10 @@ the text sits the run deck, which says how the next message runs:
 - **Send** is a keycap fill until there is something to send, then Bark. It is
   36px on touch like the controls beside it, so splitting into Steer and the
   delivery chevron mid-turn changes no height.
-- **The tray** above the text holds what waits on the composer: the queued
-  messages (each with Remove), the side question, the Undo notice and the
-  "↓ N new" chip. The transcript never shows them a second time.
+- **The tray** above the text holds what waits on the composer: the side
+  question, the Undo notice and the "↓ N new" chip. Queued messages (each
+  with Remove) wait at the bottom of the transcript, under the running turn,
+  faded. The transcript never shows the tray's items a second time.
 
 Bottom sheets (`ui/bottom-sheet.tsx`) are the phone form of any picker or
 menu: a grab handle, drag or Esc to dismiss, safe-area padding, 44px rows.
@@ -1443,7 +1451,8 @@ it, chrome is `user-select: none` with the arrow cursor on buttons (links keep
 the pointer), and only content selects: inputs, `.selectable-text`,
 `.oa-prose`, `pre`, `code` and `.xterm`. Images and links do not drag out. The
 webview's own right-click menu is suppressed except in text fields, over
-selected text, and in dev builds; transcript surfaces offer app menus instead.
+selected text, on answer text and code outside a link (Copy, Look Up), and in
+dev builds; links, your messages and tool rows offer app menus instead.
 While another app has focus, `data-window-inactive` hides focus rings, turns
 text selection to `--bg-key` and mutes `aria-current` items, the way Finder
 greys its selection. The browser build keeps the browser's behaviour.
@@ -1474,15 +1483,19 @@ Menus):
 - **Global shortcuts** (Show OpenAgentd, Next session that needs you) are
   off until "Global Shortcuts" is ticked in the OpenAgentd menu.
 
-**Companions** (the notch island, the pet, the tray popup, OS
-notifications) read one Needs you feed and use one vocabulary: Needs you,
-Running, Done, Failed, Can't reach. A question with a few choices is
+**Companions** (the notch island, the pet, OS notifications) read one Needs
+you feed and use one vocabulary: Needs you, Running, Done, Failed, Can't
+reach. The island's pill and list show a running session with the spinner,
+not the word Running. A question with a few choices is
 answered in place (island, pet, notification buttons); anything else says
 **Open to answer**. × means Later: the question stays until answered. Every
 way of opening a session goes through one router, which focuses the window
 that already shows it.
 
-The macOS tray popup (`web/tray.html`) is a separate, small entry with no
+The macOS tray popup (`web/tray.html`) lists no sessions, only provider limits
+and actions. The Windows and Linux tray menu lists none either, and shows its
+status row only while the backend is not running normally. The popup is a
+separate, small entry with no
 Tailwind. Its stylesheet `tray/tray.css` imports `styles/tokens.css`, the same
 palette and motion tokens as the app; only its glass surface and shadows are
 its own (`tray-css.test.ts` holds the rest to tokens). It follows the OS

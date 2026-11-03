@@ -700,19 +700,6 @@ export async function answerQuestion(
   return res.json()
 }
 
-/** Close a question without answering. Ends the lead's turn; members keep working. */
-export async function dismissQuestion(
-  sessionId: string,
-  questionId: string,
-): Promise<QuestionResolveResult> {
-  const res = await fetch(
-    `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/dismiss`,
-    { method: 'POST' },
-  )
-  if (!res.ok) await parseDetailOrThrow(res, 'dismissQuestion')
-  return res.json()
-}
-
 /**
  * List every file under the session's agent workspace (``.openagentd/agent/{sid}``).
  *

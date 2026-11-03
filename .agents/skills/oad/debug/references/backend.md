@@ -6,7 +6,7 @@ and providers.
 ## Evidence commands
 
 ```bash
-make run                                          # API only on :8000 with APP_ENV=development
+make run                                          # API only on :8000 with OPENAGENTD_ENV=development
 curl -fsS http://127.0.0.1:8000/api/health/ready  # readiness
 agentd server status                          # installed CLI: port, live, ready, LAN
 agentd server logs                            # installed CLI: readable log lines

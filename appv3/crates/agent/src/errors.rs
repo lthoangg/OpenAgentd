@@ -1,4 +1,4 @@
-//! Turn-level error types and `format_agent_error` (port of `app/agent/errors.py`).
+//! Turn-level error types and `format_agent_error`.
 
 use serde_json::{json, Value};
 
@@ -20,7 +20,7 @@ pub enum AgentError {
     /// Plain `RuntimeError` / generic exception text.
     #[error("{0}")]
     Other(String),
-    /// Hard cancellation (v2 `CancelledError`) — not an error state.
+    /// Hard cancellation — not an error state.
     #[error("cancelled")]
     Cancelled,
 }
@@ -46,7 +46,7 @@ impl AgentError {
     }
 }
 
-/// v2 `format_agent_error` → `{message, title, code, category[, agent]}`.
+/// Format an agent error as `{message, title, code, category[, agent]}`.
 pub fn format_agent_error(e: &AgentError, agent: Option<&str>) -> Value {
     let (title, code, category) = match e {
         AgentError::Auth { .. } => ("Provider Authentication Failed".to_string(), "provider_auth_failed", "provider"),

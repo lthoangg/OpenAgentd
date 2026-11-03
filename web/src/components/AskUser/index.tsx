@@ -135,7 +135,7 @@ export function AskUser({
   const turnLive = useAgentStore((state) => state.isAgentWorking)
 
   const isOpen = pendingQuestion !== null && openCallId === toolCallId
-  const { submitting, error, answer, dismiss } = useQuestionResolver(isOpen ? pendingQuestion : null)
+  const { submitting, error, answer } = useQuestionResolver(isOpen ? pendingQuestion : null)
 
   if (!isOpen) {
     const { waiting, body } = describeResolution(resolved, result, args, turnLive)
@@ -150,7 +150,6 @@ export function AskUser({
         submitting={submitting}
         error={error}
         onSubmit={answer}
-        onDismiss={dismiss}
       />
     </QuestionShell>
   )

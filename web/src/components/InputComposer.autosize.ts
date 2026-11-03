@@ -16,8 +16,13 @@ export function useTextareaAutosize(textareaRef: React.RefObject<HTMLTextAreaEle
   const resize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
+    // Measuring collapses the box, which grows the docked transcript above it;
+    // the browser clamps its scrollTop and keeps the clamp. Put it back.
+    const scroller = el.closest('main')?.querySelector<HTMLElement>('.oa-chat-scroll')
+    const scrollTop = scroller?.scrollTop ?? 0
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
+    if (scroller && scroller.scrollTop !== scrollTop) scroller.scrollTop = scrollTop
   }, [textareaRef])
 
   /** Coalesce per-keystroke resize requests into one rAF-batched measure. */

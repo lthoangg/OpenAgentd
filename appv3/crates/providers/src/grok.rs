@@ -1,5 +1,4 @@
-//! Grok Build (xAI subscription) — port of `providers/grok/*` (`grok.py`,
-//! `oauth.py`, `usage.py`).
+//! Grok Build (xAI subscription): chat, OAuth and usage.
 
 use crate::codex::say;
 use crate::oauth::TokenSlot;
@@ -284,7 +283,7 @@ pub fn build_for(model: &str, model_kwargs: Kwargs, slot: &TokenSlot) -> Provide
 }
 
 impl GrokProvider {
-    /// `_refresh_session_if_needed`.
+    /// Refresh the session when needed and return the current provider.
     async fn current(&self) -> ProviderResult<Arc<OpenAiProvider>> {
         let path = &self.slot;
         let Some(mut auth) = GrokAuth::load(path) else {

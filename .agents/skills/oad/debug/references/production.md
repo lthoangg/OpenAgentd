@@ -5,7 +5,7 @@ failing tools, provider failures, or a user's installed app.
 
 ## Where state lives
 
-| | Dev (`APP_ENV=development`, `make run` / `make dev`) | Production install |
+| | Dev (`OPENAGENTD_ENV=development`, `make run` / `make dev`) | Production install |
 |---|---|---|
 | Database | `.openagentd/dev/data/openagentd.db` | `~/.local/share/openagentd/openagentd.db` |
 | Logs | `.openagentd/dev/state/logs` | `~/.local/state/openagentd/logs` |

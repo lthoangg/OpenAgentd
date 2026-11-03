@@ -1,4 +1,4 @@
-//! Port of `app/agent/hooks/otel.py` — GenAI-convention spans and metrics
+//! GenAI-convention spans and metrics
 //! for every agent run. The `wrap_model_call` / `wrap_tool_call` halves are
 //! driven from `Agent::run` via [`Hook::as_otel`] so the span can be made
 //! current for the wrapped future.
@@ -123,7 +123,7 @@ pub fn set_usage_span_attributes(span: &Span, usage: &Value) {
     }
 }
 
-/// `_parse_model_id`.
+/// Split a model id into `(provider, model)`.
 pub fn parse_model_id(model_id: Option<&str>) -> (String, String) {
     match model_id {
         None | Some("") => ("unknown".into(), "unknown".into()),

@@ -67,6 +67,7 @@ import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
+import { onOpenWorkspaceFileRequest } from '@/lib/open-file-request'
 import { useToastStore } from '@/stores/useToastStore'
 import { parseMentionRef, resolveWorkspaceRef, workspaceRelativePath, type FileRef } from '@/utils/file-refs'
 import { resolveSidebarCollapsed, sidebarIsDrawer, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
@@ -484,6 +485,10 @@ export function useOverlayState({
     showFile(file)
     if (ref.line) useFileRevealStore.getState().reveal(file.path, ref.line, ref.endLine)
   }, [closeOtherMobileOverlays, listWorkspaceFiles, showFile, workspace])
+
+  // The terminal's file links (⌘/Ctrl+click on ``src/a.ts:42``) ask for the
+  // file here, since the terminal sits inside the dock it would open into.
+  useEffect(() => onOpenWorkspaceFileRequest((ref) => { void handleFileRefOpen(ref) }), [handleFileRefOpen])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 

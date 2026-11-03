@@ -405,9 +405,10 @@ html[data-window-caption] .below-window-caption {
 /* ─────────────────────────────────────────────────────────────────────────────
  * Header caps (AgentChatHeader, desktop): the header splits where the columns
  * below it do, so the sidebar and the Review panel read as columns from the
- * top of the window. Their widths arrive as --oa-sidebar-w / --oa-dock-w
- * (ResizableAside publishWidthAs; unset while a panel is hidden, a drawer or
- * an overlay), so a cap follows a drag and a slide. The caps draw no edge of
+ * top of the window. Their widths arrive as --oa-sidebar-w / --oa-dock-w,
+ * set on the caps themselves (ResizableAside publishWidthAs → usePanelWidthSink;
+ * unset while a panel is hidden, a drawer or an overlay), so a cap follows a
+ * drag and a slide without restyling the rest of the page. The caps draw no edge of
  * their own: the column lines start under the header, whose bottom line runs
  * the full width, over the sidebar too, so it reads as one bar.
  * ───────────────────────────────────────────────────────────────────────────── */
@@ -1227,21 +1228,6 @@ html[data-app-hidden="true"] *::after {
 [data-dock-maximized] .oa-reading .oa-prose > :is([data-slot='code-block'], [data-slot='mermaid-block'], .oa-table-container) {
   width: 100cqi;
   margin-inline: calc((100% - 100cqi) / 2);
-}
-
-/*
- * Transcript: prose keeps its 768px column; code, diagrams, tables and an
- * expanded tool's output widen to 960px when the chat has room, centred on
- * the column. --oa-transcript-w is the scroller's width (AgentView); below
- * 768px + gutters the band equals the column and nothing moves. User
- * bubbles stay as they are.
- */
-.oa-transcript-col {
-  --oa-breakout: min(960px, var(--oa-transcript-w, 0px) - 2rem);
-}
-.oa-transcript-col :is(.oa-prose > [data-slot='code-block'], .oa-prose > [data-slot='mermaid-block'], .oa-prose > .oa-table-container, [data-breakout]):not([data-user-bubble] *) {
-  width: max(100%, var(--oa-breakout));
-  margin-inline: min(0px, (100% - var(--oa-breakout)) / 2);
 }
 
 /* ─────────────────────────────────────────────────────────────

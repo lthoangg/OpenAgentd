@@ -1,6 +1,5 @@
-//! Agent runtime — port of `app/agent` (loop, hooks, session) and the
-//! runtime-facing services (`memory_stream_store`, `event_broadcaster`,
-//! `agent_manager`, `agent_service`).
+//! Agent runtime — loop, hooks, session and the runtime-facing services
+//! (stream store, event broadcaster, session manager, agent service).
 
 pub mod agent;
 pub mod broadcaster;

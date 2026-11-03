@@ -1,5 +1,4 @@
-//! Server lifespan — port of `app/api/app.py::lifespan` and
-//! `app/core/workspace_init.py`.
+//! Server lifespan and workspace initialisation.
 
 use appv3_agent::{loader, manager, scheduler};
 use appv3_core::settings;
@@ -8,7 +7,7 @@ use serde_json::json;
 
 const DEFAULT_NEW_USER_MODEL: &str = "__PROVIDER_MODEL__";
 
-/// `multimodalities._config.ensure_default_config`.
+/// Writes the default `multimodal.yaml` when none exists.
 pub fn ensure_default_multimodal_config() -> std::io::Result<bool> {
     let path = settings().config_dir.join("multimodal.yaml");
     if path.exists() {

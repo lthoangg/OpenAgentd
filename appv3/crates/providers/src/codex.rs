@@ -1,5 +1,4 @@
-//! OpenAI Codex (ChatGPT subscription) — port of `providers/codex/*`
-//! (`codex.py`, `oauth.py`, `catalog.py`, `usage.py`).
+//! OpenAI Codex (ChatGPT subscription): chat, OAuth, catalog and usage.
 
 use crate::oauth::TokenSlot;
 use crate::openai::{shared_client, CodexTurn, CompletionsDialect, Flavor, OpenAiProvider};
@@ -465,7 +464,7 @@ fn usage_credits(data: Option<&Value>) -> Option<Value> {
     Some(json!({"has_credits": has, "unlimited": unl, "balance": v.get("balance").and_then(|b| b.as_str())}))
 }
 
-/// `_as_float` — numbers and numeric strings (bools excluded).
+/// Numbers and numeric strings as `f64` (bools excluded).
 fn as_float(v: Option<&Value>) -> Option<f64> {
     match v? {
         Value::Number(n) => n.as_f64(),
@@ -648,7 +647,7 @@ pub fn cli_failure_reported() -> bool {
     CLI_FAILURE_REPORTED.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-/// `_say`: print (CLI) or push a typed event (UI).
+/// Print (CLI) or push a typed event (UI).
 pub fn say(sink: Option<&OAuthSink>, event: &str, message: &str, data: Value) {
     match sink {
         None => {

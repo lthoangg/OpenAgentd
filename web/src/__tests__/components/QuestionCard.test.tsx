@@ -6,10 +6,13 @@
  * (single vs multiple), the free-text escape hatch, per-question stepping, and the exact ``answers`` shape the backend validates
  * against (index-matched to the questions, empty entry = skipped).
  *
- * The primary action is always "Send"; skipping is its own named action; 1–9
- * pick an option and Enter sends while focus is in the card and not in a text
- * field. Options are Bark-filled when chosen, keycap-filled otherwise, and
- * nothing inside the card has a border.
+ * The footer has only Back and one primary button: Next on every question but
+ * the last, Send on the last. There is no Dismiss and no Skip button; a
+ * question left unanswered goes out skipped (an empty group). 1–9 pick an
+ * option, and Enter takes the primary action once the current question has an
+ * answer while focus is in the card and not in a text field. Options are
+ * Bark-filled when chosen, keycap-filled otherwise, and nothing inside the card
+ * has a border.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import '@testing-library/jest-dom'
@@ -71,23 +74,37 @@ const TWO_QUESTIONS: PendingQuestion = question({
   ],
 })
 
+const THREE_QUESTIONS: PendingQuestion = question({
+  questions: [
+    ...TWO_QUESTIONS.questions,
+    {
+      question: 'Which registry?',
+      header: 'Registry',
+      multiple: false,
+      options: [
+        { label: 'npm', description: null, recommended: true },
+        { label: 'github', description: null, recommended: false },
+      ],
+    },
+  ],
+})
+
 function renderCard(props: Partial<React.ComponentProps<typeof QuestionCard>> = {}) {
   const onSubmit = mock(() => {})
-  const onDismiss = mock(() => {})
   const view = render(
     <QuestionCard
       question={question()}
       onSubmit={onSubmit}
-      onDismiss={onDismiss}
       submitting={false}
       error={null}
       {...props}
     />,
   )
-  return { onSubmit, onDismiss, ...view }
+  return { onSubmit, ...view }
 }
 
 const sendButton = () => screen.getByRole('button', { name: 'Send' })
+const nextButton = () => screen.getByRole('button', { name: 'Next' })
 
 describe('QuestionCard', () => {
   it('renders the question text and its options', () => {
@@ -173,16 +190,22 @@ describe('QuestionCard', () => {
   })
 
   it('moves to the next question on a double-click before the last one, and sends from the last', () => {
-    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+    const { onSubmit } = renderCard({ question: THREE_QUESTIONS })
 
     fireEvent.doubleClick(screen.getByRole('radio', { name: /bun/ }).closest('label')!)
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
 
-    // Several answers are allowed here: a double-click only ticks, as a click does.
-    const lint = screen.getByRole('checkbox', { name: /lint/ }).closest('label')!
-    fireEvent.doubleClick(lint)
+    // Several answers are allowed here: a double-click does not choose and go on.
+    fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
+    fireEvent.doubleClick(screen.getByRole('checkbox', { name: /lint/ }).closest('label')!)
     expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
+
+    fireEvent.click(nextButton())
+    expect(screen.getByText('Which registry?')).toBeInTheDocument()
+    fireEvent.doubleClick(screen.getByRole('radio', { name: /github/ }).closest('label')!)
+    expect(onSubmit).toHaveBeenCalledWith([['bun'], ['lint'], ['github']])
   })
 
   it('does not send twice from a double-click while the answer is in flight', () => {
@@ -191,13 +214,11 @@ describe('QuestionCard', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('keeps the primary action "Send" on every question, from the first to the last', () => {
-    // The label never changes with the step: Send sends the answers given so
-    // far, and Next is plain navigation beside it.
+  it('reads "Next" on every question but the last, and "Send" on the last', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
-    expect(sendButton()).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument()
+    expect(nextButton()).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
 
     fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
     fireEvent.click(screen.getByRole('button', { name: /^next$/i }))
@@ -219,44 +240,57 @@ describe('QuestionCard', () => {
     expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
   })
 
-  it('sends the answers given so far from the first question, the rest skipped', () => {
-    // Send is not "finish the form": it sends now, and the caption says what
-    // goes out skipped.
+  it('sends the answers given with the unanswered ones skipped, and the caption says how many', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
     fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
     expect(screen.getByText('1 of 2 answered · 1 will be skipped')).toBeInTheDocument()
+    fireEvent.click(nextButton())
     fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([['pnpm'], []])
   })
 
-  it('waits for an answer, and says why on screen', () => {
+  it('keeps Send enabled with nothing answered, and says on screen that it skips', () => {
     const { onSubmit, unmount } = renderCard()
 
-    expect(sendButton()).toBeDisabled()
-    const reason = screen.getByText('Pick an answer to send, or skip.')
-    // The reason is the button's description, not a tooltip alone.
-    expect(sendButton().getAttribute('aria-describedby')).toBe(reason.id)
+    expect(sendButton()).not.toBeDisabled()
+    const caption = screen.getByText('Nothing picked: Send skips this question.')
+    // The caption is the button's description, not a tooltip alone.
+    expect(sendButton().getAttribute('aria-describedby')).toBe(caption.id)
     fireEvent.click(sendButton())
-    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onSubmit).toHaveBeenCalledWith([[]])
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     expect(sendButton()).not.toBeDisabled()
-    expect(screen.queryByText('Pick an answer to send, or skip.')).toBeNull()
+    expect(screen.queryByText('Nothing picked: Send skips this question.')).toBeNull()
+    expect(sendButton().getAttribute('aria-describedby')).toBeNull()
 
     unmount()
     clearQuestionDrafts()
     renderCard({ question: TWO_QUESTIONS })
-    expect(sendButton()).toBeDisabled()
-    expect(screen.getByText('Answer at least one question to send.')).toBeInTheDocument()
+    expect(nextButton()).not.toBeDisabled()
+    const multi = screen.getByText('0 of 2 answered · 2 will be skipped')
+    expect(nextButton().getAttribute('aria-describedby')).toBe(multi.id)
+  })
+
+  it('counts answered and skipped questions in the caption of a multi-question card', () => {
+    renderCard({ question: TWO_QUESTIONS })
+
+    expect(screen.getByText('0 of 2 answered · 2 will be skipped')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
+    expect(screen.getByText('1 of 2 answered · 1 will be skipped')).toBeInTheDocument()
+    fireEvent.click(nextButton())
+    fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
+    // Everything answered: the count stays, with nothing left to skip.
+    expect(screen.getByText('2 of 2 answered')).toBeInTheDocument()
   })
 
   // On a phone the caption shrank to one word a line beside four buttons:
   // it keeps a readable width, so the buttons wrap under it instead.
   it('keeps the caption readable on a narrow card, and adds no empty line without one', () => {
     const { unmount } = renderCard({ question: TWO_QUESTIONS })
-    const caption = screen.getByText('Answer at least one question to send.')
+    const caption = screen.getByText('0 of 2 answered · 2 will be skipped')
     expect(caption.className.split(/\s+/)).toContain('basis-48')
     expect(caption.className.split(/\s+/)).not.toContain('min-w-0')
     unmount()
@@ -267,37 +301,32 @@ describe('QuestionCard', () => {
     expect(actions.querySelector('span[id$="-caption"]')).toBeNull()
   })
 
-  it('skips by name, never through the primary button', () => {
-    // "Skip this question" moves on and the question goes out skipped.
+  it('moves on with Next from an unanswered question, which then goes out skipped', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
-    expect(screen.getByRole('button', { name: 'Skip this question' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Skip and send' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Skip this question' }))
+    fireEvent.click(nextButton())
     expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('checkbox', { name: /build/ }))
-    // Answered: nothing left to skip on this question.
-    expect(screen.queryByRole('button', { name: /skip/i })).toBeNull()
     fireEvent.click(sendButton())
     expect(onSubmit).toHaveBeenCalledWith([[], ['build']])
   })
 
-  it('says "Skip and send" on the last question and sends it skipped', () => {
+  it('sends the last question skipped when only an earlier one was answered', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([['bun'], []])
   })
 
-  it('skips a lone question explicitly, as an empty answer', () => {
+  it('sends a lone unanswered question as an empty answer', () => {
     const { onSubmit } = renderCard()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([[]])
   })
@@ -319,8 +348,9 @@ describe('QuestionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
-    expect(sendButton()).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    expect(sendButton()).not.toBeDisabled()
+    expect(screen.getByText('0 of 2 answered · 2 will be skipped')).toBeInTheDocument()
+    fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([[], []])
   })
@@ -375,9 +405,9 @@ describe('QuestionCard', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /type your own answer/i }))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
-    // A blank box is no answer: Send waits, and Skip and send is the explicit way out.
-    expect(sendButton()).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    // A blank box is no answer: it counts as unanswered, and Send skips it.
+    expect(screen.getByText('Nothing picked: Send skips this question.')).toBeInTheDocument()
+    fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([[]])
   })
@@ -397,24 +427,41 @@ describe('QuestionCard', () => {
     // has to arrive as an empty group rather than be dropped.
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skip this question' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    fireEvent.click(nextButton())
+    fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([[], []])
   })
 
-  it('pages with Back and Next, and keeps Dismiss in reach on every step', () => {
-    renderCard({ question: TWO_QUESTIONS })
+  it('has only Back and Next on a middle question, Back and Send on the last, and no Dismiss or Skip anywhere', () => {
+    renderCard({ question: THREE_QUESTIONS })
+    // The step buttons above the form are not the footer.
+    const footer = () =>
+      screen
+        .getAllByRole('button')
+        .filter((button) => !screen.getByRole('group', { name: 'Questions' }).contains(button))
+        .map((button) => button.textContent)
 
-    expect(screen.getByRole('button', { name: /^dismiss$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^back$/i })).toBeNull()
+    // First: Next alone.
+    expect(footer()).toEqual(['Next'])
+    expect(screen.queryByRole('button', { name: /dismiss|skip/i })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /^next$/i }))
+    // Middle: Back and Next.
+    fireEvent.click(nextButton())
+    expect(footer()).toEqual(['Back', 'Next'])
+    expect(screen.queryByRole('button', { name: /dismiss|skip/i })).toBeNull()
 
-    expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^next$/i })).toBeNull()
-    expect(screen.getByRole('button', { name: /^dismiss$/i })).toBeInTheDocument()
+    // Last: Back and Send.
+    fireEvent.click(nextButton())
+    expect(footer()).toEqual(['Back', 'Send'])
+    expect(screen.queryByRole('button', { name: /dismiss|skip/i })).toBeNull()
+  })
+
+  it('offers a single question only Send, with no Dismiss or Skip', () => {
+    renderCard()
+
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Send'])
+    expect(screen.queryByRole('button', { name: /dismiss|skip/i })).toBeNull()
   })
 
   it('keeps earlier answers when stepping back', () => {
@@ -434,19 +481,12 @@ describe('QuestionCard', () => {
     expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
   })
 
-  it('dismisses without submitting an answer', () => {
-    const { onSubmit, onDismiss } = renderCard()
-
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-
-    expect(onDismiss).toHaveBeenCalledTimes(1)
-    expect(onSubmit).not.toHaveBeenCalled()
-  })
-
   it('blocks a double submit while the answer is in flight', () => {
-    renderCard({ submitting: true })
+    const { onSubmit } = renderCard({ submitting: true })
 
     expect(screen.getByRole('button', { name: /sending/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /sending/i }))
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('surfaces a failed answer without discarding the selection', () => {
@@ -473,9 +513,9 @@ describe('QuestionCard', () => {
     unmount()
 
     const { onSubmit } = renderCard({ question: question({ id: 'q-2' }) })
-    // Nothing picked on this one: Send waits, so only an explicit skip goes out.
-    expect(sendButton()).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Skip and send' }))
+    // Nothing picked on this one: the earlier pick did not carry over, so it goes out skipped.
+    expect(screen.getByText('Nothing picked: Send skips this question.')).toBeInTheDocument()
+    fireEvent.click(sendButton())
 
     expect(onSubmit).toHaveBeenCalledWith([[]])
   })
@@ -514,7 +554,7 @@ describe('QuestionCard', () => {
     it('picks from anywhere inside the card, on a button too', () => {
       renderCard()
 
-      fireEvent.keyDown(screen.getByRole('button', { name: /^dismiss$/i }), { key: '1' })
+      fireEvent.keyDown(sendButton(), { key: '1' })
 
       expect(screen.getByRole('radio', { name: /pnpm/ })).toBeChecked()
     })
@@ -582,13 +622,48 @@ describe('QuestionCard', () => {
     })
 
     it('leaves Enter on a button to that button', () => {
-      const { onSubmit, onDismiss } = renderCard()
+      const { onSubmit } = renderCard()
       fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
 
-      fireEvent.keyDown(screen.getByRole('button', { name: /^dismiss$/i }), { key: 'Enter' })
+      fireEvent.keyDown(sendButton(), { key: 'Enter' })
 
       expect(onSubmit).not.toHaveBeenCalled()
-      expect(onDismiss).not.toHaveBeenCalled()
+    })
+
+    it('takes Next on Enter from a non-last question once it has an answer, and Send on the last', () => {
+      const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+      const first = screen.getByRole('radio', { name: /pnpm/ })
+
+      fireEvent.keyDown(first, { key: 'Enter' })
+      expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+
+      fireEvent.keyDown(first, { key: '1' })
+      fireEvent.keyDown(first, { key: 'Enter' })
+      expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
+      expect(onSubmit).not.toHaveBeenCalled()
+
+      // The new question has no answer yet: Enter leaves it alone.
+      const lint = screen.getByRole('checkbox', { name: /lint/ })
+      fireEvent.keyDown(lint, { key: 'Enter' })
+      expect(onSubmit).not.toHaveBeenCalled()
+      fireEvent.keyDown(lint, { key: '1' })
+      fireEvent.keyDown(lint, { key: 'Enter' })
+      expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
+    })
+
+    it('takes the primary action on Cmd+Enter from the free-text box, Next before the last question', () => {
+      const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+      fireEvent.click(screen.getByRole('radio', { name: /type your own answer/i }))
+      const box = screen.getByLabelText('Your answer')
+
+      // Blank: no answer yet, so nothing happens.
+      fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
+      expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+
+      fireEvent.change(box, { target: { value: 'yarn' } })
+      fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
+      expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
+      expect(onSubmit).not.toHaveBeenCalled()
     })
 
     it('keeps Enter in the free-text box a new line, and sends on Cmd or Ctrl+Enter', () => {
@@ -658,7 +733,7 @@ describe('QuestionCard', () => {
       })
 
       expect(screen.getByText('Fast').parentElement?.className).toContain('text-xs')
-      expect(screen.getByText('Pick an answer to send, or skip.').className).toContain('text-xs')
+      expect(screen.getByText('Nothing picked: Send skips this question.').className).toContain('text-xs')
     })
   })
 

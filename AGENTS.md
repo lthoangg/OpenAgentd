@@ -93,11 +93,10 @@ Use the native subtree Makefiles for desktop/mobile packages
 ## Safety constraints
 
 - Route every externally supplied workspace root through the workspace
-  validator (v3: `validate_workspace` in `appv3/crates/agent/src/manager.rs`;
-  v2: `app.services.agent_manager.validate_workspace()`). Resolve paths within
-  a workspace with the existing `safe_resolve` / `safe_join` helpers.
-- Preserve constant-time secret comparison (v3: `auth::constant_time_eq`; v2:
-  `hmac.compare_digest`).
+  validator (`validate_workspace` in `appv3/crates/agent/src/manager.rs`).
+  Resolve paths within a workspace with the existing `safe_resolve` /
+  `safe_join` helpers.
+- Preserve constant-time secret comparison (`auth::constant_time_eq`).
 - Keep the v3 network guard (Host check, cross-origin refusal without an
   access key) and the child-environment secret scrub in `appv3/crates/core/`
   and `appv3/crates/api/` intact; see `appv3/AGENTS.md`.

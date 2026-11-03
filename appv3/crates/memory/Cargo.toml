@@ -7,13 +7,9 @@ license.workspace = true
 [dependencies]
 dunce.workspace = true
 appv3-core.workspace = true
-anyhow.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tracing.workspace = true
 sha2.workspace = true
-chrono.workspace = true
 tempfile = "3"
 regex.workspace = true

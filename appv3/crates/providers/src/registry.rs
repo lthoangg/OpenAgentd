@@ -1,5 +1,4 @@
-//! Model registry — port of `model_registry.py`, `model_metadata.py`,
-//! `capabilities.py`.
+//! Model registry, model metadata and capabilities.
 //!
 //! Precedence: cached models.dev → provider aliases → user
 //! `{config}/model_registry.yaml` overlay (final authority).
@@ -341,7 +340,7 @@ pub fn install_registry(reg: Registry) {
     *REGISTRY.write().unwrap() = Some(Arc::new(reg));
 }
 
-/// v2 `_load_models_dev_data` + `refresh_model_registry`.
+/// Load models.dev data and refresh the model registry.
 pub async fn refresh_model_registry(force: bool) {
     let s = appv3_core::settings();
     if !s.model_registry_refresh {
@@ -416,7 +415,7 @@ fn cost_of(v: &Value) -> ModelCost {
     ModelCost { input: f("input"), output: f("output"), cache_read: f("cache_read"), cache_write: f("cache_write") }
 }
 
-/// v2 `get_model_metadata` — returns the raw registry entry.
+/// The raw registry entry for a model.
 pub fn get_model_entry(model_id: Option<&str>) -> Option<Value> {
     let id = model_id.filter(|s| !s.is_empty())?.to_lowercase();
     let reg = load_model_registry();
@@ -513,7 +512,7 @@ pub fn get_model_transport_full(model_id: Option<&str>) -> Option<(String, Strin
     (matches!(v.as_str(), "default" | "openai") && matches!(f.as_str(), "chat_completions" | "generate_content" | "messages" | "responses")).then_some((v, f))
 }
 
-/// v2 `ModelMetadata.to_dict()`.
+/// Model metadata as a JSON object.
 pub fn metadata_dict(model_id: Option<&str>) -> Value {
     let e = get_model_entry(model_id).unwrap_or_else(|| json!({}));
     let l = get_model_limits(model_id);
@@ -534,7 +533,7 @@ pub fn metadata_dict(model_id: Option<&str>) -> Value {
     })
 }
 
-/// v2 `get_capabilities(model_id).to_dict()` — exact match only.
+/// Model capabilities as a JSON object — exact match only.
 pub fn capabilities_dict(model_id: Option<&str>) -> Value {
     let reg = load_model_registry();
     let caps = model_id.and_then(|m| reg.get(&m.to_lowercase())).and_then(|v| v.get("capabilities")).cloned().unwrap_or(json!({}));

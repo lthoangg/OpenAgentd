@@ -26,6 +26,7 @@ import { draftComposerKey, startNewSession } from '@/lib/new-session'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
+import { onComposerInsert } from '@/lib/composer-insert'
 import { attachmentToFile } from './helpers'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
@@ -400,6 +401,13 @@ export function useSessionBootstrap({
     window.addEventListener('queue:restore-draft', handler)
     return () => window.removeEventListener('queue:restore-draft', handler)
   }, [inputRef])
+
+  // Terminal "Add to chat": append the text to the draft as its own
+  // paragraph. Unlike the restore above this never replaces what was typed.
+  useEffect(() => onComposerInsert((text) => {
+    inputRef.current?.appendValue(text, { paragraph: true })
+    inputRef.current?.focus()
+  }), [inputRef])
 
   // Restore an undone message into the composer (fired by the undo button on
   // UserBubble in AgentView/AgentPane, which cannot access inputRef directly).

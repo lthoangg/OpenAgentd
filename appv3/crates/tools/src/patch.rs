@@ -1,4 +1,4 @@
-//! `patch` — port of `filesystem/patch.py`.
+//! The `patch` tool.
 
 use crate::args::Args;
 use crate::denied::DeniedPaths;

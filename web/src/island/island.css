@@ -366,11 +366,6 @@ button:focus-visible {
   color: var(--accent-orange);
 }
 
-.island-chip[data-state="running"] {
-  background: color-mix(in srgb, var(--accent-blue) 22%, transparent);
-  color: var(--accent-blue);
-}
-
 .island-chip[data-state="done"] {
   background: color-mix(in srgb, var(--color-success) 22%, transparent);
   color: var(--color-success);

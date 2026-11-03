@@ -1,4 +1,4 @@
-//! `{CONFIG_DIR}/mcp.json` schema and I/O — port of `app/agent/mcp/config.py`.
+//! `{CONFIG_DIR}/mcp.json` schema and I/O.
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};

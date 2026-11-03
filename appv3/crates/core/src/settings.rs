@@ -1,4 +1,4 @@
-//! Process settings — port of `app/core/config.py::Settings`.
+//! Process settings.
 //!
 //! The mode comes from the build (see [`mode_from_env`]) and picks the XDG
 //! roots; the real environment wins over the active config dir's `.env`
@@ -257,7 +257,7 @@ impl Settings {
         };
         dunce::canonicalize(&p).unwrap_or(p)
     }
-    /// v2 `is_chat_workspace`: never errors, `None`/empty → false.
+    /// Whether `workspace` is a chat workspace: never errors, `None`/empty → false.
     pub fn is_chat_workspace(&self, workspace: Option<&Path>) -> bool {
         let Some(w) = workspace else { return false };
         let raw = w.to_string_lossy().trim().to_string();
@@ -274,7 +274,7 @@ impl Settings {
         let resolved = dunce::canonicalize(&p).unwrap_or(p);
         resolved == self.chat_workspace_root()
     }
-    /// v2 `workspace_mode`: `"chat"` or `"coding"`.
+    /// Workspace mode: `"chat"` or `"coding"`.
     pub fn workspace_mode(&self, workspace: Option<&Path>) -> &'static str {
         if self.is_chat_workspace(workspace) {
             "chat"

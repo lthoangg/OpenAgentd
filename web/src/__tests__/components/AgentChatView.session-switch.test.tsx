@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
-import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { forwardRef, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
 let agentsLoading = false
 let workspaceTree: unknown = undefined
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
+const navigateMock = mock((_options: unknown) => Promise.resolve())
 
 mock.module('@tanstack/react-router', () => ({
-  useNavigate: () => mock(() => Promise.resolve()),
+  useNavigate: () => navigateMock,
 }))
 
 mock.module('@tanstack/react-query', () => ({
@@ -76,23 +77,29 @@ mock.module('@/components/AgentView', () => ({
   ),
 }))
 mock.module('@/components/PendingMessageQueue', () => ({ PendingMessageQueue: () => <div data-testid="pending-queue" /> }))
+// The transcript (AgentView, mocked here) is the one place that draws the queue.
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
-mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
+// Stands in for the header: its lead button shows exactly when the view passes a handler.
+mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
+  AgentChatHeader: ({ onOpenLead }: { onOpenLead?: () => void }) => (
+    onOpenLead ? <button type="button" aria-label="Open the lead agent" onClick={onOpenLead} /> : null
+  ),
+}))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/components/composer/Composer', () => ({
   Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { disabled?: boolean; queue?: ReactNode }
-  >(function ComposerMock({ disabled, queue }, ref) {
+    { disabled?: boolean }
+  >(function ComposerMock({ disabled }, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,
     }))
-    return <div data-testid="composer" data-disabled={disabled ? '' : undefined}>{queue}</div>
+    return <div data-testid="composer" data-disabled={disabled ? '' : undefined} />
   }),
 }))
 
@@ -152,6 +159,7 @@ afterEach(cleanup)
 beforeEach(() => {
   agentsLoading = false
   workspaceTree = undefined
+  navigateMock.mockClear()
   useAgentStore.setState({ sessionId: null, parentSessionId: null, _workspace: null })
 })
 
@@ -216,22 +224,43 @@ describe('AgentChatView — switching sessions', () => {
     expect(screen.queryByText("This session's folder was moved or deleted.")).toBeNull()
   })
 
-  it("puts a main session's message queue in the composer's tray, not in the transcript", () => {
+  it("does not hand a main session's message queue to the composer's tray", () => {
     useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
     render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
 
-    expect(screen.getByTestId('composer').contains(screen.getByTestId('pending-queue'))).toBe(true)
-    expect(screen.getAllByTestId('pending-queue')).toHaveLength(1)
-    // The transcript is told the composer carries it, so it draws no second queue.
+    // The queue belongs to the transcript (AgentView), which is mocked here:
+    // neither the composer nor the chat shell may draw one.
+    expect(screen.getByTestId('composer').querySelector('[data-testid="pending-queue"]')).toBeNull()
+    expect(screen.queryByTestId('pending-queue')).toBeNull()
+    // The composer still carries the jump-to-latest chip.
     expect(screen.getByTestId('transcript').hasAttribute('data-composer-tray')).toBe(true)
   })
 
-  it("leaves a subagent's queue in its transcript: there is no composer to hold it", () => {
+  it("draws no queue of its own for a subagent's session either", () => {
     useAgentStore.setState({ sessionId: 'session-sub', parentSessionId: 'session-main', _workspace: '/repo/b' })
     render(<AgentChatView sessionId="session-sub" workspace="/repo/b" />)
 
     expect(screen.queryByTestId('composer')).toBeNull()
-    // No tray, so the transcript is not told to leave its queue out.
+    expect(screen.queryByTestId('pending-queue')).toBeNull()
+    // No tray, so the chip stays in the transcript.
     expect(screen.getByTestId('transcript').hasAttribute('data-composer-tray')).toBe(false)
+  })
+
+  it("gives a subagent's header a way back to the lead, the same one the banner takes", () => {
+    useAgentStore.setState({ sessionId: 'session-sub', parentSessionId: 'session-main', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-sub" workspace="/repo/b" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open the lead agent' }))
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-main' } })
+    navigateMock.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Return to main agent' }))
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-main' } })
+  })
+
+  it('offers no lead button in a main session', () => {
+    useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
+
+    expect(screen.queryByRole('button', { name: 'Open the lead agent' })).toBeNull()
   })
 })

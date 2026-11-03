@@ -1,5 +1,4 @@
-//! Session interaction modes — port of `app/agent/interaction_mode.py` and
-//! `app/services/session_interaction_mode.py`.
+//! Session interaction modes.
 
 use anyhow::{anyhow, Result};
 use appv3_db::{self as db, DbPool, NewMessage};

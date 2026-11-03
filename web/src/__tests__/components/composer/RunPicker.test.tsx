@@ -7,11 +7,12 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
-import type { ProviderInfo, StoredCredential } from '@/api/client'
+import type { ProviderInfo, ProviderUsageResponse, StoredCredential } from '@/api/client'
 import type { ModelCatalogEntry } from '@/api/types'
 import { RunPicker } from '@/components/composer/RunPicker'
 import type { RunSettings } from '@/components/composer/useRunSettings'
 import { resetHoverIntent } from '@/hooks/use-hover-intent'
+import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { RunSettingsPatch } from '@/stores/useAgentStore/types'
@@ -68,7 +69,70 @@ async function frame() {
   await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
 }
 
+/** The account picker with each account's usage already in the cache, so no request goes out. */
+function renderAccounts(usageByAccount: Record<string, ProviderUsageResponse['limits']>) {
+  const accounts = Object.keys(usageByAccount).map((id) => credential(id, id[0].toUpperCase() + id.slice(1)))
+  const providerInfo = { id: 'openai', label: 'OpenAI', stored_credentials: accounts, supports_credential_usage: true } as ProviderInfo
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  for (const [id, limits] of Object.entries(usageByAccount)) {
+    client.setQueryData(queryKeys.settings.providerUsage('openai', id), { provider: 'openai', limits } satisfies ProviderUsageResponse)
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <RunPicker settings={settings({ accounts, providerInfo, provider: 'openai' })} focus="model" onDone={() => {}} />
+    </QueryClientProvider>,
+  )
+  return (id: string) => screen.getByRole('radio', { name: new RegExp(id, 'i') })
+}
+
 describe('RunPicker', () => {
+  describe('account quota', () => {
+    it('shows percent left for a window, as before', () => {
+      const row = renderAccounts({ work: [{ primary: { used_percent: 30 } }], home: [] })
+      expect(row('Work').textContent).toContain('70% left')
+      expect(row('Home').textContent).not.toContain('left')
+    })
+
+    it('shows what is left of a spend cap on an Enterprise account with no windows', () => {
+      const row = renderAccounts({
+        work: [{ plan_type: 'enterprise', spend: { reached: false, currency: 'USD', limit: 50, used: 38, remaining: 12, used_percent: 76 } }],
+        home: [{ primary: { used_percent: 10 } }],
+      })
+      expect(row('Work').textContent).toContain('$12.00 of $50.00 left')
+    })
+
+    it('shows a credit balance, unlimited credits and an empty account', () => {
+      const row = renderAccounts({
+        work: [{ credits: { has_credits: true, unlimited: false, balance: '$84.50' } }],
+        home: [{ credits: { has_credits: true, unlimited: true, balance: null } }],
+        spare: [{ credits: { has_credits: false, unlimited: false, balance: null } }],
+      })
+      expect(row('Work').textContent).toContain('$84.50 left')
+      expect(row('Home').textContent).toContain('Unlimited')
+      expect(row('Spare').textContent).toContain('No credits left')
+    })
+
+    it('says Limit reached in the error tone, between the label and the check', () => {
+      const row = renderAccounts({ work: [{ spend: { reached: true, limit: 700, used: 800, remaining: 0 } }], home: [] })
+      const state = screen.getByText('Limit reached')
+      expect(state.className).toContain('text-(--color-error)')
+      const parts = Array.from(row('Work').children)
+      expect(parts[0].textContent).toBe('Work')
+      expect(parts[1]).toBe(state)
+    })
+
+    it('keeps the balance in the tooltip when a percent window leads, and truncates a long one', () => {
+      renderAccounts({
+        work: [{ primary: { used_percent: 20 }, credits: { has_credits: true, unlimited: false, balance: '$84.50' } }],
+        home: [{ credits: { has_credits: true, unlimited: true, balance: 'Unlimited until the end of the billing period' } }],
+      })
+      expect(screen.getByText('80% left').getAttribute('title')).toBe('Balance $84.50')
+      const long = screen.getByText('Unlimited until the end of the billing period')
+      expect(long.className).toContain('truncate')
+      expect(long.getAttribute('title')).toBe('Unlimited until the end of the billing period')
+    })
+  })
+
   it('lists every model as provider:model and marks the one that runs', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const options = screen.getAllByRole('option')

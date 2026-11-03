@@ -1,5 +1,4 @@
-//! GitHub Copilot — port of `providers/copilot/*` (`copilot.py`, `oauth.py`,
-//! `usage.py`).
+//! GitHub Copilot: chat, OAuth and usage.
 
 use crate::codex::say;
 use crate::oauth::TokenSlot;

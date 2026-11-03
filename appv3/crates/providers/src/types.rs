@@ -1,5 +1,4 @@
-//! Internal chat message and provider delta schemas — port of
-//! `app/agent/schemas/chat.py`. These are NOT part of the public API.
+//! Internal chat message and provider delta schemas. These are NOT part of the public API.
 
 use async_trait::async_trait;
 use futures::Stream;
@@ -108,7 +107,7 @@ pub struct EncryptedReasoningItem {
 
 // ── Messages ────────────────────────────────────────────────────────────────
 
-/// Internal flags carried by every message (v2 `BaseMessage` exclude=True fields).
+/// Internal flags carried by every message (never serialised to providers).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageMeta {
     pub exclude_from_context: bool,
@@ -147,7 +146,7 @@ pub struct AssistantMessage {
 }
 
 impl AssistantMessage {
-    /// v2 `_sync_reasoning_extra` validator.
+    /// Keeps `reasoning_items` and `meta.extra["reasoning_items"]` in sync.
     pub fn sync_reasoning_extra(&mut self) {
         if let Some(items) = &self.reasoning_items {
             if !items.is_empty() {
@@ -241,7 +240,7 @@ impl ChatMessage {
         }
     }
 
-    /// v2 `HumanMessage.text_content`.
+    /// Text content of a human message.
     pub fn text_content(&self) -> Option<String> {
         if let ChatMessage::User { content, parts: Some(parts), .. } = self {
             if !parts.is_empty() {

@@ -1,4 +1,4 @@
-//! `SQLiteCheckpointer` — port of `app/agent/checkpointer.py`.
+//! `SQLiteCheckpointer` — persists a turn's messages to SQLite.
 //!
 //! v2 tracks persisted messages by Python object identity; here a message is
 //! persisted exactly when it carries a `db_id`.
@@ -24,7 +24,7 @@ pub struct Checkpointer {
     stop_on_missing_session: Vec<Event>,
 }
 
-/// `_last_prompt_tokens_from_history`.
+/// Prompt-token count of the last model call in `history`.
 fn last_prompt_tokens(history: &[ChatMessage]) -> i64 {
     for m in history.iter().rev() {
         if m.meta().is_summary() {
@@ -124,7 +124,7 @@ impl Checkpointer {
             // IMMEDIATE takes the write lock up front, so the reads below
             // cannot go stale under a concurrent `save_message`.
             let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-            // Summary anchors (`_summary_anchor_ids`).
+            // Summary anchors.
             let mut anchored: HashMap<usize, i64> = HashMap::new();
             for &i in &new_idx {
                 if !state.messages[i].meta().is_summary() {

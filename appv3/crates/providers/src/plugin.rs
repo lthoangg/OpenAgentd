@@ -1,4 +1,4 @@
-//! Provider plugins — port of `plugin_api.py` + `plugin_registry.py`.
+//! Provider plugins.
 //!
 //! v2 loads Python modules exposing `provider = ProviderPlugin(...)`. v3 loads
 //! JavaScript/TypeScript files exporting `provider` (see `appv3-jsplugin` and
@@ -144,7 +144,7 @@ pub fn credential_map(fields: &[CredentialField]) -> Value {
     Value::Array(fields.iter().map(|f| json!({"name": f.name, "label": f.label, "secret": f.secret, "required": f.required, "placeholder": f.placeholder})).collect())
 }
 
-/// Catalog entry for a plugin (v2 `catalog.all_providers`).
+/// Catalog entry for a plugin.
 pub fn catalog_entry(p: &PluginInfo) -> Value {
     let mut aliases = Map::new();
     for (k, v) in &p.model_registry_aliases {
@@ -169,7 +169,7 @@ pub fn catalog_entry(p: &PluginInfo) -> Value {
     })
 }
 
-// ── usage response schema (`app/api/schemas/settings.py`) ──────────────────
+// ── usage response schema ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct UsageWindow {

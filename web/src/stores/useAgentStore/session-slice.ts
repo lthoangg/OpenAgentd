@@ -98,15 +98,19 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
   return messages
     // A goal's queued continuation and a restart's note are the runtime's, not the user's message.
     .filter((msg) => msg.role === 'user' && (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') && !userMessageSender(msg) && !msg.extra?.goal_turn && !isRestartNoteExtra(msg.extra))
-    .map((msg) => ({
-      id: msg.id,
-      sessionId,
-      content: msg.content ?? '',
-      submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
-      attachments: msg.attachments ?? undefined,
-      sentFromWorkspace: sentFrom(msg.extra)?.workspaceName,
-      heldUntilTurnEnd: msg.extra?.hold_until_turn_end === true || undefined,
-    }))
+    .map((msg) => {
+      const sender = sentFrom(msg.extra)
+      return {
+        id: msg.id,
+        sessionId,
+        content: msg.content ?? '',
+        submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
+        attachments: msg.attachments ?? undefined,
+        sentFromWorkspace: sender?.workspaceName,
+        sentFromSession: sender ? { sessionId: sender.sessionId, workspace: sender.workspace } : undefined,
+        heldUntilTurnEnd: msg.extra?.hold_until_turn_end === true || undefined,
+      }
+    })
 }
 
 /**

@@ -15,6 +15,25 @@
   --pet-fold: 2000ms;
   --pet-bob: 1s;
   --pet-snooze: 2s;
+  /* Ladders, balloons and falls (LADDER_*, BALLOON_*, LAND_MS and DUST_MS in state.ts). */
+  --pet-ladder-grow: 500ms;
+  --pet-ladder-fold: 400ms;
+  --pet-balloon-pop: 260ms;
+  --pet-balloon-away: 700ms;
+  --pet-balloon-sway: 2.2s;
+  --pet-float-bob: 1.6s;
+  --pet-land: 300ms;
+  --pet-dust: 550ms;
+  /* How long the pet's move takes and how it eases; the page sets both while it moves. */
+  --pet-move-ms: 500ms;
+  --pet-move-ease: linear;
+  /* Gravity: eases in; a long fall reaches its top speed and keeps it. */
+  --pet-fall-ease: cubic-bezier(0.55, 0, 1, 0.45);
+  --pet-fall-capped-ease: cubic-bezier(0.45, 0, 0.75, 0.6);
+  /* The pixel ladder and the dust it lands in. */
+  --pet-ladder-rail: #b9824a;
+  --pet-ladder-rung: #dba869;
+  --pet-dust-ink: rgba(168, 158, 146, 0.85);
   /* Floating over any wallpaper needs a stronger shadow than the app's. */
   --pet-bubble-shadow: 0 8px 22px rgba(26, 23, 20, 0.24), 0 1px 3px rgba(26, 23, 20, 0.16);
   --pet-snooze-ink: rgba(255, 255, 255, 0.92);
@@ -59,9 +78,16 @@ button:focus-visible {
   outline-offset: 1px;
 }
 
+/* The world: the work area, drawn through a window that is only a lane of it.
+ * The page sets its size and offsets it by the window's origin. While the
+ * window's top-left corner moves, the pet is hidden until the webview has
+ * redrawn at the new size, so no frame shows it displaced. */
 .pet-strip {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+}
+
+.pet-strip--shifting {
+  visibility: hidden;
 }
 
 /* ── The pet ──────────────────────────────────────────────────────────── */
@@ -144,6 +170,242 @@ button:focus-visible {
 
 .pet--left.pet--jump .pet-body {
   animation-name: pet-hop-left;
+}
+
+/* A ladder climb, a balloon's rise or a fall: the page sets how long and how it eases. */
+.pet--moving {
+  transition: transform var(--pet-move-ms) var(--pet-move-ease);
+}
+
+/* Up a ladder: the walking steps, with a little sway from rung to rung. */
+.pet--climb .pet-frame--0 {
+  animation: pet-frame-a calc(var(--pet-step) * 1.2) steps(1) infinite;
+}
+
+.pet--climb .pet-frame--1 {
+  animation: pet-frame-b calc(var(--pet-step) * 1.2) steps(1) infinite;
+}
+
+.pet--climb .pet-body {
+  animation: pet-climb calc(var(--pet-step) * 2.4) var(--ease-in-out) infinite;
+}
+
+.pet--left.pet--climb .pet-body {
+  animation-name: pet-climb-left;
+}
+
+@keyframes pet-climb {
+  0%, 100% { transform: translateX(-3%) rotate(-3deg); }
+  50% { transform: translateX(3%) rotate(3deg); }
+}
+
+@keyframes pet-climb-left {
+  0%, 100% { transform: scaleX(-1) translateX(-3%) rotate(-3deg); }
+  50% { transform: scaleX(-1) translateX(3%) rotate(3deg); }
+}
+
+/* Hanging from a balloon: it bobs gently. */
+.pet--float .pet-body {
+  animation: pet-float var(--pet-float-bob) var(--ease-in-out) infinite;
+}
+
+.pet--left.pet--float .pet-body {
+  animation-name: pet-float-left;
+}
+
+@keyframes pet-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7%); }
+}
+
+@keyframes pet-float-left {
+  0%, 100% { transform: scaleX(-1) translateY(0); }
+  50% { transform: scaleX(-1) translateY(-7%); }
+}
+
+/* Falling: stretched. Landing: squashed flat, then a stretch and back. */
+.pet--fall .pet-body {
+  transform: scaleX(0.92) scaleY(1.12);
+}
+
+.pet--left.pet--fall .pet-body {
+  transform: scaleX(-0.92) scaleY(1.12);
+}
+
+.pet--land .pet-body {
+  animation: pet-land var(--pet-land) var(--ease-out);
+}
+
+.pet--left.pet--land .pet-body {
+  animation-name: pet-land-left;
+}
+
+@keyframes pet-land {
+  0% { transform: scaleX(1.22) scaleY(0.68); }
+  40% { transform: scaleX(0.95) scaleY(1.1); }
+  70% { transform: scaleX(1.03) scaleY(0.97); }
+  100% { transform: none; }
+}
+
+@keyframes pet-land-left {
+  0% { transform: scaleX(-1.22) scaleY(0.68); }
+  40% { transform: scaleX(-0.95) scaleY(1.1); }
+  70% { transform: scaleX(-1.03) scaleY(0.97); }
+  100% { transform: scaleX(-1); }
+}
+
+/* ── Ladder, balloon and dust ─────────────────────────────────────────── */
+/* The ladder grows from the surface it starts on (up), or hangs down from the edge. */
+.pet-ladder {
+  position: absolute;
+  border-left: 3px solid var(--pet-ladder-rail);
+  border-right: 3px solid var(--pet-ladder-rail);
+  pointer-events: none;
+}
+
+.pet-ladder::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(to top, var(--pet-ladder-rung) 0 3px, transparent 3px 10px);
+}
+
+.pet-ladder--up {
+  animation: pet-ladder-grow-up var(--pet-ladder-grow) var(--ease-out) both;
+}
+
+.pet-ladder--down {
+  animation: pet-ladder-grow-down var(--pet-ladder-grow) var(--ease-out) both;
+}
+
+.pet-ladder--up.pet-ladder--fold {
+  animation: pet-ladder-fold-up var(--pet-ladder-fold) var(--ease-in-out) both;
+}
+
+.pet-ladder--down.pet-ladder--fold {
+  animation: pet-ladder-fold-down var(--pet-ladder-fold) var(--ease-in-out) both;
+}
+
+@keyframes pet-ladder-grow-up {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0); }
+}
+
+@keyframes pet-ladder-grow-down {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0); }
+}
+
+@keyframes pet-ladder-fold-up {
+  from { clip-path: inset(0); opacity: 1; }
+  to { clip-path: inset(100% 0 0 0); opacity: 0; }
+}
+
+@keyframes pet-ladder-fold-down {
+  from { clip-path: inset(0); opacity: 1; }
+  to { clip-path: inset(0 0 100% 0); opacity: 0; }
+}
+
+/* The balloon is above the pet's head, on a string; the button is the whole thing. */
+.pet-balloon {
+  position: absolute;
+  left: 30%;
+  bottom: 85%;
+  display: block;
+  width: 40%;
+  aspect-ratio: 9 / 17;
+  cursor: pointer;
+  transform-origin: 50% 100%;
+  animation: pet-balloon-sway var(--pet-balloon-sway) var(--ease-in-out) infinite;
+}
+
+.pet-balloon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: pet-balloon-in var(--motion-base) var(--ease-spring-snappy);
+}
+
+.pet-balloon:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Popped, or let go: no longer a button. */
+.pet-balloon--pop,
+.pet-balloon--away {
+  cursor: default;
+  pointer-events: none;
+}
+
+.pet-balloon--pop {
+  animation: pet-balloon-pop var(--pet-balloon-pop) var(--ease-out) forwards;
+}
+
+.pet-balloon--away {
+  animation: pet-balloon-away var(--pet-balloon-away) var(--ease-in-out) forwards;
+}
+
+@keyframes pet-balloon-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+@keyframes pet-balloon-in {
+  from { opacity: 0; transform: scale(0.3); }
+}
+
+@keyframes pet-balloon-pop {
+  from { transform: scale(0.9); opacity: 1; }
+  to { transform: scale(1.3); opacity: 0; }
+}
+
+@keyframes pet-balloon-away {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-70px); opacity: 0; }
+}
+
+/* A tiny dust puff where it lands: two puffs out to the sides and a small one up. */
+.pet-dust {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.pet-dust i {
+  position: absolute;
+  left: -3px;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--pet-dust-ink);
+  animation: pet-dust-left var(--pet-dust) var(--ease-out) forwards;
+}
+
+.pet-dust i:nth-child(2) {
+  animation-name: pet-dust-right;
+}
+
+.pet-dust i:nth-child(3) {
+  width: 4px;
+  height: 4px;
+  animation-name: pet-dust-up;
+}
+
+@keyframes pet-dust-left {
+  from { transform: translate(0, 0) scale(0.6); opacity: 0.9; }
+  to { transform: translate(-22px, -4px) scale(1.6); opacity: 0; }
+}
+
+@keyframes pet-dust-right {
+  from { transform: translate(0, 0) scale(0.6); opacity: 0.9; }
+  to { transform: translate(22px, -4px) scale(1.6); opacity: 0; }
+}
+
+@keyframes pet-dust-up {
+  from { transform: translate(0, 0) scale(0.6); opacity: 0.9; }
+  to { transform: translate(0, -14px) scale(1.4); opacity: 0; }
 }
 
 /* Zoomies: legs at double speed and a bounce in every stride. */
@@ -774,6 +1036,7 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pet,
   .pet-frame,
   .pet-body,
   .pet-mark,
@@ -784,7 +1047,11 @@ button:focus-visible {
   .pet-laptop-puff,
   .pet-laptop-spark,
   .pet-bubble,
-  .pet-say {
+  .pet-say,
+  .pet-ladder,
+  .pet-balloon,
+  .pet-balloon svg,
+  .pet-dust i {
     animation: none !important;
     transition: none !important;
   }

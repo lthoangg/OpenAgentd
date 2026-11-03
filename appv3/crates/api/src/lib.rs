@@ -1,4 +1,4 @@
-//! HTTP API — port of `app/api` (FastAPI) onto axum. Every route lives under
+//! HTTP API on axum. Every route lives under
 //! `/api/*` exactly as in v2; there is no static SPA mount.
 
 pub mod config_watch;

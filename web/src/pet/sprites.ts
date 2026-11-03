@@ -3,6 +3,9 @@
  * rects, so it scales to any size without blurring.
  *
  *   O outline · B body · E eye · P cheek · K beak and feet · . transparent
+ *
+ * The balloon (9 × 17, shared by every character) also uses:
+ *   R balloon · H its shine · S string
  */
 import type { PetCharacter, PetColour, PetPose } from './state'
 
@@ -91,6 +94,60 @@ export const BODY_COLOURS: Record<PetColour, string> = {
 const OUTLINE = '#1A1714'
 const CHEEK = '#E58A9A'
 const BEAK = '#F28C28'
+/** The balloon is a fixed red for every character and colour. */
+const BALLOON_RED = '#E5484D'
+const BALLOON_SHINE = '#FFB3B6'
+const BALLOON_STRING = '#8F8A84'
+
+export const BALLOON_COLUMNS = 9
+export const BALLOON_ROWS = 17
+
+/** A balloon on its string; the string's end reaches the pet's head. */
+const BALLOON_FULL = [
+  '..OOOOO..',
+  '.ORRRRRO.',
+  'ORHHRRRRO',
+  'ORHRRRRRO',
+  'ORHRRRRRO',
+  'ORRRRRRRO',
+  'ORRRRRRRO',
+  '.ORRRRRO.',
+  '.ORRRRRO.',
+  '..ORRRO..',
+  '...OOO...',
+  '....O....',
+  '...S.....',
+  '....S....',
+  '...S.....',
+  '....S....',
+  '...S.....',
+]
+
+/** The pop: a ragged burst and a slack string. */
+const BALLOON_POP = [
+  '.........',
+  '.........',
+  '.R..O..R.',
+  '..R.R.R..',
+  '...ROR...',
+  'OR.RHR.RO',
+  '...ROR...',
+  '..R.R.R..',
+  '.R..O..R.',
+  '.........',
+  '.........',
+  '.........',
+  '...S.....',
+  '....S....',
+  '...S.....',
+  '....S....',
+  '...S.....',
+]
+
+/** The balloon's rows: whole, or at the instant it pops. */
+export function balloonRows(popped: boolean): string[] {
+  return popped ? BALLOON_POP : BALLOON_FULL
+}
 
 /** The frames a pose cycles through (one frame holds still). */
 export function poseFrames(character: PetCharacter, pose: PetPose): string[][] {
@@ -98,6 +155,8 @@ export function poseFrames(character: PetCharacter, pose: PetPose): string[][] {
   switch (pose) {
     case 'walk':
     case 'zoom':
+    // Up a ladder it takes the same steps, one frame after the other.
+    case 'climb':
       return [...art.walk]
     case 'sleep':
       return [sleepy(art.still)]
@@ -114,7 +173,16 @@ export interface SpriteRect {
 
 /** The filled pixels of one frame. */
 export function spriteRects(rows: string[], colour: PetColour): SpriteRect[] {
-  const fills: Record<string, string> = { O: OUTLINE, E: OUTLINE, B: BODY_COLOURS[colour], P: CHEEK, K: BEAK }
+  const fills: Record<string, string> = {
+    O: OUTLINE,
+    E: OUTLINE,
+    B: BODY_COLOURS[colour],
+    P: CHEEK,
+    K: BEAK,
+    R: BALLOON_RED,
+    H: BALLOON_SHINE,
+    S: BALLOON_STRING,
+  }
   const rects: SpriteRect[] = []
   rows.forEach((row, y) => {
     for (let x = 0; x < row.length; x += 1) {

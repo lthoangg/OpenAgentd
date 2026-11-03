@@ -1,5 +1,4 @@
-//! Functional tool plugins — port of `app/agent/plugins/loader.py`
-//! (`_FunctionalPluginAdapter`) over JS/TS plugin files (`appv3-jsplugin`).
+//! Functional tool plugins over JS/TS plugin files (`appv3-jsplugin`).
 //!
 //! A `*.ts` / `*.js` file in `settings.plugins_dirs` whose `plugin()` factory
 //! returns hooks is a tool plugin. Plugins wrap only the tool executor:

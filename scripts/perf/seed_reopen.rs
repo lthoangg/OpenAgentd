@@ -1,6 +1,7 @@
 //! Seeds the "reopen after a long plan-mode run" database used by
 //! `scripts/perf/reopen.py`. Run once (any tree; the schema is unchanged
-//! since `fad35386`) via `scripts/perf/run-reopen.sh`.
+//! since `fad35386`). `scripts/perf/run-all.sh` copies this file into
+//! `appv3/crates/agent/tests/` and runs it as an ignored test.
 //!
 //! Shape: one user prompt, then 1,100 lead rows of assistant tool calls and
 //! 4 KB tool results with usage (so the newest ~11 pages hold no prompt),

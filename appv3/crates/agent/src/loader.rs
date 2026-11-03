@@ -1,4 +1,4 @@
-//! Agent configuration loader — port of `app/agent/loader.py` + `drift.py`.
+//! Agent configuration loader and config-drift detection.
 
 use crate::agent::Agent;
 use crate::prompts;
@@ -22,7 +22,7 @@ pub fn default_provider_factory() -> ProviderFactory {
 
 // ── MCP bridge ───────────────────────────────────────────────────────────────
 
-/// Globally configured MCP servers (v2 `mcp_manager`), installed by the MCP crate.
+/// Globally configured MCP servers, installed by the MCP crate.
 pub trait McpSource: Send + Sync {
     fn server_names(&self) -> Vec<String>;
     fn tools_for_server(&self, name: &str) -> Vec<ToolRef>;
@@ -60,12 +60,12 @@ pub struct AgentConfig {
 
 fn fm_regex() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    // v2 `_FRONTMATTER_RE` without its always-matching `(.*)` body group; the
+    // v2's frontmatter regex without its always-matching `(.*)` body group; the
     // body is the rest of the text (see `skills::split_frontmatter`).
     RE.get_or_init(|| regex::Regex::new(r"(?s)\A\s*---\r?\n(.*?)\r?\n---\r?\n?").unwrap())
 }
 
-/// Split `(frontmatter, body)` with v2 `_FRONTMATTER_RE`.
+/// Split `(frontmatter, body)` the way v2 did.
 pub fn split_frontmatter(text: &str) -> Option<(String, String, std::ops::Range<usize>)> {
     let c = fm_regex().captures(text)?;
     let m1 = c.get(1).unwrap();
@@ -115,7 +115,7 @@ pub fn config_from_meta(meta: &Map<String, Value>) -> Result<AgentConfig, String
 }
 
 /// `AgentConfig.model_validate` returning pydantic `(loc, msg)` error pairs
-/// (`_validation_detail` joins the msgs with `"; "`).
+/// (the error detail joins the msgs with `"; "`).
 pub fn config_from_meta_errors(meta: &Map<String, Value>) -> Result<AgentConfig, Vec<(String, String)>> {
     let mut errs = Vec::new();
     let name = match meta.get("name") {
@@ -445,7 +445,7 @@ const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo", "schedule", "lsp", "a
 /// from the user's file.
 const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan"];
 
-/// `_default_tool_registry` (built-ins by name). MCP tools are reached
+/// Default tool registry (built-ins by name). MCP tools are reached
 /// through the `mcp` tool, which `build_agent` adds.
 pub fn default_tool_registry() -> HashMap<String, ToolRef> {
     let mut reg: HashMap<String, ToolRef> = HashMap::new();
@@ -464,7 +464,7 @@ pub fn default_tool_registry() -> HashMap<String, ToolRef> {
     reg
 }
 
-/// `_prune_unknown_tools_from_file` — drop tool names the registry does not
+/// Drop tool names the registry does not
 /// know from the file's `tools:` list and rewrite it with `yaml.safe_dump`.
 /// Failures are logged, never raised.
 pub fn prune_unknown_tools_from_file(path: &Path, unknown: &[String]) {
@@ -501,7 +501,7 @@ pub fn prune_unknown_tools_from_file(path: &Path, unknown: &[String]) {
     }
 }
 
-/// `_build_agent`.
+/// Build an `Agent` from its config.
 pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, factory: &ProviderFactory, source_path: Option<&Path>) -> Agent {
     let mut system_prompt = if cfg.system_prompt.trim().is_empty() { prompts::coding_prompt().to_string() } else { cfg.system_prompt.trim().to_string() };
     if cfg.name == "code" {
@@ -583,8 +583,8 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
     agent
 }
 
-/// Load the canonical `code.md` agent (v2 `load_agent_from_dir` minus the
-/// session wrapper). `Ok(None)` when the dir or `code.md` is missing.
+/// Load the canonical `code.md` agent (without a session wrapper).
+/// `Ok(None)` when the dir or `code.md` is missing.
 pub fn load_code_agent(agents_dir: &Path, factory: &ProviderFactory) -> Result<Option<Agent>, String> {
     let dir = appv3_tools::denied::resolve(agents_dir);
     if !dir.exists() {

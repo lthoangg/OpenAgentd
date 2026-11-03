@@ -17,19 +17,14 @@
 //! Its name, numbers and error all come from that one server, so the label
 //! can't name one server over another's numbers.
 //!
-//! The popup also lists what needs the user and what runs, from the same feed
-//! the notch reads (``island.rs``): ``tray_sessions`` hands the snapshot
-//! over, ``tray-sessions`` says it changed, and ``tray_open_session`` opens
-//! a row through the shared session → window router.
+//! The popup lists no sessions: the notch and the sidebar do.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::island::{IslandSession, IslandStatus, SessionState, UnreachableServer};
 use crate::AppState;
 use crate::servers::{ServerId, BUNDLED_KEY};
 
@@ -43,9 +38,6 @@ const NO_SERVER_NAME: &str = "No server connected";
 /// Event emitted right before the popup is shown so the (long-lived, hidden)
 /// webview knows to refetch usage instead of showing a stale snapshot.
 pub const TRAY_POPUP_REFRESH_EVENT: &str = "tray-popup-refresh";
-
-/// The sessions that need the user or run changed while the popup is up.
-pub const TRAY_SESSIONS_EVENT: &str = "tray-sessions";
 
 /// The popup's own Esc: hide it without running a menu command.
 const TRAY_HIDE_ACTION: &str = "hide";
@@ -486,70 +478,6 @@ fn menu_command(action: &str) -> Option<&str> {
     (action != TRAY_HIDE_ACTION).then_some(action)
 }
 
-/// What the popup lists above the provider limits.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TraySessions {
-    /// The app is on a server (a window's, or the builtin while it runs).
-    pub connected: bool,
-    /// Waiting on the user, every server merged.
-    pub needs_you: Vec<IslandSession>,
-    pub running: Vec<IslandSession>,
-    /// Followed servers that dropped off.
-    pub unreachable: Vec<UnreachableServer>,
-}
-
-/// The popup's lists from the island's snapshot: waiting sessions and
-/// running ones, in the order the snapshot keeps. Finished sessions are the
-/// island's and the sidebar's; the tray is for what needs you now.
-pub fn tray_sessions_from(status: &IslandStatus, connected: bool) -> TraySessions {
-    let with = |state: SessionState| status.sessions.iter().filter(|s| s.state == state).cloned().collect();
-    TraySessions {
-        connected,
-        needs_you: with(SessionState::NeedsInput),
-        running: with(SessionState::Running),
-        unreachable: status.unreachable.clone(),
-    }
-}
-
-/// The popup's session lists, read when it opens and again on
-/// ``tray-sessions``. ``retry`` (its "Retry" on a server that can't be
-/// reached) also asks the feed to try its servers again now. Only the popup
-/// may call it.
-#[tauri::command]
-pub async fn tray_sessions(app: AppHandle, window: WebviewWindow, retry: Option<bool>) -> Result<TraySessions, String> {
-    if window.label() != TRAY_POPUP_WINDOW {
-        return Err("only the tray popup reads its sessions".into());
-    }
-    if retry == Some(true) {
-        crate::island::wake_feed();
-    }
-    let connected = crate::servers::app_current_server(&app).await.is_some();
-    Ok(tray_sessions_from(&crate::island::status_snapshot(), connected))
-}
-
-/// A row of the popup: open its session in the window that shows it (or the
-/// server's), then close the popup. Only the popup may call it.
-#[tauri::command]
-pub fn tray_open_session(app: AppHandle, window: WebviewWindow, session_id: String) {
-    if window.label() != TRAY_POPUP_WINDOW {
-        return;
-    }
-    crate::island::dispatch_open(&app, session_id);
-    let _ = window.hide();
-}
-
-/// The feed's snapshot changed: tell the popup, if it is up, to read the
-/// lists again. A hidden popup reads them on its next open anyway.
-pub fn status_changed(app: &AppHandle, _status: &IslandStatus) {
-    let visible = app
-        .get_webview_window(TRAY_POPUP_WINDOW)
-        .is_some_and(|w| w.is_visible().unwrap_or(false));
-    if visible {
-        let _ = app.emit_to(TRAY_POPUP_WINDOW, TRAY_SESSIONS_EVENT, ());
-    }
-}
-
 /// Dispatch a popup action by the same id strings the native menu uses
 /// (``show``, ``new_session``, ``settings``, ``usage_manage``, ``quit``,
 /// ...), then close the popup — a menu closes after an item fires. ``hide``
@@ -681,41 +609,6 @@ mod cache_tests {
         assert_eq!(menu_command("quit"), Some("quit"));
     }
 
-    fn session(id: &str, state: SessionState) -> IslandSession {
-        IslandSession {
-            id: id.into(),
-            title: format!("T{id}"),
-            workspace: Some("web".into()),
-            state,
-            question: None,
-            question_id: None,
-            choices: Vec::new(),
-            server: None,
-            server_id: None,
-            goal: None,
-            account: None,
-        }
-    }
-
-    #[test]
-    fn the_popup_lists_what_needs_you_and_what_runs_and_nothing_finished() {
-        let status = IslandStatus {
-            seq: 4,
-            sessions: vec![session("q", SessionState::NeedsInput), session("r", SessionState::Running), session("p", SessionState::NeedsInput)],
-            unread: vec![session("d", SessionState::Done)],
-            unreachable: vec![UnreachableServer { id: "bundled".into(), name: "Built-in server".into(), reason: "unreachable" }],
-        };
-        let lists = tray_sessions_from(&status, true);
-        let ids = |list: &[IslandSession]| list.iter().map(|s| s.id.clone()).collect::<Vec<_>>();
-        assert_eq!(ids(&lists.needs_you), ["q", "p"]);
-        assert_eq!(ids(&lists.running), ["r"]);
-        assert_eq!(lists.unreachable.len(), 1);
-        assert!(lists.connected);
-
-        let json = serde_json::to_value(tray_sessions_from(&IslandStatus::default(), false)).unwrap();
-        assert_eq!(json, serde_json::json!({ "connected": false, "needsYou": [], "running": [], "unreachable": [] }));
-    }
-
     fn option(id: &str, name: &str) -> crate::usage::TrayServerOption {
         crate::usage::TrayServerOption { id: id.into(), name: name.into(), detail: None }
     }
@@ -784,8 +677,6 @@ mod cache_tests {
             [
                 "core:event:default",
                 "allow-get-tray-usage-summary",
-                "allow-tray-sessions",
-                "allow-tray-open-session",
                 "allow-tray-action",
                 "allow-tray-fit",
                 "allow-pet-settings",

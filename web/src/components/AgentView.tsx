@@ -9,9 +9,9 @@
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
- * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, Undo, and
- * the turn's details); only the trailing turn hides its footer while the turn
- * is open. Undo belongs to the last finished turn.
+ * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, and the
+ * turn's details); only the trailing turn hides its footer while the turn is
+ * open.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
@@ -48,13 +48,13 @@ import { RestartDivider } from './AgentView/RestartDivider'
 import { goalTurnInfo } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
+import { fromLead, isLeadMessage } from '@/utils/lead-messages'
 import { CopyDetailsButton, ErrorCard } from './AgentView/ErrorCard'
 import { providerErrorDetails, switchedAccount, waitAccount } from './AgentView/provider-status'
 import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
 import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
-import { copyText, useChatMenu } from './ChatContextMenu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
@@ -117,11 +117,6 @@ function pinnedPromptShows(prompt: ContentBlock, revertTime: number | null): boo
 /** The run picker, on its model list: how a failed turn gets another model. */
 function openModelPicker(): void {
   useUIStore.getState().openRunPicker('model')
-}
-
-/** Undo the last message and its answer; the store puts the prompt back in the composer. */
-function undoLatestTurn(): void {
-  void useAgentStore.getState().undoAgent()
 }
 
 function isProviderErrorBlock(block: ContentBlock): boolean {
@@ -447,10 +442,12 @@ function providerErrorTitle(title: unknown): string {
   return title
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
+  /** The open session's parent, when it is a subagent: names the lead for its untagged messages. */
+  leadSessionId?: string
   /** Rewind to a prompt the user wrote; ignored for agent reports. */
   onEdit?: (blockId: string) => void
   /** A turn is running: Edit shows, disabled, until it ends. */
@@ -475,7 +472,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (goalTurn) return <GoalTurnDivider info={goalTurn} />
       const restart = restartNoteInfo(block)
       if (restart) return <RestartDivider info={restart} />
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      // The lead's message to this subagent: its prefix is the chip's job, and
+      // Edit would rewind the subagent, which the lead directs.
+      const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
@@ -598,18 +598,15 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-/** An assistant message, with Copy response / Copy as Markdown on its menu. */
+/**
+ * An assistant message. No menu of its own: a right-click or a long press
+ * selects text and opens the system's menu (Copy, Look Up); the footer's
+ * Copy takes the whole answer.
+ */
 function AssistantText({ content, sessionId, isStreaming }: { content: string; sessionId?: string; isStreaming: boolean }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const chatMenu = useChatMenu('Actions for response', () => [
-    // As rendered: no Markdown syntax.
-    { label: 'Copy response', run: () => copyText((ref.current?.innerText || ref.current?.textContent || content).trim()) },
-    { label: 'Copy as Markdown', run: () => copyText(content) },
-  ])
   return (
-    <div ref={ref} onContextMenu={chatMenu.onContextMenu} onKeyDown={chatMenu.onKeyDown}>
+    <div>
       <MarkdownBlock content={content} sessionId={sessionId} isStreaming={isStreaming} />
-      {chatMenu.menu}
     </div>
   )
 }
@@ -648,6 +645,9 @@ export function AgentView({
   const blocks = hold?.snapshot.blocks ?? storeBlocks
   const currentBlocks = hold?.snapshot.currentBlocks ?? storeCurrentBlocks
   const sessionId = hold?.snapshot.sessionId ?? storeSessionId
+  // The held transcript is another session's: the store's parent is not its.
+  const storeParentSessionId = useAgentStore((s) => s.parentSessionId) ?? undefined
+  const leadSessionId = hold ? undefined : storeParentSessionId
   // A run longer than the first page loads without the prompt it answers;
   // that prompt is pinned above the loaded rows until its own page lands.
   const shownPinnedPrompt = hold ? hold.snapshot.pinnedPrompt : storePinnedPrompt
@@ -687,7 +687,8 @@ export function AgentView({
     : undefined
   // A report folded into the answer (reader mode) follows the prompt too.
   const answerHoldsReport = lastTurnItem?.kind === 'assistant' && lastTurnItem.blocks.some((b) => b.type === 'user')
-  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !answerHoldsReport
+  // The lead's message is not the user's to resend.
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !isLeadMessage(latestPrompt.block, leadSessionId) && !answerHoldsReport
   // A failed turn offers its way forward on the failure itself: the card for
   // a failure the transcript does not show, else the error the turn ended on.
   const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []
@@ -697,11 +698,6 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
-  // Undo sits under the last finished answer and acts on its prompt, as Retry
-  // does for a failure. A turn that ended on a failure keeps its way forward
-  // on the error card, so the footer does not offer it twice.
-  const turnActionsApply = canRetry && !showsLastError && endingProviderError(trailingBlocks) === undefined
-  const undoTurn = turnActionsApply ? undoLatestTurn : undefined
   // The newest prompt keeps its Edit and Copy at rest; older ones show them on hover or focus.
   const latestTypedPromptId = useMemo(() => {
     for (let i = turnItems.length - 1; i >= 0; i--) {
@@ -784,6 +780,7 @@ export function AgentView({
         block={block}
         isStreaming={isStreaming}
         sessionId={sessionId}
+        leadSessionId={leadSessionId}
         onRetry={block.id === endingErrorId ? errorRetry : undefined}
         onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
         latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
@@ -792,7 +789,7 @@ export function AgentView({
         activeQuotaWaitBlockId={activeQuotaWaitBlockId}
       />
     </div>
-  ), [activeQuotaWaitBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, sessionId])
+  ), [activeQuotaWaitBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   // A change key for auto-follow, not the content itself: the streamed fields
@@ -837,20 +834,6 @@ export function AgentView({
   })
   // Phone: drag or tap the transcript to put the keyboard away.
   useDismissKeyboardOnTouch(scrollRef)
-
-  // Code, tables, diagrams and diffs may widen past the 768px prose column
-  // to 960px when the chat has room (see `.oa-transcript-col` in index.css).
-  // A variable, not a container query: size containment would also contain
-  // the column's fixed-position descendants.
-  useEffect(() => {
-    const root = scrollRef.current
-    if (!root || typeof ResizeObserver === 'undefined') return
-    const sync = () => root.style.setProperty('--oa-transcript-w', `${root.clientWidth}px`)
-    sync()
-    const observer = new ResizeObserver(sync)
-    observer.observe(root)
-    return () => observer.disconnect()
-  }, [scrollRef])
 
   // A switch fades the next session's transcript in once it has something to
   // show, before paint so its first frame never shows at full strength. The
@@ -1143,7 +1126,7 @@ export function AgentView({
         ref={contentRef}
         inert={hold !== null}
         data-session-hold={hold?.kind}
-        className={`oa-transcript-col mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
+        className={`mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
       >
         {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
         {isEmpty && !isLoadingHistory && (
@@ -1172,6 +1155,7 @@ export function AgentView({
                       block={pinnedPrompt}
                       isStreaming={false}
                       sessionId={sessionId}
+                      leadSessionId={leadSessionId}
                       onMentionFileOpen={onMentionFileOpen}
                       onOpenSession={onOpenSession}
                     />
@@ -1200,6 +1184,7 @@ export function AgentView({
                          block={item.block}
                          isStreaming={false}
                          sessionId={sessionId}
+                         leadSessionId={leadSessionId}
                          onEdit={handleEdit}
                          editLocked={editLocked}
                          actionsAtRest={item.block.id === latestTypedPromptId}
@@ -1233,7 +1218,7 @@ export function AgentView({
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : isTrailingTurn ? pinnedStartedAt : undefined
                   // The prompt this answer came from, for the footer's Edit prompt.
                   const promptItem = turnItems[globalTurnIndex - 1]
-                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) ? promptItem.block.id : undefined
+                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) && !isLeadMessage(promptItem.block, leadSessionId) ? promptItem.block.id : undefined
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
@@ -1254,8 +1239,6 @@ export function AgentView({
                      promptId={promptId}
                      onEditPrompt={handleEdit}
                      editLocked={editLocked}
-                     // Only the last finished turn can be undone.
-                     onUndo={isTrailingTurn ? undoTurn : undefined}
                    />
                  )
                 })}
@@ -1284,10 +1267,9 @@ export function AgentView({
               </div>
             )}
 
-            {/* With a composer (``jumpToLatestInComposer``) the queue sits in
-                its tray, right above the box. Without one (a subagent's
-                session) it stays here, under the turn it waits behind. */}
-            {!jumpToLatestInComposer && <PendingMessageQueue />}
+            {/* Queued and steer messages wait here, faded, under the turn
+                they are queued behind, in every session. */}
+            <PendingMessageQueue />
 
             {showsLastError && lastError && (
               <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />

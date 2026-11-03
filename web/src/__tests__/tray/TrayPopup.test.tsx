@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import type { TraySessions } from '@/tray/sessions'
 import type { TrayUsageResult } from '@/tray/usage'
 
 const NOW = Math.floor(Date.now() / 1000)
@@ -42,16 +41,10 @@ type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let answer: (args: Record<string, unknown> | undefined) => Promise<TrayUsageResult> = async () => usageResult
 
-const idle: TraySessions = { connected: true, needsYou: [], running: [], unreachable: [] }
-const session = (id: string, title: string, patch: Record<string, unknown> = {}) =>
-  ({ id, title, workspace: 'api', state: 'needs_input', question: null, ...patch })
-let sessionsNow: unknown = idle
-
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     calls.push([cmd, args])
     if (cmd === 'get_tray_usage_summary') return answer(args)
-    if (cmd === 'tray_sessions') return sessionsNow
     return undefined
   },
 }))
@@ -79,13 +72,10 @@ const { TrayPopup } = await import('@/tray/TrayPopup')
 
 const actions = () => calls.filter(([cmd]) => cmd === 'tray_action').map(([, args]) => args?.action)
 const usageCalls = () => calls.filter(([cmd]) => cmd === 'get_tray_usage_summary').map(([, args]) => args)
-const sessionCalls = () => calls.filter(([cmd]) => cmd === 'tray_sessions').map(([, args]) => args)
-const emit = (event: string) => act(() => [...(listeners.get(event) ?? [])].forEach((handler) => handler()))
 
 beforeEach(() => {
   calls = []
   answer = async () => usageResult
-  sessionsNow = idle
   listeners.clear()
 })
 afterEach(cleanup)
@@ -211,7 +201,6 @@ describe('TrayPopup', () => {
       selected_server_id: 'auto',
       error: 'No server is connected.',
     })
-    sessionsNow = { ...idle, connected: false }
     render(<TrayPopup />)
 
     expect(await screen.findByText('No server connected')).toBeInTheDocument()
@@ -238,72 +227,18 @@ describe('TrayPopup', () => {
   })
 
   it('puts no native tooltip on a control', async () => {
-    sessionsNow = { ...idle, needsYou: [session('s1', 'Plan review')], unreachable: [{ id: 'nas', name: 'NAS', reason: 'unreachable' }] }
     render(<TrayPopup />)
-    await screen.findByText('Plan review')
+    await screen.findByText('5-hour')
     expect(document.querySelectorAll('button[title]')).toHaveLength(0)
   })
 
-  it('lists what needs you first and what runs, and opens a row through the shell', async () => {
-    sessionsNow = {
-      ...idle,
-      needsYou: [session('s1', 'Pin credentials', { question: 'Which account?', server: 'Built-in server' })],
-      running: [session('s2', 'Fix tray rows', { state: 'running', goal: { status: 'active', turn: 3, maxTurns: 10 } })],
-    }
-    render(<TrayPopup />)
-
-    const needs = await screen.findByRole('region', { name: 'Needs you' })
-    expect(within(needs).getByText('Pin credentials')).toBeInTheDocument()
-    expect(within(needs).getByText('Built-in server · api · “Which account?”')).toBeInTheDocument()
-    const running = screen.getByRole('region', { name: 'Running' })
-    expect(within(running).getByText('Goal 3/10')).toBeDefined()
-    expect(screen.getByText('1 needs you')).toBeInTheDocument()
-    // Needs you comes before the limits.
-    expect(needs.compareDocumentPosition(screen.getByText('Provider limits')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-
-    fireEvent.click(within(needs).getByRole('button', { name: /Pin credentials/ }))
-    expect(calls).toContainEqual(['tray_open_session', { sessionId: 's1' }])
-    fireEvent.click(within(running).getByRole('button', { name: /Fix tray rows/ }))
-    expect(calls).toContainEqual(['tray_open_session', { sessionId: 's2' }])
-  })
-
-  it('reads the lists again when the feed says they changed, and each time it opens', async () => {
-    render(<TrayPopup />)
-    await screen.findByText('5-hour')
-    expect(screen.queryByText('Plan review')).toBeNull()
-
-    sessionsNow = { ...idle, needsYou: [session('s1', 'Plan review')] }
-    emit('tray-sessions')
-    expect(await screen.findByText('Plan review')).toBeInTheDocument()
-
-    sessionsNow = idle
-    emit('tray-popup-refresh')
-    // A boolean, not the element: Bun crashes formatting a DOM node into a failure message.
-    await waitFor(() => expect(Boolean(screen.queryByText('Plan review'))).toBe(false))
-  })
-
-  it("names a server it can't reach, and Retry asks the feed to try again", async () => {
-    sessionsNow = { ...idle, unreachable: [{ id: 'http://nas:4082', name: 'NAS', reason: 'key_rejected' }] }
-    render(<TrayPopup />)
-    const group = await screen.findByRole('region', { name: "Can't reach" })
-    expect(within(group).getByText('NAS')).toBeInTheDocument()
-    expect(within(group).getByText('Access key rejected')).toBeInTheDocument()
-    fireEvent.click(within(group).getByRole('button', { name: 'Retry NAS' }))
-    await waitFor(() => expect(sessionCalls().at(-1)).toEqual({ retry: true }))
-  })
-
-  it('shows nothing extra while no session needs you or runs', async () => {
+  // The tray is for provider limits: the notch and the sidebar list sessions.
+  it('lists no sessions and says nothing of what needs you', async () => {
     render(<TrayPopup />)
     await screen.findByText('5-hour')
     expect(document.querySelector('.sessions')).toBeNull()
-    expect(screen.queryByText(/needs you|need you/)).toBeNull()
-  })
-
-  it('ignores a sessions answer it cannot read', async () => {
-    sessionsNow = 'not an object'
-    render(<TrayPopup />)
-    await screen.findByText('5-hour')
-    expect(document.querySelector('.sessions')).toBeNull()
+    expect(screen.queryByText(/needs you|need you/i)).toBeNull()
+    expect(calls.some(([cmd]) => cmd === 'tray_sessions')).toBe(false)
   })
 
   it('offers Settings → Providers when no provider is connected', async () => {

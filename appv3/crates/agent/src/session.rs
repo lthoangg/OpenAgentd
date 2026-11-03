@@ -1073,24 +1073,6 @@ impl AgentSession {
         Ok(())
     }
 
-    pub async fn end_turn_after_question_dismissed(&self, session_id: &str) -> bool {
-        if self.session_id() != session_id {
-            return false;
-        }
-        *self.question_suspended.lock().unwrap() = None;
-        if self.state() == "waiting_input" {
-            self.set_state("idle");
-        }
-        self.emit("agent_status", Some("idle"), None);
-        if !self.cancel.is_set() && self.activate_queued_user_messages(session_id).await {
-            return true;
-        }
-        self.set_active_turn(false);
-        // The user ended the turn by dismissing the question; nothing new to tell them.
-        self.close_turn(session_id, "completed", false, false, None).await;
-        true
-    }
-
     /// `idle_compaction` marks a background compaction turn on the event, so
     /// clients do not flag the session as having something new to read.
     /// `goal_id`: the turn worked on that goal, so its notification names

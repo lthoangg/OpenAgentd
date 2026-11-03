@@ -1,4 +1,4 @@
-//! Provider factory — port of `app/agent/providers/factory.py`.
+//! Provider factory.
 
 use crate::anthropic::{AnthropicProvider, ANTHROPIC_API_BASE};
 use crate::catalog::SUPPORTED_PROVIDERS;
@@ -78,7 +78,7 @@ pub fn compat_spec(id: &str) -> Option<&'static CompatSpec> {
     COMPAT_SPECS.iter().find(|s| s.provider_id == id)
 }
 
-/// v2 `require_api_key`, reading `creds` (overrides → exported env →
+/// Require an API key, reading `creds` (overrides → exported env →
 /// `credentials.yaml`).
 pub fn require_api_key(creds: &CredentialStore, env_var: &str, label: &str) -> ProviderResult<String> {
     let v = creds.get(env_var);
@@ -313,7 +313,7 @@ fn build_opencode(pid: &str, model: &str, key: &str, base_url: &str, kw: Kwargs)
     }
 }
 
-/// Stub used when an agent has no usable model (v2 `UnconfiguredProvider`).
+/// Stub used when an agent has no usable model.
 pub struct UnconfiguredProvider {
     pub message: String,
     kw: Kwargs,

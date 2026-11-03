@@ -1,4 +1,4 @@
-//! Skill discovery + the `skill` tool (port of `tools/builtin/skill.py`).
+//! Skill discovery + the `skill` tool.
 
 use crate::tools::invalid_args;
 use appv3_core::settings::settings;
@@ -97,7 +97,7 @@ fn project_roots(workspace: &Path) -> [PathBuf; 1] {
     [workspace.join(".agents/skills")]
 }
 
-/// `_iter_skill_roots` in precedence order.
+/// Skill roots in precedence order.
 pub fn skill_roots(workspace: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(ws) = workspace {
@@ -111,7 +111,7 @@ pub fn skill_roots(workspace: Option<&Path>) -> Vec<PathBuf> {
     roots
 }
 
-/// `_iter_skill_paths`: flat `{name}/SKILL.md` and nested `{p}/{s}/SKILL.md`.
+/// Skill paths: flat `{name}/SKILL.md` and nested `{p}/{s}/SKILL.md`.
 pub fn iter_skill_paths(directory: &Path) -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
     let sorted_dirs = |p: &Path| -> Vec<(String, PathBuf)> {
@@ -137,7 +137,7 @@ pub fn iter_skill_paths(directory: &Path) -> Vec<(PathBuf, String)> {
     out
 }
 
-/// `_lenient_frontmatter`.
+/// Lenient frontmatter parse.
 fn lenient_frontmatter(block: &str) -> Map<String, Value> {
     static KEY_RE: OnceLock<regex::Regex> = OnceLock::new();
     let key_re = KEY_RE.get_or_init(|| regex::Regex::new(r"^[A-Za-z0-9_-]+$").unwrap());
@@ -277,7 +277,7 @@ pub fn parse_frontmatter_strict(text: &str) -> StrictFrontmatter {
     }
 }
 
-/// `_render_tokens`.
+/// Render the tokens in skill text.
 pub fn render_tokens(text: &str, skill_dir: Option<&Path>, workspace: Option<&Path>) -> String {
     if text.is_empty() {
         return String::new();
@@ -424,7 +424,7 @@ pub fn skill_tool_description(workspace: Option<&Path>) -> String {
     .join("\n")
 }
 
-/// `_loaded_skills_from_messages`.
+/// Skills already loaded in `messages`.
 fn loaded_from_messages(messages: &[ChatMessage]) -> BTreeMap<String, String> {
     let mut loaded: BTreeMap<String, String> = BTreeMap::new();
     let mut order: Vec<String> = Vec::new();

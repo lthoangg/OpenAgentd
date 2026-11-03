@@ -1,7 +1,7 @@
 //! Provider connection state & model discovery used by the settings/agents
-//! routes — port of `app/services/provider_connection.py`,
-//! `model_discovery.py` and `opencode/access.py`. `all_providers()` is the
-//! builtin catalog plus native provider plugins.
+//! routes: credential and connection status, model discovery and OpenCode
+//! access checks. `all_providers()` is the builtin catalog plus native
+//! provider plugins.
 
 use appv3_core::runtime_settings::{self as rs, ProviderUiSettings};
 pub use appv3_providers::creds::CredentialStore;
@@ -371,7 +371,7 @@ fn reach_cache() -> &'static std::sync::Mutex<HashMap<String, (std::time::Instan
     C.get_or_init(Default::default)
 }
 
-/// `_local_provider_reachable` (10 s cache, 1 s timeout).
+/// Whether a local provider answers (10 s cache, 1 s timeout).
 pub async fn local_provider_reachable(id: &str) -> bool {
     let now = std::time::Instant::now();
     if let Some((t, ok)) = reach_cache().lock().unwrap().get(id).copied() {
@@ -391,7 +391,7 @@ pub async fn local_provider_reachable(id: &str) -> bool {
     ok
 }
 
-/// `_provider_is_reachable`.
+/// Whether a provider entry is reachable.
 pub async fn provider_is_reachable(entry: &Value) -> bool {
     let id = s(entry, "id");
     if DAEMON_PROVIDER_IDS.contains(&id) {

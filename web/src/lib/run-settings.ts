@@ -3,7 +3,8 @@
  * deck and the run picker show it. Pure helpers: labels, the recent-model
  * list, and the frontmatter edit behind "Make default".
  */
-import type { ProviderInfo, ProviderUsageResponse, StoredCredential } from '@/api/client'
+import type { ProviderInfo, ProviderUsageLimit, ProviderUsageResponse, StoredCredential } from '@/api/client'
+import { formatUsageAmount } from '@/lib/usage-format'
 
 /** `provider:model` split for display; an id without a provider keeps it all as the model. */
 export function splitModelId(id: string): { provider: string; model: string } {
@@ -77,17 +78,108 @@ export function accountChoices(provider: ProviderInfo | undefined): StoredCreden
   return enabled.length >= 2 ? enabled : null
 }
 
-/** Percent left in the tightest usage window, or `null` when the provider reports none. */
-export function quotaLeftPercent(usage: ProviderUsageResponse | undefined): number | null {
-  let used: number | null = null
-  for (const limit of usage?.limits ?? []) {
-    for (const window of [limit.primary, limit.secondary]) {
-      if (window && Number.isFinite(window.used_percent)) used = Math.max(used ?? 0, window.used_percent)
-    }
-  }
-  return used === null ? null : Math.max(0, Math.round(100 - used))
+export type QuotaTone = 'muted' | 'warning' | 'error'
+
+/**
+ * What is left of an account's quota, in one short phrase for a picker row.
+ * `detail` carries what the phrase leaves out (a balance, a spend cap) for the
+ * row's tooltip.
+ */
+export type QuotaSummary =
+  | { kind: 'percent'; left: number; tone: QuotaTone; detail?: string }
+  | { kind: 'spend' | 'credits'; text: string; tone: QuotaTone; detail?: string }
+
+type Spend = NonNullable<ProviderUsageLimit['spend']>
+type Credits = NonNullable<ProviderUsageLimit['credits']>
+
+const finite = (n: number | null | undefined): n is number => typeof n === 'number' && Number.isFinite(n)
+const percentLeft = (used: number) => Math.max(0, Math.round(100 - used))
+/** A bare amount (`$84.50`, `12`): reads as "left". Ratios and notes (`237/300`, `12.40 used`) stay as given. */
+const AMOUNT_RE = /^[^\d/\s]{0,3}\d[\d,]*(\.\d+)?$/
+
+interface SpendReading {
+  text: string
+  tone: QuotaTone
+  /** Percent of the cap left, unrounded; `null` when unknown. */
+  leftPercent: number | null
 }
 
+function readSpend(spend: Spend): SpendReading | null {
+  const limit = finite(spend.limit) && spend.limit > 0 ? spend.limit : null
+  const remaining = finite(spend.remaining)
+    ? spend.remaining
+    : limit !== null && finite(spend.used)
+      ? Math.max(0, limit - spend.used)
+      : null
+  const used = finite(spend.used_percent)
+    ? spend.used_percent
+    : limit !== null && finite(spend.used)
+      ? (spend.used / limit) * 100
+      : limit !== null && remaining !== null
+        ? (1 - remaining / limit) * 100
+        : null
+  const fmt = (n: number) => formatUsageAmount(n, spend.currency)
+  const text = limit !== null && remaining !== null ? `${fmt(remaining)} of ${fmt(limit)} left` : used !== null ? `${percentLeft(used)}% left` : null
+  if (text === null) return null
+  const spent = (remaining !== null && remaining <= 0) || (used !== null && used >= 100)
+  return { text, tone: spent ? 'error' : used !== null && used >= 90 ? 'warning' : 'muted', leftPercent: used === null ? null : 100 - used }
+}
+
+function readCredits(credits: Credits): { text: string; tone: QuotaTone } {
+  const balance = credits.balance?.trim() || null
+  if (credits.unlimited) return { text: balance ?? 'Unlimited', tone: 'muted' }
+  if (!credits.has_credits) return { text: 'No credits left', tone: 'error' }
+  if (balance) return { text: AMOUNT_RE.test(balance) ? `${balance} left` : balance, tone: 'muted' }
+  return { text: 'Credits available', tone: 'muted' }
+}
+
+/**
+ * The tightest thing known about an account's quota, or `null` when nothing is.
+ *
+ * A reached spend cap leads, then whichever of a spend cap and the percent
+ * windows has less left, then credits. Empty credits lead only when there is
+ * nothing else: plans without credits report none, beside windows that still
+ * have room.
+ */
+export function quotaSummary(usage: ProviderUsageResponse | undefined): QuotaSummary | null {
+  const limits = usage?.limits ?? []
+
+  let windowUsed: number | null = null
+  for (const limit of limits) {
+    for (const window of [limit.primary, limit.secondary]) {
+      if (window && Number.isFinite(window.used_percent)) windowUsed = Math.max(windowUsed ?? 0, window.used_percent)
+    }
+  }
+
+  const reached = limits.some((limit) => limit.spend?.reached)
+  let spend: SpendReading | null = null
+  for (const limit of limits) {
+    const reading = limit.spend ? readSpend(limit.spend) : null
+    if (reading && (!spend || (reading.leftPercent ?? 100) < (spend.leftPercent ?? 100))) spend = reading
+  }
+
+  const credits = limits.flatMap((limit) => (limit.credits ? [{ credits: limit.credits, ...readCredits(limit.credits) }] : []))
+  const credit = credits.find((c) => c.tone === 'error') ?? credits.find((c) => c.credits.balance || c.credits.unlimited) ?? credits[0] ?? null
+
+  // Empty credits say nothing a row beside a spend cap or a window needs.
+  const creditBalance = credit?.credits.balance?.trim()
+  const creditDetail = !credit || credit.tone === 'error' ? null : creditBalance ? `Balance ${creditBalance}` : credit.credits.unlimited ? 'Unlimited credits' : null
+  const detailOf = (...parts: (string | null | undefined)[]) => {
+    const text = parts.filter(Boolean).join(' · ')
+    return text ? { detail: text } : {}
+  }
+
+  if (reached) return { kind: 'spend', text: 'Limit reached', tone: 'error', ...detailOf(creditDetail) }
+  const windowLeft = windowUsed === null ? null : 100 - windowUsed
+  if (spend && (windowLeft === null || (spend.leftPercent !== null && spend.leftPercent < windowLeft))) {
+    return { kind: 'spend', text: spend.text, tone: spend.tone, ...detailOf(creditDetail) }
+  }
+  if (windowUsed !== null) {
+    return { kind: 'percent', left: percentLeft(windowUsed), tone: 'muted', ...detailOf(spend && `Spend cap ${spend.text}`, creditDetail) }
+  }
+  if (credit) return { kind: 'credits', text: credit.text, tone: credit.tone }
+  return null
+}
 // ── Recent models ───────────────────────────────────────────────────────────
 
 const RECENT_KEY = 'oa.recentModels.v1'

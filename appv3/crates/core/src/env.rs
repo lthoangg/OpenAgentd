@@ -63,7 +63,7 @@ pub fn child_env_blocklist() -> Vec<String> {
     keys
 }
 
-/// v2 `os.environ.get(name)`: the process environment *without* values that
+/// The process environment variable `name`, *without* values that
 /// only exist because a `.env` file was loaded into it. v2 reads those files
 /// through pydantic-settings, which never touches `os.environ`, so checks
 /// such as "is this provider configured" must not see them.

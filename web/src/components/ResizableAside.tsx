@@ -23,10 +23,13 @@
  * same commit (``onPanelSlideBeside``, ``usePanelSlideBeside``), so one sized
  * by the room it leaves can re-measure and slide along from the first frame.
  * With ``publishWidthAs`` it also writes its live border-box width to that CSS
- * property on the root, so the header's caps line up with it through a drag
- * and a show/hide slide (``AgentChatHeader``).
+ * property on the elements that line up with it (``usePanelWidthSink``: the
+ * header's caps, ``AgentChatHeader``) through a drag and a show/hide slide.
+ * Only on them, never on ``<html>``: every element inherits a custom
+ * property, so changing one on the root each frame of a slide restyled the
+ * whole app, a long transcript above all, every frame.
  */
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react'
 import { motion, type TargetAndTransition, type Transition } from 'framer-motion'
 
 import { panelResizeHandleClass, usePanelResize, type PanelResizeOptions } from '@/hooks/use-panel-resize'
@@ -129,27 +132,65 @@ interface ResizableAsideProps
   pinContentWidth?: boolean
   /**
    * A CSS custom property (``--oa-sidebar-w``) to publish the live
-   * border-box width to, on ``<html>``; cleared when unset or unmounted.
-   * Owners pass it only while the panel is in flow beside the chat.
+   * border-box width to, on that property's sinks (``usePanelWidthSink``);
+   * cleared when unset or unmounted. Owners pass it only while the panel is
+   * in flow beside the chat.
    */
   publishWidthAs?: string
   children: ReactNode
 }
 
-/** Keeps ``name`` on the root equal to ``ref``'s border-box width while set. */
+/** The last published value of each width property, for a sink that mounts later. */
+const publishedWidths = new Map<string, string>()
+/** The elements that carry each width property. */
+const widthSinks = new Map<string, Set<HTMLElement>>()
+
+function writeWidth(el: HTMLElement, name: string, value: string | undefined) {
+  if (value === undefined) el.style.removeProperty(name)
+  else el.style.setProperty(name, value)
+}
+
+function publishWidth(name: string, value: string | undefined) {
+  if (publishedWidths.get(name) === value) return
+  if (value === undefined) publishedWidths.delete(name)
+  else publishedWidths.set(name, value)
+  widthSinks.get(name)?.forEach((el) => writeWidth(el, name, value))
+}
+
+/**
+ * A callback ref that keeps ``name`` (a ``publishWidthAs`` property) on the
+ * element it is attached to, and nowhere else.
+ */
+export function usePanelWidthSink(name: string): (el: HTMLElement | null) => (() => void) | undefined {
+  return useCallback((el: HTMLElement | null) => {
+    if (!el) return undefined
+    let sinks = widthSinks.get(name)
+    if (!sinks) {
+      sinks = new Set()
+      widthSinks.set(name, sinks)
+    }
+    sinks.add(el)
+    writeWidth(el, name, publishedWidths.get(name))
+    return () => {
+      sinks.delete(el)
+      el.style.removeProperty(name)
+    }
+  }, [name])
+}
+
+/** Keeps ``name`` on its sinks equal to ``ref``'s border-box width while set. */
 function usePublishedWidth(ref: RefObject<HTMLElement | null>, name: string | undefined) {
   useLayoutEffect(() => {
     const el = ref.current
     if (!name || !el) return
-    const root = document.documentElement
-    const write = () => root.style.setProperty(name, `${el.getBoundingClientRect().width}px`)
+    const write = () => publishWidth(name, `${el.getBoundingClientRect().width}px`)
     write()
     // Border box: closing to 0 then dropping the 1px edge changes only it.
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(write)
     observer?.observe(el, { box: 'border-box' })
     return () => {
       observer?.disconnect()
-      root.style.removeProperty(name)
+      publishWidth(name, undefined)
     }
   }, [ref, name])
 }

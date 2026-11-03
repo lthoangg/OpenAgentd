@@ -91,7 +91,7 @@ pub(crate) fn common_git_dir(worktree: &Path) -> Option<PathBuf> {
 fn load_index(repo: &gix::Repository) -> Result<gix::index::File> {
     match repo.open_index() {
         Ok(i) => Ok(i),
-        Err(gix::worktree::open_index::Error::IndexFile(gix::index::file::init::Error::Io(e))) if e.kind() == std::io::ErrorKind::NotFound => {
+        Err(e) if e.downcast_any_ref::<gix::index::file::init::OpenError>().is_some_and(|o| o.source.kind() == std::io::ErrorKind::NotFound) => {
             Ok(gix::index::File::from_state(gix::index::State::new(repo.object_hash()), repo.index_path()))
         }
         Err(e) => Err(e.into()),
@@ -134,7 +134,7 @@ fn stage_changes(repo: &gix::Repository, workspace: &Path, index: &mut gix::inde
                 }
                 // Like the CLI engine: skip untracked files over the cap (and
                 // anything `stat` can't follow, e.g. dangling symlinks).
-                match std::fs::metadata(workspace.join(gix::path::from_bstr(entry.rela_path.as_bstr()))) {
+                match std::fs::metadata(workspace.join(gix::path::from_bstr(entry.rela_path.as_bstr())?)) {
                     Ok(m) if m.len() > max_untracked => continue,
                     Ok(_) => restage.push(entry.rela_path),
                     Err(_) => continue,
@@ -173,7 +173,7 @@ fn stage_changes(repo: &gix::Repository, workspace: &Path, index: &mut gix::inde
                     if !filemode && (mode == Mode::FILE || mode == Mode::FILE_EXECUTABLE) {
                         mode = if existing == Some(Mode::FILE_EXECUTABLE) { Mode::FILE_EXECUTABLE } else { Mode::FILE };
                     }
-                    let abs = workspace.join(gix::path::from_bstr(path.as_bstr()));
+                    let abs = workspace.join(gix::path::from_bstr(path.as_bstr())?);
                     let stat = gix::index::fs::Metadata::from_path_no_follow(&abs).ok().and_then(|m| Stat::from_fs(&m).ok()).unwrap_or_default();
                     upserts.push((path, id, mode, stat));
                 }
@@ -363,7 +363,7 @@ pub(crate) fn restore(gitdir: &Path, workspace: &Path, snapshot: &str, skip_stag
 /// `checkout-index -f` for one entry: replaces whatever is at the path
 /// (including a directory) and any file blocking a parent directory.
 fn checkout_entry(repo: &gix::Repository, pipeline: &mut gix::filter::Pipeline<'_>, workspace: &Path, rela: &BStr, mode: Mode, id: ObjectId) -> Result<()> {
-    let target = workspace.join(gix::path::from_bstr(rela));
+    let target = workspace.join(gix::path::from_bstr(rela)?);
     clear_path(workspace, &target)?;
     if mode == Mode::COMMIT {
         std::fs::create_dir_all(&target)?;
@@ -434,7 +434,7 @@ fn write_file(target: &Path, bytes: &[u8], executable: bool) -> Result<()> {
 }
 
 fn write_symlink(target: &Path, link_to: &[u8]) -> Result<()> {
-    let dest = gix::path::from_bstr(link_to.as_bstr()).into_owned();
+    let dest = gix::path::from_bstr(link_to.as_bstr())?.into_owned();
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(&dest, target)?;

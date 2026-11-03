@@ -1,12 +1,12 @@
 /**
- * Answer or dismiss the open question — from its card, or from the composer.
+ * Answer the open question — from its card, or from the composer.
  *
  * Both surfaces go through here so an answer is recorded, the draft dropped,
  * and a question another device already closed handled the same way.
  */
 import { useState } from 'react'
 
-import { answerQuestion, dismissQuestion } from '@/api/client'
+import { answerQuestion } from '@/api/client'
 import type { PendingQuestion } from '@/api/types'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -43,11 +43,7 @@ export function useQuestionResolver(question: PendingQuestion | null) {
     questionId: string,
     action: () => Promise<{ resumed: boolean }>,
     failure: string,
-    // Only an answer restarts the turn; a dismissal reports ``resumed: false``
-    // by design, and warning about that would turn "not now" into an error.
-    expectResume: boolean,
-    answers: string[][] | null,
-    reason: string | null,
+    answers: string[][],
   ) => {
     if (submitting) return
     setSubmitting(true)
@@ -59,19 +55,17 @@ export function useQuestionResolver(question: PendingQuestion | null) {
       // first; the store guard makes the second a no-op. Clearing without
       // recording would strand the card in "waiting" — the broadcast then has
       // no open question left to attach the outcome to.
-      resolveQuestion(questionId, answers, reason)
-      if (expectResume) {
-        if (outcome.resumed) {
-          // The restarted turn adds no user block, so nothing else marks it
-          // live until its first token — show the "about to respond" dots now.
-          markTurnResuming()
-        } else {
-          useToastStore.getState().push({
-            tone: 'error',
-            title: 'Answer saved, but the agent did not restart',
-            description: 'Send a message to continue the turn.',
-          })
-        }
+      resolveQuestion(questionId, answers, null)
+      if (outcome.resumed) {
+        // The restarted turn adds no user block, so nothing else marks it
+        // live until its first token — show the "about to respond" dots now.
+        markTurnResuming()
+      } else {
+        useToastStore.getState().push({
+          tone: 'error',
+          title: 'Answer saved, but the agent did not restart',
+          description: 'Send a message to continue the turn.',
+        })
       }
     } catch (cause) {
       // Retrying cannot succeed: the row is gone. Close the card with what we
@@ -97,11 +91,7 @@ export function useQuestionResolver(question: PendingQuestion | null) {
     /** ``options.keepGoing``: a plan approval that also starts a goal (see ``answerQuestion``). */
     answer: (answers: string[][], options?: { keepGoing?: { maxTurns?: number } }) => {
       if (!question || !sessionId) return
-      void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), 'Could not send the answer.', true, answers, null)
-    },
-    dismiss: () => {
-      if (!question || !sessionId) return
-      void resolve(question.id, () => dismissQuestion(sessionId, question.id), 'Could not dismiss the question.', false, null, 'dismissed')
+      void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), 'Could not send the answer.', answers)
     },
   }
 }

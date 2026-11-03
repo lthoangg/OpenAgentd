@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import { routeTerminalKey } from '@/components/Terminal/terminal-keys'
+import { routeTerminalKey, terminalShortcut } from '@/components/Terminal/terminal-keys'
 
 function keydown(key: string, mods: Partial<Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'code'>> = {}) {
   return new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods })
@@ -8,7 +8,7 @@ function keydown(key: string, mods: Partial<Pick<KeyboardEvent, 'metaKey' | 'ctr
 
 describe('routeTerminalKey — macOS', () => {
   it('leaves every key to xterm, which passes ⌘ chords on to the app shortcuts', () => {
-    for (const event of [keydown('k', { metaKey: true }), keydown('f', { metaKey: true }), keydown('k', { ctrlKey: true })]) {
+    for (const event of [keydown('k', { metaKey: true }), keydown('c', { metaKey: true }), keydown('v', { metaKey: true }), keydown('k', { ctrlKey: true })]) {
       expect(routeTerminalKey(event, 'macos')).toBe(true)
       expect(event.defaultPrevented).toBe(false)
     }
@@ -55,6 +55,67 @@ describe('routeTerminalKey — Windows/Linux', () => {
 
 it('ignores keyup and keypress', () => {
   expect(routeTerminalKey(new KeyboardEvent('keyup', { key: 'k', ctrlKey: true }), 'linux')).toBe(true)
+})
+
+describe('terminalShortcut — find', () => {
+  it('is ⌘F on macOS, taken from the app and never sent to the shell', () => {
+    const event = keydown('f', { metaKey: true })
+    expect(terminalShortcut(event, 'macos')).toBe('find')
+    expect(routeTerminalKey(event, 'macos')).toBe(false)
+    // ⌘⇧F is the app's focus mode.
+    expect(terminalShortcut(keydown('F', { metaKey: true, shiftKey: true }), 'macos')).toBeNull()
+  })
+
+  it('is Ctrl+Shift+F on Windows/Linux, while plain Ctrl+F reaches the shell', () => {
+    for (const os of ['linux', 'windows'] as const) {
+      const event = keydown('F', { ctrlKey: true, shiftKey: true })
+      expect(terminalShortcut(event, os)).toBe('find')
+      expect(routeTerminalKey(event, os)).toBe(false)
+      const plain = keydown('f', { ctrlKey: true })
+      expect(terminalShortcut(plain, os)).toBeNull()
+      expect(routeTerminalKey(plain, os)).toBe(true)
+    }
+  })
+
+  it('ignores the key when Alt is held or on keyup', () => {
+    expect(terminalShortcut(keydown('f', { metaKey: true, altKey: true }), 'macos')).toBeNull()
+    expect(terminalShortcut(new KeyboardEvent('keyup', { key: 'f', metaKey: true }), 'macos')).toBeNull()
+  })
+})
+
+describe('terminalShortcut — copy and paste', () => {
+  it('maps Ctrl+Shift+C and Ctrl+Shift+V on Windows/Linux', () => {
+    for (const os of ['linux', 'windows'] as const) {
+      expect(terminalShortcut(keydown('C', { ctrlKey: true, shiftKey: true }), os)).toBe('copy')
+      expect(terminalShortcut(keydown('V', { ctrlKey: true, shiftKey: true }), os)).toBe('paste')
+      expect(routeTerminalKey(keydown('C', { ctrlKey: true, shiftKey: true }), os)).toBe(false)
+      // Plain Ctrl+C / Ctrl+V keep their shell meaning.
+      expect(terminalShortcut(keydown('c', { ctrlKey: true }), os)).toBeNull()
+      expect(routeTerminalKey(keydown('c', { ctrlKey: true }), os)).toBe(true)
+      expect(routeTerminalKey(keydown('v', { ctrlKey: true }), os)).toBe(true)
+    }
+  })
+
+  it('leaves ⌘C and ⌘V to the browser copy and paste events on macOS', () => {
+    for (const key of ['c', 'v']) {
+      expect(terminalShortcut(keydown(key, { metaKey: true }), 'macos')).toBeNull()
+      expect(routeTerminalKey(keydown(key, { metaKey: true }), 'macos')).toBe(true)
+    }
+    // Ctrl+Shift+C on macOS is not a terminal copy.
+    expect(terminalShortcut(keydown('C', { ctrlKey: true, shiftKey: true }), 'macos')).toBeNull()
+  })
+})
+
+describe('terminalShortcut — add selection to chat', () => {
+  it('is ⌘L / Ctrl+L only while text is selected', () => {
+    expect(terminalShortcut(keydown('l', { metaKey: true }), 'macos', true)).toBe('add-to-chat')
+    expect(terminalShortcut(keydown('l', { ctrlKey: true }), 'linux', true)).toBe('add-to-chat')
+    expect(routeTerminalKey(keydown('l', { ctrlKey: true }), 'linux', true)).toBe(false)
+    // Without a selection ⌘L stays the app's switcher and Ctrl+L clears the shell screen.
+    expect(terminalShortcut(keydown('l', { metaKey: true }), 'macos', false)).toBeNull()
+    expect(routeTerminalKey(keydown('l', { metaKey: true }), 'macos', false)).toBe(true)
+    expect(routeTerminalKey(keydown('l', { ctrlKey: true }), 'linux', false)).toBe(true)
+  })
 })
 
 describe('routeTerminalKey — layout keys on every OS', () => {

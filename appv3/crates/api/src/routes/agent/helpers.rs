@@ -1,4 +1,4 @@
-//! `app/api/routes/agent/_helpers.py`.
+//! Shared helpers for the `/api/agent` routes.
 
 use crate::error::{ApiError, ApiResult};
 use appv3_agent::manager;
@@ -202,7 +202,7 @@ fn safe_join(root: &Path, rel: &str, want_dir: bool) -> Option<PathBuf> {
     ok.then_some(resolved)
 }
 
-/// `_parse_line_ref` → (path, label, start, end).
+/// Parse a line reference → (path, label, start, end).
 fn parse_line_ref(rel: &str) -> (String, String, Option<usize>, Option<usize>) {
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"^(?P<path>.+)#L(?P<start>\d+)(?:-L?(?P<end>\d+))?$").unwrap());
     let Some(c) = RE.captures(rel) else { return (rel.into(), rel.into(), None, None) };
@@ -314,7 +314,7 @@ fn directory_listing_block(rel: &str, dir: &Path) -> String {
     format!("[Directory: {rel}]\n{body}\n[End directory: {rel}]")
 }
 
-/// `_read_mention_as_attachment` → inlinable bytes, or `None`.
+/// Read a mentioned file as inlinable attachment bytes, or `None`.
 fn read_mention(label: &str, abs: &Path, start: Option<usize>, end: Option<usize>) -> Option<Vec<u8>> {
     let mime = appv3_core::mimetypes::guess_type(&abs.to_string_lossy());
     let cat = categorize(label, mime.as_deref()).unwrap_or("text");

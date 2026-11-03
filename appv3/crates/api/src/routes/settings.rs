@@ -1,4 +1,4 @@
-//! `/api/settings` — port of `app/api/routes/settings.py`.
+//! `/api/settings`.
 
 use crate::error::{ApiError, ApiResult};
 use crate::providers::{self as prov, s};
@@ -462,7 +462,7 @@ fn cost_empty(c: &ModelCost) -> bool {
     c.input.is_none() && c.output.is_none() && c.cache_read.is_none() && c.cache_write.is_none()
 }
 
-/// `_model_costs_for_provider`.
+/// Per-model cost entries for a provider's models.
 fn model_costs(provider: &str, models: &[String]) -> Value {
     let mut out = Map::new();
     for m in models {
@@ -534,7 +534,7 @@ fn find_or_404(id: &str) -> ApiResult<&'static Value> {
     prov::find(id).ok_or_else(|| ApiError::not_found(format!("Unknown provider '{id}'")))
 }
 
-/// `_build_overrides`.
+/// Credential override pairs for a provider entry.
 fn build_overrides(entry: &Value, token: &str, extra: &[(String, String)]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = vec![];
     let creds = entry.get("credentials").and_then(|v| v.as_array()).cloned().unwrap_or_default();

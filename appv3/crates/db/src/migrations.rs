@@ -1,5 +1,5 @@
 //! Schema management — a replay of v2's Alembic chain
-//! (`app/migrations/versions/00000001` … `00000022`), then v3's own
+//! (revisions `00000001` … `00000022`), then v3's own
 //! revisions (00000023 on).
 //!
 //! `resources/migrations/000000NN.sql` hold the exact statements v2's Alembic
@@ -152,7 +152,7 @@ async fn exec_guarded(conn: &mut SqliteConnection, stmt: &str) -> Result<()> {
     exec(conn, stmt).await
 }
 
-/// `slugify` from `app/scheduler/utils.py` (used by 00000013).
+/// `slugify` as the scheduler computes it (used by 00000013).
 pub fn slugify(text: &str) -> String {
     appv3_core::slug::slugify(text)
 }
@@ -201,7 +201,7 @@ async fn migrate_19(conn: &mut SqliteConnection, stmts: &[&str]) -> Result<()> {
     let has_ex = cols.iter().any(|c| c == "exclude_from_context");
     let active_summary = find("CREATE INDEX ix_session_messages_active_summary ");
     if has_is && has_ex {
-        // `_backfill_derived_state`: the five UPDATEs, with the partial index
+        // Backfill derived state: the five UPDATEs, with the partial index
         // created before the correlated ones.
         let updates: Vec<&str> = stmts.iter().copied().filter(|s| s.starts_with("UPDATE session_messages")).collect();
         if updates.len() != 5 {
@@ -217,7 +217,7 @@ async fn migrate_19(conn: &mut SqliteConnection, stmts: &[&str]) -> Result<()> {
         }
     }
     if has_is || has_ex {
-        // `_drop_legacy_columns`
+        // Drop legacy columns.
         let cols = column_names(conn, "session_messages").await?;
         if cols.iter().any(|c| c == "is_summary") {
             exec(conn, "ALTER TABLE session_messages DROP COLUMN is_summary").await?;
@@ -226,7 +226,7 @@ async fn migrate_19(conn: &mut SqliteConnection, stmts: &[&str]) -> Result<()> {
             exec(conn, "ALTER TABLE session_messages DROP COLUMN exclude_from_context").await?;
         }
     }
-    // `_ensure_indexes`
+    // Ensure indexes.
     if index_exists(conn, "ix_session_messages_session_created_id").await? {
         exec(conn, "DROP INDEX ix_session_messages_session_created_id").await?;
     }
@@ -314,7 +314,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<SchemaState> {
         tracing::info!("auto_migrate_complete");
     }
     if db_file.is_some() {
-        // `_optimize_sqlite` (best-effort).
+        // Optimise SQLite (best-effort).
         if state == SchemaState::Current {
             // Nothing changed the schema, so the statistics are only stale,
             // and a WAL left by a crash can take a while to checkpoint: keep
@@ -340,7 +340,7 @@ async fn optimize(conn: &mut SqliteConnection) {
     let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(&mut *conn).await;
 }
 
-/// `_sqlite_migration_lock`: exclusive lock on `<db>.migrate.lock`.
+/// Exclusive lock on `<db>.migrate.lock`.
 fn migration_lock(db: &Path) -> Result<std::fs::File> {
     let name = db.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let path = db.with_file_name(format!("{name}.migrate.lock"));

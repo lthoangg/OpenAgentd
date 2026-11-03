@@ -1,5 +1,4 @@
-//! Subagent coordination — port of `app/services/subagent_service.py`
-//! (the paths reachable from `team`, session callbacks and the API).
+//! Subagent coordination (the paths reachable from `team`, session callbacks and the API).
 
 use crate::agent::Agent;
 use crate::broadcaster;
@@ -13,7 +12,7 @@ use appv3_db::{self as db, DbPool};
 use appv3_providers::{AssistantMessage, Kwargs};
 use appv3_tools::ToolRef;
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -242,7 +241,7 @@ pub fn agents_dir() -> std::path::PathBuf {
     appv3_tools::denied::resolve(&settings().agents_dir)
 }
 
-/// `_build_member_tools`.
+/// Tools given to a member agent.
 fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();
@@ -386,6 +385,16 @@ async fn resolve_or_rehydrate(lead: &str, target: &str, pool: &DbPool) -> Result
     }
 }
 
+/// `extra` on a row the lead sends a member: UI metadata linking the row back
+/// to the lead (`from_lead.session_id`, the API form of the id, the route the
+/// client opens). Not `from_agent`: that makes a row a report, and the model
+/// reads it under a `[handle]:` header.
+fn from_lead_extra(lead: &str) -> Map<String, Value> {
+    let mut extra = Map::new();
+    extra.insert("from_lead".into(), json!({"session_id": db::codec::api_uuid(lead)}));
+    extra
+}
+
 /// `spawn_subagent(..., wait=False)`.
 #[allow(clippy::too_many_arguments)] // mirrors v2's spawn_subagent signature
 pub async fn spawn_subagent(
@@ -467,6 +476,7 @@ pub async fn spawn_subagent(
             model: if model_override.is_some() { Some(effective_model.clone()) } else { None },
             model_provided: model_override.is_some(),
             origin: "agent".into(),
+            extra: Some(from_lead_extra(lead)),
             ..Default::default()
         })
         .await
@@ -511,12 +521,15 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
     // idle once the other ended, so Stop and deleting the lead skipped it.
     let queued = inst_session.has_active_user_turn();
     if queued {
-        db::save_queued_user_message(pool, &child_sid, &content, None).await.map_err(|e| SubagentError::General(e.to_string()))?;
+        db::save_queued_user_message(pool, &child_sid, &content, Some(from_lead_extra(lead))).await.map_err(|e| SubagentError::General(e.to_string()))?;
         // The turn may have ended between the check and the save.
         if !inst_session.has_active_user_turn() {
             inst_session.activate_queued_user_messages(&child_sid).await;
         }
-    } else if let Err(e) = inst_session.handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), ..Default::default() }).await {
+    } else if let Err(e) = inst_session
+        .handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), extra: Some(from_lead_extra(lead)), ..Default::default() })
+        .await
+    {
         mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
         return Err(SubagentError::General(e.to_string()));
     }

@@ -26,7 +26,7 @@ pub fn skills_router() -> Router<AppState> {
     Router::new().route("/", get(list_skills).post(create_skill)).route("/{*name}", get(get_skill).put(update_skill).delete(delete_skill))
 }
 
-// ── shared markdown helpers (`app/services/commands.py`) ────────────────────
+// ── shared markdown helpers ─────────────────────────────────────────────────
 
 /// `commands._parse_frontmatter` — YAML errors escape (v2 has no `except`).
 pub fn parse_frontmatter(text: &str) -> Result<(Map<String, Value>, String), appv3_core::pyyaml::LoadError> {
@@ -344,7 +344,7 @@ fn editable(path: &Path) -> bool {
     !rel_to(path, &skills::builtin_skills_dir())
 }
 
-/// `_parse_skill` → (description, error).
+/// Parse a skill file → (description, error).
 fn parse_skill(name: &str, content: &str) -> (String, Option<String>) {
     match skills::parse_frontmatter_strict(content) {
         StrictFrontmatter::YamlError(e) => (String::new(), Some(format!("Invalid frontmatter: {e}"))),

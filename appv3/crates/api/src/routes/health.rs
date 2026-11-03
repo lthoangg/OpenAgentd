@@ -1,4 +1,4 @@
-//! `app/api/routes/health.py`.
+//! Health endpoints.
 
 use crate::error::ApiError;
 use crate::util::json;

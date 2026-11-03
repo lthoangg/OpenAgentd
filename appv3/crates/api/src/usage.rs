@@ -1,4 +1,4 @@
-//! Provider usage snapshots — port of `app/services/provider_usage.py` plus
+//! Provider usage snapshots, plus
 //! the usage modules (`openrouter`, `deepseek`, `codex`, `copilot`, `grok`).
 
 use crate::providers::{self as prov, CredentialStore};

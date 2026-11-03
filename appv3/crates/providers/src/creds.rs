@@ -1,4 +1,4 @@
-//! `ProviderCredentialStore` — port of `plugin_registry.ProviderCredentialStore`
+//! `ProviderCredentialStore` — credential lookup
 //! (overrides → real process env → `credentials.yaml`).
 
 use appv3_core::{credentials, settings};

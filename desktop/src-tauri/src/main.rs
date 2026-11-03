@@ -675,8 +675,6 @@ fn main() {
             badge::set_attention_badge,
             share::share_url,
             tray_popup::get_tray_usage_summary,
-            tray_popup::tray_sessions,
-            tray_popup::tray_open_session,
             tray_popup::tray_action,
             tray_popup::tray_fit,
             island::island_state,

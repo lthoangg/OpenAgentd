@@ -70,6 +70,7 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
@@ -85,10 +86,8 @@ import {
 } from './WorkspacePanel/diff-helpers'
 import { GitReviewSubPanel } from './WorkspacePanel/GitReviewSubPanel'
 import { CommitHistorySubPanel } from './WorkspacePanel/CommitHistorySubPanel'
-import { TerminalSubPanel } from './WorkspacePanel/TerminalSubPanel'
 import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { DiffTabView } from './WorkspacePanel/DiffTabView'
-import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -142,6 +141,8 @@ const PreviewTabView = lazySurface(() => import('./Preview/PreviewTabView'), 'Pr
 const AttachmentTabView = lazySurface(() => import('./WorkspacePanel/AttachmentTabView'), 'AttachmentTabView')
 const PlanTabView = lazySurface(() => import('./WorkspacePanel/PlanTabView'), 'PlanTabView')
 const GoalTabView = lazySurface(() => import('./WorkspacePanel/GoalTabView'), 'GoalTabView')
+const TerminalSubPanel = lazySurface(() => import('./WorkspacePanel/TerminalSubPanel'), 'TerminalSubPanel')
+const CommitTabView = lazySurface(() => import('./WorkspacePanel/CommitTabView'), 'CommitTabView')
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 
@@ -291,7 +292,11 @@ export function WorkspacePanel({
     const ids = previewIdsRef.current
     const previewId = ids.get(tab.id)
     ids.delete(tab.id)
-    if (previewId && ![...ids.values()].includes(previewId)) void closePreview(previewId).catch(() => {})
+    if (previewId && ![...ids.values()].includes(previewId)) {
+      // The listener is going away: no hidden copy may reopen it.
+      usePreviewKeepAliveStore.getState().forgetPreviewId(previewId)
+      void closePreview(previewId).catch(() => {})
+    }
   }, [])
   // Tab state comes first: the Git queries below are gated on the active tab.
   const panesRef = useRef<HTMLDivElement>(null)
@@ -898,7 +903,7 @@ export function WorkspacePanel({
         // Mounted only while on show in an open dock: the session lives in
         // the terminal store, and a detached terminal can be closed by the
         // idle reaper.
-        return open && paneShown ? <TerminalSubPanel key={tab.termId} termId={tab.termId} workspace={workspace} /> : null
+        return open && paneShown ? <TerminalSubPanel key={tab.termId} termId={tab.termId} /> : null
       case 'tasks':
         return (
           <TasksTabView

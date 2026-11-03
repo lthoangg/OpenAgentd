@@ -1,4 +1,4 @@
-//! `read` — port of `filesystem/read.py` + `handlers.py`.
+//! The `read` tool and its per-type handlers.
 
 use crate::args::Args;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};

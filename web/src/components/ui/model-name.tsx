@@ -73,23 +73,28 @@ export function ModelPart({ model, className }: { model: string; className?: str
   )
 }
 
-export function ModelName({ id, className, providerClassName, ...rest }: {
+export function ModelName({ id, className, providerClassName, tooltip = true, ...rest }: {
   id: string
   className?: string
   /** Tone for the `provider:` part (the run chip mutes it). */
   providerClassName?: string
+  /**
+   * Show the full ID on hover. Turn it off when an enclosing element has
+   * its own tooltip, so two never draw over each other.
+   */
+  tooltip?: boolean
 } & Omit<HTMLAttributes<HTMLSpanElement>, 'id' | 'title' | 'children'>) {
   const { provider, model } = splitModelId(id)
+  const label = (
+    <span {...rest} data-model-name className={cn('inline-flex', MODEL_LINE_CLASS, className)}>
+      {provider && <span className={cn(PROVIDER_PART_CLASS, providerClassName)}>{provider}:</span>}
+      <ModelPart model={model} />
+    </span>
+  )
+  if (!tooltip) return label
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <span {...rest} data-model-name className={cn('inline-flex', MODEL_LINE_CLASS, className)}>
-            {provider && <span className={cn(PROVIDER_PART_CLASS, providerClassName)}>{provider}:</span>}
-            <ModelPart model={model} />
-          </span>
-        }
-      />
+      <TooltipTrigger render={label} />
       <TooltipContent>{id}</TooltipContent>
     </Tooltip>
   )

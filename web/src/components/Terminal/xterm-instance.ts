@@ -10,18 +10,30 @@
 
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 
 import { getPlatform } from '@/hooks/use-platform'
-import { routeTerminalKey } from './terminal-keys'
+import type { FileRef } from '@/utils/file-refs'
+import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
+import { routeTerminalKey, terminalShortcut } from './terminal-keys'
+import { createFileLinkProvider, parseOsc7Cwd } from './terminal-links'
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
 
 export interface XtermHandle {
   term: Terminal
   fit: FitAddon
+  /** Find in scrollback; the view's find bar drives it. */
+  search?: SearchAddon
+  /** The shell's working directory from OSC 7, when the shell reports it. */
+  getCwd?: () => string | null
+  /** Where ⌘/Ctrl+click on a file path goes; ``null`` detaches it. */
+  setFileOpener?: (opener: ((ref: FileRef, cwd: string | null) => void) | null) => void
+  /** Called when the user presses the find chord in the terminal. */
+  onFindRequest?: (listener: () => void) => () => void
   enableWebgl?: () => void
   disableWebgl?: () => void
 }
@@ -58,9 +70,44 @@ export function createXterm(options: {
   // and the prompt visually smears / misaligns on redraw.
   term.loadAddon(new Unicode11Addon())
   term.unicode.activeVersion = '11'
-  // Ctrl+K / Ctrl+P skip the shell on Windows/Linux so the palette still opens.
+  const search = new SearchAddon()
+  term.loadAddon(search)
+
+  // OSC 7 (``file://host/path``): shells that report their cwd let relative
+  // paths in output resolve exactly. Best effort: the sequence is optional.
+  let cwd: string | null = null
+  term.parser.registerOscHandler(7, (data) => {
+    const next = parseOsc7Cwd(data)
+    if (next) cwd = next
+    return true
+  })
+
+  // ⌘/Ctrl+click on ``src/foo.ts:42`` opens the file; URLs stay with web-links.
+  let fileOpener: ((ref: FileRef, cwd: string | null) => void) | null = null
+  term.registerLinkProvider(createFileLinkProvider({
+    buffer: () => {
+      const active = term.buffer.active
+      return { cols: term.cols, length: active.length, getLine: (y) => active.getLine(y) }
+    },
+    open: (ref) => fileOpener?.(ref, cwd),
+  }))
+
+  const findListeners = new Set<() => void>()
+
   const { os } = getPlatform()
-  term.attachCustomKeyEventHandler((event) => routeTerminalKey(event, os))
+  // Ctrl+K / Ctrl+P skip the shell on Windows/Linux so the palette still opens.
+  // The terminal's own chords (find, copy/paste, add to chat) run here and
+  // are claimed with preventDefault so no app shortcut also fires.
+  term.attachCustomKeyEventHandler((event) => {
+    const action = terminalShortcut(event, os, term.hasSelection())
+    if (!action) return routeTerminalKey(event, os)
+    event.preventDefault()
+    if (action === 'find') for (const listener of findListeners) listener()
+    else if (action === 'copy') void copyTerminalSelection(term)
+    else if (action === 'paste') void pasteIntoTerminal(term)
+    else addTerminalSelectionToChat(term)
+    return false
+  })
 
   let webglAddon: WebglAddon | null = null
 
@@ -88,5 +135,17 @@ export function createXterm(options: {
     webglAddon = null
   }
 
-  return { term, fit, enableWebgl, disableWebgl }
+  return {
+    term,
+    fit,
+    search,
+    getCwd: () => cwd,
+    setFileOpener: (opener) => { fileOpener = opener },
+    onFindRequest: (listener) => {
+      findListeners.add(listener)
+      return () => { findListeners.delete(listener) }
+    },
+    enableWebgl,
+    disableWebgl,
+  }
 }

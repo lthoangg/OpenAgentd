@@ -452,9 +452,11 @@ export interface TerminalInfo {
 /**
  * Keep terminal tabs in step with the workspace's shells without moving
  * them: ended ones drop out, renamed ones update, new ones join the focused
- * pane (shown only if it was empty).
+ * pane (shown only if it was empty, and then ``preferredId`` — the shell that
+ * was in front before a reload — wins over the first). ``preferredId`` never
+ * takes the front from a pane that already shows a tab.
  */
-export function syncTerminalTabs(state: DockPanes, terminals: readonly TerminalInfo[]): DockPanes {
+export function syncTerminalTabs(state: DockPanes, terminals: readonly TerminalInfo[], preferredId?: string): DockPanes {
   const live = new Map(terminals.map((meta) => [meta.id, meta]))
   let changed = false
   const gone: string[] = []
@@ -483,7 +485,7 @@ export function syncTerminalTabs(state: DockPanes, terminals: readonly TerminalI
     next = withPane(next, target, {
       ...pane,
       tabs: [...pane.tabs, ...added.map((tab) => tab.id)],
-      active: pane.active || added[0].id,
+      active: pane.active || (added.find((tab) => tab.type === 'terminal' && tab.termId === preferredId) ?? added[0]).id,
     })
   }
   return gone.length > 0 ? closeTabs(next, gone) : next

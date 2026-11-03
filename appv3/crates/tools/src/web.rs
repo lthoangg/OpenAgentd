@@ -1,6 +1,6 @@
-//! `web_fetch` / `web_search` — port of `builtin/web.py`.
+//! The `web_fetch` / `web_search` tools.
 //!
-//! HTML → Markdown follows v2's `_html_to_markdown`: main-content extraction
+//! HTML → Markdown follows v2's conversion: main-content extraction
 //! (the `trafilatura` crate, a port of go-trafilatura, standing in for Python
 //! trafilatura), with v2's fallback to `html2txt` (ported below) when the
 //! extraction is empty or lost the page's code blocks. Binary documents
@@ -272,7 +272,7 @@ fn parse_ct(ct: Option<&str>) -> (Option<String>, Option<String>) {
     (mime, charset)
 }
 
-/// `_sniff_mime`: content-based type for responses with a generic type.
+/// Content-based type for responses with a generic type.
 fn sniff_mime(content: &[u8]) -> Option<String> {
     let sample = &content[..content.len().min(8192)];
     let stripped = &sample[sample.iter().position(|b| !b.is_ascii_whitespace() && *b != 0x0b).unwrap_or(sample.len())..];
@@ -287,7 +287,7 @@ fn sniff_mime(content: &[u8]) -> Option<String> {
     if lower.starts_with(b"<?xml") {
         return Some("application/xml".into());
     }
-    // `_looks_like_text`: no NUL byte and the (possibly cut) sample decodes.
+    // Looks like text: no NUL byte and the (possibly cut) sample decodes.
     if !sample.contains(&0) && std::str::from_utf8(sample).is_ok() {
         return Some("text/plain".into());
     }
@@ -347,7 +347,7 @@ fn wrap_body(html: &str) -> Cow<'_, str> {
     }
 }
 
-/// `_html_to_markdown`: `trafilatura.extract(html, output_format="markdown",
+/// HTML → Markdown: `trafilatura.extract(html, output_format="markdown",
 /// include_tables=True, include_links=True)`. Pages the extractor cannot read
 /// as an article (landing pages, app shells) fall back to a structural
 /// conversion of the whole body, so headings, lists and links survive; the
@@ -443,7 +443,7 @@ fn escape_text(t: &str) -> String {
     t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-/// `_html_to_text`: `trafilatura.html2txt` — the whole body as one line.
+/// HTML → text: `trafilatura.html2txt` — the whole body as one line.
 pub fn html_to_text(html: &str) -> String {
     html2txt(&wrap_body(html))
 }

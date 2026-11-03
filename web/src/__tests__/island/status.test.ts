@@ -87,8 +87,8 @@ describe('islandMode', () => {
 
 describe('compactLabels', () => {
   it('names a single session and counts several', () => {
-    expect(compactLabels([running('a', 'Refactor auth')], [])).toEqual({ lead: 'Running', detail: 'Refactor auth' })
-    expect(compactLabels([running('a'), running('b')], [])).toEqual({ lead: 'Running', detail: '2 sessions' })
+    expect(compactLabels([running('a', 'Refactor auth')], [])).toEqual({ lead: '', detail: 'Refactor auth' })
+    expect(compactLabels([running('a'), running('b')], [])).toEqual({ lead: '', detail: '2 sessions' })
   })
 
   it('counts only the waiting sessions while any wait', () => {
@@ -105,7 +105,8 @@ describe('compactLabels', () => {
       compactLabels([], [failed('x')]).lead,
       compactLabels([], [], [lost]).lead,
     ]
-    expect(words).toEqual(['Needs you', 'Running', 'Done', 'Failed', "Can't reach"])
+    // Running work says no word at all.
+    expect(words).toEqual(['Needs you', '', 'Done', 'Failed', "Can't reach"])
   })
 
   it('names the server that cannot be reached, or counts several', () => {
@@ -128,7 +129,7 @@ describe('compactLabels', () => {
   it("shows a goal's progress while it runs, and what became of it once it ended", () => {
     const goal = withGoal(running('a', 'Migrate'), { status: 'active', turn: 7, maxTurns: 50 })
     expect(compactLabels([goal], [])).toEqual({ lead: 'Goal 7/50', detail: 'Migrate' })
-    expect(compactLabels([goal, running('b')], [])).toEqual({ lead: 'Running', detail: '2 sessions' })
+    expect(compactLabels([goal, running('b')], [])).toEqual({ lead: '', detail: '2 sessions' })
 
     expect(compactLabels([], [withGoal(done('x', 'Migrate'), { status: 'achieved' })])).toEqual({ lead: 'Goal achieved', detail: 'Migrate' })
     expect(compactLabels([], [withGoal(done('x'), { status: 'paused' })]).lead).toBe('Goal paused')

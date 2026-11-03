@@ -5,20 +5,14 @@ import { Plug, RefreshCw, WifiOff } from 'lucide-react'
 import { Wordmark } from '@/components/brand/Logo'
 import { ProviderCard, ProviderSkeleton } from './ProviderCard'
 import { ServerPicker } from './ServerPicker'
-import { SessionList } from './SessionList'
 import { TRAY_STATUS_LABEL, failureReason, providerView, trayStatus } from './providerView'
-import { type TraySessions, needsYouText, parseSessions } from './sessions'
 import { shortcutLabel } from './shortcuts'
 import { type TrayServerOption, type TrayUsageResult, formatCheckedAt } from './usage'
 
 const USAGE_COMMAND = 'get_tray_usage_summary'
-const SESSIONS_COMMAND = 'tray_sessions'
-const OPEN_SESSION_COMMAND = 'tray_open_session'
 const ACTION_COMMAND = 'tray_action'
 const FIT_COMMAND = 'tray_fit'
 const TRAY_REFRESH_EVENT = 'tray-popup-refresh'
-/** The sessions that need you or run changed while the popup is up. */
-const TRAY_SESSIONS_EVENT = 'tray-sessions'
 const PET_SETTINGS_COMMAND = 'pet_settings'
 const PET_SETTINGS_EVENT = 'pet-settings-changed'
 /** "Checked 2m ago" is re-read this often while the popup is up. */
@@ -88,7 +82,6 @@ function usePetEnabled(): boolean | null {
 
 export function TrayPopup() {
   const [result, setResult] = useState<TrayUsageResult | null>(null)
-  const [sessions, setSessions] = useState<TraySessions | null>(null)
   /** The IPC call itself failed (the command answers server errors in ``result.error``). */
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedServer, setSelectedServer] = useState('auto')
@@ -98,16 +91,6 @@ export function TrayPopup() {
   const [, setClock] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const petEnabled = usePetEnabled()
-
-  /** What needs you and what runs; `retry` also asks the feed to try its servers again now. */
-  const loadSessions = useCallback(async (retry = false) => {
-    try {
-      const next = parseSessions(await invoke<unknown>(SESSIONS_COMMAND, retry ? { retry: true } : undefined))
-      if (next) setSessions(next)
-    } catch {
-      // The lists are a bonus over the limits: a failed read leaves the last ones.
-    }
-  }, [])
 
   const load = useCallback(async (force = false, targetServer?: string) => {
     try {
@@ -127,17 +110,6 @@ export function TrayPopup() {
   // stale listeners keep reloading for the previous server.
   const reload = useCallback(() => void load(), [load])
   useShellEvent(TRAY_REFRESH_EVENT, reload)
-
-  const reloadSessions = useCallback(() => void loadSessions(), [loadSessions])
-  useEffect(() => {
-    void loadSessions()
-  }, [loadSessions])
-  useShellEvent(TRAY_REFRESH_EVENT, reloadSessions)
-  useShellEvent(TRAY_SESSIONS_EVENT, reloadSessions)
-
-  const openSession = useCallback((sessionId: string) => {
-    void invoke(OPEN_SESSION_COMMAND, { sessionId }).catch(() => {})
-  }, [])
 
   const refresh = useCallback(() => {
     if (refreshing) return
@@ -262,7 +234,6 @@ export function TrayPopup() {
   const serverName = result?.server_name ?? 'the server'
   const views = summary?.items.map((item) => providerView(item)) ?? []
   const manage = () => runAction('usage_manage')
-  const waiting = sessions?.needsYou.length ?? 0
 
   return (
     <div ref={rootRef} className="tray" data-entering="">
@@ -271,7 +242,6 @@ export function TrayPopup() {
           <Wordmark height={14} title="OpenAgentd" />
         </span>
         {!noServer && result && <span className="head-server">{result.server_name}</span>}
-        {waiting > 0 && <span className="head-chip" role="status">{needsYouText(waiting)}</span>}
       </header>
 
       {noServer ? (
@@ -286,8 +256,6 @@ export function TrayPopup() {
         </div>
       ) : (
         <>
-          {sessions && <SessionList sessions={sessions} onOpen={openSession} onRetry={() => void loadSessions(true)} />}
-
           <div className="toolbar">
             <span className="toolbar-label">Provider limits</span>
             <span className="status" data-tone={status}>{TRAY_STATUS_LABEL[status]}</span>

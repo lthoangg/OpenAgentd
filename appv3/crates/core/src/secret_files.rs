@@ -1,4 +1,4 @@
-//! Atomic owner-only writes — port of `app/core/secret_files.py`.
+//! Atomic owner-only writes.
 
 use std::io::Write;
 use std::path::Path;

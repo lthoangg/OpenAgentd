@@ -1,4 +1,4 @@
-//! Session manager — port of `app/services/agent_manager.py`.
+//! Session manager.
 
 use crate::loader::{self, ProviderFactory};
 use crate::session::AgentSession;

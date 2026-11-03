@@ -1,4 +1,4 @@
-//! `settings.yaml` — port of `app/core/runtime_settings.py`.
+//! `settings.yaml`.
 //!
 //! Field set, defaults and serialisation order match the Pydantic models
 //! (`model_dump(mode="json", exclude_none=True, exclude={"server"})`), so a

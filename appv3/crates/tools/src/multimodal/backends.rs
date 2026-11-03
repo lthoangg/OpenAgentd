@@ -225,7 +225,7 @@ async fn codex_auth() -> Result<(String, Option<String>), String> {
     Ok((auth.access_token, auth.account_id))
 }
 
-/// `_build_request_body`.
+/// Codex image request body.
 pub fn codex_request_body(cfg: &MediaSection, prompt: &str, ref_urls: &[String], overrides: Option<&Overrides>) -> Value {
     let mut content = vec![];
     for (i, url) in ref_urls.iter().enumerate() {
@@ -262,7 +262,7 @@ fn data_url(name: &str, blob: &[u8]) -> String {
     format!("data:{mime};base64,{}", b64(blob))
 }
 
-/// `_parse_sse_image` over already-decoded stream text chunks.
+/// SSE image parser over already-decoded stream text chunks.
 #[derive(Default)]
 pub struct CodexSse {
     buffer: String,
@@ -576,7 +576,7 @@ fn coerce_param(camel: &str, v: &Value) -> Value {
     }
 }
 
-/// `_build_parameters`.
+/// Veo request parameters.
 pub fn veo_parameters(cfg: &MediaSection, overrides: Option<&Overrides>) -> Map<String, Value> {
     let mut out = Map::new();
     for (snake, camel) in VEO_PARAMS {
@@ -602,7 +602,7 @@ fn inline_image(name: &str, blob: &[u8]) -> Value {
     json!({"bytesBase64Encoded": b64(blob), "mimeType": guess(name).unwrap_or_else(|| "application/octet-stream".into())})
 }
 
-/// `_build_instance`.
+/// Veo request instance.
 pub fn veo_instance(prompt: &str, image: Option<&Named>, last_frame: Option<&Named>, refs: Option<&[Named]>, extend: Option<&str>) -> Value {
     let mut inst = Map::new();
     inst.insert("prompt".into(), json!(prompt));
@@ -621,7 +621,7 @@ pub fn veo_instance(prompt: &str, image: Option<&Named>, last_frame: Option<&Nam
     Value::Object(inst)
 }
 
-/// `_extract_video_uri`.
+/// The video URI in a Veo response.
 fn veo_video_uri(v: &Value) -> Option<String> {
     let first = v.get("response")?.as_object()?.get("generateVideoResponse")?.as_object()?.get("generatedSamples")?.as_array()?.first()?.as_object()?;
     first.get("video")?.as_object()?.get("uri")?.as_str().filter(|s| !s.is_empty()).map(String::from)

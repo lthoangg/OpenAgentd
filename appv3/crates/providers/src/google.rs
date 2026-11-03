@@ -1,4 +1,4 @@
-//! Gemini Developer API — port of `providers/googlegenai/googlegenai.py`.
+//! Gemini Developer API.
 
 use crate::openai::shared_client;
 use crate::sse;
@@ -78,7 +78,7 @@ fn concat_parts(a: &Value, b: &Value) -> Value {
     json!(p)
 }
 
-/// v2 `_normalize_gemini_turns`.
+/// Normalise Gemini turns.
 pub fn normalize_turns(contents: Vec<Value>) -> Vec<Value> {
     let mut collapsed: Vec<Value> = vec![];
     for c in contents {
@@ -122,7 +122,7 @@ pub fn normalize_turns(contents: Vec<Value>) -> Vec<Value> {
     normalized
 }
 
-/// v2 `_convert_messages_to_gemini` → (contents, system_instruction).
+/// Convert messages to Gemini → (contents, system_instruction).
 pub fn convert_messages(messages: &[ChatMessage]) -> (Vec<Value>, Option<Value>) {
     let mut contents = vec![];
     let mut system = None;
@@ -274,7 +274,7 @@ impl GoogleGenAiProvider {
         })
     }
 
-    /// v2 `VertexAIProvider` (express mode without project, normal mode with).
+    /// Vertex AI provider (express mode without project, normal mode with).
     pub fn vertex(key: &str, model: &str, project: Option<&str>, location: &str, model_kwargs: Kwargs) -> ProviderResult<Self> {
         if key.is_empty() {
             return Err(ProviderError::Invalid("Vertex AI API key is required. Provide it or set VERTEXAI_API_KEY.".into()));

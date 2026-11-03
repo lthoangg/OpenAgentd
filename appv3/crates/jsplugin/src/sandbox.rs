@@ -6,6 +6,9 @@
 //! `PermissionError` that names the plugin and what was denied. A
 //! single-file (v1) plugin has no policy and keeps full access.
 //!
+//! Credentials are the one thing a bundle gets only with the host's say-so:
+//! see [`set_credentials_gate`].
+//!
 //! Paths are checked after resolving symbolic links (for a path that does
 //! not exist yet, through its nearest existing ancestor), and the resolved
 //! path is what the native then uses, so a link inside an allowed folder
@@ -16,7 +19,58 @@ use serde_json::{json, Value};
 use std::cell::OnceCell;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
+
+/// Decides whether the plugin bundle named by the first argument may use the
+/// credentials of the provider named by the second.
+pub type CredentialsGate = Arc<dyn Fn(&str, &str) -> bool + Send + Sync>;
+
+fn credentials_gate() -> &'static RwLock<Option<CredentialsGate>> {
+    static G: OnceLock<RwLock<Option<CredentialsGate>>> = OnceLock::new();
+    G.get_or_init(Default::default)
+}
+
+/// Sets (or replaces) the process-wide gate behind a bundle's credentials. A
+/// bundle's code uses the credentials, token folder and OAuth documents of one
+/// provider id only when all of these hold:
+///
+/// * its default export declares a provider (once the module has evaluated),
+///   and the id asked for is that one;
+/// * the id is a plain name ([`is_plain_provider_id`]); and
+/// * a gate is set and answers `true` for `(plugin name, provider id)`.
+///
+/// The gate is asked at every use, not once at load, so a plugin that stops
+/// (the host turns it off, or another plugin takes the id) loses its access at
+/// once. With no gate set, no bundle gets credentials at all: that is what a
+/// program that runs no plugin providers wants. A gate that panics refuses.
+/// A single-file plugin has no policy and no gate to ask.
+pub fn set_credentials_gate(gate: CredentialsGate) {
+    *credentials_gate().write().unwrap_or_else(|p| p.into_inner()) = Some(gate);
+}
+
+/// What the gate says about `plugin` and `id`; `None` when no gate is set.
+fn gate_says(plugin: &str, id: &str) -> Option<bool> {
+    // Cloned out of the lock, so the gate runs without it.
+    let gate = credentials_gate().read().unwrap_or_else(|p| p.into_inner()).as_ref().cloned()?;
+    Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| gate(plugin, id))).unwrap_or(false))
+}
+
+/// A provider id a bundle's credentials may be asked for: 1 to 64 ASCII
+/// letters, digits, `-`, `_` and `.`, not starting or ending with `.`. That is
+/// one safe folder name on every file system: no `..`, no path separator, no
+/// stream or device suffix, and no trailing dot (Windows drops it, so `mine.`
+/// would be the folder `mine`). The empty id is not one either: a lookup with
+/// it would search every provider.
+pub fn is_plain_provider_id(id: &str) -> bool {
+    id.len() <= 64 && !id.starts_with('.') && !id.ends_with('.') && plain_component(id)
+}
+
+/// The key a registered native finds in an object argument when a plugin
+/// bundle called it: the host writes it (replacing whatever the code put
+/// there), and its value is `{"env": [names]}`, the variables
+/// `permissions.env` lists. A native that reads the environment on a bundle's
+/// behalf honours that list.
+pub(crate) const SANDBOX_KEY: &str = "$sandbox";
 
 /// How [`JsPlugin::load_with`](crate::JsPlugin::load_with) loads a plugin file.
 #[derive(Debug, Clone, Default)]
@@ -39,10 +93,11 @@ pub struct LoadOptions {
 /// * `env`: the variables `env.get` / `env.all` return.
 ///
 /// Credentials are available for the provider the module's default export
-/// declares, and no other.
+/// declares, and no other, and only while the host's gate accepts that
+/// provider for this plugin ([`set_credentials_gate`]).
 #[derive(Debug, Clone)]
 pub struct Sandbox {
-    /// Plugin name, used in error messages.
+    /// Plugin name, used in error messages and to ask the credentials gate.
     pub plugin: String,
     /// Bundle root: readable. Module imports are limited to it (and to the
     /// folder of the entry file, which normally lies inside it).
@@ -414,13 +469,32 @@ impl Policy {
 
     // ── credentials and other natives ───────────────────────────────────────
 
+    /// Why this plugin may not use the credentials of `id`, the provider it
+    /// declared; `None` when it may. Asked at every use (see
+    /// [`set_credentials_gate`]).
+    fn provider_refusal(&self, id: &str) -> Option<String> {
+        if !is_plain_provider_id(id) {
+            return Some("its id is not a plain name: use 1 to 64 letters, digits, '-', '_' or '.', not starting or ending with '.'".into());
+        }
+        match gate_says(&self.plugin, id) {
+            Some(true) => None,
+            Some(false) => Some("it is not accepted as this plugin's provider: a built-in provider or another plugin has that id, or the plugin is not running".into()),
+            None => Some("no provider accepted: this program does not run plugin providers".into()),
+        }
+    }
+
     /// Credentials, token files and the like of provider `id`: only for the
-    /// provider this plugin's default export declares.
+    /// provider this plugin's default export declares, under a plain id, and
+    /// while the host's gate accepts it for this plugin.
     pub(crate) fn check_provider(&self, id: &str) -> Result<(), Denied> {
-        match self.provider.get() {
-            Some(own) if own == id => Ok(()),
-            Some(own) => Err(self.deny("credentials", id, format!("may not use the credentials of provider {id} (only those of its own provider, {own})"))),
-            None => Err(self.deny("credentials", id, format!("may not use the credentials of provider {id} (its default export declares no provider)"))),
+        let refuse = |why: String| self.deny("credentials", id, format!("may not use the credentials of provider {id} ({why})"));
+        let Some(own) = self.provider.get() else { return Err(refuse("its default export declares no provider".into())) };
+        if own != id {
+            return Err(refuse(format!("only those of its own provider, {own}")));
+        }
+        match self.provider_refusal(id) {
+            None => Ok(()),
+            Some(why) => Err(refuse(why)),
         }
     }
 
@@ -434,20 +508,25 @@ impl Policy {
         }
     }
 
+    /// Marks `arg`, the argument of a native this plugin's code is calling,
+    /// with [`SANDBOX_KEY`]. An argument that is not an object is left alone.
+    pub(crate) fn tag_native_arg(&self, arg: &mut Value) {
+        if let Some(o) = arg.as_object_mut() {
+            o.insert(SANDBOX_KEY.to_string(), json!({"env": self.env}));
+        }
+    }
+
     // ── file system ─────────────────────────────────────────────────────────
 
     /// The declared provider's token folder (`credentialStore(...).tokenPath`
-    /// and the JSON helpers built on it live there).
+    /// and the JSON helpers built on it live there), while the provider is
+    /// usable: it follows the checks its credentials do, at every use.
     fn token_root(&self) -> Option<&Path> {
         let id = self.provider.get()?;
-        self.token_root
-            .get_or_init(|| {
-                if !plain_component(id) {
-                    return None;
-                }
-                resolve(&appv3_core::settings().cache_dir.join("provider-plugins").join(id))
-            })
-            .as_deref()
+        if self.provider_refusal(id).is_some() {
+            return None;
+        }
+        self.token_root.get_or_init(|| resolve(&appv3_core::settings().cache_dir.join("provider-plugins").join(id))).as_deref()
     }
 
     /// Folders `Access` may reach: reads also cover the bundle folder.
@@ -549,6 +628,26 @@ mod tests {
         for no in ["", ".", "..", "a/b", "a\\b", "a b", "é", "../x"] {
             assert!(!plain_component(no), "{no:?}");
         }
+    }
+
+    #[test]
+    fn provider_ids_are_plain_names() {
+        let longest = "a".repeat(64);
+        for ok in ["a", "acme-llm", "Acme_LLM.v2", "a..b", "1", longest.as_str()] {
+            assert!(is_plain_provider_id(ok), "{ok}");
+        }
+        let too_long = "a".repeat(65);
+        // Empty (searches every provider), path-like, hidden, ending in a dot (Windows drops it), not ASCII, too long.
+        for no in ["", ".", "..", ".hidden", "mine.", "../x", "a/b", "a\\b", "a b", "a:b", "a\0b", "é", too_long.as_str()] {
+            assert!(!is_plain_provider_id(no), "{no:?}");
+        }
+    }
+
+    /// The gate is process-wide: the tests in this module that need one share this, which accepts provider
+    /// `mine` for the plugin `demo` and nothing else.
+    fn demo_gate() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| set_credentials_gate(Arc::new(|plugin: &str, id: &str| plugin == "demo" && id == "mine")));
     }
 
     #[test]
@@ -678,7 +777,8 @@ mod tests {
         assert_eq!(e.message, "plugin demo may not read the environment variable SECRET_TOKEN (add it to permissions.env)");
         assert!(!p.env_allowed("PATH"));
 
-        // Credentials: nothing before a provider is declared, then only that one.
+        // Credentials: nothing before a provider is declared, then only that one, while the gate accepts it.
+        demo_gate();
         let arg = |id: &str| json!({"provider": id});
         assert!(p.check_native("creds.get", &arg("mine")).is_err());
         p.declare_provider("mine");
@@ -690,6 +790,44 @@ mod tests {
         assert!(p.check_native("http.statusMessage", &Value::Null).is_ok());
         assert!(p.check_native("gemini.convertTools", &Value::Null).is_ok());
         assert!(p.check_native("db.query", &Value::Null).unwrap_err().message.contains("'db.query'"));
+    }
+
+    #[test]
+    fn a_declared_provider_the_gate_does_not_accept_gets_nothing() {
+        demo_gate();
+        let d = tempfile::tempdir().unwrap();
+        let declared = |id: &str| {
+            let p = policy(d.path(), Permissions::default());
+            p.declare_provider(id);
+            p
+        };
+        // The gate knows `mine` only: another id of the same plugin, and a path-like one, are refused.
+        let e = declared("taken").check_provider("taken").unwrap_err();
+        assert_eq!(e.message, "plugin demo may not use the credentials of provider taken (it is not accepted as this plugin's provider: a built-in provider or another plugin has that id, or the plugin is not running)");
+        assert_eq!((e.permission, e.target.as_str()), ("credentials", "taken"));
+        let e = declared("../mine").check_provider("../mine").unwrap_err();
+        assert!(e.message.contains("its id is not a plain name"), "{}", e.message);
+        assert!(declared("").check_provider("").is_err());
+        assert!(declared("mine").check_provider("mine").is_ok());
+    }
+
+    #[test]
+    fn natives_are_tagged_with_the_environment_permission() {
+        let d = tempfile::tempdir().unwrap();
+        let p = policy(d.path(), Permissions { env: vec!["A".into(), "B".into()], ..Default::default() });
+        let mut arg = json!({"name": "x", SANDBOX_KEY: {"env": ["PATH"]}});
+        p.tag_native_arg(&mut arg);
+        assert_eq!(arg, json!({"name": "x", SANDBOX_KEY: {"env": ["A", "B"]}}), "the host's list replaces the code's");
+        // Only an object can carry the key.
+        for mut other in [json!([1, 2]), json!("text"), json!(null), json!(7)] {
+            let before = other.clone();
+            p.tag_native_arg(&mut other);
+            assert_eq!(other, before);
+        }
+        let none = policy(d.path(), Permissions::default());
+        let mut arg = json!({});
+        none.tag_native_arg(&mut arg);
+        assert_eq!(arg, json!({SANDBOX_KEY: {"env": []}}));
     }
 
     #[test]

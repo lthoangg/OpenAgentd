@@ -8,6 +8,13 @@
 //! credentials, registered host natives) asks it first and fails with a
 //! `PermissionError` when the access is not granted. A single-file plugin
 //! has no policy, and every native behaves as it always has.
+//!
+//! A registered native (`native(name, arg)`) that a bundle calls also gets to
+//! know it: the host sets `arg["$sandbox"] = {"env": [...]}`, the variables
+//! the bundle's `permissions.env` lists, overwriting anything the code put
+//! there. Natives that read the environment or other secrets for a bundle
+//! (the credential lookups) narrow themselves by it; a call without the key
+//! (a single-file plugin, or Rust) is served as it always was.
 
 use crate::sandbox::{self, Access, Denied, Policy};
 use rquickjs::prelude::Async;
@@ -356,9 +363,10 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
         }
         "native" => {
             let n = s(&arg, "name").to_string();
-            let a = arg.get("arg").cloned().unwrap_or(Value::Null);
+            let mut a = arg.get("arg").cloned().unwrap_or(Value::Null);
             if let Some(p) = &st.policy {
                 p.check_native(&n, &a)?;
+                p.tag_native_arg(&mut a);
             }
             let f = natives().lock().unwrap().get(&n).cloned();
             match f {

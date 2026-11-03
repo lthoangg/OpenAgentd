@@ -78,6 +78,32 @@ fn credentials_from_arg(a: &Value) -> CredentialStore {
     store
 }
 
+/// Whether `a` and `b` name the same environment variable (Windows ignores case).
+fn same_env_name(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.eq_ignore_ascii_case(b)
+    } else {
+        a == b
+    }
+}
+
+/// The `creds.get` native: `get(name)` on the store the arguments describe.
+///
+/// A call from a plugin bundle carries `$sandbox` (the host writes it: see `appv3_jsplugin::Sandbox`) with the
+/// environment variables the bundle may read, and is answered more narrowly: the exported environment only for
+/// a listed name, and the stored credential of exactly the provider asked about (no search over every
+/// provider, no named secrets). Without a plain provider id it reads nothing at all. A call without `$sandbox`
+/// (a single-file plugin, which has full access anyway) is answered as [`CredentialStore::get`] does.
+fn creds_get(a: &Value) -> String {
+    let name = a.get("name").and_then(|n| n.as_str()).unwrap_or("");
+    let Some(sandbox) = a.get("$sandbox") else { return credentials_from_arg(a).get(name) };
+    if !appv3_jsplugin::is_plain_provider_id(a.get("provider").and_then(|p| p.as_str()).unwrap_or("")) {
+        return String::new();
+    }
+    let listed = sandbox.get("env").and_then(|e| e.as_array()).is_some_and(|names| names.iter().filter_map(|n| n.as_str()).any(|n| same_env_name(n, name)));
+    credentials_from_arg(a).get_sandboxed(name, listed)
+}
+
 fn oauth_document(a: Value) -> Result<Value, String> {
     use appv3_core::credentials as store;
     let provider = a.get("provider").and_then(|p| p.as_str()).ok_or("OAuth storage requires a provider")?;
@@ -120,13 +146,7 @@ pub fn register_natives() {
     use appv3_jsplugin::register_native;
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        register_native(
-            "creds.get",
-            Arc::new(|a: Value| {
-                let store = credentials_from_arg(&a);
-                Ok(json!(store.get(a.get("name").and_then(|n| n.as_str()).unwrap_or(""))))
-            }),
-        );
+        register_native("creds.get", Arc::new(|a: Value| Ok(json!(creds_get(&a)))));
         register_native("creds.oauth", Arc::new(oauth_document));
         register_native(
             "gemini.convertMessages",

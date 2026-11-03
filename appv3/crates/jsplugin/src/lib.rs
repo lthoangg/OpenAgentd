@@ -22,7 +22,7 @@ pub mod transpile;
 
 pub use host::{parse_iso_ts, parse_qs, register_native, url_query, which, Callback, CallbackFn, NativeFn};
 pub use runtime::{CallResult, JsError, JsPlugin, Mode, Target, ToolCtx, ToolSpec, BLOCKING_CALL_TIMEOUT, BUSY_LIMIT, LOAD_TIMEOUT};
-pub use sandbox::{LoadOptions, Sandbox};
+pub use sandbox::{is_plain_provider_id, set_credentials_gate, CredentialsGate, LoadOptions, Sandbox};
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

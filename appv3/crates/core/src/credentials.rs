@@ -455,18 +455,34 @@ pub fn lookup(provider_id: Option<&str>, name: &str) -> String {
     stored(provider_id, name).unwrap_or_default()
 }
 
+/// What the credential now serving `provider_id` (see [`select`]) stores under `name`.
+fn active_value(f: &CredentialsFile, provider_id: &str, name: &str) -> Option<String> {
+    let enabled = f.enabled(provider_id);
+    select(provider_id, &enabled).and_then(|c| c.value(name)).map(String::from)
+}
+
 /// [`lookup`] without the environment.
 pub fn stored(provider_id: Option<&str>, name: &str) -> Option<String> {
     let f = snapshot();
-    let from = |pid: &str| -> Option<String> {
-        let enabled = f.enabled(pid);
-        select(pid, &enabled).and_then(|c| c.value(name)).map(String::from)
-    };
     let hit = match provider_id.filter(|p| !p.is_empty()) {
-        Some(pid) => from(pid),
-        None => f.providers.keys().find_map(|pid| from(pid)),
+        Some(pid) => active_value(&f, pid, name),
+        None => f.providers.keys().find_map(|pid| active_value(&f, pid, name)),
     };
     hit.or_else(|| f.secrets.get(name).filter(|v| !v.is_empty()).cloned())
+}
+
+/// [`stored`] for exactly `provider_id`, for callers that must not read beyond one provider's own
+/// credential (a plugin bundle's code): an empty id finds nothing instead of searching every provider, and
+/// the named secrets (MCP client secrets and the like) are never consulted.
+pub fn stored_exact(provider_id: &str, name: &str) -> Option<String> {
+    stored_exact_in(&snapshot(), provider_id, name)
+}
+
+fn stored_exact_in(f: &CredentialsFile, provider_id: &str, name: &str) -> Option<String> {
+    if provider_id.is_empty() {
+        return None;
+    }
+    active_value(f, provider_id, name)
 }
 
 #[cfg(test)]
@@ -624,5 +640,34 @@ mod tests {
         let (a, b) = (cred("a", "1"), cred("b", "2"));
         assert_eq!(select(pid, &[&a, &b]).unwrap().id, "a");
         assert_eq!(current(pid), None, "only a request that goes out makes a credential current");
+    }
+
+    /// What a plugin bundle's lookup may reach: one provider's active credential, nothing around it.
+    #[test]
+    fn an_exact_lookup_reads_one_providers_active_credential_and_nothing_more() {
+        let mut f = CredentialsFile { version: 1, ..Default::default() };
+        f.provider_mut("test-exact-a").push(cred("a", "sk-a"));
+        let mut b = Credential { id: "b".into(), label: "b".into(), ..Default::default() };
+        b.values.insert("OTHER_KEY".into(), "other-secret".into());
+        f.provider_mut("test-exact-b").push(b);
+        let mut off = cred("off", "sk-off");
+        off.disabled = true;
+        f.provider_mut("test-exact-off").push(off);
+        f.secrets.insert("NAMED_SECRET".into(), "named-secret".into());
+
+        let exact = |provider: &str, name: &str| stored_exact_in(&f, provider, name);
+        assert_eq!(exact("test-exact-a", "OPENAI_API_KEY").as_deref(), Some("sk-a"));
+        assert_eq!(exact("test-exact-b", "OTHER_KEY").as_deref(), Some("other-secret"));
+        // Not another provider's value, not a named secret, and nothing for an empty or unknown id.
+        assert_eq!(exact("test-exact-a", "OTHER_KEY"), None);
+        assert_eq!(exact("test-exact-b", "OPENAI_API_KEY"), None);
+        assert_eq!(exact("test-exact-a", "NAMED_SECRET"), None);
+        assert_eq!(exact("", "OPENAI_API_KEY"), None, "the empty id does not search every provider");
+        assert_eq!(exact("", "NAMED_SECRET"), None);
+        assert_eq!(exact("test-exact-unknown", "OPENAI_API_KEY"), None);
+        // A credential that is turned off serves nothing, as for `stored`.
+        assert_eq!(exact("test-exact-off", "OPENAI_API_KEY"), None);
+        // An empty name is no value either.
+        assert_eq!(exact("test-exact-a", ""), None);
     }
 }

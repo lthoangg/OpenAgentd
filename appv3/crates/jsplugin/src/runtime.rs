@@ -206,7 +206,9 @@ pub struct ToolCtx {
 ///
 /// With a [`Sandbox`](crate::Sandbox) the natives the code uses refuse what
 /// its permissions do not grant (a `PermissionError`), and credentials are
-/// available only for the provider declared in `default.provider.id`.
+/// available only for the provider declared in `default.provider.id`, and
+/// only while the host's gate accepts it for the plugin
+/// ([`set_credentials_gate`](crate::set_credentials_gate)).
 /// Without one the plugin has full access, as every v1 plugin always had.
 pub struct JsPlugin {
     pub path: PathBuf,
@@ -546,7 +548,8 @@ async fn init(path: &Path, label: &str, policy: Option<Policy>, last_tick: Rc<Ce
         })
         .await;
     let describe: Value = serde_json::from_str(&describe?).map_err(|e| e.to_string())?;
-    // Credentials open up for the provider the default export declares, and no other.
+    // Credentials can open up for the provider the default export declares, and no other (the
+    // host's gate still decides, at every use).
     if let Some(id) = describe.pointer("/default/provider/id").and_then(Value::as_str) {
         state.declare_provider(id);
     }

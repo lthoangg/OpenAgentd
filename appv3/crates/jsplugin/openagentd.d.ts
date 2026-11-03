@@ -46,7 +46,13 @@
 //   limited by `fs` or `env`: grant programs with care.
 // * env: `env.all()` returns only the listed variables that are set.
 // * credentials (`credentialStore`, `tokenPath`, OAuth storage) work only for the provider that the default export
-//   declares (`provider.id`), and only after the module has loaded, not while its top level runs.
+//   declares (`provider.id`), only after the module has loaded (not while its top level runs), and only while
+//   OpenAgentd has accepted that provider: an id that no built-in provider and no other plugin has, with the
+//   plugin running. For any other id, an id that is not a plain name (1 to 64 letters, digits, "-", "_" or ".",
+//   not starting or ending with "."), or a provider OpenAgentd did not accept, they throw a `PermissionError`.
+//   `credentialStore(id).get(name)` returns the value saved for that provider, or the environment variable `name`
+//   only when it is listed in `permissions.env`. Other providers' values and the named secrets (MCP client
+//   secrets) are not available to bundles.
 // * native(): refused, except for the pure conversion helpers (`httpStatusMessage` and the message/tool converters).
 //
 // A call the permissions do not allow throws a `PermissionError` that names the plugin and what to add. A
@@ -118,7 +124,11 @@ declare module "openagentd" {
     readonly providerId: string;
     /** The selected account/key, or null for a legacy/provider-wide store. */
     readonly credentialId: string | null;
-    /** Saved credential / environment value, or `dflt` when unset. */
+    /**
+     * Saved credential / environment value, or `dflt` when unset. In a plugin bundle: the value saved for this
+     * provider, or the environment variable only when `permissions.env` lists it (never another provider's
+     * value or a named secret).
+     */
     get(name: string, dflt?: string): string;
     /** OAuth operations require an account-scoped store. Missing tokens return null. */
     readOAuth(): Record<string, Json> | null;
@@ -343,7 +353,10 @@ declare module "openagentd" {
   export function defineProvider(p: ProviderPlugin): ProviderPlugin;
   /** Identity helper that type-checks a tool; it throws, naming the tool, when the definition breaks the rules. */
   export function defineTool<A = any>(t: ToolDef<A>): ToolDef<A>;
-  /** The credential store of any provider (v2 `ProviderCredentialStore(id)`). */
+  /**
+   * The credential store of any provider (v2 `ProviderCredentialStore(id)`). A plugin bundle gets the store of its
+   * own provider only, and only while OpenAgentd has accepted that provider; any other id throws a `PermissionError`.
+   */
   export function credentialStore(providerId: string, overrides?: Record<string, string>): CredentialStore;
 
   // ── errors (mapped to OpenAgentd provider errors) ───────────────────────

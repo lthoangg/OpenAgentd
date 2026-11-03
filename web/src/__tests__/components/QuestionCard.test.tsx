@@ -252,6 +252,21 @@ describe('QuestionCard', () => {
     expect(screen.getByText('Answer at least one question to send.')).toBeInTheDocument()
   })
 
+  // On a phone the caption shrank to one word a line beside four buttons:
+  // it keeps a readable width, so the buttons wrap under it instead.
+  it('keeps the caption readable on a narrow card, and adds no empty line without one', () => {
+    const { unmount } = renderCard({ question: TWO_QUESTIONS })
+    const caption = screen.getByText('Answer at least one question to send.')
+    expect(caption.className.split(/\s+/)).toContain('basis-48')
+    expect(caption.className.split(/\s+/)).not.toContain('min-w-0')
+    unmount()
+    clearQuestionDrafts()
+    renderCard()
+    fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
+    const actions = sendButton().parentElement!.parentElement!
+    expect(actions.querySelector('span[id$="-caption"]')).toBeNull()
+  })
+
   it('skips by name, never through the primary button', () => {
     // "Skip this question" moves on and the question goes out skipped.
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })

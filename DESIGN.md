@@ -997,7 +997,8 @@ over it. Closing leaves the header where the pressed control was, so the view
 never jumps. A tool call's details have no bottom Collapse bar: the pinned row
 and the section captions close them. Reasoning (`Thinking`) is not a fold and
 has no label: it streams in place and stays open, inline in small upright mono
-with semibold section headers (no quote bar). Clip with `overflow-clip`, not `overflow-hidden`,
+with semibold section headers (no quote bar). It always shows in full: no height
+cap, no inner scroll box, no "Show full reasoning" toggle. Clip with `overflow-clip`, not `overflow-hidden`,
 on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):

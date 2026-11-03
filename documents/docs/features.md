@@ -871,8 +871,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     offers **Choose model** beside **Open Providers**, instead of asking for
     "a model provider" as if none were set up.
   - Each answer's footer names the account it ran on.
-  - A long thinking trace scrolls inside a capped box; **Show full
-    reasoning** lifts the cap.
+  - A thinking trace always shows in full, however long, with no capped
+    box or **Show full reasoning** toggle.
     Runs of blank lines in a trace (Gemini sends three between paragraphs)
     show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older

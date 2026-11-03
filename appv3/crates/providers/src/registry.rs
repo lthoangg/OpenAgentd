@@ -15,7 +15,10 @@ pub const MODELS_DEV_CACHE_TTL_SECONDS: u64 = 24 * 60 * 60;
 
 pub type Registry = Map<String, Value>;
 
-static REGISTRY: RwLock<Option<Arc<Registry>>> = RwLock::new(None);
+/// The merged registry, with the fingerprint of the plugin-bundle providers it
+/// was built for. `None`: installed explicitly (tests), so it is not rebuilt
+/// when the providers change.
+static REGISTRY: RwLock<Option<(Option<u64>, Arc<Registry>)>> = RwLock::new(None);
 
 fn deep_merge(base: &Value, over: &Value) -> Value {
     match (base, over) {
@@ -321,13 +324,18 @@ pub fn build_registry_with(models_dev: Option<&Value>, provider_overlay: &Regist
 }
 
 pub fn load_model_registry() -> Arc<Registry> {
-    if let Some(r) = REGISTRY.read().unwrap().as_ref() {
-        return r.clone();
+    // Plugin bundles add providers (and the model aliases they declare) and
+    // remove them again: a registry built for another set is rebuilt.
+    let providers = crate::plugin::bundle_registry_fingerprint();
+    if let Some((built_for, reg)) = REGISTRY.read().unwrap().as_ref() {
+        if built_for.is_none_or(|f| f == providers) {
+            return reg.clone();
+        }
     }
     let mut provider_overlay: Registry = crate::codex::model_registry_overlay(crate::codex::cached_catalog().as_ref()).into_iter().collect();
     provider_overlay.extend(crate::grok::model_registry_overlay(crate::grok::cached_catalog().as_ref()));
     let reg = Arc::new(build_registry_with(read_models_dev().as_ref(), &provider_overlay, &load_overlay()));
-    *REGISTRY.write().unwrap() = Some(reg.clone());
+    *REGISTRY.write().unwrap() = Some((Some(providers), reg.clone()));
     reg
 }
 
@@ -337,7 +345,7 @@ pub fn clear_model_registry_caches() {
 
 /// Install an explicit registry (tests).
 pub fn install_registry(reg: Registry) {
-    *REGISTRY.write().unwrap() = Some(Arc::new(reg));
+    *REGISTRY.write().unwrap() = Some((None, Arc::new(reg)));
 }
 
 /// Load models.dev data and refresh the model registry.

@@ -1,7 +1,7 @@
 //! Provider connection state & model discovery used by the settings/agents
 //! routes: credential and connection status, model discovery and OpenCode
-//! access checks. `all_providers()` is the builtin catalog plus native
-//! provider plugins.
+//! access checks. `all_providers()` is the builtin catalog plus provider
+//! plugins: single files, and the providers of running plugin bundles.
 
 use appv3_core::runtime_settings::{self as rs, ProviderUiSettings};
 pub use appv3_providers::creds::CredentialStore;
@@ -14,11 +14,13 @@ pub const OPENCODE_PROVIDER_IDS: [&str; 2] = ["opencode", "opencode-go"];
 pub const DAEMON_PROVIDER_IDS: [&str; 3] = ["ollama", "router9", "cliproxy"];
 const TIMEOUT: Duration = Duration::from_secs(3);
 
-pub fn all_providers() -> &'static Vec<Value> {
+/// The catalog now. Owned: plugin bundles add and remove providers while
+/// the server runs.
+pub fn all_providers() -> Vec<Value> {
     appv3_providers::catalog::all_providers()
 }
 
-pub fn find(id: &str) -> Option<&'static Value> {
+pub fn find(id: &str) -> Option<Value> {
     appv3_providers::catalog::find(id)
 }
 
@@ -419,7 +421,7 @@ pub fn is_registered_model_id(model_id: &str) -> bool {
     if pui.is_disconnected {
         return false;
     }
-    let configured = provider_is_configured(entry);
+    let configured = provider_is_configured(&entry);
     if !configured {
         if !pui.cached_models.is_empty() {
             let _ = rs::forget_provider_models(provider);

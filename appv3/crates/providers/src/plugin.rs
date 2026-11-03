@@ -4,14 +4,19 @@
 //! JavaScript/TypeScript files exporting `provider` (see `appv3-jsplugin` and
 //! [`crate::js_plugin`]) from the same `settings.plugins_dirs`; the `*.py`
 //! files are never read, so both versions can share a plugins directory.
+//!
+//! A plugin bundle's code can provide one as well: its default export's
+//! `provider`. The bundle's module hands it to the kernel as a
+//! [`BundleProvider`], so [`provider_plugins`] and the catalog list it while
+//! the module runs and drop it when the module stops.
 
 use crate::creds::CredentialStore;
 use crate::types::*;
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// `OAuthEventSink = Callable[[str, dict], None]`.
 pub type OAuthSink = Arc<dyn Fn(&str, Value) + Send + Sync>;
@@ -129,14 +134,86 @@ fn load() -> Vec<PluginRef> {
     loaded
 }
 
-/// `provider_plugins()` — cached for the process lifetime (as in v2).
-pub fn provider_plugins() -> &'static Vec<PluginRef> {
+/// A provider that a running plugin bundle adds: a kernel contribution of the
+/// bundle's module (`Registrar::add`). It is listed by [`provider_plugins`],
+/// found by [`find_provider_plugin`] and shown in the catalog while the module
+/// runs; stopping the module removes it. Make the plugin with
+/// [`crate::js_plugin::JsProviderPlugin::from_bundle`].
+pub struct BundleProvider(pub PluginRef);
+
+/// The single-file provider plugins, loaded once per process (as in v2).
+pub(crate) fn single_file_plugins() -> &'static Vec<PluginRef> {
     static CACHE: OnceLock<Vec<PluginRef>> = OnceLock::new();
     CACHE.get_or_init(load)
 }
 
+/// Every provider plugin there is now: the single-file plugins, then the
+/// provider of each running plugin bundle, in the order their modules started.
+pub fn provider_plugins() -> Vec<PluginRef> {
+    let mut out = single_file_plugins().clone();
+    out.extend(accepted_bundle_providers().into_iter().map(|(_, p)| p));
+    out
+}
+
+/// The providers of the running plugin bundles that are accepted, each with the id of the module (`plugin:<name>`)
+/// that made it, in the order the modules started. A bundle's provider whose id a built-in provider, a single
+/// file or an earlier bundle already has is skipped (and logged once): ids are unique. Ids that differ in
+/// ASCII case only count as one (see [`crate::catalog::is_builtin_id`]).
+fn accepted_bundle_providers() -> Vec<(Arc<str>, PluginRef)> {
+    let single = single_file_plugins();
+    let mut out: Vec<(Arc<str>, PluginRef)> = vec![];
+    for (module, b) in appv3_kernel::global().contributions_by_module::<BundleProvider>() {
+        let id = &b.0.info().id;
+        let taken_by = if crate::catalog::is_builtin_id(id) {
+            "a built-in provider"
+        } else if single.iter().any(|p| p.info().id.eq_ignore_ascii_case(id)) || out.iter().any(|(_, p)| p.info().id.eq_ignore_ascii_case(id)) {
+            "another plugin"
+        } else {
+            out.push((module, b.0.clone()));
+            continue;
+        };
+        warn_skipped(&module, id, taken_by);
+    }
+    out
+}
+
+/// The module (`plugin:<name>`) whose plugin bundle provides the provider with exactly this `id`, as far as
+/// [`provider_plugins`] lists it. `None` for a built-in provider, a single file's, a provider that was skipped
+/// because its id was taken, and an id no running bundle has. This is what a bundle's right to the
+/// credentials of its provider id rests on: it follows the modules, so a plugin that stops loses it.
+pub fn bundle_provider_owner(id: &str) -> Option<Arc<str>> {
+    accepted_bundle_providers().into_iter().find(|(_, p)| p.info().id == id).map(|(module, _)| module)
+}
+
+/// Logs, once per module and id, that a bundle's provider was skipped.
+fn warn_skipped(module: &str, id: &str, taken_by: &str) {
+    static SEEN: OnceLock<Mutex<HashSet<(String, String)>>> = OnceLock::new();
+    let first = SEEN.get_or_init(Default::default).lock().unwrap().insert((module.to_string(), id.to_string()));
+    if first {
+        tracing::warn!("provider_plugin_duplicate id={} module={} taken_by={}", id, module, taken_by);
+    }
+}
+
+/// The provider plugin with `id`, if [`provider_plugins`] lists one.
 pub fn find_provider_plugin(id: &str) -> Option<PluginRef> {
-    provider_plugins().iter().find(|p| p.info().id == id).cloned()
+    provider_plugins().into_iter().find(|p| p.info().id == id)
+}
+
+/// What the running bundles' providers add to the model registry (their ids
+/// and the model aliases they declare) as one number, 0 when there are none.
+/// The registry is rebuilt when it changes.
+pub(crate) fn bundle_registry_fingerprint() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let bundles = appv3_kernel::global().contributions::<BundleProvider>();
+    if bundles.is_empty() {
+        return 0;
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for b in bundles {
+        let i = b.0.info();
+        (&i.id, &i.models_dev_provider_id, &i.metadata_source_provider, &i.model_registry_aliases).hash(&mut h);
+    }
+    h.finish()
 }
 
 /// `credential_map(fields)`.

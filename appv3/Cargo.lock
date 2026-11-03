@@ -410,6 +410,7 @@ dependencies = [
  "anyhow",
  "appv3-core",
  "appv3-jsplugin",
+ "appv3-kernel",
  "async-stream",
  "async-trait",
  "base64 0.23.1",

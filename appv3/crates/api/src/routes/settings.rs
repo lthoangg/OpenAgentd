@@ -530,7 +530,7 @@ async fn list_providers() -> ApiResult<Response> {
     Ok(json(json!({"providers": out, "has_any_configured": any})))
 }
 
-fn find_or_404(id: &str) -> ApiResult<&'static Value> {
+fn find_or_404(id: &str) -> ApiResult<Value> {
     prov::find(id).ok_or_else(|| ApiError::not_found(format!("Unknown provider '{id}'")))
 }
 
@@ -562,7 +562,7 @@ async fn provider_models(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Re
     let extra = b.dict_str("extra");
     let credential_id = b.opt_str("credential_id").filter(|c| !c.is_empty());
     b.finish(&["api_key", "extra", "credential_id"])?;
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     if rs::provider_is_disconnected(&id) {
         return Err(ApiError::conflict(format!("Provider '{id}' is disconnected. Reconnect it first.")));
     }
@@ -726,7 +726,7 @@ async fn test_provider(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Resp
     let extra = b.dict_str("extra");
     let credential_id = b.opt_str("credential_id").filter(|c| !c.is_empty());
     b.finish(&["api_key", "model", "extra", "credential_id"])?;
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     // Builtins and opted-in plugins test one account through its own scoped
     // store; a single-credential plugin keeps the stored-values-as-overrides
     // behavior.
@@ -777,7 +777,7 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
     let extra = b.dict_str("extra");
     let credential_id = b.opt_str("credential_id");
     b.finish(&["api_key", "extra", "credential_id"])?;
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     let values = entry_values(entry, &token, &extra);
     if values.is_empty() {
         return Ok(json(json!({"saved": false})));
@@ -841,7 +841,7 @@ async fn configure_default_model_for(id: &str) -> (Option<String>, Vec<String>) 
         return (None, vec![]);
     }
     let Some(entry) = prov::find(id) else { return (None, vec![]) };
-    let live = prov::discover_provider_models(entry, &prov::saved_overrides(entry)).await;
+    let live = prov::discover_provider_models(&entry, &prov::saved_overrides(&entry)).await;
     let Some(pm) = appv3_providers::suggest::suggested_model(id, &live) else {
         tracing::info!("default_model_not_set provider={} reason=no_models", id);
         return (None, vec![]);
@@ -931,7 +931,7 @@ pub fn credentials_json(entry: &Value) -> Value {
 }
 
 async fn list_credentials(axum::extract::State(st): axum::extract::State<AppState>, AxPath(id): AxPath<String>) -> ApiResult<Response> {
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     cred_store::load().map_err(store_err)?;
     // v3 addition: how many sessions are pinned to each credential.
     let pinned = appv3_db::pinned_credential_counts(&st.pool).await?;
@@ -957,7 +957,7 @@ async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
     let token = b.str("api_key", Some(""));
     let extra = b.dict_str("extra");
     b.finish(&["label", "api_key", "extra"])?;
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     if prov::is_legacy_plugin(&id) && !cred_store::load().map_err(store_err)?.provider(&id).is_empty() {
         return Err(ApiError::unprocessable(format!("Provider '{id}' keeps a single credential: update the saved one instead of adding another. Existing credentials are kept.")));
     }
@@ -1002,7 +1002,7 @@ async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Byt
     let token = b.str("api_key", Some(""));
     let extra = b.dict_str("extra");
     b.finish(&["label", "disabled", "api_key", "extra"])?;
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     let values = entry_values(entry, &token, &extra);
     check_value_names(&id, &values)?;
     let (pid, c2) = (id.clone(), cid.clone());
@@ -1038,7 +1038,7 @@ async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Byt
 }
 
 async fn delete_credential(AxPath((id, cid)): AxPath<(String, String)>) -> ApiResult<Response> {
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     let (pid, c2) = (id.clone(), cid.clone());
     let removed = blocking(move || cred_store::update(|f| f.remove(&pid, &c2).is_some())).await.map_err(store_err)?;
     if !removed {
@@ -1058,7 +1058,7 @@ async fn order_credentials(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<
     let mut b = Body::new(&v)?;
     let ids = b.list_str("ids");
     b.finish(&["ids"])?;
-    let entry = find_or_404(&id)?;
+    let entry = &find_or_404(&id)?;
     let pid = id.clone();
     let ok = blocking(move || {
         cred_store::update(|f| {
@@ -1106,7 +1106,7 @@ async fn default_model(raw: Bytes) -> ApiResult<Response> {
         Some(pm) => pm,
         None => {
             let id = provider.unwrap_or_default();
-            let entry = find_or_404(&id)?;
+            let entry = &find_or_404(&id)?;
             let live = prov::discover_provider_models(entry, &prov::saved_overrides(entry)).await;
             appv3_providers::suggest::suggested_model(&id, &live).ok_or_else(|| ApiError::unprocessable(format!("{} lists no models to use.", s(entry, "label"))))?
         }

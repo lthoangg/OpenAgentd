@@ -305,7 +305,7 @@ fn usage_key(provider: &str, credential_id: Option<&str>) -> Result<crate::usage
             if account.disabled {
                 return Err(UsageError::Rejected("Usage is paused for this disabled account.".into()));
             }
-            let oauth = prov::find(provider).is_some_and(|entry| prov::s(entry, "kind") == "oauth");
+            let oauth = prov::find(provider).is_some_and(|entry| prov::s(&entry, "kind") == "oauth");
             if oauth && account.oauth.is_none() && (prov::is_optin_plugin(provider) || !account.has_secret()) {
                 return Err(UsageError::Credentials("Reconnect this account to check usage.".into()));
             }
@@ -326,7 +326,7 @@ pub async fn get_usage(provider: &str, token: Option<&str>, credential_id: Optio
     let key = usage_key(provider, credential_id)?;
     // A candidate key must never share a cache with a stored credential.
     if token.is_some_and(|t| !t.is_empty()) {
-        if prov::find(provider).is_some_and(|entry| prov::s(entry, "kind") == "oauth") {
+        if prov::find(provider).is_some_and(|entry| prov::s(&entry, "kind") == "oauth") {
             return Err(UsageError::Rejected("Usage uses this account's saved sign-in.".into()));
         }
         return cache().uncached(|| fetch_provider_usage(provider, token, credential_id)).await;
@@ -389,15 +389,8 @@ fn candidates(rt: &rs::RuntimeSettings) -> Vec<(String, String)> {
         if rt.providers.get(id).map(|p| p.is_disconnected).unwrap_or(false) {
             continue;
         }
-        let owned;
-        let entry = match prov::find(id) {
-            Some(e) => e,
-            None => {
-                owned = json!({"id": id, "label": fallback, "kind": "oauth"});
-                &owned
-            }
-        };
-        if !prov::provider_is_configured(entry) {
+        let entry = prov::find(id).unwrap_or_else(|| json!({"id": id, "label": fallback, "kind": "oauth"}));
+        if !prov::provider_is_configured(&entry) {
             continue;
         }
         let label = entry.get("label").and_then(|v| v.as_str()).unwrap_or(fallback);
@@ -411,15 +404,8 @@ fn candidates(rt: &rs::RuntimeSettings) -> Vec<(String, String)> {
         if rt.providers.get(&info.id).map(|x| x.is_disconnected).unwrap_or(false) {
             continue;
         }
-        let owned;
-        let entry = match prov::find(&info.id) {
-            Some(e) => e,
-            None => {
-                owned = json!({"id": info.id, "label": info.label, "kind": info.kind});
-                &owned
-            }
-        };
-        if !prov::provider_is_configured(entry) {
+        let entry = prov::find(&info.id).unwrap_or_else(|| json!({"id": info.id, "label": info.label, "kind": info.kind}));
+        if !prov::provider_is_configured(&entry) {
             continue;
         }
         out.push((info.id.clone(), info.label.clone()));

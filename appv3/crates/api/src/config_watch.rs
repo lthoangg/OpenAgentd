@@ -131,7 +131,9 @@ pub fn start() {
     if disabled() || STARTED.set(()).is_err() {
         return;
     }
-    let _ = std::thread::Builder::new().name("oad-config-watch".into()).spawn(|| {
+    // Plugin reloads run on the server's runtime.
+    let handle = tokio::runtime::Handle::try_current().ok();
+    let _ = std::thread::Builder::new().name("oad-config-watch".into()).spawn(move || {
         let layout = Layout::from_settings();
         let (tx, rx) = channel::<Event>();
         let mut watcher = match RecommendedWatcher::new(
@@ -152,8 +154,23 @@ pub fn start() {
             }
         }
         tracing::debug!("config_watch_started roots={:?}", roots);
-        run(&layout, rx, appv3_agent::broadcaster::publish);
+        run(&layout, rx, move |event, payload| publish_after_plugin_reload(handle.as_ref(), event, payload));
         drop(watcher);
+    });
+}
+
+/// Publishes `payload`; when a plugin folder changed, reloads the plugins
+/// first, so the UI refetches what they provide now (their skills too).
+fn publish_after_plugin_reload(handle: Option<&tokio::runtime::Handle>, event: &str, mut payload: serde_json::Value) {
+    let plugins = payload["resources"].as_array().is_some_and(|r| r.iter().any(|x| x == "plugins"));
+    let Some(h) = handle.filter(|_| plugins) else { return appv3_agent::broadcaster::publish(event, payload) };
+    if let Some(r) = payload["resources"].as_array_mut().filter(|r| !r.iter().any(|x| x == "skills")) {
+        r.push(json!("skills"));
+    }
+    let event = event.to_string();
+    h.spawn(async move {
+        crate::plugins::reload().await;
+        appv3_agent::broadcaster::publish(&event, payload);
     });
 }
 

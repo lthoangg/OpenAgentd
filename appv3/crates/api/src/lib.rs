@@ -9,6 +9,7 @@ pub mod modules;
 pub mod mux;
 pub mod network_access;
 pub mod observability;
+pub mod plugins;
 pub mod providers;
 pub mod routes;
 pub mod schema;

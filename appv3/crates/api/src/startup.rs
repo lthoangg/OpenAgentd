@@ -52,15 +52,18 @@ pub fn ensure_workspace_initialized() -> anyhow::Result<()> {
 }
 
 /// Lifespan startup: starts the built-in modules (`crate::modules`) on the
-/// global kernel. Returns the error of a critical module that cannot start,
-/// e.g. an invalid agents dir (v2 re-raises and the server never starts).
+/// global kernel, then one module per plugin folder (`crate::plugins`).
+/// Returns the error of a critical module that cannot start, e.g. an
+/// invalid agents dir (v2 re-raises and the server never starts).
 pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     tracing::info!("server_starting version={} app_env={}", appv3_core::VERSION, settings().app_env);
     let k = appv3_kernel::global();
     for m in crate::modules::builtin(pool) {
         k.add(m)?;
     }
-    k.start_all().await
+    k.start_all().await?;
+    crate::plugins::reload().await;
+    Ok(())
 }
 
 /// End every open SSE stream (global feed and per-session turn streams).

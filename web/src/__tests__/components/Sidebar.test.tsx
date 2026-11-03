@@ -2947,13 +2947,11 @@ describe('Sidebar workspace trust flow', () => {
 
       fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
       const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
-      // The macOS app has its own share sheet, so Share… is there.
+      // No Share… and no Copy link: a session is opened from the app, not passed around.
       expect(items.map((item) => item.textContent)).toEqual([
         'Open in new window',
         'Rename',
         'Pin',
-        'Copy link',
-        'Share…',
         'Delete session…',
       ])
       fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
@@ -2963,33 +2961,16 @@ describe('Sidebar workspace trust flow', () => {
       )
     })
 
-    it('copies a browser link to the session, with no new-window entry outside the app', async () => {
+    it('has no new-window entry outside the app', async () => {
       isTauri = false
-      const writeText = mock(async (_text: unknown) => {})
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
       sessionsData = [projectSession('session-1', 'Feature')]
       workspaceSessionsData = sessionsData
 
       await renderSidebarForSessions('session-1')
 
       fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
+      expect(await screen.findByRole('menuitem', { name: 'Rename' })).toBeTruthy()
       expect(screen.queryByRole('menuitem', { name: 'Open in new window' })).toBeNull()
-      fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy link' }))
-      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
-      expect(writeText.mock.calls[0][0]).toBe(`${window.location.origin}/session-1`)
-    })
-
-    it('has no Share… in the Linux app, which has no share sheet', async () => {
-      isTauri = true
-      platformOs = 'linux'
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
-
-      await renderSidebarForSessions('session-1')
-
-      fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
-      expect(await screen.findByRole('menuitem', { name: 'Copy link' })).toBeTruthy()
-      expect(screen.queryByRole('menuitem', { name: 'Share…' })).toBeNull()
     })
 
     it('pins from the row action left of More', async () => {

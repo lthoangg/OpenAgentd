@@ -939,7 +939,7 @@ draws another frame. The lint (`design-lint.test.ts`) and
 `ui/borderless.test.tsx` hold this.
 
 **Native first.** Whatever the host OS already draws (context menus in the
-desktop app, the title bar, share, simple pickers, the Dock or taskbar badge,
+desktop app, the title bar, simple pickers, the Dock or taskbar badge,
 gestures) is the OS's own; the one exception is the Windows caption buttons,
 drawn to the system's own metrics so the header can be the title bar there as
 it is on macOS (Desktop chrome). The app draws only what needs its own content: the
@@ -1127,10 +1127,8 @@ screen just unfolds. From the keyboard ←/→ on the name fold, so the chevron
 is not a Tab stop. The active workspace's name is medium weight in ink.
 
 **Session menu.** ⋯, right-click and the phone's long-press sheet show one
-list in one order: Open in new window (desktop app), Rename, Pin, then Copy
-link and Share… (where the system has a share sheet), then Delete session….
-A link is the `openagentd://session/<id>` deep link in the apps and the
-page address in a browser.
+list in one order: Open in new window (desktop app), Rename, Pin, then
+Delete session….
 
 **Header.** Desktop: the sidebar button on the left, then workspace · session
 title; the command palette pill in the middle ("Command palette" and its
@@ -1463,8 +1461,6 @@ Menus):
   is the default button (Enter); a destructive one never is, Cancel is.
 - **Attention badge**: the Needs you count on the Dock (macOS), the launcher
   (Linux) and as a taskbar overlay (Windows); `(n)` in a browser tab's title.
-- **Share**: the macOS share menu and the Windows Share window
-  (`share_url`); Linux copies the link.
 - **Zoom** is saved, and a new window opens at the zoom of the window it
   came from.
 - **macOS**: two-finger swipes go back and forward through the window's
@@ -1549,8 +1545,7 @@ Android scales text in the shell instead: `ShellPlugin` sets the WebView's
 The phone apps keep the app's own controls: a choice of a few values (theme,
 text size) is the same segmented control as on desktop, and a long press
 opens the item's menu as the app's bottom sheet on iOS and Android alike.
-Share… opens the system share sheet (`share_text`), which is the window's
-business, not a menu. A swipe
+A swipe
 from the left edge brings back the session list (the app's one level up, as
 iOS's back swipe does), a sheet closes with a downward drag, and haptics
 mark a send, an arriving question, a mode change and a sheet dismissed by
@@ -1566,7 +1561,6 @@ drag.
 | App menu | menu bar | ☰ / Alt | ☰ / Alt | — | — |
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | Cancel · Action | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
-| Share | share menu | Share window | copy link | share sheet | share sheet |
 | System text size | — | — | — | Dynamic Type | font scale |
 | Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | edge swipe (session list) | Back gesture |
 

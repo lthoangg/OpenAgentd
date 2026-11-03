@@ -51,7 +51,6 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
-  Link,
   Loader2,
   MessageCircle,
   MoreHorizontal,
@@ -60,14 +59,12 @@ import {
   PinOff,
   Plus,
   Settings,
-  Share,
   SquarePen,
   Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { canShareSession, copySessionLink, shareSessionLink } from '@/lib/session-link'
 import { sessionWorking } from '@/lib/active-sessions'
 import {
   useDeleteSessionMutation,
@@ -979,33 +976,7 @@ export function Sidebar({
         run: () => toggleSessionPinned(session),
       })
     }
-    actions.push({
-      id: 'copy-link',
-      label: 'Copy link',
-      icon: Link,
-      separatorBefore: actions.length > 0,
-      run: () => {
-        copySessionLink(session.id, isTauri).then(
-          () => pushToast({ tone: 'success', title: 'Link copied' }),
-          () => pushToast({ tone: 'error', title: 'Could not copy the link' }),
-        )
-      },
-    })
-    // Only where the system has a share sheet; elsewhere it would just copy.
-    if (canShareSession()) {
-      actions.push({
-        id: 'share',
-        label: 'Share…',
-        icon: Share,
-        run: () => {
-          shareSessionLink(session, isTauri).then(
-            (outcome) => { if (outcome === 'copied') pushToast({ tone: 'success', title: 'Link copied' }) },
-            () => pushToast({ tone: 'error', title: 'Could not share the session' }),
-          )
-        },
-      })
-    }
-    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: true, run: () => setDeleteTarget(session) })
+    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: actions.length > 0, run: () => setDeleteTarget(session) })
     return actions
   }
 

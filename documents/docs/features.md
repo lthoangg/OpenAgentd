@@ -842,10 +842,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
-    (desktop app), **Rename**, **Pin**, **Copy link**, **Share…** (where the
-    system has a share sheet) and **Delete session…**. A copied link opens
-    the session again: an `openagentd://` link from the apps, the page
-    address from a browser. Touch keeps the pin mark on pinned rows.
+    (desktop app), **Rename**, **Pin** and **Delete session…**. Touch
+    keeps the pin mark on pinned rows.
   - Double-click the session title in the header (or press F2 or Enter on
     it) to rename it there.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
@@ -1006,9 +1004,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The number of sessions that need you shows on the Dock (macOS), the
     taskbar (Windows) and the launcher (Linux), and in a browser tab's
     title.
-  - **Share…** on a session opens the system share sheet: the macOS share
-    menu, the Windows Share window, the iOS and Android share sheets, or
-    Web Share in a browser that has it. Linux copies the link.
   - Zoom is remembered, and a new window opens at the zoom and in the theme
     of the window it came from; Text size is shared by every window. On
     macOS it opens one step down and right of that window, as Mac windows

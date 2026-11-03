@@ -736,7 +736,8 @@ drawer and full-screen sheet.
   `role="separator"` elements (arrows ±16px, Shift ±64px, Home/End, Enter or
   double-click to reset) whose 1px line lights up in `focus-ring`.
 - **One toolbar, one scroller per view.** A view gets at most one 32px toolbar
-  under the tab bar and one scrolling region. Lists are flat `divide-y` rows at
+  under the tab bar and one scrolling region (the sidebar is the exception:
+  its session list scrolls and Scheduled scrolls on its own). Lists are flat `divide-y` rows at
   `list-row` height; row actions swap in for trailing metadata on hover/focus
   instead of nesting controls inside the row button.
 - **The Review panel holds views, not just files.** Besides Git, file, diff,
@@ -1117,10 +1118,11 @@ already clear. State is carried by words and chips.
 The sidebar has its own section header (below).
 
 **Sidebar sections.** **New session** (⌘N) sits atop the sidebar, outside the
-scroller, so starting is always one click. Below it one scroller holds
-Pinned, Needs you, the session list and Scheduled; no section scrolls on its
-own, and the session list's header sticks to the top so its actions stay in
-reach. Every section uses one header (`Sidebar/SidebarHeading.tsx`): the
+scroller, so starting is always one click. Below it the session list scrolls
+(Pinned, Needs you and the sessions), and its header sticks to the top so its
+actions stay in reach. Scheduled sits pinned at the bottom, outside that
+scroller, with no rule above it, and scrolls on its own past 224px
+(`max-h-56`). Every section uses one header (`Sidebar/SidebarHeading.tsx`): the
 name in sentence case, `text-xs` medium muted, a count, and a chevron that is
 always visible when the section folds. Needs you counts in a warning chip
 with words ("2 waiting"), so colour is never the only signal. Sections are

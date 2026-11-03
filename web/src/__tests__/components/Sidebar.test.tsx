@@ -1799,7 +1799,7 @@ describe('Sidebar workspace trust flow', () => {
       expect(treeRequests).toBe(2)
     })
 
-    it('lists every section in one scroller under an always-visible New session row', async () => {
+    it('scrolls the session list and pins Scheduled below it with its own scroll', async () => {
       twoWorkspaces()
       pinnedSessionsData = [{ id: 'pinned-1', title: 'Pinned review', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', pinned_at: '2026-05-14T00:00:00Z' }]
       const view = await renderSidebarForSessions('session-1')
@@ -1807,10 +1807,21 @@ describe('Sidebar workspace trust flow', () => {
       const scroller = view!.container.querySelector('[data-sidebar-scroller]') as HTMLElement
       expect(scroller.className).toContain('overflow-y-auto')
       expect(scroller.contains(screen.getByRole('region', { name: 'Pinned' }))).toBe(true)
-      expect(scroller.contains(screen.getByRole('region', { name: 'Scheduled' }))).toBe(true)
       expect(scroller.contains(screen.getByRole('button', { name: 'New session' }))).toBe(false)
-      // No section scrolls on its own.
-      expect(Array.from(view!.container.querySelectorAll('.overflow-y-auto'))).toEqual([scroller])
+      // The sticky section header stays inside the session scroller.
+      const stickyHeader = scroller.querySelector('.sticky') as HTMLElement
+      expect(stickyHeader).toBeTruthy()
+      expect(stickyHeader.className).toContain('top-0')
+      // Scheduled sits after it, outside, in its own capped scroller.
+      const scheduled = screen.getByRole('region', { name: 'Scheduled' })
+      expect(scroller.contains(scheduled)).toBe(false)
+      const scheduledScroller = view!.container.querySelector('[data-sidebar-scheduled-scroller]') as HTMLElement
+      expect(scheduledScroller.contains(scheduled)).toBe(true)
+      expect(scheduledScroller.className).toContain('max-h-56')
+      expect(scheduledScroller.className).toContain('overflow-y-auto')
+      expect(scroller.compareDocumentPosition(scheduledScroller) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(scheduledScroller.parentElement).toBe(scroller.parentElement)
+      expect(Array.from(view!.container.querySelectorAll('.overflow-y-auto'))).toEqual([scroller, scheduledScroller])
       // Touch keeps the pin mark, though it drops the rest of the row meta for ⋯.
       const pinMark = view!.container.querySelector('[data-pin-mark]') as HTMLElement
       expect(pinMark.className).not.toContain('pointer-coarse:hidden')

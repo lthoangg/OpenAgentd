@@ -2600,6 +2600,8 @@ agent against it.
   run time (`18:05`, `Wed 09:00`, or `20/03`). Clicking a task opens the
   scheduler on that task, and clicking the **Scheduled** header opens the full
   list. The section is hidden when nothing is scheduled.
+  Since `[v3.43.0]` it stays pinned at the bottom of the sidebar while the
+  session list scrolls above it, and scrolls on its own past 224 px.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored

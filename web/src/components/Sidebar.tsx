@@ -3,9 +3,10 @@
  * screen:
  *
  *   • "New session" at the top, always visible (⌘N does the same).
- *   • One scroller below it: Pinned, Needs you, the "Workspaces" section
- *     (its header sticks to the top, so Search and View options stay
- *     reachable however long the list is), then Scheduled.
+ *   • The session list scrolls below it: Pinned, Needs you, then the
+ *     "Workspaces" section (its header sticks to the top, so Search and View
+ *     options stay reachable however long the list is). Scheduled sits
+ *     pinned at the bottom and scrolls on its own past 224 px.
  *   • Repositories and their sessions as 28 px rows, one level deep.
  *     A repository's name opens its latest session; the chevron folds it.
  *     Worktrees are not rows: a repository lists the sessions of every
@@ -1158,8 +1159,9 @@ export function Sidebar({
           onClose={closeSessionSearch}
         />
       ) : (
-      // The sidebar's one scroller: Pinned, Needs you, the sessions (under a
-      // header that sticks) and Scheduled scroll together.
+      <>
+      {/* The sessions scroller: Pinned, Needs you and the sessions (under a
+          header that sticks) scroll together. Scheduled is pinned below it. */}
       <div data-sidebar-scroller="" className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
       <PinnedSection
         currentSessionId={currentSessionId}
@@ -1494,9 +1496,13 @@ export function Sidebar({
         )}
       </div>
       )}
-
-      <ScheduledSection onMobileClose={onMobileClose} />
       </div>
+
+      {/* Pinned at the bottom, own scroll past 224px; hidden during search. */}
+      <div data-sidebar-scheduled-scroller="" className="max-h-56 shrink-0 overflow-y-auto overflow-x-hidden">
+        <ScheduledSection onMobileClose={onMobileClose} />
+      </div>
+      </>
       )}
       </div>
 

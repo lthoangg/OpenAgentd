@@ -64,9 +64,9 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   every surface.
 - `src/answers.rs`: reads the open question of a session
   (`GET /api/agent/{id}/question`) and posts an answer, with the server's
-  credential. Only one plain single-choice question with a few short options
-  is answered in place (`quick_choices`); typing, several questions, plan
-  reviews and change confirmations say "Open to answer". A 409/404 on the
+  credential. Only OS notifications answer in place, and only one plain
+  single-choice question with a few short options (`quick_choices`); the
+  island and the pet never answer: a click opens the session. A 409/404 on the
   answer means it is no longer open: treated as answered elsewhere.
 - `src/pet.rs`: the desktop pet (`web/pet.html`, macOS and Windows): a
   transparent always-on-top window that is only a full-width lane of a

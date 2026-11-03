@@ -17,8 +17,6 @@ type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let view: IslandView
 let closeMenu: (() => void) | undefined
-/** What `island_answer` does next: take the answer, or refuse it. */
-let answerResult: 'ok' | 'fail' = 'ok'
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -26,10 +24,6 @@ mock.module('@tauri-apps/api/core', () => ({
     calls.push([cmd, args])
     if (cmd === 'island_state') return view
     if (cmd === 'island_context_menu') return new Promise<void>((resolve) => { closeMenu = resolve })
-    if (cmd === 'island_answer') {
-      if (answerResult === 'fail') throw new Error('The server refused the answer')
-      return 'answered'
-    }
     return undefined
   },
 }))
@@ -47,8 +41,8 @@ const running = (id: string, title: string): IslandSession =>
   ({ id, title, workspace: 'web', state: 'running', question: null })
 const waiting = (id: string, title: string, question: string): IslandSession =>
   ({ id, title, workspace: 'api', state: 'needs_input', question })
-const asking = (id: string, title: string, question: string, choices: string[], questionId = `q-${id}`): IslandSession =>
-  ({ ...waiting(id, title, question), questionId, choices })
+const asking = (id: string, title: string, question: string, questionId = `q-${id}`): IslandSession =>
+  ({ ...waiting(id, title, question), questionId })
 
 const done = (id: string, title: string): IslandSession =>
   ({ id, title, workspace: 'web', state: 'done', question: null })
@@ -69,7 +63,6 @@ const fits = () => calls.filter(([cmd]) => cmd === 'island_fit').map(([, args]) 
 const lastFit = () => fits().at(-1)
 const opened = () => calls.filter(([cmd]) => cmd === 'island_open_session').map(([, args]) => args?.sessionId)
 const dismissed = () => calls.filter(([cmd]) => cmd === 'island_dismiss').map(([, args]) => args?.sessionId)
-const answers = () => calls.filter(([cmd]) => cmd === 'island_answer').map(([, args]) => args)
 const pill = () => document.querySelector('.island') as HTMLElement
 const list = () => screen.getByRole('list', { name: 'Sessions' })
 /** The title of each row of the open list, in order. */
@@ -87,7 +80,6 @@ async function mount(settings: Partial<IslandSettings> = {}) {
 beforeEach(() => {
   calls = []
   closeMenu = undefined
-  answerResult = 'ok'
   handlers.clear()
   view = { status: status(1, []), geometry: { hasNotch: true, width: 188, height: 38 }, settings: DEFAULT_ISLAND_SETTINGS }
 })
@@ -328,67 +320,34 @@ describe('Island', () => {
 
   it('lets a question that was put off come back when the agent asks again', async () => {
     await mount()
-    push(status(2, [asking('w', 'Plan', 'Which branch?', ['main', 'dev'], 'q1')]))
+    push(status(2, [asking('w', 'Plan', 'Which branch?', 'q1')]))
     openList()
     fireEvent.click(screen.getByRole('button', { name: 'Later: Plan' }))
     // Nothing is left to show: the pill goes, the question still waits on the server.
     expect(screen.queryByRole('list')).toBeNull()
     expect(pill().dataset.mode).toBe('hidden')
 
-    push(status(3, [asking('w', 'Plan', 'Which branch?', ['main', 'dev'], 'q1')]))
+    push(status(3, [asking('w', 'Plan', 'Which branch?', 'q1')]))
     expect(pill().dataset.mode).toBe('hidden')
-    push(status(4, [asking('w', 'Plan', 'And the tag?', ['v1', 'v2'], 'q2')]))
+    push(status(4, [asking('w', 'Plan', 'And the tag?', 'q2')]))
     expect(pill().dataset.mode).toBe('needs_input')
   })
 
-  it('answers a question from its row and shows the session running at once', async () => {
+  // The notch only tells: what the agent asks is answered in the app.
+  it('shows a waiting row with its question and no buttons but Later; a click opens the session', async () => {
     await mount()
-    push(status(2, [asking('w', 'Pin credentials', 'What should this session do?', ['Wait for Work', 'Use Auto'])]))
+    push(status(2, [asking('w', 'Pin credentials', 'What should this session do?'), waiting('t', 'Name it', 'What should it be called?')]))
     openList()
-    expect(screen.getByRole('button', { name: 'Open to answer' })).toBeInTheDocument()
-    const choice = screen.getByRole('button', { name: 'Use Auto' })
-    expect(choice).toBeInTheDocument()
-
-    fireEvent.click(choice)
-    await waitFor(() => expect(answers()).toEqual([{ sessionId: 'w', questionId: 'q-w', answers: [['Use Auto']] }]))
-    await waitFor(() => expect(within(list()).queryByText('Needs you')).toBeNull())
-    expect(within(list()).getByRole('listitem').querySelector('.island-spinner')).not.toBeNull()
-    expect(screen.queryByRole('button', { name: 'Use Auto' })).toBeNull()
-    expect(opened()).toEqual([])
-  })
-
-  it('tells you when an answer could not be sent, and keeps the buttons', async () => {
-    answerResult = 'fail'
-    const consoleError = console.error
-    console.error = () => {}
-    try {
-      await mount()
-      push(status(2, [asking('w', 'Pin credentials', 'What now?', ['Wait', 'Auto'])]))
-      openList()
-      fireEvent.click(screen.getByRole('button', { name: 'Wait' }))
-      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send")
-      expect(screen.getByRole('button', { name: 'Wait' })).toBeEnabled()
-      expect(within(list()).getByText('Needs you')).toBeInTheDocument()
-    } finally {
-      console.error = consoleError
+    for (const row of within(list()).getAllByRole('listitem')) {
+      const names = within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)
+      expect(names).toHaveLength(2)
+      expect(names[1]).toMatch(/^Later: /)
     }
-  })
+    expect(screen.getByText('What should this session do?')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open to answer' })).toBeNull()
 
-  it('sends a question that needs typing, or that has too many options, to the app', async () => {
-    await mount()
-    push(status(2, [
-      waiting('t', 'Name it', 'What should it be called?'),
-      asking('m', 'Pick one', 'Which?', ['a', 'b', 'c', 'd', 'e']),
-    ]))
-    openList()
-    const rows = within(list()).getAllByRole('listitem')
-    for (const row of rows) {
-      expect(within(row).getAllByRole('button').map((b) => b.textContent)).toContain('Open to answer')
-      expect(within(row).queryByRole('button', { name: 'a' })).toBeNull()
-    }
-    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Open to answer' }))
-    await waitFor(() => expect(opened()).toEqual(['t']))
-    expect(answers()).toEqual([])
+    fireEvent.click(within(list()).getByRole('button', { name: /^Needs you Pin credentials/ }))
+    await waitFor(() => expect(opened()).toEqual(['w']))
   })
 
   it("shows a goal's turn while it works, and its outcome once its last turn ends", async () => {
@@ -432,7 +391,7 @@ describe('Island', () => {
   })
 
   // A server that dropped off used to take its rows with it, in silence.
-  it("says a server can't be reached, with Retry, and lets you put that off", async () => {
+  it("says a server can't be reached, retries on a click of the row, and lets you put that off", async () => {
     await mount()
     push(status(2, [running('a', 'Docs')], [], [lost]))
     openList()
@@ -440,7 +399,8 @@ describe('Island', () => {
     expect(within(row).getByText("Can't reach")).toBeInTheDocument()
     expect(within(row).getByText('Not answering')).toBeInTheDocument()
 
-    fireEvent.click(within(row).getByRole('button', { name: 'Retry' }))
+    expect(within(row).queryByRole('button', { name: 'Retry' })).toBeNull()
+    fireEvent.click(within(row).getByRole('button', { name: /^Can't reach NAS/ }))
     expect(calls.some(([cmd]) => cmd === 'island_retry')).toBe(true)
 
     fireEvent.click(within(row).getByRole('button', { name: 'Later: NAS' }))

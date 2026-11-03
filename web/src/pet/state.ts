@@ -95,8 +95,6 @@ export interface PetBubble {
   body: string
   /** A question's id, once the shell has read it from the server. */
   questionId?: string | null
-  /** Buttons that answer the question in place (at most four); empty when it needs the app. */
-  choices?: string[]
 }
 
 // ── Size and motion ────────────────────────────────────────────────────────

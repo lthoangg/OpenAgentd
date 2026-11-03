@@ -27,18 +27,15 @@ import {
   islandWidth,
   listOrder,
   primarySessionId,
-  quickChoices,
   rowSignature,
   serverSignature,
   serversWithoutLater,
-  withAnswered,
   withoutLater,
 } from './status'
 
 const STATE_COMMAND = 'island_state'
 const FIT_COMMAND = 'island_fit'
 const OPEN_COMMAND = 'island_open_session'
-const ANSWER_COMMAND = 'island_answer'
 const RETRY_COMMAND = 'island_retry'
 const MENU_COMMAND = 'island_context_menu'
 const STATUS_EVENT = 'island-status'
@@ -114,24 +111,18 @@ function hitAt(pointer: IslandPointer | null): string | null {
   return document.elementFromPoint(pointer.x, pointer.y)?.closest('[data-hit]')?.getAttribute('data-hit') ?? null
 }
 
-/** An answer being sent, or one the shell could not take. */
-type Sending = 'sending' | 'failed'
-
 interface RowActions {
   hit: string | null
-  sending: ReadonlyMap<string, Sending>
   onMenu: (event: MouseEvent<HTMLElement>, sessionId: string) => void
-  onAnswer: (session: IslandSession, choice: string) => void
   onLater: (session: IslandSession) => void
 }
 
+/** A row only tells: a click on it opens the session, where the details (and any answer) are. */
 function SessionRow({ session, actions }: { session: IslandSession; actions: RowActions }) {
-  const { hit, sending, onMenu, onAnswer, onLater } = actions
+  const { hit, onMenu, onLater } = actions
   const waiting = session.state === 'needs_input'
   const attention = waiting || session.state === 'done' || session.state === 'failed'
   const meta = [session.server, goalLabel(session) ?? session.workspace].filter(Boolean).join(' · ')
-  const choices = quickChoices(session)
-  const send = session.questionId ? sending.get(session.questionId) : undefined
   const hover = (key: string) => (hit === key ? '' : undefined)
   return (
     <li className="island-row-item" data-state={session.state} onContextMenu={(event) => onMenu(event, session.id)}>
@@ -161,39 +152,11 @@ function SessionRow({ session, actions }: { session: IslandSession; actions: Row
           <X size={14} strokeWidth={2.5} aria-hidden="true" />
         </button>
       )}
-      {waiting && (
-        <div className="island-actions">
-          {choices.map((choice, index) => (
-            <button
-              key={choice}
-              type="button"
-              className="island-action"
-              data-primary={index === 0 ? '' : undefined}
-              data-hit={`choice:${session.id}:${index}`}
-              data-hover={hover(`choice:${session.id}:${index}`)}
-              disabled={send === 'sending'}
-              onClick={() => onAnswer(session, choice)}
-            >
-              {choice}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="island-action"
-            data-primary={choices.length === 0 ? '' : undefined}
-            data-hit={`open:${session.id}`}
-            data-hover={hover(`open:${session.id}`)}
-            onClick={() => openSession(session.id)}
-          >
-            Open to answer
-          </button>
-          {send === 'failed' && <span className="island-action-note" role="alert">Couldn't send. Open to answer.</span>}
-        </div>
-      )}
     </li>
   )
 }
 
+/** A server that dropped off: a click on the row tries to reach it again. */
 function ServerRow({ server, hit, onRetry, onLater }: {
   server: UnreachableServer
   hit: string | null
@@ -202,13 +165,21 @@ function ServerRow({ server, hit, onRetry, onLater }: {
 }) {
   const retry = `retry:${server.id}`
   const later = `later:server:${server.id}`
+  const reason = server.reason === 'key_rejected' ? 'Access key rejected' : 'Not answering'
   return (
     <li className="island-row-item island-row-item--server" data-state="offline">
-      <div className="island-row island-row--static">
+      <button
+        type="button"
+        className="island-row"
+        data-hit={retry}
+        data-hover={hit === retry ? '' : undefined}
+        aria-label={`Can't reach ${server.name}: ${reason}. Try again`}
+        onClick={onRetry}
+      >
         <span className="island-chip" data-state="offline">Can't reach</span>
         <span className="island-row-title">{server.name}</span>
-        <span className="island-row-meta">{server.reason === 'key_rejected' ? 'Access key rejected' : 'Not answering'}</span>
-      </div>
+        <span className="island-row-meta">{reason}</span>
+      </button>
       <button
         type="button"
         className="island-later"
@@ -220,17 +191,6 @@ function ServerRow({ server, hit, onRetry, onLater }: {
       >
         <X size={14} strokeWidth={2.5} aria-hidden="true" />
       </button>
-      <div className="island-actions">
-        <button
-          type="button"
-          className="island-action"
-          data-hit={retry}
-          data-hover={hit === retry ? '' : undefined}
-          onClick={onRetry}
-        >
-          Retry
-        </button>
-      </div>
     </li>
   )
 }
@@ -250,9 +210,6 @@ export function Island() {
   const [pinned, setPinned] = useState(false)
   /** Rows put off with "Later", by row id → what they looked like (see `rowSignature`). */
   const [later, setLater] = useState<ReadonlyMap<string, string>>(() => new Map())
-  /** Questions answered from here, until the shell's snapshot says so too. */
-  const [answered, setAnswered] = useState<ReadonlySet<string>>(() => new Set())
-  const [sending, setSending] = useState<ReadonlyMap<string, Sending>>(() => new Map())
   const listRef = useRef<HTMLUListElement>(null)
   const wasVisible = useRef(false)
   /** The last snapshot seen; an older one arriving late is dropped. */
@@ -300,9 +257,9 @@ export function Island() {
   const allSessions = displayedStatus?.sessions ?? NO_SESSIONS
   const allUnread = displayedStatus?.unread ?? NO_SESSIONS
   const allServers = displayedStatus?.unreachable ?? NO_SERVERS
-  // What is on show: answered questions run again, and rows put off for later
-  // stay away until something about them changes.
-  const sessions = useMemo(() => withoutLater(withAnswered(allSessions, answered), later), [allSessions, answered, later])
+  // What is on show: rows put off for later stay away until something about
+  // them changes.
+  const sessions = useMemo(() => withoutLater(allSessions, later), [allSessions, later])
   const unread = useMemo(() => withoutLater(allUnread, later), [allUnread, later])
   const servers = useMemo(() => serversWithoutLater(allServers, later), [allServers, later])
   const hovered = menuStatus !== null || (pointer?.inside ?? false)
@@ -367,7 +324,7 @@ export function Island() {
   useLayoutEffect(() => {
     if (mode !== 'expanded' || !listRef.current) return
     setListHeight(listRef.current.scrollHeight)
-  }, [mode, sessions, unread, servers, sending])
+  }, [mode, sessions, unread, servers])
 
   const sizeMode: IslandMode = open ? mode : 'hidden'
   const width = geometry ? islandWidth(sizeMode, geometry) : 0
@@ -389,34 +346,9 @@ export function Island() {
     setLater((current) => new Map(current).set(key, signature))
   }, [])
 
-  const answer = useCallback((session: IslandSession, choice: string) => {
-    const questionId = session.questionId
-    if (!questionId) return
-    setSending((current) => new Map(current).set(questionId, 'sending'))
-    void invoke(ANSWER_COMMAND, { sessionId: session.id, questionId, answers: [[choice]] })
-      .then(() => {
-        // Taken, or already answered elsewhere: either way it is not waiting.
-        setAnswered((current) => new Set(current).add(questionId))
-      })
-      .catch((error: unknown) => {
-        console.error('island: answer failed', error)
-        setSending((current) => new Map(current).set(questionId, 'failed'))
-      })
-      .finally(() => {
-        setSending((current) => {
-          if (current.get(questionId) !== 'sending') return current
-          const next = new Map(current)
-          next.delete(questionId)
-          return next
-        })
-      })
-  }, [])
-
   const rowActions: RowActions = {
     hit,
-    sending,
     onMenu,
-    onAnswer: answer,
     onLater: (session) => putOff(session.id, rowSignature(session)),
   }
 

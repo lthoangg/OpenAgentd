@@ -937,6 +937,7 @@ button:focus-visible {
 }
 
 .pet-bubble-title {
+  display: block;
   margin: 6px 28px 2px 0;
   font-weight: 600;
   overflow: hidden;
@@ -960,46 +961,16 @@ button:focus-visible {
   color: var(--color-text-2);
 }
 
-.pet-bubble-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+/* The whole bubble opens the session; Later (later in the page) sits above it. */
+.pet-bubble-open {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
 }
 
-.pet-button {
-  height: 28px;
-  max-width: 100%;
-  padding: 0 12px;
-  overflow: hidden;
-  border-radius: 7px;
-  background: var(--bg-send);
-  color: var(--color-text-on-accent);
-  font-weight: 500;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-:root.dark .pet-button {
-  background: var(--color-text);
-  color: var(--bg-page);
-}
-
-/* The other answers, and the way into the app: filled with the key colour. */
-.pet-button--quiet,
-:root.dark .pet-button--quiet {
-  background: var(--bg-key);
-  color: var(--color-text);
-}
-
-.pet-button:disabled {
-  opacity: 0.5;
-}
-
-.pet-bubble-note {
-  font-size: 12px;
-  color: var(--color-error);
+.pet-bubble-open:hover,
+.pet-bubble-open:active {
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
 }
 
 .pet-list-row {

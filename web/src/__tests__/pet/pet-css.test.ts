@@ -56,7 +56,6 @@ describe('pet.css sizes', () => {
   it('gives every button at least 24px, and the main ones 28px', () => {
     expect(px('.pet-bubble-close', 'width')).toBeGreaterThanOrEqual(28)
     expect(px('.pet-bubble-close', 'height')).toBeGreaterThanOrEqual(28)
-    expect(px('.pet-button', 'height')).toBeGreaterThanOrEqual(28)
     expect(px('.pet-badge', 'min-width')).toBeGreaterThanOrEqual(24)
     expect(px('.pet-badge', 'height')).toBeGreaterThanOrEqual(24)
     expect(px('.pet-list-dismiss', 'width')).toBeGreaterThanOrEqual(24)

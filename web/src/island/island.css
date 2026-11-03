@@ -339,15 +339,6 @@ button:focus-visible {
   background: var(--island-row-press);
 }
 
-/* A row that only informs (a server that can't be reached) takes no clicks. */
-.island-row--static {
-  cursor: default;
-}
-
-.island-row--static:hover {
-  background: none;
-}
-
 /* The word that says a row's state, beside its mark's colour. */
 .island-chip {
   flex: none;
@@ -443,54 +434,6 @@ button:focus-visible {
   pointer-events: none;
 }
 
-/* Buttons that answer a question, or retry a server: 28px high. */
-.island-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 8px;
-}
-
-.island-action {
-  height: 28px;
-  max-width: 100%;
-  padding: 0 11px;
-  overflow: hidden;
-  border-radius: 7px;
-  background: var(--island-row-hover);
-  color: var(--color-text);
-  font-weight: 500;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  transition: background-color var(--motion-fast) var(--ease-out);
-}
-
-.island-action[data-primary] {
-  background: var(--color-text);
-  color: var(--island-bg);
-  font-weight: 600;
-}
-
-.island-action[data-hover],
-.island-action:hover:not(:disabled) {
-  background: var(--island-row-press);
-}
-
-.island-action[data-primary][data-hover],
-.island-action[data-primary]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-text) 85%, transparent);
-}
-
-.island-action:disabled {
-  opacity: 0.5;
-}
-
-.island-action-note {
-  font-size: 11px;
-  color: var(--color-error);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .island,
   .island[data-open="false"],
@@ -498,8 +441,7 @@ button:focus-visible {
   .island[data-open="false"] .island-body,
   .island-bar,
   .island-ear,
-  .island-row,
-  .island-action {
+  .island-row {
     transition-duration: 0.01ms;
     transition-delay: unset;
   }

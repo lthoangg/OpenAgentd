@@ -7,7 +7,6 @@ import {
   PLAIN_HIDDEN_WIDTH,
   WING_WIDTH,
   EAR_WIDTH,
-  MAX_QUICK_CHOICES,
   compactCount,
   compactMode,
   compactLabels,
@@ -19,11 +18,9 @@ import {
   islandWidth,
   listOrder,
   primarySessionId,
-  quickChoices,
   rowSignature,
   serverSignature,
   serversWithoutLater,
-  withAnswered,
   withoutLater,
   type IslandGoal,
   type IslandSession,
@@ -222,28 +219,6 @@ describe('listOrder', () => {
   })
 })
 
-describe('quickChoices', () => {
-  const asking = (choices: string[], patch: Partial<IslandSession> = {}): IslandSession =>
-    ({ ...waiting('w'), questionId: 'q1', choices, ...patch })
-
-  it('offers the options of a question the shell can answer, up to four', () => {
-    expect(quickChoices(asking(['Wait for Work', 'Use Auto']))).toEqual(['Wait for Work', 'Use Auto'])
-    expect(MAX_QUICK_CHOICES).toBe(4)
-    expect(quickChoices(asking(['a', 'b', 'c', 'd']))).toHaveLength(4)
-  })
-
-  it('sends a question that needs typing, or has too many options, to the app', () => {
-    expect(quickChoices(asking([]))).toEqual([])
-    expect(quickChoices(asking(['a', 'b', 'c', 'd', 'e']))).toEqual([])
-    expect(quickChoices({ ...waiting('w') })).toEqual([])
-  })
-
-  it('has nothing to answer without the open question id, or once it stopped waiting', () => {
-    expect(quickChoices(asking(['a'], { questionId: null }))).toEqual([])
-    expect(quickChoices(asking(['a'], { state: 'running' }))).toEqual([])
-  })
-})
-
 describe('Later', () => {
   it('hides a row until something about it changes', () => {
     const later = new Map([['w', rowSignature({ ...waiting('w'), questionId: 'q1' })]])
@@ -260,15 +235,5 @@ describe('Later', () => {
     expect(serversWithoutLater([lost], later)).toEqual([])
     expect(serversWithoutLater([{ ...lost, reason: 'key_rejected' }], later)).toHaveLength(1)
     expect(serversWithoutLater([lost], new Map())).toEqual([lost])
-  })
-})
-
-describe('withAnswered', () => {
-  it('shows a question answered here as running again before the shell says so', () => {
-    const asked = { ...waiting('w'), questionId: 'q1', choices: ['Yes', 'No'] }
-    const [row, other] = withAnswered([asked, waiting('v')], new Set(['q1']))
-    expect(row).toMatchObject({ state: 'running', question: null, questionId: null, choices: [] })
-    expect(other.state).toBe('needs_input')
-    expect(withAnswered([asked], new Set())[0]).toBe(asked)
   })
 })

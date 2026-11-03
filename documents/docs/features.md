@@ -904,7 +904,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Request changes**, which opens a comment box straight away, and **Open
     plan**. In the Plan tab every paragraph, list item and heading has a
     **Comment** action *(deprecated; removed in v3.42.0: select text and
-    comment)*, and the tab and the card share one draft.
+    comment)*, and the tab and the card share one draft. *(Deciding on the
+    card deprecated; removed in v3.43.0: the card only shows the outcome and
+    **Open plan**; Approve and Request changes are in the Plan tab.)*
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them
@@ -1028,10 +1030,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Failed** and **Can't reach**. "Builtin" is now "Built-in server".
   - A question with a few choices can be answered from the notch list, the
     pet's bubble or the notification's buttons; anything else offers **Open
-    to answer**. Answering anywhere clears it everywhere.
+    to answer**. Answering anywhere clears it everywhere. *(Answering from the
+    notch and the pet deprecated; removed in v3.43.0: they only show the
+    notification, and a click on it opens the session. System notifications
+    keep their buttons.)*
   - The notch status opens on click; pointing at it opens it only with
     **Expand on hover** on. Its × means Later. When a server stops
-    answering, a **Can't reach** row offers Retry.
+    answering, a **Can't reach** row offers Retry *(since v3.43.0 a click on
+    the row retries)*.
   - The pet keeps a question until it is answered: × folds it behind the
     badge, and its menu lists questions first.
   - A question card in the transcript no longer sticks on "Waiting for an

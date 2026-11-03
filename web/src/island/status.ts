@@ -24,11 +24,6 @@ export interface IslandSession {
   question: string | null
   /** The open question's id; present once the shell has read it from the server. */
   questionId?: string | null
-  /**
-   * Options that answer the question in place (one plain single-choice
-   * question, at most {@link MAX_QUICK_CHOICES}); empty when it needs the app.
-   */
-  choices?: string[]
   /** The server's name, when the sessions come from more than one server. */
   server?: string | null
   /** The account the session is pinned to; absent on Auto and from older shells. */
@@ -92,9 +87,6 @@ export interface IslandPointer {
 }
 
 export type IslandMode = 'hidden' | 'running' | 'needs_input' | 'done' | 'offline' | 'expanded'
-
-/** Option buttons a row shows at most (the shell sends no more than this). */
-export const MAX_QUICK_CHOICES = 4
 
 /**
  * The pill's one wing, left of the notch: the state mark, a short word for
@@ -263,13 +255,6 @@ export const STATE_WORD: Record<Exclude<SessionState, 'running'>, string> = {
   failed: 'Failed',
 }
 
-/** The buttons a waiting row can answer with in place: none when it needs the app. */
-export function quickChoices(session: IslandSession): string[] {
-  const choices = session.choices ?? []
-  if (session.state !== 'needs_input' || !session.questionId) return []
-  return choices.length > 0 && choices.length <= MAX_QUICK_CHOICES ? choices : []
-}
-
 /**
  * What "Later" remembers about a row: the row comes back when this changes
  * (a new question, a new outcome), not before.
@@ -291,16 +276,4 @@ export function withoutLater<T extends IslandSession>(rows: readonly T[], later:
 /** The unreachable servers not put off until later. */
 export function serversWithoutLater(servers: readonly UnreachableServer[], later: ReadonlyMap<string, string>): UnreachableServer[] {
   return servers.filter((server) => later.get(`server:${server.id}`) !== serverSignature(server))
-}
-
-/**
- * `sessions` with the questions answered here shown as running again at once,
- * before the shell's next snapshot says so (`answered`: question ids).
- */
-export function withAnswered(sessions: readonly IslandSession[], answered: ReadonlySet<string>): IslandSession[] {
-  return sessions.map((session) =>
-    session.state === 'needs_input' && session.questionId && answered.has(session.questionId)
-      ? { ...session, state: 'running', question: null, questionId: null, choices: [] }
-      : session,
-  )
 }

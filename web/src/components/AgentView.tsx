@@ -9,9 +9,9 @@
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
- * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, Undo, and
- * the turn's details); only the trailing turn hides its footer while the turn
- * is open. Undo belongs to the last finished turn.
+ * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, and the
+ * turn's details); only the trailing turn hides its footer while the turn is
+ * open.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
@@ -117,11 +117,6 @@ function pinnedPromptShows(prompt: ContentBlock, revertTime: number | null): boo
 /** The run picker, on its model list: how a failed turn gets another model. */
 function openModelPicker(): void {
   useUIStore.getState().openRunPicker('model')
-}
-
-/** Undo the last message and its answer; the store puts the prompt back in the composer. */
-function undoLatestTurn(): void {
-  void useAgentStore.getState().undoAgent()
 }
 
 function isProviderErrorBlock(block: ContentBlock): boolean {
@@ -697,11 +692,6 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
-  // Undo sits under the last finished answer and acts on its prompt, as Retry
-  // does for a failure. A turn that ended on a failure keeps its way forward
-  // on the error card, so the footer does not offer it twice.
-  const turnActionsApply = canRetry && !showsLastError && endingProviderError(trailingBlocks) === undefined
-  const undoTurn = turnActionsApply ? undoLatestTurn : undefined
   // The newest prompt keeps its Edit and Copy at rest; older ones show them on hover or focus.
   const latestTypedPromptId = useMemo(() => {
     for (let i = turnItems.length - 1; i >= 0; i--) {
@@ -1254,8 +1244,6 @@ export function AgentView({
                      promptId={promptId}
                      onEditPrompt={handleEdit}
                      editLocked={editLocked}
-                     // Only the last finished turn can be undone.
-                     onUndo={isTrailingTurn ? undoTurn : undefined}
                    />
                  )
                 })}

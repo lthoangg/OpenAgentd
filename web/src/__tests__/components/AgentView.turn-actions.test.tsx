@@ -1,7 +1,7 @@
 /**
  * The footer of a finished turn (T2, T4, T6): its actions show at rest in
- * both transcript styles: Copy, Undo on the last finished turn, Edit prompt
- * on the turn's prompt, and "N files changed". There is no Regenerate.
+ * both transcript styles: Copy, Edit prompt on the turn's prompt, and "N
+ * files changed". There is no Undo (Edit prompt does it) and no Regenerate.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
@@ -16,19 +16,17 @@ import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
 
 const revertToMessage = mock(async (_id: unknown) => null)
-const undoAgent = mock(async (_options?: unknown) => undefined)
-const { revertToMessage: realRevert, undoAgent: realUndo } = useAgentStore.getState()
+const { revertToMessage: realRevert } = useAgentStore.getState()
 
 beforeEach(() => {
   revertToMessage.mockClear()
-  undoAgent.mockClear()
   Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => {} }, configurable: true, writable: true })
-  act(() => { useAgentStore.setState({ sessionId: "s1", revertToMessage, undoAgent }) })
+  act(() => { useAgentStore.setState({ sessionId: "s1", revertToMessage }) })
 })
 
 afterEach(() => {
   cleanup()
-  act(() => { useAgentStore.setState({ sessionId: null, revertToMessage: realRevert, undoAgent: realUndo }) })
+  act(() => { useAgentStore.setState({ sessionId: null, revertToMessage: realRevert }) })
   useDisplayPrefsStore.setState({ transcriptStyle: "detailed" })
 })
 
@@ -57,56 +55,17 @@ describe("AgentView — the footer's actions", () => {
     }
   })
 
-  it("offers Undo on the last finished turn only, and no Regenerate", () => {
+  it("offers Copy and Edit prompt on every finished turn, and no Undo or Regenerate", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
     const [first, last] = actionGroups()
     expect(names(first)).toEqual(["Copy response", "Edit prompt"])
-    expect(names(last)).toEqual(["Copy response", "Edit prompt", "Undo"])
+    // Edit prompt already undoes the turn and puts the prompt back.
+    expect(names(last)).toEqual(["Copy response", "Edit prompt"])
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
     expect(screen.queryByRole("button", { name: /Regenerate/ })).toBeNull()
     // Icons only: the words live in the names and the tooltips.
     for (const button of within(last).getAllByRole("button")) expect(button.textContent).toBe("")
-  })
-
-  it("undoes the last turn with the store's Undo, which puts the prompt back in the composer", () => {
-    render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
-
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
-
-    expect(undoAgent).toHaveBeenCalledTimes(1)
-  })
-
-  it("offers no Undo without a host Retry, or while a turn is open", () => {
-    const { unmount } = render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} />)
-    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
-    unmount()
-
-    render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} isTurnOpen onRetry={() => {}} />)
-    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
-  })
-
-  it("leaves a turn that ended on a failure to its error card, so Retry is not offered twice", () => {
-    const error: ContentBlock = {
-      id: "e1",
-      type: "provider_status",
-      content: "Rate limit exceeded",
-      extra: { status: "error", title: "Rate Limit Exceeded", message: "Rate limit exceeded", category: "provider" },
-    }
-    render(<AgentView blocks={[...TWO_TURNS, error]} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
-
-    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
-  })
-
-  it("offers no Undo on a turn a subagent's report followed", () => {
-    const blocks: ContentBlock[] = [
-      ...TWO_TURNS,
-      { id: "r1", type: "user", content: "report", extra: { from_agent: "explorer#1" } },
-    ]
-    useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
-    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
-
-    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
   })
 
   it("has nothing that shows only on hover", () => {

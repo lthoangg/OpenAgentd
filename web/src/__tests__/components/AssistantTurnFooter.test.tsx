@@ -122,7 +122,7 @@ describe("AssistantTurnFooter", () => {
     }]
     const changed = [{ path: "a.ts", additions: 3, deletions: 1 }] as never
 
-    render(<AssistantTurnFooter turnBlocks={blocks} size="roomy" changedFiles={changed} onEditPrompt={() => {}} onUndo={() => {}} />)
+    render(<AssistantTurnFooter turnBlocks={blocks} size="roomy" changedFiles={changed} onEditPrompt={() => {}} />)
 
     const phoneSmall = (el: Element, size: string) => {
       const classes = el.className.split(/\s+/)
@@ -130,7 +130,7 @@ describe("AssistantTurnFooter", () => {
       expect(classes).toContain("touch-hit")
       expect(classes).toContain("relative")
     }
-    for (const name of ["Copy response", "Edit prompt", "Undo"]) phoneSmall(screen.getByRole("button", { name }), "size-7")
+    for (const name of ["Copy response", "Edit prompt"]) phoneSmall(screen.getByRole("button", { name }), "size-7")
     phoneSmall(screen.getByRole("button", { name: /files? changed/ }), "h-7")
     phoneSmall(screen.getByRole("button", { name: /^Turn details/ }), "min-h-7")
     const group = screen.getByRole("group", { name: "Turn actions" })

@@ -600,8 +600,8 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     }
     let tray_icon = tray.build(app)?;
 
-    // The "Needs you" rows go at the top of this menu as sessions ask.
-    needs_you_menu().lock().unwrap().replace(NeedsYouMenu { menu: tray_menu.clone(), inserted: 0, rendered: Vec::new() });
+    // Kept so the status row can leave the menu while all is well.
+    native_tray_menu().lock().unwrap().replace(TrayMenu { menu: tray_menu.clone(), status_shown: true });
 
     let state: tauri::State<'_, AppState> = app.state();
     tauri::async_runtime::block_on(async {
@@ -620,19 +620,57 @@ fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
     tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
 }
 
+/// The healthy state, which the tray does not spell out: the status row shows
+/// only while something else is going on (starting, an error, an update).
+const TRAY_STATUS_RUNNING: &str = "Status: Running";
+
+/// Whether the tray's status row shows ``text``: not for the healthy state.
+fn tray_status_shows(text: &str) -> bool {
+    text != TRAY_STATUS_RUNNING
+}
+
 pub fn update_tray_status(app: &AppHandle, text: &str) {
     let state: tauri::State<'_, AppState> = app.state();
     let text = text.to_string();
     let status = state.tray_status.clone();
+    let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         // `set_text` blocks on the main thread, so clone the (Arc-backed)
         // handle out and release the lock before calling it.
         let item = status.lock().await.clone();
-        if let Some(item) = item {
+        let Some(item) = item else {
+            return;
+        };
+        let shown = tray_status_shows(&text);
+        if shown {
             let _ = item.set_text(text);
+        }
+        place_tray_status_row(&handle, item, shown);
+    });
+}
+
+/// Windows/Linux: put the status row at the top of the menu or take it out.
+/// Menu changes run on the main thread.
+#[cfg(not(target_os = "macos"))]
+fn place_tray_status_row(app: &AppHandle, item: MenuItem<tauri::Wry>, shown: bool) {
+    let _ = app.run_on_main_thread(move || {
+        let mut guard = native_tray_menu().lock().unwrap();
+        let Some(entry) = guard.as_mut() else {
+            return;
+        };
+        if shown == entry.status_shown {
+            return;
+        }
+        let placed = if shown { entry.menu.insert(&item, 0) } else { entry.menu.remove(&item) };
+        if placed.is_ok() {
+            entry.status_shown = shown;
         }
     });
 }
+
+/// macOS has no native tray menu (the popup is the tray), so no status row.
+#[cfg(target_os = "macos")]
+fn place_tray_status_row(_app: &AppHandle, _item: MenuItem<tauri::Wry>, _shown: bool) {}
 
 pub fn update_tray_session(app: &AppHandle, text: &str) {
     let state: tauri::State<'_, AppState> = app.state();
@@ -864,93 +902,22 @@ async fn update_tray_critical_badge(state: &tauri::State<'_, AppState>, critical
     apply_tray_mark(state).await;
 }
 
-/// How many sessions the native tray menu lists under "Needs you", at most.
-#[cfg(any(not(target_os = "macos"), test))]
-const TRAY_NEEDS_YOU_MAX: usize = 5;
-
-/// The "Needs you" rows of the native tray menu, as (menu id, label): the
-/// waiting sessions in the feed's order. A row opens its session through the
-/// shared router (its id is the island's "open" id).
-#[cfg(any(not(target_os = "macos"), test))]
-fn needs_you_rows(status: &IslandStatus) -> Vec<(String, String)> {
-    status
-        .sessions
-        .iter()
-        .filter(|s| s.state == SessionState::NeedsInput)
-        .take(TRAY_NEEDS_YOU_MAX)
-        .map(|s| {
-            let title = s.title.trim();
-            let title = if title.chars().count() > TRAY_SESSION_MAX_LEN - 12 {
-                format!("{}…", title.chars().take(TRAY_SESSION_MAX_LEN - 13).collect::<String>())
-            } else {
-                title.to_string()
-            };
-            (crate::island::open_menu_id(&s.id), format!("Needs you · {title}"))
-        })
-        .collect()
-}
-
-/// The native tray menu, with how many "Needs you" items sit at its top.
+/// The native tray menu, kept to put its status row in and take it out.
 #[cfg(not(target_os = "macos"))]
-struct NeedsYouMenu {
+struct TrayMenu {
     menu: Menu<tauri::Wry>,
-    inserted: usize,
-    /// What those items say, to skip a redraw that would change nothing.
-    rendered: Vec<(String, String)>,
+    /// The status row is in the menu, at its top.
+    status_shown: bool,
 }
 
 #[cfg(not(target_os = "macos"))]
-fn needs_you_menu() -> &'static std::sync::Mutex<Option<NeedsYouMenu>> {
-    static MENU: std::sync::OnceLock<std::sync::Mutex<Option<NeedsYouMenu>>> = std::sync::OnceLock::new();
+fn native_tray_menu() -> &'static std::sync::Mutex<Option<TrayMenu>> {
+    static MENU: std::sync::OnceLock<std::sync::Mutex<Option<TrayMenu>>> = std::sync::OnceLock::new();
     MENU.get_or_init(|| std::sync::Mutex::new(None))
 }
 
-/// Windows/Linux: draw `rows` as a "Needs you" section at the top of the
-/// native tray menu, replacing what was there. Menu changes run on the main
-/// thread.
-#[cfg(not(target_os = "macos"))]
-fn redraw_needs_you_rows(app: &AppHandle, rows: Vec<(String, String)>) {
-    let handle = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let mut guard = needs_you_menu().lock().unwrap();
-        let Some(entry) = guard.as_mut() else {
-            return;
-        };
-        if entry.rendered == rows {
-            return;
-        }
-        for _ in 0..entry.inserted {
-            let _ = entry.menu.remove_at(0);
-        }
-        entry.inserted = 0;
-        if !rows.is_empty() {
-            let mut position = 0;
-            let mut put = |item: &dyn tauri::menu::IsMenuItem<tauri::Wry>| {
-                if entry.menu.insert(item, position).is_ok() {
-                    position += 1;
-                }
-            };
-            match MenuItem::with_id(&handle, "needs_you_heading", "Needs you", false, None::<&str>) {
-                Ok(heading) => put(&heading),
-                Err(e) => log::warn!("failed to build the tray's Needs you heading: {e:#}"),
-            }
-            for (id, label) in &rows {
-                match MenuItem::with_id(&handle, id, label, true, None::<&str>) {
-                    Ok(item) => put(&item),
-                    Err(e) => log::warn!("failed to build a Needs you menu item: {e:#}"),
-                }
-            }
-            if let Ok(separator) = PredefinedMenuItem::separator(&handle) {
-                put(&separator);
-            }
-            entry.inserted = position;
-        }
-        entry.rendered = rows;
-    });
-}
-
 /// The sessions waiting on the user changed (the feed's snapshot): redraw the
-/// tray's mark, and on Windows/Linux the "Needs you" rows of its menu.
+/// tray's mark. The tray lists no sessions; the notch and the sidebar do.
 pub fn update_tray_needs_you(app: &AppHandle, status: &IslandStatus) {
     let waiting = status.sessions.iter().filter(|s| s.state == SessionState::NeedsInput).count();
     if NEEDS_YOU.swap(waiting, Ordering::SeqCst) != waiting {
@@ -960,8 +927,6 @@ pub fn update_tray_needs_you(app: &AppHandle, status: &IslandStatus) {
             apply_tray_mark(&state).await;
         });
     }
-    #[cfg(not(target_os = "macos"))]
-    redraw_needs_you_rows(app, needs_you_rows(status));
 }
 
 /// Fire one native notification for the providers that newly crossed the
@@ -1199,8 +1164,16 @@ mod tests {
         external_usage_access_key, macos_tray_icon, MENU_FOCUS_MODE, MENU_MAXIMIZE_REVIEW_PANEL,
         MENU_NEW_SESSION, MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_RESET_LAYOUT,
         MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL_DOWN, MENU_TERMINAL,
-        MENU_TOGGLE_SIDEBAR,
+        MENU_TOGGLE_SIDEBAR, tray_status_shows,
     };
+
+    #[test]
+    fn the_tray_status_row_says_nothing_while_running() {
+        assert!(!tray_status_shows("Status: Running"));
+        for text in ["Status: Starting", "Status: Error", "Status: Restarting…", "Status: Downloading update…"] {
+            assert!(tray_status_shows(text), "{text}");
+        }
+    }
 
     #[test]
     fn menu_command_ids_match_the_frontend_bridge() {
@@ -1252,24 +1225,7 @@ mod tests {
 
 #[cfg(test)]
 mod tray_mark_tests {
-    use super::{needs_you_rows, tray_mark, TRAY_NEEDS_YOU_MAX, TRAY_SESSION_MAX_LEN};
-    use crate::island::{IslandSession, IslandStatus, SessionState};
-
-    fn session(id: &str, title: &str, state: SessionState) -> IslandSession {
-        IslandSession {
-            id: id.into(),
-            title: title.into(),
-            workspace: None,
-            state,
-            question: None,
-            question_id: None,
-            choices: Vec::new(),
-            server: None,
-            server_id: None,
-            goal: None,
-            account: None,
-        }
-    }
+    use super::tray_mark;
 
     // The menu-bar mark used to mean one thing ("!", at 90% of a quota),
     // with no words, and said nothing of a session waiting on you.
@@ -1282,30 +1238,5 @@ mod tray_mark_tests {
         let (title, tooltip) = tray_mark(2, true);
         assert_eq!(title.as_deref(), Some("2"));
         assert_eq!(tooltip, "OpenAgentd — 2 sessions need you; a connected provider is near its limit");
-    }
-
-    #[test]
-    fn the_native_menu_lists_the_sessions_that_need_you_and_opens_them_through_the_router() {
-        let status = IslandStatus {
-            seq: 1,
-            sessions: vec![
-                session("aa", "Plan review", SessionState::NeedsInput),
-                session("bb", "Docs", SessionState::Running),
-                session("cc", &"A very long title ".repeat(8), SessionState::NeedsInput),
-            ],
-            unread: vec![session("dd", "Done one", SessionState::Done)],
-            unreachable: Vec::new(),
-        };
-        let rows = needs_you_rows(&status);
-        assert_eq!(rows.len(), 2, "running and finished sessions are not Needs you");
-        assert_eq!(rows[0], ("island:open:aa".to_string(), "Needs you · Plan review".to_string()));
-        assert!(rows[1].1.chars().count() <= TRAY_SESSION_MAX_LEN, "{}", rows[1].1);
-        assert!(rows[1].1.ends_with('…'));
-
-        let many = IslandStatus {
-            sessions: (0..TRAY_NEEDS_YOU_MAX + 3).map(|i| session(&format!("s{i}"), "T", SessionState::NeedsInput)).collect(),
-            ..IslandStatus::default()
-        };
-        assert_eq!(needs_you_rows(&many).len(), TRAY_NEEDS_YOU_MAX);
     }
 }

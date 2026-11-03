@@ -26,8 +26,6 @@ fn main() {
                 "set_attention_badge",
                 "share_url",
                 "get_tray_usage_summary",
-                "tray_sessions",
-                "tray_open_session",
                 "tray_action",
                 "tray_fit",
                 "island_state",

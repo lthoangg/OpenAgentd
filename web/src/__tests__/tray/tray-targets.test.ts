@@ -25,8 +25,6 @@ describe('tray.css targets and text', () => {
     expect(px('.small-btn', 'height')).toBeGreaterThanOrEqual(28)
     expect(px('.picker-trigger', 'height')).toBeGreaterThanOrEqual(28)
     expect(px('.action', 'height')).toBeGreaterThanOrEqual(28)
-    expect(px('.session-row', 'min-height')).toBeGreaterThanOrEqual(28)
-    expect(px('.session-go', 'height')).toBeGreaterThanOrEqual(28)
   })
 
   it('has no text-only underlined link for Retry', () => {
@@ -37,7 +35,6 @@ describe('tray.css targets and text', () => {
   it('keeps its text at 12px or the small caps group heading at 11px, never below', () => {
     const sizes = [...CSS.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => Number(m[1]))
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11)
-    expect(px('.session-sub', 'font-size')).toBe(12)
     expect(px('.status', 'font-size')).toBe(12)
   })
 })

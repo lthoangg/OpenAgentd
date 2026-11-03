@@ -341,13 +341,6 @@ fn menu_selection(id: &str) -> Option<(SessionAction, &str)> {
     Some((action, session_id))
 }
 
-/// The menu id whose selection opens `session_id` (see [`handle_menu_event`]):
-/// the native tray menu's "Needs you" rows use it.
-#[cfg(any(not(target_os = "macos"), test))]
-pub fn open_menu_id(session_id: &str) -> String {
-    format!("island:{}:{session_id}", SessionAction::Open.key())
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotchGeometry {
@@ -1672,7 +1665,6 @@ fn publish(app: &AppHandle, server: &ServerId, next: Vec<IslandSession>, memo: &
 fn send_status(app: &AppHandle, status: &IslandStatus) {
     let _ = app.emit_to(ISLAND_WINDOW, ISLAND_STATUS_EVENT, status);
     crate::pet::status_changed(app, status);
-    crate::tray_popup::status_changed(app, status);
     crate::menu::update_tray_needs_you(app, status);
 }
 
@@ -1736,12 +1728,6 @@ pub(crate) fn viewed_session(app: &AppHandle) -> Option<String> {
         return None;
     }
     s.viewing.get(&label).cloned()
-}
-
-/// The merged snapshot of every followed server, as last sent: the tray's
-/// "Needs you" list reads it.
-pub(crate) fn status_snapshot() -> IslandStatus {
-    shared().lock().unwrap().status.clone()
 }
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -1871,12 +1857,6 @@ pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: 
 pub(crate) fn session_id_from_path(path: &str) -> Option<String> {
     let id = path.trim_start_matches('/').split(['/', '?', '#']).next()?;
     crate::answers::is_id(id).then(|| id.to_string())
-}
-
-/// Open a session a surface (the tray, a notification) names, from the
-/// active lists, through the router; read errors are shown as a dialog.
-pub(crate) fn dispatch_open(app: &AppHandle, session_id: String) {
-    dispatch_session_action(app, session_id, SessionAction::Open);
 }
 
 // ── Answering in place ──────────────────────────────────────────────────────
@@ -2317,8 +2297,6 @@ mod tests {
         assert_eq!(menu_selection("settings"), None);
         assert_eq!(menu_selection("island:delete:a"), None);
         assert_eq!(menu_selection("island:open"), None);
-        // The native tray menu's "Needs you" rows use the same id to open a session.
-        assert_eq!(menu_selection(&open_menu_id("5f0c1d2e-3a4b")), Some((SessionAction::Open, "5f0c1d2e-3a4b")));
     }
 
     fn ids(sessions: &[IslandSession]) -> Vec<&str> {

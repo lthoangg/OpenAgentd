@@ -42,11 +42,101 @@ export interface PluginsResponse {
   plugins: PluginStatus[]
   /** v2 `*.py` plugins with no `*.ts`/`*.js` port — v3 does not run them. */
   unported: { name: string; file: string; path: string }[]
+  /** Plugin bundles (folders with a manifest). Absent on servers that predate them: read as none. */
+  bundles?: PluginBundle[]
+}
+
+/**
+ * Where a bundle is in its life. `failed` and `blocked` give their reason in
+ * `errors`; `disabled` is the bundle's own switch being off.
+ */
+export type PluginBundleState = 'running' | 'failed' | 'blocked' | 'stopped' | 'pending' | 'disabled'
+
+export interface PluginBundleSkill {
+  /** `<bundle>/<skill>`. */
+  name: string
+  description: string
+}
+
+export interface PluginBundleMcpServer {
+  /** `<bundle>/<server>`: the name Settings → MCP lists it under. */
+  name: string
+  transport: 'stdio' | 'http'
+  /** stdio: the program to run. Null for http. */
+  command: string | null
+  /** stdio: its arguments. Empty for http. */
+  args: string[]
+  /** http: the address. Null for stdio. */
+  url: string | null
+}
+
+export interface PluginBundleTool {
+  /** `<bundle>/<tool>`; the agent calls it with the `mcp` tool (server `<bundle>`, tool `<tool>`). */
+  name: string
+  description: string
+  /** The tool only reads; it changes nothing. */
+  read_only: boolean
+}
+
+/** What a bundle's code may do beyond reading its own files and writing its data folder. */
+export interface PluginBundlePermissions {
+  /** Hosts it may reach (`*.example.com` includes subdomains), `true` for any host, `false` for none. */
+  net: string[] | boolean
+  /** May open a local listening port. */
+  listen: boolean
+  /** More folders it may read and write. */
+  fs: string[]
+  /** Commands it may run, by bare name. */
+  subprocess: string[]
+  /** Names of the environment variables it may read. */
+  env: string[]
+}
+
+/** A plugin bundle: a folder with a manifest that adds skills, MCP servers and tools. */
+export interface PluginBundle {
+  name: string
+  version: string | null
+  description: string | null
+  /** The bundle's folder. */
+  path: string
+  enabled: boolean
+  state: PluginBundleState
+  /** Why it failed to load or start. */
+  errors: string[]
+  /** Problems that did not stop it. */
+  warnings: string[]
+  skills: PluginBundleSkill[]
+  mcp_servers: PluginBundleMcpServer[]
+  tools: PluginBundleTool[]
+  /** Null when the bundle has no code. */
+  permissions: PluginBundlePermissions | null
+  has_code: boolean
 }
 
 export async function listPlugins(): Promise<PluginsResponse> {
   const res = await fetch(`${apiBaseUrl()}/plugins`)
   if (!res.ok) await parseDetailOrThrow(res, 'listPlugins')
+  return res.json()
+}
+
+/**
+ * Rescans the plugin folders and restarts the bundles that changed. Answers with
+ * the list, as `listPlugins` does. Single-file plugins still load only at start.
+ */
+export async function reloadPlugins(): Promise<PluginsResponse> {
+  const res = await fetch(`${apiBaseUrl()}/plugins/reload`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'reloadPlugins')
+  return res.json()
+}
+
+/** Turns a bundle on or off. Answers with the bundle as it is now. */
+export async function setPluginBundleEnabled(name: string, enabled: boolean): Promise<PluginBundle> {
+  const res = await fetch(`${apiBaseUrl()}/plugins/bundles/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /plugins/bundles/${name}`)
   return res.json()
 }
 

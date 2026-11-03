@@ -33,6 +33,22 @@ describe('searchSettings', () => {
     }
   })
 
+  it('finds plugin bundles and single-file plugins under Plugins', () => {
+    for (const query of ['bundle', 'agentd plugin add', 'permissions', 'reload']) {
+      expect(labelsFor(query)).toContain('setting:plugins:Plugin bundles')
+    }
+    for (const query of ['single-file', 'hooks', 'typescript']) {
+      expect(labelsFor(query)).toContain('setting:plugins:Single-file plugins')
+    }
+  })
+
+  it('scrolls to the page\'s own headings for the two plugin lists', () => {
+    const anchors = Object.fromEntries(
+      searchSettings('plugins', SETTINGS_SECTIONS).flatMap((hit) => (hit.kind === 'setting' && hit.section === 'plugins' ? [[hit.label, hit.anchor]] : [])),
+    )
+    expect(anchors).toEqual({ 'Plugin bundles': 'Bundles', 'Single-file plugins': 'Single-file plugins' })
+  })
+
   it('needs every word of the query, in any order', () => {
     expect(labelsFor('size text')).toContain('setting:general:Text size')
     expect(labelsFor('text zzz')).toEqual([])

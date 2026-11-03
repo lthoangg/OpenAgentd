@@ -96,7 +96,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: 'agents', label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'build' },
   { id: 'skills', label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'build' },
   { id: 'mcp', label: 'MCP servers', description: 'External tools over Model Context Protocol', icon: Plug, group: 'build' },
-  { id: 'plugins', label: 'Plugins', description: 'Plugins the server loaded', icon: Puzzle, group: 'build', capability: 'api.plugins' },
+  { id: 'plugins', label: 'Plugins', description: 'Skills, MCP servers and tools from plugins', icon: Puzzle, group: 'build', capability: 'api.plugins' },
   { id: 'goals', label: 'Goals', description: 'Keep working on an approved plan until it is done', icon: Target, group: 'build' },
   // Sessions
   { id: 'titles', label: 'Session titles', description: 'Name sessions automatically', icon: Heading, group: 'sessions' },

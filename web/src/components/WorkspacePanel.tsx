@@ -70,6 +70,7 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
@@ -291,7 +292,11 @@ export function WorkspacePanel({
     const ids = previewIdsRef.current
     const previewId = ids.get(tab.id)
     ids.delete(tab.id)
-    if (previewId && ![...ids.values()].includes(previewId)) void closePreview(previewId).catch(() => {})
+    if (previewId && ![...ids.values()].includes(previewId)) {
+      // The listener is going away: no hidden copy may reopen it.
+      usePreviewKeepAliveStore.getState().forgetPreviewId(previewId)
+      void closePreview(previewId).catch(() => {})
+    }
   }, [])
   // Tab state comes first: the Git queries below are gated on the active tab.
   const panesRef = useRef<HTMLDivElement>(null)

@@ -11,7 +11,7 @@
  * The tab stays mounted while another dock tab is active, so the page, its
  * state, and pending comments survive switching tabs.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -44,6 +44,7 @@ import { useShortcut } from '@/lib/keyboard/hooks'
 import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
 import { NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
+import { previewListenerKey, usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { type PreviewComment, buildDesignFeedback, commentsFromFeedback, feedbackMatchesTarget, resolveSourceFile } from './preview-comments'
 import {
   type DockCommand,
@@ -235,6 +236,17 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // another port (the app was suspended) needs a fresh load, not a message.
   const frameOriginRef = useRef<string | null>(null)
   const targetKey = `${previewTargetKey(target)}|${target.kind === 'url' ? target.url : target.path}`
+
+  // Tell the keep-alive that this tab shows the preview, so no hidden copy
+  // polls the same listener. The listener id sharpens the match once known.
+  const shownToken = useId()
+  const listenerKey = previewListenerKey(workspace, target)
+  const shownId = info?.id
+  useEffect(() => {
+    if (!available) return
+    usePreviewKeepAliveStore.getState().showTab(shownToken, listenerKey, shownId)
+  }, [available, shownToken, listenerKey, shownId])
+  useEffect(() => () => usePreviewKeepAliveStore.getState().hideTab(shownToken), [shownToken])
 
   const post = useCallback((command: DockCommand) => {
     if (!info) return

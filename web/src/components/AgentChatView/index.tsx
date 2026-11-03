@@ -550,7 +550,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     window.addEventListener(OPEN_PREVIEW_EVENT, onOpen)
     return () => window.removeEventListener(OPEN_PREVIEW_EVENT, onOpen)
   }, [handleOpenPreview])
-  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && previewsAvailable(), onOpen: handleOpenPreview })
+  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && previewsAvailable(), onOpen: handleOpenPreview, workspace })
 
   const {
     slashCommands,

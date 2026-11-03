@@ -8,6 +8,7 @@ import { PREVIEW_NS } from '@/components/Preview/preview-protocol'
 import type { PreviewTarget } from '@/api/preview'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { buildDesignFeedback } from '@/components/Preview/preview-comments'
+import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 
 const WS = '/Users/me/project'
@@ -160,6 +161,15 @@ describe('PreviewTabView', () => {
     expect(previewBodies[0]).toEqual({ workspace: WS, url: 'http://localhost:5173/pricing' })
     const address = screen.getByRole('textbox', { name: 'Preview address' }) as HTMLInputElement
     await waitFor(() => expect(address.value).toBe('http://localhost:5173/pricing'))
+  })
+
+  it('tells the keep-alive it shows the preview while mounted, with its listener id', async () => {
+    usePreviewKeepAliveStore.getState().reset()
+    const { iframe } = await renderView()
+    expect(iframe).toBeTruthy()
+    await waitFor(() => expect(Object.values(usePreviewKeepAliveStore.getState().tabs)).toEqual([{ key: `${WS}|url:http://localhost:5173`, previewId: 'p1' }]))
+    cleanup()
+    expect(usePreviewKeepAliveStore.getState().tabs).toEqual({})
   })
 
   it('enables Comment only once the page reports ready from its own origin', async () => {

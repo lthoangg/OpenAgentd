@@ -903,7 +903,7 @@ export function WorkspacePanel({
         // Mounted only while on show in an open dock: the session lives in
         // the terminal store, and a detached terminal can be closed by the
         // idle reaper.
-        return open && paneShown ? <TerminalSubPanel key={tab.termId} termId={tab.termId} workspace={workspace} /> : null
+        return open && paneShown ? <TerminalSubPanel key={tab.termId} termId={tab.termId} /> : null
       case 'tasks':
         return (
           <TasksTabView

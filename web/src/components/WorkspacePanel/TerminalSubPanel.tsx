@@ -2,7 +2,6 @@ import { TerminalView } from '../Terminal/TerminalView'
 
 interface TerminalSubPanelProps {
   termId: string
-  workspace?: string
 }
 
 export function TerminalSubPanel({ termId }: TerminalSubPanelProps) {

@@ -201,6 +201,11 @@ export function useDockTabs({
         .sort((a, b) => a.order - b.order),
     ),
   )
+  // Shells the server kept across a reload (or a dropped connection) join the
+  // store the first time the panel is open for this workspace.
+  useEffect(() => {
+    if (open) void useTerminalStore.getState().restoreSessions(workspace)
+  }, [open, workspace])
   // Shells belong to the workspace: adopt them into whatever tabs are shown.
   useEffect(() => {
     setState((current) => syncTerminalTabs(current, terminalMetas))

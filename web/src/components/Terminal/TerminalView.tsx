@@ -38,7 +38,7 @@ import {
   readStoredTerminalFont,
   readStoredTerminalFontSize,
 } from '@/lib/terminal-font'
-import { getTerminalRuntime, useTerminalStore } from '@/stores/useTerminalStore'
+import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { TerminalKeyBar } from './TerminalKeyBar'
 import { useLongPressSurface } from './use-long-press-surface'
@@ -254,9 +254,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
         )}
         {status === 'exited' && (
           <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 bg-(--color-surface)/90 px-3 py-2 text-center text-xs text-(--color-text-muted)">
-            {meta?.closedReason === 'idle'
-              ? 'Session ended — closed after 15 min idle'
-              : 'Session ended'}
+            {terminalClosedMessage(meta?.closedReason)}
             <ReconnectButton onClick={reconnect} />
           </div>
         )}

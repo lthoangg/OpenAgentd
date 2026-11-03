@@ -32,7 +32,17 @@
   class HttpError extends ProviderError {
     constructor(status, message, opts) { super(message, opts); this.kind = "http"; this.status = status; }
   }
-  const ERRORS = { ProviderError, AuthError, ValueError, UnconfiguredError, NetworkError, HttpError, TypeError, RangeError, SyntaxError };
+  // Thrown when a plugin bundle's permissions do not allow what it asked for.
+  // `permission` names the setting that would ("net", "listen", "fs",
+  // "subprocess", "env", "credentials", "native"); `target` is what was refused.
+  class PermissionError extends Error {
+    constructor(message, opts) {
+      super(message);
+      this.name = new.target.name;
+      if (opts) Object.assign(this, opts);
+    }
+  }
+  const ERRORS = { ProviderError, AuthError, ValueError, UnconfiguredError, NetworkError, HttpError, PermissionError, TypeError, RangeError, SyntaxError };
 
   function makeError(e) {
     const C = ERRORS[e.name] || Error;
@@ -344,15 +354,118 @@
   }
   const regex = { compile: (pattern, flags) => new NativeRegex(String(pattern), flags == null ? "" : String(flags)) };
 
+  // ── tools (plugin API v2) ─────────────────────────────────────────────────
+  const TOOL_NAME = /^[a-z][a-z0-9_]{0,63}$/;
+  const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  const kindOf = (v) => (v === null ? "null" : Array.isArray(v) ? "an array" : typeof v);
+  const blank = (v) => typeof v !== "string" || v.trim() === "";
+
+  // Checks one tool definition and returns what the host needs to know about
+  // it. Throws an Error that names the tool; problems that do not stop the
+  // tool from working are added to `warnings` (when given).
+  function checkTool(t, where, warnings) {
+    if (!isObject(t)) throw new Error(`${where} must be an object (use defineTool({ ... })), not ${kindOf(t)}`);
+    if (typeof t.name !== "string") throw new Error(`${where}: name must be a string`);
+    if (!TOOL_NAME.test(t.name)) {
+      throw new Error(`tool ${JSON.stringify(t.name)}: name must match ^[a-z][a-z0-9_]{0,63}$ (lowercase letters, digits and underscores, starting with a letter)`);
+    }
+    const at = `tool ${t.name}`;
+    if (blank(t.description)) throw new Error(`${at}: description must be a non-empty string`);
+    if (!isObject(t.input) || t.input.type !== "object") throw new Error(`${at}: input must be a JSON Schema object with "type": "object"`);
+    try {
+      JSON.stringify(t.input);
+    } catch {
+      throw new Error(`${at}: input must be JSON-serialisable (no circular references)`);
+    }
+    if (typeof t.run !== "function") throw new Error(`${at}: run must be a function`);
+    if (t.readOnly !== undefined && typeof t.readOnly !== "boolean") throw new Error(`${at}: readOnly must be true or false`);
+    const props = t.input.properties;
+    if (props !== undefined && !isObject(props)) throw new Error(`${at}: input.properties must be an object`);
+    for (const [k, v] of Object.entries(props || {})) {
+      if (!isObject(v) || blank(v.description)) warnings?.push(`${at}: input property '${k}' has no description`);
+    }
+    return { name: t.name, description: t.description, input: t.input, readOnly: t.readOnly === true };
+  }
+
+  // What `run()` may return: a string, or content blocks.
+  function toolResult(name, r) {
+    if (typeof r === "string") return r;
+    if (!Array.isArray(r)) {
+      throw new Error(`tool ${name}: run() returned ${r === undefined ? "nothing" : kindOf(r)}; it must return a string or an array of content blocks`);
+    }
+    return r.map((b, i) => {
+      if (isObject(b) && b.type === "text" && typeof b.text === "string") return { type: "text", text: b.text };
+      if (isObject(b) && b.type === "image" && typeof b.data === "string" && typeof b.mimeType === "string") {
+        return { type: "image", data: b.data, mimeType: b.mimeType };
+      }
+      throw new Error(`tool ${name}: run() returned an invalid content block at index ${i}; expected {type: "text", text} or {type: "image", data, mimeType}`);
+    });
+  }
+
+  const TOOLS = new Map(); // name → definition, filled by describeBundle()
+  const HOOK_NAMES = ["tool.before", "tool.after", "applies_to"];
+  const BUNDLE_KEYS = ["tools", "hooks", "provider"];
+
+  // The `default` entry of the describe output: a v2 module's default export.
+  function describeBundle(d) {
+    const out = {};
+    const warnings = [];
+    TOOLS.clear();
+    const list = d.tools === undefined ? [] : d.tools;
+    if (!Array.isArray(list)) throw new Error(`default export: tools must be an array, not ${kindOf(list)}`);
+    out.tools = [];
+    for (const [i, t] of list.entries()) {
+      const spec = checkTool(t, `tools[${i}]`, warnings);
+      if (TOOLS.has(spec.name)) throw new Error(`tool ${spec.name}: defined more than once (tool names must be unique)`);
+      TOOLS.set(spec.name, t);
+      out.tools.push(spec);
+    }
+    if (d.hooks !== undefined) {
+      if (!isObject(d.hooks)) throw new Error(`default export: hooks must be an object, not ${kindOf(d.hooks)}`);
+      for (const name of HOOK_NAMES) {
+        const f = d.hooks[name];
+        if (f !== undefined && f !== null && typeof f !== "function") throw new Error(`hooks.${name} must be a function, not ${kindOf(f)}`);
+      }
+      out.hooks = methodNames(d.hooks);
+      for (const m of out.hooks) {
+        if (!HOOK_NAMES.includes(m)) warnings.push(`hooks.${m} is not a known hook (${HOOK_NAMES.join(", ")}); it is ignored`);
+      }
+    }
+    // The provider is described exactly like v1's `provider` export.
+    const p = d.provider;
+    if (p !== undefined) {
+      if (p && typeof p === "object") {
+        out.provider = JSON.parse(toJson(p));
+        out.providerMethods = methodNames(p);
+      } else {
+        out.providerInvalid = p === null ? "null" : typeof p;
+      }
+    }
+    for (const k of Object.keys(d)) {
+      if (!BUNDLE_KEYS.includes(k)) warnings.push(`default export: unknown key '${k}' (expected ${BUNDLE_KEYS.join(", ")}); it is ignored`);
+    }
+    out.warnings = warnings;
+    return out;
+  }
+
+  // Where a plugin bundle runs (null for a single-file plugin).
+  const bundle = sync("bundle", null);
+  if (bundle) Object.freeze(bundle);
+
   const api = {
     definePlugin: (p) => p,
     defineProvider: (p) => p,
+    defineTool: (t) => {
+      checkTool(t, "defineTool()", null);
+      return t;
+    },
     log, sleep, fetch, Headers, Response, crypto, base64, utf8, url, env, fs, subprocess, listen,
     pyJsonDumps, pyRepr, parseIsoTimestamp, httpStatusMessage, gemini, regex, native,
     credentialStore: (providerId, overrides) => credentials({ providerId: String(providerId), overrides: overrides || {} }),
-    ProviderError, AuthError, ValueError, UnconfiguredError, NetworkError, HttpError,
+    ProviderError, AuthError, ValueError, UnconfiguredError, NetworkError, HttpError, PermissionError,
     platform: sync("platform", null),
     version: sync("version", null),
+    bundle,
   };
   Object.freeze(api);
   globalThis.__oad_api = api;
@@ -447,6 +560,14 @@
   globalThis.__oad_drop = (id) => {
     HANDLES.delete(id);
   };
+  // Runs a v2 tool. Unlike `__oad_invoke` its arguments are plain data: the
+  // model wrote them, so no marker in them becomes a callback or a handle.
+  globalThis.__oad_run_tool = async (name, argsJson, ctxJson) => {
+    const t = TOOLS.get(name);
+    if (t === undefined) throw new Error(`no tool named ${name}`);
+    const r = await t.run(JSON.parse(argsJson), JSON.parse(ctxJson));
+    return toJson({ value: toolResult(name, r) });
+  };
   globalThis.__oad_error = (e) => {
     if (e instanceof Error) {
       const props = {};
@@ -479,6 +600,8 @@
       }
     }
     out.pluginFactory = typeof ns.plugin === "function" ? "plugin" : typeof ns.default === "function" ? "default" : null;
+    // A default export that is an object is a v2 module (`{ tools, hooks, provider }`).
+    if (isObject(ns.default)) out.default = describeBundle(ns.default);
     return toJson(out);
   };
 })();

@@ -289,6 +289,7 @@ name = "appv3-jsplugin"
 version = "3.43.0"
 dependencies = [
  "appv3-core",
+ "appv3-plugins",
  "base64 0.23.1",
  "chrono",
  "dunce",
@@ -305,6 +306,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rquickjs",
+ "serde",
  "serde_json",
  "sha2 0.11.1",
  "tempfile",

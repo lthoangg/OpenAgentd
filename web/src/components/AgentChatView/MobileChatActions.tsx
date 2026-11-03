@@ -3,10 +3,11 @@
  *
  * The phone header keeps three controls (sidebar, Review panel, More), so
  * everything else for the session lives here, grouped by what it acts on:
- * the session (tasks, model and thinking, context use, jumping between prompts),
+ * the session (tasks, context use, jumping between prompts),
  * the workspace (find file, terminal, scheduled tasks) and the app (command
  * palette). The More button carries the open-task count and the goal ring
- * that the Tasks button used to.
+ * that the Tasks button used to. Model and thinking is the run chip under
+ * the composer, one tap away, so it is not repeated here.
  */
 import { AnimatePresence, motion } from 'framer-motion'
 import { MoreHorizontal, X } from 'lucide-react'
@@ -38,8 +39,6 @@ export interface MobileChatActionsProps {
   /** A live goal's ring and its one-line state ("Goal 3/50"). */
   goalTone?: GoalTone
   goalText?: string | null
-  /** Opens the run picker; the run deck under the composer has the same chip. */
-  onModelSettings: () => void
   /** Context use for the session; the section hides without it. */
   tokens?: AgentTopbarTokens
   onScheduler: () => void
@@ -75,7 +74,6 @@ export function MobileChatActions({
   openTasks = 0,
   goalTone,
   goalText,
-  onModelSettings,
   tokens,
   onScheduler,
   onOpenTerminal,
@@ -182,7 +180,6 @@ export function MobileChatActions({
                 >
                   Tasks
                 </Row>
-                <Row onClick={onModelSettings}>Model and thinking</Row>
                 {tokens && (
                   <dl className="mx-2 my-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-(--bg-key)/50 px-3 py-2 text-xs">
                     <dt className="text-(--color-text-muted)">Context (tokens)</dt>

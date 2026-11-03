@@ -48,8 +48,6 @@ interface AgentChatHeaderProps {
   goalState?: GoalHeaderState | null
   workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
-  /** Opens the run picker (model, thinking, account) from the phone's More sheet. */
-  onToggleRunPicker: () => void
   showMobileActions: boolean
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
   mobileActionsDragOffset?: number | null
@@ -132,7 +130,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   goalState = null,
   workspacePanel,
   onWorkspaceFiles,
-  onToggleRunPicker,
   showMobileActions,
   setShowMobileActions,
   mobileActionsDragOffset = null,
@@ -340,7 +337,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               openTasks={activeTodoCount}
               goalTone={goalState?.tone}
               goalText={goalState?.text ?? null}
-              onModelSettings={() => { onCloseMobileActionsMenu(); onToggleRunPicker() }}
               tokens={headerTokens}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}

@@ -1134,6 +1134,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     undo notice and the **Jump to latest** chip.
   - Typing a message that grows to several lines no longer scrolls the
     transcript up under the composer, hiding the last answer's footer.
+  - The run picker's account rows (shown with two or more accounts) say what
+    is left of an Enterprise or team plan's quota, not only "N% left": a
+    spend cap ("$12.00 of $50.00 left", or "Limit reached"), a credit
+    balance ("$84.50 left"), **Unlimited** or **No credits left**. When a
+    percent window leads, the balance or cap is in the row's tooltip.
 - **Back to the lead agent in one click** `[v3.42.0]`:
   - A subagent's session has an **Open the lead agent** button (↰) in its
     header, before the title, on desktop and phones, next to the existing
@@ -1404,7 +1409,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     walks along the bottom of the screen by default, above the Dock or
     taskbar (leaving room for one that hides itself, so it never walks where
     it pops up), on top of other apps. Drag it anywhere on the screen and it
-    walks left and right at that height; near the top, its bubble opens
+    walks left and right at that height (with climbing on it first falls to
+    the surface below `[v3.42.0]`); near the top, its bubble opens
     below it. Its pose follows your agents: it wanders and sits when
     nothing runs (and sleeps after five quiet minutes), types on a tiny
     laptop while an agent works, and raises an orange "!" while one waits on
@@ -1438,6 +1444,30 @@ run from the terminal (the native Rust binary since v3.0.0).
     notifications use the bubble, whether it climbs on windows, and
     whether it shows while OpenAgentd is in front (it always
     steps aside for full-screen apps); the tray turns it on and off too.
+  - **Desktop pet: ladders, balloons and falls** `[v3.42.0]` — the pet now
+    changes height on its own, in three small animations (same pixel art for
+    the cat, duck and crab: the walking frames climb, the standing frame
+    floats and falls). A **ladder** grows from the pet's surface up to the top
+    edge of another window (or down from it to the ground), the pet climbs it
+    with its walking steps, and the ladder folds away; a jump is kept for
+    rises of up to twice the pet's height, a ladder takes anything taller. A
+    **balloon** (red) lifts it up to 360 px with a slight sideways drift and a
+    gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
+    3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
+    early (the balloon is part of the pet's clickable area; clicks elsewhere
+    still pass through). A **fall** has gravity (eases in, capped speed), a
+    squash on landing and a tiny dust puff; it is also how the pet comes down
+    when its window closes, and when you drop it in mid-air: with climbing on
+    it falls to the window edge or the ground below, and the saved spot is
+    the ground it stands on (with climbing off it stays at the height you
+    dropped it). They come after a sit, with the jump's decision: ladders
+    only when playful or chaotic and a window is in reach (12% / 25% of
+    sits), balloons 4% when calm (never climbing windows), 10% playful, 20%
+    chaotic. None starts when movement is stay put, with reduced motion,
+    while the pet is dragged or its menu is open, while a bubble is up or a
+    question waits (one under way is cut short), nor ladders and balloons
+    while an agent runs. Settings → General → Desktop pet → **Ladders and
+    balloons** (on by default) turns the first two off; falls stay.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -2674,11 +2704,11 @@ agent against it.
   The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
   multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v2.0.0]`.
-- **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
-  `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
-  xterm.js instance) attached to the coding workspace panel, alongside
+- **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (the Rust
+  backend's `portable-pty`, streamed over WebSocket to an xterm.js
+  instance) attached to the coding workspace panel, alongside
   Changes/Commits/file tabs. Coding-mode only — there is no separate general-chat mode
-  terminal. The session survives tab switches (detached PTYs idle-close
+  terminal. The session survives tab switches (a hidden terminal idle-closes
   after 15 minutes of no input; the backend reaper is the 30-minute
   backstop). A terminal with a command still running (a dev server, a
   build) is never idle-closed, by either reaper, on macOS and Linux `[v3.5.0]`.
@@ -2698,6 +2728,30 @@ agent against it.
   `⌘W` on a terminal whose shell is still running asks before closing it; the
   tab's close button still closes right away `[v3.3.0]`, unless a command is
   running in it, which asks first too `[v3.5.0]`.
+  - Shells survive a reload, a closed window and a dropped connection
+    `[v3.42.0]`: reopening the workspace brings its terminals back with their
+    recent output (the last 2 MB) and their names, a dropped connection
+    reconnects by itself, and a shell nobody reattaches to closes after 10
+    minutes. Closing the tab still ends the shell. Opening the same terminal
+    in a second window moves it there, and the first says "Opened in another
+    window". A flood of output (`yes`, a huge build log) no longer freezes the
+    app: the backend waits for the page to catch up. On Windows, where the
+    app cannot tell whether a command is running, terminals are no longer
+    idle-closed.
+  - **Find in terminal** `[v3.42.0]`: `⌘F` (macOS) or `Ctrl+Shift+F`
+    (Windows/Linux; plain `Ctrl+F` still reaches the shell) opens a find bar
+    with a match count and **Match case**; on phones it is in the long-press
+    sheet.
+  - **File paths open in the editor** `[v3.42.0]`: `⌘`/`Ctrl`+click on
+    `src/foo.ts:42`, `src/foo.ts:42:7` or `a/b.rs(10,3)` opens the file at that
+    line, resolved against the shell's directory when the shell reports it,
+    else the workspace; paths outside the workspace do not open.
+  - **Add to chat** `[v3.42.0]`: with text selected, the **Add to chat**
+    button or `⌘L` / `Ctrl+L` appends it to the composer as a `Terminal
+    output:` code block; on phones it is in the long-press sheet.
+  - On Windows and Linux `Ctrl+Shift+C` / `Ctrl+Shift+V` copy and paste
+    `[v3.42.0]`, and a terminal no longer takes focus from the composer when
+    it reconnects or its state changes.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace

@@ -569,6 +569,31 @@ explicitly.
     close and asks before the tab's close button closes the terminal.
     Windows has no foreground process group, so it never sends the frame.
     v2 has neither.
+  - *Terminals that survive the socket* (`terminal/src/lib.rs`,
+    `api/src/routes/terminal.rs`). Terminal protocol v2 (`/ws?proto=2`;
+    tickets answer `"protocol": 2`) detaches a session when its WebSocket
+    ends instead of killing the shell. A detached session is closed after
+    10 minutes (`DETACHED_GRACE`) without a reattach; the 30-minute idle
+    reap and the close on shutdown are unchanged, and an exited shell's
+    session is removed at once. Each session keeps the last 2 MiB of raw
+    PTY output with a byte-offset `seq`. `POST /api/terminal/ticket` takes
+    optional `session_id` and `since` to reattach (404 if unknown or in
+    another workspace); `GET /api/terminal/sessions?workspace=` lists live
+    sessions and `DELETE /api/terminal/sessions/{id}` kills one. v2
+    sockets send a text `attached` frame (`session_id`, first `seq`), then
+    binary output frames (8-byte big-endian `seq` + at most 64 KiB of raw
+    bytes; the client decodes), `busy` (also once at the start on Unix),
+    `exit`, and `error` (then close 4429, or 4404 if the session is gone).
+    Clients send `input`, `resize` and `ack` (`seq` just past what they
+    processed); output pauses above 512 KiB unacknowledged and resumes at
+    128 KiB. Malformed or unknown frames are ignored. While detached the
+    reader never blocks and drops the oldest bytes (the client sees a
+    `seq` gap); while attached nothing is dropped and the PTY is held back
+    once 2 MiB is unsent. A second ticket for an attached session takes it
+    over and closes the older socket with 4409 "attached elsewhere".
+    Without `proto=2` the original protocol is unchanged, including
+    killing the shell when the socket ends or sends a non-JSON frame. v2
+    has no terminal sessions that outlive a connection.
 - **Version:** the workspace `Cargo.toml` version is the release version
   (from 3.0.0 on; `scripts/bump_version.sh` sets it and
   `scripts/check_version_consistency.sh` holds every other release-facing
@@ -1016,7 +1041,7 @@ explicitly.
   and the full question or session title, newlines included. The event
   shape is unchanged. v3 also changes when a lead turn notifies: a failed
   turn sends `Failed` (kind `assistant_done`), while v2 sends nothing. A turn
-  the user stopped or ended by dismissing a question sends nothing, where v2
+  the user stopped sends nothing, where v2
   sends `Session completed`. A turn that ends while its subagents still run
   also sends nothing: their reports start another lead turn, and the last
   one notifies.
@@ -1233,6 +1258,14 @@ explicitly.
   model never reads it. Unlike `from_agent` it does not make the row a report
   (no `[handle]:` header, still a user prompt). Rows saved before this have no
   `from_lead`. Test: `agent/tests/subagent_from_lead.rs`.
+- **Question dismiss route removed (v3 only):** `POST
+  /api/agent/{session_id}/question/{question_id}/dismiss` and
+  `AgentSession::end_turn_after_question_dismissed` are gone, since no client
+  calls them. A question is now closed unanswered only by stopping the session
+  (or by a new message superseding it), which resolves it as `dismissed` /
+  `superseded` and pushes `question_dismissed`; the event, the statuses and
+  the web client's handling of them are unchanged. Test:
+  `agent/tests/stop_dismisses_question.rs`. v2 still has the route.
 
 ## 4. Layout
 

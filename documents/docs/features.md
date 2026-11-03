@@ -1193,6 +1193,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     new blocks: the turns are folded, so the count said nothing.
   - The header's workspace and title stay right after the sidebar toggle
     whether the sidebar is open or not.
+  - In a narrow window with the Review panel open, the sidebar opens as a
+    drawer over the chat and the panel without moving them, and its scrim
+    dims the panel too (a click there closes the drawer, even with the panel
+    maximized). The panel used to cover the chat while the drawer was open
+    and, once it closed, to leave the chat under its 400px minimum. Closing
+    the panel near that width slides it shut beside the chat instead of
+    over it.
   - A question with several answers allowed shows checkboxes without the
     1–9 digit beside each; the digit keys still pick options.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the

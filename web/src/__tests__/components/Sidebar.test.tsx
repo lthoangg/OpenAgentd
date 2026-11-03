@@ -1031,7 +1031,13 @@ describe('Sidebar workspace trust flow', () => {
     const sidebar = view.container.querySelector('aside') as HTMLElement
     expect(sidebar.className).toContain('absolute')
     expect(sidebar.className).toContain('shadow-(--shadow-depth)')
-    fireEvent.pointerDown(view.container.querySelector('[data-sidebar-drawer-backdrop]') as HTMLElement)
+    // It takes no room: the Review panel beside the chat keeps its width.
+    expect(sidebar.hasAttribute('data-panel-target-width')).toBe(false)
+    // The scrim sits over the Review panel, even one covering the chat (z-20),
+    // so a click there closes the drawer instead of reaching the panel.
+    const scrim = view.container.querySelector('[data-sidebar-drawer-backdrop]') as HTMLElement
+    expect(scrim.className.split(' ')).toContain('z-25')
+    fireEvent.pointerDown(scrim)
     expect(onCollapse).toHaveBeenCalledTimes(1)
   })
 

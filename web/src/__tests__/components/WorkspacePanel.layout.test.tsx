@@ -153,6 +153,35 @@ describe('Review dock layout', () => {
     expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).toBe('450px')
   })
 
+  // Closing frees room the sidebar takes at once (its clamp leaves an open
+  // dock 340px), so a 740px center can drop to 736 mid-slide. Switching to
+  // the overlay then pulled the dock out of the row: the chat snapped to
+  // full width and the dock slid over it.
+  it('closes beside the chat when closing drops the center under the side-by-side minimum', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const panel = (open: boolean, centerWidth: number) => (
+      <QueryClientProvider client={queryClient}>
+        <WorkspacePanel workspace={WORKSPACE} open={open} centerWidth={centerWidth} />
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => { view = render(panel(true, 740)) })
+    const dock = screen.getByRole('complementary', { name: 'Review panel' })
+    expect(dock.className).toContain('md:relative')
+
+    await act(async () => { view!.rerender(panel(false, 736)) })
+
+    expect(dock.className).toContain('md:relative')
+    expect(dock.style.width).toBe('0px')
+    expect(dock.style.transition).toContain('width')
+    expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).toBe('340px')
+
+    // Opened again at that width, it covers the chat as before.
+    await act(async () => { view!.rerender(panel(true, 736)) })
+    expect(dock.className).toContain('md:absolute')
+  })
+
   it('falls back to an overlay without a maximize toggle when the center is too narrow', async () => {
     const { dock } = await renderPanel({ centerWidth: 600 })
 

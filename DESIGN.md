@@ -699,7 +699,9 @@ drawer and full-screen sheet.
   its minimum (the panel splits down to 740px of center). When the Review
   panel is open and the sidebar no longer fits beside the chat and the panel,
   the sidebar becomes a drawer over the content (scrim; a click outside or
-  Escape closes it) and the column choice is left alone. A touch tablet
+  Escape closes it) and the column choice is left alone. The drawer takes no
+  room: the chat and the panel keep their widths under it, and its scrim
+  covers the panel too, even maximized. A touch tablet
   follows iPadOS instead: the sidebar is a drawer below 1180px and the panel
   covers the transcript below 860px of center (an 820px tablet in portrait).
   Covering, the panel stops above the composer (`--composer-h`), so a message

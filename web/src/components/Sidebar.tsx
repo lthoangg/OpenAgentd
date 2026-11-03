@@ -1053,12 +1053,13 @@ export function Sidebar({
         )}
       </AnimatePresence>
       {/* A desktop drawer dims what it covers, as drawer scrims do (DESIGN.md),
-          and closes on a click anywhere outside it. */}
+          and closes on a click anywhere outside it. z-25: over the Review
+          panel, even one covering the chat (z-20), and under the drawer (z-30). */}
       {drawerOpen && (
         <div
           aria-hidden="true"
           data-sidebar-drawer-backdrop=""
-          className="absolute inset-0 z-20 bg-(--color-overlay)"
+          className="absolute inset-0 z-25 bg-(--color-overlay)"
           onPointerDown={() => onCollapse?.()}
         />
       )}
@@ -1067,6 +1068,9 @@ export function Sidebar({
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
+      // A desktop drawer floats over the chat and the Review panel: it takes
+      // no room, so the panel must not size itself around it.
+      inFlow={isMobile || !drawer}
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
